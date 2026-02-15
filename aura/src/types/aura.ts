@@ -64,11 +64,23 @@ export interface Guest {
 export interface Cabin {
   id: string;
   propertyId: string;
-  name: string;
+  number: string;     // Ex: "01"
+  category: string;   // Ex: "Praia 2 dormitórios"
+  name: string;       // Gerado: "01 - Praia 2 dormitórios"
   capacity: number;
   status: 'available' | 'occupied' | 'maintenance' | 'cleaning';
   allowedSetups: string[];
   currentStayId?: string;
+  wifi?: {
+    ssid: string;
+    password?: string;
+  };
+  equipment?: {
+    id: string;
+    type: string;
+    model: string;
+    manualUrl?: string;
+  }[];
 }
 
 // --- ENTIDADE ESTADIA ---

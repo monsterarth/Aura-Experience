@@ -1,29 +1,49 @@
 // src/services/stay-service.ts
 import { db } from "@/lib/firebase";
 import { 
-  collection, doc, getDoc, updateDoc, writeBatch, 
-  serverTimestamp, query, where, getDocs 
+  collection, 
+  doc, 
+  getDoc, 
+  updateDoc, 
+  writeBatch, 
+  serverTimestamp, 
+  query, 
+  where, 
+  getDocs, 
+  orderBy,
+  collectionGroup
 } from "firebase/firestore";
 import { Stay, Guest, Cabin } from "@/types/aura";
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
 
 export const StayService = {
-  // Gera código de acesso único (ex: A4B2K)
+  /**
+   * Gera um código de acesso único dentro da sub-coleção de estadias da propriedade
+   */
   async generateUniqueAccessCode(propertyId: string): Promise<string> {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     let code = "";
     let isUnique = false;
+
     while (!isUnique) {
-      code = Array.from({length: 5}, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
-      const q = query(collection(db, "stays"), where("propertyId", "==", propertyId), where("accessCode", "==", code));
+      code = Array.from({ length: 5 }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
+      
+      // Busca apenas dentro das estadias desta propriedade específica
+      const q = query(
+        collection(db, "properties", propertyId, "stays"), 
+        where("accessCode", "==", code)
+      );
+      
       const snap = await getDocs(q);
       if (snap.empty) isUnique = true;
     }
     return code;
   },
 
-  // Método que faltava para a página /admin/stays/new
+  /**
+   * Cria registros de estadia na sub-coleção properties/{id}/stays
+   */
   async createStayRecord(params: {
     propertyId: string;
     guestId: string;
@@ -40,7 +60,9 @@ export const StayService = {
 
     params.cabinConfigs.forEach((config) => {
       const stayId = uuidv4();
-      const stayRef = doc(collection(db, "stays"), stayId);
+      // CAMINHO ANINHADO: properties/{pid}/stays/{sid}
+      const stayRef = doc(db, "properties", params.propertyId, "stays", stayId);
+      
       batch.set(stayRef, {
         id: stayId,
         propertyId: params.propertyId,
@@ -52,49 +74,91 @@ export const StayService = {
         checkOut: params.checkOut,
         counts: { adults: config.adults, children: config.children, babies: config.babies },
         status: 'pending',
-        automationFlags: { send48h: params.sendAutomations, send24h: params.sendAutomations, preCheckinSent: false, remindersCount: 0 },
+        automationFlags: { 
+          send48h: params.sendAutomations, 
+          send24h: params.sendAutomations, 
+          preCheckinSent: false, 
+          remindersCount: 0 
+        },
         createdAt: serverTimestamp()
       });
     });
+
     await batch.commit();
-    return { accessCode };
+
+    await AuditService.log({
+      propertyId: params.propertyId,
+      userId: params.actorId,
+      userName: params.actorName,
+      action: groupId ? "STAY_GROUP_CREATE" : "CREATE",
+      entity: "STAY",
+      entityId: groupId || "MULTIPLE",
+      details: `Reserva criada para ${params.cabinConfigs.length} cabana(s). Código: ${accessCode}`
+    });
+
+    return { accessCode, groupId };
   },
 
-  async getStayWithGuest(stayId: string) {
-    const stayDoc = await getDoc(doc(db, "stays", stayId));
+  /**
+   * Busca uma estadia e seu hóspede (Admin)
+   */
+  async getStayWithGuest(propertyId: string, stayId: string) {
+    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
+    const stayDoc = await getDoc(stayRef);
+    
     if (!stayDoc.exists()) return null;
+    
     const stayData = { id: stayDoc.id, ...stayDoc.data() } as Stay;
-    const guestDoc = await getDoc(doc(db, "properties", stayData.propertyId, "guests", stayData.guestId));
-    return { stay: stayData, guest: guestDoc.exists() ? { id: guestDoc.id, ...guestDoc.data() } as Guest : null };
+    const guestDoc = await getDoc(doc(db, "properties", propertyId, "guests", stayData.guestId));
+    
+    return { 
+      stay: stayData, 
+      guest: guestDoc.exists() ? { id: guestDoc.id, ...guestDoc.data() } as Guest : null 
+    };
   },
 
-  async completePreCheckin(stayId: string, stayUpdate: Partial<Stay>, guestUpdate: Partial<Guest>) {
-    const stayRef = doc(db, "stays", stayId);
+  /**
+   * Finaliza o pré-check-in do hóspede
+   */
+  async completePreCheckin(propertyId: string, stayId: string, stayUpdate: Partial<Stay>, guestUpdate: Partial<Guest>) {
+    const batch = writeBatch(db);
+    
+    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
     const staySnap = await getDoc(stayRef);
-    const pId = staySnap.data()?.propertyId;
     const gId = staySnap.data()?.guestId;
 
-    const batch = writeBatch(db);
-    batch.update(stayRef, { ...stayUpdate, status: 'pre_checkin_done', updatedAt: serverTimestamp() });
-    batch.update(doc(db, "properties", pId, "guests", gId), { ...guestUpdate, updatedAt: serverTimestamp() });
+    batch.update(stayRef, { 
+      ...stayUpdate, 
+      status: 'pre_checkin_done', 
+      updatedAt: serverTimestamp() 
+    });
+
+    batch.update(doc(db, "properties", propertyId, "guests", gId), { 
+      ...guestUpdate, 
+      updatedAt: serverTimestamp() 
+    });
+
     return batch.commit();
   },
 
   /**
-   * Busca todas as estadias de um grupo ou apenas uma se for individual
+   * Busca estadias de um grupo usando COLLECTION GROUP (Portal do Hóspede)
    */
   async getGroupStays(accessCode: string) {
+    // Procura o código em todas as sub-coleções "stays" do banco
     const q = query(
-      collection(db, "stays"), 
+      collectionGroup(db, "stays"), 
       where("accessCode", "==", accessCode.toUpperCase()),
       where("status", "in", ["pending", "pre_checkin_done"])
     );
+    
     const snap = await getDocs(q);
     
-    // Mapeia os dados e busca as cabanas para mostrar os nomes (Ex: "Cabana do Lago")
     const stays = await Promise.all(snap.docs.map(async (d) => {
       const data = d.data() as Stay;
-      const cabinDoc = await getDoc(doc(db, "cabins", data.cabinId));
+      // Busca a cabana no caminho aninhado correto
+      const cabinDoc = await getDoc(doc(db, "properties", data.propertyId, "cabins", data.cabinId));
+      
       return { 
         ...data, 
         id: d.id, 
@@ -106,28 +170,19 @@ export const StayService = {
   },
 
   /**
-   * Atribui um novo líder (guestId) a uma estadia específica do grupo
+   * Busca Stay + Guest + Cabin (Admin e Portal)
    */
-  async assignLeaderToStay(stayId: string, guestData: { fullName: string, phone: string }) {
-    // Aqui criaríamos um novo Guest ou usaríamos um existente
-    // Por simplicidade para o teste, vamos atualizar apenas na Stay
-    const stayRef = doc(db, "stays", stayId);
-    await updateDoc(stayRef, {
-      "tempLeaderName": guestData.fullName,
-      "tempLeaderPhone": guestData.phone
-    });
-  },
-
-  async getStayWithGuestAndCabin(stayId: string) {
-    const stayDoc = await getDoc(doc(db, "stays", stayId));
+  async getStayWithGuestAndCabin(propertyId: string, stayId: string) {
+    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
+    const stayDoc = await getDoc(stayRef);
     if (!stayDoc.exists()) return null;
+
     const stayData = { id: stayDoc.id, ...stayDoc.data() } as Stay;
 
-    // Busca Hóspede
-    const guestDoc = await getDoc(doc(db, "properties", stayData.propertyId, "guests", stayData.guestId));
-    
-    // Busca Cabana
-    const cabinDoc = await getDoc(doc(db, "cabins", stayData.cabinId));
+    const [guestDoc, cabinDoc] = await Promise.all([
+      getDoc(doc(db, "properties", propertyId, "guests", stayData.guestId)),
+      getDoc(doc(db, "properties", propertyId, "cabins", stayData.cabinId))
+    ]);
 
     return { 
       stay: stayData, 
@@ -135,4 +190,118 @@ export const StayService = {
       cabin: cabinDoc.exists() ? { id: cabinDoc.id, ...cabinDoc.data() } as Cabin : null
     };
   },
+
+  /**
+   * Listagem por Status (Admin)
+   */
+  async getStaysByStatus(propertyId: string, statusList: string[]) {
+    try {
+      const q = query(
+        collection(db, "properties", propertyId, "stays"),
+        where("status", "in", statusList),
+        orderBy("checkIn", "asc")
+      );
+      
+      const snap = await getDocs(q);
+      const stays = await Promise.all(snap.docs.map(async (d) => {
+        const data = d.data() as Stay;
+        const [guestDoc, cabinDoc] = await Promise.all([
+          getDoc(doc(db, "properties", propertyId, "guests", data.guestId)),
+          getDoc(doc(db, "properties", propertyId, "cabins", data.cabinId))
+        ]);
+
+        return {
+          ...data,
+          id: d.id,
+          guestName: guestDoc.exists() ? guestDoc.data().fullName : "Hóspede desconhecido",
+          cabinName: cabinDoc.exists() ? cabinDoc.data().name : "N/A"
+        };
+      }));
+
+      return stays;
+    } catch (error) {
+      console.error("Erro ao listar estadias:", error);
+      return [];
+    }
+  },
+
+  /**
+   * Check-in Físico
+   */
+  async performCheckIn(propertyId: string, stayId: string, actorId: string, actorName: string) {
+    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
+
+    await updateDoc(stayRef, {
+      status: 'active',
+      checkInActual: serverTimestamp()
+    });
+
+    await AuditService.log({
+      propertyId,
+      userId: actorId,
+      userName: actorName,
+      action: "CHECKIN",
+      entity: "STAY",
+      entityId: stayId,
+      details: "Check-in físico realizado pela recepção."
+    });
+  },
+
+  /**
+   * Check-out Físico e Liberação de Cabana
+   */
+  async performCheckOut(propertyId: string, stayId: string, actorId: string, actorName: string) {
+    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
+    const staySnap = await getDoc(stayRef);
+    const cabinId = staySnap.data()?.cabinId;
+
+    const batch = writeBatch(db);
+
+    // Finaliza Estadia
+    batch.update(stayRef, {
+      status: 'finished',
+      checkOutActual: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+
+    // Envia Cabana para Limpeza
+    const cabinRef = doc(db, "properties", propertyId, "cabins", cabinId);
+    batch.update(cabinRef, {
+      status: 'cleaning',
+      currentStayId: null
+    });
+
+    await batch.commit();
+
+    await AuditService.log({
+      propertyId,
+      userId: actorId,
+      userName: actorName,
+      action: "CHECKOUT",
+      entity: "STAY",
+      entityId: stayId,
+      details: `Check-out realizado. Unidade ${cabinId} enviada para limpeza.`
+    });
+
+    return { success: true };
+  },
+
+  /**
+   * Atualização manual de dados da ficha
+   */
+  async updateStayData(propertyId: string, stayId: string, data: Partial<Stay>, actorId: string, actorName: string) {
+    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
+    await updateDoc(stayRef, { ...data, updatedAt: serverTimestamp() });
+
+    await AuditService.log({
+      propertyId,
+      userId: actorId,
+      userName: actorName,
+      action: "UPDATE",
+      entity: "STAY",
+      entityId: stayId,
+      details: "Ficha de hospedagem editada pela recepção.",
+      newData: data
+    });
+  }
 };

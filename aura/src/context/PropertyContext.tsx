@@ -5,9 +5,11 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import { Property } from "@/types/aura";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs, limit } from "firebase/firestore";
+import { useAuth } from "./AuthContext"; // Import necessário para saber se é super_admin
 
 interface PropertyContextType {
   property: Property | null;
+  setProperty: (property: Property | null) => void; // Permite alteração global
   loading: boolean;
   error: string | null;
   refreshProperty: (identifier: string) => Promise<void>;
@@ -15,17 +17,8 @@ interface PropertyContextType {
 
 const PropertyContext = createContext<PropertyContextType | undefined>(undefined);
 
-/**
- * PropertyProvider: Garante que todos os componentes saibam em qual "instância" de propriedade estão.
- * No Aura, isso isola os dados e aplica o branding dinamicamente.
- */
-export const PropertyProvider = ({ 
-  children, 
-  initialSlug 
-}: { 
-  children: ReactNode; 
-  initialSlug?: string; 
-}) => {
+export const PropertyProvider = ({ children, initialSlug }: { children: ReactNode; initialSlug?: string; }) => {
+  const { userData, isSuperAdmin } = useAuth();
   const [property, setProperty] = useState<Property | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,48 +26,41 @@ export const PropertyProvider = ({
   const fetchProperty = async (identifier: string) => {
     try {
       setLoading(true);
-      setError(null);
+      const q = query(collection(db, "properties"), where("slug", "==", identifier), limit(1));
+      const snap = await getDocs(q);
+      if (snap.empty) throw new Error("Propriedade não encontrada.");
 
-      // Busca a propriedade pelo slug (subdomínio ou identificador de URL)
-      const propertiesRef = collection(db, "properties");
-      const q = query(propertiesRef, where("slug", "==", identifier), limit(1));
-      const querySnapshot = await getDocs(q);
-
-      if (querySnapshot.empty) {
-        throw new Error("Propriedade não encontrada.");
-      }
-
-      const propertyData = {
-        id: querySnapshot.docs[0].id,
-        ...querySnapshot.docs[0].data()
-      } as Property;
-
-      setProperty(propertyData);
-      
-      // Aplica as cores da marca no CSS Global via CSS Variables
-      if (propertyData.primaryColor) {
-        document.documentElement.style.setProperty('--primary', propertyData.primaryColor);
-      }
-      if (propertyData.secondaryColor) {
-        document.documentElement.style.setProperty('--secondary', propertyData.secondaryColor);
-      }
-
+      const data = { id: snap.docs[0].id, ...snap.docs[0].data() } as Property;
+      updateTheme(data);
+      setProperty(data);
     } catch (err: any) {
-      console.error("[Aura PropertyContext] Erro:", err.message);
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
+  const updateTheme = (data: Property) => {
+    if (data.primaryColor) document.documentElement.style.setProperty('--primary', data.primaryColor);
+    if (data.secondaryColor) document.documentElement.style.setProperty('--secondary', data.secondaryColor);
+  };
+
+  // Se o admin mudar a propriedade no sidebar, atualizamos o tema
+  const handleSetProperty = (data: Property | null) => {
+    if (data) updateTheme(data);
+    setProperty(data);
+  };
+
   useEffect(() => {
-    if (initialSlug) {
-      fetchProperty(initialSlug);
+    if (initialSlug) fetchProperty(initialSlug);
+    // Se não for super admin, ele já nasce com a propriedade do seu userData
+    else if (!isSuperAdmin && userData?.propertyId && !property) {
+       // Aqui você pode fazer um fetch pelo ID se necessário
     }
-  }, [initialSlug]);
+  }, [initialSlug, userData, isSuperAdmin]);
 
   return (
-    <PropertyContext.Provider value={{ property, loading, error, refreshProperty: fetchProperty }}>
+    <PropertyContext.Provider value={{ property, setProperty: handleSetProperty, loading, error, refreshProperty: fetchProperty }}>
       {children}
     </PropertyContext.Provider>
   );
@@ -82,8 +68,6 @@ export const PropertyProvider = ({
 
 export const useProperty = () => {
   const context = useContext(PropertyContext);
-  if (context === undefined) {
-    throw new Error("useProperty deve ser usado dentro de um PropertyProvider");
-  }
+  if (!context) throw new Error("useProperty deve ser usado dentro de um PropertyProvider");
   return context;
 };

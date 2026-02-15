@@ -46,7 +46,9 @@ export default function UnifiedPreCheckin() {
   useEffect(() => {
     async function loadData() {
       try {
-        const data = await StayService.getStayWithGuestAndCabin(stayId as string);
+        // Buscamos primeiro o grupo para identificar a propriedade correta
+const allStays = await StayService.getGroupStays(""); // O Portal usa o AccessCode no login, aqui usaremos o stayId para filtrar
+const data = await StayService.getStayWithGuestAndCabin(stay?.propertyId || "", stayId as string);
         if (!data) return router.push("/check-in/login");
 
         setGuest(data.guest);
@@ -96,7 +98,7 @@ export default function UnifiedPreCheckin() {
     e.preventDefault();
     setIsSaving(true);
     try {
-      await StayService.completePreCheckin(stayId as string, stay, guest);
+      await StayService.completePreCheckin(stay.propertyId, stayId as string, stay, guest);
       setIsSuccess(true);
     } catch (error) {
       toast.error("Erro ao salvar dados.");
@@ -231,14 +233,24 @@ export default function UnifiedPreCheckin() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
              <div className="space-y-1">
                 <label className="text-[10px] font-bold text-white/40 uppercase">Nascimento</label>
-                <input type="date" required className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none invert" />
-             </div>
+                <input type="date" 
+                required 
+                value={guest.birthDate || ""}
+                onChange={e => setGuest({...guest, birthDate: e.target.value})}
+                className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none invert" 
+                />
+                </div>
              <div className="space-y-1">
                 <label className="text-[10px] font-bold text-white/40 uppercase">Gênero</label>
-                <select className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none">
-                   <option>Masculino</option>
-                   <option>Feminino</option>
-                   <option>Outro</option>
+                <select 
+                value={guest.gender || ""}
+                onChange={e => setGuest({...guest, gender: e.target.value})}
+                className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none"
+                >
+                <option value="">Selecione...</option>
+                <option value="M">Masculino</option>
+                <option value="F">Feminino</option>
+                <option value="O">Outro</option>
                 </select>
              </div>
           </div>
@@ -315,9 +327,19 @@ export default function UnifiedPreCheckin() {
              <Plane size={20} className="text-primary"/> 3. Itinerário
            </h3>
            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input placeholder="Cidade de Origem" className="bg-white/5 border border-white/10 p-4 rounded-2xl outline-none" />
-              <input placeholder="Próximo Destino" className="bg-white/5 border border-white/10 p-4 rounded-2xl outline-none" />
-           </div>
+            <input 
+            placeholder="Cidade de Origem" 
+            value={stay.lastCity || ""}
+            onChange={e => setStay({...stay, lastCity: e.target.value})}
+            className="bg-white/5 border border-white/10 p-4 rounded-2xl outline-none" 
+            />
+            <input 
+            placeholder="Próximo Destino" 
+            value={stay.nextCity || ""}
+            onChange={e => setStay({...stay, nextCity: e.target.value})}
+            className="bg-white/5 border border-white/10 p-4 rounded-2xl outline-none" 
+            />
+            </div>
         </section>
 
         {/* 5. Pets (Customizado conforme solicitado) */}
@@ -336,8 +358,18 @@ export default function UnifiedPreCheckin() {
           {stay.hasPet && (
             <div className="space-y-6 animate-in zoom-in">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <input placeholder="Nome" className="bg-black/40 border border-white/10 p-4 rounded-2xl text-sm" />
-                <input placeholder="Raça" className="bg-black/40 border border-white/10 p-4 rounded-2xl text-sm" />
+                <input 
+                placeholder="Nome" 
+                value={stay.petDetails?.name || ""}
+                onChange={e => setStay({...stay, petDetails: {...stay.petDetails, name: e.target.value}})}
+                className="bg-black/40 border border-white/10 p-4 rounded-2xl text-sm" 
+                />
+                <input 
+                placeholder="Raça" 
+                value={stay.petDetails?.breed || ""}
+                onChange={e => setStay({...stay, petDetails: {...stay.petDetails, breed: e.target.value}})}
+                className="bg-black/40 border border-white/10 p-4 rounded-2xl text-sm" 
+                />
                 <select className="bg-black/40 border border-white/10 p-4 rounded-2xl text-sm outline-none">
                   <option>Cachorro</option>
                   <option>Gato</option>
