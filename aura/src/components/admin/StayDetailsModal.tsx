@@ -6,7 +6,7 @@ import {
   X, Edit2, Save, Calendar, User, 
   MapPin, Phone, Mail, Car, FileText, 
   Users, CheckCircle, Clock, Plane, 
-  Briefcase, PawPrint 
+  Briefcase, PawPrint, AlertTriangle, Plus, Trash2 
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -19,20 +19,19 @@ import { Stay, Guest } from "@/types/aura";
 interface StayDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  stay: Stay & { guestName?: string; cabinName?: string }; // Extensão para visualização
+  stay: Stay & { guestName?: string; cabinName?: string };
   guest: Guest;
   onViewGuest?: (guestId: string) => void;
   onUpdate?: () => void;
 }
 
-type TabType = 'reserva' | 'hospede' | 'fnrh' | 'extras';
+type TabType = 'reserva' | 'hospede' | 'fnrh' | 'extras' | 'acompanhantes';
 
 export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, onUpdate }: StayDetailsModalProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('reserva');
 
-  // Estado unificado para formulário
   const [formData, setFormData] = useState<Partial<Stay>>({});
   const [guestData, setGuestData] = useState<Partial<Guest>>({});
 
@@ -51,10 +50,12 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
         lastCity: stay.lastCity || "",
         nextCity: stay.nextCity || "",
         hasPet: stay.hasPet || false,
-        petDetails: stay.petDetails || { name: "", species: "Cachorro", weight: 0, breed: "" }
+        petDetails: stay.petDetails || { name: "", species: "Cachorro", weight: 0, breed: "" },
+        additionalGuests: stay.additionalGuests || [] // Inicializa lista
       });
 
       setGuestData({
+        fullName: guest.fullName || "",
         nationality: guest.nationality || "Brasil",
         document: guest.document || { type: 'CPF', number: '' },
         birthDate: guest.birthDate || "",
@@ -75,17 +76,10 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const handleSave = async () => {
     setLoading(true);
     try {
-      // 1. Atualizar Estadia (Stay)
-      // Convertendo strings de data de volta se necessário, mas aqui assumimos que o form mantém o formato correto ou convertemos no serviço
-      // Para o input date-time-local, precisamos converter para Date object antes de mandar para o Firebase se o serviço esperar Date
-      
       const stayPayload: Partial<Stay> = {
         ...formData,
-        // Garantir tipos corretos para datas se foram editadas via string input
-        // (A conversão real depende de como seu StayService trata. Se ele espera Date, converta aqui)
       };
 
-      // 2. Atualizar Hóspede (Guest)
       const guestPayload: Partial<Guest> = {
         ...guestData
       };
@@ -105,6 +99,27 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
       setLoading(false);
     }
   };
+
+  const updateAdditionalGuest = (index: number, field: string, value: string) => {
+      const newGuests = [...(formData.additionalGuests || [])];
+      // @ts-ignore
+      newGuests[index][field] = value;
+      setFormData({ ...formData, additionalGuests: newGuests });
+  };
+
+  const removeAdditionalGuest = (index: number) => {
+      const newGuests = (formData.additionalGuests || []).filter((_, i) => i !== index);
+      setFormData({ ...formData, additionalGuests: newGuests });
+  };
+
+  // Cálculos de Validação
+  const currentAdults = 1 + (formData.additionalGuests?.filter(g => g.type === 'adult').length || 0); // +1 Titular
+  const bookedAdults = formData.counts?.adults || 1;
+  const isAdultsMismatch = currentAdults > bookedAdults;
+
+  const currentChildren = formData.additionalGuests?.filter(g => g.type === 'child').length || 0;
+  const bookedChildren = formData.counts?.children || 0;
+  const isChildrenMismatch = currentChildren > bookedChildren;
 
   const Label = ({ icon: Icon, children }: { icon: any, children: React.ReactNode }) => (
     <label className="flex items-center gap-2 text-[10px] font-bold uppercase text-white/40 mb-1.5">
@@ -173,18 +188,19 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
         </header>
 
         {/* --- TABS --- */}
-        <div className="flex border-b border-white/5 px-6 gap-6">
+        <div className="flex border-b border-white/5 px-6 gap-6 overflow-x-auto">
             {[
-                { id: 'reserva', label: 'Logística & Quarto', icon: Calendar },
-                { id: 'hospede', label: 'Dados Hóspede', icon: User },
-                { id: 'fnrh', label: 'Viagem & FNRH', icon: Plane },
-                { id: 'extras', label: 'Pet & Ocupantes', icon: PawPrint },
+                { id: 'reserva', label: 'Logística', icon: Calendar },
+                { id: 'hospede', label: 'Titular', icon: User },
+                { id: 'acompanhantes', label: 'Acompanhantes', icon: Users }, // NOVA ABA
+                { id: 'fnrh', label: 'Viagem', icon: Plane },
+                { id: 'extras', label: 'Pet & Info', icon: PawPrint },
             ].map(tab => (
                 <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as TabType)}
                     className={cn(
-                        "py-4 text-xs font-bold uppercase tracking-widest flex items-center gap-2 border-b-2 transition-all",
+                        "py-4 text-xs font-bold uppercase tracking-widest flex items-center gap-2 border-b-2 transition-all whitespace-nowrap",
                         activeTab === tab.id ? "text-primary border-primary" : "text-white/40 border-transparent hover:text-white"
                     )}
                 >
@@ -307,6 +323,84 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                              <Input placeholder="UF" value={guestData.address?.state} onChange={e => setGuestData({...guestData, address: {...guestData.address!, state: e.target.value}})} />
                           </div>
                       </div>
+                  </div>
+              </div>
+          )}
+
+          {/* TAB: ACOMPANHANTES (NOVO) */}
+          {activeTab === 'acompanhantes' && (
+              <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                  <div className="grid grid-cols-3 gap-4 mb-6">
+                      <div className={cn("p-4 rounded-xl border flex flex-col items-center justify-center transition-colors", isAdultsMismatch ? "bg-orange-500/10 border-orange-500/50 text-orange-500" : "bg-white/5 border-white/10 text-white")}>
+                          <p className="text-[10px] font-bold uppercase">Adultos (Lista/Reserva)</p>
+                          <p className="text-2xl font-black">{currentAdults} / {bookedAdults}</p>
+                          {isAdultsMismatch && isEditing && (
+                              <button 
+                                onClick={() => setFormData(prev => ({...prev, counts: {...prev.counts!, adults: currentAdults}}))}
+                                className="mt-2 px-3 py-1 bg-orange-500 text-black text-[10px] font-bold uppercase rounded-lg hover:bg-orange-400"
+                              >
+                                  Ajustar Reserva
+                              </button>
+                          )}
+                      </div>
+                      <div className={cn("p-4 rounded-xl border flex flex-col items-center justify-center transition-colors", isChildrenMismatch ? "bg-orange-500/10 border-orange-500/50 text-orange-500" : "bg-white/5 border-white/10 text-white")}>
+                          <p className="text-[10px] font-bold uppercase">Crianças (Lista/Reserva)</p>
+                          <p className="text-2xl font-black">{currentChildren} / {bookedChildren}</p>
+                          {isChildrenMismatch && isEditing && (
+                              <button 
+                                onClick={() => setFormData(prev => ({...prev, counts: {...prev.counts!, children: currentChildren}}))}
+                                className="mt-2 px-3 py-1 bg-orange-500 text-black text-[10px] font-bold uppercase rounded-lg hover:bg-orange-400"
+                              >
+                                  Ajustar Reserva
+                              </button>
+                          )}
+                      </div>
+                      <div className="p-4 rounded-xl border bg-white/5 border-white/10 text-white flex flex-col items-center justify-center">
+                          <p className="text-[10px] font-bold uppercase">Bebês (Lista)</p>
+                          <p className="text-2xl font-black">{formData.additionalGuests?.filter(g => g.type === 'free').length}</p>
+                      </div>
+                  </div>
+
+                  <div className="space-y-3">
+                      <h3 className="text-sm font-bold text-white border-b border-white/5 pb-2">Lista de Acompanhantes</h3>
+                      {formData.additionalGuests?.length === 0 ? (
+                          <div className="p-8 text-center border border-dashed border-white/10 rounded-2xl text-white/20 text-xs font-bold uppercase">
+                              Nenhum acompanhante cadastrado
+                          </div>
+                      ) : (
+                          formData.additionalGuests?.map((g, idx) => (
+                              <div key={idx} className="bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center gap-4">
+                                  <div className="p-3 bg-black/20 rounded-xl">
+                                      <User size={16} className={g.type === 'adult' ? 'text-primary' : 'text-white/40'} />
+                                  </div>
+                                  <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                      <Input 
+                                        value={g.fullName} 
+                                        onChange={e => updateAdditionalGuest(idx, 'fullName', e.target.value)}
+                                        placeholder="Nome Completo"
+                                      />
+                                      <Input 
+                                        value={g.document} 
+                                        onChange={e => updateAdditionalGuest(idx, 'document', e.target.value)}
+                                        placeholder="Documento"
+                                      />
+                                  </div>
+                                  <div className="w-24 text-center">
+                                      <span className="text-[10px] font-bold uppercase bg-white/10 px-2 py-1 rounded text-white/60">
+                                          {g.type === 'adult' ? 'Adulto' : g.type === 'child' ? 'Criança' : 'Bebê'}
+                                      </span>
+                                  </div>
+                                  {isEditing && (
+                                      <button 
+                                        onClick={() => removeAdditionalGuest(idx)}
+                                        className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg"
+                                      >
+                                          <Trash2 size={16} />
+                                      </button>
+                                  )}
+                              </div>
+                          ))
+                      )}
                   </div>
               </div>
           )}

@@ -11,11 +11,13 @@ import {
   where, 
   getDocs, 
   orderBy,
-  collectionGroup
+  collectionGroup,
+  limit
 } from "firebase/firestore";
 import { Stay, Guest, Cabin } from "@/types/aura";
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
+
 
 export const StayService = {
   /**
@@ -39,6 +41,30 @@ export const StayService = {
       if (snap.empty) isUnique = true;
     }
     return code;
+  },
+
+  /**
+   * Encontra o ID da propriedade pesquisando globalmente pelo ID da estadia.
+   * Essencial para links públicos diretos onde não sabemos a propriedade a priori.
+   */
+  async findPropertyIdByStayId(stayId: string): Promise<string | null> {
+    try {
+      // Busca em TODAS as coleções 'stays' do banco de dados
+      const staysRef = collectionGroup(db, "stays");
+      const q = query(staysRef, where("id", "==", stayId), limit(1));
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) return null;
+
+      const doc = snapshot.docs[0];
+      // A estrutura é properties/{propertyId}/stays/{stayId}
+      // doc.ref.parent = coleção 'stays'
+      // doc.ref.parent.parent = documento da propriedade
+      return doc.ref.parent.parent?.id || null;
+    } catch (error) {
+      console.error("Erro ao localizar propriedade da estadia:", error);
+      return null;
+    }
   },
 
   /**
@@ -284,6 +310,33 @@ export const StayService = {
     });
 
     return { success: true };
+  },
+
+// Adicione este método ao objeto StayService em src/services/stay-service.ts
+
+  /**
+   * Cancela uma estadia pendente
+   */
+  async cancelStay(propertyId: string, stayId: string, actorId: string, actorName: string) {
+    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
+    
+    // Opcional: Verificar se já não está iniciada antes de cancelar
+    // Mas a UI já deve bloquear isso.
+
+    await updateDoc(stayRef, {
+      status: 'cancelled',
+      updatedAt: serverTimestamp()
+    });
+
+    await AuditService.log({
+      propertyId,
+      userId: actorId,
+      userName: actorName,
+      action: "DELETE",
+      entity: "STAY",
+      entityId: stayId,
+      details: "Reserva cancelada administrativamente."
+    });
   },
 
   /**

@@ -12,40 +12,59 @@ interface RoleGuardProps {
   allowedRoles: UserRole[];
 }
 
-/**
- * RoleGuard: O vigilante de interface do Aura.
- * Bloqueia a renderização de componentes ou páginas se o cargo não for permitido.
- */
 export const RoleGuard = ({ children, allowedRoles }: RoleGuardProps) => {
   const { userData, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && (!userData || !allowedRoles.includes(userData.role))) {
-      // Opcional: Redirecionar para uma página de "Acesso Negado"
-      console.warn("[Aura Security] Acesso negado para o cargo:", userData?.role);
+    if (!loading) {
+      // Se não tem usuário (Visitante), manda pro login imediatamente
+      if (!userData) {
+        router.push("/admin/login");
+        return;
+      }
+      
+      // Se tem usuário mas não tem permissão, apenas loga o aviso (o componente visual vai tratar)
+      if (!allowedRoles.includes(userData.role)) {
+        console.warn("[Aura Security] Acesso negado para o cargo:", userData.role);
+      }
     }
   }, [userData, loading, allowedRoles, router]);
 
   if (loading) {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-background">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+      <div className="flex h-screen w-full items-center justify-center bg-[#0a0a0a]">
+        <div className="flex flex-col items-center gap-4">
+           <Loader2 className="h-10 w-10 animate-spin text-primary" />
+           <p className="text-xs font-bold uppercase tracking-widest text-white/20">Verificando Permissões...</p>
+        </div>
       </div>
     );
   }
 
-  if (!userData || !allowedRoles.includes(userData.role)) {
+  // Se não tem userData, o useEffect acima já disparou o redirect, 
+  // mas retornamos null para não piscar a tela de erro
+  if (!userData) return null; 
+
+  // Se tem usuário mas cargo errado -> Mostra tela de bloqueio
+  if (!allowedRoles.includes(userData.role)) {
     return (
-      <div className="flex h-[60vh] flex-col items-center justify-center space-y-4 p-8 text-center">
-        <div className="rounded-full bg-destructive/10 p-4 text-destructive">
-          <ShieldAlert size={48} />
+      <div className="flex h-[80vh] flex-col items-center justify-center space-y-6 p-8 text-center animate-in zoom-in duration-300">
+        <div className="rounded-full bg-red-500/10 p-6 text-red-500 ring-1 ring-red-500/20">
+          <ShieldAlert size={64} />
         </div>
-        <h2 className="text-2xl font-bold">Acesso Restrito</h2>
-        <p className="max-w-md text-muted-foreground">
-          O seu cargo (<strong>{userData?.role || 'Visitante'}</strong>) não tem permissão para visualizar esta área.
-          Contacte o administrador da <strong>{userData?.propertyId || 'Plataforma'}</strong>.
-        </p>
+        <div className="space-y-2">
+            <h2 className="text-3xl font-black text-white">Acesso Restrito</h2>
+            <p className="max-w-md text-white/40">
+            O seu cargo (<strong>{userData?.role}</strong>) não possui as credenciais de segurança necessárias para acessar esta área.
+            </p>
+        </div>
+        <button 
+            onClick={() => router.back()}
+            className="px-8 py-3 bg-white/5 hover:bg-white/10 text-white font-bold rounded-xl transition-all"
+        >
+            Voltar
+        </button>
       </div>
     );
   }

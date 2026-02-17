@@ -101,10 +101,16 @@ export default function NewStayPage() {
 
     setLoading(true);
     try {
-      const finalGuestId = docNumber ? `GUEST-${docNumber.replace(/\D/g, '')}` : `GUEST-${Date.now()}`;
+      // 1. Prepara o ID Base (Com documento ou Gerado)
+      const cleanDoc = docNumber.replace(/\D/g, '');
+      const initialGuestId = cleanDoc.length > 0 
+        ? cleanDoc 
+        : `GUEST-${Date.now()}`; 
       
-      await GuestService.upsertGuest(contextProperty.id, {
-        id: finalGuestId,
+      // 2. Salva o Hóspede e CAPTURA O ID NORMALIZADO retornado pelo serviço
+      // O serviço pode remover hifens ou caracteres especiais, então usamos o retorno dele
+      const savedGuestId = await GuestService.upsertGuest(contextProperty.id, {
+        id: initialGuestId,
         propertyId: contextProperty.id,
         fullName: guestData.fullName,
         email: guestData.email,
@@ -115,9 +121,10 @@ export default function NewStayPage() {
         address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", country: "Brasil" }
       });
 
+      // 3. Cria a Estadia usando o ID exato que foi salvo no banco de hóspedes
       const result = await StayService.createStayRecord({
         propertyId: contextProperty.id,
-        guestId: finalGuestId,
+        guestId: savedGuestId, // <--- Correção Vital: Usa o ID normalizado
         cabinConfigs: cabinSelections,
         checkIn: new Date(stayDates.checkIn),
         checkOut: new Date(stayDates.checkOut),

@@ -108,6 +108,14 @@ export interface Stay {
     babies: number;
   };
 
+  // Lista de Acompanhantes (ADICIONADO)
+  additionalGuests?: {
+    id: string;
+    fullName: string;
+    document: string;
+    type: 'adult' | 'child' | 'free';
+  }[];
+
   // FNRH
   travelReason: 'Turismo' | 'Negocios' | 'Congresso' | 'Saude' | 'Outros';
   transportation: 'Carro' | 'Onibus' | 'Avião' | 'Navio' | 'Outro';

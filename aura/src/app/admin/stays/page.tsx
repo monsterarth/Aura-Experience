@@ -10,9 +10,10 @@ import {
   Calendar, Search, Loader2, AlertCircle, 
   Dog, Users, UserCheck, ArrowUpRight, 
   Building2, MapPin, Clock, MessageCircle, 
-  Archive, Send, X, Star
+  Archive, Send, X, Star, ShieldAlert,
+  Copy, Ban
 } from "lucide-react";
-import { format, differenceInCalendarDays } from "date-fns";
+import { format, differenceInCalendarDays, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -37,6 +38,9 @@ export default function StaysPage() {
   const [selectedStay, setSelectedStay] = useState<any | null>(null);
   const [selectedGuest, setSelectedGuest] = useState<any | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+
+  // States do Modal de Cancelamento
+  const [stayToCancel, setStayToCancel] = useState<string | null>(null);
 
   // States do Modal de WhatsApp
   const [isMsgModalOpen, setIsMsgModalOpen] = useState(false);
@@ -83,28 +87,50 @@ export default function StaysPage() {
         setIsDetailsModalOpen(true);
       }
     } catch (error) {
+      console.error(error);
       toast.error("Erro ao carregar ficha.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleOpenWhatsapp = (stay: any) => {
-    // Tenta pegar o telefone do objeto stay (se existir) ou usa um fallback
-    const phone = stay.guestPhone || ""; 
+  const handleCopyLink = (code: string) => {
+    const link = `${window.location.origin}/check-in/login?code=${code}`;
+    navigator.clipboard.writeText(link);
+    toast.success("Link de Check-in copiado!", {
+        description: "Envie para o hóspede acessar diretamente."
+    });
+  };
+
+  const handleCancelStay = async () => {
+    if (!stayToCancel || !contextProperty?.id || !userData?.id) return;
     
-    // Texto personalizado por status (Opcional, mas melhora a experiência)
-    let defaultText = `Olá ${stay.guestName.split(' ')[0]}, tudo bem? Gostaríamos de falar sobre sua estadia no ${contextProperty?.name}.`;
+    try {
+        await StayService.cancelStay(contextProperty.id, stayToCancel, userData.id, userData.fullName);
+        toast.success("Reserva cancelada com sucesso.");
+        setStayToCancel(null);
+        loadStays(); // Recarrega a lista
+    } catch (error) {
+        console.error(error);
+        toast.error("Erro ao cancelar reserva.");
+    }
+  };
+
+  const handleOpenWhatsapp = (stay: any) => {
+    const phone = stay.guestPhone || ""; 
+    const guestName = stay.guestName || "Hóspede";
+    
+    let defaultText = `Olá ${guestName.split(' ')[0]}, tudo bem? Gostaríamos de falar sobre sua estadia no ${contextProperty?.name}.`;
     
     if (activeTab === 'futuras') {
-        defaultText = `Olá ${stay.guestName.split(' ')[0]}, estamos ansiosos pela sua chegada no ${contextProperty?.name}! Precisa de ajuda com o check-in?`;
+        defaultText = `Olá ${guestName.split(' ')[0]}, estamos ansiosos pela sua chegada no ${contextProperty?.name}! Precisa de ajuda com o check-in?`;
     } else if (activeTab === 'ativas') {
-        defaultText = `Olá ${stay.guestName.split(' ')[0]}, como está sendo sua experiência no ${contextProperty?.name}? Precisa de algo?`;
+        defaultText = `Olá ${guestName.split(' ')[0]}, como está sendo sua experiência no ${contextProperty?.name}? Precisa de algo?`;
     }
 
     setMsgData({ 
         phone, 
-        name: stay.guestName, 
+        name: guestName, 
         text: defaultText
     });
     setIsMsgModalOpen(true);
@@ -114,9 +140,7 @@ export default function StaysPage() {
     e.preventDefault();
     setSendingMsg(true);
     try {
-        // Simulação de chamada de API
         await new Promise(resolve => setTimeout(resolve, 1000));
-        // Aqui entraria: await WhatsappService.sendMessage(msgData.phone, msgData.text);
         toast.success(`Mensagem enviada para ${msgData.name}`);
         setIsMsgModalOpen(false);
     } catch (err) {
@@ -128,7 +152,6 @@ export default function StaysPage() {
 
   const handleArchive = async (stayId: string) => {
     if(!confirm("Deseja arquivar esta estadia?")) return;
-    // Aqui chamaria StayService.archive(stayId)
     toast.success("Estadia arquivada com sucesso.");
     setStays(prev => prev.filter(s => s.id !== stayId));
   };
@@ -148,20 +171,28 @@ export default function StaysPage() {
     return { label: "Hospedagem em Curso", color: "text-green-500" };
   };
 
-  const getFutureStatusInfo = (checkInDate: any) => {
+  const getFutureStatusInfo = (checkInDate: any, expectedTime?: string) => {
     if (!checkInDate) return "Aguardando";
     const today = new Date();
     const start = checkInDate.toDate();
     const diff = differenceInCalendarDays(start, today);
 
-    if (diff === 0) return "Chegada Hoje";
-    if (diff === 1) return "Chegada Amanhã";
+    // Se tiver horário previsto, formata a string
+    const timeString = expectedTime ? ` às ${expectedTime}` : "";
+
+    if (diff === 0) return `Chegada Hoje${timeString}`;
+    if (diff === 1) return `Chegada Amanhã${timeString}`;
+    
+    // Lógica para futuro com ou sem horário
+    if (expectedTime) {
+        return `Chegada em ${diff} dias${timeString}`;
+    }
     return `Chegada em ${diff} dias`;
   };
 
   const filteredStays = stays.filter(s => 
-    s.guestName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.cabinName.toLowerCase().includes(searchTerm.toLowerCase())
+    (s.guestName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (s.cabinName || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -241,6 +272,19 @@ export default function StaysPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredStays.map((s) => {
                 const activeInfo = getActiveStatusInfo(s.checkOut);
+                const guestName = s.guestName || "Hóspede Desconhecido";
+                
+                // CORREÇÃO CRÍTICA:
+                // 1. Tenta pegar o documento se disponível
+                const docNumber = s.guest?.document?.number || s.guestDocumentNumber || ""; 
+                const hasValidDoc = docNumber && docNumber.length > 3 && docNumber !== "N/A";
+                
+                // 2. Verifica se o check-in foi feito (o que obriga o documento)
+                const isPreCheckinDone = s.status === 'pre_checkin_done';
+
+                // 3. O alerta aparece SOMENTE se for ID provisório E (sem documento E não finalizou check-in)
+                const isTempId = !s.guestId || s.guestId.toString().startsWith("GUEST");
+                const isUnknownGuest = isTempId && !hasValidDoc && !isPreCheckinDone;
 
                 return (
                   <div 
@@ -254,19 +298,20 @@ export default function StaysPage() {
                             <span className="text-[10px] font-black text-primary uppercase tracking-widest">{s.cabinName}</span>
                         </div>
                         <div className="flex gap-2">
+                          {isUnknownGuest && <div className="p-2 bg-red-500/10 rounded-lg animate-pulse" title="Documento Pendente"><ShieldAlert size={16} className="text-red-500" /></div>}
                           {s.hasPet && <div className="p-2 bg-orange-500/10 rounded-lg" title="Pet"><Dog size={16} className="text-orange-500" /></div>}
                           {s.groupId && <div className="p-2 bg-blue-500/10 rounded-lg" title="Grupo"><Users size={16} className="text-blue-500" /></div>}
                         </div>
                       </div>
 
-                      {/* Nome e Datas (Nome agora sempre clicável para WhatsApp) */}
+                      {/* Nome e Datas */}
                       <div className="space-y-1">
                         <h3 
                             onClick={() => handleOpenWhatsapp(s)}
                             className="text-2xl font-black text-white tracking-tighter transition-colors flex items-center gap-2 cursor-pointer hover:text-primary group/name"
                             title="Clique para enviar WhatsApp"
                         >
-                            {s.guestName.split(' ')[0]} {s.guestName.split(' ').slice(-1)}
+                            {guestName.split(' ')[0]} {guestName.split(' ').slice(-1)}
                             <MessageCircle size={20} className="opacity-0 group-hover/name:opacity-100 transition-opacity text-primary" />
                         </h3>
                         <div className="flex items-center gap-2 text-white/40 text-[10px] font-bold uppercase tracking-widest">
@@ -278,23 +323,32 @@ export default function StaysPage() {
 
                       {/* Grid de Informações Variável */}
                       <div className="grid grid-cols-2 gap-3">
-                        {/* COLUNA 1: Variavel por Tab */}
+                        {/* Status Futuro */}
                         {activeTab === 'futuras' && (
                             <div className="bg-black/40 p-4 rounded-3xl border border-white/5">
                                 <p className="text-[9px] font-bold text-white/20 uppercase mb-1">Previsão</p>
                                 <p className="text-sm font-black text-white tracking-wide">
-                                    {getFutureStatusInfo(s.checkIn)}
+                                    {getFutureStatusInfo(s.checkIn, s.expectedArrivalTime)}
                                 </p>
                             </div>
                         )}
+                        {/* Status Ativo */}
                         {activeTab === 'ativas' && (
                             <div className="bg-black/40 p-4 rounded-3xl border border-white/5 col-span-2">
                                 <p className="text-[9px] font-bold text-white/20 uppercase mb-1">Status Atual</p>
-                                <p className={cn("text-lg font-black tracking-wide", activeInfo.color)}>
-                                    {activeInfo.label}
-                                </p>
+                                <div className="flex justify-between items-center">
+                                    <p className={cn("text-lg font-black tracking-wide", activeInfo.color)}>
+                                        {activeInfo.label}
+                                    </p>
+                                    {isUnknownGuest && (
+                                        <span className="text-[10px] font-bold text-red-500 bg-red-500/10 px-2 py-1 rounded-lg uppercase">
+                                            Doc Pendente
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                         )}
+                        {/* Status Encerrado */}
                         {activeTab === 'encerradas' && (
                             <div className="bg-black/40 p-4 rounded-3xl border border-white/5">
                                 <p className="text-[9px] font-bold text-white/20 uppercase mb-1">Avaliação</p>
@@ -311,12 +365,29 @@ export default function StaysPage() {
                             </div>
                         )}
 
-                        {/* COLUNA 2: Mantém Pré-Checkin para Futuras */}
+                        {/* Pré Checkin (Apenas Futuras) - COM LINK COPIÁVEL */}
                         {activeTab === 'futuras' && (
-                             <div className="bg-black/40 p-4 rounded-3xl border border-white/5">
-                                <p className="text-[9px] font-bold text-white/20 uppercase mb-1">Pré-Checkin</p>
-                                <p className={cn("text-xs font-black uppercase", s.status === 'pre_checkin_done' ? "text-green-500" : "text-yellow-500")}>
-                                {s.status === 'pre_checkin_done' ? "Pronto" : "Pendente"}
+                             <div className="bg-black/40 p-4 rounded-3xl border border-white/5 group/copy relative">
+                                <div className="flex justify-between items-center mb-1">
+                                    <p className="text-[9px] font-bold text-white/20 uppercase">Pré-Checkin</p>
+                                    {s.status === 'pending' && (
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); handleCopyLink(s.accessCode); }}
+                                            className="text-primary hover:text-white transition-colors"
+                                            title="Copiar Link Direto"
+                                        >
+                                            <Copy size={12} />
+                                        </button>
+                                    )}
+                                </div>
+                                <p 
+                                    onClick={() => s.status === 'pending' && handleCopyLink(s.accessCode)}
+                                    className={cn(
+                                        "text-xs font-black uppercase flex items-center gap-1", 
+                                        s.status === 'pre_checkin_done' ? "text-green-500" : "text-yellow-500 cursor-pointer hover:underline"
+                                    )}
+                                >
+                                    {s.status === 'pre_checkin_done' ? "Pronto" : "Pendente"}
                                 </p>
                             </div>
                         )}
@@ -332,23 +403,33 @@ export default function StaysPage() {
                             Ver Ficha
                         </button>  
 
-                        {/* Botão de Check-in (Apenas Futuras/Pendentes) */}
                         {activeTab === 'futuras' && (
-                            <button 
-                            onClick={async () => {
-                                if (confirm(`Confirmar entrada de ${s.guestName}?`) && contextProperty?.id && userData?.id) {
-                                await StayService.performCheckIn(contextProperty.id, s.id, userData.id, userData.fullName);
-                                loadStays();
-                                toast.success("Check-in realizado!");
-                                }
-                            }}
-                            className="flex-1 bg-primary text-black text-[10px] font-black uppercase py-4 rounded-2xl hover:shadow-[0_0_20px_rgba(var(--primary),0.4)] transition-all tracking-widest"
-                            >
-                            Check-in
-                            </button>
+                            <>
+                                <button 
+                                    onClick={async () => {
+                                        if (isUnknownGuest) {
+                                            alert("ATENÇÃO: Hóspede sem documento registrado. Solicite o documento antes de confirmar o check-in.");
+                                        }
+                                        if (confirm(`Confirmar entrada de ${guestName}?`) && contextProperty?.id && userData?.id) {
+                                            await StayService.performCheckIn(contextProperty.id, s.id, userData.id, userData.fullName);
+                                            loadStays();
+                                            toast.success("Check-in realizado!");
+                                        }
+                                    }}
+                                    className="flex-1 bg-primary text-black text-[10px] font-black uppercase py-4 rounded-2xl hover:shadow-[0_0_20px_rgba(var(--primary),0.4)] transition-all tracking-widest"
+                                >
+                                    Check-in
+                                </button>
+                                <button
+                                    onClick={() => setStayToCancel(s.id)}
+                                    className="p-4 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-2xl transition-all"
+                                    title="Cancelar Reserva"
+                                >
+                                    <Ban size={18} />
+                                </button>
+                            </>
                         )}
 
-                        {/* Botão Arquivar (Apenas Encerradas) */}
                         {activeTab === 'encerradas' && (
                             <button 
                                 onClick={() => handleArchive(s.id)}
@@ -365,7 +446,6 @@ export default function StaysPage() {
           </div>
         )}
 
-        {/* Modal de Detalhes da Estadia */}
         {selectedStay && selectedGuest && (
           <StayDetailsModal 
             isOpen={isDetailsModalOpen}
@@ -376,7 +456,38 @@ export default function StaysPage() {
           />
         )}
 
-        {/* Modal de WhatsApp */}
+        {/* Modal de Confirmação de Cancelamento */}
+        {stayToCancel && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="bg-[#141414] border border-white/10 w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 p-8 text-center space-y-6">
+                    <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto text-red-500 border border-red-500/20">
+                        <AlertCircle size={32} />
+                    </div>
+                    <div>
+                        <h3 className="text-xl font-bold text-white">Cancelar Reserva?</h3>
+                        <p className="text-white/40 text-sm mt-2">
+                            Esta ação é irreversível. A cabana será liberada imediatamente.
+                        </p>
+                    </div>
+                    <div className="flex gap-3">
+                        <button 
+                            onClick={() => setStayToCancel(null)}
+                            className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white font-bold rounded-xl"
+                        >
+                            Voltar
+                        </button>
+                        <button 
+                            onClick={handleCancelStay}
+                            className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl"
+                        >
+                            Confirmar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Modal de WhatsApp (existente) */}
         {isMsgModalOpen && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                 <div className="bg-[#141414] border border-white/10 w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
