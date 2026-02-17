@@ -3,22 +3,23 @@
 
 import React, { useState, useEffect } from "react";
 import { PropertyService } from "@/services/property-service";
-import { Property } from "@/types/aura";
+import { Property, PropertyTheme } from "@/types/aura";
 import { Loader2, Plus, Building2, Palette, Settings2, Globe } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 
 export default function CorePropertiesPage() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
 
-  // Form State
+  // Form State - Agora usando HEX por padrão para facilitar a edição
   const [formData, setFormData] = useState({
     name: "",
     slug: "",
-    primaryColor: "221.2 83.2% 53.3%",
-    secondaryColor: "24.6 95% 53.1%",
+    primaryColor: "#D4A373", // Bege Dourado (Padrão Fazenda)
+    secondaryColor: "#FAFAFA", // Off-white
     logoUrl: ""
   });
 
@@ -40,12 +41,38 @@ export default function CorePropertiesPage() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setIsCreating(true);
+
+    // Montamos o tema padrão com as cores escolhidas
+    const defaultTheme: PropertyTheme = {
+        colors: {
+            primary: formData.primaryColor,
+            onPrimary: "#FFFFFF",
+            secondary: formData.secondaryColor,
+            onSecondary: "#1A1A1A",
+            accent: "#CCD5AE",      // Verde suave padrão
+            background: "#FEFAE0",  // Creme padrão
+            surface: "#FFFFFF",
+            textMain: "#283618",    // Verde escuro
+            textMuted: "#606C38",
+            success: "#2e7d32",
+            error: "#d32f2f"
+        },
+        typography: {
+            fontFamilyHeading: "Playfair Display",
+            fontFamilyBody: "Inter",
+            baseSize: 16
+        },
+        shape: {
+            radius: "0.5rem"
+        }
+    };
+
     try {
       await PropertyService.createProperty({
         name: formData.name,
         slug: formData.slug,
-        primaryColor: formData.primaryColor,
-        secondaryColor: formData.secondaryColor,
+        // Removemos primaryColor/secondaryColor da raiz e injetamos o theme
+        theme: defaultTheme, 
         logoUrl: formData.logoUrl,
         settings: {
           hasBreakfast: true,
@@ -55,9 +82,17 @@ export default function CorePropertiesPage() {
       }, "super-admin-id", "Aura Core Admin");
       
       toast.success("Propriedade criada com sucesso!");
-      setFormData({ name: "", slug: "", primaryColor: "221.2 83.2% 53.3%", secondaryColor: "24.6 95% 53.1%", logoUrl: "" });
+      // Reset form
+      setFormData({ 
+        name: "", 
+        slug: "", 
+        primaryColor: "#D4A373", 
+        secondaryColor: "#FAFAFA", 
+        logoUrl: "" 
+      });
       loadProperties();
     } catch (error) {
+      console.error(error);
       toast.error("Erro ao criar propriedade. Verifique se o slug é único.");
     } finally {
       setIsCreating(false);
@@ -110,23 +145,39 @@ export default function CorePropertiesPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-1">
-                  <Palette size={12}/> Primária (HSL)
+                  <Palette size={12}/> Primária (Hex)
                 </label>
-                <input 
-                  value={formData.primaryColor}
-                  onChange={e => setFormData({...formData, primaryColor: e.target.value})}
-                  className="w-full p-2 bg-background border rounded-lg text-xs"
-                />
+                <div className="flex gap-2">
+                    <input 
+                      type="color"
+                      value={formData.primaryColor}
+                      onChange={e => setFormData({...formData, primaryColor: e.target.value})}
+                      className="h-9 w-9 cursor-pointer border rounded"
+                    />
+                    <input 
+                      value={formData.primaryColor}
+                      onChange={e => setFormData({...formData, primaryColor: e.target.value})}
+                      className="w-full p-2 bg-background border rounded-lg text-xs uppercase"
+                    />
+                </div>
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-1">
-                  <Palette size={12}/> Secundária
+                  <Palette size={12}/> Secundária (Hex)
                 </label>
-                <input 
-                  value={formData.secondaryColor}
-                  onChange={e => setFormData({...formData, secondaryColor: e.target.value})}
-                  className="w-full p-2 bg-background border rounded-lg text-xs"
-                />
+                <div className="flex gap-2">
+                    <input 
+                      type="color"
+                      value={formData.secondaryColor}
+                      onChange={e => setFormData({...formData, secondaryColor: e.target.value})}
+                      className="h-9 w-9 cursor-pointer border rounded"
+                    />
+                    <input 
+                      value={formData.secondaryColor}
+                      onChange={e => setFormData({...formData, secondaryColor: e.target.value})}
+                      className="w-full p-2 bg-background border rounded-lg text-xs uppercase"
+                    />
+                </div>
               </div>
             </div>
 
@@ -153,8 +204,8 @@ export default function CorePropertiesPage() {
                 <div key={p.id} className="group bg-card border border-border p-4 rounded-xl hover:border-primary/50 transition-colors">
                   <div className="flex items-center gap-3">
                     <div 
-                      className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold"
-                      style={{ backgroundColor: `hsl(${p.primaryColor})` }}
+                      className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold shadow-sm"
+                      style={{ backgroundColor: p.theme?.colors?.primary || '#000' }}
                     >
                       {p.name.charAt(0)}
                     </div>
@@ -171,8 +222,12 @@ export default function CorePropertiesPage() {
                     >
                       Ver Check-in
                     </a>
-                    <button className="text-[10px] uppercase font-bold px-2 py-1 bg-muted rounded">Configurações</button>
-                  </div>
+<Link 
+    href={`/admin/core/properties/${p.id}`} // Link para a nova página
+    className="text-[10px] uppercase font-bold px-2 py-1 bg-muted rounded hover:bg-secondary-foreground hover:text-secondary transition-colors"
+  >
+    Configurações
+  </Link>                  </div>
                 </div>
               ))}
             </div>

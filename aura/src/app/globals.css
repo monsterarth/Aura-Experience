@@ -4,30 +4,45 @@
 
 @layer base {
   :root {
-    /* Cores Fallback (Padrão caso a propriedade não carregue) */
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    /* --- VALORES PADRÃO (FALLBACK) --- */
+    /* São usados antes do PropertyContext carregar o tema do banco */
+    
+    /* Cores Neutras e Fundo */
+    --background: 0 0% 100%;       /* #FFFFFF */
+    --foreground: 240 10% 3.9%;    /* #09090b */
+
+    /* Superfícies (Cards, Modais) */
     --card: 0 0% 100%;
     --card-foreground: 240 10% 3.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 3.9%;
-    
-    /* Estas serão controladas pelo PropertyContext */
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    
-    --secondary: 240 4.8% 95.9%;
+
+    /* Cores da Marca (Primary) - Padrão Preto/Branco se não houver tema */
+    --primary: 240 5.9% 10%;       /* #18181b */
+    --primary-foreground: 0 0% 98%; /* #fafafa */
+
+    /* Cores Secundárias */
+    --secondary: 240 4.8% 95.9%;   /* #f4f4f5 */
     --secondary-foreground: 240 5.9% 10%;
-    
+
+    /* Elementos Silenciosos (Muted) */
     --muted: 240 4.8% 95.9%;
     --muted-foreground: 240 3.8% 46.1%;
+
+    /* Acentos e Detalhes */
     --accent: 240 4.8% 95.9%;
     --accent-foreground: 240 5.9% 10%;
+
+    /* Estados de Erro */
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
+
+    /* Bordas e Inputs */
     --border: 240 5.9% 90%;
     --input: 240 5.9% 90%;
     --ring: 240 5.9% 10%;
+
+    /* Formas */
     --radius: 0.5rem;
   }
 
@@ -56,7 +71,7 @@
 
 @layer base {
   * {
-    @apply border-border; /* Agora o Tailwind sabe que 'border' (cor) existe */
+    @apply border-border;
   }
   body {
     @apply bg-background text-foreground;

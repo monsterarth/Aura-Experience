@@ -1,7 +1,7 @@
 // src/app/admin/staff/page.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { StaffService } from "@/services/staff-service";
 import { Staff, UserRole } from "@/types/aura";
@@ -15,11 +15,9 @@ import {
   ShieldCheck, 
   Loader2, 
   Key,
-  Copy,
-  Check
+  Copy
 } from "lucide-react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
 export default function StaffManagementPage() {
   const { userData } = useAuth();
@@ -36,13 +34,7 @@ export default function StaffManagementPage() {
     role: "reception" as UserRole,
   });
 
-  useEffect(() => {
-    if (userData?.propertyId || property?.id) {
-      loadStaff();
-    }
-  }, [userData, property]);
-
-  const loadStaff = async () => {
+  const loadStaff = useCallback(async () => {
     try {
       const pId = userData?.propertyId || property?.id;
       if (!pId) return;
@@ -53,7 +45,13 @@ export default function StaffManagementPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [userData?.propertyId, property?.id]);
+
+  useEffect(() => {
+    if (userData?.propertyId || property?.id) {
+      loadStaff();
+    }
+  }, [userData, property, loadStaff]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -11,14 +11,48 @@ export type UserRole =
   | 'marketing' 
   | 'kitchen';
 
+  export interface PropertyTheme {
+  colors: {
+    // Marca principal
+    primary: string;       
+    onPrimary: string;     
+    
+    // Secundária / Apoio
+    secondary: string;     
+    onSecondary: string;   
+    
+    // Detalhes
+    accent: string;        
+    
+    // Superfícies
+    background: string;    
+    surface: string;       
+    
+    // Texto
+    textMain: string;      
+    textMuted: string;     
+    
+    // Feedback
+    success: string;
+    error: string;
+  };
+  typography: {
+    fontFamilyHeading: string; 
+    fontFamilyBody: string;    
+    baseSize: number;          
+  };
+  shape: {
+    radius: '0rem' | '0.25rem' | '0.5rem' | '1rem' | '9999px'; 
+  };
+}
+
 // --- ENTIDADE PROPRIEDADE ---
 export interface Property {
   id: string;
   name: string;
   slug: string;
   logoUrl?: string;
-  primaryColor: string;
-  secondaryColor: string;
+  theme: PropertyTheme  ;
   settings: {
     hasBreakfast: boolean;
     hasKDS: boolean;

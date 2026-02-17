@@ -8,7 +8,7 @@ import { fetchCEP } from "@/lib/utils-checkin";
 import { 
   Loader2, CheckCircle2, User, MapPin, 
   Dog, ArrowRight, Edit3, ChevronDown, 
-  Users, Plane, AlertTriangle, AlertCircle, Plus, Trash2, Clock, Info
+  Users, Plane, AlertCircle, Plus, Trash2, Clock, Info
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -71,11 +71,9 @@ export default function UnifiedPreCheckin() {
       try {
         if (!stayId) return;
 
-        let targetPropertyId = stay?.propertyId;
-
-        if (!targetPropertyId) {
-            targetPropertyId = await StayService.findPropertyIdByStayId(stayId as string);
-        }
+        // Modificado: Não depende mais do estado 'stay' anterior para evitar loops
+        // Busca o PropertyId diretamente pelo serviço se necessário
+        const targetPropertyId = await StayService.findPropertyIdByStayId(stayId as string);
 
         if (!targetPropertyId) {
             toast.error("Hospedagem não encontrada.");
@@ -159,20 +157,17 @@ export default function UnifiedPreCheckin() {
   // --- LÓGICA DE ACOMPANHANTES (ATUALIZADA) ---
 
   const addGuest = (type: 'adult' | 'child' | 'free') => {
-    // 1. Limite Físico da Cabana (Bloqueante)
-    // Total atual = Titular (1) + Acompanhantes Existentes + 1 (o novo)
     const currentTotalGuests = 1 + (stay.additionalGuests?.length || 0);
-    const maxCapacity = cabin?.capacity || 10; // Default seguro se não tiver dados da cabana
+    const maxCapacity = cabin?.capacity || 10; 
 
     if (currentTotalGuests >= maxCapacity) {
         return toast.error(`A capacidade máxima desta unidade é de ${maxCapacity} pessoas.`);
     }
 
-    // 2. Limite Contratado (Apenas Aviso)
     const currentTypeCount = stay.additionalGuests?.filter((g: any) => g.type === type).length || 0;
     
     let contractedLimit = 0;
-    if (type === 'adult') contractedLimit = (stay.counts?.adults || 1) - 1; // -1 do titular
+    if (type === 'adult') contractedLimit = (stay.counts?.adults || 1) - 1; 
     else if (type === 'child') contractedLimit = stay.counts?.children || 0;
     else contractedLimit = stay.counts?.babies || 0;
 
@@ -249,8 +244,6 @@ export default function UnifiedPreCheckin() {
         return;
     }
 
-    // Removido o bloqueio de contagem. O sistema aceita a divergência.
-    
     setIsSaving(true);
     try {
       if (!stay.propertyId) throw new Error("Erro de identificação da propriedade.");

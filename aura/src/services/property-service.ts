@@ -4,19 +4,21 @@ import {
   collection, 
   doc, 
   setDoc, 
+  getDoc, // Adicionado
   getDocs, 
   query, 
   orderBy, 
   serverTimestamp, 
   updateDoc 
 } from "firebase/firestore";
-import { Property, AuditLog } from "@/types/aura";
+import { Property } from "@/types/aura";
 import { AuditService } from "./audit-service";
 
 /**
  * PropertyService: Gerencia as instâncias de propriedades no ecossistema Aura.
  */
 export const PropertyService = {
+  
   /**
    * Registra uma nova propriedade no Aura.
    */
@@ -34,14 +36,13 @@ export const PropertyService = {
 
       await setDoc(docRef, newProperty);
 
-      // Auditoria Obrigatória
+      // Auditoria
       await AuditService.log({
-        propertyId: "SYSTEM", // Ações de super-admin são marcadas como SYSTEM
+        propertyId: "SYSTEM", 
         userId: actorId,
         userName: actorName,
         action: "CREATE",
-        entity: "CABIN", // Usando CABIN como placeholder se não houver 'PROPERTY' no enum, 
-                         // mas recomendo atualizar o enum AuditLog no aura.ts para incluir 'PROPERTY'
+        entity: "PROPERTY" as any, // Cast as any caso o enum ainda não tenha PROPERTY
         entityId: propertyId,
         newData: newProperty,
         details: `Propriedade ${propertyData.name} registrada na plataforma.`
@@ -55,6 +56,25 @@ export const PropertyService = {
   },
 
   /**
+   * Busca uma propriedade específica pelo ID (ou Slug, já que usamos slug como ID).
+   * NECESSÁRIO PARA A TELA DE CONFIGURAÇÃO DE TEMA.
+   */
+  async getPropertyById(id: string): Promise<Property | null> {
+    try {
+      const docRef = doc(db, "properties", id);
+      const snap = await getDoc(docRef);
+      
+      if (snap.exists()) {
+        return { id: snap.id, ...snap.data() } as Property;
+      }
+      return null;
+    } catch (error) {
+      console.error("[PropertyService] Erro ao buscar propriedade por ID:", error);
+      return null;
+    }
+  },
+
+  /**
    * Lista todas as propriedades para o Super Admin.
    */
   async getAllProperties(): Promise<Property[]> {
@@ -64,7 +84,24 @@ export const PropertyService = {
   },
 
   /**
-   * Atualiza configurações de uma propriedade existente.
+   * Atualiza dados de uma propriedade.
+   * Usado pela tela de "Configurações" (Theme Builder).
+   */
+  async updateProperty(propertyId: string, updates: Partial<Property>) {
+    const docRef = doc(db, "properties", propertyId);
+    
+    await updateDoc(docRef, {
+      ...updates,
+      updatedAt: serverTimestamp()
+    });
+
+    // Nota: Como a tela de Theme Builder atual não passa o ID do admin logado,
+    // não estamos chamando o AuditService aqui para evitar erros de typescript.
+    // Se quiser auditoria aqui, precisaremos atualizar o handleSave na página para passar o user ID.
+  },
+
+  /**
+   * Método legado ou específico para configurações com auditoria completa.
    */
   async updateSettings(propertyId: string, updates: Partial<Property>, actorId: string, actorName: string) {
     const docRef = doc(db, "properties", propertyId);
@@ -79,7 +116,7 @@ export const PropertyService = {
       userId: actorId,
       userName: actorName,
       action: "UPDATE",
-      entity: "CABIN", 
+      entity: "PROPERTY" as any, 
       entityId: propertyId,
       newData: updates,
       details: `Configurações da propriedade ${propertyId} atualizadas.`

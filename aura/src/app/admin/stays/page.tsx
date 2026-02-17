@@ -1,19 +1,19 @@
 // src/app/admin/stays/page.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { StayService } from "@/services/stay-service";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { 
   Calendar, Search, Loader2, AlertCircle, 
-  Dog, Users, UserCheck, ArrowUpRight, 
+  Dog, Users, ArrowUpRight, 
   Building2, MapPin, Clock, MessageCircle, 
   Archive, Send, X, Star, ShieldAlert,
   Copy, Ban
 } from "lucide-react";
-import { format, differenceInCalendarDays, isToday } from "date-fns";
+import { format, differenceInCalendarDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -48,15 +48,7 @@ export default function StaysPage() {
   const [sendingMsg, setSendingMsg] = useState(false);
 
   // --- Carregamento de Dados ---
-  useEffect(() => {
-    if (contextProperty?.id) {
-      loadStays();
-    } else {
-      setStays([]);
-    }
-  }, [activeTab, contextProperty?.id]);
-
-  async function loadStays() {
+  const loadStays = useCallback(async () => {
     if (!contextProperty?.id) return;
     setLoading(true);
     try {
@@ -72,10 +64,17 @@ export default function StaysPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [contextProperty?.id, activeTab]);
+
+  useEffect(() => {
+    if (contextProperty?.id) {
+      loadStays();
+    } else {
+      setStays([]);
+    }
+  }, [loadStays, contextProperty?.id]);
 
   // --- Handlers ---
-
   const handleOpenFicha = async (stay: any) => {
     if (!contextProperty?.id) return;
     setLoading(true);
@@ -157,7 +156,6 @@ export default function StaysPage() {
   };
 
   // --- Lógica de Renderização de Status ---
-
   const getActiveStatusInfo = (checkOutDate: any) => {
     if (!checkOutDate) return { label: "N/A", color: "text-white" };
     
@@ -177,16 +175,11 @@ export default function StaysPage() {
     const start = checkInDate.toDate();
     const diff = differenceInCalendarDays(start, today);
 
-    // Se tiver horário previsto, formata a string
     const timeString = expectedTime ? ` às ${expectedTime}` : "";
 
     if (diff === 0) return `Chegada Hoje${timeString}`;
     if (diff === 1) return `Chegada Amanhã${timeString}`;
-    
-    // Lógica para futuro com ou sem horário
-    if (expectedTime) {
-        return `Chegada em ${diff} dias${timeString}`;
-    }
+    if (expectedTime) return `Chegada em ${diff} dias${timeString}`;
     return `Chegada em ${diff} dias`;
   };
 
@@ -274,15 +267,9 @@ export default function StaysPage() {
                 const activeInfo = getActiveStatusInfo(s.checkOut);
                 const guestName = s.guestName || "Hóspede Desconhecido";
                 
-                // CORREÇÃO CRÍTICA:
-                // 1. Tenta pegar o documento se disponível
                 const docNumber = s.guest?.document?.number || s.guestDocumentNumber || ""; 
                 const hasValidDoc = docNumber && docNumber.length > 3 && docNumber !== "N/A";
-                
-                // 2. Verifica se o check-in foi feito (o que obriga o documento)
                 const isPreCheckinDone = s.status === 'pre_checkin_done';
-
-                // 3. O alerta aparece SOMENTE se for ID provisório E (sem documento E não finalizou check-in)
                 const isTempId = !s.guestId || s.guestId.toString().startsWith("GUEST");
                 const isUnknownGuest = isTempId && !hasValidDoc && !isPreCheckinDone;
 
@@ -365,7 +352,7 @@ export default function StaysPage() {
                             </div>
                         )}
 
-                        {/* Pré Checkin (Apenas Futuras) - COM LINK COPIÁVEL */}
+                        {/* Pré Checkin */}
                         {activeTab === 'futuras' && (
                              <div className="bg-black/40 p-4 rounded-3xl border border-white/5 group/copy relative">
                                 <div className="flex justify-between items-center mb-1">
@@ -487,7 +474,7 @@ export default function StaysPage() {
             </div>
         )}
 
-        {/* Modal de WhatsApp (existente) */}
+        {/* Modal de WhatsApp */}
         {isMsgModalOpen && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                 <div className="bg-[#141414] border border-white/10 w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">

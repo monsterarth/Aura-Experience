@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { CabinService } from "@/services/cabin-service";
 import { Cabin } from "@/types/aura";
 import { 
   Home, Plus, Wifi, Trash2, Edit3, Users, X, Hammer, Hash, Layers, 
-  Building2, PlusCircle, BedDouble, Info, Link as LinkIcon
+  Building2, PlusCircle, BedDouble
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -21,16 +21,7 @@ export default function CabinsPage() {
   const [editingCabin, setEditingCabin] = useState<Partial<Cabin> | null>(null);
   const [newSetup, setNewSetup] = useState("");
 
-  useEffect(() => {
-    if (property?.id) {
-      loadCabins();
-    } else {
-      setCabins([]);
-      setLoading(false);
-    }
-  }, [property]);
-
-  async function loadCabins() {
+  const loadCabins = useCallback(async () => {
     if (!property?.id) return;
     setLoading(true);
     try {
@@ -41,7 +32,16 @@ export default function CabinsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [property?.id]);
+
+  useEffect(() => {
+    if (property?.id) {
+      loadCabins();
+    } else {
+      setCabins([]);
+      setLoading(false);
+    }
+  }, [property, loadCabins]);
 
   const handleOpenModal = (cabin?: Cabin) => {
     setEditingCabin(cabin || {
