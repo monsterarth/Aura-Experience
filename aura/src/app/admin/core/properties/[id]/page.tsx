@@ -9,7 +9,7 @@ import {
   Save, ArrowLeft, Smartphone, Palette, 
   Type, Layout, Loader2, Clock, MessageSquare, 
   Phone, ShieldCheck, Coffee, Sparkles, Wrench, FileText, Image as ImageIcon,
-  CheckCircle2
+  CheckCircle2, Globe
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -37,6 +37,18 @@ function hexToHSL(hex: string): string {
 }
 
 type TabType = 'visual' | 'operational' | 'policies';
+type MultiLangObj = { pt: string, en: string, es: string };
+
+// Helper para converter strings antigas do banco em objetos Multilíngues
+function parseMultiLang(val: any, fallbackObj: MultiLangObj): MultiLangObj {
+    if (!val) return fallbackObj;
+    if (typeof val === 'string') return { pt: val, en: "", es: "" };
+    return { 
+        pt: val.pt || fallbackObj.pt, 
+        en: val.en || fallbackObj.en, 
+        es: val.es || fallbackObj.es 
+    };
+}
 
 export default function PropertySettingsPage() {
   const { id } = useParams();
@@ -56,33 +68,56 @@ export default function PropertySettingsPage() {
       logoUrl: ""
   });
 
-  // Configurações Operacionais & Políticas
+  // Configurações Operacionais & Políticas (Agora preparadas para Multi-idioma)
   const [settings, setSettings] = useState({
       whatsappNumber: "",
-      // Horários Recepção
       checkInTime: "14:00",
       checkOutTime: "12:00",
       receptionStartTime: "08:00",
       receptionEndTime: "20:00",
-      // Horários Staff
       govStartTime: "08:00",
       govEndTime: "16:00",
       maintenanceStartTime: "08:00",
       maintenanceEndTime: "17:00",
-      // Café da Manhã
-      breakfastModality: "buffet", // 'buffet' ou 'delivery'
+      breakfastModality: "buffet", 
       buffetStartTime: "07:30",
       buffetEndTime: "10:30",
       deliveryStartTime: "07:00",
       deliveryEndTime: "11:00",
-      // Mensagens Check-in
-      earlyCheckInMessage: "Prezado(a) Hospede. Vimos que sua chegada está prevista para [expectedArrivalTime]. Por padrão nosso check in é sempre a partir das [checkintime], porém fazemos sempre o possível para liberar a sua acomodação antecipadamente. Para garantir um Early Check in entre em contato com a recepção.",
-      lateCheckInMessage: "Prezado(a) Hospede. Vimos que sua chegada está prevista para [expectedArrivalTime]. O horário de funcionamento da recepção encerra as [receptionendtime], mas não se preocupe.\nNossa guarita funciona 24 horas e um de nossos porteiros estará a disposição para recebê-los acompanhá-los até a sua acomodação. Avise a recepção caso necessite de arranjos especiais.",
-      petPolicyAlert: "A pousada é Pet Friendly e teremos o maior prazer em receber seu pet! Porém temos algumas regrinhas que devem ser respeitadas. Aceitamos pets de micro e pequeno porte até 15kg (um por cabana). Para aceitarmos é necessário ler e concordar com a nossa Política Pet.",
-      // Políticas (Documentos Completos)
-      petPolicyText: "1. O tutor é inteiramente responsável pelo comportamento do animal.\n2. O animal não deve circular nas áreas de piscina e restaurante.\n3. É obrigatória a apresentação da carteira de vacinação atualizada no check-in.",
-      privacyPolicyText: "Sua privacidade é importante para nós. Coletamos seus dados exclusivamente para o cumprimento da FNRH (Ficha Nacional de Registro de Hóspedes) exigida pelo Ministério do Turismo, e para melhorar sua experiência conosco.",
-      generalPolicyText: "Bem-vindo à nossa propriedade. Solicitamos respeito aos horários de silêncio (22h às 08h) e cuidado com os itens da cabana. Danos ao patrimônio estarão sujeitos a cobranças e multas aplicáveis."
+      
+      // Mensagens Check-in (Multilíngue)
+      earlyCheckInMessage: { 
+          pt: "Prezado(a) Hospede. Vimos que sua chegada está prevista para [expectedArrivalTime]. Por padrão nosso check in é sempre a partir das [checkintime], porém fazemos sempre o possível para liberar a sua acomodação antecipadamente. Para garantir um Early Check in entre em contato com a recepção.",
+          en: "Dear Guest. We noticed your arrival is scheduled for [expectedArrivalTime]. Standard check-in starts at [checkintime]. Please contact the reception to arrange an early check-in.",
+          es: "Estimado huésped. Vemos que su llegada está prevista para las [expectedArrivalTime]. El check-in estándar comienza a las [checkintime]. Contacte a la recepción para coordinar un early check-in."
+      },
+      lateCheckInMessage: { 
+          pt: "Prezado(a) Hospede. Vimos que sua chegada está prevista para [expectedArrivalTime]. O horário de funcionamento da recepção encerra as [receptionendtime], mas não se preocupe.\nNossa guarita funciona 24 horas e um de nossos porteiros estará a disposição para recebê-los acompanhá-los até a sua acomodação. Avise a recepção caso necessite de arranjos especiais.",
+          en: "Dear Guest. Your arrival is scheduled for [expectedArrivalTime]. The reception closes at [receptionendtime], but our security gate is open 24/7. Let the reception know if you need special arrangements.",
+          es: "Estimado huésped. Su llegada está prevista para las [expectedArrivalTime]. La recepción cierra a las [receptionendtime], pero nuestra portería funciona 24h. Avise a la recepción si requiere arreglos especiales."
+      },
+      petPolicyAlert: { 
+          pt: "A pousada é Pet Friendly e teremos o maior prazer em receber seu pet! Porém temos algumas regrinhas que devem ser respeitadas. Aceitamos pets de micro e pequeno porte até 15kg (um por cabana). Para aceitarmos é necessário ler e concordar com a nossa Política Pet.",
+          en: "We are Pet Friendly! However, we have rules. We accept small pets up to 15kg (one per cabin). You must read and agree to our Pet Policy.",
+          es: "¡Somos Pet Friendly! Sin embargo, tenemos reglas. Aceptamos mascotas pequeñas de hasta 15kg (una por cabaña). Es necesario leer y aceptar nuestra Política de Mascotas."
+      },
+      
+      // Políticas Completas (Multilíngue)
+      petPolicyText: { 
+          pt: "1. O tutor é inteiramente responsável pelo comportamento do animal.\n2. O animal não deve circular nas áreas de piscina e restaurante.\n3. É obrigatória a apresentação da carteira de vacinação atualizada no check-in.",
+          en: "1. The owner is fully responsible for the animal's behavior.\n2. The animal is not allowed in pool and restaurant areas.\n3. An updated vaccination card must be presented at check-in.",
+          es: "1. El tutor es enteramente responsable del comportamiento del animal.\n2. El animal no debe circular en zonas de piscina y restaurante.\n3. Es obligatorio presentar la cartilla de vacunación actualizada al hacer el check-in."
+      },
+      privacyPolicyText: { 
+          pt: "Sua privacidade é importante para nós. Coletamos seus dados exclusivamente para o cumprimento da FNRH (Ficha Nacional de Registro de Hóspedes) exigida pelo Ministério do Turismo, e para melhorar sua experiência conosco.",
+          en: "Your privacy is important to us. We collect your data exclusively to comply with the National Guest Registration Form (FNRH) required by the Ministry of Tourism, and to improve your experience.",
+          es: "Su privacidad es importante para nosotros. Recopilamos sus datos exclusivamente para cumplir con la Ficha Nacional de Registro de Huéspedes (FNRH) exigida por el Ministerio de Turismo."
+      },
+      generalPolicyText: { 
+          pt: "Bem-vindo à nossa propriedade. Solicitamos respeito aos horários de silêncio (22h às 08h) e cuidado com os itens da cabana. Danos ao patrimônio estarão sujeitos a cobranças e multas aplicáveis.",
+          en: "Welcome to our property. We kindly ask you to respect quiet hours (10 PM to 8 AM) and take care of cabin items. Damages are subject to charges.",
+          es: "Bienvenido a nuestra propiedad. Solicitamos respetar el horario de silencio (22h a 08h) y cuidar los artículos de la cabaña. Los daños estarán sujetos a cargos."
+      }
   });
 
   useEffect(() => {
@@ -114,8 +149,19 @@ export default function PropertySettingsPage() {
             typography: { fontFamilyHeading: "Inter", fontFamilyBody: "Inter", baseSize: 16 }
         });
 
+        // Carrega settings garantindo backward compatibility com strings antigas
         if (data.settings) {
-            setSettings(prev => ({ ...prev, ...(data.settings as any) }));
+            const s = data.settings as any;
+            setSettings(prev => ({ 
+                ...prev, 
+                ...s,
+                earlyCheckInMessage: parseMultiLang(s.earlyCheckInMessage, prev.earlyCheckInMessage),
+                lateCheckInMessage: parseMultiLang(s.lateCheckInMessage, prev.lateCheckInMessage),
+                petPolicyAlert: parseMultiLang(s.petPolicyAlert, prev.petPolicyAlert),
+                petPolicyText: parseMultiLang(s.petPolicyText, prev.petPolicyText),
+                privacyPolicyText: parseMultiLang(s.privacyPolicyText, prev.privacyPolicyText),
+                generalPolicyText: parseMultiLang(s.generalPolicyText, prev.generalPolicyText)
+            }));
         }
 
     } catch (error) {
@@ -137,7 +183,7 @@ export default function PropertySettingsPage() {
             logoUrl: basicInfo.logoUrl,
             theme: theme,
             settings: {
-                ...property.settings, // Mantém hasBreakfast, hasKDS, etc.
+                ...property.settings, 
                 ...settings
             }
         };
@@ -363,18 +409,31 @@ export default function PropertySettingsPage() {
                         </div>
 
                         <div className="space-y-4 pt-4 border-t border-border">
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Aviso de Early Check-in (Chegada Antecipada)</label>
-                                <textarea value={settings.earlyCheckInMessage} onChange={e => setSettings({...settings, earlyCheckInMessage: e.target.value})} rows={3} className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground text-sm resize-none" />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Aviso de Late Check-in (Recepção Fechada)</label>
-                                <textarea value={settings.lateCheckInMessage} onChange={e => setSettings({...settings, lateCheckInMessage: e.target.value})} rows={3} className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground text-sm resize-none" />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Aviso Resumido: Pet Friendly (Alert no Check-in)</label>
-                                <textarea value={settings.petPolicyAlert} onChange={e => setSettings({...settings, petPolicyAlert: e.target.value})} rows={2} className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground text-sm resize-none" />
-                            </div>
+                            <MultiLangTextarea 
+                                label="Aviso de Early Check-in (Chegada Antecipada)"
+                                desc="Exibido quando o hóspede insere um horário anterior ao Início do Check-in. Variáveis: [expectedArrivalTime], [checkintime]"
+                                value={settings.earlyCheckInMessage}
+                                onChange={(val: any) => setSettings({...settings, earlyCheckInMessage: val})}
+                            />
+                            
+                            <div className="pt-2 border-t border-border"></div>
+
+                            <MultiLangTextarea 
+                                label="Aviso de Late Check-in (Recepção Fechada)"
+                                desc="Exibido quando o hóspede insere um horário após o Fechamento da Recepção. Variáveis: [expectedArrivalTime], [receptionendtime]"
+                                value={settings.lateCheckInMessage}
+                                onChange={(val: any) => setSettings({...settings, lateCheckInMessage: val})}
+                            />
+                            
+                            <div className="pt-2 border-t border-border"></div>
+
+                            <MultiLangTextarea 
+                                label="Aviso Resumido: Pet Friendly (Alert no Check-in)"
+                                desc="Um aviso curto para quando a pessoa marca a checkbox do Pet na ficha."
+                                rows={2}
+                                value={settings.petPolicyAlert}
+                                onChange={(val: any) => setSettings({...settings, petPolicyAlert: val})}
+                            />
                         </div>
                     </section>
 
@@ -461,45 +520,38 @@ export default function PropertySettingsPage() {
                     <h3 className="font-bold text-lg flex items-center gap-2 text-primary">
                         <FileText size={20}/> Documentos & Termos Completos
                     </h3>
-                    
-                    <div className="space-y-3">
-                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest flex items-center gap-2">
-                            <ShieldCheck size={14}/> Política Geral da Propriedade
-                        </label>
-                        <textarea 
-                            value={settings.generalPolicyText} 
-                            onChange={e => setSettings({...settings, generalPolicyText: e.target.value})}
-                            rows={8}
-                            placeholder="Regras de silêncio, uso da piscina, etc..."
-                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground text-sm resize-none custom-scrollbar"
-                        />
-                    </div>
+                    <p className="text-sm text-muted-foreground mb-4">
+                        Os textos aqui definidos exigirão o consentimento ("Li e Concordo") obrigatório do hóspede antes de finalizar o check-in.
+                    </p>
 
-                    <div className="space-y-3">
-                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest flex items-center gap-2">
-                            <FileText size={14}/> Política de Privacidade
-                        </label>
-                        <textarea 
-                            value={settings.privacyPolicyText} 
-                            onChange={e => setSettings({...settings, privacyPolicyText: e.target.value})}
-                            rows={8}
-                            placeholder="Como os dados do hóspede são utilizados..."
-                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground text-sm resize-none custom-scrollbar"
-                        />
-                    </div>
+                    <MultiLangTextarea 
+                        label="Política Geral da Propriedade"
+                        desc="Regras de silêncio, uso da piscina, horários, multas, etc."
+                        rows={6}
+                        value={settings.generalPolicyText}
+                        onChange={(val: any) => setSettings({...settings, generalPolicyText: val})}
+                    />
 
-                    <div className="space-y-3">
-                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest flex items-center gap-2">
-                            <ImageIcon size={14}/> Política Pet Completa
-                        </label>
-                        <textarea 
-                            value={settings.petPolicyText} 
-                            onChange={e => setSettings({...settings, petPolicyText: e.target.value})}
-                            rows={8}
-                            placeholder="Termo completo com obrigações do dono, carteira de vacinação, regras de circulação..."
-                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground text-sm resize-none custom-scrollbar"
-                        />
-                    </div>
+                    <div className="pt-2 border-t border-border"></div>
+
+                    <MultiLangTextarea 
+                        label="Política de Privacidade (LGPD)"
+                        desc="Termo legal de como os dados são manipulados para a FNRH."
+                        rows={6}
+                        value={settings.privacyPolicyText}
+                        onChange={(val: any) => setSettings({...settings, privacyPolicyText: val})}
+                    />
+
+                    <div className="pt-2 border-t border-border"></div>
+
+                    <MultiLangTextarea 
+                        label="Política Pet Completa"
+                        desc="Termo completo com obrigações do dono, vacinação, circulação na pousada."
+                        rows={6}
+                        value={settings.petPolicyText}
+                        onChange={(val: any) => setSettings({...settings, petPolicyText: val})}
+                    />
+
                 </section>
             )}
         </div>
@@ -508,7 +560,7 @@ export default function PropertySettingsPage() {
         <div className="lg:col-span-5 relative hidden lg:block">
             <div className="sticky top-8">
                 <div className="flex items-center gap-2 mb-6 text-muted-foreground text-sm font-bold uppercase tracking-widest">
-                    <Smartphone size={16}/> {activeTab === 'visual' ? 'Live Preview (Visual)' : 'Visão do Hóspede (Simulação)'}
+                    <Smartphone size={16}/> {activeTab === 'visual' ? 'Live Preview (Visual)' : 'Visão do Hóspede (Simulação PT)'}
                 </div>
                 
                 {/* O MOCKUP DO CELULAR */}
@@ -579,7 +631,7 @@ export default function PropertySettingsPage() {
                                        <Clock size={16}/> Aviso de Horário
                                    </div>
                                    <p className="text-xs text-orange-600/90 leading-relaxed font-medium">
-                                       {settings.lateCheckInMessage.replace(/\[expectedArrivalTime\]/g, '22:00').replace(/\[receptionendtime\]/g, settings.receptionEndTime)}
+                                       {settings.lateCheckInMessage?.pt?.replace(/\[expectedArrivalTime\]/g, '22:00').replace(/\[receptionendtime\]/g, settings.receptionEndTime) || "Preencha o campo à esquerda para visualizar."}
                                    </p>
                                </div>
 
@@ -600,7 +652,7 @@ export default function PropertySettingsPage() {
                                        <ImageIcon size={16}/> Pet Friendly (Alerta)
                                    </div>
                                    <p className="text-xs text-muted-foreground leading-relaxed font-medium">
-                                       {settings.petPolicyAlert}
+                                       {settings.petPolicyAlert?.pt || "Preencha o campo à esquerda."}
                                    </p>
                                </div>
                            </div>
@@ -608,23 +660,23 @@ export default function PropertySettingsPage() {
 
                         {activeTab === 'policies' && (
                             <div className="space-y-4 animate-in fade-in">
-                                <h2 className="text-xl font-black text-foreground mb-4">Políticas e Termos</h2>
+                                <h2 className="text-xl font-black text-foreground mb-4">Políticas (Aceite)</h2>
                                 
                                 <div className="p-4 bg-card border border-border space-y-2" style={{ borderRadius: theme?.shape.radius }}>
-                                    <h4 className="text-xs font-bold uppercase text-primary flex items-center gap-2"><ShieldCheck size={14}/> Regras Gerais</h4>
-                                    <p className="text-[10px] text-muted-foreground line-clamp-3">{settings.generalPolicyText}</p>
+                                    <h4 className="text-xs font-bold uppercase text-primary flex items-center gap-2"><ShieldCheck size={14}/> Geral</h4>
+                                    <p className="text-[10px] text-muted-foreground line-clamp-3">{settings.generalPolicyText?.pt || "Pendente..."}</p>
                                     <button className="text-[10px] text-primary font-bold uppercase mt-2">Ler Mais</button>
                                 </div>
 
                                 <div className="p-4 bg-card border border-border space-y-2" style={{ borderRadius: theme?.shape.radius }}>
-                                    <h4 className="text-xs font-bold uppercase text-primary flex items-center gap-2"><FileText size={14}/> Privacidade (LGPD)</h4>
-                                    <p className="text-[10px] text-muted-foreground line-clamp-3">{settings.privacyPolicyText}</p>
+                                    <h4 className="text-xs font-bold uppercase text-primary flex items-center gap-2"><FileText size={14}/> Privacidade</h4>
+                                    <p className="text-[10px] text-muted-foreground line-clamp-3">{settings.privacyPolicyText?.pt || "Pendente..."}</p>
                                     <button className="text-[10px] text-primary font-bold uppercase mt-2">Ler Mais</button>
                                 </div>
 
                                 <div className="p-4 bg-card border border-border space-y-2" style={{ borderRadius: theme?.shape.radius }}>
                                     <h4 className="text-xs font-bold uppercase text-primary flex items-center gap-2"><ImageIcon size={14}/> Política Pet</h4>
-                                    <p className="text-[10px] text-muted-foreground line-clamp-3">{settings.petPolicyText}</p>
+                                    <p className="text-[10px] text-muted-foreground line-clamp-3">{settings.petPolicyText?.pt || "Pendente..."}</p>
                                     <button className="text-[10px] text-primary font-bold uppercase mt-2">Ler Mais</button>
                                 </div>
                             </div>
@@ -669,3 +721,41 @@ const ColorInput = ({ label, desc, value, onChange }: { label: string, desc: str
         </div>
     </div>
 );
+
+// Novo Componente para Input de Texto Multi-idioma
+const MultiLangTextarea = ({ label, desc, value, onChange, rows = 3 }: { label: string, desc?: string, value: MultiLangObj, onChange: (v: MultiLangObj) => void, rows?: number }) => {
+    const [lang, setLang] = useState<'pt' | 'en' | 'es'>('pt');
+    
+    return (
+        <div className="space-y-3">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
+                <div className="flex-1">
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest flex items-center gap-1.5"><Globe size={12}/> {label}</label>
+                    {desc && <p className="text-xs text-muted-foreground mt-1">{desc}</p>}
+                </div>
+                <div className="flex bg-background rounded-lg p-1 border border-border shadow-sm shrink-0">
+                    {(['pt', 'en', 'es'] as const).map(l => (
+                        <button
+                            key={l}
+                            type="button"
+                            onClick={() => setLang(l)}
+                            className={cn(
+                                "px-3 py-1.5 text-[10px] font-bold uppercase rounded-md transition-all", 
+                                lang === l ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                            )}
+                        >
+                            {l}
+                        </button>
+                    ))}
+                </div>
+            </div>
+            <textarea 
+                value={value?.[lang] || ""}
+                onChange={e => onChange({ ...value, [lang]: e.target.value })}
+                rows={rows}
+                placeholder={`Digite o texto em ${lang.toUpperCase()}...`}
+                className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground text-sm resize-none custom-scrollbar"
+            />
+        </div>
+    );
+};
