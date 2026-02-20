@@ -1,0 +1,25 @@
+number;category;name;capacity;allowedSetups;wifi(ssid);wifi(password);equipment(id);equipment(type);equipment(model);equipment(manualUrl)
+01;Praia 2 Dormitorios;01 - Praia 2 Dormitorios;6;2 Casais, 1 Casal e 2 Solteiros;Fazenda-01;fazenda2021;;Cofre;Modelo 1;
+02;Praia 2 Dormitorios;02 - Praia 2 Dormitorios;6;2 Casais, 1 Casal e 2 Solteiros;Fazenda-01;fazenda2021;;Cofre;Modelo 1;
+03;Praia 2 Dormitorios;03 - Praia 2 Dormitorios;6;2 Casais, 1 Casal e 2 Solteiros;Fazenda-03;fazenda2021;;Cofre;Modelo 1;
+04;Praia 2 Dormitorios;04 - Praia 2 Dormitorios;6;2 Casais, 1 Casal e 2 Solteiros;Fazenda-03;fazenda2021;;Cofre;Modelo 1;
+05;Praia 1 Dormitorio;05 - Praia 1 Dormitorio;3;1 Casal, 1 Casal + Cama extra (Quarto), 1 Casal + Cama extra (Sala);Fazenda 5/6;fazenda2021;;Cofre;Modelo 1;
+06;Praia 1 Dormitorio;06 - Praia 1 Dormitorio;3;1 Casal, 1 Casal + Cama extra (Quarto), 1 Casal + Cama extra (Sala);Fazenda 5/6;fazenda2021;;Cofre;Modelo 1;
+07;Praia 2 Dormitorios;07 - Praia 2 Dormitorios;6;2 Casais, 1 Casal e 2 Solteiros;Fazenda 7/8;fazenda2021;;Cofre;Modelo 1;
+08;Praia 2 Dormitorios;08 - Praia 2 Dormitorios;6;2 Casais, 1 Casal e 2 Solteiros;Fazenda 7/8;fazenda2021;;Cofre;Modelo 1;
+09;Mar 2 Suites;09 - Mar 2 Suites;5;2 Casais, 1 Casal e 2 Solteiros;Fazenda-9/10;fazenda2021;;Cofre;Modelo 1;
+10;Mar 2 Suites;10 - Mar 2 Suites;5;2 Casais, 1 Casal e 2 Solteiros;Fazenda-9/10;fazenda2021;;Cofre;Modelo 1;
+11;Bem Estar 1 Dormitorio;11 - Bem Estar 1 Dormitorio;4;1 Casal, 1 Casal + Cama extra (Quarto), 1 Casal + Cama extra (Sala);Fazenda 11/12;fazenda2021;;Cofre, Banheira;Modelo 1, Jacuzzi 2 pax;
+12;Bem Estar 1 Dormitorio;12 - Bem Estar 1 Dormitorio;4;1 Casal, 1 Casal + Cama extra (Quarto), 1 Casal + Cama extra (Sala);Fazenda 11/12;fazenda2021;;Cofre, Banheira;Modelo 1, Jacuzzi 2 pax;
+13;Jardim 2 Dormitorios;13 - Jardim 2 Dormitorios;6;2 Casais, 1 Casal e 2 Solteiros;Fazenda-13/14;fazenda2021;;Cofre;Modelo 1;
+14;Jardim 2 Dormitorios;14 - Jardim 2 Dormitorios;6;2 Casais, 1 Casal e 2 Solteiros;Fazenda-13/14;fazenda2021;;Cofre;Modelo 1;
+15;Bem Estar 2 Dormitorios;15 - Bem Estar 2 Dormitorios;5;2 Casais, 1 Casal e 2 Solteiros;Fazenda-15/16;fazenda2021;;Cofre, Banheira;Modelo 1, Jacuzzi 2 pax;
+16;Bem Estar 2 Dormitorios;16 - Bem Estar 2 Dormitorios;5;2 Casais, 1 Casal e 2 Solteiros;Fazenda-15/16;fazenda2021;;Cofre, Banheira;Modelo 1, Jacuzzi 2 pax;
+21;Hibisco;21 - Hibisco;5;2 Casais, 1 Casal e 2 Solteiros;Cabana 21;fazenda2021;;Cofre, Banheira;Modelo 1, Ofuro;
+22;Eco Suite;22 - Eco Suite;2;Casal, Casal + Berço;Fazenda 22/23;fazenda2021;;Cofre;Modelo 1;
+23;Eco Suite;23 - Eco Suite;2;Casal, Casal + Berço;Fazenda 22/23;fazenda2021;;Cofre;Modelo 1;
+24;Eco Suite;24 - Eco Suite;2;Casal, Casal + Berço;Fazenda 24;fazenda2021;;Cofre;Modelo 1;
+25;Eco Suite;25 - Eco Suite;2;Casal, Casal + Berço;Fazenda 25/26;fazenda2021;;Cofre;Modelo 1;
+26;Eco Suite;26 - Eco Suite;2;Casal, Casal + Berço;Fazenda 25/26;fazenda2021;;Cofre;Modelo 1;
+;;;;;;;;;;
+;;;;;;;;;;
