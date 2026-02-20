@@ -50,7 +50,7 @@ export default function GuestLoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-black text-white relative overflow-hidden">
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-black text-foreground relative overflow-hidden">
         {/* Background Effects */}
         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-primary/10 via-black to-black opacity-50 z-0"></div>
         
@@ -60,7 +60,7 @@ export default function GuestLoginPage() {
                     <Key className="text-primary" size={32} />
                 </div>
                 <h1 className="text-3xl font-black tracking-tighter">Aura Guest</h1>
-                <p className="text-white/40 text-sm">Digite seu código de acesso para entrar.</p>
+                <p className="text-foreground/40 text-sm">Digite seu código de acesso para entrar.</p>
             </div>
 
             <form onSubmit={handleLogin} className="space-y-4">
@@ -82,7 +82,7 @@ export default function GuestLoginPage() {
                 </button>
             </form>
 
-            <p className="text-center text-[10px] text-white/20 uppercase tracking-widest font-bold">
+            <p className="text-center text-[10px] text-foreground/20 uppercase tracking-widest font-bold">
                 Powered by Synapse Engine
             </p>
         </div>

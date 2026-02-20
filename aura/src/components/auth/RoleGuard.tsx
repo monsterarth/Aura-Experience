@@ -36,7 +36,7 @@ export const RoleGuard = ({ children, allowedRoles }: RoleGuardProps) => {
       <div className="flex h-screen w-full items-center justify-center bg-[#0a0a0a]">
         <div className="flex flex-col items-center gap-4">
            <Loader2 className="h-10 w-10 animate-spin text-primary" />
-           <p className="text-xs font-bold uppercase tracking-widest text-white/20">Verificando Permissões...</p>
+           <p className="text-xs font-bold uppercase tracking-widest text-foreground/20">Verificando Permissões...</p>
         </div>
       </div>
     );
@@ -54,14 +54,14 @@ export const RoleGuard = ({ children, allowedRoles }: RoleGuardProps) => {
           <ShieldAlert size={64} />
         </div>
         <div className="space-y-2">
-            <h2 className="text-3xl font-black text-white">Acesso Restrito</h2>
-            <p className="max-w-md text-white/40">
+            <h2 className="text-3xl font-black text-foreground">Acesso Restrito</h2>
+            <p className="max-w-md text-foreground/40">
             O seu cargo (<strong>{userData?.role}</strong>) não possui as credenciais de segurança necessárias para acessar esta área.
             </p>
         </div>
         <button 
             onClick={() => router.back()}
-            className="px-8 py-3 bg-white/5 hover:bg-white/10 text-white font-bold rounded-xl transition-all"
+            className="px-8 py-3 bg-white/5 hover:bg-white/10 text-foreground font-bold rounded-xl transition-all"
         >
             Voltar
         </button>

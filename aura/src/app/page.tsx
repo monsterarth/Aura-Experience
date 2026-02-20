@@ -4,7 +4,7 @@ import { ShieldCheck, Key, ArrowRight, Zap } from "lucide-react";
 
 export default function LandingPage() {
   return (
-    <main className="min-h-screen bg-[#050505] text-white overflow-hidden relative selection:bg-primary/30">
+    <main className="min-h-screen bg-[#050505] text-foreground overflow-hidden relative selection:bg-primary/30">
       
       {/* Background Effects */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-primary/10 rounded-full blur-[120px] pointer-events-none opacity-50" />
@@ -20,7 +20,7 @@ export default function LandingPage() {
           <h1 className="text-5xl md:text-7xl font-black tracking-tighter bg-gradient-to-br from-white via-white/80 to-white/40 bg-clip-text text-transparent">
             Aura Experience
           </h1>
-          <p className="text-lg md:text-xl text-white/40 max-w-2xl mx-auto font-medium">
+          <p className="text-lg md:text-xl text-foreground/40 max-w-2xl mx-auto font-medium">
             O sistema operacional definitivo para hospitalidade boutique. 
             <br className="hidden md:block"/> Gestão inteligente, check-in sem atrito e automação total.
           </p>
@@ -30,7 +30,7 @@ export default function LandingPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-200">
           
           {/* Card Hóspede */}
-          <Link href="/check-in/login" className="group relative overflow-hidden bg-[#0F0F0F] border border-white/5 p-8 rounded-[32px] hover:border-primary/40 hover:bg-[#141414] transition-all duration-300">
+          <Link href="/check-in/login" className="group relative overflow-hidden bg-[#0F0F0F] border border-white/5 p-8 rounded-[32px] hover:border-primary/40 hover:bg-card transition-all duration-300">
              <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
                 <Key size={120} />
              </div>
@@ -39,8 +39,8 @@ export default function LandingPage() {
                     <Key size={24} />
                 </div>
                 <div>
-                    <h2 className="text-2xl font-bold text-white">Sou Hóspede</h2>
-                    <p className="text-white/40 text-sm mt-1">Tenho um código de reserva e quero acessar minha estadia.</p>
+                    <h2 className="text-2xl font-bold text-foreground">Sou Hóspede</h2>
+                    <p className="text-foreground/40 text-sm mt-1">Tenho um código de reserva e quero acessar minha estadia.</p>
                 </div>
                 <div className="flex items-center gap-2 text-primary font-bold text-xs uppercase tracking-widest pt-4 group-hover:translate-x-2 transition-transform">
                     Acessar Portal <ArrowRight size={14} />
@@ -49,7 +49,7 @@ export default function LandingPage() {
           </Link>
 
           {/* Card Staff */}
-          <Link href="/admin/login" className="group relative overflow-hidden bg-[#0F0F0F] border border-white/5 p-8 rounded-[32px] hover:border-blue-500/40 hover:bg-[#141414] transition-all duration-300">
+          <Link href="/admin/login" className="group relative overflow-hidden bg-[#0F0F0F] border border-white/5 p-8 rounded-[32px] hover:border-blue-500/40 hover:bg-card transition-all duration-300">
              <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
                 <ShieldCheck size={120} />
              </div>
@@ -58,8 +58,8 @@ export default function LandingPage() {
                     <ShieldCheck size={24} />
                 </div>
                 <div>
-                    <h2 className="text-2xl font-bold text-white">Sou Staff</h2>
-                    <p className="text-white/40 text-sm mt-1">Acesso restrito para administradores e equipe operacional.</p>
+                    <h2 className="text-2xl font-bold text-foreground">Sou Staff</h2>
+                    <p className="text-foreground/40 text-sm mt-1">Acesso restrito para administradores e equipe operacional.</p>
                 </div>
                 <div className="flex items-center gap-2 text-blue-500 font-bold text-xs uppercase tracking-widest pt-4 group-hover:translate-x-2 transition-transform">
                     Área Administrativa <ArrowRight size={14} />
@@ -71,7 +71,7 @@ export default function LandingPage() {
 
         {/* Footer */}
         <div className="text-center space-y-2 animate-in fade-in duration-1000 delay-500">
-            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-white/20">
+            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-foreground/20">
                 Ready for Governance &bull; FNRH 2026 Compliant
             </p>
             <div className="h-1 w-20 bg-gradient-to-r from-transparent via-white/10 to-transparent mx-auto"></div>

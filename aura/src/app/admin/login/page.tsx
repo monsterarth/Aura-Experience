@@ -105,11 +105,11 @@ export default function AdminLoginPage() {
           <div className="inline-flex p-3 rounded-2xl bg-primary/10 border border-primary/20 text-primary mb-2">
             <ShieldCheck size={40} strokeWidth={1.5} />
           </div>
-          <h1 className="text-4xl font-black tracking-tighter text-white">AURA ENGINE</h1>
+          <h1 className="text-4xl font-black tracking-tighter text-foreground">AURA ENGINE</h1>
           <p className="text-muted-foreground font-medium">Portal de Gestão e Operações</p>
         </div>
 
-        <div className="bg-[#141414] border border-white/5 p-8 rounded-[32px] shadow-2xl space-y-6">
+        <div className="bg-card border border-white/5 p-8 rounded-[32px] shadow-2xl space-y-6">
           {error && (
             <div className="bg-destructive/10 border border-destructive/20 p-4 rounded-xl flex items-start gap-3 text-destructive text-sm animate-in zoom-in duration-200">
               <AlertCircle size={18} className="shrink-0" />
@@ -119,36 +119,36 @@ export default function AdminLoginPage() {
 
           <form onSubmit={handleLogin} className="space-y-5">
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-white/50 ml-1">E-mail Corporativo</label>
+              <label className="text-xs font-bold uppercase tracking-widest text-foreground/50 ml-1">E-mail Corporativo</label>
               <div className="relative group">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-primary transition-colors" size={20} />
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground/20 group-focus-within:text-primary transition-colors" size={20} />
                 <input 
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="admin@aura.com"
-                  className="w-full bg-black/40 border border-white/10 p-4 pl-12 rounded-2xl text-white outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/40 transition-all placeholder:text-white/10"
+                  className="w-full bg-secondary border border-white/10 p-4 pl-12 rounded-2xl text-foreground outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/40 transition-all placeholder:text-foreground/10"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-white/50 ml-1">Senha</label>
+              <label className="text-xs font-bold uppercase tracking-widest text-foreground/50 ml-1">Senha</label>
               <div className="relative group">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-primary transition-colors" size={20} />
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground/20 group-focus-within:text-primary transition-colors" size={20} />
                 <input 
                   type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-black/40 border border-white/10 p-4 pl-12 pr-12 rounded-2xl text-white outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/40 transition-all placeholder:text-white/10"
+                  className="w-full bg-secondary border border-white/10 p-4 pl-12 pr-12 rounded-2xl text-foreground outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/40 transition-all placeholder:text-foreground/10"
                 />
                 <button 
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20 hover:text-white transition-colors"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-foreground/20 hover:text-foreground transition-colors"
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>

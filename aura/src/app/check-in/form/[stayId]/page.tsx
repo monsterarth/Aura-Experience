@@ -271,7 +271,7 @@ export default function UnifiedPreCheckin() {
   const getBadgeStyle = (current: number, booked: number) => {
       if (current === booked) return "bg-green-500/10 border-green-500/50 text-green-500";
       if (current > booked) return "bg-orange-500/10 border-orange-500/50 text-orange-500"; // Excedente
-      return "bg-white/5 border-white/10 text-white/40"; // Incompleto
+      return "bg-white/5 border-white/10 text-foreground/40"; // Incompleto
   };
 
   if (loading) return <div className="min-h-screen bg-black flex items-center justify-center"><Loader2 className="animate-spin text-primary" size={40}/></div>;
@@ -280,10 +280,10 @@ export default function UnifiedPreCheckin() {
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-6 text-center">
       <div className="max-w-md space-y-6 animate-in zoom-in duration-300">
         <CheckCircle2 size={80} className="mx-auto text-green-500" />
-        <h1 className="text-4xl font-black text-white uppercase tracking-tighter">Tudo Pronto!</h1>
-        <p className="text-white/60">Seu pré-check-in foi realizado com sucesso.</p>
+        <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter">Tudo Pronto!</h1>
+        <p className="text-foreground/60">Seu pré-check-in foi realizado com sucesso.</p>
         <div className="p-4 bg-white/5 rounded-2xl border border-white/10">
-            <p className="text-sm font-bold text-white">Código de Acesso</p>
+            <p className="text-sm font-bold text-foreground">Código de Acesso</p>
             <p className="text-3xl font-black text-primary tracking-widest mt-2">{stay.accessCode}</p>
         </div>
         <div className="space-y-2">
@@ -297,11 +297,11 @@ export default function UnifiedPreCheckin() {
 
   if (step === 'group_manager') {
     return (
-      <main className="min-h-screen bg-[#0a0a0a] text-white p-6 flex flex-col items-center justify-center space-y-8">
+      <main className="min-h-screen bg-[#0a0a0a] text-foreground p-6 flex flex-col items-center justify-center space-y-8">
         <div className="text-center space-y-2">
           <Users size={48} className="mx-auto text-primary mb-2" />
           <h1 className="text-3xl font-black uppercase tracking-tighter">Reserva de Grupo</h1>
-          <p className="text-white/40 italic">Identificamos {groupStays.length} acomodações. Qual delas você ocupará?</p>
+          <p className="text-foreground/40 italic">Identificamos {groupStays.length} acomodações. Qual delas você ocupará?</p>
         </div>
         <div className="grid gap-4 w-full max-w-md">
           {groupStays.map((s) => (
@@ -320,10 +320,10 @@ export default function UnifiedPreCheckin() {
               )}
             >
               <div>
-                <p className="text-[10px] font-bold text-white/40 uppercase">Unidade</p>
+                <p className="text-[10px] font-bold text-foreground/40 uppercase">Unidade</p>
                 <p className="text-xl font-black">{s.cabinName || "Acomodação"}</p>
               </div>
-              <ArrowRight size={20} className={s.id === stayId ? "text-primary" : "text-white/20"} />
+              <ArrowRight size={20} className={s.id === stayId ? "text-primary" : "text-foreground/20"} />
             </button>
           ))}
         </div>
@@ -332,7 +332,7 @@ export default function UnifiedPreCheckin() {
   }
 
   return (
-    <main className="min-h-screen bg-[#0a0a0a] text-white p-6 pb-24 font-sans">
+    <main className="min-h-screen bg-[#0a0a0a] text-foreground p-6 pb-24 font-sans">
       <form onSubmit={handleSave} className="max-w-2xl mx-auto space-y-12 animate-in fade-in duration-700">
         
         {/* 1. Identidade Titular */}
@@ -343,7 +343,7 @@ export default function UnifiedPreCheckin() {
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="relative">
-              <label className="text-[10px] font-bold text-white/40 uppercase mb-2 block">Nacionalidade *</label>
+              <label className="text-[10px] font-bold text-foreground/40 uppercase mb-2 block">Nacionalidade *</label>
               <button 
                 type="button"
                 onClick={() => setShowCountrySelect(!showCountrySelect)}
@@ -358,7 +358,7 @@ export default function UnifiedPreCheckin() {
               {showCountrySelect && (
                 <div className="absolute top-full left-0 w-full mt-2 bg-[#1a1a1a] border border-white/10 rounded-2xl z-50 shadow-2xl overflow-hidden animate-in slide-in-from-top-2">
                   <input 
-                    className="w-full p-4 bg-white/5 border-b border-white/10 outline-none text-sm text-white placeholder:text-white/20"
+                    className="w-full p-4 bg-white/5 border-b border-white/10 outline-none text-sm text-foreground placeholder:text-foreground/20"
                     placeholder="Pesquisar país..."
                     value={searchCountry}
                     onChange={e => setSearchCountry(e.target.value)}
@@ -369,7 +369,7 @@ export default function UnifiedPreCheckin() {
                       <button 
                         key={c.name} type="button"
                         onClick={() => { setGuest({...guest, nationality: c.name}); setShowCountrySelect(false); }}
-                        className="w-full p-4 text-left hover:bg-primary/10 flex items-center gap-3 text-white"
+                        className="w-full p-4 text-left hover:bg-primary/10 flex items-center gap-3 text-foreground"
                       >
                         <span>{c.flag}</span> {c.name}
                       </button>
@@ -380,7 +380,7 @@ export default function UnifiedPreCheckin() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-white/40 uppercase">
+              <label className="text-[10px] font-bold text-foreground/40 uppercase">
                  {guest.nationality === "Brasil" ? "CPF *" : "Passaporte / ID *"}
               </label>
               <input 
@@ -393,7 +393,7 @@ export default function UnifiedPreCheckin() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-white/40 uppercase">Nome Completo *</label>
+            <label className="text-[10px] font-bold text-foreground/40 uppercase">Nome Completo *</label>
             <div className="flex gap-2">
               <input 
                 readOnly={!isEditingName}
@@ -417,15 +417,15 @@ export default function UnifiedPreCheckin() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-white/40 uppercase">Nascimento *</label>
+                <label className="text-[10px] font-bold text-foreground/40 uppercase">Nascimento *</label>
                 <input type="date" 
                 value={guest.birthDate || ""}
                 onChange={e => setGuest({...guest, birthDate: e.target.value})}
-                className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none invert-0 text-white placeholder-gray-500 focus:border-primary/50 transition-colors" 
+                className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none invert-0 text-foreground placeholder-gray-500 focus:border-primary/50 transition-colors" 
                 />
              </div>
              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-white/40 uppercase">Gênero *</label>
+                <label className="text-[10px] font-bold text-foreground/40 uppercase">Gênero *</label>
                 <select 
                 value={guest.gender || ""}
                 onChange={e => setGuest({...guest, gender: e.target.value})}
@@ -475,19 +475,19 @@ export default function UnifiedPreCheckin() {
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-1">
-                                <label className="text-[9px] font-bold uppercase text-white/40">Nome Completo *</label>
+                                <label className="text-[9px] font-bold uppercase text-foreground/40">Nome Completo *</label>
                                 <input 
                                     value={g.fullName} 
                                     onChange={e => updateGuest(idx, 'fullName', e.target.value)}
-                                    className="w-full bg-black/40 border border-white/10 p-3 rounded-xl outline-none text-sm focus:border-primary/50"
+                                    className="w-full bg-secondary border border-white/10 p-3 rounded-xl outline-none text-sm focus:border-primary/50"
                                 />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-[9px] font-bold uppercase text-white/40">Documento {g.type === 'adult' ? '*' : '(Opcional)'}</label>
+                                <label className="text-[9px] font-bold uppercase text-foreground/40">Documento {g.type === 'adult' ? '*' : '(Opcional)'}</label>
                                 <input 
                                     value={g.document} 
                                     onChange={e => updateGuest(idx, 'document', e.target.value)}
-                                    className="w-full bg-black/40 border border-white/10 p-3 rounded-xl outline-none text-sm focus:border-primary/50"
+                                    className="w-full bg-secondary border border-white/10 p-3 rounded-xl outline-none text-sm focus:border-primary/50"
                                 />
                             </div>
                         </div>
@@ -528,7 +528,7 @@ export default function UnifiedPreCheckin() {
           
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="md:col-span-1 space-y-1">
-              <label className="text-[10px] font-bold text-white/40 uppercase">CEP / Zip *</label>
+              <label className="text-[10px] font-bold text-foreground/40 uppercase">CEP / Zip *</label>
               <div className="relative">
                 <input 
                     value={guest.address?.zipCode || ""}
@@ -541,7 +541,7 @@ export default function UnifiedPreCheckin() {
             </div>
             
             <div className="md:col-span-3 space-y-1">
-              <label className="text-[10px] font-bold text-white/40 uppercase">Logradouro (Rua/Av) *</label>
+              <label className="text-[10px] font-bold text-foreground/40 uppercase">Logradouro (Rua/Av) *</label>
               <input 
                 value={guest.address?.street || ""} 
                 onChange={e => setGuest({...guest, address: {...guest.address, street: e.target.value}})}
@@ -550,7 +550,7 @@ export default function UnifiedPreCheckin() {
             </div>
             
             <div className="md:col-span-1 space-y-1">
-              <label className="text-[10px] font-bold text-white/40 uppercase">Número *</label>
+              <label className="text-[10px] font-bold text-foreground/40 uppercase">Número *</label>
               <input 
                 value={guest.address?.number || ""} 
                 onChange={e => setGuest({...guest, address: {...guest.address, number: e.target.value}})} 
@@ -560,7 +560,7 @@ export default function UnifiedPreCheckin() {
             </div>
             
             <div className="md:col-span-3 space-y-1">
-              <label className="text-[10px] font-bold text-white/40 uppercase">Complemento</label>
+              <label className="text-[10px] font-bold text-foreground/40 uppercase">Complemento</label>
               <input 
                 value={guest.address?.complement || ""} 
                 onChange={e => setGuest({...guest, address: {...guest.address, complement: e.target.value}})} 
@@ -569,7 +569,7 @@ export default function UnifiedPreCheckin() {
             </div>
 
             <div className="md:col-span-2 space-y-1">
-                <label className="text-[10px] font-bold text-white/40 uppercase">Bairro *</label>
+                <label className="text-[10px] font-bold text-foreground/40 uppercase">Bairro *</label>
                 <input 
                     value={guest.address?.neighborhood || ""} 
                     onChange={e => setGuest({...guest, address: {...guest.address, neighborhood: e.target.value}})} 
@@ -577,7 +577,7 @@ export default function UnifiedPreCheckin() {
                 />
             </div>
             <div className="md:col-span-1 space-y-1">
-                <label className="text-[10px] font-bold text-white/40 uppercase">Cidade *</label>
+                <label className="text-[10px] font-bold text-foreground/40 uppercase">Cidade *</label>
                 <input 
                     value={guest.address?.city || ""} 
                     onChange={e => setGuest({...guest, address: {...guest.address, city: e.target.value}})} 
@@ -585,7 +585,7 @@ export default function UnifiedPreCheckin() {
                 />
             </div>
             <div className="md:col-span-1 space-y-1">
-                <label className="text-[10px] font-bold text-white/40 uppercase">Estado (UF) *</label>
+                <label className="text-[10px] font-bold text-foreground/40 uppercase">Estado (UF) *</label>
                 <input 
                     value={guest.address?.state || ""} 
                     onChange={e => setGuest({...guest, address: {...guest.address, state: e.target.value}})} 
@@ -605,35 +605,35 @@ export default function UnifiedPreCheckin() {
              
              {/* Previsão de Chegada */}
              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-white/40 uppercase">Horário Previsto de Chegada *</label>
-                <div className="flex items-center gap-2 bg-black/40 border border-white/10 p-4 rounded-2xl">
+                <label className="text-[10px] font-bold text-foreground/40 uppercase">Horário Previsto de Chegada *</label>
+                <div className="flex items-center gap-2 bg-secondary border border-white/10 p-4 rounded-2xl">
                     <Clock size={18} className="text-primary"/>
                     <input 
                         type="time"
                         value={stay.expectedArrivalTime || ""}
                         onChange={e => setStay({...stay, expectedArrivalTime: e.target.value})}
-                        className="bg-transparent outline-none text-white font-bold w-full"
+                        className="bg-transparent outline-none text-foreground font-bold w-full"
                     />
                 </div>
              </div>
 
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-white/40 uppercase">Origem (Cidade/UF) *</label>
+                    <label className="text-[10px] font-bold text-foreground/40 uppercase">Origem (Cidade/UF) *</label>
                     <input 
                     placeholder="Ex: São Paulo/SP" 
                     value={stay.lastCity || ""}
                     onChange={e => setStay({...stay, lastCity: e.target.value})}
-                    className="w-full bg-black/40 border border-white/10 p-4 rounded-2xl outline-none focus:border-primary/50 transition-colors" 
+                    className="w-full bg-secondary border border-white/10 p-4 rounded-2xl outline-none focus:border-primary/50 transition-colors" 
                     />
                 </div>
                 <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-white/40 uppercase">Destino (Cidade/UF) *</label>
+                    <label className="text-[10px] font-bold text-foreground/40 uppercase">Destino (Cidade/UF) *</label>
                     <input 
                     placeholder="Ex: Florianópolis/SC" 
                     value={stay.nextCity || ""}
                     onChange={e => setStay({...stay, nextCity: e.target.value})}
-                    className="w-full bg-black/40 border border-white/10 p-4 rounded-2xl outline-none focus:border-primary/50 transition-colors" 
+                    className="w-full bg-secondary border border-white/10 p-4 rounded-2xl outline-none focus:border-primary/50 transition-colors" 
                     />
                 </div>
              </div>
@@ -646,7 +646,7 @@ export default function UnifiedPreCheckin() {
                 <button 
                   key={m} type="button"
                   onClick={() => setStay({...stay, transportation: m})}
-                  className={cn("p-3 rounded-xl border text-[9px] font-black uppercase transition-all", stay.transportation === m ? "bg-primary text-black border-primary" : "bg-black/40 border-white/5 text-white/40")}
+                  className={cn("p-3 rounded-xl border text-[9px] font-black uppercase transition-all", stay.transportation === m ? "bg-primary text-black border-primary" : "bg-secondary border-white/5 text-foreground/40")}
                 >
                   {m}
                 </button>
@@ -656,19 +656,19 @@ export default function UnifiedPreCheckin() {
 
           {stay.transportation === 'Carro' && (
             <div className="space-y-2 animate-in slide-in-from-top-2">
-              <label className="text-[10px] font-bold uppercase text-white/40">Placa do Veículo</label>
-              <input value={stay.vehiclePlate || ""} onChange={e => setStay({...stay, vehiclePlate: e.target.value.toUpperCase()})} placeholder="ABC1D23" className="w-full bg-black/40 border border-white/10 p-5 rounded-3xl font-mono text-2xl tracking-widest text-primary text-center focus:border-primary/50 outline-none" />
+              <label className="text-[10px] font-bold uppercase text-foreground/40">Placa do Veículo</label>
+              <input value={stay.vehiclePlate || ""} onChange={e => setStay({...stay, vehiclePlate: e.target.value.toUpperCase()})} placeholder="ABC1D23" className="w-full bg-secondary border border-white/10 p-5 rounded-3xl font-mono text-2xl tracking-widest text-primary text-center focus:border-primary/50 outline-none" />
             </div>
           )}
 
           <div className="space-y-4">
-            <p className="text-xs font-black uppercase tracking-widest text-white/60">Montagem da Unidade: {cabin?.name}</p>
+            <p className="text-xs font-black uppercase tracking-widest text-foreground/60">Montagem da Unidade: {cabin?.name}</p>
             <div className="grid grid-cols-1 gap-3">
               {(cabin?.allowedSetups || ["Casal Padrão"]).map((setup: string) => (
                 <button 
                   key={setup} type="button"
                   onClick={() => setStay({...stay, roomSetupNotes: setup})}
-                  className={cn("p-4 rounded-2xl border text-left text-sm font-bold transition-all", stay.roomSetupNotes === setup ? "bg-white text-black border-white" : "bg-black/20 border-white/10 text-white/40")}
+                  className={cn("p-4 rounded-2xl border text-left text-sm font-bold transition-all", stay.roomSetupNotes === setup ? "bg-white text-black border-white" : "bg-black/20 border-white/10 text-foreground/40")}
                 >
                   {setup}
                 </button>
@@ -685,7 +685,7 @@ export default function UnifiedPreCheckin() {
             </div>
             <div className="flex-1">
               <p className="font-black text-lg">Viajando com Pet?</p>
-              <p className="text-[10px] text-white/30 uppercase">Até 15kg</p>
+              <p className="text-[10px] text-foreground/30 uppercase">Até 15kg</p>
             </div>
             <input type="checkbox" checked={stay.hasPet} onChange={e => setStay({...stay, hasPet: e.target.checked})} className="w-6 h-6 accent-orange-500 rounded-lg" />
           </label>
@@ -697,15 +697,15 @@ export default function UnifiedPreCheckin() {
                 placeholder="Nome" 
                 value={stay.petDetails?.name || ""}
                 onChange={e => setStay({...stay, petDetails: {...stay.petDetails, name: e.target.value}})}
-                className="bg-black/40 border border-white/10 p-4 rounded-2xl text-sm focus:border-orange-500/50 outline-none transition-colors" 
+                className="bg-secondary border border-white/10 p-4 rounded-2xl text-sm focus:border-orange-500/50 outline-none transition-colors" 
                 />
                 <input 
                 placeholder="Raça" 
                 value={stay.petDetails?.breed || ""}
                 onChange={e => setStay({...stay, petDetails: {...stay.petDetails, breed: e.target.value}})}
-                className="bg-black/40 border border-white/10 p-4 rounded-2xl text-sm focus:border-orange-500/50 outline-none transition-colors" 
+                className="bg-secondary border border-white/10 p-4 rounded-2xl text-sm focus:border-orange-500/50 outline-none transition-colors" 
                 />
-                <select className="bg-black/40 border border-white/10 p-4 rounded-2xl text-sm outline-none focus:border-orange-500/50 transition-colors text-white">
+                <select className="bg-secondary border border-white/10 p-4 rounded-2xl text-sm outline-none focus:border-orange-500/50 transition-colors text-foreground">
                   <option>Cachorro</option>
                   <option>Gato</option>
                   <option>Outro</option>

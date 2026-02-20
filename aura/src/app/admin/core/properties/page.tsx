@@ -204,7 +204,7 @@ export default function CorePropertiesPage() {
                 <div key={p.id} className="group bg-card border border-border p-4 rounded-xl hover:border-primary/50 transition-colors">
                   <div className="flex items-center gap-3">
                     <div 
-                      className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold shadow-sm"
+                      className="w-10 h-10 rounded-lg flex items-center justify-center text-foreground font-bold shadow-sm"
                       style={{ backgroundColor: p.theme?.colors?.primary || '#000' }}
                     >
                       {p.name.charAt(0)}
