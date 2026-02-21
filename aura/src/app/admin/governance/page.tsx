@@ -9,11 +9,13 @@ import { CabinService } from "@/services/cabin-service";
 import { StaffService } from "@/services/staff-service"; 
 import { HousekeepingTask, Cabin, Staff } from "@/types/aura";
 import { HousekeepingChecklistModal } from "@/components/admin/HousekeepingChecklistModal";
+import { HousekeepingTaskManagerModal } from "@/components/admin/HousekeepingTaskManagerModal";
+import { ChecklistSettingsModal } from "@/components/admin/ChecklistSettingsModal";
 import { MinibarModal } from "@/components/admin/MinibarModal";
 import { MaidMobileApp } from "@/components/admin/MaidMobileApp"; 
 import { 
   Sparkles, Clock, CheckCircle2, AlertCircle, 
-  Coffee, ArrowRight, ClipboardCheck, Plus, UserPlus
+  Coffee, ArrowRight, ClipboardCheck, Plus, UserPlus, Settings2, Edit3, MessageSquare
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -27,42 +29,52 @@ export default function GovernancePage() {
   const [tasks, setTasks] = useState<HousekeepingTask[]>([]);
   const [cabins, setCabins] = useState<Record<string, Cabin>>({});
   const [maids, setMaids] = useState<Staff[]>([]); 
-  const [loadingTasks, setLoadingTasks] = useState(true);
+  const [loadingInitial, setLoadingInitial] = useState(true);
 
   const [isChecklistOpen, setIsChecklistOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<HousekeepingTask | null>(null);
   const [isMinibarOpen, setIsMinibarOpen] = useState(false);
-
-  const loadData = async () => {
-    if (!property) return;
-    setLoadingTasks(true);
-    try {
-      const [tasksData, cabinsData, staffData] = await Promise.all([
-        HousekeepingService.getActiveTasks(property.id),
-        CabinService.getCabinsByProperty(property.id),
-        StaffService.getStaffByProperty(property.id)
-      ]);
-      
-      setTasks(tasksData);
-      
-      const cabinsDict: Record<string, Cabin> = {};
-      cabinsData.forEach(c => cabinsDict[c.id] = c);
-      setCabins(cabinsDict);
-
-      setMaids(staffData.filter(s => s.role === 'maid' && s.active));
-
-    } catch (error) {
-      toast.error("Erro ao carregar os dados de governança.");
-    } finally {
-      setLoadingTasks(false);
-    }
-  };
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isManagerOpen, setIsManagerOpen] = useState(false);
 
   useEffect(() => {
-    loadData();
+    if (!property) return;
+    
+    let unsubscribe: () => void;
+
+    const init = async () => {
+      setLoadingInitial(true);
+      try {
+        const [cabinsData, staffData] = await Promise.all([
+          CabinService.getCabinsByProperty(property.id),
+          StaffService.getStaffByProperty(property.id)
+        ]);
+        
+        const cabinsDict: Record<string, Cabin> = {};
+        cabinsData.forEach(c => cabinsDict[c.id] = c);
+        setCabins(cabinsDict);
+
+        setMaids(staffData.filter(s => s.role === 'maid' && s.active));
+
+        unsubscribe = HousekeepingService.listenToActiveTasks(property.id, (realtimeTasks) => {
+          setTasks(realtimeTasks);
+        });
+
+      } catch (error) {
+        toast.error("Erro ao conectar base de governança.");
+      } finally {
+        setLoadingInitial(false);
+      }
+    };
+
+    init();
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [property]);
 
-  if (isLoading || loadingTasks) {
+  if (isLoading || loadingInitial) {
     return <div className="flex h-[80vh] items-center justify-center w-full"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
   }
 
@@ -76,16 +88,15 @@ export default function GovernancePage() {
       userData={userData} 
       tasks={tasks} 
       cabins={cabins} 
-      onRefresh={loadData} 
     />;
   }
 
   const handleAssignTask = async (taskId: string, maidId: string) => {
     if (!maidId) return;
     try {
-      await HousekeepingService.assignTask(property.id, taskId, maidId, userData?.id || "unknown", userData?.fullName || "Admin");
+      // Como é a atribuição rápida do select, substituímos qualquer array existente por este único ID
+      await HousekeepingService.assignTask(property.id, taskId, [maidId], userData?.id || "unknown", userData?.fullName || "Admin");
       toast.success("Tarefa delegada com sucesso!");
-      loadData();
     } catch (e) {
       toast.error("Erro ao delegar tarefa.");
     }
@@ -95,7 +106,6 @@ export default function GovernancePage() {
     try {
       await HousekeepingService.startTask(property.id, taskId, userData?.id || "unknown", userData?.fullName || "Camareira");
       toast.success("Limpeza iniciada! Cronômetro rodando.");
-      loadData();
     } catch (e) {
       toast.error("Erro ao iniciar a tarefa.");
     }
@@ -105,7 +115,6 @@ export default function GovernancePage() {
     try {
       await HousekeepingService.conferTask(property.id, taskId, cabinId, approved, userData?.id || "unknown", userData?.fullName || "Governanta");
       toast.success(approved ? "Cabana liberada!" : "Enviada para repasse.");
-      loadData();
     } catch (e) {
       toast.error("Erro ao conferir a tarefa.");
     }
@@ -122,15 +131,15 @@ export default function GovernancePage() {
         propertyId: property.id,
         cabinId: randomCabinId,
         stayId: "TESTE-MOCK", 
-        type: 'turnover', // Forçado para Turnover para testar o frigobar
+        type: 'turnover', 
         status: 'pending',
+        assignedTo: [], // Garantindo que nascerá como Array
         checklist: [],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
       
       toast.success("Tarefa de Turnover gerada!");
-      loadData();
     } catch (e) {
       toast.error("Erro ao gerar tarefa.");
     }
@@ -155,28 +164,42 @@ export default function GovernancePage() {
           <div className="h-24 border-2 border-dashed border-border rounded-xl flex items-center justify-center text-xs font-bold text-muted-foreground uppercase opacity-50">Vazio</div>
         ) : (
           items.map(task => {
-            const assignedMaid = maids.find(m => m.id === task.assignedTo);
+            // DEFESA CONTRA DADOS ANTIGOS: Garante que assignedTo é um array antes de mapear
+            const safeAssignedArray = Array.isArray(task.assignedTo) 
+              ? task.assignedTo 
+              : (typeof task.assignedTo === 'string' ? [task.assignedTo] : []);
+
+            const assignedNames = safeAssignedArray.length > 0 
+              ? safeAssignedArray.map(id => maids.find(m => m.id === id)?.fullName.split(' ')[0]).filter(Boolean).join(', ') 
+              : "Ninguém";
             
             return (
-              <div key={task.id} className="bg-card border border-border p-4 rounded-xl shadow-sm space-y-4 hover:border-primary/50 transition-colors group">
+              <div key={task.id} className="bg-card border border-border p-4 rounded-xl shadow-sm space-y-4 hover:border-primary/50 transition-colors group relative">
+                
+                <button 
+                  onClick={() => { setSelectedTask(task); setIsManagerOpen(true); }}
+                  className="absolute top-4 right-4 p-2 bg-secondary text-muted-foreground hover:text-primary rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                >
+                  <Edit3 size={16}/>
+                </button>
+
                 <div className="flex justify-between items-start">
-                  <div>
+                  <div className="pr-10">
                     <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">
                       {task.type === 'turnover' ? 'Faxina de Troca' : 'Arrumação Diária'}
                     </p>
                     <h4 className="font-bold text-lg text-foreground leading-none">{cabins[task.cabinId]?.name || "Cabana " + task.cabinId}</h4>
                   </div>
-                  {task.type === 'turnover' ? <AlertCircle size={16} className="text-orange-500" /> : <Coffee size={16} className="text-blue-500" />}
+                  {task.type === 'turnover' ? <AlertCircle size={16} className="text-orange-500 shrink-0" /> : <Coffee size={16} className="text-blue-500 shrink-0" />}
                 </div>
 
                 <div className="space-y-2">
                   {task.status === 'pending' ? (
                     <div className="flex flex-col gap-3">
-                      {/* Seletor de Delegação */}
                       <div className="flex items-center gap-2 bg-secondary/50 p-2 rounded-lg border border-border">
                         <UserPlus size={14} className="text-muted-foreground shrink-0"/>
                         <select 
-                          value={task.assignedTo || ""}
+                          value={safeAssignedArray[0] || ""}
                           onChange={(e) => handleAssignTask(task.id, e.target.value)}
                           className="w-full bg-transparent text-xs font-bold uppercase outline-none cursor-pointer text-foreground"
                         >
@@ -185,7 +208,6 @@ export default function GovernancePage() {
                         </select>
                       </div>
 
-                      {/* Botões Imediatos (Frigobar antes de Iniciar) */}
                       <div className="flex gap-2">
                         {task.type === 'turnover' && (
                           <button onClick={() => { setSelectedTask(task); setIsMinibarOpen(true); }} className="flex-1 py-2 bg-blue-500/10 text-blue-600 hover:bg-blue-600 hover:text-white text-[10px] font-bold uppercase rounded-lg transition-all flex justify-center items-center gap-1">
@@ -198,13 +220,23 @@ export default function GovernancePage() {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-[10px] text-muted-foreground flex items-center gap-1 bg-secondary/50 px-2 py-1 rounded-md w-fit">
-                      <CheckCircle2 size={12}/> Resp: <strong className="text-foreground">{assignedMaid?.fullName || "Não definida"}</strong>
-                    </p>
+                    <button 
+                      onClick={() => { setSelectedTask(task); setIsManagerOpen(true); }}
+                      className="w-full text-left text-[10px] text-muted-foreground flex items-center gap-1 bg-secondary/50 px-2 py-1.5 rounded-md hover:bg-secondary transition-colors"
+                    >
+                      <CheckCircle2 size={12} className="shrink-0"/> 
+                      <span className="truncate">Resp: <strong className="text-foreground">{assignedNames}</strong></span>
+                    </button>
+                  )}
+
+                  {task.observations && (
+                    <div className="text-[10px] text-orange-600 bg-orange-500/10 px-2 py-1.5 rounded-md flex items-start gap-1 line-clamp-2">
+                      <MessageSquare size={12} className="shrink-0 mt-0.5"/>
+                      <span>{task.observations}</span>
+                    </div>
                   )}
                 </div>
 
-                {/* Ações Avançadas (In Progress / Waiting) */}
                 <div className="pt-3 border-t border-border flex gap-2">
                   {task.status === 'in_progress' && (
                     <>
@@ -233,10 +265,19 @@ export default function GovernancePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Quadro de Governança</h1>
-          <p className="text-sm text-muted-foreground mt-1">Gestão de limpezas e delegação de camareiras.</p>
+          <p className="text-sm text-muted-foreground mt-1">Sincronizado em tempo real com a equipe de campo.</p>
         </div>
         <div className="flex gap-3">
-          <button onClick={handleCreateMockTask} className="px-4 py-2 bg-secondary text-foreground rounded-xl text-xs font-bold uppercase hover:bg-accent transition-all border border-border flex items-center gap-2 shadow-sm">
+          {(userData?.role === 'super_admin' || userData?.role === 'admin' || userData?.role === 'governance') && (
+            <button 
+              onClick={() => setIsSettingsOpen(true)} 
+              className="px-4 py-2 bg-secondary text-foreground rounded-xl text-xs font-bold uppercase hover:bg-accent transition-all border border-border flex items-center gap-2 shadow-sm"
+            >
+              <Settings2 size={14}/> Procedimentos
+            </button>
+          )}
+
+          <button onClick={() => { setSelectedTask(null); setIsManagerOpen(true); }} className="px-4 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-bold uppercase hover:opacity-90 transition-all shadow-sm flex items-center gap-2">
             <Plus size={14}/> Nova Tarefa
           </button>
         </div>
@@ -251,8 +292,14 @@ export default function GovernancePage() {
         </div>
       </div>
 
-      <HousekeepingChecklistModal isOpen={isChecklistOpen} onClose={() => setIsChecklistOpen(false)} task={selectedTask} cabinName={selectedTask ? (cabins[selectedTask.cabinId]?.name || "") : ""} onComplete={loadData} />
+      <ChecklistSettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} propertyId={property.id} />
+      <HousekeepingChecklistModal isOpen={isChecklistOpen} onClose={() => setIsChecklistOpen(false)} task={selectedTask} cabinName={selectedTask ? (cabins[selectedTask.cabinId]?.name || "") : ""} onComplete={() => {}} />
       <MinibarModal isOpen={isMinibarOpen} onClose={() => setIsMinibarOpen(false)} task={selectedTask} cabinName={selectedTask ? (cabins[selectedTask.cabinId]?.name || "") : ""} />
+      
+      <HousekeepingTaskManagerModal 
+        isOpen={isManagerOpen} onClose={() => setIsManagerOpen(false)} 
+        propertyId={property.id} task={selectedTask} cabins={cabins} maids={maids} 
+      />
     </div>
   );
 }

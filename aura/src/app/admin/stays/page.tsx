@@ -189,7 +189,7 @@ export default function StaysPage() {
   );
 
   return (
-    <RoleGuard allowedRoles={["super_admin", "admin", "reception"]}>
+    <RoleGuard allowedRoles={["super_admin", "admin", "reception", "governance"]}>
       <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
         
         {/* Header */}

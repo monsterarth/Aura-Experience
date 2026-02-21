@@ -61,8 +61,7 @@ export const Sidebar = () => {
   // ==========================================
   const operacaoItems = [
     { title: "Dashboard", icon: LayoutDashboard, href: "/admin/core/dashboard", roles: ["super_admin"] },
-    { title: "Estadias", icon: Home, href: "/admin/stays", roles: ["super_admin", "admin", "reception"] },
-    { title: "Comunicação", icon: MessageSquare, href: "/admin/comunicacao", roles: ["super_admin", "admin", "reception"] },
+{ title: "Estadias", icon: Home, href: "/admin/stays", roles: ["super_admin", "admin", "reception", "governance"] },    { title: "Comunicação", icon: MessageSquare, href: "/admin/comunicacao", roles: ["super_admin", "admin", "reception"] },
     { title: "Governança", icon: Sparkles, href: "/admin/governance", roles: ["super_admin", "admin", "governance"] },
     { title: "Manutenção", icon: Wrench, href: "/admin/maintenance", roles: ["super_admin", "admin", "maintenance"] },
   ];
@@ -78,8 +77,7 @@ export const Sidebar = () => {
       roles: ["super_admin", "admin"], 
       requireProperty: true 
     },
-    { title: "Cabanas", icon: Building, href: "/admin/cabins", roles: ["super_admin", "admin"] },
-    { title: "Equipe", icon: Users, href: "/admin/staff", roles: ["super_admin", "admin"] },
+{ title: "Cabanas", icon: Building, href: "/admin/cabins", roles: ["super_admin", "admin", "governance"] },    { title: "Equipe", icon: Users, href: "/admin/staff", roles: ["super_admin", "admin"] },
     { title: "Propriedades", icon: Globe, href: "/admin/core/properties", roles: ["super_admin"] },
   ];
 

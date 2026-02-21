@@ -18,30 +18,28 @@ interface MaidMobileAppProps {
   userData: any;
   tasks: HousekeepingTask[];
   cabins: Record<string, Cabin>;
-  onRefresh: () => void;
 }
 
-export function MaidMobileApp({ propertyId, userData, tasks, cabins, onRefresh }: MaidMobileAppProps) {
+export function MaidMobileApp({ propertyId, userData, tasks, cabins }: MaidMobileAppProps) {
   const router = useRouter();
   const [isChecklistOpen, setIsChecklistOpen] = useState(false);
   const [isMinibarOpen, setIsMinibarOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<HousekeepingTask | null>(null);
 
-  // Filtros: Minhas tarefas específicas
-  const myTasks = tasks.filter(t => t.assignedTo === userData?.id && t.status !== 'completed');
+  // A mágica: Verifica se o ID da camareira logada está DENTRO do array de atribuídos
+  const myTasks = tasks.filter(t => t.assignedTo?.includes(userData?.id) && t.status !== 'completed');
+  
   const activeTasks = myTasks.filter(t => t.status === 'in_progress');
   const pendingTasks = myTasks.filter(t => t.status === 'pending');
   const waitingTasks = myTasks.filter(t => t.status === 'waiting_conference');
 
-  // Filtro Global: Check-outs recém efetuados que qualquer camareira pode lançar o frigobar
-  // Mostra tarefas turnover pendentes que NÃO estão na lista direta desta camareira
-  const globalPendingTurnovers = tasks.filter(t => t.status === 'pending' && t.type === 'turnover' && t.assignedTo !== userData?.id);
+  // Filtro Global: Check-outs recém efetuados que ela ainda NÃO assumiu
+  const globalPendingTurnovers = tasks.filter(t => t.status === 'pending' && t.type === 'turnover' && !t.assignedTo?.includes(userData?.id));
 
   const handleStart = async (taskId: string) => {
     try {
-      await HousekeepingService.startTask(propertyId, taskId, userData.id, userData.name);
-      toast.success("Bom trabalho! Limpeza iniciada.");
-      onRefresh();
+      await HousekeepingService.startTask(propertyId, taskId, userData.id, userData.fullName);
+      toast.success("Limpeza iniciada.");
     } catch (e) {
       toast.error("Erro ao iniciar a tarefa.");
     }
@@ -49,9 +47,16 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins, onRefresh }
 
   const handleAssignToMe = async (taskId: string) => {
     try {
-      await HousekeepingService.assignTask(propertyId, taskId, userData.id, userData.id, userData.name);
-      toast.success("Tarefa assumida com sucesso!");
-      onRefresh();
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+      
+      // Adiciona esta camareira à lista sem remover as outras (Delegação Múltipla)
+      const newAssignees = [...(task.assignedTo || []), userData.id];
+      
+      await HousekeepingService.updateTask(
+        propertyId, taskId, { assignedTo: newAssignees }, userData.id, userData.fullName
+      );
+      toast.success("Você assumiu esta tarefa!");
     } catch (e) {
       toast.error("Erro ao assumir a tarefa.");
     }
@@ -66,23 +71,20 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins, onRefresh }
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col max-w-md mx-auto shadow-2xl border-x border-border">
       
-      {/* Header Mobile */}
       <header className="bg-primary text-primary-foreground p-6 rounded-b-[2rem] shadow-md shrink-0">
         <div className="flex justify-between items-start mb-4">
           <div>
-            <h1 className="text-2xl font-black tracking-tight">Olá, {userData?.name?.split(' ')[0]}!</h1>
+            <h1 className="text-2xl font-black tracking-tight">Olá, {userData?.fullName?.split(' ')[0]}!</h1>
             <p className="text-primary-foreground/80 text-sm font-medium">Você tem {pendingTasks.length + activeTasks.length} cabanas para hoje.</p>
           </div>
           <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center font-black text-xl backdrop-blur-sm">
-            {userData?.name?.charAt(0) || "C"}
+            {userData?.fullName?.charAt(0) || "C"}
           </div>
         </div>
       </header>
 
-      {/* Corpo da Lista */}
       <main className="flex-1 p-4 space-y-6 overflow-y-auto custom-scrollbar pb-24">
         
-        {/* TAREFAS DE CHECK-OUT GLOBAIS (FRIGOBAR EXPRESS) */}
         {globalPendingTurnovers.length > 0 && (
           <div className="space-y-3">
             <h2 className="text-xs font-black uppercase tracking-widest text-blue-500 flex items-center gap-2">
@@ -108,7 +110,6 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins, onRefresh }
                   <button 
                     onClick={() => handleAssignToMe(task.id)}
                     className="py-3 px-4 bg-background text-foreground font-black text-xs uppercase rounded-xl border border-border hover:bg-secondary active:scale-95 transition-transform"
-                    title="Assumir Limpeza para mim"
                   >
                     Assumir
                   </button>
@@ -118,7 +119,6 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins, onRefresh }
           </div>
         )}
 
-        {/* TAREFAS EM ANDAMENTO */}
         {activeTasks.length > 0 && (
           <div className="space-y-3">
             <h2 className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2 mt-6">
@@ -155,7 +155,6 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins, onRefresh }
           </div>
         )}
 
-        {/* TAREFAS A FAZER */}
         {pendingTasks.length > 0 && (
           <div className="space-y-3">
             <h2 className="text-xs font-black uppercase tracking-widest text-muted-foreground mt-6">Para Fazer (Minhas)</h2>
@@ -188,7 +187,6 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins, onRefresh }
           </div>
         )}
 
-        {/* TAREFAS AGUARDANDO CONFERÊNCIA */}
         {waitingTasks.length > 0 && (
           <div className="space-y-3">
             <h2 className="text-xs font-black uppercase tracking-widest text-muted-foreground mt-6">Aguardando Governanta</h2>
@@ -215,23 +213,14 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins, onRefresh }
         )}
       </main>
 
-      {/* Footer Fixo */}
       <footer className="p-4 border-t border-border bg-card shrink-0 flex justify-center">
         <button onClick={handleLogout} className="text-xs font-bold uppercase text-muted-foreground hover:text-destructive transition-colors">
           Sair do Sistema
         </button>
       </footer>
 
-      {/* Modais */}
-      <HousekeepingChecklistModal 
-        isOpen={isChecklistOpen} onClose={() => setIsChecklistOpen(false)}
-        task={selectedTask} cabinName={selectedTask ? (cabins[selectedTask.cabinId]?.name || "") : ""}
-        onComplete={onRefresh}
-      />
-      <MinibarModal 
-        isOpen={isMinibarOpen} onClose={() => setIsMinibarOpen(false)}
-        task={selectedTask} cabinName={selectedTask ? (cabins[selectedTask.cabinId]?.name || "") : ""}
-      />
+      <HousekeepingChecklistModal isOpen={isChecklistOpen} onClose={() => setIsChecklistOpen(false)} task={selectedTask} cabinName={selectedTask ? (cabins[selectedTask.cabinId]?.name || "") : ""} onComplete={() => {}} />
+      <MinibarModal isOpen={isMinibarOpen} onClose={() => setIsMinibarOpen(false)} task={selectedTask} cabinName={selectedTask ? (cabins[selectedTask.cabinId]?.name || "") : ""} />
     </div>
   );
 }

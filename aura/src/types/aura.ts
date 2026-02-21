@@ -118,7 +118,9 @@ export interface Cabin {
     model: string;
     manualUrl?: string;
   }[];
+housekeepingItems?: { id: string; label: string }[];
 }
+
 
 // ==========================================
 // MÓDULO DE GOVERNANÇA E CONSUMO
@@ -148,7 +150,7 @@ export interface HousekeepingTask {
   status: 'pending' | 'in_progress' | 'waiting_conference' | 'completed' | 'cancelled';
   
   // Controle de Pessoal
-  assignedTo?: string; // ID da camareira
+  assignedTo?: string[]; // Múltiplas camareiras
   conferredBy?: string; // ID da governanta que aprovou (se turnover)
   
   // Controle de Tempo (Cronômetro)
@@ -303,6 +305,8 @@ export interface Stay {
     preCheckinSent: boolean;
     remindersCount: number;
   };
+
+  housekeepingItems?: { id: string; label: string }[];
   
   createdAt: Timestamp;
 }
