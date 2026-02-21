@@ -7,7 +7,7 @@ import {
   MapPin, Phone, Mail, Car, FileText, 
   Users, CheckCircle, Clock, Plane, 
   Briefcase, PawPrint, Trash2, Plus,
-  LogOut, RotateCcw, Sparkles
+  LogOut, RotateCcw, Sparkles, Receipt, RefreshCw, ShoppingCart
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -16,7 +16,7 @@ import { StayService } from "@/services/stay-service";
 import { GuestService } from "@/services/guest-service";
 import { CabinService } from "@/services/cabin-service";
 import { cn } from "@/lib/utils";
-import { Stay, Guest, Cabin } from "@/types/aura";
+import { Stay, Guest, Cabin, FolioItem } from "@/types/aura";
 
 interface StayDetailsModalProps {
   isOpen: boolean;
@@ -27,7 +27,7 @@ interface StayDetailsModalProps {
   onUpdate?: () => void;
 }
 
-type TabType = 'reserva' | 'hospede' | 'fnrh' | 'acompanhantes_pet';
+type TabType = 'reserva' | 'hospede' | 'fnrh' | 'acompanhantes_pet' | 'conta';
 
 const formatDateForInput = (timestamp: any) => {
   if (!timestamp?.toDate) return "";
@@ -71,7 +71,6 @@ const Select = ({ children, ...props }: React.SelectHTMLAttributes<HTMLSelectEle
 export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, onUpdate }: StayDetailsModalProps) {
   const { userData } = useAuth(); 
   
-  // Flag de segurança
   const isGovOnly = userData?.role === 'governance';
   
   const [isEditing, setIsEditing] = useState(false);
@@ -85,8 +84,15 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const [checkInStr, setCheckInStr] = useState("");
   const [checkOutStr, setCheckOutStr] = useState("");
 
-  // Controla se um campo vital está bloqueado (Desativado se não estiver editando OU se for apenas Governanta)
+  // A MUDANÇA ESTÁ AQUI: Agora a constante isEditing já existe!
   const isCoreFieldLocked = !isEditing || isGovOnly;
+
+  // ==========================================
+  // ESTADOS DO FOLIO (CONTA & CONSUMO)
+  // ==========================================
+  const [folioItems, setFolioItems] = useState<FolioItem[]>([]);
+  const [loadingFolio, setLoadingFolio] = useState(false);
+  const [newFolioItem, setNewFolioItem] = useState({ description: "", quantity: 1, unitPrice: 0 });
 
   useEffect(() => {
     if (isOpen && stay?.propertyId) {
@@ -130,12 +136,75 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
             city: "", state: "", zipCode: "", country: "Brasil"
         }
       });
+      
+      // Carrega o extrato sempre que abrir o modal
+      loadFolio();
     }
   }, [stay, guest]);
 
   useEffect(() => {
     initData();
   }, [initData]);
+
+  const loadFolio = async () => {
+    if (!stay) return;
+    setLoadingFolio(true);
+    try {
+      const items = await StayService.getStayFolio(stay.propertyId, stay.id);
+      setFolioItems(items);
+    } catch (error) {
+      toast.error("Erro ao carregar o extrato.");
+    } finally {
+      setLoadingFolio(false);
+    }
+  };
+
+  const handleAddFolioItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFolioItem.description || newFolioItem.quantity <= 0 || newFolioItem.unitPrice < 0) {
+      return toast.error("Preencha os campos do item corretamente.");
+    }
+    setLoadingFolio(true);
+    try {
+      await StayService.addFolioItemManual(
+        stay.propertyId, 
+        stay.id, 
+        {
+          description: newFolioItem.description,
+          quantity: newFolioItem.quantity,
+          unitPrice: newFolioItem.unitPrice,
+          totalPrice: newFolioItem.quantity * newFolioItem.unitPrice,
+          category: 'other',
+          addedBy: userData?.id || "SYSTEM"
+        },
+        userData?.id || "unknown",
+        userData?.fullName || "Recepção"
+      );
+      toast.success("Item adicionado à conta.");
+      setNewFolioItem({ description: "", quantity: 1, unitPrice: 0 });
+      loadFolio();
+    } catch (error) {
+      toast.error("Erro ao adicionar item.");
+    } finally {
+      setLoadingFolio(false);
+    }
+  };
+
+  const handleDeleteFolioItem = async (itemId: string, description: string) => {
+    if (!confirm(`Deseja realmente estornar o item "${description}"?`)) return;
+    setLoadingFolio(true);
+    try {
+      await StayService.deleteFolioItem(
+        stay.propertyId, stay.id, itemId, description, userData?.id || "unknown", userData?.fullName || "Recepção"
+      );
+      toast.success("Item estornado com sucesso.");
+      loadFolio();
+    } catch (error) {
+      toast.error("Erro ao estornar item.");
+    } finally {
+      setLoadingFolio(false);
+    }
+  };
 
   if (!isOpen || !stay) return null;
 
@@ -146,7 +215,6 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
   const handleSave = async () => {
     const cleanHousekeeping = formData.housekeepingItems?.filter(i => i.label.trim() !== "") || [];
-
     setLoading(true);
     try {
       const parsedCheckIn = parseDateFromInput(checkInStr, stay.checkIn);
@@ -203,17 +271,16 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     }
   };
 
+  // Funções de Arrays Dinâmicos
   const updateAdditionalGuest = (index: number, field: string, value: string) => {
       const newGuests = [...(formData.additionalGuests || [])];
       (newGuests[index] as any)[field] = value;
       setFormData({ ...formData, additionalGuests: newGuests });
   };
-
   const removeAdditionalGuest = (index: number) => {
       const newGuests = (formData.additionalGuests || []).filter((_, i) => i !== index);
       setFormData({ ...formData, additionalGuests: newGuests });
   };
-
   const addAdditionalGuest = (type: 'adult' | 'child' | 'free') => {
       const newGuests = [...(formData.additionalGuests || [])];
       newGuests.push({ id: Date.now().toString(), type, fullName: "", document: "" });
@@ -224,12 +291,10 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     const newItems = [...(formData.housekeepingItems || []), { id: Date.now().toString(), label: "" }];
     setFormData({ ...formData, housekeepingItems: newItems });
   };
-
   const updateStayHousekeepingItem = (id: string, label: string) => {
       const newItems = (formData.housekeepingItems || []).map(i => i.id === id ? { ...i, label } : i);
       setFormData({ ...formData, housekeepingItems: newItems });
   };
-
   const removeStayHousekeepingItem = (id: string) => {
       const newItems = (formData.housekeepingItems || []).filter(i => i.id !== id);
       setFormData({ ...formData, housekeepingItems: newItems });
@@ -251,6 +316,8 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     cancelled: { label: 'Cancelado', class: 'text-red-600 border-red-600/30' },
   };
   const currentStatus = statusMap[stay.status] || { label: stay.status, class: 'text-muted-foreground border-border' };
+
+  const totalFolio = folioItems.reduce((acc, item) => acc + item.totalPrice, 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
@@ -275,7 +342,6 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
           <div className="flex items-center gap-2">
             {!isEditing ? (
               <>
-                {/* O botão check-out foi mantido para a governanta poder forçar, se necessário */}
                 {stay.status === 'active' && (
                   <button onClick={handleToggleCheckOut} disabled={loading} className="px-4 py-2 bg-orange-500/10 text-orange-600 hover:bg-orange-500 hover:text-white rounded-xl text-xs font-bold uppercase transition-all flex items-center gap-2">
                     <LogOut size={16} /> Check-out
@@ -310,6 +376,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                 { id: 'hospede', label: 'Titular', icon: User },
                 { id: 'acompanhantes_pet', label: 'Hóspedes Extras & Pet', icon: Users }, 
                 { id: 'fnrh', label: 'Viagem & Carro', icon: Plane },
+                { id: 'conta', label: 'Conta & Consumo', icon: Receipt },
             ].map(tab => (
                 <button
                     key={tab.id}
@@ -326,6 +393,120 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-background">
           
+          {/* TAB: CONTA E CONSUMO (FOLIO) */}
+          {activeTab === 'conta' && (
+             <div className="flex flex-col h-full space-y-6 animate-in slide-in-from-right-4 duration-300">
+                
+                {/* Header do Extrato */}
+                <div className="flex items-center justify-between border-b border-border pb-4">
+                  <div>
+                    <h3 className="text-xl font-black text-foreground flex items-center gap-2">Extrato de Consumo</h3>
+                    <p className="text-sm text-muted-foreground">Itens do frigobar e vendas balcão.</p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Total Extra</p>
+                      <p className="text-2xl font-black text-primary">R$ {totalFolio.toFixed(2)}</p>
+                    </div>
+                    <button 
+                      onClick={loadFolio} 
+                      disabled={loadingFolio}
+                      className="p-3 bg-secondary text-foreground rounded-xl hover:bg-accent transition-all disabled:opacity-50"
+                      title="Sincronizar Lançamentos"
+                    >
+                      <RefreshCw size={20} className={loadingFolio ? "animate-spin" : ""} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-8 items-start">
+                  {/* Tabela de Lançamentos */}
+                  <div className="flex-1 bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+                    <table className="w-full text-left">
+                      <thead className="bg-muted/50 border-b border-border">
+                        <tr>
+                          <th className="p-4 text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Item / Descrição</th>
+                          <th className="p-4 text-[10px] font-bold uppercase text-muted-foreground tracking-wider text-center">Qtd</th>
+                          <th className="p-4 text-[10px] font-bold uppercase text-muted-foreground tracking-wider text-right">Valor Unit.</th>
+                          <th className="p-4 text-[10px] font-bold uppercase text-muted-foreground tracking-wider text-right">Subtotal</th>
+                          {!isGovOnly && <th className="p-4 w-12"></th>}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border text-sm">
+                        {folioItems.length === 0 ? (
+                          <tr><td colSpan={5} className="p-8 text-center text-muted-foreground font-medium">Nenhum consumo registrado nesta estadia.</td></tr>
+                        ) : (
+                          folioItems.map((item) => (
+                            <tr key={item.id} className="hover:bg-muted/20 transition-colors">
+                              <td className="p-4 font-bold text-foreground">
+                                {item.description}
+                                <div className="text-[9px] font-mono text-muted-foreground uppercase mt-1 flex items-center gap-1">
+                                  <Clock size={10}/> {item.createdAt?.toDate ? format(item.createdAt.toDate(), "dd/MM HH:mm") : 'Agora'}
+                                </div>
+                              </td>
+                              <td className="p-4 text-center font-bold text-muted-foreground">{item.quantity}x</td>
+                              <td className="p-4 text-right text-muted-foreground">R$ {item.unitPrice.toFixed(2)}</td>
+                              <td className="p-4 text-right font-black text-foreground">R$ {item.totalPrice.toFixed(2)}</td>
+                              {!isGovOnly && (
+                                <td className="p-4 text-right">
+                                  <button onClick={() => handleDeleteFolioItem(item.id, item.description)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors" title="Estornar Lançamento">
+                                    <Trash2 size={16} />
+                                  </button>
+                                </td>
+                              )}
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Lançamento Rápido (Recepção) */}
+                  {!isGovOnly && (
+                    <form onSubmit={handleAddFolioItem} className="w-72 bg-secondary/50 border border-border p-5 rounded-2xl space-y-4 shrink-0">
+                      <h4 className="font-bold flex items-center gap-2 text-sm uppercase tracking-widest text-primary"><ShoppingCart size={16}/> Lançamento Avulso</h4>
+                      
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase text-muted-foreground">Produto / Serviço</label>
+                        <input 
+                          required
+                          value={newFolioItem.description}
+                          onChange={e => setNewFolioItem({...newFolioItem, description: e.target.value})}
+                          placeholder="Ex: Lenha Extra"
+                          className="w-full bg-background border border-border p-3 rounded-xl text-xs outline-none focus:border-primary text-foreground"
+                        />
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase text-muted-foreground">Qtd</label>
+                          <input 
+                            type="number" min="1" required
+                            value={newFolioItem.quantity}
+                            onChange={e => setNewFolioItem({...newFolioItem, quantity: Number(e.target.value)})}
+                            className="w-full bg-background border border-border p-3 rounded-xl text-xs outline-none focus:border-primary text-foreground"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase text-muted-foreground">R$ Unitário</label>
+                          <input 
+                            type="number" step="0.01" min="0" required
+                            value={newFolioItem.unitPrice || ""}
+                            onChange={e => setNewFolioItem({...newFolioItem, unitPrice: Number(e.target.value)})}
+                            className="w-full bg-background border border-border p-3 rounded-xl text-xs outline-none focus:border-primary text-foreground"
+                          />
+                        </div>
+                      </div>
+
+                      <button type="submit" disabled={loadingFolio} className="w-full py-3 bg-primary text-primary-foreground font-black text-[10px] uppercase tracking-widest rounded-xl hover:opacity-90 transition-all disabled:opacity-50">
+                        Adicionar à Conta
+                      </button>
+                    </form>
+                  )}
+                </div>
+             </div>
+          )}
+
           {activeTab === 'reserva' && (
              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in slide-in-from-right-4 duration-300">
                 <div className="space-y-4">
@@ -372,7 +553,6 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                     </div>
                     <div>
                         <Label icon={CheckCircle}>Montagem das Camas</Label>
-                        {/* Notar que Montagem NUNCA é isCoreFieldLocked. Governanta precisa de o editar. */}
                         <Select disabled={!isEditing} value={formData.roomSetup} onChange={e => setFormData({...formData, roomSetup: e.target.value as any})}>
                             <option value="double">Casal (Double)</option>
                             <option value="twin">Solteiro (Twin)</option>
@@ -386,7 +566,6 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                     </div>
                 </div>
 
-                {/* MÓDULO DE PEDIDOS ESPECIAIS (LIVRE PARA GOVERNANÇA) */}
                 <div className="space-y-4 col-span-1 md:col-span-2 border-t border-border pt-6">
                     <div className="flex justify-between items-center">
                         <h3 className="text-sm font-bold text-foreground flex items-center gap-2">

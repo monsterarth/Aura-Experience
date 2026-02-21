@@ -13,9 +13,10 @@ import {
   orderBy,
   collectionGroup,
   limit,
-  setDoc
+  setDoc,
+  deleteDoc
 } from "firebase/firestore";
-import { Stay, Guest, Cabin, HousekeepingTask } from "@/types/aura";
+import { Stay, Guest, Cabin, FolioItem } from "@/types/aura";
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
 
@@ -319,6 +320,7 @@ export const StayService = {
       stayId, // Vinculamos a estadia encerrada para permitir lançamento de consumo de última hora
       type: 'turnover',
       status: 'pending',
+      assignedTo: [], // Mantido como array
       checklist: [], // Será preenchido pelo padrão no momento em que a camareira abrir
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
@@ -428,6 +430,64 @@ export const StayService = {
       entityId: stayId,
       details: "Ficha de hospedagem editada pela recepção.",
       newData: data
+    });
+  },
+
+  // ==========================================
+  // MÓDULO DE CONTA & CONSUMO (FOLIO)
+  // ==========================================
+
+  /**
+   * Busca o extrato completo da hospedagem sob demanda (On-Demand)
+   */
+  async getStayFolio(propertyId: string, stayId: string): Promise<FolioItem[]> {
+    const q = query(
+      collection(db, "properties", propertyId, "stays", stayId, "folio"),
+      orderBy("createdAt", "desc")
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() } as FolioItem));
+  },
+
+  /**
+   * Lança um item avulso na conta (Usado pela Recepção para venda de extras)
+   */
+  async addFolioItemManual(propertyId: string, stayId: string, item: Omit<FolioItem, 'id' | 'createdAt'>, actorId: string, actorName: string) {
+    const itemId = uuidv4();
+    const folioRef = doc(db, "properties", propertyId, "stays", stayId, "folio", itemId);
+    
+    await setDoc(folioRef, {
+      ...item,
+      id: itemId,
+      createdAt: serverTimestamp()
+    });
+
+    await AuditService.log({
+      propertyId,
+      userId: actorId,
+      userName: actorName,
+      action: "UPDATE",
+      entity: "STAY",
+      entityId: stayId,
+      details: `Lançou item na conta: ${item.quantity}x ${item.description} (R$ ${item.totalPrice.toFixed(2)})`
+    });
+  },
+
+  /**
+   * Estorna/Remove um item da conta
+   */
+  async deleteFolioItem(propertyId: string, stayId: string, itemId: string, itemDescription: string, actorId: string, actorName: string) {
+    const folioRef = doc(db, "properties", propertyId, "stays", stayId, "folio", itemId);
+    await deleteDoc(folioRef);
+
+    await AuditService.log({
+      propertyId,
+      userId: actorId,
+      userName: actorName,
+      action: "DELETE",
+      entity: "STAY",
+      entityId: stayId,
+      details: `Estornou o item da conta: ${itemDescription}`
     });
   }
 };
