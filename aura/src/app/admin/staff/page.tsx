@@ -19,6 +19,21 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+// Mapa para exibir os cargos de forma amigável na tabela
+const roleLabels: Record<string, string> = {
+  super_admin: "Super Admin",
+  admin: "Administrador",
+  reception: "Recepção",
+  governance: "Governanta (Gestão)",
+  maid: "Camareira (Mobile)",
+  maintenance: "Manutenção (Gestão)",
+  technician: "Técnico (Mobile)",
+  kitchen: "Cozinha (Gestão)",
+  waiter: "Garçom (Mobile)",
+  porter: "Porteiro (Mobile)",
+  marketing: "Marketing"
+};
+
 export default function StaffManagementPage() {
   const { userData } = useAuth();
   const { property } = useProperty();
@@ -133,12 +148,24 @@ export default function StaffManagementPage() {
                   onChange={e => setFormData({...formData, role: e.target.value as UserRole})}
                   className="w-full p-2 bg-background border rounded-lg outline-none focus:ring-2 focus:ring-primary/20"
                 >
-                  <option value="reception">Recepção</option>
-                  <option value="governance">Governança</option>
-                  <option value="maintenance">Manutenção</option>
-                  <option value="marketing">Marketing</option>
-                  <option value="kitchen">Cozinha/Salão</option>
-                  <option value="admin">Administrador</option>
+                  <optgroup label="Administrativo e Recepção">
+                    <option value="admin">Administrador</option>
+                    <option value="reception">Recepção</option>
+                    <option value="marketing">Marketing</option>
+                  </optgroup>
+                  <optgroup label="Governança">
+                    <option value="governance">Governanta (Gestão)</option>
+                    <option value="maid">Camareira (Mobile)</option>
+                  </optgroup>
+                  <optgroup label="Manutenção">
+                    <option value="maintenance">Manutenção (Gestão)</option>
+                    <option value="technician">Técnico (Mobile)</option>
+                  </optgroup>
+                  <optgroup label="A&B / Portaria">
+                    <option value="kitchen">Cozinha/Salão (Gestão)</option>
+                    <option value="waiter">Garçom (Mobile)</option>
+                    <option value="porter">Porteiro (Mobile)</option>
+                  </optgroup>
                 </select>
               </div>
 
@@ -175,7 +202,7 @@ export default function StaffManagementPage() {
                       </td>
                       <td className="p-4">
                         <span className="px-2 py-1 bg-primary/10 text-primary text-[10px] font-bold uppercase rounded-md">
-                          {m.role.replace('_', ' ')}
+                          {roleLabels[m.role] || m.role}
                         </span>
                       </td>
                       <td className="p-4">

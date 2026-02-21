@@ -1,16 +1,17 @@
 // src/components/admin/StayDetailsModal.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { 
   X, Edit2, Save, Calendar, User, 
   MapPin, Phone, Mail, Car, FileText, 
   Users, CheckCircle, Clock, Plane, 
-  Briefcase, PawPrint, Trash2, Plus
+  Briefcase, PawPrint, Trash2, Plus,
+  LogOut, RotateCcw
 } from "lucide-react";
 import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import { useAuth } from "@/context/AuthContext";
 import { StayService } from "@/services/stay-service";
 import { GuestService } from "@/services/guest-service";
 import { CabinService } from "@/services/cabin-service";
@@ -28,7 +29,6 @@ interface StayDetailsModalProps {
 
 type TabType = 'reserva' | 'hospede' | 'fnrh' | 'acompanhantes_pet';
 
-// Funções utilitárias para converter Timestamp do Firebase em YYYY-MM-DD e vice-versa
 const formatDateForInput = (timestamp: any) => {
   if (!timestamp?.toDate) return "";
   const d = timestamp.toDate();
@@ -43,7 +43,38 @@ const parseDateFromInput = (dateStr: string, originalTimestamp: any) => {
   return d;
 };
 
+// ==========================================
+// COMPONENTES DE UI EXTRAÍDOS
+// ==========================================
+const Label = ({ icon: Icon, children }: { icon: any, children: React.ReactNode }) => (
+  <label className="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground mb-1.5">
+    <Icon size={12} className="text-primary" /> {children}
+  </label>
+);
+
+const Input = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
+  <input 
+    {...props} 
+    className={cn(
+      "w-full bg-background border border-border rounded-xl p-2.5 text-foreground text-xs outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed [color-scheme:light] dark:[color-scheme:dark]",
+      props.className
+    )}
+  />
+);
+
+const Select = ({ children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) => (
+  <select 
+    {...props}
+    className="w-full bg-background border border-border rounded-xl p-2.5 text-foreground text-xs outline-none focus:border-primary/50 transition-colors appearance-none disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+      {children}
+  </select>
+);
+// ==========================================
+
 export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, onUpdate }: StayDetailsModalProps) {
+  const { userData } = useAuth(); // Importação do usuário logado para a Auditoria
+  
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('reserva');
@@ -52,7 +83,6 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const [guestData, setGuestData] = useState<Partial<Guest>>({});
   const [cabins, setCabins] = useState<Cabin[]>([]);
 
-  // Estados locais para edição de datas
   const [checkInStr, setCheckInStr] = useState("");
   const [checkOutStr, setCheckOutStr] = useState("");
 
@@ -62,7 +92,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     }
   }, [isOpen, stay?.propertyId]);
 
-  useEffect(() => {
+  const initData = useCallback(() => {
     if (stay && guest) {
       setCheckInStr(formatDateForInput(stay.checkIn));
       setCheckOutStr(formatDateForInput(stay.checkOut));
@@ -98,9 +128,18 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
         }
       });
     }
-  }, [stay, guest, isEditing]); // Reseta ao ligar/desligar edição
+  }, [stay, guest]);
+
+  useEffect(() => {
+    initData();
+  }, [initData]);
 
   if (!isOpen || !stay) return null;
+
+  const handleCancel = () => {
+    initData(); 
+    setIsEditing(false);
+  };
 
   const handleSave = async () => {
     setLoading(true);
@@ -115,13 +154,13 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
       };
 
       await Promise.all([
-        StayService.updateStayData(stay.propertyId, stay.id, stayPayload, "ADMIN", "Recepção"),
+        StayService.updateStayData(stay.propertyId, stay.id, stayPayload, userData?.id || "ADMIN", userData?.fullName || "Recepção"),
         GuestService.upsertGuest(stay.propertyId, { id: guest.id, ...guestData } as Guest)
       ]);
 
       toast.success("Ficha da hospedagem atualizada!");
       setIsEditing(false);
-      if (onUpdate) onUpdate();
+      if (onUpdate) onUpdate(); 
     } catch (error) {
       console.error(error);
       toast.error("Erro ao salvar alterações.");
@@ -130,7 +169,38 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     }
   };
 
-  // Funções de Acompanhantes
+  // ==========================================
+  // LÓGICA DE CHECK-OUT E REATIVAÇÃO
+  // ==========================================
+  const handleToggleCheckOut = async () => {
+    const isFinishing = stay.status === 'active';
+    const actionText = isFinishing ? "encerrar esta estadia (Check-out) e enviar a cabana para limpeza" : "reativar esta estadia e colocar a cabana como ocupada";
+    
+    if (!window.confirm(`Tem certeza que deseja ${actionText}?`)) return;
+
+    setLoading(true);
+    try {
+      const actorId = userData?.id || "ADMIN";
+      const actorName = userData?.fullName || "Recepção";
+
+      if (isFinishing) {
+        await StayService.performCheckOut(stay.propertyId, stay.id, actorId, actorName);
+        toast.success("Check-out realizado com sucesso!");
+      } else {
+        await StayService.undoCheckOut(stay.propertyId, stay.id, stay.cabinId, actorId, actorName);
+        toast.success("Estadia reativada com sucesso!");
+      }
+
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error(error);
+      toast.error(`Erro ao ${isFinishing ? 'realizar check-out' : 'reativar estadia'}.`);
+    } finally {
+      setLoading(false);
+    }
+  };
+  // ==========================================
+
   const updateAdditionalGuest = (index: number, field: string, value: string) => {
       const newGuests = [...(formData.additionalGuests || [])];
       (newGuests[index] as any)[field] = value;
@@ -148,7 +218,6 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
       setFormData({ ...formData, additionalGuests: newGuests });
   };
 
-  // Cálculos de Validação de Ocupação
   const currentAdults = 1 + (formData.additionalGuests?.filter(g => g.type === 'adult').length || 0); 
   const bookedAdults = formData.counts?.adults || 1;
   const isAdultsMismatch = currentAdults !== bookedAdults;
@@ -157,33 +226,15 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const bookedChildren = formData.counts?.children || 0;
   const isChildrenMismatch = currentChildren !== bookedChildren;
 
-  // Componentes de UI padronizados com as variáveis do Tema (Substituí as cores hardcoded)
-  const Label = ({ icon: Icon, children }: { icon: any, children: React.ReactNode }) => (
-    <label className="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground mb-1.5">
-      <Icon size={12} className="text-primary" /> {children}
-    </label>
-  );
-
-  const Input = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
-    <input 
-      {...props} 
-      disabled={!isEditing}
-      className={cn(
-        "w-full bg-background border border-border rounded-xl p-2.5 text-foreground text-xs outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed [color-scheme:light] dark:[color-scheme:dark]",
-        props.className
-      )}
-    />
-  );
-
-  const Select = ({ children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) => (
-    <select 
-      {...props}
-      disabled={!isEditing}
-      className="w-full bg-background border border-border rounded-xl p-2.5 text-foreground text-xs outline-none focus:border-primary/50 transition-colors appearance-none disabled:opacity-50"
-    >
-        {children}
-    </select>
-  );
+  // Renderizador elegante de Status
+  const statusMap: any = {
+    pending: { label: 'Pendente', class: 'text-yellow-600 border-yellow-600/30' },
+    pre_checkin_done: { label: 'Pré Check-in OK', class: 'text-blue-600 border-blue-600/30' },
+    active: { label: 'Hospedado', class: 'text-green-600 border-green-600/30' },
+    finished: { label: 'Encerrado', class: 'text-zinc-500 border-zinc-500/30' },
+    cancelled: { label: 'Cancelado', class: 'text-red-600 border-red-600/30' },
+  };
+  const currentStatus = statusMap[stay.status] || { label: stay.status, class: 'text-muted-foreground border-border' };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
@@ -200,11 +251,9 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                 {guest?.fullName}
                 <span className={cn(
                   "px-2 py-0.5 rounded-full text-[9px] uppercase font-black tracking-wider border bg-background",
-                  stay.status === 'active' ? "text-green-600 border-green-600/30" :
-                  stay.status === 'pending' ? "text-yellow-600 border-yellow-600/30" :
-                  "text-muted-foreground border-border"
+                  currentStatus.class
                 )}>
-                  {stay.status === 'active' ? 'Hospedado' : stay.status === 'pending' ? 'Pendente' : stay.status}
+                  {currentStatus.label}
                 </span>
               </h2>
               <p className="text-xs text-muted-foreground font-medium mt-0.5">Reserva: <span className="font-mono">{stay.accessCode}</span></p>
@@ -213,12 +262,26 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
           <div className="flex items-center gap-2">
             {!isEditing ? (
-              <button onClick={() => setIsEditing(true)} className="px-4 py-2 hover:bg-accent rounded-xl text-muted-foreground hover:text-foreground transition-all flex items-center gap-2 text-xs font-bold uppercase">
-                  <Edit2 size={16} /> Editar
-              </button>
+              <>
+                {stay.status === 'active' && (
+                  <button onClick={handleToggleCheckOut} disabled={loading} className="px-4 py-2 bg-orange-500/10 text-orange-600 hover:bg-orange-500 hover:text-white rounded-xl text-xs font-bold uppercase transition-all flex items-center gap-2">
+                    <LogOut size={16} /> Check-out
+                  </button>
+                )}
+                
+                {stay.status === 'finished' && (
+                  <button onClick={handleToggleCheckOut} disabled={loading} className="px-4 py-2 bg-blue-500/10 text-blue-600 hover:bg-blue-500 hover:text-white rounded-xl text-xs font-bold uppercase transition-all flex items-center gap-2">
+                    <RotateCcw size={16} /> Reativar
+                  </button>
+                )}
+
+                <button onClick={() => setIsEditing(true)} className="px-4 py-2 hover:bg-accent rounded-xl text-muted-foreground hover:text-foreground transition-all flex items-center gap-2 text-xs font-bold uppercase">
+                    <Edit2 size={16} /> Editar
+                </button>
+              </>
             ) : (
               <>
-                <button onClick={() => setIsEditing(false)} className="px-4 py-2 hover:bg-accent rounded-xl text-muted-foreground hover:text-foreground text-xs font-bold uppercase transition-all">Cancelar</button>
+                <button onClick={handleCancel} className="px-4 py-2 hover:bg-accent rounded-xl text-muted-foreground hover:text-foreground text-xs font-bold uppercase transition-all">Cancelar</button>
                 <button onClick={handleSave} disabled={loading} className="px-6 py-2 bg-primary hover:opacity-90 text-primary-foreground rounded-xl text-xs font-bold uppercase flex items-center gap-2 transition-all active:scale-95 shadow-sm">
                     {loading ? "Salvando..." : <><Save size={14} /> Salvar</>}
                 </button>
@@ -261,7 +324,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                         <div>
                             <Label icon={Clock}>Check-in</Label>
                             {isEditing ? (
-                                <Input type="date" value={checkInStr} onChange={e => setCheckInStr(e.target.value)} />
+                                <Input disabled={!isEditing} type="date" value={checkInStr} onChange={e => setCheckInStr(e.target.value)} />
                             ) : (
                                 <div className="text-foreground font-mono bg-secondary p-3 rounded-xl text-sm border border-border">
                                     {stay.checkIn?.toDate ? format(stay.checkIn.toDate(), "dd/MM/yyyy") : "Data inválida"}
@@ -271,7 +334,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                         <div>
                             <Label icon={Clock}>Check-out</Label>
                             {isEditing ? (
-                                <Input type="date" value={checkOutStr} onChange={e => setCheckOutStr(e.target.value)} />
+                                <Input disabled={!isEditing} type="date" value={checkOutStr} onChange={e => setCheckOutStr(e.target.value)} />
                             ) : (
                                 <div className="text-foreground font-mono bg-secondary p-3 rounded-xl text-sm border border-border">
                                     {stay.checkOut?.toDate ? format(stay.checkOut.toDate(), "dd/MM/yyyy") : "Data inválida"}
@@ -280,11 +343,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                         </div>
                         <div className="col-span-2">
                              <Label icon={Clock}>Previsão de Chegada</Label>
-                             <Input 
-                                type="time" 
-                                value={formData.expectedArrivalTime} 
-                                onChange={e => setFormData({...formData, expectedArrivalTime: e.target.value})} 
-                             />
+                             <Input disabled={!isEditing} type="time" value={formData.expectedArrivalTime} onChange={e => setFormData({...formData, expectedArrivalTime: e.target.value})} />
                         </div>
                     </div>
                 </div>
@@ -294,7 +353,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                     <div>
                         <Label icon={CheckCircle}>Acomodação</Label>
                         {isEditing ? (
-                            <Select value={formData.cabinId} onChange={e => setFormData({...formData, cabinId: e.target.value})}>
+                            <Select disabled={!isEditing} value={formData.cabinId} onChange={e => setFormData({...formData, cabinId: e.target.value})}>
                                 {cabins.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </Select>
                         ) : (
@@ -303,7 +362,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                     </div>
                     <div>
                         <Label icon={CheckCircle}>Montagem das Camas</Label>
-                        <Select value={formData.roomSetup} onChange={e => setFormData({...formData, roomSetup: e.target.value as any})}>
+                        <Select disabled={!isEditing} value={formData.roomSetup} onChange={e => setFormData({...formData, roomSetup: e.target.value as any})}>
                             <option value="double">Casal (Double)</option>
                             <option value="twin">Solteiro (Twin)</option>
                             <option value="triple">Triplo</option>
@@ -312,7 +371,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                     </div>
                     <div>
                          <Label icon={FileText}>Notas de Montagem</Label>
-                         <Input value={formData.roomSetupNotes} onChange={e => setFormData({...formData, roomSetupNotes: e.target.value})} placeholder="Ex: Berço extra, travesseiro pena..." />
+                         <Input disabled={!isEditing} value={formData.roomSetupNotes} onChange={e => setFormData({...formData, roomSetupNotes: e.target.value})} placeholder="Ex: Berço extra, travesseiro pena..." />
                     </div>
                 </div>
              </div>
@@ -325,16 +384,16 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                       <h3 className="text-sm font-bold text-foreground border-b border-border pb-2">Dados Pessoais</h3>
                       <div>
                           <Label icon={User}>Nome Completo</Label>
-                          <Input value={guestData.fullName} onChange={e => setGuestData({...guestData, fullName: e.target.value})} />
+                          <Input disabled={!isEditing} value={guestData.fullName} onChange={e => setGuestData({...guestData, fullName: e.target.value})} />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                             <Label icon={FileText}>Nascimento</Label>
-                            <Input type="date" value={guestData.birthDate} onChange={e => setGuestData({...guestData, birthDate: e.target.value})} />
+                            <Input disabled={!isEditing} type="date" value={guestData.birthDate} onChange={e => setGuestData({...guestData, birthDate: e.target.value})} />
                         </div>
                         <div>
                             <Label icon={User}>Gênero</Label>
-                            <Select value={guestData.gender} onChange={e => setGuestData({...guestData, gender: e.target.value as any})}>
+                            <Select disabled={!isEditing} value={guestData.gender} onChange={e => setGuestData({...guestData, gender: e.target.value as any})}>
                                 <option value="M">Masculino</option>
                                 <option value="F">Feminino</option>
                                 <option value="Outro">Outro</option>
@@ -344,11 +403,11 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                       <div className="grid grid-cols-2 gap-4">
                          <div>
                             <Label icon={FileText}>Documento ({guestData.document?.type})</Label>
-                            <Input value={guestData.document?.number} onChange={e => setGuestData({...guestData, document: { ...guestData.document!, number: e.target.value }})} />
+                            <Input disabled={!isEditing} value={guestData.document?.number} onChange={e => setGuestData({...guestData, document: { ...guestData.document!, number: e.target.value }})} />
                          </div>
                          <div>
                             <Label icon={Briefcase}>Profissão</Label>
-                            <Input value={guestData.occupation} onChange={e => setGuestData({...guestData, occupation: e.target.value})} />
+                            <Input disabled={!isEditing} value={guestData.occupation} onChange={e => setGuestData({...guestData, occupation: e.target.value})} />
                          </div>
                       </div>
                   </div>
@@ -358,23 +417,23 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                       <div className="grid grid-cols-2 gap-4">
                          <div>
                             <Label icon={Phone}>Telefone</Label>
-                            <Input value={guestData.phone} onChange={e => setGuestData({...guestData, phone: e.target.value})} />
+                            <Input disabled={!isEditing} value={guestData.phone} onChange={e => setGuestData({...guestData, phone: e.target.value})} />
                          </div>
                          <div>
                             <Label icon={Mail}>Email</Label>
-                            <Input value={guestData.email} onChange={e => setGuestData({...guestData, email: e.target.value})} />
+                            <Input disabled={!isEditing} value={guestData.email} onChange={e => setGuestData({...guestData, email: e.target.value})} />
                          </div>
                       </div>
                       <div className="space-y-2 p-4 bg-secondary/50 rounded-2xl border border-border">
                           <Label icon={MapPin}>Endereço Completo</Label>
-                          <Input placeholder="CEP" value={guestData.address?.zipCode} onChange={e => setGuestData({...guestData, address: {...guestData.address!, zipCode: e.target.value}})} />
+                          <Input disabled={!isEditing} placeholder="CEP" value={guestData.address?.zipCode} onChange={e => setGuestData({...guestData, address: {...guestData.address!, zipCode: e.target.value}})} />
                           <div className="grid grid-cols-3 gap-2">
-                             <div className="col-span-2"><Input placeholder="Rua" value={guestData.address?.street} onChange={e => setGuestData({...guestData, address: {...guestData.address!, street: e.target.value}})} /></div>
-                             <div><Input placeholder="Nº" value={guestData.address?.number} onChange={e => setGuestData({...guestData, address: {...guestData.address!, number: e.target.value}})} /></div>
+                             <div className="col-span-2"><Input disabled={!isEditing} placeholder="Rua" value={guestData.address?.street} onChange={e => setGuestData({...guestData, address: {...guestData.address!, street: e.target.value}})} /></div>
+                             <div><Input disabled={!isEditing} placeholder="Nº" value={guestData.address?.number} onChange={e => setGuestData({...guestData, address: {...guestData.address!, number: e.target.value}})} /></div>
                           </div>
                           <div className="grid grid-cols-2 gap-2">
-                             <Input placeholder="Cidade" value={guestData.address?.city} onChange={e => setGuestData({...guestData, address: {...guestData.address!, city: e.target.value}})} />
-                             <Input placeholder="UF" value={guestData.address?.state} onChange={e => setGuestData({...guestData, address: {...guestData.address!, state: e.target.value}})} />
+                             <Input disabled={!isEditing} placeholder="Cidade" value={guestData.address?.city} onChange={e => setGuestData({...guestData, address: {...guestData.address!, city: e.target.value}})} />
+                             <Input disabled={!isEditing} placeholder="UF" value={guestData.address?.state} onChange={e => setGuestData({...guestData, address: {...guestData.address!, state: e.target.value}})} />
                           </div>
                       </div>
                   </div>
@@ -433,8 +492,8 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                             formData.additionalGuests?.map((g, idx) => (
                                 <div key={idx} className="bg-secondary/50 border border-border p-3 rounded-xl flex items-center gap-3">
                                     <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2">
-                                        <Input value={g.fullName} onChange={e => updateAdditionalGuest(idx, 'fullName', e.target.value)} placeholder="Nome Completo" />
-                                        <Input value={g.document} onChange={e => updateAdditionalGuest(idx, 'document', e.target.value)} placeholder="Documento" />
+                                        <Input disabled={!isEditing} value={g.fullName} onChange={e => updateAdditionalGuest(idx, 'fullName', e.target.value)} placeholder="Nome Completo" />
+                                        <Input disabled={!isEditing} value={g.document} onChange={e => updateAdditionalGuest(idx, 'document', e.target.value)} placeholder="Documento" />
                                     </div>
                                     <div className="w-20 text-center shrink-0">
                                         <span className="text-[9px] font-bold uppercase bg-background border border-border px-2 py-1 rounded text-muted-foreground">
@@ -469,16 +528,16 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                       
                       {formData.hasPet ? (
                           <div className="p-4 bg-secondary/50 rounded-2xl border border-border space-y-3">
-                              <Input placeholder="Nome do Pet" value={formData.petDetails?.name} onChange={e => setFormData({...formData, petDetails: {...formData.petDetails!, name: e.target.value} as any})} />
+                              <Input disabled={!isEditing} placeholder="Nome do Pet" value={formData.petDetails?.name} onChange={e => setFormData({...formData, petDetails: {...formData.petDetails!, name: e.target.value} as any})} />
                               <div className="grid grid-cols-2 gap-3">
-                                  <Select value={formData.petDetails?.species} onChange={e => setFormData({...formData, petDetails: {...formData.petDetails!, species: e.target.value} as any})}>
+                                  <Select disabled={!isEditing} value={formData.petDetails?.species} onChange={e => setFormData({...formData, petDetails: {...formData.petDetails!, species: e.target.value} as any})}>
                                       <option value="Cachorro">Cachorro</option>
                                       <option value="Gato">Gato</option>
                                       <option value="Outro">Outro</option>
                                   </Select>
-                                  <Input type="number" placeholder="Peso (kg)" value={formData.petDetails?.weight || ""} onChange={e => setFormData({...formData, petDetails: {...formData.petDetails!, weight: Number(e.target.value)} as any})} />
+                                  <Input disabled={!isEditing} type="number" placeholder="Peso (kg)" value={formData.petDetails?.weight || ""} onChange={e => setFormData({...formData, petDetails: {...formData.petDetails!, weight: Number(e.target.value)} as any})} />
                               </div>
-                              <Input placeholder="Raça (Opcional)" value={formData.petDetails?.breed} onChange={e => setFormData({...formData, petDetails: {...formData.petDetails!, breed: e.target.value} as any})} />
+                              <Input disabled={!isEditing} placeholder="Raça (Opcional)" value={formData.petDetails?.breed} onChange={e => setFormData({...formData, petDetails: {...formData.petDetails!, breed: e.target.value} as any})} />
                           </div>
                       ) : (
                           <div className="p-8 text-center border border-dashed border-border rounded-xl text-muted-foreground text-xs uppercase font-bold flex flex-col items-center gap-2">
@@ -498,7 +557,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                       <h3 className="text-sm font-bold text-foreground border-b border-border pb-2">Dados da Viagem</h3>
                       <div>
                           <Label icon={Plane}>Motivo da Viagem</Label>
-                          <Select value={formData.travelReason} onChange={e => setFormData({...formData, travelReason: e.target.value as any})}>
+                          <Select disabled={!isEditing} value={formData.travelReason} onChange={e => setFormData({...formData, travelReason: e.target.value as any})}>
                               <option value="Turismo">Turismo</option>
                               <option value="Negocios">Negócios</option>
                               <option value="Congresso">Congresso/Feira</option>
@@ -508,7 +567,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                       </div>
                       <div>
                           <Label icon={Car}>Meio de Transporte</Label>
-                          <Select value={formData.transportation} onChange={e => setFormData({...formData, transportation: e.target.value as any})}>
+                          <Select disabled={!isEditing} value={formData.transportation} onChange={e => setFormData({...formData, transportation: e.target.value as any})}>
                               <option value="Carro">Carro Próprio/Alugado</option>
                               <option value="Onibus">Ônibus</option>
                               <option value="Avião">Avião</option>
@@ -519,7 +578,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                       {formData.transportation === 'Carro' && (
                           <div>
                               <Label icon={Car}>Placa do Veículo</Label>
-                              <Input value={formData.vehiclePlate} onChange={e => setFormData({...formData, vehiclePlate: e.target.value})} placeholder="XXX-0000" />
+                              <Input disabled={!isEditing} value={formData.vehiclePlate} onChange={e => setFormData({...formData, vehiclePlate: e.target.value})} placeholder="XXX-0000" />
                           </div>
                       )}
                   </div>
@@ -528,11 +587,11 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                       <h3 className="text-sm font-bold text-foreground border-b border-border pb-2">Itinerário</h3>
                       <div>
                           <Label icon={MapPin}>Cidade de Origem (Última procedência)</Label>
-                          <Input value={formData.lastCity} onChange={e => setFormData({...formData, lastCity: e.target.value})} placeholder="Cidade/UF" />
+                          <Input disabled={!isEditing} value={formData.lastCity} onChange={e => setFormData({...formData, lastCity: e.target.value})} placeholder="Cidade/UF" />
                       </div>
                       <div>
                           <Label icon={MapPin}>Próximo Destino</Label>
-                          <Input value={formData.nextCity} onChange={e => setFormData({...formData, nextCity: e.target.value})} placeholder="Cidade/UF" />
+                          <Input disabled={!isEditing} value={formData.nextCity} onChange={e => setFormData({...formData, nextCity: e.target.value})} placeholder="Cidade/UF" />
                       </div>
                   </div>
               </div>

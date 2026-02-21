@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Send, User, Clock, CheckCircle2, Search } from "lucide-react";
+import { Send, User, Clock, CheckCircle2, Search, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { db } from "@/lib/firebase"; // Importando o seu banco do Firebase Client
+import { db } from "@/lib/firebase"; 
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, setDoc } from "firebase/firestore";
 
 interface Message {
@@ -11,12 +11,12 @@ interface Message {
   text: string;
   sender: "hotel" | "guest";
   timestamp: string;
-  status?: "sent" | "delivered" | "read" | "pending";
+  status?: "pending" | "sent" | "delivered" | "read" | "failed";
   createdAt?: any;
 }
 
 interface ChatContact {
-  id: string; // Vai ser o número do telefone
+  id: string; 
   name: string;
   number: string;
   cabin: string;
@@ -36,14 +36,10 @@ export function CommunicationCenter({ propertyId }: { propertyId: string }) {
   useEffect(() => {
     if (!propertyId) return;
 
-    console.log("👀 Tentando ler a propriedade:", propertyId); // RAIO-X 1
-
     const contactsRef = collection(db, "properties", propertyId, "communications");
     const q = query(contactsRef);
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      console.log("🔥 Dados recebidos do Firebase:", snapshot.docs.length, "contatos"); // RAIO-X 2
-      
       const contactsData: ChatContact[] = snapshot.docs.map(doc => ({
         id: doc.id,
         number: doc.id,
@@ -57,7 +53,7 @@ export function CommunicationCenter({ propertyId }: { propertyId: string }) {
       contactsData.sort((a: any, b: any) => (b.updatedAt?.toMillis() || 0) - (a.updatedAt?.toMillis() || 0));
       setContacts(contactsData);
     }, (error) => {
-      console.error("❌ Erro no onSnapshot:", error); // RAIO-X DE ERROS
+      console.error("❌ Erro no onSnapshot:", error);
     });
 
     return () => unsubscribe();
@@ -73,7 +69,6 @@ export function CommunicationCenter({ propertyId }: { propertyId: string }) {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgsData: Message[] = snapshot.docs.map(doc => {
         const data = doc.data();
-        // Formata a hora para ficar bonita na tela (ex: 14:30)
         let timeString = "";
         if (data.timestamp) {
           const date = data.timestamp.toDate();
@@ -91,10 +86,8 @@ export function CommunicationCenter({ propertyId }: { propertyId: string }) {
       });
       setChatHistory(msgsData);
       
-      // Rola o chat para o final automaticamente quando chega mensagem nova
       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
 
-      // Zera as mensagens não lidas deste contato no Firebase ao abrir o chat
       if (activeContact.unread > 0) {
         setDoc(doc(db, "properties", propertyId, "communications", activeContact.id), {
           unread: 0
@@ -105,34 +98,23 @@ export function CommunicationCenter({ propertyId }: { propertyId: string }) {
     return () => unsubscribe();
   }, [propertyId, activeContact]);
 
-
-// 3. ENVIAR NOVA MENSAGEM
+  // 3. ENVIAR NOVA MENSAGEM (LÓGICA OTIMISTA + BACKEND DE CONFIANÇA)
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || !activeContact) return;
 
     const textToSend = newMessage;
-    setNewMessage(""); // Limpa o input imediatamente para a UX ficar rápida
+    const currentContact = activeContact; // Captura segura do estado
+    setNewMessage(""); // Limpa input para UX instantânea
 
     try {
-      // 1. CHAMA O NOSSO BACKEND NEXT.JS (Adeus, erro de CORS!)
-      fetch("/api/chat/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          propertyId: propertyId,
-          number: activeContact.number,
-          message: textToSend
-        })
-      });
-
-      // 2. Salva a mensagem no Firebase
-      const contactRef = doc(db, "properties", propertyId, "communications", activeContact.id);
-      await addDoc(collection(contactRef, "messages"), {
+      // 1. Cria a mensagem no Firebase IMEDIATAMENTE como "pending"
+      const contactRef = doc(db, "properties", propertyId, "communications", currentContact.id);
+      const messageRef = await addDoc(collection(contactRef, "messages"), {
         text: textToSend,
         sender: "hotel",
         timestamp: serverTimestamp(),
-        status: "sent"
+        status: "pending" // Estado de transição
       });
 
       // Atualiza a "última mensagem" na lista de contatos
@@ -141,15 +123,31 @@ export function CommunicationCenter({ propertyId }: { propertyId: string }) {
         updatedAt: serverTimestamp(),
       }, { merge: true });
 
+      // 2. Chama a API passando os IDs para que o Backend faça o envio e atualize o status final
+      fetch("/api/chat/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          propertyId: propertyId,
+          contactId: currentContact.id,
+          messageId: messageRef.id, // Chave do sucesso da arquitetura!
+          number: currentContact.number,
+          message: textToSend
+        })
+      }).catch(err => {
+        console.error("Erro fatal de rede na chamada da API:", err);
+        // Opcional: Se a própria internet do hotel cair antes do fetch completar, pode atualizar o front aqui.
+      });
+
     } catch (error) {
-      console.error("Erro ao enviar mensagem:", error);
+      console.error("Erro ao preparar a mensagem no Firebase:", error);
     }
   };
 
   return (
     <div className="flex h-[80vh] w-full border rounded-xl overflow-hidden bg-background shadow-sm">
       
-      {/* BARRA LATERAL ESQUERDA: LISTA DE CONTATOS */}
+      {/* BARRA LATERAL ESQUERDA */}
       <div className="w-1/3 border-r flex flex-col bg-muted/10">
         <div className="p-4 border-b bg-background">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -224,16 +222,25 @@ export function CommunicationCenter({ propertyId }: { propertyId: string }) {
                       }`}
                     >
                       <p className="text-sm">{msg.text}</p>
+                      
+                      {/* Gestor Visual de Estado do WhatsApp */}
                       <div className={`flex items-center justify-end gap-1 mt-1 ${isHotel ? "text-green-100" : "text-muted-foreground"}`}>
                         <span className="text-[10px]">{msg.timestamp}</span>
+                        
                         {isHotel && msg.status === "read" && <CheckCircle2 className="w-3 h-3 text-blue-300" />}
-                        {isHotel && msg.status === "pending" && <Clock className="w-3 h-3" />}
+                        {isHotel && msg.status === "delivered" && <CheckCircle2 className="w-3 h-3 text-green-200" />}
+                        {isHotel && msg.status === "sent" && <CheckCircle2 className="w-3 h-3 text-green-200 opacity-70" />}
+                        {isHotel && msg.status === "pending" && <Clock className="w-3 h-3 text-green-200 opacity-70 animate-pulse" />}
+                        {isHotel && msg.status === "failed" && (
+                          <span title="Falha ao enviar, servidor offline">
+                            <AlertCircle className="w-3 h-3 text-red-300" />
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
                 );
               })}
-              {/* Ref invisível para fazer scroll até o final do chat */}
               <div ref={messagesEndRef} />
             </div>
 

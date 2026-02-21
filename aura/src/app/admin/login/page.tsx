@@ -25,22 +25,26 @@ export default function AdminLoginPage() {
   }, [email, password]);
 
   /**
-   * Redireciona para rotas EXISTENTES no projeto.
+   * Redirecionamento inteligente baseado no Cargo (Role-based Routing)
    */
   const getRedirectPath = (role: Staff['role']) => {
     switch (role) {
       case 'super_admin':
-        return "/admin/core/properties"; // Painel do Super Admin
-      case 'maintenance':
-        return "/admin/maintenance"; // Se ainda não existir, crie ou redirecione para /admin/stays
+        return "/admin/core/properties";
       case 'governance':
+      case 'maid': // Camareira vai direto para o seu App Mobile de Governança
         return "/admin/governance"; 
+      case 'maintenance':
+      case 'technician':
+        return "/admin/maintenance"; 
       case 'kitchen':
+      case 'waiter':
         return "/admin/kitchen";
       case 'admin':
       case 'reception':
+      case 'porter':
       default:
-        return "/admin/stays"; // Dashboard Operacional Padrão
+        return "/admin/stays";
     }
   };
 
@@ -94,7 +98,6 @@ export default function AdminLoginPage() {
     }
   };
 
-  // ... (Resto do JSX igual ao seu original, mantendo o design)
   return (
     <main className="min-h-screen w-full flex items-center justify-center bg-[#0a0a0a] p-4 overflow-hidden relative">
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px] pointer-events-none" />

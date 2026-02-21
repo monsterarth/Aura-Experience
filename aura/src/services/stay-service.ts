@@ -12,12 +12,12 @@ import {
   getDocs, 
   orderBy,
   collectionGroup,
-  limit
+  limit,
+  setDoc
 } from "firebase/firestore";
-import { Stay, Guest, Cabin } from "@/types/aura";
+import { Stay, Guest, Cabin, HousekeepingTask } from "@/types/aura";
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
-
 
 export const StayService = {
   /**
@@ -31,7 +31,6 @@ export const StayService = {
     while (!isUnique) {
       code = Array.from({ length: 5 }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
       
-      // Busca apenas dentro das estadias desta propriedade específica
       const q = query(
         collection(db, "properties", propertyId, "stays"), 
         where("accessCode", "==", code)
@@ -45,11 +44,9 @@ export const StayService = {
 
   /**
    * Encontra o ID da propriedade pesquisando globalmente pelo ID da estadia.
-   * Essencial para links públicos diretos onde não sabemos a propriedade a priori.
    */
   async findPropertyIdByStayId(stayId: string): Promise<string | null> {
     try {
-      // Busca em TODAS as coleções 'stays' do banco de dados
       const staysRef = collectionGroup(db, "stays");
       const q = query(staysRef, where("id", "==", stayId), limit(1));
       const snapshot = await getDocs(q);
@@ -57,9 +54,6 @@ export const StayService = {
       if (snapshot.empty) return null;
 
       const doc = snapshot.docs[0];
-      // A estrutura é properties/{propertyId}/stays/{stayId}
-      // doc.ref.parent = coleção 'stays'
-      // doc.ref.parent.parent = documento da propriedade
       return doc.ref.parent.parent?.id || null;
     } catch (error) {
       console.error("Erro ao localizar propriedade da estadia:", error);
@@ -86,7 +80,6 @@ export const StayService = {
 
     params.cabinConfigs.forEach((config) => {
       const stayId = uuidv4();
-      // CAMINHO ANINHADO: properties/{pid}/stays/{sid}
       const stayRef = doc(db, "properties", params.propertyId, "stays", stayId);
       
       batch.set(stayRef, {
@@ -171,7 +164,6 @@ export const StayService = {
    * Busca estadias de um grupo usando COLLECTION GROUP (Portal do Hóspede)
    */
   async getGroupStays(accessCode: string) {
-    // Procura o código em todas as sub-coleções "stays" do banco
     const q = query(
       collectionGroup(db, "stays"), 
       where("accessCode", "==", accessCode.toUpperCase()),
@@ -182,7 +174,6 @@ export const StayService = {
     
     const stays = await Promise.all(snap.docs.map(async (d) => {
       const data = d.data() as Stay;
-      // Busca a cabana no caminho aninhado correto
       const cabinDoc = await getDoc(doc(db, "properties", data.propertyId, "cabins", data.cabinId));
       
       return { 
@@ -274,27 +265,63 @@ export const StayService = {
   },
 
   /**
-   * Check-out Físico e Liberação de Cabana
+   * Check-out Físico: Libera Cabana E Cria Tarefa de Governança
    */
   async performCheckOut(propertyId: string, stayId: string, actorId: string, actorName: string) {
     const stayRef = doc(db, "properties", propertyId, "stays", stayId);
     const staySnap = await getDoc(stayRef);
     const cabinId = staySnap.data()?.cabinId;
 
+    if (!cabinId) throw new Error("Acomodação não encontrada na reserva.");
+
+    // 1. Busca Tarefas Diárias Pendentes para Cancelar (O Check-out sobrepõe a diária)
+    const dailyTasksQuery = query(
+      collection(db, "properties", propertyId, "housekeeping_tasks"),
+      where("cabinId", "==", cabinId),
+      where("status", "==", "pending")
+    );
+    const dailyTasksSnap = await getDocs(dailyTasksQuery);
+
     const batch = writeBatch(db);
 
-    // Finaliza Estadia
+    // Cancela tarefas conflitantes
+    dailyTasksSnap.docs.forEach(d => {
+      if (d.data().type === 'daily') {
+        batch.update(d.ref, {
+          status: 'cancelled',
+          observations: 'Cancelada automaticamente por Check-out (Substituída por Faxina de Troca).',
+          updatedAt: serverTimestamp()
+        });
+      }
+    });
+
+    // 2. Finaliza Estadia
     batch.update(stayRef, {
       status: 'finished',
       checkOutActual: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
 
-    // Envia Cabana para Limpeza
+    // 3. Envia Cabana para Limpeza
     const cabinRef = doc(db, "properties", propertyId, "cabins", cabinId);
     batch.update(cabinRef, {
       status: 'cleaning',
       currentStayId: null
+    });
+
+    // 4. Cria a Tarefa de Faxina de Troca (Turnover) na Governança
+    const newTaskId = uuidv4();
+    const taskRef = doc(db, "properties", propertyId, "housekeeping_tasks", newTaskId);
+    batch.set(taskRef, {
+      id: newTaskId,
+      propertyId,
+      cabinId,
+      stayId, // Vinculamos a estadia encerrada para permitir lançamento de consumo de última hora
+      type: 'turnover',
+      status: 'pending',
+      checklist: [], // Será preenchido pelo padrão no momento em que a camareira abrir
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
     });
 
     await batch.commit();
@@ -306,13 +333,62 @@ export const StayService = {
       action: "CHECKOUT",
       entity: "STAY",
       entityId: stayId,
-      details: `Check-out realizado. Unidade ${cabinId} enviada para limpeza.`
+      details: `Check-out realizado. Tarefa de Faxina de Troca gerada para a unidade ${cabinId}.`
     });
 
     return { success: true };
   },
 
-// Adicione este método ao objeto StayService em src/services/stay-service.ts
+  /**
+   * Desfaz o Check-out e Reativa a Estadia (Cancela a Tarefa de Governança)
+   */
+  async undoCheckOut(propertyId: string, stayId: string, cabinId: string, actorId: string, actorName: string) {
+    // 1. Busca a Tarefa de Turnover gerada acidentalmente para cancelar
+    const turnoverQuery = query(
+      collection(db, "properties", propertyId, "housekeeping_tasks"),
+      where("stayId", "==", stayId),
+      where("type", "==", "turnover"),
+      where("status", "in", ["pending", "in_progress", "waiting_conference"])
+    );
+    const turnoverSnap = await getDocs(turnoverQuery);
+
+    const batch = writeBatch(db);
+
+    turnoverSnap.docs.forEach(d => {
+      batch.update(d.ref, {
+        status: 'cancelled',
+        observations: 'Check-out desfeito pela Recepção. Tarefa cancelada.',
+        updatedAt: serverTimestamp()
+      });
+    });
+
+    // 2. Reativa a estadia 
+    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
+    batch.update(stayRef, {
+      status: 'active',
+      checkOutActual: null,
+      updatedAt: serverTimestamp()
+    });
+
+    // 3. Reocupa a cabana
+    const cabinRef = doc(db, "properties", propertyId, "cabins", cabinId);
+    batch.update(cabinRef, {
+      status: 'occupied',
+      currentStayId: stayId
+    });
+
+    await batch.commit();
+
+    await AuditService.log({
+      propertyId,
+      userId: actorId,
+      userName: actorName,
+      action: "UPDATE",
+      entity: "STAY",
+      entityId: stayId,
+      details: `Check-out revertido. Estadia reativada e tarefa de limpeza cancelada.`
+    });
+  },
 
   /**
    * Cancela uma estadia pendente
@@ -320,9 +396,6 @@ export const StayService = {
   async cancelStay(propertyId: string, stayId: string, actorId: string, actorName: string) {
     const stayRef = doc(db, "properties", propertyId, "stays", stayId);
     
-    // Opcional: Verificar se já não está iniciada antes de cancelar
-    // Mas a UI já deve bloquear isso.
-
     await updateDoc(stayRef, {
       status: 'cancelled',
       updatedAt: serverTimestamp()
