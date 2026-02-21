@@ -11,7 +11,7 @@ import {
   Dog, Users, ArrowUpRight, 
   Building2, MapPin, Clock, MessageCircle, 
   Archive, Send, X, Star, ShieldAlert,
-  Copy, Ban
+  Copy, Ban, CheckCircle2, DollarSign
 } from "lucide-react";
 import { format, differenceInCalendarDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -55,7 +55,7 @@ export default function StaysPage() {
       let statusFilter: string[] = [];
       if (activeTab === 'futuras') statusFilter = ['pending', 'pre_checkin_done'];
       if (activeTab === 'ativas') statusFilter = ['active'];
-      if (activeTab === 'encerradas') statusFilter = ['finished', 'cancelled'];
+      if (activeTab === 'encerradas') statusFilter = ['finished', 'cancelled']; // 'archived' fica de fora para limpar a tela
 
       const data = await StayService.getStaysByStatus(contextProperty.id, statusFilter);
       setStays(data);
@@ -108,7 +108,7 @@ export default function StaysPage() {
         await StayService.cancelStay(contextProperty.id, stayToCancel, userData.id, userData.fullName);
         toast.success("Reserva cancelada com sucesso.");
         setStayToCancel(null);
-        loadStays(); // Recarrega a lista
+        loadStays(); 
     } catch (error) {
         console.error(error);
         toast.error("Erro ao cancelar reserva.");
@@ -150,9 +150,16 @@ export default function StaysPage() {
   };
 
   const handleArchive = async (stayId: string) => {
-    if(!confirm("Deseja arquivar esta estadia?")) return;
-    toast.success("Estadia arquivada com sucesso.");
-    setStays(prev => prev.filter(s => s.id !== stayId));
+    if(!contextProperty?.id || !userData?.id) return;
+    if(!confirm("Deseja arquivar esta estadia? Ela sairá desta lista e ficará guardada no histórico do Aura.")) return;
+    
+    try {
+      await StayService.archiveStay(contextProperty.id, stayId, userData.id, userData.fullName);
+      toast.success("Estadia arquivada com sucesso.");
+      setStays(prev => prev.filter(s => s.id !== stayId)); // Remove da tela
+    } catch (error) {
+      toast.error("Erro ao arquivar.");
+    }
   };
 
   // --- Lógica de Renderização de Status ---
@@ -193,32 +200,26 @@ export default function StaysPage() {
       <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
         
         {/* Header */}
-<header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-  <div className="space-y-1">
-    {/* Título Principal */}
-    <h1 className="text-4xl font-black tracking-tighter flex items-center gap-3 text-foreground">
-      <Calendar className="text-primary" size={36} /> Painel Operacional
-    </h1>
-    
-    {/* Subtítulo: Forçando a cor do texto para escuro caso o painel insista no branco */}
-    <div className="flex items-center gap-2">
-      <p 
-        className="font-medium flex items-center gap-2 opacity-70"
-        style={{ color: "hsl(var(--foreground))" }} // Força a leitura da variável CSS do tema
-      >
-        <MapPin size={14} /> 
-        {contextProperty?.name || "Carregando Propriedade..."}
-      </p>
-    </div>
-  </div>
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-1">
+            <h1 className="text-4xl font-black tracking-tighter flex items-center gap-3 text-foreground">
+              <Calendar className="text-primary" size={36} /> Painel Operacional
+            </h1>
+            <div className="flex items-center gap-2">
+              <p className="font-medium flex items-center gap-2 opacity-70" style={{ color: "hsl(var(--foreground))" }}>
+                <MapPin size={14} /> 
+                {contextProperty?.name || "Carregando Propriedade..."}
+              </p>
+            </div>
+          </div>
 
-  <Link 
-    href="/admin/stays/new"
-    className="bg-primary text-primary-foreground font-black px-8 py-4 rounded-2xl flex items-center gap-2 hover:shadow-[0_0_30px_rgba(var(--primary),0.4)] transition-all active:scale-95"
-  >
-    Nova Hospedagem <ArrowUpRight size={20} />
-  </Link>
-</header>
+          <Link 
+            href="/admin/stays/new"
+            className="bg-primary text-primary-foreground font-black px-8 py-4 rounded-2xl flex items-center gap-2 hover:shadow-[0_0_30px_rgba(var(--primary),0.4)] transition-all active:scale-95"
+          >
+            Nova Hospedagem <ArrowUpRight size={20} />
+          </Link>
+        </header>
 
         {/* Filtros e Tabs */}
         <div className="flex flex-col md:flex-row gap-6 items-center justify-between bg-card border border-white/5 p-2 rounded-[32px]">
@@ -268,175 +269,241 @@ export default function StaysPage() {
             <p className="text-foreground/40">Não há registros para esta categoria no momento.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredStays.map((s) => {
-                const activeInfo = getActiveStatusInfo(s.checkOut);
-                const guestName = s.guestName || "Hóspede Desconhecido";
-                
-                const docNumber = s.guest?.document?.number || s.guestDocumentNumber || ""; 
-                const hasValidDoc = docNumber && docNumber.length > 3 && docNumber !== "N/A";
-                const isPreCheckinDone = s.status === 'pre_checkin_done';
-                const isTempId = !s.guestId || s.guestId.toString().startsWith("GUEST");
-                const isUnknownGuest = isTempId && !hasValidDoc && !isPreCheckinDone;
+          <>
+            {/* RENDERIZAÇÃO 1: CARDS GRANDES (Para Ativas e Futuras) */}
+            {activeTab !== 'encerradas' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredStays.map((s) => {
+                    const activeInfo = getActiveStatusInfo(s.checkOut);
+                    const guestName = s.guestName || "Hóspede Desconhecido";
+                    
+                    const docNumber = s.guest?.document?.number || s.guestDocumentNumber || ""; 
+                    const hasValidDoc = docNumber && docNumber.length > 3 && docNumber !== "N/A";
+                    const isPreCheckinDone = s.status === 'pre_checkin_done';
+                    const isTempId = !s.guestId || s.guestId.toString().startsWith("GUEST");
+                    const isUnknownGuest = isTempId && !hasValidDoc && !isPreCheckinDone;
 
-                return (
-                  <div 
-                    key={s.id}
-                    className="group bg-card border border-white/5 rounded-[40px] overflow-hidden hover:border-primary/40 transition-all flex flex-col shadow-lg"
-                  >
-                    <div className="p-8 space-y-6 flex-1">
-                      {/* Topo do Card */}
-                      <div className="flex justify-between items-start">
-                        <div className="px-4 py-1.5 bg-primary/10 border border-primary/20 rounded-full">
-                            <span className="text-[10px] font-black text-primary uppercase tracking-widest">{s.cabinName}</span>
-                        </div>
-                        <div className="flex gap-2">
-                          {isUnknownGuest && <div className="p-2 bg-red-500/10 rounded-lg animate-pulse" title="Documento Pendente"><ShieldAlert size={16} className="text-red-500" /></div>}
-                          {s.hasPet && <div className="p-2 bg-orange-500/10 rounded-lg" title="Pet"><Dog size={16} className="text-orange-500" /></div>}
-                          {s.groupId && <div className="p-2 bg-blue-500/10 rounded-lg" title="Grupo"><Users size={16} className="text-blue-500" /></div>}
-                        </div>
-                      </div>
-
-                      {/* Nome e Datas */}
-                      <div className="space-y-1">
-                        <h3 
-                            onClick={() => handleOpenWhatsapp(s)}
-                            className="text-2xl font-black text-foreground tracking-tighter transition-colors flex items-center gap-2 cursor-pointer hover:text-primary group/name"
-                            title="Clique para enviar WhatsApp"
-                        >
-                            {guestName.split(' ')[0]} {guestName.split(' ').slice(-1)}
-                            <MessageCircle size={20} className="opacity-0 group-hover/name:opacity-100 transition-opacity text-primary" />
-                        </h3>
-                        <div className="flex items-center gap-2 text-foreground/40 text-[10px] font-bold uppercase tracking-widest">
-                            <Clock size={12} />
-                            {s.checkIn?.toDate ? format(s.checkIn.toDate(), "dd MMM", { locale: ptBR }) : ''} — 
-                            {s.checkOut?.toDate ? format(s.checkOut.toDate(), "dd MMM", { locale: ptBR }) : ''}
-                        </div>
-                      </div>
-
-                      {/* Grid de Informações Variável */}
-                      <div className="grid grid-cols-2 gap-3">
-                        {/* Status Futuro */}
-                        {activeTab === 'futuras' && (
-                            <div className="bg-secondary p-4 rounded-3xl border border-white/5">
-                                <p className="text-[9px] font-bold text-foreground/20 uppercase mb-1">Previsão</p>
-                                <p className="text-sm font-black text-foreground tracking-wide">
-                                    {getFutureStatusInfo(s.checkIn, s.expectedArrivalTime)}
-                                </p>
+                    return (
+                      <div 
+                        key={s.id}
+                        className="group bg-card border border-white/5 rounded-[40px] overflow-hidden hover:border-primary/40 transition-all flex flex-col shadow-lg"
+                      >
+                        <div className="p-8 space-y-6 flex-1">
+                          {/* Topo do Card */}
+                          <div className="flex justify-between items-start">
+                            <div className="px-4 py-1.5 bg-primary/10 border border-primary/20 rounded-full">
+                                <span className="text-[10px] font-black text-primary uppercase tracking-widest">{s.cabinName}</span>
                             </div>
-                        )}
-                        {/* Status Ativo */}
-                        {activeTab === 'ativas' && (
-                            <div className="bg-secondary p-4 rounded-3xl border border-white/5 col-span-2">
-                                <p className="text-[9px] font-bold text-foreground/20 uppercase mb-1">Status Atual</p>
-                                <div className="flex justify-between items-center">
-                                    <p className={cn("text-lg font-black tracking-wide", activeInfo.color)}>
-                                        {activeInfo.label}
-                                    </p>
-                                    {isUnknownGuest && (
-                                        <span className="text-[10px] font-bold text-red-500 bg-red-500/10 px-2 py-1 rounded-lg uppercase">
-                                            Doc Pendente
-                                        </span>
-                                    )}
-                                </div>
+                            <div className="flex gap-2">
+                              {isUnknownGuest && <div className="p-2 bg-red-500/10 rounded-lg animate-pulse" title="Documento Pendente"><ShieldAlert size={16} className="text-red-500" /></div>}
+                              {s.hasPet && <div className="p-2 bg-orange-500/10 rounded-lg" title="Pet"><Dog size={16} className="text-orange-500" /></div>}
+                              {s.groupId && <div className="p-2 bg-blue-500/10 rounded-lg" title="Grupo"><Users size={16} className="text-blue-500" /></div>}
                             </div>
-                        )}
-                        {/* Status Encerrado */}
-                        {activeTab === 'encerradas' && (
-                            <div className="bg-secondary p-4 rounded-3xl border border-white/5">
-                                <p className="text-[9px] font-bold text-foreground/20 uppercase mb-1">Avaliação</p>
-                                <div className="flex items-center gap-1">
-                                    {s.nps ? (
-                                        <>
-                                            <Star size={14} className="text-yellow-500 fill-yellow-500" />
-                                            <p className="text-lg font-black text-foreground">NPS {s.nps}</p>
-                                        </>
-                                    ) : (
-                                        <p className="text-xs font-bold text-foreground/40 uppercase">Não Avaliou</p>
-                                    )}
-                                </div>
-                            </div>
-                        )}
+                          </div>
 
-                        {/* Pré Checkin */}
-                        {activeTab === 'futuras' && (
-                             <div className="bg-secondary p-4 rounded-3xl border border-white/5 group/copy relative">
-                                <div className="flex justify-between items-center mb-1">
-                                    <p className="text-[9px] font-bold text-foreground/20 uppercase">Pré-Checkin</p>
-                                    {s.status === 'pending' && (
-                                        <button 
-                                            onClick={(e) => { e.stopPropagation(); handleCopyLink(s.accessCode); }}
-                                            className="text-primary hover:text-foreground transition-colors"
-                                            title="Copiar Link Direto"
-                                        >
-                                            <Copy size={12} />
-                                        </button>
-                                    )}
-                                </div>
-                                <p 
-                                    onClick={() => s.status === 'pending' && handleCopyLink(s.accessCode)}
-                                    className={cn(
-                                        "text-xs font-black uppercase flex items-center gap-1", 
-                                        s.status === 'pre_checkin_done' ? "text-green-500" : "text-yellow-500 cursor-pointer hover:underline"
-                                    )}
-                                >
-                                    {s.status === 'pre_checkin_done' ? "Pronto" : "Pendente"}
-                                </p>
-                            </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Footer de Ações */}
-                    <div className="p-6 bg-white/[0.02] border-t border-white/5 flex gap-3">
-                        <button 
-                            onClick={() => handleOpenFicha(s)}
-                            className="flex-1 bg-white/5 hover:bg-white/10 text-foreground text-[10px] font-black uppercase py-4 rounded-2xl transition-all tracking-widest"
-                        >
-                            Ver Ficha
-                        </button>  
-
-                        {activeTab === 'futuras' && (
-                            <>
-                                <button 
-                                    onClick={async () => {
-                                        if (isUnknownGuest) {
-                                            alert("ATENÇÃO: Hóspede sem documento registrado. Solicite o documento antes de confirmar o check-in.");
-                                        }
-                                        if (confirm(`Confirmar entrada de ${guestName}?`) && contextProperty?.id && userData?.id) {
-                                            await StayService.performCheckIn(contextProperty.id, s.id, userData.id, userData.fullName);
-                                            loadStays();
-                                            toast.success("Check-in realizado!");
-                                        }
-                                    }}
-                                    className="flex-1 bg-primary text-black text-[10px] font-black uppercase py-4 rounded-2xl hover:shadow-[0_0_20px_rgba(var(--primary),0.4)] transition-all tracking-widest"
-                                >
-                                    Check-in
-                                </button>
-                                <button
-                                    onClick={() => setStayToCancel(s.id)}
-                                    className="p-4 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-2xl transition-all"
-                                    title="Cancelar Reserva"
-                                >
-                                    <Ban size={18} />
-                                </button>
-                            </>
-                        )}
-
-                        {activeTab === 'encerradas' && (
-                            <button 
-                                onClick={() => handleArchive(s.id)}
-                                className="px-4 bg-white/5 hover:bg-red-500/20 text-foreground/40 hover:text-red-500 rounded-2xl transition-all"
-                                title="Arquivar"
+                          {/* Nome e Datas */}
+                          <div className="space-y-1">
+                            <h3 
+                                onClick={() => handleOpenWhatsapp(s)}
+                                className="text-2xl font-black text-foreground tracking-tighter transition-colors flex items-center gap-2 cursor-pointer hover:text-primary group/name"
+                                title="Clique para enviar WhatsApp"
                             >
-                                <Archive size={18} />
-                            </button>
-                        )}
-                    </div>
-                  </div>
-                );
-            })}
-          </div>
+                                {guestName.split(' ')[0]} {guestName.split(' ').slice(-1)}
+                                <MessageCircle size={20} className="opacity-0 group-hover/name:opacity-100 transition-opacity text-primary" />
+                            </h3>
+                            <div className="flex items-center gap-2 text-foreground/40 text-[10px] font-bold uppercase tracking-widest">
+                                <Clock size={12} />
+                                {s.checkIn?.toDate ? format(s.checkIn.toDate(), "dd MMM", { locale: ptBR }) : ''} — 
+                                {s.checkOut?.toDate ? format(s.checkOut.toDate(), "dd MMM", { locale: ptBR }) : ''}
+                            </div>
+                          </div>
+
+                          {/* Grid de Informações Variável */}
+                          <div className="grid grid-cols-2 gap-3">
+                            {/* Status Futuro */}
+                            {activeTab === 'futuras' && (
+                                <div className="bg-secondary p-4 rounded-3xl border border-white/5">
+                                    <p className="text-[9px] font-bold text-foreground/20 uppercase mb-1">Previsão</p>
+                                    <p className="text-sm font-black text-foreground tracking-wide">
+                                        {getFutureStatusInfo(s.checkIn, s.expectedArrivalTime)}
+                                    </p>
+                                </div>
+                            )}
+                            {/* Status Ativo */}
+                            {activeTab === 'ativas' && (
+                                <div className="bg-secondary p-4 rounded-3xl border border-white/5 col-span-2">
+                                    <p className="text-[9px] font-bold text-foreground/20 uppercase mb-1">Status Atual</p>
+                                    <div className="flex justify-between items-center">
+                                        <p className={cn("text-lg font-black tracking-wide", activeInfo.color)}>
+                                            {activeInfo.label}
+                                        </p>
+                                        {isUnknownGuest && (
+                                            <span className="text-[10px] font-bold text-red-500 bg-red-500/10 px-2 py-1 rounded-lg uppercase">
+                                                Doc Pendente
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Pré Checkin */}
+                            {activeTab === 'futuras' && (
+                                  <div className="bg-secondary p-4 rounded-3xl border border-white/5 group/copy relative">
+                                    <div className="flex justify-between items-center mb-1">
+                                        <p className="text-[9px] font-bold text-foreground/20 uppercase">Pré-Checkin</p>
+                                        {s.status === 'pending' && (
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); handleCopyLink(s.accessCode); }}
+                                                className="text-primary hover:text-foreground transition-colors"
+                                                title="Copiar Link Direto"
+                                            >
+                                                <Copy size={12} />
+                                            </button>
+                                        )}
+                                    </div>
+                                    <p 
+                                        onClick={() => s.status === 'pending' && handleCopyLink(s.accessCode)}
+                                        className={cn(
+                                            "text-xs font-black uppercase flex items-center gap-1", 
+                                            s.status === 'pre_checkin_done' ? "text-green-500" : "text-yellow-500 cursor-pointer hover:underline"
+                                        )}
+                                    >
+                                        {s.status === 'pre_checkin_done' ? "Pronto" : "Pendente"}
+                                    </p>
+                                </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Footer de Ações */}
+                        <div className="p-6 bg-white/[0.02] border-t border-white/5 flex gap-3">
+                            <button 
+                                onClick={() => handleOpenFicha(s)}
+                                className="flex-1 bg-white/5 hover:bg-white/10 text-foreground text-[10px] font-black uppercase py-4 rounded-2xl transition-all tracking-widest"
+                            >
+                                Ver Ficha
+                            </button>  
+
+                            {activeTab === 'futuras' && (
+                                <>
+                                    <button 
+                                        onClick={async () => {
+                                            if (isUnknownGuest) {
+                                                alert("ATENÇÃO: Hóspede sem documento registrado. Solicite o documento antes de confirmar o check-in.");
+                                            }
+                                            if (confirm(`Confirmar entrada de ${guestName}?`) && contextProperty?.id && userData?.id) {
+                                                await StayService.performCheckIn(contextProperty.id, s.id, userData.id, userData.fullName);
+                                                loadStays();
+                                                toast.success("Check-in realizado!");
+                                            }
+                                        }}
+                                        className="flex-1 bg-primary text-black text-[10px] font-black uppercase py-4 rounded-2xl hover:shadow-[0_0_20px_rgba(var(--primary),0.4)] transition-all tracking-widest"
+                                    >
+                                        Check-in
+                                    </button>
+                                    <button
+                                        onClick={() => setStayToCancel(s.id)}
+                                        className="p-4 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-2xl transition-all"
+                                        title="Cancelar Reserva"
+                                    >
+                                        <Ban size={18} />
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                      </div>
+                    );
+                })}
+              </div>
+            )}
+
+            {/* RENDERIZAÇÃO 2: TABELA COMPACTA (Para Encerradas e Histórico) */}
+            {activeTab === 'encerradas' && (
+              <div className="bg-card border border-white/5 rounded-3xl overflow-hidden shadow-sm">
+                <table className="w-full text-left">
+                  <thead className="bg-muted/50 border-b border-border">
+                    <tr>
+                      <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground w-32">Cabana</th>
+                      <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Hóspede</th>
+                      <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Período</th>
+                      <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-center">Avisos</th>
+                      <th className="p-4 text-right"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border text-sm">
+                    {filteredStays.map((s) => {
+                      const guestName = s.guestName || "Hóspede Desconhecido";
+                      
+                      return (
+                        <tr key={s.id} className="hover:bg-muted/30 transition-colors group">
+                          {/* Coluna: Cabana */}
+                          <td className="p-4">
+                            <span className="px-3 py-1 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest rounded-lg border border-primary/20">
+                              {s.cabinName}
+                            </span>
+                          </td>
+
+                          {/* Coluna: Nome */}
+                          <td className="p-4 font-bold text-foreground">
+                            <div className="flex items-center gap-2">
+                              {guestName}
+                              {s.status === 'cancelled' && <span className="text-[8px] uppercase tracking-widest bg-red-500/10 text-red-500 px-2 py-0.5 rounded">Cancelada</span>}
+                            </div>
+                          </td>
+
+                          {/* Coluna: Período */}
+                          <td className="p-4">
+                            <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                                <Clock size={12} />
+                                {s.checkIn?.toDate ? format(s.checkIn.toDate(), "dd/MM") : ''} até {s.checkOut?.toDate ? format(s.checkOut.toDate(), "dd/MM") : ''}
+                            </div>
+                          </td>
+
+                          {/* Coluna: Alertas Financeiros e NPS */}
+                          <td className="p-4 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              {/* Alerta de Consumo em Aberto (The Game Changer!) */}
+                              {s.hasOpenFolio ? (
+                                <div className="p-1.5 bg-orange-500/10 text-orange-500 rounded-md border border-orange-500/20 group-hover:animate-pulse" title="Há itens de frigobar aguardando pagamento/baixa">
+                                  <DollarSign size={14} />
+                                </div>
+                              ) : (
+                                <div className="p-1.5 bg-background text-muted-foreground/30 rounded-md border border-border" title="Conta zerada/baixa completa">
+                                  <CheckCircle2 size={14} />
+                                </div>
+                              )}
+                              
+                              {/* NPS Alert */}
+                              {s.nps && s.nps < 7 && (
+                                <div className="p-1.5 bg-red-500/10 text-red-500 rounded-md border border-red-500/20" title={`NPS Crítico: ${s.nps}`}>
+                                  <Star size={14} className="fill-red-500" />
+                                </div>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Coluna: Ações */}
+                          <td className="p-4 text-right">
+                            <div className="flex justify-end gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => handleOpenWhatsapp(s)} className="p-2 text-muted-foreground hover:text-green-500 hover:bg-green-500/10 rounded-lg transition-colors" title="WhatsApp">
+                                <MessageCircle size={16} />
+                              </button>
+                              <button onClick={() => handleOpenFicha(s)} className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors" title="Ver Ficha & Extrato">
+                                <ArrowUpRight size={16} />
+                              </button>
+                              <button onClick={() => handleArchive(s.id)} className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors" title="Arquivar Definitivamente">
+                                <Archive size={16} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
 
         {selectedStay && selectedGuest && (
@@ -446,6 +513,7 @@ export default function StaysPage() {
             stay={selectedStay}
             guest={selectedGuest}
             onViewGuest={(id) => router.push(`/admin/guests/${id}`)}
+            onUpdate={loadStays} // Faz a tabela recarregar se alterar a conta
           />
         )}
 

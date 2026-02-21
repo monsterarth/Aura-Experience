@@ -434,12 +434,9 @@ export const StayService = {
   },
 
   // ==========================================
-  // MÓDULO DE CONTA & CONSUMO (FOLIO)
+  // MÓDULO DE CONTA & CONSUMO (FOLIO) E HISTÓRICO
   // ==========================================
 
-  /**
-   * Busca o extrato completo da hospedagem sob demanda (On-Demand)
-   */
   async getStayFolio(propertyId: string, stayId: string): Promise<FolioItem[]> {
     const q = query(
       collection(db, "properties", propertyId, "stays", stayId, "folio"),
@@ -449,45 +446,77 @@ export const StayService = {
     return snap.docs.map(d => ({ id: d.id, ...d.data() } as FolioItem));
   },
 
-  /**
-   * Lança um item avulso na conta (Usado pela Recepção para venda de extras)
-   */
-  async addFolioItemManual(propertyId: string, stayId: string, item: Omit<FolioItem, 'id' | 'createdAt'>, actorId: string, actorName: string) {
+  async addFolioItemManual(propertyId: string, stayId: string, item: Omit<FolioItem, 'id' | 'createdAt' | 'status'>, actorId: string, actorName: string) {
+    const batch = writeBatch(db);
     const itemId = uuidv4();
-    const folioRef = doc(db, "properties", propertyId, "stays", stayId, "folio", itemId);
     
-    await setDoc(folioRef, {
+    // 1. Cria o item na sub-coleção
+    const folioRef = doc(db, "properties", propertyId, "stays", stayId, "folio", itemId);
+    batch.set(folioRef, {
       ...item,
       id: itemId,
+      status: 'pending', // Nasce sempre pendente
       createdAt: serverTimestamp()
     });
 
+    // 2. Acende o "Alerta" na ficha da hospedagem principal
+    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
+    batch.update(stayRef, { hasOpenFolio: true });
+
+    await batch.commit();
+
     await AuditService.log({
-      propertyId,
-      userId: actorId,
-      userName: actorName,
-      action: "UPDATE",
-      entity: "STAY",
-      entityId: stayId,
-      details: `Lançou item na conta: ${item.quantity}x ${item.description} (R$ ${item.totalPrice.toFixed(2)})`
+      propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
+      details: `Lançou item na conta: ${item.quantity}x ${item.description}`
     });
   },
 
-  /**
-   * Estorna/Remove um item da conta
-   */
+  async toggleFolioItemStatus(propertyId: string, stayId: string, itemId: string, newStatus: 'pending' | 'paid', actorId: string, actorName: string) {
+    const folioRef = doc(db, "properties", propertyId, "stays", stayId, "folio", itemId);
+    await updateDoc(folioRef, { status: newStatus });
+
+    // Verifica se ainda há algo pendente para apagar o ícone de alerta
+    const q = query(collection(db, "properties", propertyId, "stays", stayId, "folio"), where("status", "==", "pending"));
+    const pendingSnap = await getDocs(q);
+    
+    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
+    await updateDoc(stayRef, { hasOpenFolio: !pendingSnap.empty });
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
+      details: `Marcou o item da conta como ${newStatus === 'paid' ? 'Pago/Lançado' : 'Pendente'}.`
+    });
+  },
+
   async deleteFolioItem(propertyId: string, stayId: string, itemId: string, itemDescription: string, actorId: string, actorName: string) {
     const folioRef = doc(db, "properties", propertyId, "stays", stayId, "folio", itemId);
     await deleteDoc(folioRef);
 
+    // Revalida a flag de alerta
+    const q = query(collection(db, "properties", propertyId, "stays", stayId, "folio"), where("status", "==", "pending"));
+    const pendingSnap = await getDocs(q);
+    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
+    await updateDoc(stayRef, { hasOpenFolio: !pendingSnap.empty });
+
     await AuditService.log({
-      propertyId,
-      userId: actorId,
-      userName: actorName,
-      action: "DELETE",
-      entity: "STAY",
-      entityId: stayId,
+      propertyId, userId: actorId, userName: actorName, action: "DELETE", entity: "STAY", entityId: stayId,
       details: `Estornou o item da conta: ${itemDescription}`
+    });
+  },
+
+  /**
+   * Arquiva uma estadia finalizada para limpar a tela
+   */
+  async archiveStay(propertyId: string, stayId: string, actorId: string, actorName: string) {
+    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
+    await updateDoc(stayRef, { 
+      status: 'archived',
+      updatedAt: serverTimestamp() 
+    });
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
+      details: "Estadia arquivada."
     });
   }
 };

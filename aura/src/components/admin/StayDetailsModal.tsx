@@ -84,7 +84,6 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const [checkInStr, setCheckInStr] = useState("");
   const [checkOutStr, setCheckOutStr] = useState("");
 
-  // A MUDANÇA ESTÁ AQUI: Agora a constante isEditing já existe!
   const isCoreFieldLocked = !isEditing || isGovOnly;
 
   // ==========================================
@@ -183,6 +182,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
       toast.success("Item adicionado à conta.");
       setNewFolioItem({ description: "", quantity: 1, unitPrice: 0 });
       loadFolio();
+      if (onUpdate) onUpdate(); // Atualiza lista de estadias (para o ícone de alerta)
     } catch (error) {
       toast.error("Erro ao adicionar item.");
     } finally {
@@ -199,8 +199,27 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
       );
       toast.success("Item estornado com sucesso.");
       loadFolio();
+      if (onUpdate) onUpdate(); // Atualiza lista de estadias
     } catch (error) {
       toast.error("Erro ao estornar item.");
+    } finally {
+      setLoadingFolio(false);
+    }
+  };
+
+  // NOVA FUNÇÃO: Marcar como Pago / Pendente
+  const handleToggleFolioStatus = async (itemId: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'paid' ? 'pending' : 'paid';
+    setLoadingFolio(true);
+    try {
+      await StayService.toggleFolioItemStatus(
+        stay.propertyId, stay.id, itemId, newStatus as 'pending' | 'paid', userData?.id || "unknown", userData?.fullName || "Recepção"
+      );
+      toast.success(newStatus === 'paid' ? "Item baixado!" : "Item reaberto.");
+      loadFolio();
+      if (onUpdate) onUpdate(); // Atualiza lista de estadias (para o ícone de alerta sumir se tudo for pago)
+    } catch (error) {
+      toast.error("Erro ao atualizar status do item.");
     } finally {
       setLoadingFolio(false);
     }
@@ -271,7 +290,6 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     }
   };
 
-  // Funções de Arrays Dinâmicos
   const updateAdditionalGuest = (index: number, field: string, value: string) => {
       const newGuests = [...(formData.additionalGuests || [])];
       (newGuests[index] as any)[field] = value;
@@ -397,7 +415,6 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
           {activeTab === 'conta' && (
              <div className="flex flex-col h-full space-y-6 animate-in slide-in-from-right-4 duration-300">
                 
-                {/* Header do Extrato */}
                 <div className="flex items-center justify-between border-b border-border pb-4">
                   <div>
                     <h3 className="text-xl font-black text-foreground flex items-center gap-2">Extrato de Consumo</h3>
@@ -420,7 +437,6 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                 </div>
 
                 <div className="flex gap-8 items-start">
-                  {/* Tabela de Lançamentos */}
                   <div className="flex-1 bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
                     <table className="w-full text-left">
                       <thead className="bg-muted/50 border-b border-border">
@@ -437,11 +453,25 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                           <tr><td colSpan={5} className="p-8 text-center text-muted-foreground font-medium">Nenhum consumo registrado nesta estadia.</td></tr>
                         ) : (
                           folioItems.map((item) => (
-                            <tr key={item.id} className="hover:bg-muted/20 transition-colors">
-                              <td className="p-4 font-bold text-foreground">
-                                {item.description}
-                                <div className="text-[9px] font-mono text-muted-foreground uppercase mt-1 flex items-center gap-1">
-                                  <Clock size={10}/> {item.createdAt?.toDate ? format(item.createdAt.toDate(), "dd/MM HH:mm") : 'Agora'}
+                            <tr key={item.id} className={cn("hover:bg-muted/20 transition-colors", item.status === 'paid' && "opacity-50")}>
+                              <td className="p-4 font-bold text-foreground flex items-center gap-3">
+                                {!isGovOnly && (
+                                  <button 
+                                    onClick={() => handleToggleFolioStatus(item.id, item.status || 'pending')}
+                                    className={cn(
+                                      "w-5 h-5 rounded flex items-center justify-center border transition-all shrink-0", 
+                                      item.status === 'paid' ? "bg-green-500 border-green-500 text-white" : "bg-background border-border text-transparent hover:border-primary"
+                                    )}
+                                    title={item.status === 'paid' ? "Reabrir item" : "Marcar como Pago/Lançado no PDV"}
+                                  >
+                                    <CheckCircle size={14} strokeWidth={3}/>
+                                  </button>
+                                )}
+                                <div>
+                                  <span className={item.status === 'paid' ? "line-through" : ""}>{item.description}</span>
+                                  <div className="text-[9px] font-mono text-muted-foreground uppercase mt-1 flex items-center gap-1">
+                                    <Clock size={10}/> {item.createdAt?.toDate ? format(item.createdAt.toDate(), "dd/MM HH:mm") : 'Agora'}
+                                  </div>
                                 </div>
                               </td>
                               <td className="p-4 text-center font-bold text-muted-foreground">{item.quantity}x</td>
@@ -461,7 +491,6 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                     </table>
                   </div>
 
-                  {/* Lançamento Rápido (Recepção) */}
                   {!isGovOnly && (
                     <form onSubmit={handleAddFolioItem} className="w-72 bg-secondary/50 border border-border p-5 rounded-2xl space-y-4 shrink-0">
                       <h4 className="font-bold flex items-center gap-2 text-sm uppercase tracking-widest text-primary"><ShoppingCart size={16}/> Lançamento Avulso</h4>

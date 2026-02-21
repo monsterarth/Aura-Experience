@@ -130,6 +130,7 @@ housekeepingItems?: { id: string; label: string }[];
 // Sub-coleção: properties/{propertyId}/stays/{stayId}/folio
 export interface FolioItem {
   id: string;
+  status:'pending' | 'paid';
   description: string; // Ex: "Água com Gás", "Heineken"
   quantity: number;
   unitPrice: number;
@@ -298,7 +299,7 @@ export interface Stay {
   };
 
   // Status
-  status: 'pending' | 'pre_checkin_done' | 'active' | 'finished' | 'cancelled';
+  status: 'pending' | 'pre_checkin_done' | 'active' | 'finished' | 'cancelled' | 'archived';
   automationFlags: {
     send48h: boolean;
     send24h: boolean;
@@ -307,6 +308,7 @@ export interface Stay {
   };
 
   housekeepingItems?: { id: string; label: string }[];
+  hasOpenFolio?: boolean; // Flag para o ícone de alerta
   
   createdAt: Timestamp;
 }
