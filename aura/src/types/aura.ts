@@ -206,6 +206,7 @@ export interface SurveyQuestion {
   type: SurveyQuestionType;
   categoryId: string;
   categoryName: string;
+  options?: string[];
 }
 
 export interface SurveyReward {
@@ -325,17 +326,61 @@ export interface Stay {
   createdAt: Timestamp;
 }
 
-// --- MENSAGERIA ---
+// ==========================================
+// MÓDULO DE AUTOMAÇÃO E MENSAGERIA
+// ==========================================
+
+export type AutomationTriggerEvent = 
+  | 'pre_checkin_48h' 
+  | 'pre_checkin_24h' 
+  | 'welcome_checkin' 
+  | 'pre_checkout' 
+  | 'checkout_thanks' 
+  | 'nps_survey'
+  | 'custom_scheduled';
+
+// --- REGRAS DE AUTOMAÇÃO (Ligadas/Desligadas pela Pousada) ---
+// Coleção: properties/{propertyId}/automation_rules
+export interface AutomationRule {
+  id: AutomationTriggerEvent;
+  propertyId: string;
+  active: boolean;
+  templateId: string; // Qual texto enviar
+  delayMinutes: number; // Ex: Enviar 120 minutos (2h) após o gatilho
+  updatedAt: Timestamp;
+}
+
+// --- TEMPLATES DE MENSAGENS DINÂMICAS ---
+// Coleção: properties/{propertyId}/message_templates
+export interface MessageTemplate {
+  id: string;
+  propertyId: string;
+  name: string; // Ex: "Boas Vindas Padrão"
+  body: string; // Texto com variáveis ex: "Olá {{guest_name}}..."
+  variables: string[]; // Controle interno de quais variáveis o texto exige
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+// --- MENSAGERIA E FILA (Message Queue) ---
+// Coleção: properties/{propertyId}/messages
 export interface WhatsAppMessage {
   id: string;
   propertyId: string;
   stayId: string;
   to: string;
   body: string;
-status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed'; // Atualizado para suportar a UI
-  attempts: number;
+  
+  // Controle de Fila e Automação
+  isAutomated: boolean;
+  triggerEvent?: AutomationTriggerEvent; 
+  scheduledFor?: Timestamp; // Para envios futuros (ex: 48h antes do check-in)
+  
+  status: 'pending' | 'processing' | 'sent' | 'delivered' | 'read' | 'failed'; 
+  attempts: number; // Máximo de 3 tentativas automáticas
   lastAttemptAt?: Timestamp;
   errorMessage?: string;
+  
   createdAt: Timestamp;
   auditLogId?: string;
 }

@@ -3,6 +3,14 @@
     {
       "path": "/api/cron/process-messages",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/daily-automations",
+      "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/cron/daily-housekeeping",
+      "schedule": "0 8 * * *"
     }
   ]
 }

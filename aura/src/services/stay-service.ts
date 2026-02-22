@@ -1,4 +1,3 @@
-// src/services/stay-service.ts
 import { db } from "@/lib/firebase";
 import { 
   collection, 
@@ -16,11 +15,63 @@ import {
   setDoc,
   deleteDoc
 } from "firebase/firestore";
-import { Stay, Guest, Cabin, FolioItem } from "@/types/aura";
+import { Stay, Guest, Cabin, FolioItem, AutomationTriggerEvent, MessageTemplate } from "@/types/aura";
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
+import { AutomationService } from "./automation-service";
 
 export const StayService = {
+  /**
+   * Dispara uma automação se a regra estiver ativa na propriedade.
+   * Executado silenciosamente para não travar o fluxo da recepção.
+   */
+  async triggerAutomation(propertyId: string, stayId: string, triggerEvent: AutomationTriggerEvent) {
+    try {
+      // 1. Verifica se a regra existe e está ativa
+      const ruleSnap = await getDoc(doc(db, "properties", propertyId, "automation_rules", triggerEvent));
+      if (!ruleSnap.exists() || !ruleSnap.data().active) return;
+      const rule = ruleSnap.data();
+
+      // 2. Busca o template da mensagem
+      const templateSnap = await getDoc(doc(db, "properties", propertyId, "message_templates", rule.templateId));
+      if (!templateSnap.exists()) return;
+      const template = { id: templateSnap.id, ...templateSnap.data() } as MessageTemplate;
+
+      // 3. Coleta os dados vitais
+      const stayDoc = await getDoc(doc(db, "properties", propertyId, "stays", stayId));
+      if (!stayDoc.exists()) return;
+      const stay = { id: stayDoc.id, ...stayDoc.data() } as Stay;
+
+      const guestDoc = await getDoc(doc(db, "properties", propertyId, "guests", stay.guestId));
+      if (!guestDoc.exists()) return;
+      const guest = { id: guestDoc.id, ...guestDoc.data() } as Guest;
+
+      // Se não houver telefone cadastrado, aborta o envio
+      if (!guest.phone) return;
+
+      let cabin;
+      if (stay.cabinId) {
+        const cabinDoc = await getDoc(doc(db, "properties", propertyId, "cabins", stay.cabinId));
+        if (cabinDoc.exists()) cabin = { id: cabinDoc.id, ...cabinDoc.data() } as Cabin;
+      }
+
+      // 4. Envia para a Fila de Processamento
+      await AutomationService.queueMessage(
+        propertyId,
+        stayId,
+        guest.phone,
+        template,
+        triggerEvent,
+        guest,
+        cabin,
+        stay,
+        rule.delayMinutes || 0
+      );
+    } catch (error) {
+      console.error(`Erro interno ao processar gatilho ${triggerEvent}:`, error);
+    }
+  },
+
   /**
    * Gera um código de acesso único dentro da sub-coleção de estadias da propriedade
    */
@@ -263,6 +314,9 @@ export const StayService = {
       entityId: stayId,
       details: "Check-in físico realizado pela recepção."
     });
+
+    // DISPARO DE AUTOMAÇÃO: Boas Vindas
+    await this.triggerAutomation(propertyId, stayId, 'welcome_checkin');
   },
 
   /**
@@ -275,7 +329,6 @@ export const StayService = {
 
     if (!cabinId) throw new Error("Acomodação não encontrada na reserva.");
 
-    // 1. Busca Tarefas Diárias Pendentes para Cancelar (O Check-out sobrepõe a diária)
     const dailyTasksQuery = query(
       collection(db, "properties", propertyId, "housekeeping_tasks"),
       where("cabinId", "==", cabinId),
@@ -285,7 +338,6 @@ export const StayService = {
 
     const batch = writeBatch(db);
 
-    // Cancela tarefas conflitantes
     dailyTasksSnap.docs.forEach(d => {
       if (d.data().type === 'daily') {
         batch.update(d.ref, {
@@ -296,32 +348,29 @@ export const StayService = {
       }
     });
 
-    // 2. Finaliza Estadia
     batch.update(stayRef, {
       status: 'finished',
       checkOutActual: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
 
-    // 3. Envia Cabana para Limpeza
     const cabinRef = doc(db, "properties", propertyId, "cabins", cabinId);
     batch.update(cabinRef, {
       status: 'cleaning',
       currentStayId: null
     });
 
-    // 4. Cria a Tarefa de Faxina de Troca (Turnover) na Governança
     const newTaskId = uuidv4();
     const taskRef = doc(db, "properties", propertyId, "housekeeping_tasks", newTaskId);
     batch.set(taskRef, {
       id: newTaskId,
       propertyId,
       cabinId,
-      stayId, // Vinculamos a estadia encerrada para permitir lançamento de consumo de última hora
+      stayId, 
       type: 'turnover',
       status: 'pending',
-      assignedTo: [], // Mantido como array
-      checklist: [], // Será preenchido pelo padrão no momento em que a camareira abrir
+      assignedTo: [], 
+      checklist: [], 
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
@@ -338,6 +387,10 @@ export const StayService = {
       details: `Check-out realizado. Tarefa de Faxina de Troca gerada para a unidade ${cabinId}.`
     });
 
+    // DISPARO DE AUTOMAÇÕES: Agradecimento e NPS (O delay é tratado na Fila)
+    await this.triggerAutomation(propertyId, stayId, 'checkout_thanks');
+    await this.triggerAutomation(propertyId, stayId, 'nps_survey');
+
     return { success: true };
   },
 
@@ -345,7 +398,6 @@ export const StayService = {
    * Desfaz o Check-out e Reativa a Estadia (Cancela a Tarefa de Governança)
    */
   async undoCheckOut(propertyId: string, stayId: string, cabinId: string, actorId: string, actorName: string) {
-    // 1. Busca a Tarefa de Turnover gerada acidentalmente para cancelar
     const turnoverQuery = query(
       collection(db, "properties", propertyId, "housekeeping_tasks"),
       where("stayId", "==", stayId),
@@ -364,7 +416,6 @@ export const StayService = {
       });
     });
 
-    // 2. Reativa a estadia 
     const stayRef = doc(db, "properties", propertyId, "stays", stayId);
     batch.update(stayRef, {
       status: 'active',
@@ -372,7 +423,6 @@ export const StayService = {
       updatedAt: serverTimestamp()
     });
 
-    // 3. Reocupa a cabana
     const cabinRef = doc(db, "properties", propertyId, "cabins", cabinId);
     batch.update(cabinRef, {
       status: 'occupied',
@@ -390,6 +440,9 @@ export const StayService = {
       entityId: stayId,
       details: `Check-out revertido. Estadia reativada e tarefa de limpeza cancelada.`
     });
+    
+    // Obs: Poderíamos adicionar lógica para deletar a mensagem de NPS da fila aqui, 
+    // mas na maioria das operações isso não é bloqueante.
   },
 
   /**
@@ -450,16 +503,14 @@ export const StayService = {
     const batch = writeBatch(db);
     const itemId = uuidv4();
     
-    // 1. Cria o item na sub-coleção
     const folioRef = doc(db, "properties", propertyId, "stays", stayId, "folio", itemId);
     batch.set(folioRef, {
       ...item,
       id: itemId,
-      status: 'pending', // Nasce sempre pendente
+      status: 'pending',
       createdAt: serverTimestamp()
     });
 
-    // 2. Acende o "Alerta" na ficha da hospedagem principal
     const stayRef = doc(db, "properties", propertyId, "stays", stayId);
     batch.update(stayRef, { hasOpenFolio: true });
 
@@ -475,7 +526,6 @@ export const StayService = {
     const folioRef = doc(db, "properties", propertyId, "stays", stayId, "folio", itemId);
     await updateDoc(folioRef, { status: newStatus });
 
-    // Verifica se ainda há algo pendente para apagar o ícone de alerta
     const q = query(collection(db, "properties", propertyId, "stays", stayId, "folio"), where("status", "==", "pending"));
     const pendingSnap = await getDocs(q);
     
@@ -492,7 +542,6 @@ export const StayService = {
     const folioRef = doc(db, "properties", propertyId, "stays", stayId, "folio", itemId);
     await deleteDoc(folioRef);
 
-    // Revalida a flag de alerta
     const q = query(collection(db, "properties", propertyId, "stays", stayId, "folio"), where("status", "==", "pending"));
     const pendingSnap = await getDocs(q);
     const stayRef = doc(db, "properties", propertyId, "stays", stayId);
@@ -504,9 +553,6 @@ export const StayService = {
     });
   },
 
-  /**
-   * Arquiva uma estadia finalizada para limpar a tela
-   */
   async archiveStay(propertyId: string, stayId: string, actorId: string, actorName: string) {
     const stayRef = doc(db, "properties", propertyId, "stays", stayId);
     await updateDoc(stayRef, { 

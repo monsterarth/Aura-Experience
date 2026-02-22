@@ -2,12 +2,14 @@
 
 import { useProperty } from "@/context/PropertyContext";
 import { CommunicationCenter } from "@/components/admin/CommunicationCenter";
+import { Button } from "@/components/ui/button";
+import { Bot } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export default function ComunicacaoPage() {
-  // 1. Correção: Extraindo 'property' (conforme a sua documentação) em vez de 'currentProperty'
+  const router = useRouter();
   const { property, isLoading } = useProperty() as any; 
 
-  // 2. Estado de Loading: Evita que a página quebre enquanto o Firebase busca a propriedade
   if (isLoading) {
     return (
       <div className="flex h-[80vh] items-center justify-center w-full">
@@ -19,7 +21,6 @@ export default function ComunicacaoPage() {
     );
   }
 
-  // 3. Fallback de Segurança: Se não houver propriedade selecionada
   if (!property) {
     return (
       <div className="flex h-[80vh] flex-col items-center justify-center w-full bg-muted/20 rounded-xl border border-dashed">
@@ -31,21 +32,28 @@ export default function ComunicacaoPage() {
     );
   }
 
-  // 4. Renderização do ambiente Multi-tenant isolado
   return (
-    <div className="h-full flex flex-col space-y-4">
-      {/* Cabeçalho dinâmico informando em qual Pousada o usuário está agindo */}
-      <div className="flex items-center justify-between">
+    <div className="h-full flex flex-col space-y-4 px-2 md:px-0">
+      <div className="flex items-center justify-between mt-2 md:mt-0">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Central de Comunicação</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-sm text-muted-foreground mt-1 hidden sm:block">
             Gestão omnichannel e WhatsApp para <strong className="text-foreground">{property.name}</strong>
           </p>
         </div>
+        
+        {/* BOTÃO DA FILA DE AUTOMAÇÕES */}
+        <Button 
+          variant="outline" 
+          onClick={() => router.push('/admin/comunicacao/automations')} 
+          className="gap-2 shadow-sm border-primary/20 hover:bg-primary/5 text-primary"
+        >
+          <Bot className="w-4 h-4" />
+          <span className="hidden sm:inline">Fila de Automações</span>
+        </Button>
       </div>
       
-      {/* Injeção cirúrgica do property.id dinâmico no componente de chat */}
-      <div className="flex-1 w-full">
+      <div className="flex-1 w-full pb-4">
         <CommunicationCenter propertyId={property.id} />
       </div>
     </div>

@@ -1,80 +1,135 @@
 import { NextResponse } from "next/server";
-import { MessageQueueService } from "@/services/message-queue-service";
+import { db } from "@/lib/firebase";
+import { collectionGroup, getDocs, getDoc, doc, updateDoc, query, where, Timestamp } from "firebase/firestore";
+import { WhatsAppMessage } from "@/types/aura";
 
-// Força a execução dinâmica, vital para rotas de Cron na Vercel
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // Permite 60s de execução na Vercel
 
-const WHATSAPP_SERVICE_URL = process.env.WHATSAPP_SERVICE_URL || "http://localhost:3001";
-const WHATSAPP_API_KEY = process.env.WHATSAPP_API_KEY || "Fazenda@2025";
+// Função utilitária para fazer o código "dormir" (Delay)
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export async function GET(request: Request) {
+  const authHeader = request.headers.get('authorization');
+  if (process.env.NODE_ENV === 'production' && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
-    // 1. Validar autenticação do Cron (Segurança da Vercel)
-    const authHeader = request.headers.get('authorization');
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-      return new NextResponse('Unauthorized', { status: 401 });
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + 1); // Margem de segurança
+    const timeLimit = Timestamp.fromDate(now);
+
+    const queueQuery = query(
+      collectionGroup(db, "messages"),
+      where("status", "==", "pending"),
+      where("scheduledFor", "<=", timeLimit)
+    );
+    
+    const snapshot = await getDocs(queueQuery);
+    
+    if (snapshot.empty) {
+      return NextResponse.json({ success: true, processed: 0, message: "Fila vazia. Nenhuma ação necessária." });
     }
 
-    // 2. Busca até 50 mensagens pendentes
-    const pendingJobs = await MessageQueueService.getPendingMessages(50);
+    let successCount = 0;
+    let failCount = 0;
 
-    if (pendingJobs.length === 0) {
-      return NextResponse.json({ message: "No pending messages to process." }, { status: 200 });
-    }
+    // PROTEÇÃO ANTI-SPAM E ANTI-TIMEOUT: Pegamos no máximo 15 mensagens por vez
+    // Se a fila tiver 50, ele processa 15 agora, e daqui a 5 min o Cron processa mais 15.
+    const docsToProcess = snapshot.docs.slice(0, 15);
 
-    const results = {
-      success: 0,
-      failed: 0,
-    };
+    for (const msgDoc of docsToProcess) {
+      const msg = { id: msgDoc.id, ...msgDoc.data() } as WhatsAppMessage;
+      const messageRef = msgDoc.ref; 
 
-    // 3. Processa cada mensagem (usando Promise.all para performance, ou for...of para evitar banimento)
-    // Para WhatsApp, recomendo for...of para adicionar um pequeno delay e evitar bloqueio por SPAM.
-    for (const job of pendingJobs) {
-      if (!job.id) continue;
-
-      // Trava a mensagem para não ser processada duas vezes se o cron sobrepor
-      await MessageQueueService.updateMessageStatus(job.id, "processing");
+      await updateDoc(messageRef, { status: 'processing' });
 
       try {
-        const response = await fetch(`${WHATSAPP_SERVICE_URL}/api/send`, {
-          method: "POST",
+        const propertyDoc = await getDoc(doc(db, "properties", msg.propertyId));
+        if (!propertyDoc.exists()) throw new Error("Propriedade não encontrada");
+        
+        const propertySettings = propertyDoc.data()?.settings;
+        if (!propertySettings?.whatsappEnabled || !propertySettings?.whatsappConfig?.apiUrl) {
+          throw new Error("WhatsApp não configurado ou desligado na propriedade.");
+        }
+
+        const { apiUrl, token } = propertySettings.whatsappConfig;
+        const baseUrl = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
+
+        const response = await fetch(`${baseUrl}/api/send`, {
+          method: 'POST',
           headers: {
-            "Content-Type": "application/json",
-            "x-api-key": WHATSAPP_API_KEY
+            'Content-Type': 'application/json',
+            'x-api-key': token 
           },
           body: JSON.stringify({
-            number: job.to,
-            message: job.body
+            number: msg.to,
+            message: msg.body
           })
         });
 
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `HTTP Error ${response.status}`);
+          const errorText = await response.text();
+          let errorMessage = "Erro na API do WhatsApp Docker";
+          try {
+            const errorJson = JSON.parse(errorText);
+            errorMessage = errorJson.error || errorMessage;
+          } catch (e) {
+            errorMessage = errorText; 
+          }
+          throw new Error(errorMessage);
         }
 
-        // Sucesso
-        await MessageQueueService.updateMessageStatus(job.id, "sent");
-        results.success++;
-        
-        // Pequeno delay de 1.5s entre mensagens para o WhatsApp não te bloquear
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        await updateDoc(messageRef, {
+          status: 'sent',
+          attempts: msg.attempts + 1,
+          lastAttemptAt: Timestamp.now(),
+          errorMessage: null
+        });
+        successCount++;
+
+        // PROTEÇÃO ANTI-SPAM (A MÁGICA ACONTECE AQUI)
+        // Faz o sistema pausar entre 2 e 4 segundos de forma aleatória antes de ir para a próxima mensagem
+        const humanDelay = Math.floor(Math.random() * (4000 - 2000 + 1)) + 2000;
+        await sleep(humanDelay);
 
       } catch (error: any) {
-        // Falha: Reverte para failed, incrementa tentativa
-        await MessageQueueService.updateMessageStatus(job.id, "failed", error.message || "Unknown error");
-        results.failed++;
+        console.error(`Erro ao enviar mensagem ${msg.id}:`, error.message);
+        const nextAttempts = msg.attempts + 1;
+        
+        if (nextAttempts >= 3) {
+          await updateDoc(messageRef, {
+            status: 'failed',
+            attempts: nextAttempts,
+            lastAttemptAt: Timestamp.now(),
+            errorMessage: error.message || "Erro desconhecido"
+          });
+        } else {
+          const retryTime = new Date();
+          retryTime.setMinutes(retryTime.getMinutes() + 5); 
+          
+          await updateDoc(messageRef, {
+            status: 'pending',
+            attempts: nextAttempts,
+            scheduledFor: Timestamp.fromDate(retryTime),
+            lastAttemptAt: Timestamp.now(),
+            errorMessage: `Falha na tentativa ${nextAttempts}: ${error.message}`
+          });
+        }
+        failCount++;
       }
     }
 
     return NextResponse.json({ 
-      message: "Cron execution finished", 
-      processed: pendingJobs.length,
-      results 
-    }, { status: 200 });
+      success: true, 
+      processed: docsToProcess.length,
+      leftInQueue: snapshot.size - docsToProcess.length, // Diz quantas ficaram de fora para a próxima rodada
+      results: { sent: successCount, delayed_or_failed: failCount }
+    });
 
   } catch (error: any) {
-    console.error("[CRON] Error processing messages:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    console.error("Erro no Processador da Fila (Cron):", error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
