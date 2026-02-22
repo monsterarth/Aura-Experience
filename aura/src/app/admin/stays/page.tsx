@@ -1,4 +1,3 @@
-// src/app/admin/stays/page.tsx
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
@@ -19,6 +18,7 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { toast } from "sonner";
 import { StayDetailsModal } from "@/components/admin/StayDetailsModal";
+import { GuestContactModal } from "@/components/admin/GuestContactModal"; // <-- NOVO IMPORT
 import { useRouter } from "next/navigation";
 
 type TabStatus = 'futuras' | 'ativas' | 'encerradas';
@@ -39,13 +39,11 @@ export default function StaysPage() {
   const [selectedGuest, setSelectedGuest] = useState<any | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
 
+  // State do Modal de WhatsApp (NOVO)
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+
   // States do Modal de Cancelamento
   const [stayToCancel, setStayToCancel] = useState<string | null>(null);
-
-  // States do Modal de WhatsApp
-  const [isMsgModalOpen, setIsMsgModalOpen] = useState(false);
-  const [msgData, setMsgData] = useState({ phone: "", name: "", text: "" });
-  const [sendingMsg, setSendingMsg] = useState(false);
 
   // --- Carregamento de Dados ---
   const loadStays = useCallback(async () => {
@@ -55,7 +53,7 @@ export default function StaysPage() {
       let statusFilter: string[] = [];
       if (activeTab === 'futuras') statusFilter = ['pending', 'pre_checkin_done'];
       if (activeTab === 'ativas') statusFilter = ['active'];
-      if (activeTab === 'encerradas') statusFilter = ['finished', 'cancelled']; // 'archived' fica de fora para limpar a tela
+      if (activeTab === 'encerradas') statusFilter = ['finished', 'cancelled']; 
 
       const data = await StayService.getStaysByStatus(contextProperty.id, statusFilter);
       setStays(data);
@@ -93,6 +91,27 @@ export default function StaysPage() {
     }
   };
 
+  // NOVO: Abre o modal de Contato Rápido buscando os dados frescos do hóspede
+  const handleOpenWhatsapp = async (stay: any) => {
+    if (!contextProperty?.id) return;
+    setLoading(true);
+    try {
+      const data = await StayService.getStayWithGuestAndCabin(contextProperty.id, stay.id);
+      if (data && data.guest) {
+        setSelectedStay(data.stay);
+        setSelectedGuest(data.guest);
+        setIsContactModalOpen(true);
+      } else {
+        toast.error("Hóspede não encontrado para esta reserva.");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao preparar contato com o hóspede.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCopyLink = (code: string) => {
     const link = `${window.location.origin}/check-in/login?code=${code}`;
     navigator.clipboard.writeText(link);
@@ -115,40 +134,6 @@ export default function StaysPage() {
     }
   };
 
-  const handleOpenWhatsapp = (stay: any) => {
-    const phone = stay.guestPhone || ""; 
-    const guestName = stay.guestName || "Hóspede";
-    
-    let defaultText = `Olá ${guestName.split(' ')[0]}, tudo bem? Gostaríamos de falar sobre sua estadia no ${contextProperty?.name}.`;
-    
-    if (activeTab === 'futuras') {
-        defaultText = `Olá ${guestName.split(' ')[0]}, estamos ansiosos pela sua chegada no ${contextProperty?.name}! Precisa de ajuda com o check-in?`;
-    } else if (activeTab === 'ativas') {
-        defaultText = `Olá ${guestName.split(' ')[0]}, como está sendo sua experiência no ${contextProperty?.name}? Precisa de algo?`;
-    }
-
-    setMsgData({ 
-        phone, 
-        name: guestName, 
-        text: defaultText
-    });
-    setIsMsgModalOpen(true);
-  };
-
-  const handleSendWhatsapp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSendingMsg(true);
-    try {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        toast.success(`Mensagem enviada para ${msgData.name}`);
-        setIsMsgModalOpen(false);
-    } catch (err) {
-        toast.error("Erro ao enviar mensagem");
-    } finally {
-        setSendingMsg(false);
-    }
-  };
-
   const handleArchive = async (stayId: string) => {
     if(!contextProperty?.id || !userData?.id) return;
     if(!confirm("Deseja arquivar esta estadia? Ela sairá desta lista e ficará guardada no histórico do Aura.")) return;
@@ -156,7 +141,7 @@ export default function StaysPage() {
     try {
       await StayService.archiveStay(contextProperty.id, stayId, userData.id, userData.fullName);
       toast.success("Estadia arquivada com sucesso.");
-      setStays(prev => prev.filter(s => s.id !== stayId)); // Remove da tela
+      setStays(prev => prev.filter(s => s.id !== stayId));
     } catch (error) {
       toast.error("Erro ao arquivar.");
     }
@@ -462,7 +447,6 @@ export default function StaysPage() {
                           {/* Coluna: Alertas Financeiros e NPS */}
                           <td className="p-4 text-center">
                             <div className="flex items-center justify-center gap-2">
-                              {/* Alerta de Consumo em Aberto (The Game Changer!) */}
                               {s.hasOpenFolio ? (
                                 <div className="p-1.5 bg-orange-500/10 text-orange-500 rounded-md border border-orange-500/20 group-hover:animate-pulse" title="Há itens de frigobar aguardando pagamento/baixa">
                                   <DollarSign size={14} />
@@ -473,7 +457,6 @@ export default function StaysPage() {
                                 </div>
                               )}
                               
-                              {/* NPS Alert */}
                               {s.nps && s.nps < 7 && (
                                 <div className="p-1.5 bg-red-500/10 text-red-500 rounded-md border border-red-500/20" title={`NPS Crítico: ${s.nps}`}>
                                   <Star size={14} className="fill-red-500" />
@@ -513,7 +496,7 @@ export default function StaysPage() {
             stay={selectedStay}
             guest={selectedGuest}
             onViewGuest={(id) => router.push(`/admin/guests/${id}`)}
-            onUpdate={loadStays} // Faz a tabela recarregar se alterar a conta
+            onUpdate={loadStays} 
           />
         )}
 
@@ -548,48 +531,16 @@ export default function StaysPage() {
             </div>
         )}
 
-        {/* Modal de WhatsApp */}
-        {isMsgModalOpen && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                <div className="bg-card border border-white/10 w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
-                    <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5">
-                        <h3 className="text-xl font-bold text-foreground flex items-center gap-2">
-                            <MessageCircle className="text-green-500" /> Contatar Hóspede
-                        </h3>
-                        <button onClick={() => setIsMsgModalOpen(false)} className="text-foreground/40 hover:text-foreground transition-colors">
-                            <X size={24} />
-                        </button>
-                    </div>
-                    
-                    <form onSubmit={handleSendWhatsapp} className="p-6 space-y-6">
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-foreground/40 uppercase">Para</label>
-                            <div className="p-3 bg-secondary border border-white/10 rounded-xl text-foreground font-medium">
-                                {msgData.name} <span className="text-foreground/30 text-xs ml-2">({msgData.phone || "Sem telefone"})</span>
-                            </div>
-                        </div>
-                        
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-foreground/40 uppercase">Mensagem</label>
-                            <textarea 
-                                autoFocus
-                                rows={5}
-                                value={msgData.text}
-                                onChange={e => setMsgData({...msgData, text: e.target.value})}
-                                className="w-full bg-secondary border border-white/10 rounded-xl p-4 text-foreground outline-none focus:border-green-500/50 resize-none"
-                            ></textarea>
-                        </div>
-
-                        <button 
-                            type="submit" 
-                            disabled={sendingMsg || !msgData.phone}
-                            className="w-full bg-green-500 hover:bg-green-600 text-black font-black uppercase py-4 rounded-2xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {sendingMsg ? <Loader2 className="animate-spin" /> : <><Send size={18} /> Enviar WhatsApp</>}
-                        </button>
-                    </form>
-                </div>
-            </div>
+        {/* NOVO: Modal Inteligente de Contato (Substitui o antigo) */}
+        {isContactModalOpen && selectedStay && selectedGuest && contextProperty?.id && (
+          <GuestContactModal 
+            propertyId={contextProperty.id}
+            stay={selectedStay}
+            guest={selectedGuest}
+            onClose={() => setIsContactModalOpen(false)}
+            whatsappApiUrl={contextProperty.settings?.whatsappConfig?.apiUrl}
+            whatsappToken={contextProperty.settings?.whatsappConfig?.token}
+          />
         )}
 
       </div>

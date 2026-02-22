@@ -53,7 +53,7 @@ export class AutomationService {
     return parsedText;
   }
 
-  /**
+/**
    * Coloca uma mensagem na Fila (DLQ) com Escudo Anti-Inconveniência.
    */
   static async queueMessage(
@@ -76,32 +76,34 @@ export class AutomationService {
       }
 
       // --- ESCUDO DE HORÁRIO SILENCIOSO (21:00 às 07:59) ---
-      // Ações de balcão (Check-in e Check-out na hora) furam o escudo.
       const ignoreQuietHours = ['welcome_checkin', 'checkout_thanks'];
       
       if (!ignoreQuietHours.includes(triggerEvent)) {
-        // Pega a hora exata da data planejada no fuso de São Paulo (BRT)
         let brtHour = parseInt(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false }), 10);
         
-        // Se cair de noite ou de madrugada
         if (brtHour >= 21 || brtHour < 8) { 
-          // Avança o relógio hora a hora até bater 08:00 da manhã para não quebrar matemática de dias
           while (brtHour !== 8) {
             now.setHours(now.getHours() + 1);
             brtHour = parseInt(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false }), 10);
           }
-          // Zera os minutos para disparar às 08:00:00 em ponto
           now.setMinutes(0, 0, 0); 
         }
       }
 
-      const messageRef = doc(collection(db, "properties", propertyId, "messages"));
+      // Formata o número para ser o ID do Contato (ex: 554899999999)
+      const cleanPhone = toNumber.replace(/\D/g, '');
+
+      // APONTA PARA O CAMINHO CORRETO DO CRM
+      const messageId = crypto.randomUUID();
+      const messageRef = doc(db, "properties", propertyId, "messages", messageId);
       
       const queuedMessage: Omit<WhatsAppMessage, "id"> = {
         propertyId,
+        contactId: cleanPhone,
         stayId,
-        to: toNumber,
+        to: cleanPhone,
         body: finalMessageBody,
+        direction: 'outbound',
         isAutomated: true,
         triggerEvent,
         scheduledFor: Timestamp.fromDate(now),

@@ -367,17 +367,20 @@ export interface MessageTemplate {
 export interface WhatsAppMessage {
   id: string;
   propertyId: string;
-  stayId: string;
-  to: string;
+  stayId?: string;       // Agora opcional (pois podemos falar com contatos sem reserva)
+  contactId?: string;    // NOVO: Elo com a agenda
+  to?: string;           // Destinatário (quando enviamos)
+  from?: string;         // Remetente (quando recebemos do webhook)
   body: string;
+  direction: 'inbound' | 'outbound'; // NOVO: Define se recebemos ou enviamos
   
   // Controle de Fila e Automação
   isAutomated: boolean;
   triggerEvent?: AutomationTriggerEvent; 
-  scheduledFor?: Timestamp; // Para envios futuros (ex: 48h antes do check-in)
+  scheduledFor?: Timestamp; 
   
   status: 'pending' | 'processing' | 'sent' | 'delivered' | 'read' | 'failed'; 
-  attempts: number; // Máximo de 3 tentativas automáticas
+  attempts: number; 
   lastAttemptAt?: Timestamp;
   errorMessage?: string;
   
@@ -403,6 +406,32 @@ export interface AuditLog {
   newData?: any;
   timestamp: Timestamp;
   details: string;
+}
+
+// ==========================================
+// MÓDULO DE AGENDA / WHATSAPP (CRM)
+// ==========================================
+export interface Contact {
+  id: string; // O ID será OBRIGATORIAMENTE o número formatado (ex: 554899999999)
+  propertyId: string;
+  name: string;
+  phone: string;
+  isGuest: boolean; // True se for hóspede, False se for contato avulso (ex: Zé do Gás)
+  guestId?: string; // O elo de ligação com a coleção Guests (se isGuest for true)
+  tags?: string[]; // Ex: ["VIP", "Fornecedor", "Problema"]
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export type ContactContextStatus = 'active' | 'pending' | 'past' | 'none';
+
+export interface ContactContext {
+  status: ContactContextStatus;
+  stayId?: string;
+  cabinName?: string;
+  checkIn?: Date;
+  checkOut?: Date;
+  message: string; // Ex: "Hospedado na Cabana 01 (Check-out amanhã)"
 }
 
 // --- STAFF ---
