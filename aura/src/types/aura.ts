@@ -198,17 +198,20 @@ export type SurveyQuestionType =
   | 'short_text' 
   | 'long_text';
 
-// Categoria dinâmica para BI (Business Intelligence)
-export type SurveyCategory = 'governance' | 'reception' | 'comfort' | 'breakfast' | 'general';
-
 export interface SurveyQuestion {
-  id: string;
+  id: string; // ID único para controle no React (Frontend)
+  position: number;
+  text: string;
+  description: string;
   type: SurveyQuestionType;
-  question: { pt: string; en: string; es: string }; // Suporte a hóspedes gringos
-  options?: { pt: string; en: string; es: string }[]; // Para múltipla escolha
-  category: SurveyCategory;
-  required: boolean;
-  order: number;
+  categoryId: string;
+  categoryName: string;
+}
+
+export interface SurveyReward {
+  hasReward: boolean;
+  type: 'discount' | 'freebie' | 'points' | 'other' | '';
+  description: string;
 }
 
 // --- TEMPLATE DA PESQUISA ---
@@ -217,10 +220,19 @@ export interface SurveyTemplate {
   id: string;
   propertyId: string;
   title: string;
-  active: boolean;
+  isDefault: boolean; // Indica se esta é a pesquisa enviada no check-out
   questions: SurveyQuestion[];
+  reward: SurveyReward;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+// --- CATEGORIAS DAS PESQUISAS ---
+export interface SurveyCategoryItem {
+  id: string;
+  propertyId: string;
+  name: string;
+  createdAt: Timestamp;
 }
 
 // --- RESPOSTAS DOS HÓSPEDES ---
@@ -240,10 +252,10 @@ export interface SurveyResponse {
   
   // Métricas pré-calculadas para Dashboards rápidos (Evita re-calcular no Frontend)
   metrics: {
-     npsScore?: number; // 0-10 (Se houver pergunta NPS)
-     averageRating?: number; // 1-5 (Média de todas as perguntas de Rating)
-     categoryRatings: Record<string, number>; // Ex: { governance: 4.5, reception: 5 }
-     isDetractor: boolean; // Flag automática (NPS <= 6 ou Rating <= 2) para disparar alertas
+       npsScore?: number; // 0-10 (Se houver pergunta NPS)
+       averageRating?: number; // 1-5 (Média de todas as perguntas de Rating)
+       categoryRatings: Record<string, number>; // Ex: { governance: 4.5, reception: 5 }
+       isDetractor: boolean; // Flag automática (NPS <= 6 ou Rating <= 2) para disparar alertas
   };
   
   createdAt: Timestamp;
