@@ -521,7 +521,7 @@ export default function PropertySettingsPage() {
                         <FileText size={20}/> Documentos & Termos Completos
                     </h3>
                     <p className="text-sm text-muted-foreground mb-4">
-                        Os textos aqui definidos exigirão o consentimento ("Li e Concordo") obrigatório do hóspede antes de finalizar o check-in.
+                        Os textos aqui definidos exigirão o consentimento (&quot;Li e Concordo&quot;) obrigatório do hóspede antes de finalizar o check-in.
                     </p>
 
                     <MultiLangTextarea 

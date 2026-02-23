@@ -165,7 +165,7 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
                 <option value="waiting_conference">Aguardando Conferência</option>
                 <option value="completed">Concluída (Liberada)</option>
               </select>
-              <p className="text-[10px] text-muted-foreground">Altere o status para "forçar" a movimentação da tarefa no Kanban.</p>
+              <p className="text-[10px] text-muted-foreground">Altere o status para &quot;forçar&quot; a movimentação da tarefa no Kanban.</p>
             </div>
           )}
 

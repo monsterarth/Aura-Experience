@@ -75,7 +75,8 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
         unitPrice: product.price,
         totalPrice: product.price * quantity,
         category: 'minibar' as const,
-        addedBy: userData?.id || "SYSTEM"
+        addedBy: userData?.id || "SYSTEM",
+        status: 'pending'
       };
     });
 
@@ -90,7 +91,7 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
       // Salva todos os itens no Folio da Estadia
       await Promise.all(
         itemsToSave.map(item => 
-          HousekeepingService.addFolioItem(task.propertyId, task.stayId!, item)
+          HousekeepingService.addFolioItem(task.propertyId, task.stayId!, { ...item, status: 'pending' })
         )
       );
 
