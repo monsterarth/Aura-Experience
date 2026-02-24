@@ -12,7 +12,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Parâmetros incompletos" }, { status: 400 });
     }
 
-    const dockerUrl = process.env.WHATSAPP_DOCKER_URL || "http://127.0.0.1:3001";
+    const dockerUrl = process.env.WHATSAPP_DOCKER_URL || "http://187.77.57.154:3001";
     const apiKey = process.env.WHATSAPP_API_KEY || "Fazenda@2025";
 
     // UNIFICADO: Aponta diretamente para a raiz (messages)
