@@ -372,6 +372,8 @@ export interface WhatsAppMessage {
   to?: string;           // Destinatário (quando enviamos)
   from?: string;         // Remetente (quando recebemos do webhook)
   body: string;
+  originalBody?: string | null;
+  mediaUrl?: string | null;
   direction: 'inbound' | 'outbound'; // NOVO: Define se recebemos ou enviamos
   
   // Controle de Fila e Automação

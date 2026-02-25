@@ -1,3 +1,5 @@
+//src\app\api\webhook\whatsapp\route.ts
+
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
@@ -5,7 +7,7 @@ import { FieldValue } from "firebase-admin/firestore";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { propertyId, contactNumber, text, direction, messageId } = body;
+const { propertyId, contactNumber, text, direction, messageId, originalText, mediaUrl } = body;
 
     // Validação básica de segurança
     if (!propertyId || !contactNumber || !text) {
@@ -61,6 +63,8 @@ export async function POST(req: Request) {
       to: direction === "outbound" ? contactNumber : propertyId,
       from: direction === "inbound" ? contactNumber : propertyId,
       body: text, // CRM usa 'body' em vez de 'text'
+      originalBody: originalText || null, // GUARDA O TEXTO ANTES DO GEMINI
+      mediaUrl: mediaUrl || null,         // GUARDA O LINK DA HOSTINGER
       direction: direction === "inbound" ? "inbound" : "outbound", // CRM usa 'direction'
       isAutomated: false,
       status: direction === "inbound" ? "delivered" : "sent",

@@ -9,7 +9,7 @@ import { ContactService } from "@/services/contact-service";
 import { Button } from "@/components/ui/button";
 import { 
   Search, Send, Clock, CheckCircle2, 
-  MapPin, Loader2, ArrowLeft, Plus, X, Bot, MessageCircle
+  MapPin, Loader2, ArrowLeft, Plus, X, Bot, MessageCircle, Languages
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -34,19 +34,19 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
   const [isNewContactOpen, setIsNewContactOpen] = useState(false);
   const [newContactData, setNewContactData] = useState({ name: "", phone: "" });
 
+  // 🌍 Estado para controlar qual tradução está aberta
+  const [showOriginal, setShowOriginal] = useState<Record<string, boolean>>({});
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 1. Sincronização em Tempo Real
   useEffect(() => {
     if (!propertyId) return;
 
-    // Escuta a Agenda
     const qContacts = query(collection(db, "properties", propertyId, "contacts"));
     const unsubContacts = onSnapshot(qContacts, (snap) => {
       setContacts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Contact)));
     });
 
-    // UNIFICADO: Escuta TODAS as mensagens da raiz (Apanha webhook e envios)
     const qMsg = query(collection(db, "properties", propertyId, "messages"), orderBy("createdAt", "asc"));
     const unsubMsg = onSnapshot(qMsg, (snap) => {
       setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() } as WhatsAppMessage)));
@@ -57,11 +57,9 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
     return () => { unsubContacts(); unsubMsg(); };
   }, [propertyId]);
 
-  // 2. Agrupa mensagens por conversa
   const chats = useMemo(() => {
     const map = new Map<string, WhatsAppMessage[]>();
     messages.forEach(m => {
-      // Pega o número real da mensagem independentemente da direção
       const phone = m.contactId || (m.direction === 'inbound' ? m.from : m.to);
       if (!phone) return;
       if (!map.has(phone)) map.set(phone, []);
@@ -79,7 +77,6 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
     });
   }, [messages]);
 
-  // 3. Efeito do Raio-X
   useEffect(() => {
     async function loadContext() {
       if (selectedPhone && propertyId) {
@@ -93,7 +90,6 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
     loadContext();
   }, [selectedPhone, propertyId]);
 
-  // 4. Envio de Mensagem Direto do Chat
   const handleSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!inputText.trim() || !selectedPhone || sending) return;
@@ -103,7 +99,6 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
       const messageId = crypto.randomUUID();
       const contactId = selectedPhone;
 
-      // UNIFICADO: Cria a mensagem na raiz
       const messageRef = doc(db, "properties", propertyId, "messages", messageId);
       await setDoc(messageRef, {
         id: messageId,
@@ -159,7 +154,27 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
     return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
   };
 
-  // Garante que contatos sem mensagem também aparecem na barra lateral
+  const toggleOriginal = (msgId: string) => {
+    setShowOriginal(prev => ({ ...prev, [msgId]: !prev[msgId] }));
+  };
+
+  // 🎬 Renderizador Dinâmico de Mídia
+  const renderMedia = (msg: WhatsAppMessage) => {
+    if (!msg.mediaUrl) return null;
+    const bodyStr = msg.body?.toLowerCase() || "";
+    
+    if (bodyStr.includes('áudio') || bodyStr.includes('voz')) {
+      return <audio src={msg.mediaUrl} controls className="w-full max-w-[240px] h-10 mt-2 rounded-md" />;
+    }
+    if (bodyStr.includes('imagem') || bodyStr.includes('figurinha')) {
+      return <img src={msg.mediaUrl} alt="Mídia Recebida" className="max-w-full rounded-md mt-2 max-h-64 object-cover" />;
+    }
+    if (bodyStr.includes('vídeo')) {
+      return <video src={msg.mediaUrl} controls className="max-w-full rounded-md mt-2 max-h-64" />;
+    }
+    return <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="underline mt-2 inline-block text-xs font-semibold">📎 Abrir Anexo</a>;
+  };
+
   const sidebarList = Array.from(new Set([...chats.map(c => c.phone), ...contacts.map(c => c.id)]));
 
   if (loading) return <div className="flex h-[60vh] items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
@@ -243,11 +258,37 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
             <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-amber-50/30 dark:bg-transparent">
               {currentChatMessages.map((msg, i) => {
                 const isMe = msg.direction === 'outbound';
+                const hasTranslation = msg.originalBody && msg.originalBody !== msg.body;
+                
                 return (
                   <div key={msg.id || i} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                     <div className={`max-w-[80%] md:max-w-[60%] rounded-2xl px-4 py-3 shadow-sm ${isMe ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-card border rounded-tl-sm text-foreground'}`}>
                       {msg.isAutomated && <div className="flex items-center gap-1 text-[10px] uppercase font-bold mb-1 opacity-70">Robô Automação</div>}
+                      
+                      {/* Corpo Principal da Mensagem (Traduzido ou Normal) */}
                       <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
+                      
+                      {/* Renderizador de Áudio/Imagem/Vídeo */}
+                      {renderMedia(msg)}
+
+                      {/* Botão de Ver Original (Apenas se houver tradução) */}
+                      {hasTranslation && (
+                        <div className="mt-2 pt-2 border-t border-current/10 flex flex-col items-start">
+                          <button 
+                            onClick={() => toggleOriginal(msg.id!)} 
+                            className="text-[10px] font-semibold opacity-60 hover:opacity-100 transition-opacity flex items-center gap-1"
+                          >
+                            <Languages className="w-3 h-3" />
+                            {showOriginal[msg.id!] ? "Ocultar original" : "Ver original"}
+                          </button>
+                          
+                          {showOriginal[msg.id!] && (
+                            <div className="mt-2 text-xs opacity-80 italic border-l-2 border-current/30 pl-2">
+                              {msg.originalBody}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <span className="text-[10px] text-muted-foreground mt-1 px-1">{msg.createdAt?.toDate ? format(msg.createdAt.toDate(), "HH:mm") : ''}</span>
                   </div>
@@ -265,7 +306,6 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
           </>
         )}
       </div>
-
 
       {/* MODAL NOVO CONTATO */}
       {isNewContactOpen && (

@@ -2,15 +2,52 @@ const express = require('express');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const port = process.env.PORT || 3001;
 const API_KEY = process.env.WHATSAPP_API_KEY || 'Fazenda@2025';
 const WEBHOOK_URL = process.env.WEBHOOK_URL || 'http://host.docker.internal:3000/api/webhook/whatsapp';
 const PROPERTY_ID = process.env.PROPERTY_ID || 'fazenda-modelo-aura';
+// Define o IP público (idealmente viria de uma variável de ambiente)
+const SERVER_URL = process.env.SERVER_URL || 'http://187.77.57.154:3001';
 
 app.use(cors());
 app.use(express.json());
+
+// ==========================================
+// 🗄️ SERVIDOR DE MÍDIA & SISTEMA DE LIMPEZA
+// ==========================================
+const mediaFolderPath = path.join(__dirname, 'media');
+if (!fs.existsSync(mediaFolderPath)) {
+    fs.mkdirSync(mediaFolderPath);
+}
+
+// Expõe a pasta media para a internet
+app.use('/media', express.static(mediaFolderPath));
+
+// Rotina do Lixeiro: Roda a cada 24 horas e apaga arquivos com mais de 7 dias
+const CLEANUP_DAYS = 7;
+setInterval(() => {
+    console.log('🧹 Iniciando rotina de limpeza de mídias antigas...');
+    fs.readdir(mediaFolderPath, (err, files) => {
+        if (err) return console.error('Erro ao ler pasta de mídia:', err);
+        const now = Date.now();
+        files.forEach(file => {
+            const filePath = path.join(mediaFolderPath, file);
+            fs.stat(filePath, (err, stats) => {
+                if (err) return;
+                const fileAgeMs = now - stats.mtime.getTime();
+                const maxAgeMs = CLEANUP_DAYS * 24 * 60 * 60 * 1000;
+                if (fileAgeMs > maxAgeMs) {
+                    fs.unlink(filePath, () => console.log(`🗑️ Mídia apagada (expirada): ${file}`));
+                }
+            });
+        });
+    });
+}, 24 * 60 * 60 * 1000); // 24 horas em milissegundos
+// ==========================================
 
 const client = new Client({
     authStrategy: new LocalAuth(),
@@ -40,7 +77,6 @@ client.on('ready', () => {
 
 const processedMessages = new Set();
 
-// 🔥 MOTOR DE ESCUTA OMNICHANNEL + IDENTIFICAÇÃO DE MÍDIA
 client.on('message_create', async (msg) => {
     try {
         if (processedMessages.has(msg.id._serialized)) return;
@@ -58,28 +94,51 @@ client.on('message_create', async (msg) => {
         const contactNumber = isOutbound ? msg.to.replace('@c.us', '') : msg.from.replace('@c.us', '');
         const direction = isOutbound ? 'outbound' : 'inbound';
 
-        // 🧠 TRADUTOR DE MÍDIA PARA TEXTO
         let messageText = msg.body;
-        
-        // Se a mensagem não tiver texto (foto, áudio, etc), definimos um fallback baseado no tipo
-        if (!messageText) {
-            switch (msg.type) {
-                case 'image': messageText = '📷 [Imagem]'; break;
-                case 'video': messageText = '🎥 [Vídeo]'; break;
-                case 'audio':
-                case 'ptt': messageText = '🎤 [Mensagem de Voz]'; break;
-                case 'sticker': messageText = '👾 [Figurinha / Sticker]'; break;
-                case 'document': messageText = '📄 [Documento]'; break;
-                case 'location': messageText = '📍 [Localização Partilhada]'; break;
-                case 'vcard':
-                case 'multi_vcard': messageText = '📇 [Contato Partilhado]'; break;
-                case 'revoked': messageText = '🚫 [Mensagem Apagada]'; break;
-                default: messageText = '📎 [Mídia Não Suportada]';
+        let mediaBase64 = null;
+        let mediaMimeType = null;
+        let mediaUrl = null;
+
+        // 🧠 INTERCEPTADOR DE MÍDIA OMNICHANNEL (Áudio, Imagem, Figurinha)
+        if (msg.hasMedia) {
+            try {
+                console.log(`\n⏳ Baixando mídia de ${contactNumber}...`);
+                const media = await msg.downloadMedia();
+                
+                if (media) {
+                    mediaBase64 = media.data; 
+                    mediaMimeType = media.mimetype;
+                    
+                    // Extrai a extensão correta (ex: 'audio/ogg; codecs=opus' -> 'ogg')
+                    let ext = media.mimetype.split('/')[1].split(';')[0];
+                    if (ext === 'jpeg') ext = 'jpg';
+                    
+                    // Salva no disco da VM
+                    const fileName = `${msg.id.id}.${ext}`;
+                    const filePath = path.join(mediaFolderPath, fileName);
+                    fs.writeFileSync(filePath, mediaBase64, 'base64');
+                    
+                    // Gera o link público para a Vercel
+                    mediaUrl = `${SERVER_URL}/media/${fileName}`;
+                    console.log(`✅ Mídia salva localmente: ${mediaUrl}`);
+
+                    // Define o texto de fallback pro painel caso a Vercel não renderize
+                    if (msg.type === 'ptt' || msg.type === 'audio') messageText = '🎤 [Áudio Recebido - Processando transcrição...]';
+                    else if (msg.type === 'image') messageText = '📷 ';
+                    else if (msg.type === 'sticker') messageText = '👾 [Figurinha]';
+                    else if (msg.type === 'video') messageText = '🎥 [Vídeo]';
+                    else messageText = '📎 [Documento]';
+                }
+            } catch (err) {
+                console.error('❌ Erro ao processar mídia:', err);
+                messageText = '📎 [Erro ao baixar arquivo do WhatsApp]';
             }
+        } 
+        else if (!messageText) {
+            messageText = '📎 [Mídia Não Suportada]';
         }
 
         console.log(`\n💬 MENSAGEM CAPTURADA: ${direction.toUpperCase()} | Contato: ${contactNumber}`);
-        console.log(`Tipo: ${msg.type} | Conteúdo: ${messageText}`);
 
         try {
             const response = await fetch(WEBHOOK_URL, {
@@ -88,18 +147,21 @@ client.on('message_create', async (msg) => {
                 body: JSON.stringify({
                     propertyId: PROPERTY_ID,
                     contactNumber: contactNumber,
-                    text: messageText, // Agora nunca estará vazio!
-                    direction: direction
+                    text: messageText, 
+                    direction: direction,
+                    mediaBase64: mediaBase64,
+                    mediaMimeType: mediaMimeType,
+                    mediaUrl: mediaUrl // NOVO: Link direto do arquivo para a UI
                 })
             });
 
             if (!response.ok) {
                 console.error('⚠️ Aviso: O Webhook retornou um erro:', await response.text());
             } else {
-                console.log('✅ Mensagem sincronizada com o Next.js (Firestore)!');
+                console.log('✅ Mensagem sincronizada com o n8n!');
             }
         } catch (fetchError) {
-            console.error('❌ Erro ao contactar o Webhook do Next.js:', fetchError.message);
+            console.error('❌ Erro ao contactar o Webhook:', fetchError.message);
         }
 
     } catch (error) {
