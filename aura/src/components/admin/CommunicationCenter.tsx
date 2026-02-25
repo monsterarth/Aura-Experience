@@ -158,7 +158,7 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
     setShowOriginal(prev => ({ ...prev, [msgId]: !prev[msgId] }));
   };
 
-// 🎬 Renderizador Dinâmico de Mídia (Com Proxy HTTPS e Detecção Inteligente)
+  // 🎬 Renderizador Dinâmico de Mídia (Com Proxy HTTPS e Detecção Inteligente)
   const renderMedia = (msg: WhatsAppMessage) => {
     if (!msg.mediaUrl) return null;
 
@@ -269,16 +269,18 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
                 
                 return (
                   <div key={msg.id || i} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                    <div className={`max-w-[80%] md:max-w-[60%] rounded-2xl px-4 py-3 shadow-sm ${isMe ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-card border rounded-tl-sm text-foreground'}`}>
+                    
+                    {/* 👇 BALÃO DA MENSAGEM (Agora é 'relative' para o emoji ancorar nele) */}
+                    <div className={`relative max-w-[80%] md:max-w-[60%] rounded-2xl px-4 py-3 shadow-sm ${isMe ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-card border rounded-tl-sm text-foreground'}`}>
                       {msg.isAutomated && <div className="flex items-center gap-1 text-[10px] uppercase font-bold mb-1 opacity-70">Robô Automação</div>}
                       
-                      {/* Corpo Principal da Mensagem (Traduzido ou Normal) */}
+                      {/* Corpo Principal da Mensagem */}
                       <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
                       
                       {/* Renderizador de Áudio/Imagem/Vídeo */}
                       {renderMedia(msg)}
 
-                      {/* Botão de Ver Original (Apenas se houver tradução) */}
+                      {/* Botão de Ver Original */}
                       {hasTranslation && (
                         <div className="mt-2 pt-2 border-t border-current/10 flex flex-col items-start">
                           <button 
@@ -296,8 +298,29 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
                           )}
                         </div>
                       )}
+
+                      {/* 👇 A REAÇÃO (O Emoji fica grudado no canto de baixo do balão) */}
+                      {msg.reaction && (
+                        <div className={`absolute -bottom-3 ${isMe ? 'right-4' : 'left-4'} bg-background border shadow-sm rounded-full px-1.5 py-0.5 text-xs z-10 text-foreground`}>
+                          {msg.reaction}
+                        </div>
+                      )}
                     </div>
-                    <span className="text-[10px] text-muted-foreground mt-1 px-1">{msg.createdAt?.toDate ? format(msg.createdAt.toDate(), "HH:mm") : ''}</span>
+
+                    {/* 👇 HORA E TIQUES AZUIS */}
+                    <div className="flex items-center gap-1 mt-1 px-1">
+                      <span className="text-[10px] text-muted-foreground">{msg.createdAt?.toDate ? format(msg.createdAt.toDate(), "HH:mm") : ''}</span>
+                      
+                      {/* Status de Envio (Somente para mensagens que VOCÊ enviou) */}
+                      {isMe && msg.statusApi !== undefined && (
+                        <span className="text-[12px] font-bold flex items-center tracking-tighter">
+                          {msg.statusApi === 1 && <span className="text-muted-foreground opacity-60">✓</span>}
+                          {msg.statusApi === 2 && <span className="text-muted-foreground opacity-60">✓✓</span>}
+                          {(msg.statusApi === 3 || msg.statusApi === 4) && <span className="text-blue-500">✓✓</span>}
+                        </span>
+                      )}
+                    </div>
+
                   </div>
                 );
               })}

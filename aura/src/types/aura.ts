@@ -374,6 +374,8 @@ export interface WhatsAppMessage {
   body: string;
   originalBody?: string | null;
   mediaUrl?: string | null;
+  reaction?: string;
+  statusApi?: number;
   direction: 'inbound' | 'outbound'; // NOVO: Define se recebemos ou enviamos
   
   // Controle de Fila e Automação

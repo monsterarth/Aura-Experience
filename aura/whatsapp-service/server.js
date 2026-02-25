@@ -135,7 +135,7 @@ client.on('message_create', async (msg) => {
                 messageText = '📎 [Erro ao baixar arquivo do WhatsApp]';
             }
         }
-        
+
         else if (!messageText) {
             messageText = '📎 [Mídia Não Suportada]';
         }
@@ -148,6 +148,7 @@ client.on('message_create', async (msg) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     propertyId: PROPERTY_ID,
+                    messageId: msg.id._serialized, // 👈 ADICIONE ESTA LINHA!
                     contactNumber: contactNumber,
                     text: messageText, 
                     direction: direction,
@@ -224,6 +225,42 @@ app.post('/api/send', authenticateToken, async (req, res) => {
         console.error('❌ Erro ao enviar mensagem API:', error);
         res.status(500).json({ error: 'Failed to send message', details: error.message });
     }
+});
+
+// ==========================================
+// ⚡ VIA EXPRESSA: STATUS E REAÇÕES
+// ==========================================
+// Substitua pela URL real do seu sistema!
+const STATUS_WEBHOOK_URL = process.env.STATUS_WEBHOOK_URL || 'https://aaura.app.br/api/webhook/whatsapp/status';
+
+client.on('message_ack', async (msg, ack) => {
+    try {
+        await fetch(STATUS_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                propertyId: PROPERTY_ID,
+                messageId: msg.id._serialized,
+                type: 'ack',
+                ack: ack
+            })
+        });
+    } catch (err) {}
+});
+
+client.on('message_reaction', async (reaction) => {
+    try {
+        await fetch(STATUS_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                propertyId: PROPERTY_ID,
+                messageId: reaction.msgId._serialized,
+                type: 'reaction',
+                reaction: reaction.reaction // O emoji (ou vazio se o hóspede remover)
+            })
+        });
+    } catch (err) {}
 });
 
 client.initialize();
