@@ -7,7 +7,7 @@ import { FieldValue } from "firebase-admin/firestore";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-const { propertyId, contactNumber, text, direction, messageId, originalText, mediaUrl } = body;
+const { propertyId, contactNumber, text, direction, messageId, mediaUrl, originalText } = body;
 
     // Validação básica de segurança
     if (!propertyId || !contactNumber || !text) {

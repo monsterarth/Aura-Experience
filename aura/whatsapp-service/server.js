@@ -99,7 +99,7 @@ client.on('message_create', async (msg) => {
         let mediaMimeType = null;
         let mediaUrl = null;
 
-        // 🧠 INTERCEPTADOR DE MÍDIA OMNICHANNEL (Áudio, Imagem, Figurinha)
+// 🧠 INTERCEPTADOR DE MÍDIA OMNICHANNEL (Áudio, Imagem, Figurinha)
         if (msg.hasMedia) {
             try {
                 console.log(`\n⏳ Baixando mídia de ${contactNumber}...`);
@@ -109,20 +109,21 @@ client.on('message_create', async (msg) => {
                     mediaBase64 = media.data; 
                     mediaMimeType = media.mimetype;
                     
-                    // Extrai a extensão correta (ex: 'audio/ogg; codecs=opus' -> 'ogg')
                     let ext = media.mimetype.split('/')[1].split(';')[0];
                     if (ext === 'jpeg') ext = 'jpg';
                     
-                    // Salva no disco da VM
                     const fileName = `${msg.id.id}.${ext}`;
                     const filePath = path.join(mediaFolderPath, fileName);
                     fs.writeFileSync(filePath, mediaBase64, 'base64');
                     
-                    // Gera o link público para a Vercel
                     mediaUrl = `${SERVER_URL}/media/${fileName}`;
                     console.log(`✅ Mídia salva localmente: ${mediaUrl}`);
 
-                    // Define o texto de fallback pro painel caso a Vercel não renderize
+                    // 🛑 O PULO DO GATO: Se NÃO for áudio, esvazia o Base64 pro n8n tratar como texto comum!
+                    if (msg.type !== 'ptt' && msg.type !== 'audio') {
+                        mediaBase64 = null; 
+                    }
+
                     if (msg.type === 'ptt' || msg.type === 'audio') messageText = '🎤 [Áudio Recebido - Processando transcrição...]';
                     else if (msg.type === 'image') messageText = '📷 ';
                     else if (msg.type === 'sticker') messageText = '👾 [Figurinha]';
@@ -133,7 +134,8 @@ client.on('message_create', async (msg) => {
                 console.error('❌ Erro ao processar mídia:', err);
                 messageText = '📎 [Erro ao baixar arquivo do WhatsApp]';
             }
-        } 
+        }
+        
         else if (!messageText) {
             messageText = '📎 [Mídia Não Suportada]';
         }

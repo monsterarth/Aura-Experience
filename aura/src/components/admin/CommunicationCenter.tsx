@@ -158,25 +158,30 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
     setShowOriginal(prev => ({ ...prev, [msgId]: !prev[msgId] }));
   };
 
-// 🎬 Renderizador Dinâmico de Mídia (Corrigido)
+// 🎬 Renderizador Dinâmico de Mídia (Com Proxy HTTPS e Detecção Inteligente)
   const renderMedia = (msg: WhatsAppMessage) => {
     if (!msg.mediaUrl) return null;
+
+    // Passa o link da Hostinger por dentro do nosso túnel seguro da Vercel
+    const secureUrl = `/api/media?url=${encodeURIComponent(msg.mediaUrl)}`;
     
-    const url = msg.mediaUrl.toLowerCase();
+    // Analisa o texto para saber exatamente o que renderizar
+    const textToAnalyze = (msg.originalBody || msg.body || "").toLowerCase();
     
-    // Checa a extensão direto no link da Hostinger
-    if (url.endsWith('.ogg') || url.endsWith('.mp3') || url.endsWith('.wav')) {
-      return <audio src={msg.mediaUrl} controls className="w-full max-w-[240px] h-10 mt-2 rounded-md bg-secondary/50" />;
+    if (textToAnalyze.includes('áudio') || textToAnalyze.includes('voz') || msg.mediaUrl.endsWith('.ogg')) {
+      return <audio src={secureUrl} controls className="w-full max-w-[240px] h-10 mt-2 rounded-md bg-secondary/50" />;
     }
-    if (url.endsWith('.jpg') || url.endsWith('.jpeg') || url.endsWith('.png') || url.endsWith('.webp')) {
-      return <img src={msg.mediaUrl} alt="Mídia Recebida" className="max-w-full rounded-md mt-2 max-h-64 object-cover border" />;
+    if (textToAnalyze.includes('imagem') || textToAnalyze.includes('figurinha') || msg.mediaUrl.endsWith('.jpg') || msg.mediaUrl.endsWith('.webp')) {
+      return <img src={secureUrl} alt="Mídia Recebida" className="max-w-full rounded-md mt-2 max-h-64 object-cover border shadow-sm" />;
     }
-    if (url.endsWith('.mp4')) {
-      return <video src={msg.mediaUrl} controls className="max-w-full rounded-md mt-2 max-h-64 border" />;
+    if (textToAnalyze.includes('vídeo') || msg.mediaUrl.endsWith('.mp4')) {
+      return <video src={secureUrl} controls className="max-w-full rounded-md mt-2 max-h-64 border shadow-sm" />;
     }
+    
+    // Fallback caso seja um PDF ou algo desconhecido
     return <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="text-primary underline mt-2 inline-block text-xs font-semibold">📎 Abrir Anexo Externo</a>;
   };
-  
+
   const sidebarList = Array.from(new Set([...chats.map(c => c.phone), ...contacts.map(c => c.id)]));
 
   if (loading) return <div className="flex h-[60vh] items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
