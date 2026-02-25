@@ -158,23 +158,25 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
     setShowOriginal(prev => ({ ...prev, [msgId]: !prev[msgId] }));
   };
 
-  // 🎬 Renderizador Dinâmico de Mídia
+// 🎬 Renderizador Dinâmico de Mídia (Corrigido)
   const renderMedia = (msg: WhatsAppMessage) => {
     if (!msg.mediaUrl) return null;
-    const bodyStr = msg.body?.toLowerCase() || "";
     
-    if (bodyStr.includes('áudio') || bodyStr.includes('voz')) {
-      return <audio src={msg.mediaUrl} controls className="w-full max-w-[240px] h-10 mt-2 rounded-md" />;
+    const url = msg.mediaUrl.toLowerCase();
+    
+    // Checa a extensão direto no link da Hostinger
+    if (url.endsWith('.ogg') || url.endsWith('.mp3') || url.endsWith('.wav')) {
+      return <audio src={msg.mediaUrl} controls className="w-full max-w-[240px] h-10 mt-2 rounded-md bg-secondary/50" />;
     }
-    if (bodyStr.includes('imagem') || bodyStr.includes('figurinha')) {
-      return <img src={msg.mediaUrl} alt="Mídia Recebida" className="max-w-full rounded-md mt-2 max-h-64 object-cover" />;
+    if (url.endsWith('.jpg') || url.endsWith('.jpeg') || url.endsWith('.png') || url.endsWith('.webp')) {
+      return <img src={msg.mediaUrl} alt="Mídia Recebida" className="max-w-full rounded-md mt-2 max-h-64 object-cover border" />;
     }
-    if (bodyStr.includes('vídeo')) {
-      return <video src={msg.mediaUrl} controls className="max-w-full rounded-md mt-2 max-h-64" />;
+    if (url.endsWith('.mp4')) {
+      return <video src={msg.mediaUrl} controls className="max-w-full rounded-md mt-2 max-h-64 border" />;
     }
-    return <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="underline mt-2 inline-block text-xs font-semibold">📎 Abrir Anexo</a>;
+    return <a href={msg.mediaUrl} target="_blank" rel="noreferrer" className="text-primary underline mt-2 inline-block text-xs font-semibold">📎 Abrir Anexo Externo</a>;
   };
-
+  
   const sidebarList = Array.from(new Set([...chats.map(c => c.phone), ...contacts.map(c => c.id)]));
 
   if (loading) return <div className="flex h-[60vh] items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
