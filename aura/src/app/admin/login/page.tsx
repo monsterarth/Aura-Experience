@@ -9,7 +9,6 @@ import { useRouter } from "next/navigation";
 import { setCookie } from "cookies-next";
 import { Loader2, ShieldCheck, Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 import { Staff } from "@/types/aura";
 
 export default function AdminLoginPage() {
@@ -99,59 +98,66 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <main className="min-h-screen w-full flex items-center justify-center bg-[#0a0a0a] p-4 overflow-hidden relative">
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary/10 rounded-full blur-[120px] pointer-events-none" />
+    <main className="min-h-[100dvh] w-full flex flex-col items-center justify-center bg-slate-50 dark:bg-zinc-950 p-4 md:p-6 relative overflow-hidden font-sans text-slate-900 dark:text-slate-50">
+      
+      {/* Background Effects Suaves */}
+      <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent opacity-100 z-0 pointer-events-none"></div>
 
-      <div className="w-full max-w-md z-10 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-        <div className="text-center space-y-2">
-          <div className="inline-flex p-3 rounded-2xl bg-primary/10 border border-primary/20 text-primary mb-2">
-            <ShieldCheck size={40} strokeWidth={1.5} />
+      <div className="w-full max-w-md z-10 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
+        
+        {/* Card Principal */}
+        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl shadow-xl dark:shadow-2xl p-8 md:p-10 space-y-8 relative overflow-hidden">
+          
+          {/* Linha de Destaque no Topo do Card */}
+          <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-primary to-blue-500"></div>
+
+          <div className="text-center space-y-3">
+            <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto border border-primary/20 shadow-inner mb-6">
+              <ShieldCheck className="text-primary w-8 h-8" strokeWidth={1.5} />
+            </div>
+            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">Aura Engine</h1>
+            <p className="text-slate-500 dark:text-slate-400 text-sm md:text-base font-medium">Portal de Gestão e Operações</p>
           </div>
-          <h1 className="text-4xl font-black tracking-tighter text-foreground">AURA ENGINE</h1>
-          <p className="text-muted-foreground font-medium">Portal de Gestão e Operações</p>
-        </div>
 
-        <div className="bg-card border border-white/5 p-8 rounded-[32px] shadow-2xl space-y-6">
           {error && (
-            <div className="bg-destructive/10 border border-destructive/20 p-4 rounded-xl flex items-start gap-3 text-destructive text-sm animate-in zoom-in duration-200">
-              <AlertCircle size={18} className="shrink-0" />
-              <p>{error}</p>
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 p-4 rounded-xl flex items-start gap-3 text-red-600 dark:text-red-400 text-sm animate-in zoom-in duration-200">
+              <AlertCircle size={18} className="shrink-0 mt-0.5" />
+              <p className="font-medium">{error}</p>
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-5">
+          <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-foreground/50 ml-1">E-mail Corporativo</label>
+              <label className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">E-mail Corporativo</label>
               <div className="relative group">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground/20 group-focus-within:text-primary transition-colors" size={20} />
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 group-focus-within:text-primary transition-colors" size={20} />
                 <input 
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="admin@aura.com"
-                  className="w-full bg-secondary border border-white/10 p-4 pl-12 rounded-2xl text-foreground outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/40 transition-all placeholder:text-foreground/10"
+                  className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-700 p-4 pl-12 rounded-2xl text-slate-900 dark:text-white outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-600 font-medium"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-foreground/50 ml-1">Senha</label>
+              <label className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Senha</label>
               <div className="relative group">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-foreground/20 group-focus-within:text-primary transition-colors" size={20} />
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 group-focus-within:text-primary transition-colors" size={20} />
                 <input 
                   type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-secondary border border-white/10 p-4 pl-12 pr-12 rounded-2xl text-foreground outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/40 transition-all placeholder:text-foreground/10"
+                  className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-700 p-4 pl-12 pr-12 rounded-2xl text-slate-900 dark:text-white outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-600 font-medium"
                 />
                 <button 
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-foreground/20 hover:text-foreground transition-colors"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-zinc-300 transition-colors"
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
@@ -161,12 +167,20 @@ export default function AdminLoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-4 bg-primary text-primary-foreground font-black text-lg rounded-2xl hover:shadow-[0_0_20px_rgba(var(--primary),0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+              className="w-full py-4 bg-primary text-white dark:text-zinc-950 font-bold uppercase tracking-wide rounded-2xl hover:bg-primary/90 hover:shadow-lg hover:shadow-primary/25 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
             >
-              {loading ? <><Loader2 className="animate-spin" /> Acessando...</> : "Entrar no Sistema"}
+              {loading ? <><Loader2 className="w-5 h-5 animate-spin" /> Acessando...</> : "Entrar no Sistema"}
             </button>
           </form>
         </div>
+
+        {/* Rodapé Atualizado */}
+        <div className="mt-8 text-center opacity-60 hover:opacity-100 transition-opacity">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-widest font-bold">
+            Powered by Aura Experience
+          </p>
+        </div>
+
       </div>
     </main>
   );
