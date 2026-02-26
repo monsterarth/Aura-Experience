@@ -7,6 +7,7 @@ import { useProperty } from "@/context/PropertyContext";
 import { GuestService } from "@/services/guest-service";
 import { StayService } from "@/services/stay-service";
 import { CabinService } from "@/services/cabin-service";
+import { ContactService } from "@/services/contact-service"; // NOVO: Para já inserir na agenda
 import { Cabin } from "@/types/aura";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { 
@@ -60,7 +61,6 @@ export default function NewStayPage() {
 
   const [cabinSelections, setCabinSelections] = useState<CabinSelection[]>([]);
   
-  // Estado do Calendário (Inicia amanhã com 2 diárias)
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: addDays(new Date(), 1),
     to: addDays(new Date(), 3),
@@ -69,7 +69,6 @@ export default function NewStayPage() {
   const [sendAutomations, setSendAutomations] = useState(true);
   const [createdInfo, setCreatedInfo] = useState<{code: string} | null>(null);
 
-  // Carrega as cabanas
   useEffect(() => {
     if (contextProperty?.id) {
         CabinService.getCabinsByProperty(contextProperty.id).then(setAvailableCabins);
@@ -111,9 +110,36 @@ export default function NewStayPage() {
     if (!guestData.fullName || cabinSelections.length === 0 || !dateRange?.from || !dateRange?.to) {
       return toast.error("Nome, Cabanas e Período completo são obrigatórios.");
     }
+    
+    if (guestData.phone.length < 10) {
+      return toast.error("O número de WhatsApp digitado é muito curto.");
+    }
 
     setLoading(true);
+    const toastId = toast.loading("Validando número na Meta (WhatsApp)...");
+
     try {
+      // 1. O PORTÃO DE SEGURANÇA: Validar o WhatsApp antes de sujar o banco
+      const whatsRes = await fetch('/api/whatsapp/check-number', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number: guestData.phone })
+      });
+      
+      const whatsData = await whatsRes.json();
+      
+      if (!whatsRes.ok || !whatsData.exists) {
+        toast.error("Número bloqueado! Este telefone não possui uma conta de WhatsApp ativa.", { id: toastId });
+        setLoading(false);
+        return; // ABORTA A CRIAÇÃO
+      }
+
+      toast.success("WhatsApp Validado! Criando registros...", { id: toastId });
+      
+      // Usa o número oficial devolvido pela Meta (já validado com/sem o 9º dígito real da operadora)
+      const validMetaNumber = whatsData.validNumber;
+
+      // 2. CRIA O HÓSPEDE FÍSICO
       const cleanDoc = docNumber.replace(/\D/g, '');
       const initialGuestId = cleanDoc.length > 0 ? cleanDoc : `GUEST-${Date.now()}`; 
       
@@ -122,13 +148,23 @@ export default function NewStayPage() {
         propertyId: contextProperty.id,
         fullName: guestData.fullName,
         email: guestData.email,
-        phone: guestData.phone,
+        phone: validMetaNumber, // <-- Aqui garantimos o número limpo e 100% válido
         nationality: 'Brasil', 
         document: { type: 'CPF', number: docNumber || 'N/A' },
         birthDate: "", gender: "Outro", occupation: "", allergies: [],
         address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", country: "Brasil" }
       });
 
+      // 3. INJETA NA AGENDA IMEDIATAMENTE (Para a Central de Comunicação)
+      await ContactService.upsertContact(
+        contextProperty.id, 
+        guestData.fullName, 
+        validMetaNumber, 
+        true, // isGuest
+        savedGuestId
+      );
+
+      // 4. FINALMENTE, CRIA A ESTADIA
       const result = await StayService.createStayRecord({
         propertyId: contextProperty.id,
         guestId: savedGuestId,
@@ -141,11 +177,12 @@ export default function NewStayPage() {
       });
 
       setCreatedInfo({ code: result.accessCode });
-      toast.success("Reserva Aura criada!");
     } catch (error) {
       console.error(error);
-      toast.error("Erro ao salvar.");
-    } finally { setLoading(false); }
+      toast.error("Erro interno ao processar hospedagem.", { id: toastId });
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   return (
@@ -203,8 +240,16 @@ export default function NewStayPage() {
                   <input required value={guestData.fullName} onChange={e => setGuestData({...guestData, fullName: e.target.value})} className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors"/>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase text-muted-foreground">WhatsApp *</label>
-                  <input required value={guestData.phone} onChange={e => setGuestData({...guestData, phone: e.target.value})} placeholder="+55..." className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors"/>
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground">WhatsApp (Apenas Números) *</label>
+                  {/* O onChange abaixo blinda qualquer caractere que não seja número */}
+                  <input 
+                    required 
+                    value={guestData.phone} 
+                    onChange={e => setGuestData({...guestData, phone: e.target.value.replace(/\D/g, '')})} 
+                    placeholder="Ex: 5548999999999" 
+                    maxLength={15}
+                    className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground font-mono outline-none focus:border-primary/50 transition-colors"
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase text-muted-foreground">E-mail (Opcional)</label>
@@ -276,7 +321,7 @@ export default function NewStayPage() {
               )}
             </div>
 
-            {/* Controle de Datas com Popover e react-day-picker (Layout de 2 Linhas) */}
+            {/* Controle de Datas */}
             <div className="bg-card border border-border p-6 rounded-[24px] space-y-4 sticky top-6">
               
               <div className="space-y-2">

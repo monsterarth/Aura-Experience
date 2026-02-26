@@ -1,3 +1,4 @@
+// whatsapp-service/server.js
 const express = require('express');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
@@ -10,7 +11,6 @@ const port = process.env.PORT || 3001;
 const API_KEY = process.env.WHATSAPP_API_KEY || 'Fazenda@2025';
 const WEBHOOK_URL = process.env.WEBHOOK_URL || 'http://host.docker.internal:3000/api/webhook/whatsapp';
 const PROPERTY_ID = process.env.PROPERTY_ID || 'fazenda-modelo-aura';
-// Define o IP público (idealmente viria de uma variável de ambiente)
 const SERVER_URL = process.env.SERVER_URL || 'http://187.77.57.154:3001';
 
 app.use(cors());
@@ -24,10 +24,8 @@ if (!fs.existsSync(mediaFolderPath)) {
     fs.mkdirSync(mediaFolderPath);
 }
 
-// Expõe a pasta media para a internet
 app.use('/media', express.static(mediaFolderPath));
 
-// Rotina do Lixeiro: Roda a cada 24 horas e apaga arquivos com mais de 7 dias
 const CLEANUP_DAYS = 7;
 setInterval(() => {
     console.log('🧹 Iniciando rotina de limpeza de mídias antigas...');
@@ -46,7 +44,7 @@ setInterval(() => {
             });
         });
     });
-}, 24 * 60 * 60 * 1000); // 24 horas em milissegundos
+}, 24 * 60 * 60 * 1000); 
 // ==========================================
 
 const client = new Client({
@@ -90,17 +88,15 @@ client.on('message_create', async (msg) => {
         if (msg.from.includes('@g.us') || msg.to.includes('@g.us')) return;
         if (msg.from === 'status@broadcast' || msg.to === 'status@broadcast') return;
 
-const isOutbound = msg.fromMe;
+        const isOutbound = msg.fromMe;
         const targetId = isOutbound ? msg.to : msg.from;
         let rawContactNumber = targetId.split('@')[0];
 
-        // 🕵️‍♂️ O EXTRATOR DE MÁSCARAS (LID Resolver)
-        // Se o WhatsApp tentar esconder o usuário atrás de um LID, nós forçamos a busca pelo número real
         if (targetId.includes('@lid')) {
             try {
                 const contact = await client.getContactById(targetId);
                 if (contact && contact.number) {
-                    rawContactNumber = contact.number; // Arranca a máscara e pega o telefone de verdade!
+                    rawContactNumber = contact.number; 
                     console.log(`\n🕵️‍♂️ [LID RESOLVIDO] O ID ${targetId} na verdade é o número +${rawContactNumber}`);
                 }
             } catch (err) {
@@ -116,7 +112,6 @@ const isOutbound = msg.fromMe;
         let mediaMimeType = null;
         let mediaUrl = null;
 
-// 🧠 INTERCEPTADOR DE MÍDIA OMNICHANNEL (Áudio, Imagem, Figurinha)
         if (msg.hasMedia) {
             try {
                 console.log(`\n⏳ Baixando mídia de ${contactNumber}...`);
@@ -136,7 +131,6 @@ const isOutbound = msg.fromMe;
                     mediaUrl = `${SERVER_URL}/media/${fileName}`;
                     console.log(`✅ Mídia salva localmente: ${mediaUrl}`);
 
-                    // 🛑 O PULO DO GATO: Se NÃO for áudio, esvazia o Base64 pro n8n tratar como texto comum!
                     if (msg.type !== 'ptt' && msg.type !== 'audio') {
                         mediaBase64 = null; 
                     }
@@ -151,9 +145,7 @@ const isOutbound = msg.fromMe;
                 console.error('❌ Erro ao processar mídia:', err);
                 messageText = '📎 [Erro ao baixar arquivo do WhatsApp]';
             }
-        }
-
-        else if (!messageText) {
+        } else if (!messageText) {
             messageText = '📎 [Mídia Não Suportada]';
         }
 
@@ -165,13 +157,13 @@ const isOutbound = msg.fromMe;
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     propertyId: PROPERTY_ID,
-                    messageId: msg.id._serialized, // 👈 ADICIONE ESTA LINHA!
+                    messageId: msg.id._serialized,
                     contactNumber: contactNumber,
                     text: messageText, 
                     direction: direction,
                     mediaBase64: mediaBase64,
                     mediaMimeType: mediaMimeType,
-                    mediaUrl: mediaUrl // NOVO: Link direto do arquivo para a UI
+                    mediaUrl: mediaUrl 
                 })
             });
 
@@ -223,23 +215,51 @@ function formatBrazilianNumber(number) {
     return `${cleanNumber}@c.us`;
 }
 
-// 🇧🇷 Normalizador de Nono Dígito para Entrada (Inbound)
 function enforceBrazilian9Digit(number) {
     let clean = number.replace(/\D/g, '');
-    
-    // Se for Brasil e tiver 12 dígitos (está faltando um!)
     if (clean.startsWith('55') && clean.length === 12) {
         const firstDigitAfterDDD = clean.charAt(4);
-        
-        // Celulares antigos sem o 9 começavam com 6, 7, 8 ou 9.
-        // Telefones fixos começam com 2, 3, 4 ou 5 (e não levam o 9).
         if (['6', '7', '8', '9'].includes(firstDigitAfterDDD)) {
-            // Injeta o 9 mágico
             clean = clean.substring(0, 4) + '9' + clean.substring(4);
         }
     }
     return clean;
 }
+
+// ==========================================
+// 🚀 NOVO ENDPOINT: CHECAGEM DE NÚMERO
+// ==========================================
+app.post('/api/check-number', authenticateToken, async (req, res) => {
+    try {
+        if (!isClientReady) {
+            return res.status(503).json({ error: 'WhatsApp client is not ready.' });
+        }
+
+        const { number } = req.body;
+        if (!number) return res.status(400).json({ error: 'Parameter "number" is required.' });
+
+        let cleanNumber = number.replace(/\D/g, '');
+        cleanNumber = enforceBrazilian9Digit(cleanNumber); // Aplica a regra para formatar perfeitamente
+        const formattedId = `${cleanNumber}@c.us`;
+
+        console.log(`🔍 Verificando validade do número na Meta: ${formattedId}`);
+        
+        // Bate na Meta para checar
+        const registeredId = await client.getNumberId(formattedId);
+
+        if (!registeredId) {
+            console.log(`❌ Número ${formattedId} não possui WhatsApp ativo.`);
+            return res.status(200).json({ exists: false });
+        }
+
+        console.log(`✅ Número válido encontrado: ${registeredId.user}`);
+        return res.status(200).json({ exists: true, validNumber: registeredId.user });
+
+    } catch (error) {
+        console.error('❌ Erro ao verificar número:', error);
+        res.status(500).json({ error: 'Failed to verify number', details: error.message });
+    }
+});
 
 app.post('/api/send', authenticateToken, async (req, res) => {
     try {
@@ -262,10 +282,6 @@ app.post('/api/send', authenticateToken, async (req, res) => {
     }
 });
 
-// ==========================================
-// ⚡ VIA EXPRESSA: STATUS E REAÇÕES
-// ==========================================
-// Substitua pela URL real do seu sistema!
 const STATUS_WEBHOOK_URL = process.env.STATUS_WEBHOOK_URL || 'https://aaura.app.br/api/webhook/whatsapp/status';
 
 client.on('message_ack', async (msg, ack) => {
@@ -292,7 +308,7 @@ client.on('message_reaction', async (reaction) => {
                 propertyId: PROPERTY_ID,
                 messageId: reaction.msgId._serialized,
                 type: 'reaction',
-                reaction: reaction.reaction // O emoji (ou vazio se o hóspede remover)
+                reaction: reaction.reaction 
             })
         });
     } catch (err) {}
