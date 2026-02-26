@@ -104,7 +104,7 @@ client.on('message_create', async (msg) => {
             }
         }
 
-        const contactNumber = enforceBrazilian9Digit(rawContactNumber);
+        const contactNumber = rawContactNumber;
         const direction = isOutbound ? 'outbound' : 'inbound';
         
         let messageText = msg.body;

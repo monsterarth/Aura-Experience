@@ -1,3 +1,5 @@
+//src\components\admin\CommunicationCenter.tsx
+
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
@@ -80,7 +82,6 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
   useEffect(() => {
     async function loadContext() {
       if (selectedPhone && propertyId) {
-        await ContactService.upsertContact(propertyId, `+${selectedPhone}`, selectedPhone, false);
         const ctx = await ContactService.resolveContactContext(propertyId, selectedPhone);
         setContactContext(ctx);
       } else {
