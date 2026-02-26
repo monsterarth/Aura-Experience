@@ -1,5 +1,6 @@
 import { 
-  collection, doc, setDoc, getDoc, getDocs, query, where, serverTimestamp 
+  collection, doc, setDoc, getDoc, getDocs, query, where, serverTimestamp, 
+  orderBy, limit
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Contact, ContactContext, Stay, Cabin } from "@/types/aura";
@@ -79,11 +80,14 @@ export class ContactService {
         return { status: 'none', message: "Contato avulso (Não é hóspede)." };
       }
 
+
       const staysQuery = query(
         collection(db, "properties", propertyId, "stays"),
-        where("guestId", "==", contact.guestId)
+        where("guestId", "==", contact.guestId),
+        orderBy("checkIn", "desc"),
+        limit(5) 
       );
-      
+
       const staysSnap = await getDocs(staysQuery);
       if (staysSnap.empty) return { status: 'none', message: "Hóspede cadastrado, mas sem estadias no sistema." };
 

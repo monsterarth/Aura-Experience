@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { collection, query, onSnapshot, orderBy, doc, setDoc, updateDoc, serverTimestamp, where } from "firebase/firestore";
+import { collection, query, onSnapshot, orderBy, doc, setDoc, updateDoc, serverTimestamp, where, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { WhatsAppMessage, Contact, ContactContext } from "@/types/aura";
 import { ContactService } from "@/services/contact-service";
@@ -72,21 +72,30 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
     return () => { unsubContacts(); unsubComms(); };
   }, [propertyId]);
 
-  // 2. OUVINTE DE CHAT: Carrega mensagens apenas para o chat aberto
+  // 2. OUVINTE DE CHAT: Carrega apenas as 50 mensagens mais recentes
   useEffect(() => {
     if (!propertyId || !selectedPhone) {
       setMessages([]);
       return;
     }
 
+    // A BUSCA OTIMIZADA: Traz apenas as últimas 50 mensagens para poupar leitura.
+    // EXIGE ÍNDICE COMPOSTO NO FIREBASE (contactId + createdAt DESC)
     const qMsg = query(
       collection(db, "properties", propertyId, "messages"),
       where("contactId", "==", selectedPhone),
-      orderBy("createdAt", "asc")
+      orderBy("createdAt", "desc"), // Pega do mais novo pro mais velho
+      limit(50) // ECONOMIA DE LEITURA: Limita a 50 documentos
     );
 
     const unsubMsg = onSnapshot(qMsg, (snap) => {
-      setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() } as WhatsAppMessage)));
+      // Como pedimos DESC no banco, precisamos inverter a ordem (reverse) 
+      // no Javascript para o chat ficar na ordem certa de leitura (de cima para baixo)
+      const msgs = snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as WhatsAppMessage))
+        .reverse(); 
+        
+      setMessages(msgs);
       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     });
 
