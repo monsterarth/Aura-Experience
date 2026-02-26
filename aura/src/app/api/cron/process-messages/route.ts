@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/firebase";
-import { collectionGroup, getDocs, getDoc, doc, updateDoc, query, where, Timestamp } from "firebase/firestore";
+import { collectionGroup, getDocs, getDoc, setDoc, deleteDoc, doc, updateDoc, query, where, Timestamp } from "firebase/firestore";
 import { WhatsAppMessage } from "@/types/aura";
 
 export const dynamic = 'force-dynamic';
@@ -69,7 +69,7 @@ export async function GET(request: Request) {
           })
         });
 
-        if (!response.ok) {
+if (!response.ok) {
           const errorText = await response.text();
           let errorMessage = "Erro na API do WhatsApp Docker";
           try {
@@ -81,12 +81,30 @@ export async function GET(request: Request) {
           throw new Error(errorMessage);
         }
 
-        await updateDoc(messageRef, {
-          status: 'sent',
-          attempts: msg.attempts + 1,
-          lastAttemptAt: Timestamp.now(),
-          errorMessage: null
-        });
+        // 🔥 A MÁGICA DA DESDUPLICAÇÃO:
+        const responseData = await response.json();
+        const metaMessageId = responseData.messageId;
+        if (metaMessageId) {
+          const finalMessageRef = doc(db, "properties", msg.propertyId, "messages", metaMessageId);
+          await setDoc(finalMessageRef, {
+            ...msg,
+            id: metaMessageId,
+            status: 'sent',
+            attempts: msg.attempts + 1,
+            lastAttemptAt: Timestamp.now(),
+            errorMessage: null
+          });
+          await deleteDoc(messageRef);
+        } else {
+          // Fallback caso a API não retorne o ID
+          await updateDoc(messageRef, {
+            status: 'sent',
+            attempts: msg.attempts + 1,
+            lastAttemptAt: Timestamp.now(),
+            errorMessage: null
+          });
+        }
+        
         successCount++;
 
         // PROTEÇÃO ANTI-SPAM (A MÁGICA ACONTECE AQUI)

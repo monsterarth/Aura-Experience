@@ -272,6 +272,7 @@ app.post('/api/send', authenticateToken, async (req, res) => {
 
         const formattedId = formatBrazilianNumber(number);
         const response = await client.sendMessage(formattedId, message);
+        processedMessages.add(response.id._serialized);
         
         console.log(`📤 Mensagem enviada via API para ${formattedId}`);
         res.status(200).json({ success: true, messageId: response.id._serialized });

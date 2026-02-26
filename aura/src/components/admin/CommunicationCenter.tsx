@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { collection, query, onSnapshot, orderBy, doc, setDoc, updateDoc, serverTimestamp, where, limit } from "firebase/firestore";
+import { collection, query, onSnapshot, orderBy, doc, setDoc, updateDoc, deleteDoc, serverTimestamp, where, limit } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { WhatsAppMessage, Contact, ContactContext } from "@/types/aura";
 import { ContactService } from "@/services/contact-service";
@@ -14,6 +14,7 @@ import {
   MapPin, Loader2, ArrowLeft, Plus, X, Bot, MessageCircle, Languages, Archive, Inbox
 } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 interface CommunicationCenterProps {
   propertyId: string;
@@ -119,7 +120,7 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
     loadContext();
   }, [selectedPhone, propertyId]);
 
-  const handleSendMessage = async (e?: React.FormEvent) => {
+const handleSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!inputText.trim() || !selectedPhone || sending) return;
     
@@ -128,9 +129,7 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
       const messageId = crypto.randomUUID();
       const contactId = selectedPhone;
 
-      const messageRef = doc(db, "properties", propertyId, "messages", messageId);
-      await setDoc(messageRef, {
-        id: messageId,
+      const messageData = {
         propertyId,
         contactId,
         stayId: contactContext?.stayId || null,
@@ -138,11 +137,13 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
         body: inputText.trim(),
         isAutomated: false,
         status: 'pending',
-        direction: 'outbound',
+        direction: 'outbound' as const,
         createdAt: serverTimestamp(),
-      });
+      };
 
-      // Força a conversa a pular pro topo e sair do arquivo (se estivesse)
+      const messageRef = doc(db, "properties", propertyId, "messages", messageId);
+      await setDoc(messageRef, { id: messageId, ...messageData });
+
       const commRef = doc(db, "properties", propertyId, "communications", contactId);
       await setDoc(commRef, {
         lastMessage: inputText.trim(),
@@ -162,9 +163,22 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
       });
 
       if (!response.ok) throw new Error("Falha ao enviar");
+      
+      const resData = await response.json();
+      
+      // Troca o UUID pelo ID Oficial para os Tiques Azuis funcionarem
+      if (resData.messageId) {
+         await setDoc(doc(db, "properties", propertyId, "messages", resData.messageId), {
+             ...messageData,
+             id: resData.messageId,
+             status: 'sent'
+         });
+         await deleteDoc(messageRef);
+      }
+
       setInputText("");
     } catch (error) {
-      alert("Erro ao enviar mensagem.");
+      toast.error("Erro ao enviar mensagem.");
     } finally {
       setSending(false);
     }
@@ -354,8 +368,16 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
                   <div key={msg.id || i} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                     
                     <div className={`relative max-w-[80%] md:max-w-[60%] rounded-2xl px-4 py-3 shadow-sm ${isMe ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-card border rounded-tl-sm text-foreground'}`}>
-                      {msg.isAutomated && <div className="flex items-center gap-1 text-[10px] uppercase font-bold mb-1 opacity-70">Robô Automação</div>}
-                      
+{/* Tag Dinâmica: Agendamento ou Robô */}
+    {msg.isAutomated && msg.status === 'pending' ? (
+      <div className="flex items-center gap-1 text-[10px] uppercase font-bold mb-1 text-yellow-600 dark:text-yellow-500">
+        <Clock className="w-3 h-3" /> Agendada para: {msg.scheduledFor?.toDate ? format(msg.scheduledFor.toDate(), "dd/MM HH:mm") : 'Em breve'}
+      </div>
+    ) : msg.isAutomated ? (
+      <div className="flex items-center gap-1 text-[10px] uppercase font-bold mb-1 opacity-70">
+        <Bot className="w-3 h-3" /> Robô Automação
+      </div>
+    ) : null}                      
                       <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
                       
                       {renderMedia(msg)}
