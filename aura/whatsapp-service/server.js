@@ -90,10 +90,27 @@ client.on('message_create', async (msg) => {
         if (msg.from.includes('@g.us') || msg.to.includes('@g.us')) return;
         if (msg.from === 'status@broadcast' || msg.to === 'status@broadcast') return;
 
-        const isOutbound = msg.fromMe;
-        const contactNumber = isOutbound ? msg.to.replace('@c.us', '') : msg.from.replace('@c.us', '');
-        const direction = isOutbound ? 'outbound' : 'inbound';
+const isOutbound = msg.fromMe;
+        const targetId = isOutbound ? msg.to : msg.from;
+        let rawContactNumber = targetId.split('@')[0];
 
+        // 🕵️‍♂️ O EXTRATOR DE MÁSCARAS (LID Resolver)
+        // Se o WhatsApp tentar esconder o usuário atrás de um LID, nós forçamos a busca pelo número real
+        if (targetId.includes('@lid')) {
+            try {
+                const contact = await client.getContactById(targetId);
+                if (contact && contact.number) {
+                    rawContactNumber = contact.number; // Arranca a máscara e pega o telefone de verdade!
+                    console.log(`\n🕵️‍♂️ [LID RESOLVIDO] O ID ${targetId} na verdade é o número +${rawContactNumber}`);
+                }
+            } catch (err) {
+                console.error('\n⚠️ Aviso: Não foi possível resolver o número por trás do LID.', err);
+            }
+        }
+
+        const contactNumber = enforceBrazilian9Digit(rawContactNumber);
+        const direction = isOutbound ? 'outbound' : 'inbound';
+        
         let messageText = msg.body;
         let mediaBase64 = null;
         let mediaMimeType = null;
@@ -204,6 +221,24 @@ function formatBrazilianNumber(number) {
         }
     }
     return `${cleanNumber}@c.us`;
+}
+
+// 🇧🇷 Normalizador de Nono Dígito para Entrada (Inbound)
+function enforceBrazilian9Digit(number) {
+    let clean = number.replace(/\D/g, '');
+    
+    // Se for Brasil e tiver 12 dígitos (está faltando um!)
+    if (clean.startsWith('55') && clean.length === 12) {
+        const firstDigitAfterDDD = clean.charAt(4);
+        
+        // Celulares antigos sem o 9 começavam com 6, 7, 8 ou 9.
+        // Telefones fixos começam com 2, 3, 4 ou 5 (e não levam o 9).
+        if (['6', '7', '8', '9'].includes(firstDigitAfterDDD)) {
+            // Injeta o 9 mágico
+            clean = clean.substring(0, 4) + '9' + clean.substring(4);
+        }
+    }
+    return clean;
 }
 
 app.post('/api/send', authenticateToken, async (req, res) => {

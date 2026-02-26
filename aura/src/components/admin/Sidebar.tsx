@@ -1,4 +1,3 @@
-// src/components/admin/Sidebar.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -16,6 +15,7 @@ import {
 } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { deleteCookie } from "cookies-next";
+import Image from "next/image";
 
 export const Sidebar = () => {
   const router = useRouter();
@@ -26,6 +26,11 @@ export const Sidebar = () => {
   
   // Estado para controle do menu no mobile
   const [isOpen, setIsOpen] = useState(false);
+
+  // Variáveis da Vercel para o rodapé de versão
+  const commitHash = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || "dev";
+  const shortHash = commitHash.substring(0, 7);
+  const appVersion = "v0";
 
   // Fecha o menu no mobile sempre que a rota mudar
   useEffect(() => {
@@ -61,7 +66,8 @@ export const Sidebar = () => {
   // ==========================================
   const operacaoItems = [
     { title: "Dashboard", icon: LayoutDashboard, href: "/admin/core/dashboard", roles: ["super_admin"] },
-{ title: "Estadias", icon: Home, href: "/admin/stays", roles: ["super_admin", "admin", "reception", "governance"] },    { title: "Comunicação", icon: MessageSquare, href: "/admin/comunicacao", roles: ["super_admin", "admin", "reception"] },
+    { title: "Estadias", icon: Home, href: "/admin/stays", roles: ["super_admin", "admin", "reception", "governance"] },    
+    { title: "Comunicação", icon: MessageSquare, href: "/admin/comunicacao", roles: ["super_admin", "admin", "reception"] },
     { title: "Governança", icon: Sparkles, href: "/admin/governance", roles: ["super_admin", "admin", "governance"] },
     { title: "Manutenção", icon: Wrench, href: "/admin/maintenance", roles: ["super_admin", "admin", "maintenance"] },
   ];
@@ -77,7 +83,8 @@ export const Sidebar = () => {
       roles: ["super_admin", "admin"], 
       requireProperty: true 
     },
-{ title: "Cabanas", icon: Building, href: "/admin/cabins", roles: ["super_admin", "admin", "governance"] },    { title: "Equipe", icon: Users, href: "/admin/staff", roles: ["super_admin", "admin"] },
+    { title: "Cabanas", icon: Building, href: "/admin/cabins", roles: ["super_admin", "admin", "governance"] },    
+    { title: "Equipe", icon: Users, href: "/admin/staff", roles: ["super_admin", "admin"] },
     { title: "Propriedades", icon: Globe, href: "/admin/core/properties", roles: ["super_admin"] },
   ];
 
@@ -115,14 +122,29 @@ export const Sidebar = () => {
         isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
       )}>
         
-        {/* HEADER SIDEBAR */}
+        {/* HEADER SIDEBAR (Dinâmico pela Propriedade) */}
         <div className="mb-8 px-2 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center font-black text-black">A</div>
-            <span className="font-bold text-foreground tracking-tight">Aura Engine</span>
+          <div className="flex items-center gap-3">
+            {property?.logoUrl ? (
+              <div className="relative w-10 h-10 rounded-lg overflow-hidden bg-white/5 border border-white/10 flex-shrink-0">
+                <Image src={property.logoUrl} alt={property.name} fill className="object-cover" />
+              </div>
+            ) : (
+              <div className="w-10 h-10 bg-primary/20 text-primary rounded-lg flex items-center justify-center font-black flex-shrink-0 border border-primary/30 shadow-[0_0_15px_rgba(var(--primary),0.2)]">
+                {property ? property.name.charAt(0).toUpperCase() : "A"}
+              </div>
+            )}
+            <div className="flex flex-col min-w-0">
+               <span className="font-bold text-foreground tracking-tight truncate text-sm">
+                 {property ? property.name : "Aura Engine"}
+               </span>
+               <span className="text-[9px] text-muted-foreground uppercase tracking-widest font-semibold">
+                 Workspace
+               </span>
+            </div>
           </div>
           {/* BOTÃO FECHAR NO MOBILE */}
-          <button onClick={() => setIsOpen(false)} className="lg:hidden p-2 text-muted-foreground hover:bg-secondary rounded-xl">
+          <button onClick={() => setIsOpen(false)} className="lg:hidden p-2 text-muted-foreground hover:bg-secondary rounded-xl flex-shrink-0">
             <X size={20}/>
           </button>
         </div>
@@ -130,7 +152,7 @@ export const Sidebar = () => {
         {/* SELETOR GLOBAL - Apenas para Super Admin */}
         {isSuperAdmin && (
           <div className="mb-6 p-3 bg-white/5 rounded-2xl border border-white/5 space-y-2">
-            <label className="text-[9px] font-black text-foreground/40 uppercase tracking-widest px-1">Foco da Instância</label>
+            <label className="text-[9px] font-black text-foreground/40 uppercase tracking-widest px-1">Alternar Propriedade</label>
             <div className="relative group">
               <Building className="absolute left-3 top-1/2 -translate-y-1/2 text-primary" size={14} />
               <select 
@@ -139,12 +161,12 @@ export const Sidebar = () => {
                   const selected = allProperties.find(p => p.id === e.target.value);
                   setProperty(selected || null);
                 }}
-                className="w-full bg-secondary border border-white/10 p-2.5 pl-9 rounded-xl text-[10px] font-bold text-foreground outline-none appearance-none hover:border-primary/50 transition-all cursor-pointer uppercase"
+                className="w-full bg-secondary border border-white/10 p-2.5 pl-9 rounded-xl text-[10px] font-bold text-foreground outline-none appearance-none hover:border-primary/50 transition-all cursor-pointer uppercase truncate pr-8"
               >
                 <option value="">Selecionar...</option>
                 {allProperties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/20" size={12} />
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/20 pointer-events-none" size={12} />
             </div>
           </div>
         )}
@@ -196,20 +218,21 @@ export const Sidebar = () => {
         </div>
 
         {/* FOOTER */}
-        <div className="pt-4 border-t border-white/5 mt-4 shrink-0">
-          {property && !isSuperAdmin && (
-              <div className="mb-4 px-2">
-                  <p className="text-[9px] font-bold text-foreground/20 uppercase">Propriedade</p>
-                  <p className="text-xs font-bold text-foreground">{property.name}</p>
-              </div>
-          )}
-
+        <div className="pt-4 border-t border-white/5 mt-4 shrink-0 flex flex-col gap-2">
+          
           <button 
               onClick={handleLogout} 
               className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-xs font-bold text-destructive hover:bg-destructive/10 uppercase tracking-wide transition-all"
           >
             <LogOut size={18} /> Sair
           </button>
+
+          {/* RODAPÉ DA VERSÃO DO BUILD */}
+          <div className="text-center pt-2">
+            <p className="text-[9px] text-foreground/30 font-mono tracking-widest uppercase">
+              Aura {appVersion} • {shortHash}
+            </p>
+          </div>
         </div>
       </aside>
     </>
