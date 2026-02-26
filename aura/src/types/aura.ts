@@ -271,6 +271,14 @@ export interface Stay {
   cabinId: string;
   accessCode: string;
 
+  cabinConfigs?: {
+    cabinId: string;
+    name: string;
+    adults: number;
+    children: number;
+    babies: number;
+  }[];
+
   
   // Datas e Logística
   checkIn: Timestamp;

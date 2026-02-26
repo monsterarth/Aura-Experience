@@ -72,12 +72,13 @@ const { propertyId, contactNumber, text, direction, messageId, mediaUrl, origina
       ...(messageId && { messageIdApi: messageId })
     }, { merge: true });
 
-    // 2. Atualizar a Barra Lateral (Pasta 'communications' dita a ordem da lista)
+// 2. Atualizar a Barra Lateral (Pasta 'communications' dita a ordem da lista)
     const communicationRef = adminDb.collection("properties").doc(propertyId).collection("communications").doc(contactNumber);
     await communicationRef.set({
       lastMessage: text,
       updatedAt: FieldValue.serverTimestamp(),
       unread: direction === "inbound" ? FieldValue.increment(1) : 0,
+      ...(direction === "inbound" && { archived: false }) // 🔥 AUTO-DESARQUIVAR AQUI
     }, { merge: true });
 
     // 3. (Opcional) Garantir que existe na Agenda, se for um número novo que mandou mensagem
