@@ -80,7 +80,10 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
                 body: file,
             });
 
-            if (!response.ok) throw new Error('Upload failed');
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => null);
+                throw new Error(errorData?.error || 'Upload failed');
+            }
 
             const data = await response.json();
 
@@ -194,8 +197,8 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
                                         ) : (
                                             <ImagePlus className="text-muted-foreground group-hover:text-primary transition-colors" size={24} />
                                         )}
-                                        <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e)} className="absolute inset-0 opacity-0 cursor-pointer" disabled={loading} />
-                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e)} className="absolute inset-0 opacity-0 cursor-pointer z-10" disabled={loading} />
+                                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                                             <span className="text-white text-xs font-bold uppercase">Alterar</span>
                                         </div>
                                     </div>
@@ -249,6 +252,33 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
                                         <p className="text-xs text-muted-foreground mt-0.5">Ao finalizar uma reserva, dispara uma tarefa de limpeza no módulo de governança.</p>
                                     </div>
                                 </label>
+
+                                {formData.requiresTurnover && (
+                                    <div className="space-y-4 pt-4 border-t border-border mt-2">
+                                        <div className="flex justify-between items-center bg-secondary/20 p-4 border border-border rounded-2xl">
+                                            <div>
+                                                <h4 className="text-sm font-bold text-foreground">Procedimentos de Limpeza</h4>
+                                                <p className="text-xs text-muted-foreground mt-0.5">Itens que a camareira deve verificar ao limpar esta estrutura.</p>
+                                            </div>
+                                            <button type="button" onClick={() => setFormData(prev => ({ ...prev, housekeepingChecklist: [...(prev.housekeepingChecklist || []), { id: uuidv4(), label: "" }] }))} className="px-4 py-2 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground font-bold text-xs uppercase rounded-xl transition-all flex items-center gap-1.5 shrink-0">
+                                                <Plus size={16} /> Detalhar Processo
+                                            </button>
+                                        </div>
+                                        <div className="space-y-2 mt-2">
+                                            {formData.housekeepingChecklist?.map(item => (
+                                                <div key={item.id} className="flex gap-2 items-center group">
+                                                    <input required value={item.label} onChange={e => setFormData(prev => ({ ...prev, housekeepingChecklist: prev.housekeepingChecklist?.map(i => i.id === item.id ? { ...i, label: e.target.value } : i) }))} className="flex-1 bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-primary text-foreground ml-4" placeholder="Ex: Higienizar tapetes..." />
+                                                    <button type="button" onClick={() => setFormData(prev => ({ ...prev, housekeepingChecklist: prev.housekeepingChecklist?.filter(i => i.id !== item.id) }))} className="p-3 text-muted-foreground hover:bg-red-500 hover:border-red-500 hover:text-white border border-transparent rounded-xl transition-colors shrink-0 opacity-50 group-hover:opacity-100">
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            {(!formData.housekeepingChecklist || formData.housekeepingChecklist.length === 0) && (
+                                                <p className="text-xs text-muted-foreground text-center italic py-4">Nenhum procedimento cadastrado. A camareira deverá realizar a limpeza livremente.</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -312,7 +342,7 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
                                                 ) : (
                                                     <ImagePlus className="text-muted-foreground group-hover:text-primary transition-colors" size={14} />
                                                 )}
-                                                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, unit.id)} className="absolute inset-0 opacity-0 cursor-pointer" disabled={loading} title="Anexar foto" />
+                                                <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, unit.id)} className="absolute inset-0 opacity-0 cursor-pointer z-10" disabled={loading} title="Anexar foto" />
                                             </div>
                                             <div className="flex-1">
                                                 <input type="text" value={unit.name} onChange={e => updateUnitName(unit.id, e.target.value)} className="w-full bg-transparent border-none p-0 text-sm font-bold text-foreground focus:ring-0 outline-none placeholder:font-normal" placeholder="Nome da Unidade..." />

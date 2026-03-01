@@ -22,11 +22,14 @@ interface TaskManagerModalProps {
 export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task, cabins, structures, maids }: TaskManagerModalProps) {
   const { userData } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [customChecklist, setCustomChecklist] = useState<{ id: string; label: string; checked: boolean }[]>([]);
 
   const [formData, setFormData] = useState<Partial<HousekeepingTask>>({
     type: 'turnover',
     status: 'pending',
     cabinId: '',
+    structureId: '',
+    unitId: '',
     assignedTo: [],
     observations: ''
   });
@@ -39,18 +42,22 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
           status: task.status,
           cabinId: task.cabinId || '',
           structureId: task.structureId || '',
+          unitId: task.unitId || '',
           assignedTo: task.assignedTo || [],
           observations: task.observations || ''
         });
+        setCustomChecklist(task.checklist || []);
       } else {
         setFormData({
           type: 'turnover',
           status: 'pending',
           cabinId: Object.keys(cabins)[0] || '', // Pre-seleciona a primeira cabana
           structureId: '',
+          unitId: '',
           assignedTo: [],
           observations: ''
         });
+        setCustomChecklist([]);
       }
     }
   }, [isOpen, task, cabins]);
@@ -76,13 +83,13 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
       if (task) {
         // Modo Edição
         await HousekeepingService.updateTask(
-          propertyId, task.id, formData, userData?.id || "admin", userData?.fullName || "Admin"
+          propertyId, task.id, { ...formData, checklist: formData.type === 'custom' ? customChecklist : task.checklist }, userData?.id || "admin", userData?.fullName || "Admin"
         );
         toast.success("Tarefa atualizada com sucesso!");
       } else {
         // Modo Criação
         await HousekeepingService.createTask(
-          propertyId, formData, userData?.id || "admin", userData?.fullName || "Admin"
+          propertyId, { ...formData, checklist: formData.type === 'custom' ? customChecklist : [] }, userData?.id || "admin", userData?.fullName || "Admin"
         );
         toast.success("Nova tarefa criada!");
       }
@@ -133,10 +140,10 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
             <div className="space-y-4">
               <div className="flex gap-4 mb-2">
                 <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground cursor-pointer hover:text-foreground">
-                  <input type="radio" checked={!!formData.cabinId} onChange={() => setFormData({ ...formData, cabinId: Object.keys(cabins)[0] || '', structureId: '' })} className="accent-primary" /> Cabanas
+                  <input type="radio" checked={!!formData.cabinId} onChange={() => setFormData({ ...formData, cabinId: Object.keys(cabins)[0] || '', structureId: '', unitId: '' })} className="accent-primary" /> Cabanas
                 </label>
                 <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground cursor-pointer hover:text-foreground">
-                  <input type="radio" checked={!!formData.structureId} onChange={() => setFormData({ ...formData, structureId: Object.keys(structures)[0] || '', cabinId: '' })} className="accent-primary" /> Estruturas Extras
+                  <input type="radio" checked={!!formData.structureId} onChange={() => setFormData({ ...formData, structureId: Object.keys(structures)[0] || '', cabinId: '', unitId: '' })} className="accent-primary" /> Estruturas Extras
                 </label>
               </div>
 
@@ -160,10 +167,25 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
                   <select
                     disabled={isEditing}
                     value={formData.structureId}
-                    onChange={e => setFormData({ ...formData, structureId: e.target.value })}
+                    onChange={e => setFormData({ ...formData, structureId: e.target.value, unitId: '' })}
                     className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none disabled:opacity-50"
                   >
                     {Object.values(structures).map(s => <option key={s.id} value={s.id}>{s.name} ({s.category})</option>)}
+                  </select>
+                </div>
+              )}
+
+              {!!formData.structureId && structures[formData.structureId]?.units && structures[formData.structureId].units!.length > 0 && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Unidade Específica (Opcional)</label>
+                  <select
+                    disabled={isEditing}
+                    value={formData.unitId || ''}
+                    onChange={e => setFormData({ ...formData, unitId: e.target.value })}
+                    className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none disabled:opacity-50"
+                  >
+                    <option value="">Toda a Estrutura (Geral)</option>
+                    {structures[formData.structureId].units!.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
                 </div>
               )}
@@ -178,9 +200,37 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
               >
                 <option value="turnover">Faxina Completa (Troca)</option>
                 <option value="daily">Arrumação Diária</option>
+                <option value="custom">Limpeza Personalizada</option>
               </select>
             </div>
           </div>
+
+          {formData.type === 'custom' && (
+            <div className="space-y-4 pt-4 border-t border-border">
+              <div className="flex justify-between items-center bg-secondary/20 p-4 border border-border rounded-2xl">
+                <div>
+                  <h4 className="text-sm font-bold text-foreground">Procedimentos da Limpeza Personalizada</h4>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Defina os itens exatos que a camareira precisa checar para esta tarefa avulsa.</p>
+                </div>
+                <button type="button" onClick={() => setCustomChecklist(prev => [...prev, { id: crypto.randomUUID(), label: "", checked: false }])} className="px-4 py-2 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground font-bold text-xs uppercase rounded-xl transition-all flex items-center gap-1.5 shrink-0">
+                  <Plus size={16} /> Item
+                </button>
+              </div>
+              <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+                {customChecklist.map(item => (
+                  <div key={item.id} className="flex gap-2 items-center group">
+                    <input required value={item.label} onChange={e => setCustomChecklist(prev => prev.map(i => i.id === item.id ? { ...i, label: e.target.value } : i))} className="flex-1 bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-primary text-foreground ml-2" placeholder="Ex: Higienizar tapetes..." />
+                    <button type="button" onClick={() => setCustomChecklist(prev => prev.filter(i => i.id !== item.id))} className="p-3 text-muted-foreground hover:bg-red-500 hover:border-red-500 hover:text-white border border-transparent rounded-xl transition-colors shrink-0 opacity-50 group-hover:opacity-100">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+                {customChecklist.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center italic py-2">Nenhum check opcional. Limpeza será geral e livre.</p>
+                )}
+              </div>
+            </div>
+          )}
 
           {isEditing && (
             <div className="space-y-2">

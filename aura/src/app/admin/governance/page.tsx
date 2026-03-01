@@ -24,7 +24,7 @@ import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 export default function GovernancePage() {
-  const { property, isLoading } = useProperty() as any;
+  const { currentProperty: property, loading: isLoading } = useProperty();
   const { userData } = useAuth();
 
   const [tasks, setTasks] = useState<HousekeepingTask[]>([]);

@@ -142,6 +142,7 @@ export interface Structure {
   units?: { id: string; name: string; imageUrl?: string }[];
   bookingType: 'fixed_slots' | 'free_time';
   requiresTurnover: boolean; // Does it require housekeeping after use?
+  housekeepingChecklist?: { id: string; label: string }[];
   createdAt?: Timestamp;
 }
 
@@ -196,8 +197,9 @@ export interface HousekeepingTask {
   propertyId: string;
   cabinId?: string; // Para Cabanas
   structureId?: string; // Para Estruturas (Spas, Quadras, etc)
+  unitId?: string; // Para uma unidade específica da estrutura
   stayId?: string; // Para limpezas diárias vinculadas a uma estadia ativa
-  type: 'turnover' | 'daily'; // Turnover = Faxina de Troca | Daily = Arrumação
+  type: 'turnover' | 'daily' | 'custom'; // Turnover = Faxina de Troca | Daily = Arrumação | Custom = Personalizada
   status: 'pending' | 'in_progress' | 'waiting_conference' | 'completed' | 'cancelled';
 
   // Controle de Pessoal

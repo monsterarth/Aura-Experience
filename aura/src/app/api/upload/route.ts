@@ -12,11 +12,13 @@ export async function POST(request: Request): Promise<NextResponse> {
     try {
         const blob = await put(filename, request.body as any, {
             access: 'public',
+            token: process.env.BLOB_PUBLIC_READ_WRITE_TOKEN
         });
 
         return NextResponse.json(blob);
     } catch (error) {
         console.error('Error uploading to Vercel Blob:', error);
-        return NextResponse.json({ error: 'Failed to upload image' }, { status: 500 });
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
 }

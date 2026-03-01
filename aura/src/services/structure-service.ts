@@ -186,8 +186,15 @@ export const StructureService = {
 
     async createBooking(propertyId: string, data: Omit<StructureBooking, 'id' | 'createdAt'>, actorId: string, actorName: string): Promise<string> {
         const collRef = collection(db, "properties", propertyId, "structure_bookings");
+
+        // Remove undefined values to prevent Firebase "Unsupported field value: undefined" errors
+        const sanitizedData = Object.entries(data).reduce((acc, [k, v]) => {
+            if (v !== undefined) acc[k] = v;
+            return acc;
+        }, {} as Record<string, any>);
+
         const docRef = await addDoc(collRef, {
-            ...data,
+            ...sanitizedData,
             createdAt: serverTimestamp()
         });
 
@@ -219,7 +226,29 @@ export const StructureService = {
         // Se completou a reserva e a estrutura precisa de limpeza, marcar limpeza
         if (newStatus === 'completed' && requiresTurnover && structureId) {
             const structureRef = doc(db, "properties", propertyId, "structures", structureId);
-            await updateDoc(structureRef, { status: 'cleaning' });
+            const structureSnap = await getDoc(structureRef);
+
+            if (structureSnap.exists()) {
+                const sData = structureSnap.data() as Structure;
+                await updateDoc(structureRef, { status: 'cleaning' });
+
+                const bookingSnap = await getDoc(docRef);
+                const bookingData = bookingSnap.data() as StructureBooking;
+
+                // Create a housekeeping_tasks for this turnover
+                await addDoc(collection(db, "properties", propertyId, "housekeeping_tasks"), {
+                    propertyId,
+                    structureId,
+                    unitId: bookingData.unitId || null,
+                    stayId: bookingData.stayId || null,
+                    type: 'turnover',
+                    status: 'pending',
+                    assignedTo: [],
+                    checklist: sData.housekeepingChecklist || [],
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                });
+            }
         }
 
         await AuditService.log({

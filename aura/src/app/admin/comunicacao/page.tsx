@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 
 export default function ComunicacaoPage() {
   const router = useRouter();
-  const { property, isLoading } = useProperty() as any; 
+  const { currentProperty: property, loading: isLoading } = useProperty();
 
   if (isLoading) {
     return (
@@ -41,18 +41,18 @@ export default function ComunicacaoPage() {
             Gestão omnichannel e WhatsApp para <strong className="text-foreground">{property.name}</strong>
           </p>
         </div>
-        
+
         {/* BOTÃO DA FILA DE AUTOMAÇÕES */}
-        <Button 
-          variant="outline" 
-          onClick={() => router.push('/admin/comunicacao/automations')} 
+        <Button
+          variant="outline"
+          onClick={() => router.push('/admin/comunicacao/automations')}
           className="gap-2 shadow-sm border-primary/20 hover:bg-primary/5 text-primary"
         >
           <Bot className="w-4 h-4" />
           <span className="hidden sm:inline">Fila de Automações</span>
         </Button>
       </div>
-      
+
       <div className="flex-1 w-full pb-4">
         <CommunicationCenter propertyId={property.id} />
       </div>

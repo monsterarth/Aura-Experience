@@ -8,7 +8,8 @@ import { toast } from "sonner";
 import { StructureService } from "@/services/structure-service";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
-import { Structure, StructureBooking, TimeSlot } from "@/types/aura";
+import { Structure, StructureBooking, TimeSlot, Stay } from "@/types/aura";
+import { StayService } from "@/services/stay-service";
 import { cn } from "@/lib/utils";
 
 type ModalState = {
@@ -26,6 +27,7 @@ export default function StructureBookingsPage() {
 
     const [structures, setStructures] = useState<Structure[]>([]);
     const [bookings, setBookings] = useState<StructureBooking[]>([]);
+    const [activeStays, setActiveStays] = useState<(Stay & { guestName?: string, cabinName?: string })[]>([]);
     const [loading, setLoading] = useState(true);
 
     // Modal State
@@ -48,13 +50,27 @@ export default function StructureBookingsPage() {
         try {
             const dateStr = format(currentDate, "yyyy-MM-dd");
 
-            const [allStructures, allBookings] = await Promise.all([
+            const [allStructures, allBookings, allActiveStays] = await Promise.all([
                 StructureService.getStructures(currentProperty.id),
-                StructureService.getAllBookingsByDate(currentProperty.id, dateStr)
+                StructureService.getAllBookingsByDate(currentProperty.id, dateStr),
+                StayService.getStaysByStatus(currentProperty.id, ['pending', 'pre_checkin_done', 'active', 'late_checkout'])
             ]);
+
+            // Filtrar estadias para que o dia selecionado (currentDate) esteja entre checkIn e checkOut
+            // ignoramos a hora para a comparação do dia.
+            const validStaysForDate = allActiveStays.filter(s => {
+                const checkInDate = s.checkIn?.toDate ? s.checkIn.toDate() : new Date(s.checkIn);
+                const checkOutDate = s.checkOut?.toDate ? s.checkOut.toDate() : new Date(s.checkOut);
+
+                checkInDate.setHours(0, 0, 0, 0);
+                checkOutDate.setHours(23, 59, 59, 999);
+
+                return currentDate >= checkInDate && currentDate <= checkOutDate;
+            });
 
             setStructures(allStructures);
             setBookings(allBookings);
+            setActiveStays(validStaysForDate);
         } catch (error) {
             toast.error("Erro ao carregar agenda.");
         } finally {
@@ -88,6 +104,13 @@ export default function StructureBookingsPage() {
         let startTime = selectedConfig.slot?.startTime;
         let endTime = selectedConfig.slot?.endTime;
 
+        if (bookingType === 'booking' && !guestName) {
+            return toast.error("Selecione o hóspede titular válido da lista.");
+        }
+        if (bookingType === 'maintenance_block' && !maintenanceNotes) {
+            return toast.error("Preencha as observações de manutenção.");
+        }
+
         if (selectedConfig.isFreeTime) {
             if (!freeTimeStart || !freeTimeEnd) return toast.error("Preencha os horários.");
             const hasOverlap = StructureService.checkOverlap(
@@ -114,7 +137,8 @@ export default function StructureBookingsPage() {
                     endTime: endTime!,
                     status: 'approved',
                     source: 'admin',
-                    guestName: bookingType === 'booking' ? guestName : "Manutenção",
+                    stayId: bookingType === 'booking' && guestName ? guestName : undefined,
+                    guestName: bookingType === 'booking' ? (activeStays.find(s => s.id === guestName)?.guestName || "Hóspede") : "Manutenção",
                     notes: bookingType === 'maintenance_block' ? maintenanceNotes : "Reserva Manual Adm"
                 },
                 userData.id,
@@ -128,6 +152,7 @@ export default function StructureBookingsPage() {
             setFreeTimeEnd("");
             fetchData();
         } catch (error) {
+            console.error("DEBUG Erro onSubmit booking:", error);
             toast.error("Erro ao criar agendamento.");
         }
     };
@@ -372,9 +397,23 @@ export default function StructureBookingsPage() {
 
                                 {bookingType === 'booking' ? (
                                     <div>
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Nome do Hóspede</label>
-                                        <input required value={guestName} onChange={e => setGuestName(e.target.value)} className="w-full bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-primary text-foreground" placeholder="Nome do hóspede..." />
-                                        <p className="text-[10px] text-muted-foreground mt-2">Dica: Em breve você poderá selecionar diretamente a reserva ativa na lista.</p>
+                                        <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Hóspede Titular da Reserva</label>
+                                        <select
+                                            value={guestName}
+                                            onChange={e => setGuestName(e.target.value)}
+                                            className="w-full bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-primary text-foreground appearance-none"
+                                            required
+                                        >
+                                            <option value="" disabled>Selecione a Estadia Hospedada...</option>
+                                            {activeStays.map(stay => (
+                                                <option key={stay.id} value={stay.id}>
+                                                    {stay.guestName} - {stay.cabinName} (Res: {stay.id.slice(0, 6).toUpperCase()})
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {activeStays.length === 0 && (
+                                            <p className="text-[10px] text-orange-500 font-medium mt-1">Nenhuma estadia ativa encontrada para o decorrer do dia.</p>
+                                        )}
                                     </div>
                                 ) : (
                                     <div>
