@@ -261,6 +261,52 @@ export interface SurveyQuestion {
   options?: string[];
 }
 
+
+// ==========================================
+// MÓDULO DE MANUTENÇÃO
+// ==========================================
+
+export interface MaintenanceChecklistItem {
+  id: string;
+  label: string;
+  checked: boolean;
+  assignedTo?: string[]; // IDs of technicians assigned to this specific step
+}
+
+export interface MaintenanceTask {
+  id: string;
+  propertyId: string;
+  cabinId?: string; // If applicable to a cabin
+  structureId?: string; // If applicable to a structure
+  unitId?: string; // If applicable to a specific unit of a structure
+  stayId?: string; // If applicable during a specific stay
+
+  title: string;
+  description: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  status: 'pending' | 'in_progress' | 'waiting_conference' | 'completed' | 'cancelled';
+
+  assignedTo: string[]; // General assignees for the card
+
+  isRecurring: boolean;
+  recurrenceRule?: string; // E.g., 'daily', 'weekly', 'monthly'
+  lastRecurrenceCreated?: Timestamp; // Helps Cron avoid duplicates
+
+  checklist: MaintenanceChecklistItem[];
+
+  completion?: {
+    resolved: boolean;
+    needsCleaning: boolean;
+    photoUrl?: string; // Vercel blob URL
+    notes?: string;
+  };
+
+  startedAt?: Timestamp;
+  finishedAt?: Timestamp;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
 export interface SurveyReward {
   hasReward: boolean;
   type: 'discount' | 'freebie' | 'points' | 'other' | '';
@@ -466,7 +512,7 @@ export interface AuditLog {
   | 'CREATE_STAY' | 'COMPLETE_STAY' | 'STAY_GROUP_CREATE'
   | 'STRUCTURE_CREATED' | 'STRUCTURE_UPDATED' | 'STRUCTURE_DELETED'
   | 'STRUCTURE_BOOKING_CREATED' | 'STRUCTURE_BOOKING_STATUS_CHANGED';
-  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING';
+  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'MAINTENANCE';
   entityId: string;
   oldData?: any;
   newData?: any;
