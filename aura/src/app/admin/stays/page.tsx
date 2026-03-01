@@ -1,3 +1,5 @@
+//src/app/admin/stays/page.tsx
+
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
@@ -18,7 +20,7 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { toast } from "sonner";
 import { StayDetailsModal } from "@/components/admin/StayDetailsModal";
-import { GuestContactModal } from "@/components/admin/GuestContactModal"; // <-- NOVO IMPORT
+import { GuestContactModal } from "@/components/admin/GuestContactModal"; 
 import { useRouter } from "next/navigation";
 
 type TabStatus = 'futuras' | 'ativas' | 'encerradas';
@@ -91,7 +93,7 @@ export default function StaysPage() {
     }
   };
 
-  // NOVO: Abre o modal de Contato Rápido buscando os dados frescos do hóspede
+  // Abre o modal de Contato Rápido buscando os dados frescos do hóspede
   const handleOpenWhatsapp = async (stay: any) => {
     if (!contextProperty?.id) return;
     setLoading(true);
@@ -412,6 +414,7 @@ export default function StaysPage() {
                       <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Hóspede</th>
                       <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Período</th>
                       <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-center">Avisos</th>
+                      <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-center">Avaliação</th>
                       <th className="p-4 text-right"></th>
                     </tr>
                   </thead>
@@ -444,7 +447,7 @@ export default function StaysPage() {
                             </div>
                           </td>
 
-                          {/* Coluna: Alertas Financeiros e NPS */}
+                          {/* Coluna: Alertas Financeiros e Operacionais */}
                           <td className="p-4 text-center">
                             <div className="flex items-center justify-center gap-2">
                               {s.hasOpenFolio ? (
@@ -456,12 +459,49 @@ export default function StaysPage() {
                                   <CheckCircle2 size={14} />
                                 </div>
                               )}
-                              
-                              {s.nps && s.nps < 7 && (
-                                <div className="p-1.5 bg-red-500/10 text-red-500 rounded-md border border-red-500/20" title={`NPS Crítico: ${s.nps}`}>
-                                  <Star size={14} className="fill-red-500" />
-                                </div>
-                              )}
+                            </div>
+                          </td>
+
+                          {/* Coluna: AVALIAÇÃO (NOVA) */}
+                          <td className="p-4 text-center">
+                            <div className="flex items-center justify-center">
+                              {(() => {
+                                const npsVal = s.nps !== undefined ? s.nps : s.npsScore;
+                                const hasEvaluated = npsVal !== undefined && npsVal !== null;
+
+                                if (!hasEvaluated && !s.hasSurvey) {
+                                  return (
+                                    <span className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest border border-dashed border-white/10 px-2 py-1 rounded-md" title="Pesquisa ainda não respondida">
+                                      Pendente
+                                    </span>
+                                  );
+                                }
+
+                                if (npsVal <= 6) {
+                                  return (
+                                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-500/10 text-red-500 rounded-md border border-red-500/20" title="Hóspede Detrator">
+                                      <Star size={12} className="fill-red-500" />
+                                      <span className="text-[10px] font-black uppercase tracking-wider">Detrator ({npsVal})</span>
+                                    </div>
+                                  );
+                                }
+                                
+                                if (npsVal >= 9) {
+                                  return (
+                                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 text-emerald-500 rounded-md border border-emerald-500/20" title="Hóspede Promotor">
+                                      <Star size={12} className="fill-emerald-500" />
+                                      <span className="text-[10px] font-black uppercase tracking-wider">Promotor ({npsVal})</span>
+                                    </div>
+                                  );
+                                }
+
+                                return (
+                                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-yellow-500/10 text-yellow-500 rounded-md border border-yellow-500/20" title="Hóspede Neutro">
+                                    <Star size={12} className="fill-yellow-500" />
+                                    <span className="text-[10px] font-black uppercase tracking-wider">Neutro ({npsVal})</span>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </td>
 
@@ -531,7 +571,7 @@ export default function StaysPage() {
             </div>
         )}
 
-        {/* NOVO: Modal Inteligente de Contato (Substitui o antigo) */}
+        {/* Modal Inteligente de Contato */}
         {isContactModalOpen && selectedStay && selectedGuest && contextProperty?.id && (
           <GuestContactModal 
             propertyId={contextProperty.id}

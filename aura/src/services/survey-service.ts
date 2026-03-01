@@ -1,3 +1,4 @@
+// src/services/survey-service.ts
 import { 
   collection, 
   doc, 
@@ -11,12 +12,29 @@ import {
   writeBatch,
   deleteDoc,
   getDoc,
-  updateDoc
-
-
+  updateDoc,
+  orderBy
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { SurveyResponse, SurveyTemplate, Stay, SurveyCategoryItem } from "@/types/aura";
+
+// NOVA INTERFACE PARA OS INSIGHTS DO N8N
+export interface SurveyInsight {
+  id: string;
+  propertyId: string;
+  period: 'daily' | 'weekly' | 'monthly' | 'yearly';
+  startDate: any; // Timestamp
+  endDate: any;   // Timestamp
+  positiveInsight: {
+    title: string;
+    text: string;
+  };
+  attentionInsight: {
+    title: string;
+    text: string;
+  };
+  createdAt: any; // Timestamp
+}
 
 export class SurveyService {
   /**
@@ -82,7 +100,7 @@ export class SurveyService {
     }
   }
 
-// ==========================================
+  // ==========================================
   // GERENCIAMENTO DE CATEGORIAS (BI)
   // ==========================================
 
@@ -155,7 +173,6 @@ export class SurveyService {
 
   /**
    * Salva um novo Template de Pesquisa. 
-   * Se isDefault for true, desmarca os outros templates da propriedade.
    */
   static async createTemplate(
     propertyId: string,
@@ -202,7 +219,6 @@ export class SurveyService {
       
       return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SurveyTemplate))
         .sort((a, b) => {
-          // Ordena: o Padrão primeiro, depois os mais recentes
           if (a.isDefault) return -1;
           if (b.isDefault) return 1;
           return 0;
@@ -224,14 +240,12 @@ export class SurveyService {
       
       const batch = writeBatch(db);
       
-      // Remove o default dos antigos
       snapshot.docs.forEach((docSnap) => {
         if (docSnap.id !== templateId) {
           batch.update(docSnap.ref, { isDefault: false });
         }
       });
 
-      // Define o novo default
       const newDefaultRef = doc(db, "properties", propertyId, "survey_templates", templateId);
       batch.update(newDefaultRef, { isDefault: true });
 
@@ -243,9 +257,6 @@ export class SurveyService {
     }
   }
 
-  /**
-   * Exclui um template de pesquisa
-   */
   static async deleteTemplate(propertyId: string, templateId: string): Promise<boolean> {
     try {
       await deleteDoc(doc(db, "properties", propertyId, "survey_templates", templateId));
@@ -255,9 +266,7 @@ export class SurveyService {
       return false;
     }
   }
-  /**
-   * Busca um template específico pelo ID
-   */
+
   static async getTemplateById(propertyId: string, templateId: string): Promise<SurveyTemplate | null> {
     try {
       const docRef = doc(db, "properties", propertyId, "survey_templates", templateId);
@@ -272,16 +281,12 @@ export class SurveyService {
     }
   }
 
-  /**
-   * Atualiza um Template de Pesquisa existente.
-   */
   static async updateTemplate(
     propertyId: string,
     templateId: string,
     templateData: Omit<SurveyTemplate, "id" | "propertyId" | "createdAt" | "updatedAt">
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // Se for marcado como padrão na edição, tira o padrão dos outros
       if (templateData.isDefault) {
         const templatesRef = collection(db, "properties", propertyId, "survey_templates");
         const q = query(templatesRef, where("isDefault", "==", true));
@@ -355,12 +360,15 @@ export class SurveyService {
           
           if (value <= 2) isDetractor = true;
 
-          if (!categoryRatings[question.categoryId]) {
-            categoryRatings[question.categoryId] = 0;
-            categoryCounts[question.categoryId] = 0;
+          // Alterado de categoryId para categoryName para legibilidade no Dashboard
+          const categoryKey = question.categoryName || "Geral"; 
+
+          if (!categoryRatings[categoryKey]) {
+            categoryRatings[categoryKey] = 0;
+            categoryCounts[categoryKey] = 0;
           }
-          categoryRatings[question.categoryId] += value;
-          categoryCounts[question.categoryId] += 1;
+          categoryRatings[categoryKey] += value;
+          categoryCounts[categoryKey] += 1;
         }
       });
 
@@ -389,10 +397,60 @@ export class SurveyService {
 
       await setDoc(surveyRef, surveyData);
 
+      const stayRef = doc(db, "properties", propertyId, "stays", stayId);
+await updateDoc(stayRef, {
+  hasSurvey: true,
+  npsScore: npsScore || null
+});
+
       return { success: true };
     } catch (error) {
       console.error("Erro ao submeter pesquisa:", error);
       return { success: false, error: "Falha ao enviar sua avaliação. Tente novamente." };
+    }
+  }
+
+  /**
+   * Busca todas as respostas das pesquisas de uma propriedade
+   */
+  static async getResponses(propertyId: string): Promise<SurveyResponse[]> {
+    try {
+      const responsesRef = collection(db, "properties", propertyId, "survey_responses");
+      const snapshot = await getDocs(responsesRef);
+
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SurveyResponse))
+        .sort((a, b) => {
+          const dateA = a.createdAt?.toMillis?.() || 0;
+          const dateB = b.createdAt?.toMillis?.() || 0;
+          return dateB - dateA; // Ordena da mais recente para a mais antiga
+        });
+    } catch (error) {
+      console.error("Erro ao buscar respostas:", error);
+      return [];
+    }
+  }
+
+  /**
+   * NOVO: Busca o insight pré-processado pelo N8N mais recente de um determinado período
+   */
+  static async getLatestInsight(propertyId: string, period: 'daily' | 'weekly' | 'monthly' | 'yearly' = 'daily'): Promise<SurveyInsight | null> {
+    try {
+      const insightsRef = collection(db, "properties", propertyId, "survey_insights");
+      const q = query(
+        insightsRef, 
+        where("period", "==", period),
+        orderBy("createdAt", "desc"),
+        limit(1)
+      );
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) return null;
+
+      const docSnap = snapshot.docs[0];
+      return { id: docSnap.id, ...docSnap.data() } as SurveyInsight;
+    } catch (error) {
+      console.error(`Erro ao buscar o último insight (${period}):`, error);
+      return null;
     }
   }
 }

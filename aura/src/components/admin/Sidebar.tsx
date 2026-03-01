@@ -1,3 +1,4 @@
+// src/components/admin/Sidebar.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
@@ -11,7 +12,8 @@ import { cn } from "@/lib/utils";
 import { 
   LayoutDashboard, Users, Home, Wrench, 
   Sparkles, Building, ChevronDown, LogOut,
-  MessageSquare, Settings, Globe, Menu, X
+  MessageSquare, Settings, Globe, Menu, X,
+  Star, ClipboardList
 } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { deleteCookie } from "cookies-next";
@@ -70,6 +72,7 @@ export const Sidebar = () => {
     { title: "Comunicação", icon: MessageSquare, href: "/admin/comunicacao", roles: ["super_admin", "admin", "reception"] },
     { title: "Governança", icon: Sparkles, href: "/admin/governance", roles: ["super_admin", "admin", "governance"] },
     { title: "Manutenção", icon: Wrench, href: "/admin/maintenance", roles: ["super_admin", "admin", "maintenance"] },
+    { title: "Avaliações", icon: Star, href: "/admin/surveys/responses", roles: ["super_admin", "admin", "reception"] },
   ];
 
   // ==========================================
@@ -83,6 +86,7 @@ export const Sidebar = () => {
       roles: ["super_admin", "admin"], 
       requireProperty: true 
     },
+    { title: "Pesquisas (NPS)", icon: ClipboardList, href: "/admin/surveys", roles: ["super_admin", "admin"] },
     { title: "Cabanas", icon: Building, href: "/admin/cabins", roles: ["super_admin", "admin", "governance"] },    
     { title: "Equipe", icon: Users, href: "/admin/staff", roles: ["super_admin", "admin"] },
     { title: "Propriedades", icon: Globe, href: "/admin/core/properties", roles: ["super_admin"] },
