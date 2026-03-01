@@ -36,7 +36,7 @@ const roleLabels: Record<string, string> = {
 
 export default function StaffManagementPage() {
   const { userData } = useAuth();
-  const { property } = useProperty();
+  const { currentProperty: property } = useProperty();
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);

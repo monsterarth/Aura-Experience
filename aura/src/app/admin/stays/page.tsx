@@ -7,10 +7,10 @@ import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { StayService } from "@/services/stay-service";
 import { RoleGuard } from "@/components/auth/RoleGuard";
-import { 
-  Calendar, Search, Loader2, AlertCircle, 
-  Dog, Users, ArrowUpRight, 
-  Building2, MapPin, Clock, MessageCircle, 
+import {
+  Calendar, Search, Loader2, AlertCircle,
+  Dog, Users, ArrowUpRight,
+  Building2, MapPin, Clock, MessageCircle,
   Archive, Send, X, Star, ShieldAlert,
   Copy, Ban, CheckCircle2, DollarSign
 } from "lucide-react";
@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { toast } from "sonner";
 import { StayDetailsModal } from "@/components/admin/StayDetailsModal";
-import { GuestContactModal } from "@/components/admin/GuestContactModal"; 
+import { GuestContactModal } from "@/components/admin/GuestContactModal";
 import { useRouter } from "next/navigation";
 
 type TabStatus = 'futuras' | 'ativas' | 'encerradas';
@@ -28,8 +28,8 @@ type TabStatus = 'futuras' | 'ativas' | 'encerradas';
 export default function StaysPage() {
   const router = useRouter();
   const { userData } = useAuth();
-  const { property: contextProperty } = useProperty();
-  
+  const { currentProperty: contextProperty } = useProperty();
+
   // States de Dados e UI
   const [activeTab, setActiveTab] = useState<TabStatus>('ativas');
   const [stays, setStays] = useState<any[]>([]);
@@ -55,7 +55,7 @@ export default function StaysPage() {
       let statusFilter: string[] = [];
       if (activeTab === 'futuras') statusFilter = ['pending', 'pre_checkin_done'];
       if (activeTab === 'ativas') statusFilter = ['active'];
-      if (activeTab === 'encerradas') statusFilter = ['finished', 'cancelled']; 
+      if (activeTab === 'encerradas') statusFilter = ['finished', 'cancelled'];
 
       const data = await StayService.getStaysByStatus(contextProperty.id, statusFilter);
       setStays(data);
@@ -118,28 +118,28 @@ export default function StaysPage() {
     const link = `${window.location.origin}/check-in/login?code=${code}`;
     navigator.clipboard.writeText(link);
     toast.success("Link de Check-in copiado!", {
-        description: "Envie para o hóspede acessar diretamente."
+      description: "Envie para o hóspede acessar diretamente."
     });
   };
 
   const handleCancelStay = async () => {
     if (!stayToCancel || !contextProperty?.id || !userData?.id) return;
-    
+
     try {
-        await StayService.cancelStay(contextProperty.id, stayToCancel, userData.id, userData.fullName);
-        toast.success("Reserva cancelada com sucesso.");
-        setStayToCancel(null);
-        loadStays(); 
+      await StayService.cancelStay(contextProperty.id, stayToCancel, userData.id, userData.fullName);
+      toast.success("Reserva cancelada com sucesso.");
+      setStayToCancel(null);
+      loadStays();
     } catch (error) {
-        console.error(error);
-        toast.error("Erro ao cancelar reserva.");
+      console.error(error);
+      toast.error("Erro ao cancelar reserva.");
     }
   };
 
   const handleArchive = async (stayId: string) => {
-    if(!contextProperty?.id || !userData?.id) return;
-    if(!confirm("Deseja arquivar esta estadia? Ela sairá desta lista e ficará guardada no histórico do Aura.")) return;
-    
+    if (!contextProperty?.id || !userData?.id) return;
+    if (!confirm("Deseja arquivar esta estadia? Ela sairá desta lista e ficará guardada no histórico do Aura.")) return;
+
     try {
       await StayService.archiveStay(contextProperty.id, stayId, userData.id, userData.fullName);
       toast.success("Estadia arquivada com sucesso.");
@@ -152,7 +152,7 @@ export default function StaysPage() {
   // --- Lógica de Renderização de Status ---
   const getActiveStatusInfo = (checkOutDate: any) => {
     if (!checkOutDate) return { label: "N/A", color: "text-foreground" };
-    
+
     const today = new Date();
     const end = checkOutDate.toDate();
     const diff = differenceInCalendarDays(end, today);
@@ -177,7 +177,7 @@ export default function StaysPage() {
     return `Chegada em ${diff} dias`;
   };
 
-  const filteredStays = stays.filter(s => 
+  const filteredStays = stays.filter(s =>
     (s.guestName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
     (s.cabinName || "").toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -185,7 +185,7 @@ export default function StaysPage() {
   return (
     <RoleGuard allowedRoles={["super_admin", "admin", "reception", "governance"]}>
       <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
-        
+
         {/* Header */}
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-1">
@@ -194,13 +194,13 @@ export default function StaysPage() {
             </h1>
             <div className="flex items-center gap-2">
               <p className="font-medium flex items-center gap-2 opacity-70" style={{ color: "hsl(var(--foreground))" }}>
-                <MapPin size={14} /> 
+                <MapPin size={14} />
                 {contextProperty?.name || "Carregando Propriedade..."}
               </p>
             </div>
           </div>
 
-          <Link 
+          <Link
             href="/admin/stays/new"
             className="bg-primary text-primary-foreground font-black px-8 py-4 rounded-2xl flex items-center gap-2 hover:shadow-[0_0_30px_rgba(var(--primary),0.4)] transition-all active:scale-95"
           >
@@ -217,8 +217,8 @@ export default function StaysPage() {
                 onClick={() => setActiveTab(tab)}
                 className={cn(
                   "flex-1 md:flex-none px-8 py-3 rounded-[20px] text-[10px] font-black uppercase tracking-[0.2em] transition-all",
-                  activeTab === tab 
-                    ? "bg-white text-black shadow-xl" 
+                  activeTab === tab
+                    ? "bg-white text-black shadow-xl"
                     : "text-foreground/40 hover:text-foreground hover:bg-white/5"
                 )}
               >
@@ -229,7 +229,7 @@ export default function StaysPage() {
 
           <div className="relative w-full md:w-80 px-2">
             <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-foreground/20" size={18} />
-            <input 
+            <input
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               placeholder="Buscar por hóspede ou cabana..."
@@ -261,145 +261,145 @@ export default function StaysPage() {
             {activeTab !== 'encerradas' && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredStays.map((s) => {
-                    const activeInfo = getActiveStatusInfo(s.checkOut);
-                    const guestName = s.guestName || "Hóspede Desconhecido";
-                    
-                    const docNumber = s.guest?.document?.number || s.guestDocumentNumber || ""; 
-                    const hasValidDoc = docNumber && docNumber.length > 3 && docNumber !== "N/A";
-                    const isPreCheckinDone = s.status === 'pre_checkin_done';
-                    const isTempId = !s.guestId || s.guestId.toString().startsWith("GUEST");
-                    const isUnknownGuest = isTempId && !hasValidDoc && !isPreCheckinDone;
+                  const activeInfo = getActiveStatusInfo(s.checkOut);
+                  const guestName = s.guestName || "Hóspede Desconhecido";
 
-                    return (
-                      <div 
-                        key={s.id}
-                        className="group bg-card border border-white/5 rounded-[40px] overflow-hidden hover:border-primary/40 transition-all flex flex-col shadow-lg"
-                      >
-                        <div className="p-8 space-y-6 flex-1">
-                          {/* Topo do Card */}
-                          <div className="flex justify-between items-start">
-                            <div className="px-4 py-1.5 bg-primary/10 border border-primary/20 rounded-full">
-                                <span className="text-[10px] font-black text-primary uppercase tracking-widest">{s.cabinName}</span>
-                            </div>
-                            <div className="flex gap-2">
-                              {isUnknownGuest && <div className="p-2 bg-red-500/10 rounded-lg animate-pulse" title="Documento Pendente"><ShieldAlert size={16} className="text-red-500" /></div>}
-                              {s.hasPet && <div className="p-2 bg-orange-500/10 rounded-lg" title="Pet"><Dog size={16} className="text-orange-500" /></div>}
-                              {s.groupId && <div className="p-2 bg-blue-500/10 rounded-lg" title="Grupo"><Users size={16} className="text-blue-500" /></div>}
-                            </div>
+                  const docNumber = s.guest?.document?.number || s.guestDocumentNumber || "";
+                  const hasValidDoc = docNumber && docNumber.length > 3 && docNumber !== "N/A";
+                  const isPreCheckinDone = s.status === 'pre_checkin_done';
+                  const isTempId = !s.guestId || s.guestId.toString().startsWith("GUEST");
+                  const isUnknownGuest = isTempId && !hasValidDoc && !isPreCheckinDone;
+
+                  return (
+                    <div
+                      key={s.id}
+                      className="group bg-card border border-white/5 rounded-[40px] overflow-hidden hover:border-primary/40 transition-all flex flex-col shadow-lg"
+                    >
+                      <div className="p-8 space-y-6 flex-1">
+                        {/* Topo do Card */}
+                        <div className="flex justify-between items-start">
+                          <div className="px-4 py-1.5 bg-primary/10 border border-primary/20 rounded-full">
+                            <span className="text-[10px] font-black text-primary uppercase tracking-widest">{s.cabinName}</span>
                           </div>
-
-                          {/* Nome e Datas */}
-                          <div className="space-y-1">
-                            <h3 
-                                onClick={() => handleOpenWhatsapp(s)}
-                                className="text-2xl font-black text-foreground tracking-tighter transition-colors flex items-center gap-2 cursor-pointer hover:text-primary group/name"
-                                title="Clique para enviar WhatsApp"
-                            >
-                                {guestName.split(' ')[0]} {guestName.split(' ').slice(-1)}
-                                <MessageCircle size={20} className="opacity-0 group-hover/name:opacity-100 transition-opacity text-primary" />
-                            </h3>
-                            <div className="flex items-center gap-2 text-foreground/40 text-[10px] font-bold uppercase tracking-widest">
-                                <Clock size={12} />
-                                {s.checkIn?.toDate ? format(s.checkIn.toDate(), "dd MMM", { locale: ptBR }) : ''} — 
-                                {s.checkOut?.toDate ? format(s.checkOut.toDate(), "dd MMM", { locale: ptBR }) : ''}
-                            </div>
-                          </div>
-
-                          {/* Grid de Informações Variável */}
-                          <div className="grid grid-cols-2 gap-3">
-                            {/* Status Futuro */}
-                            {activeTab === 'futuras' && (
-                                <div className="bg-secondary p-4 rounded-3xl border border-white/5">
-                                    <p className="text-[9px] font-bold text-foreground/20 uppercase mb-1">Previsão</p>
-                                    <p className="text-sm font-black text-foreground tracking-wide">
-                                        {getFutureStatusInfo(s.checkIn, s.expectedArrivalTime)}
-                                    </p>
-                                </div>
-                            )}
-                            {/* Status Ativo */}
-                            {activeTab === 'ativas' && (
-                                <div className="bg-secondary p-4 rounded-3xl border border-white/5 col-span-2">
-                                    <p className="text-[9px] font-bold text-foreground/20 uppercase mb-1">Status Atual</p>
-                                    <div className="flex justify-between items-center">
-                                        <p className={cn("text-lg font-black tracking-wide", activeInfo.color)}>
-                                            {activeInfo.label}
-                                        </p>
-                                        {isUnknownGuest && (
-                                            <span className="text-[10px] font-bold text-red-500 bg-red-500/10 px-2 py-1 rounded-lg uppercase">
-                                                Doc Pendente
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Pré Checkin */}
-                            {activeTab === 'futuras' && (
-                                  <div className="bg-secondary p-4 rounded-3xl border border-white/5 group/copy relative">
-                                    <div className="flex justify-between items-center mb-1">
-                                        <p className="text-[9px] font-bold text-foreground/20 uppercase">Pré-Checkin</p>
-                                        {s.status === 'pending' && (
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); handleCopyLink(s.accessCode); }}
-                                                className="text-primary hover:text-foreground transition-colors"
-                                                title="Copiar Link Direto"
-                                            >
-                                                <Copy size={12} />
-                                            </button>
-                                        )}
-                                    </div>
-                                    <p 
-                                        onClick={() => s.status === 'pending' && handleCopyLink(s.accessCode)}
-                                        className={cn(
-                                            "text-xs font-black uppercase flex items-center gap-1", 
-                                            s.status === 'pre_checkin_done' ? "text-green-500" : "text-yellow-500 cursor-pointer hover:underline"
-                                        )}
-                                    >
-                                        {s.status === 'pre_checkin_done' ? "Pronto" : "Pendente"}
-                                    </p>
-                                </div>
-                            )}
+                          <div className="flex gap-2">
+                            {isUnknownGuest && <div className="p-2 bg-red-500/10 rounded-lg animate-pulse" title="Documento Pendente"><ShieldAlert size={16} className="text-red-500" /></div>}
+                            {s.hasPet && <div className="p-2 bg-orange-500/10 rounded-lg" title="Pet"><Dog size={16} className="text-orange-500" /></div>}
+                            {s.groupId && <div className="p-2 bg-blue-500/10 rounded-lg" title="Grupo"><Users size={16} className="text-blue-500" /></div>}
                           </div>
                         </div>
 
-                        {/* Footer de Ações */}
-                        <div className="p-6 bg-white/[0.02] border-t border-white/5 flex gap-3">
-                            <button 
-                                onClick={() => handleOpenFicha(s)}
-                                className="flex-1 bg-white/5 hover:bg-white/10 text-foreground text-[10px] font-black uppercase py-4 rounded-2xl transition-all tracking-widest"
-                            >
-                                Ver Ficha
-                            </button>  
+                        {/* Nome e Datas */}
+                        <div className="space-y-1">
+                          <h3
+                            onClick={() => handleOpenWhatsapp(s)}
+                            className="text-2xl font-black text-foreground tracking-tighter transition-colors flex items-center gap-2 cursor-pointer hover:text-primary group/name"
+                            title="Clique para enviar WhatsApp"
+                          >
+                            {guestName.split(' ')[0]} {guestName.split(' ').slice(-1)}
+                            <MessageCircle size={20} className="opacity-0 group-hover/name:opacity-100 transition-opacity text-primary" />
+                          </h3>
+                          <div className="flex items-center gap-2 text-foreground/40 text-[10px] font-bold uppercase tracking-widest">
+                            <Clock size={12} />
+                            {s.checkIn?.toDate ? format(s.checkIn.toDate(), "dd MMM", { locale: ptBR }) : ''} —
+                            {s.checkOut?.toDate ? format(s.checkOut.toDate(), "dd MMM", { locale: ptBR }) : ''}
+                          </div>
+                        </div>
 
-                            {activeTab === 'futuras' && (
-                                <>
-                                    <button 
-                                        onClick={async () => {
-                                            if (isUnknownGuest) {
-                                                alert("ATENÇÃO: Hóspede sem documento registrado. Solicite o documento antes de confirmar o check-in.");
-                                            }
-                                            if (confirm(`Confirmar entrada de ${guestName}?`) && contextProperty?.id && userData?.id) {
-                                                await StayService.performCheckIn(contextProperty.id, s.id, userData.id, userData.fullName);
-                                                loadStays();
-                                                toast.success("Check-in realizado!");
-                                            }
-                                        }}
-                                        className="flex-1 bg-primary text-black text-[10px] font-black uppercase py-4 rounded-2xl hover:shadow-[0_0_20px_rgba(var(--primary),0.4)] transition-all tracking-widest"
-                                    >
-                                        Check-in
-                                    </button>
-                                    <button
-                                        onClick={() => setStayToCancel(s.id)}
-                                        className="p-4 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-2xl transition-all"
-                                        title="Cancelar Reserva"
-                                    >
-                                        <Ban size={18} />
-                                    </button>
-                                </>
-                            )}
+                        {/* Grid de Informações Variável */}
+                        <div className="grid grid-cols-2 gap-3">
+                          {/* Status Futuro */}
+                          {activeTab === 'futuras' && (
+                            <div className="bg-secondary p-4 rounded-3xl border border-white/5">
+                              <p className="text-[9px] font-bold text-foreground/20 uppercase mb-1">Previsão</p>
+                              <p className="text-sm font-black text-foreground tracking-wide">
+                                {getFutureStatusInfo(s.checkIn, s.expectedArrivalTime)}
+                              </p>
+                            </div>
+                          )}
+                          {/* Status Ativo */}
+                          {activeTab === 'ativas' && (
+                            <div className="bg-secondary p-4 rounded-3xl border border-white/5 col-span-2">
+                              <p className="text-[9px] font-bold text-foreground/20 uppercase mb-1">Status Atual</p>
+                              <div className="flex justify-between items-center">
+                                <p className={cn("text-lg font-black tracking-wide", activeInfo.color)}>
+                                  {activeInfo.label}
+                                </p>
+                                {isUnknownGuest && (
+                                  <span className="text-[10px] font-bold text-red-500 bg-red-500/10 px-2 py-1 rounded-lg uppercase">
+                                    Doc Pendente
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Pré Checkin */}
+                          {activeTab === 'futuras' && (
+                            <div className="bg-secondary p-4 rounded-3xl border border-white/5 group/copy relative">
+                              <div className="flex justify-between items-center mb-1">
+                                <p className="text-[9px] font-bold text-foreground/20 uppercase">Pré-Checkin</p>
+                                {s.status === 'pending' && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleCopyLink(s.accessCode); }}
+                                    className="text-primary hover:text-foreground transition-colors"
+                                    title="Copiar Link Direto"
+                                  >
+                                    <Copy size={12} />
+                                  </button>
+                                )}
+                              </div>
+                              <p
+                                onClick={() => s.status === 'pending' && handleCopyLink(s.accessCode)}
+                                className={cn(
+                                  "text-xs font-black uppercase flex items-center gap-1",
+                                  s.status === 'pre_checkin_done' ? "text-green-500" : "text-yellow-500 cursor-pointer hover:underline"
+                                )}
+                              >
+                                {s.status === 'pre_checkin_done' ? "Pronto" : "Pendente"}
+                              </p>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    );
+
+                      {/* Footer de Ações */}
+                      <div className="p-6 bg-white/[0.02] border-t border-white/5 flex gap-3">
+                        <button
+                          onClick={() => handleOpenFicha(s)}
+                          className="flex-1 bg-white/5 hover:bg-white/10 text-foreground text-[10px] font-black uppercase py-4 rounded-2xl transition-all tracking-widest"
+                        >
+                          Ver Ficha
+                        </button>
+
+                        {activeTab === 'futuras' && (
+                          <>
+                            <button
+                              onClick={async () => {
+                                if (isUnknownGuest) {
+                                  alert("ATENÇÃO: Hóspede sem documento registrado. Solicite o documento antes de confirmar o check-in.");
+                                }
+                                if (confirm(`Confirmar entrada de ${guestName}?`) && contextProperty?.id && userData?.id) {
+                                  await StayService.performCheckIn(contextProperty.id, s.id, userData.id, userData.fullName);
+                                  loadStays();
+                                  toast.success("Check-in realizado!");
+                                }
+                              }}
+                              className="flex-1 bg-primary text-black text-[10px] font-black uppercase py-4 rounded-2xl hover:shadow-[0_0_20px_rgba(var(--primary),0.4)] transition-all tracking-widest"
+                            >
+                              Check-in
+                            </button>
+                            <button
+                              onClick={() => setStayToCancel(s.id)}
+                              className="p-4 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-2xl transition-all"
+                              title="Cancelar Reserva"
+                            >
+                              <Ban size={18} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
                 })}
               </div>
             )}
@@ -421,7 +421,7 @@ export default function StaysPage() {
                   <tbody className="divide-y divide-border text-sm">
                     {filteredStays.map((s) => {
                       const guestName = s.guestName || "Hóspede Desconhecido";
-                      
+
                       return (
                         <tr key={s.id} className="hover:bg-muted/30 transition-colors group">
                           {/* Coluna: Cabana */}
@@ -442,8 +442,8 @@ export default function StaysPage() {
                           {/* Coluna: Período */}
                           <td className="p-4">
                             <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                                <Clock size={12} />
-                                {s.checkIn?.toDate ? format(s.checkIn.toDate(), "dd/MM") : ''} até {s.checkOut?.toDate ? format(s.checkOut.toDate(), "dd/MM") : ''}
+                              <Clock size={12} />
+                              {s.checkIn?.toDate ? format(s.checkIn.toDate(), "dd/MM") : ''} até {s.checkOut?.toDate ? format(s.checkOut.toDate(), "dd/MM") : ''}
                             </div>
                           </td>
 
@@ -485,7 +485,7 @@ export default function StaysPage() {
                                     </div>
                                   );
                                 }
-                                
+
                                 if (npsVal >= 9) {
                                   return (
                                     <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 text-emerald-500 rounded-md border border-emerald-500/20" title="Hóspede Promotor">
@@ -530,50 +530,50 @@ export default function StaysPage() {
         )}
 
         {selectedStay && selectedGuest && (
-          <StayDetailsModal 
+          <StayDetailsModal
             isOpen={isDetailsModalOpen}
             onClose={() => setIsDetailsModalOpen(false)}
             stay={selectedStay}
             guest={selectedGuest}
             onViewGuest={(id) => router.push(`/admin/guests/${id}`)}
-            onUpdate={loadStays} 
+            onUpdate={loadStays}
           />
         )}
 
         {/* Modal de Confirmação de Cancelamento */}
         {stayToCancel && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                <div className="bg-card border border-white/10 w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 p-8 text-center space-y-6">
-                    <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto text-red-500 border border-red-500/20">
-                        <AlertCircle size={32} />
-                    </div>
-                    <div>
-                        <h3 className="text-xl font-bold text-foreground">Cancelar Reserva?</h3>
-                        <p className="text-foreground/40 text-sm mt-2">
-                            Esta ação é irreversível. A cabana será liberada imediatamente.
-                        </p>
-                    </div>
-                    <div className="flex gap-3">
-                        <button 
-                            onClick={() => setStayToCancel(null)}
-                            className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-foreground font-bold rounded-xl"
-                        >
-                            Voltar
-                        </button>
-                        <button 
-                            onClick={handleCancelStay}
-                            className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-foreground font-bold rounded-xl"
-                        >
-                            Confirmar
-                        </button>
-                    </div>
-                </div>
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-card border border-white/10 w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 p-8 text-center space-y-6">
+              <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto text-red-500 border border-red-500/20">
+                <AlertCircle size={32} />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-foreground">Cancelar Reserva?</h3>
+                <p className="text-foreground/40 text-sm mt-2">
+                  Esta ação é irreversível. A cabana será liberada imediatamente.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setStayToCancel(null)}
+                  className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-foreground font-bold rounded-xl"
+                >
+                  Voltar
+                </button>
+                <button
+                  onClick={handleCancelStay}
+                  className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-foreground font-bold rounded-xl"
+                >
+                  Confirmar
+                </button>
+              </div>
             </div>
+          </div>
         )}
 
         {/* Modal Inteligente de Contato */}
         {isContactModalOpen && selectedStay && selectedGuest && contextProperty?.id && (
-          <GuestContactModal 
+          <GuestContactModal
             propertyId={contextProperty.id}
             stay={selectedStay}
             guest={selectedGuest}

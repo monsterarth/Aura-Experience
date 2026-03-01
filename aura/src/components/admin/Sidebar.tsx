@@ -9,11 +9,11 @@ import { useProperty } from "@/context/PropertyContext";
 import { PropertyService } from "@/services/property-service";
 import { Property } from "@/types/aura";
 import { cn } from "@/lib/utils";
-import { 
-  LayoutDashboard, Users, Home, Wrench, 
+import {
+  LayoutDashboard, Users, Home, Wrench,
   Sparkles, Building, ChevronDown, LogOut,
   MessageSquare, Settings, Globe, Menu, X,
-  Star, ClipboardList
+  Star, ClipboardList, Calendar
 } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { deleteCookie } from "cookies-next";
@@ -22,10 +22,10 @@ import Image from "next/image";
 export const Sidebar = () => {
   const router = useRouter();
   const { userData, isSuperAdmin } = useAuth();
-  const { property, setProperty } = useProperty();
+  const { currentProperty: property, setProperty } = useProperty();
   const pathname = usePathname();
   const [allProperties, setAllProperties] = useState<Property[]>([]);
-  
+
   // Estado para controle do menu no mobile
   const [isOpen, setIsOpen] = useState(false);
 
@@ -47,11 +47,11 @@ export const Sidebar = () => {
 
   const handleLogout = async () => {
     try {
-        await auth.signOut();
-        deleteCookie('aura-session'); 
-        router.push('/admin/login'); 
+      await auth.signOut();
+      deleteCookie('aura-session');
+      router.push('/admin/login');
     } catch (error) {
-        console.error("Erro ao sair", error);
+      console.error("Erro ao sair", error);
     }
   };
 
@@ -68,9 +68,10 @@ export const Sidebar = () => {
   // ==========================================
   const operacaoItems = [
     { title: "Dashboard", icon: LayoutDashboard, href: "/admin/core/dashboard", roles: ["super_admin"] },
-    { title: "Estadias", icon: Home, href: "/admin/stays", roles: ["super_admin", "admin", "reception", "governance"] },    
+    { title: "Estadias", icon: Home, href: "/admin/stays", roles: ["super_admin", "admin", "reception", "governance"] },
     { title: "Comunicação", icon: MessageSquare, href: "/admin/comunicacao", roles: ["super_admin", "admin", "reception"] },
     { title: "Governança", icon: Sparkles, href: "/admin/governance", roles: ["super_admin", "admin", "governance"] },
+    { title: "Agenda Estrut.", icon: Calendar, href: "/admin/core/structures/bookings", roles: ["super_admin", "admin", "reception"] },
     { title: "Manutenção", icon: Wrench, href: "/admin/maintenance", roles: ["super_admin", "admin", "maintenance"] },
     { title: "Avaliações", icon: Star, href: "/admin/surveys/responses", roles: ["super_admin", "admin", "reception"] },
   ];
@@ -79,15 +80,16 @@ export const Sidebar = () => {
   // BLOCO 2: SETUP & CONFIGURAÇÕES
   // ==========================================
   const setupItems = [
-    { 
-      title: "Configurações", 
-      icon: Settings, 
-      href: property ? `/admin/core/properties/${property.id}` : "#", 
-      roles: ["super_admin", "admin"], 
-      requireProperty: true 
+    {
+      title: "Configurações",
+      icon: Settings,
+      href: property ? `/admin/core/properties/${property.id}` : "#",
+      roles: ["super_admin", "admin"],
+      requireProperty: true
     },
     { title: "Pesquisas (NPS)", icon: ClipboardList, href: "/admin/surveys", roles: ["super_admin", "admin"] },
-    { title: "Cabanas", icon: Building, href: "/admin/cabins", roles: ["super_admin", "admin", "governance"] },    
+    { title: "Cabanas", icon: Building, href: "/admin/cabins", roles: ["super_admin", "admin", "governance"] },
+    { title: "Estruturas", icon: Home, href: "/admin/core/structures", roles: ["super_admin", "admin"] },
     { title: "Equipe", icon: Users, href: "/admin/staff", roles: ["super_admin", "admin"] },
     { title: "Propriedades", icon: Globe, href: "/admin/core/properties", roles: ["super_admin"] },
   ];
@@ -105,7 +107,7 @@ export const Sidebar = () => {
   return (
     <>
       {/* BOTÃO FLUTUANTE PARA ABRIR O MENU NO MOBILE */}
-      <button 
+      <button
         onClick={() => setIsOpen(true)}
         className="lg:hidden fixed bottom-6 right-6 z-40 p-4 bg-primary text-primary-foreground rounded-full shadow-2xl hover:scale-105 transition-transform"
       >
@@ -114,7 +116,7 @@ export const Sidebar = () => {
 
       {/* OVERLAY ESCURO NO MOBILE */}
       {isOpen && (
-        <div 
+        <div
           className="lg:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity"
           onClick={() => setIsOpen(false)}
         />
@@ -125,7 +127,7 @@ export const Sidebar = () => {
         "fixed lg:static top-0 left-0 z-50 h-[100dvh] w-72 bg-card border-r border-white/5 flex flex-col p-4 transition-transform duration-300 shadow-2xl lg:shadow-none",
         isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
       )}>
-        
+
         {/* HEADER SIDEBAR (Dinâmico pela Propriedade) */}
         <div className="mb-8 px-2 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -139,17 +141,17 @@ export const Sidebar = () => {
               </div>
             )}
             <div className="flex flex-col min-w-0">
-               <span className="font-bold text-foreground tracking-tight truncate text-sm">
-                 {property ? property.name : "Aura Engine"}
-               </span>
-               <span className="text-[9px] text-muted-foreground uppercase tracking-widest font-semibold">
-                 Workspace
-               </span>
+              <span className="font-bold text-foreground tracking-tight truncate text-sm">
+                {property ? property.name : "Aura Engine"}
+              </span>
+              <span className="text-[9px] text-muted-foreground uppercase tracking-widest font-semibold">
+                Workspace
+              </span>
             </div>
           </div>
           {/* BOTÃO FECHAR NO MOBILE */}
           <button onClick={() => setIsOpen(false)} className="lg:hidden p-2 text-muted-foreground hover:bg-secondary rounded-xl flex-shrink-0">
-            <X size={20}/>
+            <X size={20} />
           </button>
         </div>
 
@@ -159,7 +161,7 @@ export const Sidebar = () => {
             <label className="text-[9px] font-black text-foreground/40 uppercase tracking-widest px-1">Alternar Propriedade</label>
             <div className="relative group">
               <Building className="absolute left-3 top-1/2 -translate-y-1/2 text-primary" size={14} />
-              <select 
+              <select
                 value={property?.id || ""}
                 onChange={(e) => {
                   const selected = allProperties.find(p => p.id === e.target.value);
@@ -187,7 +189,7 @@ export const Sidebar = () => {
                   className={cn(
                     "flex items-center gap-3 px-4 py-3.5 rounded-xl text-xs font-bold transition-all uppercase tracking-wide",
                     pathname === item.href || (pathname.startsWith(item.href) && item.href !== "/admin/core/dashboard")
-                      ? "bg-primary text-black shadow-[0_0_20px_rgba(var(--primary),0.3)]" 
+                      ? "bg-primary text-black shadow-[0_0_20px_rgba(var(--primary),0.3)]"
                       : "text-foreground/40 hover:text-foreground hover:bg-white/5"
                   )}
                 >
@@ -209,7 +211,7 @@ export const Sidebar = () => {
                   className={cn(
                     "flex items-center gap-3 px-4 py-3.5 rounded-xl text-xs font-bold transition-all uppercase tracking-wide",
                     pathname === item.href || (pathname.startsWith(item.href) && item.href !== "/admin/core/properties")
-                      ? "bg-primary text-black shadow-[0_0_20px_rgba(var(--primary),0.3)]" 
+                      ? "bg-primary text-black shadow-[0_0_20px_rgba(var(--primary),0.3)]"
                       : "text-foreground/40 hover:text-foreground hover:bg-white/5"
                   )}
                 >
@@ -223,10 +225,10 @@ export const Sidebar = () => {
 
         {/* FOOTER */}
         <div className="pt-4 border-t border-white/5 mt-4 shrink-0 flex flex-col gap-2">
-          
-          <button 
-              onClick={handleLogout} 
-              className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-xs font-bold text-destructive hover:bg-destructive/10 uppercase tracking-wide transition-all"
+
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-xs font-bold text-destructive hover:bg-destructive/10 uppercase tracking-wide transition-all"
           >
             <LogOut size={18} /> Sair
           </button>

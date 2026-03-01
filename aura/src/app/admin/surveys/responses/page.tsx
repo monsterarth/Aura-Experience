@@ -4,14 +4,14 @@
 import { useEffect, useState, useMemo } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { SurveyResponse, SurveyTemplate } from "@/types/aura";
-import { SurveyService, SurveyInsight } from "@/services/survey-service"; 
+import { SurveyService, SurveyInsight } from "@/services/survey-service";
 import { Button } from "@/components/ui/button";
-import { 
-  Star, 
-  TrendingUp, 
-  AlertTriangle, 
-  MessageSquare, 
-  Megaphone, 
+import {
+  Star,
+  TrendingUp,
+  AlertTriangle,
+  MessageSquare,
+  Megaphone,
   Heart,
   Smile,
   Frown,
@@ -29,8 +29,8 @@ import {
 } from "lucide-react";
 
 export default function SurveysDashboardPage() {
-  const { property } = useProperty();
-  
+  const { currentProperty: property } = useProperty();
+
   // Estados de Dados
   const [responses, setResponses] = useState<SurveyResponse[]>([]);
   const [templates, setTemplates] = useState<SurveyTemplate[]>([]);
@@ -58,7 +58,7 @@ export default function SurveysDashboardPage() {
           SurveyService.getLatestInsight(property.id, 'weekly'),
           SurveyService.getTemplates(property.id)
         ]);
-        
+
         setResponses(responsesData);
         setLatestInsight(insightData);
         setTemplates(templatesData);
@@ -109,7 +109,7 @@ export default function SurveysDashboardPage() {
 
     const nps = totalNpsScores > 0 ? Math.round(((promoters - detractors) / totalNpsScores) * 100) : 0;
     const avgRating = totalRatings > 0 ? (sumRatings / totalRatings).toFixed(1) : "0.0";
-    
+
     // Calcula a média final e ordena da maior para a menor nota
     const categoryAverages = Object.entries(categoryAggregator)
       .map(([name, data]) => ({ name, avg: data.sum / data.count }))
@@ -220,17 +220,17 @@ export default function SurveysDashboardPage() {
       </header>
 
       <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
-        
+
         {responses.length === 0 ? (
-           <div className="flex flex-col items-center justify-center h-96 bg-background border border-dashed rounded-2xl shadow-sm text-center p-6 animate-in fade-in">
-             <div className="w-16 h-16 bg-primary/10 text-primary rounded-full flex items-center justify-center mb-4">
-               <Inbox className="w-8 h-8" />
-             </div>
-             <h2 className="text-xl font-bold text-foreground mb-2">Aguardando Avaliações</h2>
-             <p className="text-muted-foreground max-w-md mb-6">
-               Nenhum hóspede respondeu às pesquisas ainda. Assim que houver volume, o painel será preenchido e a IA poderá analisar os dados.
-             </p>
-           </div>
+          <div className="flex flex-col items-center justify-center h-96 bg-background border border-dashed rounded-2xl shadow-sm text-center p-6 animate-in fade-in">
+            <div className="w-16 h-16 bg-primary/10 text-primary rounded-full flex items-center justify-center mb-4">
+              <Inbox className="w-8 h-8" />
+            </div>
+            <h2 className="text-xl font-bold text-foreground mb-2">Aguardando Avaliações</h2>
+            <p className="text-muted-foreground max-w-md mb-6">
+              Nenhum hóspede respondeu às pesquisas ainda. Assim que houver volume, o painel será preenchido e a IA poderá analisar os dados.
+            </p>
+          </div>
         ) : (
           <>
             {/* ==========================================
@@ -238,7 +238,7 @@ export default function SurveysDashboardPage() {
                 ========================================== */}
             {dashboardData && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in slide-in-from-bottom-4">
-                
+
                 {/* Média de Satisfação */}
                 <div className="bg-background rounded-xl p-5 border border-border shadow-sm flex flex-col">
                   <h3 className="text-sm font-medium text-muted-foreground mb-1">Satisfação Geral</h3>
@@ -313,9 +313,9 @@ export default function SurveysDashboardPage() {
                             </span>
                           </div>
                           <div className="h-2.5 w-full bg-muted rounded-full overflow-hidden border border-white/5">
-                            <div 
-                              style={{ width: `${(cat.avg / 5) * 100}%` }} 
-                              className={`h-full transition-all duration-1000 ${cat.avg >= 4.5 ? 'bg-emerald-500' : cat.avg >= 3.5 ? 'bg-yellow-400' : 'bg-rose-500'}`} 
+                            <div
+                              style={{ width: `${(cat.avg / 5) * 100}%` }}
+                              className={`h-full transition-all duration-1000 ${cat.avg >= 4.5 ? 'bg-emerald-500' : cat.avg >= 3.5 ? 'bg-yellow-400' : 'bg-rose-500'}`}
                             />
                           </div>
                         </div>
@@ -334,12 +334,12 @@ export default function SurveysDashboardPage() {
                 <Bot className="w-5 h-5 text-primary" />
                 <h2 className="text-lg font-bold text-foreground">Aura AI: Pergunte aos Dados</h2>
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-medium text-muted-foreground">Data Inicial</label>
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     value={askStartDate}
                     onChange={(e) => setAskStartDate(e.target.value)}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -347,8 +347,8 @@ export default function SurveysDashboardPage() {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-medium text-muted-foreground">Data Final</label>
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     value={askEndDate}
                     onChange={(e) => setAskEndDate(e.target.value)}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -357,8 +357,8 @@ export default function SurveysDashboardPage() {
                 <div className="flex flex-col gap-1.5 md:col-span-2">
                   <label className="text-xs font-medium text-muted-foreground">Sua Pergunta</label>
                   <div className="flex gap-2">
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       placeholder="Ex: Houve reclamações de barulho ou Wi-Fi?"
                       value={askPrompt}
                       onChange={(e) => setAskPrompt(e.target.value)}
@@ -404,19 +404,18 @@ export default function SurveysDashboardPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {responses.map((response) => {
                   const isDetractor = response.metrics?.isDetractor;
-                  
+
                   // Busca TODAS as respostas de texto curtas e longas
                   const textAnswersList = response.answers.filter(a => {
-                     const type = getQuestionType(response.templateId, a.questionId);
-                     return (type === 'short_text' || type === 'long_text') && a.value?.trim();
+                    const type = getQuestionType(response.templateId, a.questionId);
+                    return (type === 'short_text' || type === 'long_text') && a.value?.trim();
                   });
 
                   return (
-                    <div 
-                      key={response.id} 
-                      className={`bg-background rounded-xl border flex flex-col shadow-sm transition-all hover:shadow-md hover:border-primary/40 ${
-                        isDetractor ? 'border-rose-500/30 bg-rose-500/5' : 'border-border'
-                      }`}
+                    <div
+                      key={response.id}
+                      className={`bg-background rounded-xl border flex flex-col shadow-sm transition-all hover:shadow-md hover:border-primary/40 ${isDetractor ? 'border-rose-500/30 bg-rose-500/5' : 'border-border'
+                        }`}
                     >
                       {/* Cabecalho do Card */}
                       <div className="p-5 pb-4 border-b border-white/5">
@@ -434,7 +433,7 @@ export default function SurveysDashboardPage() {
                               {new Date(response.createdAt?.toDate ? response.createdAt.toDate() : response.createdAt).toLocaleDateString('pt-BR')}
                             </p>
                           </div>
-                          
+
                           <div className="flex items-center gap-1.5 bg-muted px-2.5 py-1 rounded-md border border-white/5 shadow-inner">
                             <Star className={`w-3.5 h-3.5 ${response.metrics?.npsScore && response.metrics.npsScore >= 9 ? 'text-emerald-500 fill-emerald-500' : response.metrics?.npsScore && response.metrics.npsScore >= 7 ? 'text-yellow-400 fill-yellow-400' : 'text-rose-500 fill-rose-500'}`} />
                             <span className="text-sm font-bold">{response.metrics?.npsScore || response.metrics?.averageRating || '-'}</span>
@@ -451,7 +450,7 @@ export default function SurveysDashboardPage() {
                                 {getQuestionText(response.templateId, textAns.questionId)}
                               </span>
                               <p className="text-sm text-foreground/90 italic leading-relaxed line-clamp-3">
-                                "{textAns.value}"
+                                &quot;{textAns.value}&quot;
                               </p>
                             </div>
                           ))
@@ -464,8 +463,8 @@ export default function SurveysDashboardPage() {
 
                       {/* Rodapé do Card: Ações */}
                       <div className="p-4 pt-0 mt-auto">
-                        <Button 
-                          variant={isDetractor ? 'destructive' : 'secondary'} 
+                        <Button
+                          variant={isDetractor ? 'destructive' : 'secondary'}
                           className="w-full h-9 text-xs font-bold shadow-sm"
                           onClick={() => setSelectedResponse(response)}
                         >
@@ -488,7 +487,7 @@ export default function SurveysDashboardPage() {
       {selectedResponse && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-background rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl border border-white/10 overflow-hidden">
-            
+
             {/* Cabecalho Modal */}
             <div className="flex justify-between items-center p-6 bg-muted/30 border-b">
               <div>
@@ -502,7 +501,7 @@ export default function SurveysDashboardPage() {
 
             {/* Corpo Modal */}
             <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
-              
+
               {/* Highlight Metrics */}
               <div className="flex gap-4 mb-6">
                 {selectedResponse.metrics?.npsScore !== undefined && (
@@ -527,7 +526,7 @@ export default function SurveysDashboardPage() {
               {/* Perguntas e Respostas Individuais */}
               <div className="space-y-4">
                 <h3 className="text-sm font-bold border-b pb-2 mb-4">Respostas Individuais</h3>
-                
+
                 {selectedResponse.answers.map(ans => {
                   const type = getQuestionType(selectedResponse.templateId, ans.questionId);
                   const text = getQuestionText(selectedResponse.templateId, ans.questionId);
@@ -535,13 +534,13 @@ export default function SurveysDashboardPage() {
                   return (
                     <div key={ans.questionId} className="bg-muted/20 p-4 rounded-xl border border-border">
                       <p className="text-sm font-medium text-foreground mb-2">{text}</p>
-                      
+
                       {type === 'rating' ? (
                         <div className="flex gap-1">
                           {[1, 2, 3, 4, 5].map(star => (
-                            <Star 
-                              key={star} 
-                              className={`w-4 h-4 ${star <= Number(ans.value) ? 'text-yellow-400 fill-yellow-400' : 'text-muted-foreground/30'}`} 
+                            <Star
+                              key={star}
+                              className={`w-4 h-4 ${star <= Number(ans.value) ? 'text-yellow-400 fill-yellow-400' : 'text-muted-foreground/30'}`}
                             />
                           ))}
                         </div>
@@ -551,7 +550,7 @@ export default function SurveysDashboardPage() {
                         </span>
                       ) : type === 'short_text' || type === 'long_text' ? (
                         <p className="text-sm text-muted-foreground italic bg-background p-3 rounded-lg border">
-                          "{ans.value || 'Sem resposta.'}"
+                          &quot;{ans.value || 'Sem resposta.'}&quot;
                         </p>
                       ) : (
                         <span className="text-sm text-muted-foreground font-medium">{ans.value}</span>

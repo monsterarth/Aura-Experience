@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from "react";
 import { X, Save, Trash2, Edit3, MessageSquare, Plus, UserPlus } from "lucide-react";
-import { HousekeepingTask, Cabin, Staff } from "@/types/aura";
+import { HousekeepingTask, Cabin, Staff, Structure } from "@/types/aura";
 import { HousekeepingService } from "@/services/housekeeping-service";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
@@ -15,13 +15,14 @@ interface TaskManagerModalProps {
   propertyId: string;
   task: HousekeepingTask | null; // Se null, é modo de Criação
   cabins: Record<string, Cabin>;
+  structures: Record<string, Structure>;
   maids: Staff[];
 }
 
-export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task, cabins, maids }: TaskManagerModalProps) {
+export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task, cabins, structures, maids }: TaskManagerModalProps) {
   const { userData } = useAuth();
   const [loading, setLoading] = useState(false);
-  
+
   const [formData, setFormData] = useState<Partial<HousekeepingTask>>({
     type: 'turnover',
     status: 'pending',
@@ -36,7 +37,8 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
         setFormData({
           type: task.type,
           status: task.status,
-          cabinId: task.cabinId,
+          cabinId: task.cabinId || '',
+          structureId: task.structureId || '',
           assignedTo: task.assignedTo || [],
           observations: task.observations || ''
         });
@@ -45,6 +47,7 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
           type: 'turnover',
           status: 'pending',
           cabinId: Object.keys(cabins)[0] || '', // Pre-seleciona a primeira cabana
+          structureId: '',
           assignedTo: [],
           observations: ''
         });
@@ -66,7 +69,7 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
   };
 
   const handleSave = async () => {
-    if (!formData.cabinId) return toast.error("Selecione uma acomodação.");
+    if (!formData.cabinId && !formData.structureId) return toast.error("Selecione uma acomodação ou estrutura.");
 
     setLoading(true);
     try {
@@ -110,7 +113,7 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
       <div className="bg-card border border-border w-full max-w-xl rounded-[32px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh]">
-        
+
         <div className="p-6 border-b border-border bg-secondary/50 flex justify-between items-center shrink-0">
           <div>
             <h2 className="text-xl font-bold flex items-center gap-2 text-foreground">
@@ -125,25 +128,52 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
         </div>
 
         <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1 bg-background">
-          
+
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Acomodação</label>
-              <select 
-                disabled={isEditing} // Não deixa mudar a cabana depois de criada
-                value={formData.cabinId} 
-                onChange={e => setFormData({...formData, cabinId: e.target.value})}
-                className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none disabled:opacity-50"
-              >
-                {Object.values(cabins).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+            <div className="space-y-4">
+              <div className="flex gap-4 mb-2">
+                <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground cursor-pointer hover:text-foreground">
+                  <input type="radio" checked={!!formData.cabinId} onChange={() => setFormData({ ...formData, cabinId: Object.keys(cabins)[0] || '', structureId: '' })} className="accent-primary" /> Cabanas
+                </label>
+                <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground cursor-pointer hover:text-foreground">
+                  <input type="radio" checked={!!formData.structureId} onChange={() => setFormData({ ...formData, structureId: Object.keys(structures)[0] || '', cabinId: '' })} className="accent-primary" /> Estruturas Extras
+                </label>
+              </div>
+
+              {!!formData.cabinId && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Acomodação</label>
+                  <select
+                    disabled={isEditing} // Não deixa mudar a cabana depois de criada
+                    value={formData.cabinId}
+                    onChange={e => setFormData({ ...formData, cabinId: e.target.value })}
+                    className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none disabled:opacity-50"
+                  >
+                    {Object.values(cabins).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              )}
+
+              {!!formData.structureId && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Estrutura</label>
+                  <select
+                    disabled={isEditing}
+                    value={formData.structureId}
+                    onChange={e => setFormData({ ...formData, structureId: e.target.value })}
+                    className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none disabled:opacity-50"
+                  >
+                    {Object.values(structures).map(s => <option key={s.id} value={s.id}>{s.name} ({s.category})</option>)}
+                  </select>
+                </div>
+              )}
             </div>
-            
+
             <div className="space-y-2">
               <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Tipo de Limpeza</label>
-              <select 
-                value={formData.type} 
-                onChange={e => setFormData({...formData, type: e.target.value as any})}
+              <select
+                value={formData.type}
+                onChange={e => setFormData({ ...formData, type: e.target.value as any })}
                 className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none"
               >
                 <option value="turnover">Faxina Completa (Troca)</option>
@@ -155,9 +185,9 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
           {isEditing && (
             <div className="space-y-2">
               <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Status / Progresso</label>
-              <select 
-                value={formData.status} 
-                onChange={e => setFormData({...formData, status: e.target.value as any})}
+              <select
+                value={formData.status}
+                onChange={e => setFormData({ ...formData, status: e.target.value as any })}
                 className="w-full bg-orange-500/10 text-orange-600 border border-orange-500/30 p-3 rounded-xl font-bold text-sm outline-none"
               >
                 <option value="pending">A Fazer (Pendente)</option>
@@ -171,7 +201,7 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
 
           <div className="space-y-3 pt-4 border-t border-border">
             <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest flex items-center gap-2">
-              <UserPlus size={14}/> Camareiras Atribuídas
+              <UserPlus size={14} /> Camareiras Atribuídas
             </label>
             <div className="grid grid-cols-2 gap-2">
               {maids.map(maid => {
@@ -194,11 +224,11 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
 
           <div className="space-y-2 pt-4 border-t border-border">
             <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest flex items-center gap-2">
-              <MessageSquare size={14}/> Observações / Recados
+              <MessageSquare size={14} /> Observações / Recados
             </label>
-            <textarea 
+            <textarea
               value={formData.observations}
-              onChange={e => setFormData({...formData, observations: e.target.value})}
+              onChange={e => setFormData({ ...formData, observations: e.target.value })}
               placeholder="Notas para a camareira ou observações deixadas por ela..."
               className="w-full bg-secondary border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-sm resize-none h-24 custom-scrollbar text-foreground"
             />
@@ -209,20 +239,20 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
         <div className="p-6 border-t border-border bg-secondary/30 flex justify-between items-center shrink-0">
           {isEditing ? (
             <button onClick={handleDelete} className="p-3 text-red-500 hover:bg-red-500/10 rounded-xl transition-colors">
-              <Trash2 size={20}/>
+              <Trash2 size={20} />
             </button>
-          ) : <div/>}
+          ) : <div />}
 
           <div className="flex gap-2">
             <button onClick={onClose} className="px-4 py-3 font-bold text-xs uppercase text-muted-foreground hover:text-foreground transition-colors">
               Cancelar
             </button>
-            <button 
-              onClick={handleSave} 
+            <button
+              onClick={handleSave}
               disabled={loading}
               className="px-6 py-3 bg-primary text-primary-foreground font-bold text-xs uppercase rounded-xl hover:opacity-90 transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
             >
-              {loading ? "Salvando..." : <><Save size={16}/> Salvar Tarefa</>}
+              {loading ? "Salvando..." : <><Save size={16} /> Salvar Tarefa</>}
             </button>
           </div>
         </div>

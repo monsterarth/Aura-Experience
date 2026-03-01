@@ -45,7 +45,7 @@ const TRIGGER_DETAILS: Record<string, { label: string, desc: string }> = {
 
 export default function AutomationSettingsPage() {
   const router = useRouter();
-  const { property } = useProperty();
+  const { currentProperty: property } = useProperty();
   
   const [activeTab, setActiveTab] = useState<'rules' | 'templates'>('rules');
   const [loading, setLoading] = useState(true);

@@ -6,21 +6,21 @@ import { useProperty } from "@/context/PropertyContext";
 import { SurveyService } from "@/services/survey-service";
 import { SurveyQuestion, SurveyQuestionType, SurveyReward, SurveyCategoryItem } from "@/types/aura";
 import { Button } from "@/components/ui/button";
-import { 
+import {
   Plus, Trash2, Save, ArrowLeft, ArrowUp, ArrowDown, Gift, Settings, ListOrdered, Loader2, X, CircleDot, CheckSquare
 } from "lucide-react";
 
 export default function EditSurveyTemplatePage() {
   const router = useRouter();
   const params = useParams();
-  const { property } = useProperty();
+  const { currentProperty: property } = useProperty();
   const templateId = params.id as string;
 
   const [initialLoading, setInitialLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState("");
   const [isDefault, setIsDefault] = useState(false);
-  
+
   const [categories, setCategories] = useState<SurveyCategoryItem[]>([]);
   const [isQuickCreateModalOpen, setIsQuickCreateModalOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -168,10 +168,10 @@ export default function EditSurveyTemplatePage() {
                     <div className="md:col-span-2 space-y-1.5"><label className="text-sm font-medium text-muted-foreground">Descrição / Dica</label><input type="text" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground" value={q.description || ""} onChange={(e) => updateQuestion(index, 'description', e.target.value)} /></div>
                     <div className="space-y-1.5"><label className="text-sm font-medium text-muted-foreground">Categoria (BI)</label><select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={q.categoryId || ""} onChange={(e) => handleCategorySelectChange(index, e.target.value)}><option value="" disabled>Selecione...</option>{categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}<option value="NEW_CATEGORY" className="font-semibold text-primary">+ Criar nova...</option></select></div>
                   </div>
-                  
+
                   {(q.type === 'single_choice' || q.type === 'multiple_choice') && (
                     <div className="col-span-1 md:col-span-3 bg-muted/30 p-4 rounded-lg border border-dashed mt-2 animate-in fade-in zoom-in duration-300">
-                      <label className="text-sm font-medium mb-3 block flex items-center gap-2">{q.type === 'single_choice' ? <CircleDot className="w-4 h-4 text-primary"/> : <CheckSquare className="w-4 h-4 text-primary"/>} Alternativas de Resposta</label>
+                      <label className="text-sm font-medium mb-3 block flex items-center gap-2">{q.type === 'single_choice' ? <CircleDot className="w-4 h-4 text-primary" /> : <CheckSquare className="w-4 h-4 text-primary" />} Alternativas de Resposta</label>
                       <div className="space-y-2">
                         {(q.options || []).map((opt, optIndex) => (
                           <div key={optIndex} className="flex items-center gap-2"><input type="text" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={opt} onChange={(e) => updateOption(index, optIndex, e.target.value)} placeholder={`Opção ${optIndex + 1}`} /><Button variant="ghost" size="icon" className="h-9 w-9 text-destructive" onClick={() => removeOption(index, optIndex)}><Trash2 className="w-4 h-4" /></Button></div>
@@ -205,7 +205,7 @@ export default function EditSurveyTemplatePage() {
           </div>
         </div>
       </main>
-      
+
       {isQuickCreateModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div className="bg-background rounded-xl p-6 w-full max-w-sm">

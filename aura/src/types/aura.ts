@@ -2,10 +2,10 @@
 
 export type Timestamp = any; // Firestore ServerTimestamp
 
-export type UserRole = 
-  | 'super_admin' 
-  | 'admin' 
-  | 'reception' 
+export type UserRole =
+  | 'super_admin'
+  | 'admin'
+  | 'reception'
   | 'governance' // Governanta / Gestor do setor
   | 'maid'       // Camareira (Operacional Mobile)
   | 'maintenance'// Gestor de Manutenção
@@ -14,38 +14,38 @@ export type UserRole =
   | 'waiter'     // Garçom (Operacional Mobile)
   | 'porter';    // Porteiro (Operacional Mobile)
 
-  export interface PropertyTheme {
+export interface PropertyTheme {
   colors: {
     // Marca principal
-    primary: string;       
-    onPrimary: string;     
-    
+    primary: string;
+    onPrimary: string;
+
     // Secundária / Apoio
-    secondary: string;     
-    onSecondary: string;   
-    
+    secondary: string;
+    onSecondary: string;
+
     // Detalhes
-    accent: string;        
-    
+    accent: string;
+
     // Superfícies
-    background: string;    
-    surface: string;       
-    
+    background: string;
+    surface: string;
+
     // Texto
-    textMain: string;      
-    textMuted: string;     
-    
+    textMain: string;
+    textMuted: string;
+
     // Feedback
     success: string;
     error: string;
   };
   typography: {
-    fontFamilyHeading: string; 
-    fontFamilyBody: string;    
-    baseSize: number;          
+    fontFamilyHeading: string;
+    fontFamilyBody: string;
+    baseSize: number;
   };
   shape: {
-    radius: '0rem' | '0.25rem' | '0.5rem' | '1rem' | '9999px'; 
+    radius: '0rem' | '0.25rem' | '0.5rem' | '1rem' | '9999px';
   };
 }
 
@@ -55,7 +55,7 @@ export interface Property {
   name: string;
   slug: string;
   logoUrl?: string;
-  theme: PropertyTheme  ;
+  theme: PropertyTheme;
   settings: {
     hasBreakfast: boolean;
     hasKDS: boolean;
@@ -70,7 +70,7 @@ export interface Property {
 
 // --- ENTIDADE HÓSPEDE ---
 export interface Guest {
-  id: string; 
+  id: string;
   propertyId: string;
   fullName: string;
   nationality: string; // 'Brasil' por padrão
@@ -118,7 +118,56 @@ export interface Cabin {
     model: string;
     manualUrl?: string;
   }[];
-housekeepingItems?: { id: string; label: string }[];
+  housekeepingItems?: { id: string; label: string }[];
+}
+
+export type StructureVisibility = 'admin_only' | 'guest_request' | 'guest_auto_approve';
+
+export interface Structure {
+  id: string;
+  propertyId: string;
+  name: string;
+  category: string; // e.g. 'spa', 'sport', 'leisure', 'service'
+  description: string;
+  visibility: StructureVisibility;
+  capacity: number;
+  status: 'available' | 'occupied' | 'maintenance' | 'cleaning';
+  operatingHours: {
+    openTime: string; // HH:mm format
+    closeTime: string; // HH:mm format
+    slotDurationMinutes: number;
+    slotIntervalMinutes: number;
+  };
+  imageUrl?: string;
+  units?: { id: string; name: string; imageUrl?: string }[];
+  bookingType: 'fixed_slots' | 'free_time';
+  requiresTurnover: boolean; // Does it require housekeeping after use?
+  createdAt?: Timestamp;
+}
+
+export interface TimeSlot {
+  startTime: string; // HH:mm
+  endTime: string;   // HH:mm
+  available: boolean;
+  bookingId?: string; // If booked
+}
+
+export interface StructureBooking {
+  id: string;
+  structureId: string;
+  propertyId: string;
+  stayId?: string;
+  guestId?: string;
+  guestName?: string; // Optional for manual admin blocks
+  date: string; // YYYY-MM-DD
+  startTime: string; // HH:mm
+  endTime: string;   // HH:mm
+  status: 'pending' | 'approved' | 'rejected' | 'completed' | 'cancelled';
+  source: 'admin' | 'guest';
+  type: 'booking' | 'maintenance_block';
+  unitId?: string; // If the structure has multiple units
+  notes?: string;
+  createdAt?: Timestamp;
 }
 
 
@@ -130,7 +179,7 @@ housekeepingItems?: { id: string; label: string }[];
 // Sub-coleção: properties/{propertyId}/stays/{stayId}/folio
 export interface FolioItem {
   id: string;
-  status:'pending' | 'paid';
+  status: 'pending' | 'paid';
   description: string; // Ex: "Água com Gás", "Heineken"
   quantity: number;
   unitPrice: number;
@@ -145,26 +194,27 @@ export interface FolioItem {
 export interface HousekeepingTask {
   id: string;
   propertyId: string;
-  cabinId: string;
+  cabinId?: string; // Para Cabanas
+  structureId?: string; // Para Estruturas (Spas, Quadras, etc)
   stayId?: string; // Para limpezas diárias vinculadas a uma estadia ativa
   type: 'turnover' | 'daily'; // Turnover = Faxina de Troca | Daily = Arrumação
   status: 'pending' | 'in_progress' | 'waiting_conference' | 'completed' | 'cancelled';
-  
+
   // Controle de Pessoal
   assignedTo?: string[]; // Múltiplas camareiras
   conferredBy?: string; // ID da governanta que aprovou (se turnover)
-  
+
   // Controle de Tempo (Cronômetro)
   startedAt?: Timestamp;
   finishedAt?: Timestamp;
-  
+
   // Checklist Copiado do Padrão da Propriedade no momento da criação
   checklist: {
     id: string;
     label: string;
     checked: boolean;
   }[];
-  
+
   observations?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -190,12 +240,12 @@ export interface ChecklistTemplate {
 // MÓDULO DE FEEDBACK & NPS (Pesquisa de Satisfação)
 // ==========================================
 
-export type SurveyQuestionType = 
-  | 'single_choice' 
-  | 'multiple_choice' 
+export type SurveyQuestionType =
+  | 'single_choice'
+  | 'multiple_choice'
   | 'nps'           // 0 a 10
   | 'rating'        // 1 a 5 estrelas
-  | 'short_text' 
+  | 'short_text'
   | 'long_text';
 
 export interface SurveyQuestion {
@@ -244,21 +294,21 @@ export interface SurveyResponse {
   stayId: string;
   guestId: string;
   templateId: string;
-  
+
   // Respostas brutas
   answers: {
     questionId: string;
     value: any; // Pode ser number (NPS/Rating), string, ou array de strings
   }[];
-  
+
   // Métricas pré-calculadas para Dashboards rápidos (Evita re-calcular no Frontend)
   metrics: {
-       npsScore?: number; // 0-10 (Se houver pergunta NPS)
-       averageRating?: number; // 1-5 (Média de todas as perguntas de Rating)
-       categoryRatings: Record<string, number>; // Ex: { governance: 4.5, reception: 5 }
-       isDetractor: boolean; // Flag automática (NPS <= 6 ou Rating <= 2) para disparar alertas
+    npsScore?: number; // 0-10 (Se houver pergunta NPS)
+    averageRating?: number; // 1-5 (Média de todas as perguntas de Rating)
+    categoryRatings: Record<string, number>; // Ex: { governance: 4.5, reception: 5 }
+    isDetractor: boolean; // Flag automática (NPS <= 6 ou Rating <= 2) para disparar alertas
   };
-  
+
   createdAt: Timestamp;
 }
 
@@ -266,8 +316,8 @@ export interface SurveyResponse {
 export interface Stay {
   id: string;
   propertyId: string;
-  groupId?: string | null; 
-  guestId: string; 
+  groupId?: string | null;
+  guestId: string;
   cabinId: string;
   accessCode: string;
 
@@ -279,7 +329,7 @@ export interface Stay {
     babies: number;
   }[];
 
-  
+
   // Datas e Logística
   checkIn: Timestamp;
   checkOut: Timestamp;
@@ -330,7 +380,7 @@ export interface Stay {
 
   housekeepingItems?: { id: string; label: string }[];
   hasOpenFolio?: boolean; // Flag para o ícone de alerta
-  
+
   createdAt: Timestamp;
 }
 
@@ -338,12 +388,12 @@ export interface Stay {
 // MÓDULO DE AUTOMAÇÃO E MENSAGERIA
 // ==========================================
 
-export type AutomationTriggerEvent = 
-  | 'pre_checkin_48h' 
-  | 'pre_checkin_24h' 
-  | 'welcome_checkin' 
-  | 'pre_checkout' 
-  | 'checkout_thanks' 
+export type AutomationTriggerEvent =
+  | 'pre_checkin_48h'
+  | 'pre_checkin_24h'
+  | 'welcome_checkin'
+  | 'pre_checkout'
+  | 'checkout_thanks'
   | 'nps_survey'
   | 'custom_scheduled';
 
@@ -385,17 +435,17 @@ export interface WhatsAppMessage {
   reaction?: string;
   statusApi?: number;
   direction: 'inbound' | 'outbound'; // NOVO: Define se recebemos ou enviamos
-  
+
   // Controle de Fila e Automação
   isAutomated: boolean;
-  triggerEvent?: AutomationTriggerEvent; 
-  scheduledFor?: Timestamp; 
-  
-  status: 'pending' | 'processing' | 'sent' | 'delivered' | 'read' | 'failed'; 
-  attempts: number; 
+  triggerEvent?: AutomationTriggerEvent;
+  scheduledFor?: Timestamp;
+
+  status: 'pending' | 'processing' | 'sent' | 'delivered' | 'read' | 'failed';
+  attempts: number;
   lastAttemptAt?: Timestamp;
   errorMessage?: string;
-  
+
   createdAt: Timestamp;
   auditLogId?: string;
 }
@@ -404,15 +454,17 @@ export interface WhatsAppMessage {
 export interface AuditLog {
   id: string;
   propertyId: string;
-  userId: string; 
+  userId: string;
   userName: string;
-  action: 
-    | 'CREATE' | 'UPDATE' | 'DELETE' 
-    | 'MESSAGE_SENT' | 'MESSAGE_FAILED' | 'MESSAGE_RESENT'
-    | 'CHECKIN' | 'CHECKOUT' 
-    | 'USER_CREATE' | 'USER_UPDATE'
-    | 'CREATE_STAY' | 'COMPLETE_STAY' | 'STAY_GROUP_CREATE';
-  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK';
+  action:
+  | 'CREATE' | 'UPDATE' | 'DELETE'
+  | 'MESSAGE_SENT' | 'MESSAGE_FAILED' | 'MESSAGE_RESENT'
+  | 'CHECKIN' | 'CHECKOUT'
+  | 'USER_CREATE' | 'USER_UPDATE'
+  | 'CREATE_STAY' | 'COMPLETE_STAY' | 'STAY_GROUP_CREATE'
+  | 'STRUCTURE_CREATED' | 'STRUCTURE_UPDATED' | 'STRUCTURE_DELETED'
+  | 'STRUCTURE_BOOKING_CREATED' | 'STRUCTURE_BOOKING_STATUS_CHANGED';
+  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING';
   entityId: string;
   oldData?: any;
   newData?: any;

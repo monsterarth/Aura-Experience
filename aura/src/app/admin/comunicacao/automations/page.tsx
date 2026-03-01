@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 export default function AutomationsQueuePage() {
-  const { property } = useProperty();
+  const { currentProperty: property } = useProperty();
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'pending' | 'sent' | 'failed'>('pending');

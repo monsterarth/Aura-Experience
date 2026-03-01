@@ -26,7 +26,7 @@ const checkInSchema = z.object({
 type CheckInFormData = z.infer<typeof checkInSchema>;
 
 export const CheckInForm = () => {
-  const { property, loading: propLoading } = useProperty();
+  const { currentProperty: property, loading: propLoading } = useProperty();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [cabins, setCabins] = useState<Cabin[]>([]);
@@ -63,7 +63,7 @@ export const CheckInForm = () => {
           babies: 0
         }],
         checkIn: new Date(), // Simulação de check-in imediato
-        checkOut: new Date(Date.now() + 86400000), 
+        checkOut: new Date(Date.now() + 86400000),
         sendAutomations: false,
         actorId: "GUEST_PORTAL",
         actorName: data.fullName

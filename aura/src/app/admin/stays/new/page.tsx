@@ -10,15 +10,15 @@ import { CabinService } from "@/services/cabin-service";
 import { ContactService } from "@/services/contact-service"; // NOVO: Para já inserir na agenda
 import { Cabin } from "@/types/aura";
 import { RoleGuard } from "@/components/auth/RoleGuard";
-import { 
-  UserSearch, 
-  Home, 
-  Users, 
-  Loader2, 
-  Search, 
-  PlusCircle, 
-  Building2, 
-  Trash2, 
+import {
+  UserSearch,
+  Home,
+  Users,
+  Loader2,
+  Search,
+  PlusCircle,
+  Building2,
+  Trash2,
   Key,
   ArrowLeft,
   Calendar as CalendarIcon
@@ -46,12 +46,12 @@ interface CabinSelection {
 export default function NewStayPage() {
   const router = useRouter();
   const { userData } = useAuth();
-  const { property: contextProperty } = useProperty();
-  
+  const { currentProperty: contextProperty } = useProperty();
+
   const [loading, setLoading] = useState(false);
   const [searchingGuest, setSearchingGuest] = useState(false);
   const [availableCabins, setAvailableCabins] = useState<Cabin[]>([]);
-  
+
   const [docNumber, setDocNumber] = useState("");
   const [guestData, setGuestData] = useState({
     fullName: "",
@@ -60,18 +60,18 @@ export default function NewStayPage() {
   });
 
   const [cabinSelections, setCabinSelections] = useState<CabinSelection[]>([]);
-  
+
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: addDays(new Date(), 1),
     to: addDays(new Date(), 3),
   });
 
   const [sendAutomations, setSendAutomations] = useState(true);
-  const [createdInfo, setCreatedInfo] = useState<{code: string} | null>(null);
+  const [createdInfo, setCreatedInfo] = useState<{ code: string } | null>(null);
 
   useEffect(() => {
     if (contextProperty?.id) {
-        CabinService.getCabinsByProperty(contextProperty.id).then(setAvailableCabins);
+      CabinService.getCabinsByProperty(contextProperty.id).then(setAvailableCabins);
     }
   }, [contextProperty?.id]);
 
@@ -110,7 +110,7 @@ export default function NewStayPage() {
     if (!guestData.fullName || cabinSelections.length === 0 || !dateRange?.from || !dateRange?.to) {
       return toast.error("Nome, Cabanas e Período completo são obrigatórios.");
     }
-    
+
     if (guestData.phone.length < 10) {
       return toast.error("O número de WhatsApp digitado é muito curto.");
     }
@@ -125,9 +125,9 @@ export default function NewStayPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ number: guestData.phone })
       });
-      
+
       const whatsData = await whatsRes.json();
-      
+
       if (!whatsRes.ok || !whatsData.exists) {
         toast.error("Número bloqueado! Este telefone não possui uma conta de WhatsApp ativa.", { id: toastId });
         setLoading(false);
@@ -135,21 +135,21 @@ export default function NewStayPage() {
       }
 
       toast.success("WhatsApp Validado! Criando registros...", { id: toastId });
-      
+
       // Usa o número oficial devolvido pela Meta (já validado com/sem o 9º dígito real da operadora)
       const validMetaNumber = whatsData.validNumber;
 
       // 2. CRIA O HÓSPEDE FÍSICO
       const cleanDoc = docNumber.replace(/\D/g, '');
-      const initialGuestId = cleanDoc.length > 0 ? cleanDoc : `GUEST-${Date.now()}`; 
-      
+      const initialGuestId = cleanDoc.length > 0 ? cleanDoc : `GUEST-${Date.now()}`;
+
       const savedGuestId = await GuestService.upsertGuest(contextProperty.id, {
         id: initialGuestId,
         propertyId: contextProperty.id,
         fullName: guestData.fullName,
         email: guestData.email,
         phone: validMetaNumber, // <-- Aqui garantimos o número limpo e 100% válido
-        nationality: 'Brasil', 
+        nationality: 'Brasil',
         document: { type: 'CPF', number: docNumber || 'N/A' },
         birthDate: "", gender: "Outro", occupation: "", allergies: [],
         address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", country: "Brasil" }
@@ -157,9 +157,9 @@ export default function NewStayPage() {
 
       // 3. INJETA NA AGENDA IMEDIATAMENTE (Para a Central de Comunicação)
       await ContactService.upsertContact(
-        contextProperty.id, 
-        guestData.fullName, 
-        validMetaNumber, 
+        contextProperty.id,
+        guestData.fullName,
+        validMetaNumber,
         true, // isGuest
         savedGuestId
       );
@@ -180,80 +180,80 @@ export default function NewStayPage() {
     } catch (error) {
       console.error(error);
       toast.error("Erro interno ao processar hospedagem.", { id: toastId });
-    } finally { 
-      setLoading(false); 
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <RoleGuard allowedRoles={["super_admin", "admin", "reception"]}>
       <div className="p-8 max-w-6xl mx-auto space-y-8 pb-20 animate-in fade-in duration-500">
-        
+
         {/* Header */}
         <header className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-            <div className="space-y-1">
-                <Link href="/admin/stays" className="text-muted-foreground hover:text-foreground flex items-center gap-2 text-xs font-bold uppercase tracking-widest transition-colors mb-2">
-                    <ArrowLeft size={14} /> Voltar
-                </Link>
-                <h1 className="text-3xl font-black flex items-center gap-3 text-foreground">
-                    <PlusCircle className="text-primary" size={32}/> Nova Hospedagem
-                </h1>
-            </div>
+          <div className="space-y-1">
+            <Link href="/admin/stays" className="text-muted-foreground hover:text-foreground flex items-center gap-2 text-xs font-bold uppercase tracking-widest transition-colors mb-2">
+              <ArrowLeft size={14} /> Voltar
+            </Link>
+            <h1 className="text-3xl font-black flex items-center gap-3 text-foreground">
+              <PlusCircle className="text-primary" size={32} /> Nova Hospedagem
+            </h1>
+          </div>
 
-            <div className="flex items-center gap-3 bg-card border border-border px-6 py-3 rounded-2xl">
-                <div className="p-2 bg-secondary rounded-full">
-                    <Building2 size={16} className="text-primary"/>
-                </div>
-                <div className="flex flex-col">
-                    <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">Propriedade Ativa</span>
-                    <span className="text-sm font-bold text-foreground">{contextProperty?.name || "Carregando..."}</span>
-                </div>
+          <div className="flex items-center gap-3 bg-card border border-border px-6 py-3 rounded-2xl">
+            <div className="p-2 bg-secondary rounded-full">
+              <Building2 size={16} className="text-primary" />
             </div>
+            <div className="flex flex-col">
+              <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">Propriedade Ativa</span>
+              <span className="text-sm font-bold text-foreground">{contextProperty?.name || "Carregando..."}</span>
+            </div>
+          </div>
         </header>
 
         <form onSubmit={handleCreate} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
-            
+
             {/* Seção de Hóspede */}
             <div className="bg-card border border-border p-6 rounded-[24px] space-y-6">
               <h2 className="flex items-center gap-2 font-bold text-foreground border-b border-border pb-4">
-                <UserSearch size={18} className="text-primary"/> Identificação
+                <UserSearch size={18} className="text-primary" /> Identificação
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase text-muted-foreground">CPF/Passaporte (Opcional)</label>
                   <div className="flex gap-2">
-                    <input 
-                        value={docNumber} 
-                        onChange={e => setDocNumber(e.target.value)} 
-                        onBlur={handleSearchGuest} 
-                        className="flex-1 p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors"
-                        placeholder="Digite para buscar..."
+                    <input
+                      value={docNumber}
+                      onChange={e => setDocNumber(e.target.value)}
+                      onBlur={handleSearchGuest}
+                      className="flex-1 p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors"
+                      placeholder="Digite para buscar..."
                     />
                     <button type="button" onClick={handleSearchGuest} className="p-3 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-colors">
-                      {searchingGuest ? <Loader2 className="animate-spin" size={20}/> : <Search size={20}/>}
+                      {searchingGuest ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
                     </button>
                   </div>
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase text-muted-foreground">Nome do Titular *</label>
-                  <input required value={guestData.fullName} onChange={e => setGuestData({...guestData, fullName: e.target.value})} className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors"/>
+                  <input required value={guestData.fullName} onChange={e => setGuestData({ ...guestData, fullName: e.target.value })} className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase text-muted-foreground">WhatsApp (Apenas Números) *</label>
                   {/* O onChange abaixo blinda qualquer caractere que não seja número */}
-                  <input 
-                    required 
-                    value={guestData.phone} 
-                    onChange={e => setGuestData({...guestData, phone: e.target.value.replace(/\D/g, '')})} 
-                    placeholder="Ex: 5548999999999" 
+                  <input
+                    required
+                    value={guestData.phone}
+                    onChange={e => setGuestData({ ...guestData, phone: e.target.value.replace(/\D/g, '') })}
+                    placeholder="Ex: 5548999999999"
                     maxLength={15}
                     className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground font-mono outline-none focus:border-primary/50 transition-colors"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase text-muted-foreground">E-mail (Opcional)</label>
-                  <input type="email" value={guestData.email} onChange={e => setGuestData({...guestData, email: e.target.value})} className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors"/>
+                  <input type="email" value={guestData.email} onChange={e => setGuestData({ ...guestData, email: e.target.value })} className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors" />
                 </div>
               </div>
             </div>
@@ -262,7 +262,7 @@ export default function NewStayPage() {
             {cabinSelections.length > 0 && (
               <div className="bg-card border border-border p-6 rounded-[24px] space-y-6 animate-in slide-in-from-bottom-4 duration-500">
                 <h2 className="flex items-center gap-2 font-bold text-foreground border-b border-border pb-4">
-                    <Users size={18} className="text-primary"/> Configuração ACF (Por Cabana)
+                  <Users size={18} className="text-primary" /> Configuração ACF (Por Cabana)
                 </h2>
                 <div className="space-y-4">
                   {cabinSelections.map((sel, idx) => (
@@ -282,8 +282,8 @@ export default function NewStayPage() {
                           <input type="number" min={0} value={sel.babies} onChange={e => updateCabinACF(idx, 'babies', parseInt(e.target.value))} className="w-12 bg-transparent text-center font-bold text-foreground outline-none border-b border-border focus:border-primary/50" />
                         </div>
                       </div>
-                      <button type="button" onClick={() => toggleCabin({id: sel.cabinId, name: sel.name} as any)} className="text-destructive p-3 hover:bg-destructive/10 rounded-xl transition-colors">
-                        <Trash2 size={20}/>
+                      <button type="button" onClick={() => toggleCabin({ id: sel.cabinId, name: sel.name } as any)} className="text-destructive p-3 hover:bg-destructive/10 rounded-xl transition-colors">
+                        <Trash2 size={20} />
                       </button>
                     </div>
                   ))}
@@ -296,37 +296,37 @@ export default function NewStayPage() {
             {/* Seletor de Cabanas */}
             <div className="bg-card border border-border p-6 rounded-[24px] space-y-4">
               <h2 className="flex items-center gap-2 font-bold text-foreground border-b border-border pb-4">
-                <Home size={18} className="text-primary"/> Unidades Disponíveis
+                <Home size={18} className="text-primary" /> Unidades Disponíveis
               </h2>
               {availableCabins.length === 0 ? (
-                 <p className="text-center text-muted-foreground text-xs py-8">Nenhuma cabana encontrada nesta propriedade.</p>
+                <p className="text-center text-muted-foreground text-xs py-8">Nenhuma cabana encontrada nesta propriedade.</p>
               ) : (
                 <div className="grid grid-cols-2 gap-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                    {availableCabins.map(cabin => (
+                  {availableCabins.map(cabin => (
                     <button
-                        key={cabin.id}
-                        type="button"
-                        onClick={() => toggleCabin(cabin)}
-                        className={cn(
-                            "p-3 rounded-xl border text-[10px] font-bold uppercase transition-all hover:scale-[1.02]", 
-                            cabinSelections.find(s => s.cabinId === cabin.id) 
-                                ? "border-primary bg-primary/10 text-primary shadow-[0_0_15px_rgba(var(--primary),0.2)]" 
-                                : "border-border bg-secondary text-muted-foreground hover:bg-accent hover:text-foreground"
-                        )}
+                      key={cabin.id}
+                      type="button"
+                      onClick={() => toggleCabin(cabin)}
+                      className={cn(
+                        "p-3 rounded-xl border text-[10px] font-bold uppercase transition-all hover:scale-[1.02]",
+                        cabinSelections.find(s => s.cabinId === cabin.id)
+                          ? "border-primary bg-primary/10 text-primary shadow-[0_0_15px_rgba(var(--primary),0.2)]"
+                          : "border-border bg-secondary text-muted-foreground hover:bg-accent hover:text-foreground"
+                      )}
                     >
-                        {cabin.name}
+                      {cabin.name}
                     </button>
-                    ))}
+                  ))}
                 </div>
               )}
             </div>
 
             {/* Controle de Datas */}
             <div className="bg-card border border-border p-6 rounded-[24px] space-y-4 sticky top-6">
-              
+
               <div className="space-y-2">
                 <label className="text-[10px] font-bold uppercase text-muted-foreground">Período da Hospedagem *</label>
-                
+
                 <Popover>
                   <PopoverTrigger asChild>
                     <button
@@ -365,7 +365,7 @@ export default function NewStayPage() {
                       onSelect={setDateRange}
                       numberOfMonths={1}
                       locale={ptBR}
-                      disabled={(date: Date) => date < new Date(new Date().setHours(0,0,0,0))}
+                      disabled={(date: Date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
                       className="bg-card text-foreground"
                     />
                   </PopoverContent>
@@ -376,14 +376,14 @@ export default function NewStayPage() {
               <label className="flex items-center gap-3 cursor-pointer p-3 bg-secondary rounded-xl border border-border hover:bg-accent transition-colors mt-4">
                 <input type="checkbox" checked={sendAutomations} onChange={e => setSendAutomations(e.target.checked)} className="accent-primary w-4 h-4" />
                 <div className="flex flex-col">
-                    <span className="text-[10px] font-bold text-foreground uppercase tracking-tighter">Automação de WhatsApp</span>
-                    <span className="text-[9px] text-muted-foreground">48h e 24h pré-estadia</span>
+                  <span className="text-[10px] font-bold text-foreground uppercase tracking-tighter">Automação de WhatsApp</span>
+                  <span className="text-[9px] text-muted-foreground">48h e 24h pré-estadia</span>
                 </div>
               </label>
-              
-              <button 
-                type="submit" 
-                disabled={loading || cabinSelections.length === 0 || !contextProperty?.id} 
+
+              <button
+                type="submit"
+                disabled={loading || cabinSelections.length === 0 || !contextProperty?.id}
                 className="w-full py-4 bg-primary text-primary-foreground font-black text-lg uppercase tracking-wider rounded-[20px] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-all active:scale-95 mt-4"
               >
                 {loading ? <Loader2 className="animate-spin" /> : "Confirmar Reserva"}
@@ -397,25 +397,25 @@ export default function NewStayPage() {
           <div className="fixed inset-0 bg-background/90 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-300">
             <div className="bg-card border border-border p-10 rounded-[40px] max-w-sm w-full text-center space-y-8 shadow-2xl relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary to-transparent opacity-50"></div>
-              
+
               <div className="w-24 h-24 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto border border-primary/20 shadow-[0_0_30px_rgba(var(--primary),0.2)]">
-                <Key size={48}/>
+                <Key size={48} />
               </div>
-              
+
               <div>
                 <h3 className="text-3xl font-black text-foreground tracking-tighter">Reserva Criada!</h3>
                 <p className="text-muted-foreground mt-2 text-sm font-medium">Hospedagem registrada com sucesso no sistema Aura.</p>
               </div>
-              
+
               <div className="bg-secondary p-8 rounded-3xl border border-border relative group">
                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.3em]">Aura Access Code</span>
                 <div className="text-5xl font-black text-primary tracking-tighter mt-2 group-hover:scale-110 transition-transform duration-300">
-                    {createdInfo.code}
+                  {createdInfo.code}
                 </div>
               </div>
-              
-              <button 
-                onClick={() => router.push("/admin/stays")} 
+
+              <button
+                onClick={() => router.push("/admin/stays")}
                 className="w-full py-4 bg-foreground text-background font-black uppercase tracking-widest rounded-2xl hover:opacity-90 transition-colors"
               >
                 Voltar ao Painel

@@ -6,23 +6,23 @@ import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { CabinService } from "@/services/cabin-service";
 import { Cabin } from "@/types/aura";
-import { 
-  Home, Plus, Wifi, Trash2, Edit3, Users, X, Hammer, Hash, Layers, 
+import {
+  Home, Plus, Wifi, Trash2, Edit3, Users, X, Hammer, Hash, Layers,
   Building2, PlusCircle, BedDouble, Sparkles
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 export default function CabinsPage() {
-  const { property, loading: propertyLoading } = useProperty();
+  const { currentProperty: property, loading: propertyLoading } = useProperty();
   const { userData } = useAuth();
-  
+
   // Flag de segurança: Verifica se quem está acessando é ESTRITAMENTE a Governanta
   const isGovOnly = userData?.role === 'governance';
 
   const [cabins, setCabins] = useState<Cabin[]>([]);
   const [loading, setLoading] = useState(true);
-  
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCabin, setEditingCabin] = useState<Partial<Cabin> | null>(null);
   const [newSetup, setNewSetup] = useState("");
@@ -68,9 +68,9 @@ export default function CabinsPage() {
     if (!property?.id || !editingCabin?.number || !editingCabin?.category) {
       return toast.error("Preencha todos os campos obrigatórios.");
     }
-    
+
     const cleanHousekeeping = editingCabin.housekeepingItems?.filter(i => i.label.trim() !== "") || [];
-    
+
     try {
       await CabinService.saveCabin(property.id, { ...editingCabin, housekeepingItems: cleanHousekeeping });
       toast.success("Unidade configurada com sucesso!");
@@ -106,9 +106,9 @@ export default function CabinsPage() {
 
   const addEquipment = () => {
     const currentEq = editingCabin?.equipment || [];
-    setEditingCabin({ 
-      ...editingCabin, 
-      equipment: [...currentEq, { id: Date.now().toString(), type: "", model: "", manualUrl: "" }] 
+    setEditingCabin({
+      ...editingCabin,
+      equipment: [...currentEq, { id: Date.now().toString(), type: "", model: "", manualUrl: "" }]
     });
   };
 
@@ -152,7 +152,7 @@ export default function CabinsPage() {
         </div>
         {/* Governanta não pode criar novas cabanas do zero */}
         {!isGovOnly && (
-          <button 
+          <button
             onClick={() => handleOpenModal()}
             className="bg-primary text-primary-foreground font-black px-8 py-4 rounded-2xl flex items-center gap-2 hover:shadow-[0_0_20px_rgba(var(--primary),0.4)] transition-all active:scale-95"
           >
@@ -175,10 +175,10 @@ export default function CabinsPage() {
                   {cabin.status}
                 </div>
                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                  <button onClick={() => handleOpenModal(cabin)} className="p-2 bg-secondary text-muted-foreground rounded-xl hover:text-primary transition-colors"><Edit3 size={16}/></button>
+                  <button onClick={() => handleOpenModal(cabin)} className="p-2 bg-secondary text-muted-foreground rounded-xl hover:text-primary transition-colors"><Edit3 size={16} /></button>
                   {/* Governanta não pode apagar cabanas */}
                   {!isGovOnly && (
-                    <button onClick={() => handleDelete(cabin.id)} className="p-2 bg-secondary text-muted-foreground rounded-xl hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
+                    <button onClick={() => handleDelete(cabin.id)} className="p-2 bg-secondary text-muted-foreground rounded-xl hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
                   )}
                 </div>
               </div>
@@ -222,45 +222,45 @@ export default function CabinsPage() {
           <form onSubmit={handleSave} className="bg-card border border-border w-full max-w-4xl rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in duration-300 flex flex-col h-[90vh]">
             <header className="p-8 border-b border-border flex justify-between items-center bg-card shrink-0">
               <h2 className="text-2xl font-black uppercase tracking-tighter italic text-foreground">Configurar Unidade</h2>
-              <button type="button" onClick={() => setIsModalOpen(false)} className="p-2 bg-secondary text-muted-foreground rounded-full hover:bg-accent hover:text-foreground transition-colors"><X/></button>
+              <button type="button" onClick={() => setIsModalOpen(false)} className="p-2 bg-secondary text-muted-foreground rounded-full hover:bg-accent hover:text-foreground transition-colors"><X /></button>
             </header>
 
             <div className="p-10 space-y-12 overflow-y-auto custom-scrollbar flex-1">
-              
+
               <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
-                    <Hash size={12}/> Número
+                    <Hash size={12} /> Número
                   </label>
-                  <input 
+                  <input
                     disabled={isGovOnly} // Bloqueado para Governanta
-                    value={editingCabin?.number} 
-                    onChange={e => setEditingCabin({...editingCabin!, number: e.target.value})}
+                    value={editingCabin?.number}
+                    onChange={e => setEditingCabin({ ...editingCabin!, number: e.target.value })}
                     placeholder="Ex: 01"
                     className="w-full bg-background border border-border p-4 rounded-2xl outline-none focus:border-primary text-xl font-bold text-foreground disabled:opacity-50"
                   />
                 </div>
                 <div className="space-y-2 md:col-span-1">
                   <label className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
-                    <Layers size={12}/> Categoria
+                    <Layers size={12} /> Categoria
                   </label>
-                  <input 
+                  <input
                     disabled={isGovOnly}
-                    value={editingCabin?.category} 
-                    onChange={e => setEditingCabin({...editingCabin!, category: e.target.value})}
+                    value={editingCabin?.category}
+                    onChange={e => setEditingCabin({ ...editingCabin!, category: e.target.value })}
                     placeholder="Ex: Praia"
                     className="w-full bg-background border border-border p-4 rounded-2xl outline-none focus:border-primary text-xl font-bold text-foreground disabled:opacity-50"
                   />
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
-                    <Users size={12}/> Capacidade
+                    <Users size={12} /> Capacidade
                   </label>
-                  <input 
+                  <input
                     disabled={isGovOnly}
                     type="number"
-                    value={editingCabin?.capacity} 
-                    onChange={e => setEditingCabin({...editingCabin!, capacity: Number(e.target.value)})}
+                    value={editingCabin?.capacity}
+                    onChange={e => setEditingCabin({ ...editingCabin!, capacity: Number(e.target.value) })}
                     className="w-full bg-background border border-border p-4 rounded-2xl outline-none focus:border-primary text-xl font-bold text-foreground disabled:opacity-50"
                   />
                 </div>
@@ -268,10 +268,10 @@ export default function CabinsPage() {
 
               <section className="space-y-4">
                 <h4 className="text-[10px] font-black uppercase text-muted-foreground tracking-[0.2em] flex items-center gap-2">
-                  <BedDouble size={14}/> Montagens de Quarto Permitidas
+                  <BedDouble size={14} /> Montagens de Quarto Permitidas
                 </h4>
                 <div className="flex gap-2">
-                  <input 
+                  <input
                     disabled={isGovOnly}
                     value={newSetup}
                     onChange={e => setNewSetup(e.target.value)}
@@ -279,14 +279,14 @@ export default function CabinsPage() {
                     className="flex-1 bg-background border border-border p-4 rounded-2xl outline-none focus:border-primary text-sm text-foreground disabled:opacity-50"
                   />
                   <button type="button" disabled={isGovOnly} onClick={addSetup} className="p-4 bg-primary text-primary-foreground rounded-2xl font-black disabled:opacity-50">
-                    <PlusCircle size={20}/>
+                    <PlusCircle size={20} />
                   </button>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {editingCabin?.allowedSetups?.map((setup, idx) => (
                     <div key={idx} className="bg-secondary border border-border px-4 py-2 rounded-xl flex items-center gap-3 text-xs font-bold text-foreground">
                       {setup}
-                      {!isGovOnly && <button type="button" onClick={() => removeSetup(idx)} className="text-red-500 hover:text-red-600"><X size={14}/></button>}
+                      {!isGovOnly && <button type="button" onClick={() => removeSetup(idx)} className="text-red-500 hover:text-red-600"><X size={14} /></button>}
                     </div>
                   ))}
                 </div>
@@ -294,21 +294,21 @@ export default function CabinsPage() {
 
               <section className="bg-secondary/50 border border-border p-8 rounded-[32px] space-y-6">
                 <h4 className="text-xs font-black uppercase text-primary tracking-widest flex items-center gap-2">
-                  <Wifi size={16}/> Rede Wireless da Unidade
+                  <Wifi size={16} /> Rede Wireless da Unidade
                 </h4>
                 <div className="grid grid-cols-2 gap-6">
-                  <input 
+                  <input
                     disabled={isGovOnly}
                     placeholder="Rede (SSID)"
                     value={editingCabin?.wifi?.ssid}
-                    onChange={e => setEditingCabin({...editingCabin!, wifi: {...editingCabin?.wifi!, ssid: e.target.value}})}
+                    onChange={e => setEditingCabin({ ...editingCabin!, wifi: { ...editingCabin?.wifi!, ssid: e.target.value } })}
                     className="bg-background border border-border p-4 rounded-2xl outline-none text-sm text-foreground disabled:opacity-50"
                   />
-                  <input 
+                  <input
                     disabled={isGovOnly}
                     placeholder="Senha"
                     value={editingCabin?.wifi?.password}
-                    onChange={e => setEditingCabin({...editingCabin!, wifi: {...editingCabin?.wifi!, password: e.target.value}})}
+                    onChange={e => setEditingCabin({ ...editingCabin!, wifi: { ...editingCabin?.wifi!, password: e.target.value } })}
                     className="bg-background border border-border p-4 rounded-2xl outline-none text-sm text-foreground disabled:opacity-50"
                   />
                 </div>
@@ -317,38 +317,38 @@ export default function CabinsPage() {
               <section className="space-y-6">
                 <div className="flex justify-between items-center">
                   <h4 className="text-[10px] font-black uppercase text-muted-foreground tracking-[0.2em] flex items-center gap-2">
-                    <Hammer size={16}/> Equipamentos & Manuais
+                    <Hammer size={16} /> Equipamentos & Manuais
                   </h4>
                   {!isGovOnly && <button type="button" onClick={addEquipment} className="text-[10px] font-black uppercase bg-primary/10 text-primary px-4 py-2 rounded-xl hover:bg-primary/20 transition-all">+ Item</button>}
                 </div>
-                
+
                 <div className="space-y-4">
                   {editingCabin?.equipment?.map((eq, idx) => (
                     <div key={eq.id} className="bg-secondary border border-border p-6 rounded-[24px] grid grid-cols-1 md:grid-cols-3 gap-4 animate-in slide-in-from-top-2">
                       <div className="space-y-1">
                         <label className="text-[8px] font-black text-muted-foreground uppercase ml-1">Tipo</label>
-                        <input 
+                        <input
                           disabled={isGovOnly}
                           placeholder="Ex: Banheira"
                           value={eq.type}
                           onChange={e => {
                             const newEq = [...editingCabin.equipment!];
                             newEq[idx].type = e.target.value;
-                            setEditingCabin({...editingCabin, equipment: newEq});
+                            setEditingCabin({ ...editingCabin, equipment: newEq });
                           }}
                           className="w-full bg-background border border-border p-3 rounded-xl text-xs outline-none text-foreground disabled:opacity-50"
                         />
                       </div>
                       <div className="space-y-1">
                         <label className="text-[8px] font-black text-muted-foreground uppercase ml-1">Modelo/Ref</label>
-                        <input 
+                        <input
                           disabled={isGovOnly}
                           placeholder="Ex: Jacuzzi 500L"
                           value={eq.model}
                           onChange={e => {
                             const newEq = [...editingCabin.equipment!];
                             newEq[idx].model = e.target.value;
-                            setEditingCabin({...editingCabin, equipment: newEq});
+                            setEditingCabin({ ...editingCabin, equipment: newEq });
                           }}
                           className="w-full bg-background border border-border p-3 rounded-xl text-xs outline-none text-foreground disabled:opacity-50"
                         />
@@ -356,20 +356,20 @@ export default function CabinsPage() {
                       <div className="space-y-1 relative">
                         <label className="text-[8px] font-black text-muted-foreground uppercase ml-1">Manual (URL)</label>
                         <div className="flex gap-2">
-                          <input 
+                          <input
                             disabled={isGovOnly}
                             placeholder="Link do PDF/Vídeo"
                             value={eq.manualUrl}
                             onChange={e => {
                               const newEq = [...editingCabin.equipment!];
                               newEq[idx].manualUrl = e.target.value;
-                              setEditingCabin({...editingCabin, equipment: newEq});
+                              setEditingCabin({ ...editingCabin, equipment: newEq });
                             }}
                             className="flex-1 bg-background border border-border p-3 rounded-xl text-xs outline-none text-foreground disabled:opacity-50"
                           />
                           {!isGovOnly && (
                             <button type="button" onClick={() => removeEquipment(eq.id)} className="p-3 text-red-500 hover:bg-red-500/10 rounded-xl transition-all">
-                              <Trash2 size={16}/>
+                              <Trash2 size={16} />
                             </button>
                           )}
                         </div>
@@ -383,22 +383,22 @@ export default function CabinsPage() {
               <section className="space-y-4 pt-4 border-t border-border">
                 <div className="flex justify-between items-center">
                   <h4 className="text-[10px] font-black uppercase text-muted-foreground tracking-[0.2em] flex items-center gap-2">
-                    <Sparkles size={16} className={isGovOnly ? "text-primary" : ""}/> Procedimentos Específicos da Cabana
+                    <Sparkles size={16} className={isGovOnly ? "text-primary" : ""} /> Procedimentos Específicos da Cabana
                   </h4>
                   <button type="button" onClick={addHousekeepingItem} className="text-[10px] font-black uppercase bg-primary/10 text-primary px-4 py-2 rounded-xl hover:bg-primary/20 transition-all">+ Tarefa</button>
                 </div>
                 <p className="text-xs text-muted-foreground">Adicione tarefas que a camareira deve fazer apenas nesta unidade toda vez que for limpar.</p>
-                
+
                 <div className="space-y-3">
                   {editingCabin?.housekeepingItems?.map((item) => (
                     <div key={item.id} className="flex items-center gap-2">
-                      <input 
+                      <input
                         value={item.label}
                         onChange={e => updateHousekeepingItem(item.id, e.target.value)}
                         placeholder="Ex: Limpar filtro do ofurô"
                         className="flex-1 bg-background border border-border p-3 rounded-xl text-xs outline-none focus:border-primary text-foreground"
                       />
-                      <button type="button" onClick={() => removeHousekeepingItem(item.id)} className="p-3 text-red-500 hover:bg-red-500/10 rounded-xl transition-all"><Trash2 size={16}/></button>
+                      <button type="button" onClick={() => removeHousekeepingItem(item.id)} className="p-3 text-red-500 hover:bg-red-500/10 rounded-xl transition-all"><Trash2 size={16} /></button>
                     </div>
                   ))}
                   {(!editingCabin?.housekeepingItems || editingCabin.housekeepingItems.length === 0) && (
@@ -410,10 +410,10 @@ export default function CabinsPage() {
             </div>
 
             <footer className="p-8 border-t border-border bg-muted/30 flex justify-end gap-4 shrink-0">
-               <button type="button" onClick={() => setIsModalOpen(false)} className="px-8 py-4 font-black uppercase text-[10px] text-muted-foreground hover:text-foreground">Cancelar</button>
-               <button type="submit" className="px-12 py-4 bg-primary text-primary-foreground font-black uppercase text-[10px] rounded-2xl hover:shadow-[0_0_30px_rgba(var(--primary),0.4)] active:scale-95 transition-all">
-                 Confirmar Configuração
-               </button>
+              <button type="button" onClick={() => setIsModalOpen(false)} className="px-8 py-4 font-black uppercase text-[10px] text-muted-foreground hover:text-foreground">Cancelar</button>
+              <button type="submit" className="px-12 py-4 bg-primary text-primary-foreground font-black uppercase text-[10px] rounded-2xl hover:shadow-[0_0_30px_rgba(var(--primary),0.4)] active:scale-95 transition-all">
+                Confirmar Configuração
+              </button>
             </footer>
           </form>
         </div>
@@ -423,5 +423,5 @@ export default function CabinsPage() {
 }
 
 const Loader2 = ({ className, size }: { className?: string, size?: number }) => (
-  <svg width={size || 24} height={size || 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+  <svg width={size || 24} height={size || 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
 );

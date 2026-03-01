@@ -8,7 +8,7 @@ import { collection, query, where, getDocs, limit, doc, getDoc } from "firebase/
 import { useAuth } from "./AuthContext";
 
 interface PropertyContextType {
-  property: Property | null;
+  currentProperty: Property | null;
   setProperty: (property: Property | null) => void;
   loading: boolean;
   error: string | null;
@@ -87,8 +87,8 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
       root.style.setProperty('--ring', hexToHSL(colors.primary));
     }
     if (colors.error) {
-       root.style.setProperty('--destructive', hexToHSL(colors.error));
-       root.style.setProperty('--destructive-foreground', "0 0% 98%");
+      root.style.setProperty('--destructive', hexToHSL(colors.error));
+      root.style.setProperty('--destructive-foreground', "0 0% 98%");
     }
 
     // 2. Formas
@@ -98,8 +98,8 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
 
     // 3. Fontes
     if (typography) {
-        if(typography.fontFamilyHeading) root.style.setProperty('--font-heading', typography.fontFamilyHeading);
-        if(typography.fontFamilyBody) root.style.setProperty('--font-body', typography.fontFamilyBody);
+      if (typography.fontFamilyHeading) root.style.setProperty('--font-heading', typography.fontFamilyHeading);
+      if (typography.fontFamilyBody) root.style.setProperty('--font-body', typography.fontFamilyBody);
     }
   }, []);
 
@@ -132,7 +132,7 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
       setLoading(true);
       const docRef = doc(db, "properties", id);
       const snap = await getDoc(docRef);
-      
+
       if (!snap.exists()) throw new Error("Propriedade vinculada não encontrada.");
 
       const data = { id: snap.id, ...snap.data() } as Property;
@@ -149,21 +149,21 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
     if (authLoading) return;
 
     if (initialSlug) {
-        fetchPropertyBySlug(initialSlug);
+      fetchPropertyBySlug(initialSlug);
     } else if (!isSuperAdmin && userData?.propertyId) {
-        // Verifica se a propriedade já está carregada para evitar loops
-        if (property?.id !== userData.propertyId) {
-            fetchPropertyById(userData.propertyId);
-        } else {
-            setLoading(false);
-        }
-    } else {
+      // Verifica se a propriedade já está carregada para evitar loops
+      if (property?.id !== userData.propertyId) {
+        fetchPropertyById(userData.propertyId);
+      } else {
         setLoading(false);
+      }
+    } else {
+      setLoading(false);
     }
   }, [initialSlug, userData, isSuperAdmin, authLoading, fetchPropertyBySlug, fetchPropertyById, property?.id]);
 
   return (
-    <PropertyContext.Provider value={{ property, setProperty: handleSetProperty, loading, error, refreshProperty: fetchPropertyBySlug }}>
+    <PropertyContext.Provider value={{ currentProperty: property, setProperty: handleSetProperty, loading, error, refreshProperty: fetchPropertyBySlug }}>
       {children}
     </PropertyContext.Provider>
   );

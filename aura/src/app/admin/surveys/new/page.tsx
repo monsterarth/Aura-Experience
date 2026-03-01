@@ -23,7 +23,7 @@ import {
 
 export default function CreateSurveyTemplatePage() {
   const router = useRouter();
-  const { property } = useProperty();
+  const { currentProperty: property } = useProperty();
 
   const [loading, setLoading] = useState(false);
   const [title, setTitle] = useState("Pesquisa Pós-Estadia");

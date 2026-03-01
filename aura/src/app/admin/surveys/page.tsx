@@ -24,7 +24,7 @@ import {
 
 export default function SurveysManagementPage() {
   const router = useRouter();
-  const { property } = useProperty();
+  const { currentProperty: property } = useProperty();
   
   // Estados das Pesquisas
   const [templates, setTemplates] = useState<SurveyTemplate[]>([]);
