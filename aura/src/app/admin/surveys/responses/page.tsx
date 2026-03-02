@@ -143,7 +143,7 @@ export default function SurveysDashboardPage() {
     end.setHours(23, 59, 59, 999);
 
     const filteredResponses = responses.filter(r => {
-      const rDate = r.createdAt?.toDate ? r.createdAt.toDate() : new Date(r.createdAt);
+      const rDate = r.createdAt ? new Date(r.createdAt) : new Date();
       return rDate >= start && rDate <= end;
     });
 
@@ -430,7 +430,7 @@ export default function SurveysDashboardPage() {
                               )}
                             </h4>
                             <p className="text-xs text-muted-foreground mt-0.5">
-                              {new Date(response.createdAt?.toDate ? response.createdAt.toDate() : response.createdAt).toLocaleDateString('pt-BR')}
+                              {response.createdAt ? new Date(response.createdAt).toLocaleDateString('pt-BR') : ''}
                             </p>
                           </div>
 
@@ -565,7 +565,7 @@ export default function SurveysDashboardPage() {
             {/* Rodape Modal */}
             <div className="p-4 bg-muted/30 border-t flex justify-between items-center">
               <span className="text-xs text-muted-foreground">
-                Avaliação enviada em {new Date(selectedResponse.createdAt?.toDate ? selectedResponse.createdAt.toDate() : selectedResponse.createdAt).toLocaleString('pt-BR')}
+                Avaliação enviada em {selectedResponse.createdAt ? new Date(selectedResponse.createdAt).toLocaleString('pt-BR') : ''}
               </span>
               <Button onClick={() => setSelectedResponse(null)} className="h-9 px-6">
                 Fechar

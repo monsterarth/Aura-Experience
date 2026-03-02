@@ -1,7 +1,6 @@
 // src/app/api/cron/daily-housekeeping/route.ts
 import { NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase-admin";
-import { FieldValue } from "firebase-admin/firestore";
+import { supabaseAdmin } from "@/lib/supabase";
 import { v4 as uuidv4 } from "uuid";
 
 export async function GET(req: Request) {
@@ -14,71 +13,51 @@ export async function GET(req: Request) {
   console.log("🤖 [CRON] Iniciando motor de geração de Tarefas Diárias de Governança...");
 
   try {
-    const propertiesSnap = await adminDb.collection("properties").get();
+    const { data: properties } = await supabaseAdmin.from('properties').select('id');
     let tasksCreated = 0;
 
-    for (const propDoc of propertiesSnap.docs) {
-      const propertyId = propDoc.id;
+    for (const propData of (properties || [])) {
+      const propertyId = propData.id;
 
-      // 1. Busca todas as estadias "Ativas" (Hóspedes atualmente na pousada)
-      const activeStaysSnap = await adminDb
-        .collection("properties")
-        .doc(propertyId)
-        .collection("stays")
-        .where("status", "==", "active")
-        .get();
+      const { data: activeStays } = await supabaseAdmin
+        .from('stays')
+        .select('*')
+        .eq('propertyId', propertyId)
+        .eq('status', 'active');
 
-      // Configura o início e fim do dia atual (Meia-noite de hoje)
       const today = new Date();
       const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-      
-      for (const stayDoc of activeStaysSnap.docs) {
-        const stay = stayDoc.data();
+
+      for (const stay of (activeStays || [])) {
         if (!stay.checkOut || !stay.cabinId) continue;
 
-        const checkOutDate = stay.checkOut.toDate();
-
-        // 2. Filtro de Inteligência: Ele sai hoje?
-        // Compara a data de checkout com a data de hoje formatada (YYYY-MM-DD)
+        const checkOutDate = new Date(stay.checkOut);
         const isCheckingOutToday = checkOutDate.toISOString().split('T')[0] === startOfDay.toISOString().split('T')[0];
-        
-        // Se o hóspede fizer check-out hoje, NÃO criamos a diária (A recepção vai dar checkout e gerar o Turnover)
-        if (isCheckingOutToday) {
-          continue; 
-        }
 
-        // 3. Trava Anti-Duplicação: Garante que não foi criada outra tarefa 'daily' para esta cabana HOJE
-        const existingTasks = await adminDb
-          .collection("properties")
-          .doc(propertyId)
-          .collection("housekeeping_tasks")
-          .where("cabinId", "==", stay.cabinId)
-          .where("type", "==", "daily")
-          .where("createdAt", ">=", startOfDay)
-          .get();
+        if (isCheckingOutToday) continue;
 
-        if (!existingTasks.empty) {
-          continue; // Já existe uma tarefa diária para hoje. Ignora.
-        }
+        const { data: existingTasks } = await supabaseAdmin
+          .from('housekeeping_tasks')
+          .select('id')
+          .eq('propertyId', propertyId)
+          .eq('cabinId', stay.cabinId)
+          .eq('type', 'daily')
+          .gte('createdAt', startOfDay.toISOString());
 
-        // 4. Cria a Tarefa Diária
+        if (existingTasks && existingTasks.length > 0) continue;
+
         const taskId = uuidv4();
-        await adminDb
-          .collection("properties")
-          .doc(propertyId)
-          .collection("housekeeping_tasks")
-          .doc(taskId)
-          .set({
-            id: taskId,
-            propertyId: propertyId,
-            cabinId: stay.cabinId,
-            stayId: stayDoc.id, // Vinculado para a camareira poder lançar o consumo do frigobar!
-            type: 'daily',
-            status: 'pending',
-            checklist: [],
-            createdAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp()
-          });
+        await supabaseAdmin.from('housekeeping_tasks').insert({
+          id: taskId,
+          propertyId: propertyId,
+          cabinId: stay.cabinId,
+          stayId: stay.id,
+          type: 'daily',
+          status: 'pending',
+          checklist: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
 
         tasksCreated++;
       }

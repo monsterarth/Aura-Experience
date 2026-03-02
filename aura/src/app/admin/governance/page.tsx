@@ -20,8 +20,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 export default function GovernancePage() {
   const { currentProperty: property, loading: isLoading } = useProperty();
@@ -120,7 +118,14 @@ export default function GovernancePage() {
 
   const handleConferTask = async (taskId: string, cabinId: string, approved: boolean) => {
     try {
-      await HousekeepingService.conferTask(property.id, taskId, cabinId, approved, userData?.id || "unknown", userData?.fullName || "Governanta");
+      const actorId = userData?.id || "unknown";
+      const actorName = userData?.fullName || "Governanta";
+
+      if (approved) {
+        await HousekeepingService.confirmTaskQuality(property.id, taskId, "Aprovado", actorId, actorName);
+      } else {
+        await HousekeepingService.rollbackTaskStatus(property.id, taskId, "Reprovado na conferência", actorId, actorName);
+      }
       toast.success(approved ? "Cabana liberada!" : "Enviada para repasse.");
     } catch (e) {
       toast.error("Erro ao conferir a tarefa.");
@@ -134,17 +139,20 @@ export default function GovernancePage() {
 
       const randomCabinId = cabinKeys[Math.floor(Math.random() * cabinKeys.length)];
 
-      await addDoc(collection(db, "properties", property.id, "housekeeping_tasks"), {
-        propertyId: property.id,
-        cabinId: randomCabinId,
-        stayId: "TESTE-MOCK",
-        type: 'turnover',
-        status: 'pending',
-        assignedTo: [], // Garantindo que nascerá como Array
-        checklist: [],
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
+      await HousekeepingService.createTask(
+        property.id,
+        {
+          propertyId: property.id,
+          cabinId: randomCabinId,
+          stayId: "TESTE-MOCK",
+          type: 'turnover',
+          status: 'pending',
+          assignedTo: [],
+          checklist: [],
+        } as any,
+        userData?.id || "unknown",
+        userData?.fullName || "Admin"
+      );
 
       toast.success("Tarefa de Turnover gerada!");
     } catch (e) {

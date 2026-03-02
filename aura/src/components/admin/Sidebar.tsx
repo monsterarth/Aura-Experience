@@ -13,7 +13,7 @@ import {
   LayoutDashboard, Users, Home, Wrench,
   Sparkles, Building, ChevronDown, LogOut,
   MessageSquare, Settings, Globe, Menu, X,
-  Star, ClipboardList, Calendar
+  Star, ClipboardList, Calendar, Bot
 } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { deleteCookie } from "cookies-next";
@@ -88,6 +88,7 @@ export const Sidebar = () => {
       requireProperty: true
     },
     { title: "Pesquisas (NPS)", icon: ClipboardList, href: "/admin/surveys", roles: ["super_admin", "admin"] },
+    { title: "Automações", icon: Bot, href: "/admin/comunicacao/automations/settings", roles: ["super_admin", "admin"] },
     { title: "Cabanas", icon: Building, href: "/admin/cabins", roles: ["super_admin", "admin", "governance"] },
     { title: "Estruturas", icon: Home, href: "/admin/core/structures", roles: ["super_admin", "admin"] },
     { title: "Equipe", icon: Users, href: "/admin/staff", roles: ["super_admin", "admin"] },

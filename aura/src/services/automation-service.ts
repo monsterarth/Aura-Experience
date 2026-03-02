@@ -1,34 +1,59 @@
-import { 
-  collection, 
-  doc, 
-  setDoc, 
-  getDoc,
-  getDocs,
-  updateDoc,
-  deleteDoc,
-  writeBatch,
-  serverTimestamp, 
-  Timestamp 
-} from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase";
 import { Stay, MessageTemplate, WhatsAppMessage, AutomationTriggerEvent, Guest, Cabin, AutomationRule } from "@/types/aura";
 
 export class AutomationService {
-  /**
-   * Substitui as variáveis mágicas do template pelos dados reais da reserva.
-   */
+  static async triggerStructureBookingAutomation(propertyId: string, stayId: string, structureName: string, date: string, startTime: string, templateId: string) {
+    if (!templateId) return;
+    try {
+      const { data: template } = await supabase.from('message_templates').select('*').eq('propertyId', propertyId).eq('id', templateId).single();
+      if (!template) return;
+
+      const { data: stay } = await supabase.from('stays').select('*').eq('id', stayId).single();
+      if (!stay) return;
+
+      const { data: guest } = await supabase.from('guests').select('*').eq('id', stay.guestId).single();
+      if (!guest || !guest.phone) return;
+
+      let cabin;
+      if (stay.cabinId) {
+        const { data: c } = await supabase.from('cabins').select('*').eq('id', stay.cabinId).single();
+        if (c) cabin = c;
+      }
+
+      // Pre-compile structure variables
+      const customBody = template.body
+        .replace(/{{structure_name}}/g, structureName)
+        .replace(/{{booking_date}}/g, new Date(date + "T00:00:00").toLocaleDateString('pt-BR', { timeZone: 'UTC' }))
+        .replace(/{{booking_time}}/g, startTime);
+
+      await this.queueMessage(
+        propertyId,
+        stayId,
+        guest.phone,
+        { ...template, body: customBody } as any,
+        'structure_booking_confirmed',
+        guest as any,
+        cabin as any,
+        stay as any,
+        0 // Disparo imediato. (Não usa a regra global de delay)
+      );
+    } catch (error) {
+      console.error("Erro no gatilho de agendamento de estrutura:", error);
+    }
+  }
+
   static parseVariables(
-    templateBody: string, 
-    guest: Guest, 
-    cabin?: Cabin, 
+    templateBody: string,
+    guest: Guest,
+    cabin?: Cabin,
     stay?: Stay
   ): string {
     let parsedText = templateBody;
-    
+
     const firstName = guest.fullName.split(" ")[0];
     parsedText = parsedText.replace(/{{guest_name}}/g, firstName);
     parsedText = parsedText.replace(/{{guest_full_name}}/g, guest.fullName);
-    
+
     if (cabin) {
       parsedText = parsedText.replace(/{{cabin_name}}/g, cabin.name);
       parsedText = parsedText.replace(/{{wifi_ssid}}/g, cabin.wifi?.ssid || "Fazenda do Rosa");
@@ -36,12 +61,12 @@ export class AutomationService {
     }
 
     if (stay) {
-      const checkInDate = stay.checkIn?.toDate ? stay.checkIn.toDate().toLocaleDateString('pt-BR') : "";
-      const checkOutDate = stay.checkOut?.toDate ? stay.checkOut.toDate().toLocaleDateString('pt-BR') : "";
-      
+      const checkInDate = stay.checkIn ? new Date(stay.checkIn).toLocaleDateString('pt-BR') : "";
+      const checkOutDate = stay.checkOut ? new Date(stay.checkOut).toLocaleDateString('pt-BR') : "";
+
       parsedText = parsedText.replace(/{{checkin_date}}/g, checkInDate);
       parsedText = parsedText.replace(/{{checkout_date}}/g, checkOutDate);
-      
+
       const portalLink = `https://app.fazendadorosa.com.br/check-in/login`;
       parsedText = parsedText.replace(/{{portal_link}}/g, portalLink);
       parsedText = parsedText.replace(/{{access_code}}/g, stay.accessCode);
@@ -53,9 +78,6 @@ export class AutomationService {
     return parsedText;
   }
 
-/**
-   * Coloca uma mensagem na Fila (DLQ) com Escudo Anti-Inconveniência.
-   */
   static async queueMessage(
     propertyId: string,
     stayId: string,
@@ -75,29 +97,25 @@ export class AutomationService {
         now.setMinutes(now.getMinutes() + delayMinutes);
       }
 
-      // --- ESCUDO DE HORÁRIO SILENCIOSO (21:00 às 07:59) ---
       const ignoreQuietHours = ['welcome_checkin', 'checkout_thanks'];
-      
+
       if (!ignoreQuietHours.includes(triggerEvent)) {
         let brtHour = parseInt(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false }), 10);
-        
-        if (brtHour >= 21 || brtHour < 8) { 
+
+        if (brtHour >= 21 || brtHour < 8) {
           while (brtHour !== 8) {
             now.setHours(now.getHours() + 1);
             brtHour = parseInt(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false }), 10);
           }
-          now.setMinutes(0, 0, 0); 
+          now.setMinutes(0, 0, 0);
         }
       }
 
-      // Formata o número para ser o ID do Contato (ex: 554899999999)
       const cleanPhone = toNumber.replace(/\D/g, '');
-
-      // APONTA PARA O CAMINHO CORRETO DO CRM
       const messageId = crypto.randomUUID();
-      const messageRef = doc(db, "properties", propertyId, "messages", messageId);
-      
-      const queuedMessage: Omit<WhatsAppMessage, "id"> = {
+
+      const queuedMessage = {
+        id: messageId,
         propertyId,
         contactId: cleanPhone,
         stayId,
@@ -106,14 +124,16 @@ export class AutomationService {
         direction: 'outbound',
         isAutomated: true,
         triggerEvent,
-        scheduledFor: Timestamp.fromDate(now),
+        scheduledFor: now.toISOString(),
         status: 'pending',
         attempts: 0,
-        createdAt: serverTimestamp()
+        createdAt: new Date().toISOString()
       };
 
-      await setDoc(messageRef, queuedMessage);
-      return { success: true, messageId: messageRef.id };
+      const { error } = await supabase.from('messages').insert(queuedMessage);
+      if (error) throw error;
+
+      return { success: true, messageId };
     } catch (error) {
       console.error("Erro ao enfileirar mensagem automática:", error);
       return { success: false, error: "Falha ao colocar mensagem na fila." };
@@ -122,33 +142,27 @@ export class AutomationService {
 
   static async retryFailedMessage(propertyId: string, messageId: string): Promise<boolean> {
     try {
-      const messageRef = doc(db, "properties", propertyId, "messages", messageId);
-      
-      // Força para o passado (1 min) para o Cron apanhar instantaneamente
       const pastTime = new Date();
-      pastTime.setMinutes(pastTime.getMinutes() - 1); 
+      pastTime.setMinutes(pastTime.getMinutes() - 1);
 
-      await updateDoc(messageRef, {
+      const { error } = await supabase.from('messages').update({
         status: 'pending',
         attempts: 0,
-        scheduledFor: Timestamp.fromDate(pastTime),
+        scheduledFor: pastTime.toISOString(),
         errorMessage: null,
-      });
-      return true;
+      }).eq('id', messageId).eq('propertyId', propertyId);
+
+      return !error;
     } catch (error) {
       console.error("Erro ao tentar reenviar mensagem:", error);
       return false;
     }
   }
 
-  // ==========================================
-  // GESTÃO DE TEMPLATES E REGRAS
-  // ==========================================
-
   static async getTemplates(propertyId: string): Promise<MessageTemplate[]> {
     try {
-      const snapshot = await getDocs(collection(db, "properties", propertyId, "message_templates"));
-      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MessageTemplate));
+      const { data } = await supabase.from('message_templates').select('*').eq('propertyId', propertyId);
+      return (data || []) as MessageTemplate[];
     } catch (error) {
       return [];
     }
@@ -156,20 +170,21 @@ export class AutomationService {
 
   static async saveTemplate(propertyId: string, templateData: Partial<MessageTemplate> & { id?: string }): Promise<boolean> {
     try {
-      const isNew = !templateData.id;
-      const ref = isNew 
-        ? doc(collection(db, "properties", propertyId, "message_templates"))
-        : doc(db, "properties", propertyId, "message_templates", templateData.id as string);
-
-      const payload = {
-        ...templateData,
+      const id = templateData.id || crypto.randomUUID();
+      const payload: any = {
+        id,
+        name: templateData.name,
+        body: templateData.body,
         propertyId,
-        updatedAt: serverTimestamp(),
-        ...(isNew && { createdAt: serverTimestamp() })
+        updatedAt: new Date().toISOString()
       };
 
-      await setDoc(ref, payload, { merge: true });
-      return true;
+      if (!templateData.id) {
+        payload.createdAt = new Date().toISOString();
+      }
+
+      const { error } = await supabase.from('message_templates').upsert(payload);
+      return !error;
     } catch (error) {
       return false;
     }
@@ -177,8 +192,8 @@ export class AutomationService {
 
   static async deleteTemplate(propertyId: string, templateId: string): Promise<boolean> {
     try {
-      await deleteDoc(doc(db, "properties", propertyId, "message_templates", templateId));
-      return true;
+      const { error } = await supabase.from('message_templates').delete().eq('id', templateId).eq('propertyId', propertyId);
+      return !error;
     } catch (error) {
       return false;
     }
@@ -186,31 +201,32 @@ export class AutomationService {
 
   static async getRules(propertyId: string): Promise<AutomationRule[]> {
     try {
-      const rulesRef = collection(db, "properties", propertyId, "automation_rules");
-      const snapshot = await getDocs(rulesRef);
+      const { data } = await supabase.from('automation_rules').select('*').eq('propertyId', propertyId);
 
       const allTriggers: AutomationTriggerEvent[] = [
-        'pre_checkin_48h', 'pre_checkin_24h', 'welcome_checkin', 
-        'pre_checkout', 'checkout_thanks', 'nps_survey'
+        'pre_checkin_48h', 'pre_checkin_24h', 'welcome_checkin',
+        'pre_checkout', 'checkout_thanks', 'nps_survey', 'structure_booking_confirmed'
       ];
 
-      if (snapshot.empty) {
-        const batch = writeBatch(db);
-        const newRules: AutomationRule[] = [];
+      const existingTriggers = (data || []).map(r => r.triggerEvent || r.id);
+      const missingTriggers = allTriggers.filter(t => !existingTriggers.includes(t));
 
-        for (const trigger of allTriggers) {
-          const ruleRef = doc(rulesRef, trigger);
-          const ruleData: Omit<AutomationRule, "updatedAt"> & { updatedAt: any } = {
-            id: trigger, propertyId, active: false, templateId: "", delayMinutes: 0, updatedAt: serverTimestamp()
-          };
-          batch.set(ruleRef, ruleData);
-          newRules.push(ruleData as unknown as AutomationRule);
-        }
-        await batch.commit();
-        return newRules;
+      if (missingTriggers.length > 0) {
+        const newRules = missingTriggers.map(trigger => ({
+          id: trigger,
+          triggerEvent: trigger,
+          propertyId,
+          active: false,
+          templateId: "",
+          delayMinutes: 0,
+          updatedAt: new Date().toISOString()
+        }));
+
+        await supabase.from('automation_rules').insert(newRules);
+        return [...(data || []), ...newRules] as unknown as AutomationRule[];
       }
 
-      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AutomationRule));
+      return data as AutomationRule[];
     } catch (error) {
       return [];
     }
@@ -218,9 +234,12 @@ export class AutomationService {
 
   static async updateRule(propertyId: string, ruleId: string, data: Partial<AutomationRule>): Promise<boolean> {
     try {
-      const ruleRef = doc(db, "properties", propertyId, "automation_rules", ruleId);
-      await updateDoc(ruleRef, { ...data, updatedAt: serverTimestamp() });
-      return true;
+      const { error } = await supabase.from('automation_rules')
+        .update({ ...data, updatedAt: new Date().toISOString() })
+        .eq('id', ruleId)
+        .eq('propertyId', propertyId);
+
+      return !error;
     } catch (error) {
       return false;
     }

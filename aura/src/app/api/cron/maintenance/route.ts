@@ -1,12 +1,9 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { supabaseAdmin } from '@/lib/supabase';
 import { MaintenanceTask } from '@/types/aura';
 import { v4 as uuidv4 } from 'uuid';
 
-// Exemplo de como chamar: GET /api/cron/maintenance?propertyId=YOUR_PROP_ID
 export async function GET(request: Request) {
-    const { searchParams } = new URL(request.url);
     const authHeader = request.headers.get('authorization');
 
     if (authHeader !== `Bearer ${process.env.CRON_SECRET}` && process.env.NODE_ENV !== 'development') {
@@ -14,46 +11,47 @@ export async function GET(request: Request) {
     }
 
     try {
-        const propsSnap = await getDocs(collection(db, "properties"));
+        const { data: properties } = await supabaseAdmin.from('properties').select('id');
         let tasksCreated = 0;
 
-        for (const prop of propsSnap.docs) {
+        if (!properties) return NextResponse.json({ success: true, newTasks: 0 });
+
+        for (const prop of properties) {
             const propertyId = prop.id;
 
-            // Buscar APENAS tarefas declaradas como RECORRENTES que ainda estão ativas 
-            // Para evitar gerar infinitas caso a tarefa base seja apagada
-            const q = query(collection(db, "properties", propertyId, "maintenance_tasks"), where("isRecurring", "==", true));
-            const activeTasks = await getDocs(q);
+            const { data: activeTasks } = await supabaseAdmin
+                .from('maintenance_tasks')
+                .select('*')
+                .eq('propertyId', propertyId)
+                .eq('isRecurring', true);
+
+            if (!activeTasks) continue;
 
             const today = new Date();
-            today.setHours(0, 0, 0, 0); // Start of day
+            today.setHours(0, 0, 0, 0);
 
-            for (const t of activeTasks.docs) {
-                const parentTask = t.data() as MaintenanceTask;
+            for (const t of activeTasks) {
+                const parentTask = t as any as MaintenanceTask;
 
-                // Skip if a recurrence was already generated today
                 if (parentTask.lastRecurrenceCreated) {
-                    const lastCreated = new Date((parentTask.lastRecurrenceCreated as any).seconds * 1000);
+                    const lastCreated = new Date(parentTask.lastRecurrenceCreated);
                     lastCreated.setHours(0, 0, 0, 0);
                     if (lastCreated.getTime() === today.getTime()) {
-                        continue; // Já criou hoje.
+                        continue;
                     }
                 }
 
-                // Logic check for periodicity
                 let shouldCreate = false;
 
                 if (parentTask.recurrenceRule === 'daily') {
                     shouldCreate = true;
                 } else if (parentTask.recurrenceRule === 'weekly') {
-                    // Verify if it's the exact same day of the week the parent task was created
-                    const parentDayOfWeek = new Date((parentTask.createdAt as any).seconds * 1000).getDay();
+                    const parentDayOfWeek = new Date(parentTask.createdAt).getDay();
                     if (today.getDay() === parentDayOfWeek) {
                         shouldCreate = true;
                     }
                 } else if (parentTask.recurrenceRule === 'monthly') {
-                    // Verify if it's the same numerical day of the month
-                    const parentDate = new Date((parentTask.createdAt as any).seconds * 1000).getDate();
+                    const parentDate = new Date(parentTask.createdAt).getDate();
                     if (today.getDate() === parentDate) {
                         shouldCreate = true;
                     }
@@ -61,23 +59,25 @@ export async function GET(request: Request) {
 
                 if (shouldCreate) {
                     const newTaskId = uuidv4();
-                    await setDoc(doc(db, "properties", propertyId, "maintenance_tasks", newTaskId), {
+                    const isoToday = new Date().toISOString();
+                    const clone = {
                         ...parentTask,
                         id: newTaskId,
                         status: 'pending',
-                        createdAt: serverTimestamp(),
-                        updatedAt: serverTimestamp(),
+                        createdAt: isoToday,
+                        updatedAt: isoToday,
                         startedAt: null,
                         finishedAt: null,
                         completion: null,
-                        isRecurring: false, // The clone is NOT recurring, only the parent acts as template.
+                        isRecurring: false,
                         title: `${parentTask.title} (Gerada ${today.toLocaleDateString('pt-BR')})`
-                    });
+                    };
 
-                    // Update the parent to mark it as parsed today
-                    await setDoc(doc(db, "properties", propertyId, "maintenance_tasks", t.id), {
-                        lastRecurrenceCreated: serverTimestamp(),
-                    }, { merge: true });
+                    await supabaseAdmin.from('maintenance_tasks').insert(clone);
+
+                    await supabaseAdmin.from('maintenance_tasks').update({
+                        lastRecurrenceCreated: isoToday
+                    }).eq('id', parentTask.id);
 
                     tasksCreated++;
                 }

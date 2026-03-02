@@ -2,13 +2,12 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase";
+import { User as SupabaseUser } from "@supabase/supabase-js";
 import { Staff, UserRole } from "@/types/aura";
 
 interface AuthContextType {
-  user: FirebaseUser | null;
+  user: SupabaseUser | null;
   userData: Staff | null;
   loading: boolean;
   isAdmin: boolean;
@@ -24,27 +23,52 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [user, setUser] = useState<SupabaseUser | null>(null);
   const [userData, setUserData] = useState<Staff | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-      
-      if (firebaseUser) {
-        // Busca os dados complementares (Role/Property) no Firestore
-        const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
-        if (userDoc.exists()) {
-          setUserData({ id: userDoc.id, ...userDoc.data() } as Staff);
+    let mounted = true;
+
+    async function initializeAuth() {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (session?.user) {
+        setUser(session.user);
+        const { data: staffData } = await supabase.from('staff').select('*').eq('id', session.user.id).single();
+        if (mounted && staffData) {
+          setUserData(staffData as Staff);
         }
       } else {
-        setUserData(null);
+        if (mounted) {
+          setUser(null);
+          setUserData(null);
+        }
       }
-      setLoading(false);
+      if (mounted) setLoading(false);
+    }
+
+    initializeAuth();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const currentUser = session?.user || null;
+      setUser(currentUser);
+
+      if (currentUser) {
+        const { data: staffData } = await supabase.from('staff').select('*').eq('id', currentUser.id).single();
+        if (mounted && staffData) {
+          setUserData(staffData as Staff);
+        }
+      } else {
+        if (mounted) setUserData(null);
+      }
+      if (mounted) setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      mounted = false;
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   const value = {

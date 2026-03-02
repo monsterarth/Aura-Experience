@@ -6,14 +6,14 @@ import { RoleGuard } from "@/components/auth/RoleGuard";
 import { AuditService } from "@/services/audit-service";
 import { PropertyService } from "@/services/property-service";
 import { AuditLog, Property } from "@/types/aura";
-import { 
-  Activity, 
-  BarChart3, 
-  Building2, 
-  Search, 
-  Filter, 
-  Clock, 
-  User, 
+import {
+  Activity,
+  BarChart3,
+  Building2,
+  Search,
+  Filter,
+  Clock,
+  User,
   Tag,
   ArrowUpRight,
   ArrowDownRight,
@@ -79,19 +79,19 @@ export default function SuperAdminDashboard() {
 
   // Lógica de Filtragem de Logs
   const filteredLogs = logs.filter(log => {
-    const matchesSearch = 
+    const matchesSearch =
       log.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       log.details?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesEntity = filterEntity === "all" || log.entity === filterEntity;
     const matchesProperty = filterProperty === "all" || log.propertyId === filterProperty;
-    
+
     return matchesSearch && matchesEntity && matchesProperty;
   });
 
   return (
     <RoleGuard allowedRoles={["super_admin"]}>
       <div className="p-8 max-w-[1600px] mx-auto space-y-10 animate-in fade-in duration-500">
-        
+
         {/* Header */}
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border pb-8">
           <div className="space-y-1">
@@ -101,7 +101,7 @@ export default function SuperAdminDashboard() {
             <h1 className="text-4xl font-black tracking-tighter">Gestão da Plataforma</h1>
             <p className="text-muted-foreground font-medium italic">Monitoramento global de métricas e integridade de dados.</p>
           </div>
-          <button 
+          <button
             onClick={fetchInitialData}
             className="flex items-center gap-2 px-4 py-2 bg-muted hover:bg-border rounded-xl text-sm font-bold transition-all"
           >
@@ -111,33 +111,33 @@ export default function SuperAdminDashboard() {
 
         {/* Grid de Estatísticas (MOCKADOS) */}
         <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatCard 
-            title="Propriedades Ativas" 
-            value={properties.length} 
-            trend={12} 
-            icon={Building2} 
-            color="bg-blue-500" 
+          <StatCard
+            title="Propriedades Ativas"
+            value={properties.length}
+            trend={12}
+            icon={Building2}
+            color="bg-blue-500"
           />
-          <StatCard 
-            title="Hóspedes no Aura" 
-            value="1,284" 
-            trend={24} 
-            icon={User} 
-            color="bg-purple-500" 
+          <StatCard
+            title="Hóspedes no Aura"
+            value="1,284"
+            trend={24}
+            icon={User}
+            color="bg-purple-500"
           />
-          <StatCard 
-            title="Transações API" 
-            value="45.2k" 
-            trend={-5} 
-            icon={Activity} 
-            color="bg-orange-500" 
+          <StatCard
+            title="Transações API"
+            value="45.2k"
+            trend={-5}
+            icon={Activity}
+            color="bg-orange-500"
           />
-          <StatCard 
-            title="Conversão WhatsApp" 
-            value="92%" 
-            trend={3} 
-            icon={BarChart3} 
-            color="bg-green-500" 
+          <StatCard
+            title="Conversão WhatsApp"
+            value="92%"
+            trend={3}
+            icon={BarChart3}
+            color="bg-green-500"
           />
         </section>
 
@@ -152,17 +152,17 @@ export default function SuperAdminDashboard() {
             <div className="flex flex-wrap items-center gap-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
-                <input 
+                <input
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="Buscar no log..."
                   className="pl-10 p-2 bg-card border border-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 w-64"
                 />
               </div>
-              
+
               <div className="flex items-center gap-2 bg-card border border-border p-1 rounded-xl">
                 <Filter size={16} className="ml-2 text-muted-foreground" />
-                <select 
+                <select
                   value={filterProperty}
                   onChange={(e) => setFilterProperty(e.target.value)}
                   className="bg-transparent text-sm font-medium p-1 outline-none"
@@ -177,7 +177,7 @@ export default function SuperAdminDashboard() {
 
               <div className="flex items-center gap-2 bg-card border border-border p-1 rounded-xl">
                 <Tag size={16} className="ml-2 text-muted-foreground" />
-                <select 
+                <select
                   value={filterEntity}
                   onChange={(e) => setFilterEntity(e.target.value)}
                   className="bg-transparent text-sm font-medium p-1 outline-none"
@@ -224,7 +224,7 @@ export default function SuperAdminDashboard() {
                         <td className="p-4 whitespace-nowrap">
                           <div className="flex items-center gap-2 text-xs font-mono">
                             <Calendar size={12} className="text-muted-foreground" />
-                            {log.timestamp ? format(log.timestamp.toDate(), "dd/MM HH:mm:ss", { locale: ptBR }) : "---"}
+                            {log.timestamp ? format(new Date(log.timestamp), "dd/MM HH:mm:ss", { locale: ptBR }) : "---"}
                           </div>
                         </td>
                         <td className="p-4">

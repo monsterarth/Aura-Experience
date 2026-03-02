@@ -7,16 +7,13 @@ import { useAuth } from "@/context/AuthContext";
 import { MaintenanceService } from "@/services/maintenance-service";
 import { CabinService } from "@/services/cabin-service";
 import { StructureService } from "@/services/structure-service";
-import { MaintenanceTask, Cabin, Structure } from "@/types/aura";
+import { StaffService } from "@/services/staff-service";
+import { MaintenanceTask, Cabin, Structure, Staff } from "@/types/aura";
 import { MaintenanceTaskManagerModal } from "@/components/admin/maintenance/MaintenanceTaskManagerModal";
 import { MaintenanceCompletionModal } from "@/components/admin/maintenance/MaintenanceCompletionModal";
 import { Clock, Hammer, AlertCircle, CheckCircle2, PlayCircle, Plus, Edit3, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { db } from "@/lib/firebase";
-
-// Manually fetch maintenance staff
-import { collection, query, where, getDocs } from "firebase/firestore";
 
 export default function MaintenancePage() {
     const { currentProperty: property, loading: isLoading } = useProperty();
@@ -54,10 +51,8 @@ export default function MaintenancePage() {
                 setStructures(structuresDict);
 
                 // Fetch Staff (Role = maintenance or technician)
-                const staffQ = query(collection(db, "properties", property.id, "staff"), where("active", "==", true));
-                const staffSnap = await getDocs(staffQ);
-                const allStaff = staffSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-                const techs = allStaff.filter((s: any) => s.role === 'maintenance' || s.role === 'technician');
+                const staffData = await StaffService.getStaffByProperty(property.id);
+                const techs = staffData.filter((s: Staff) => (s.role === 'maintenance' || s.role === 'technician') && s.active);
                 setTechnicians(techs);
 
                 unsubscribe = MaintenanceService.listenToActiveTasks(property.id, (realtimeTasks) => {

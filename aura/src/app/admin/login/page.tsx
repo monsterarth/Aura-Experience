@@ -2,9 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { setCookie } from "cookies-next";
 import { Loader2, ShieldCheck, Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
@@ -32,10 +30,10 @@ export default function AdminLoginPage() {
         return "/admin/core/properties";
       case 'governance':
       case 'maid': // Camareira vai direto para o seu App Mobile de Governança
-        return "/admin/governance"; 
+        return "/admin/governance";
       case 'maintenance':
       case 'technician':
-        return "/admin/maintenance"; 
+        return "/admin/maintenance";
       case 'kitchen':
       case 'waiter':
         return "/admin/kitchen";
@@ -53,23 +51,30 @@ export default function AdminLoginPage() {
     setError(null);
 
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
-      const userDoc = await getDoc(doc(db, "users", user.uid));
-      
-      if (!userDoc.exists()) {
-        throw new Error("Usuário autenticado, mas perfil não encontrado no Aura.");
+      if (authError || !authData.user) {
+        throw new Error(authError?.message || "Credenciais inválidas.");
       }
 
-      const userData = userDoc.data() as Staff;
+      const user = authData.user;
+
+      const { data: userData, error: staffError } = await supabase
+        .from('staff')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (staffError || !userData) {
+        throw new Error("Usuário autenticado, mas perfil não encontrado no Aura.");
+      }
 
       if (!userData.active) {
         throw new Error("Esta conta foi desativada pela administração.");
       }
 
       // Cookie de Sessão
-      setCookie('aura-session', 'true', { 
+      setCookie('aura-session', 'true', {
         maxAge: 60 * 60 * 24 * 7,
         path: '/',
         sameSite: 'lax'
@@ -83,13 +88,15 @@ export default function AdminLoginPage() {
     } catch (err: any) {
       console.error("[Aura Login Error]", err.code);
       let message = "Falha ao acessar o sistema.";
-      
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential' || err.code === 'auth/invalid-email') {
-        message = "Credenciais inválidas.";
-      } else if (err.message) {
-        message = err.message;
+
+      if (err.message) {
+        if (err.message.includes("Invalid login credentials") || err.message.includes("Credenciais")) {
+          message = "Credenciais inválidas.";
+        } else {
+          message = err.message;
+        }
       }
-      
+
       setError(message);
       toast.error(message);
     } finally {
@@ -99,15 +106,15 @@ export default function AdminLoginPage() {
 
   return (
     <main className="min-h-[100dvh] w-full flex flex-col items-center justify-center bg-slate-50 dark:bg-zinc-950 p-4 md:p-6 relative overflow-hidden font-sans text-slate-900 dark:text-slate-50">
-      
+
       {/* Background Effects Suaves */}
       <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent opacity-100 z-0 pointer-events-none"></div>
 
       <div className="w-full max-w-md z-10 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
-        
+
         {/* Card Principal */}
         <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl shadow-xl dark:shadow-2xl p-8 md:p-10 space-y-8 relative overflow-hidden">
-          
+
           {/* Linha de Destaque no Topo do Card */}
           <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-primary to-blue-500"></div>
 
@@ -131,7 +138,7 @@ export default function AdminLoginPage() {
               <label className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">E-mail Corporativo</label>
               <div className="relative group">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 group-focus-within:text-primary transition-colors" size={20} />
-                <input 
+                <input
                   type="email"
                   required
                   value={email}
@@ -146,7 +153,7 @@ export default function AdminLoginPage() {
               <label className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Senha</label>
               <div className="relative group">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 group-focus-within:text-primary transition-colors" size={20} />
-                <input 
+                <input
                   type={showPassword ? "text" : "password"}
                   required
                   value={password}
@@ -154,7 +161,7 @@ export default function AdminLoginPage() {
                   placeholder="••••••••"
                   className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-700 p-4 pl-12 pr-12 rounded-2xl text-slate-900 dark:text-white outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-600 font-medium"
                 />
-                <button 
+                <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-zinc-300 transition-colors"

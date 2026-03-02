@@ -1,5 +1,4 @@
-import { adminDb } from "@/lib/firebase-admin"; 
-import { FieldValue } from "firebase-admin/firestore";
+import { supabaseAdmin } from "@/lib/supabase";
 
 export interface MessageJob {
   id?: string;
@@ -15,62 +14,67 @@ export interface MessageJob {
 }
 
 export class MessageQueueService {
-  private static collectionName = "message_queue";
+  private static tableName = "message_queue";
 
-  /**
-   * Adiciona uma nova mensagem à fila para ser processada.
-   */
   static async enqueueMessage(data: Omit<MessageJob, "status" | "retryCount" | "createdAt" | "id">) {
-    const queueRef = adminDb.collection(this.collectionName);
-    
-    const newJob: Omit<MessageJob, "id"> = {
+    const id = crypto.randomUUID();
+
+    const newJob = {
       ...data,
+      id,
       status: "pending",
       retryCount: 0,
-      createdAt: new Date(),
+      scheduledFor: data.scheduledFor.toISOString(),
+      createdAt: new Date().toISOString(),
     };
 
-    const docRef = await queueRef.add(newJob);
-    return docRef.id;
+    const { error } = await supabaseAdmin.from(this.tableName).insert(newJob);
+    if (error) throw error;
+
+    return id;
   }
 
-  /**
-   * Busca mensagens prontas para envio (Agendadas para o passado/agora e pendentes/falhas)
-   */
   static async getPendingMessages(limitCount = 50): Promise<MessageJob[]> {
-    const now = new Date();
-    
-    const snapshot = await adminDb.collection(this.collectionName)
-      .where("status", "in", ["pending", "failed"])
-      .where("scheduledFor", "<=", now)
-      .limit(limitCount)
-      .get();
+    const now = new Date().toISOString();
 
-    return snapshot.docs
-      .map((doc: any) => ({ id: doc.id, ...doc.data() } as MessageJob))
+    const { data } = await supabaseAdmin
+      .from(this.tableName)
+      .select('*')
+      .in('status', ['pending', 'failed'])
+      .lte('scheduledFor', now)
+      .limit(limitCount);
+
+    if (!data) return [];
+
+    return data
+      .map((job: any) => ({
+        ...job,
+        scheduledFor: new Date(job.scheduledFor),
+        createdAt: new Date(job.createdAt)
+      }))
       .filter((job: MessageJob) => job.retryCount < job.maxRetries);
   }
 
-  /**
-   * Atualiza o status de uma mensagem na fila
-   */
   static async updateMessageStatus(
-    jobId: string, 
-    status: "processing" | "sent" | "failed", 
+    jobId: string,
+    status: "processing" | "sent" | "failed",
     errorLog?: string
   ) {
-    const docRef = adminDb.collection(this.collectionName).doc(jobId);
-    
+    // In Supabase SQL we don't have atomic incremental without RPC, 
+    // but we can query first since message processing is usually per-message sync.
+    const { data: job } = await supabaseAdmin.from(this.tableName).select('retryCount').eq('id', jobId).single();
+    if (!job) return;
+
     const updateData: any = {
       status,
-      updatedAt: FieldValue.serverTimestamp()
+      updatedAt: new Date().toISOString()
     };
 
     if (status === "failed") {
-      updateData.retryCount = FieldValue.increment(1);
+      updateData.retryCount = job.retryCount + 1;
       if (errorLog) updateData.errorLog = errorLog;
     }
 
-    await docRef.update(updateData);
+    await supabaseAdmin.from(this.tableName).update(updateData).eq('id', jobId);
   }
 }

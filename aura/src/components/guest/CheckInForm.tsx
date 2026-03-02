@@ -7,8 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useProperty } from "@/context/PropertyContext";
 import { StayService } from "@/services/stay-service";
-import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { supabase } from "@/lib/supabase";
 import { Loader2, CheckCircle2, User, Phone, Mail, FileText, Home } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -39,9 +38,8 @@ export const CheckInForm = () => {
   useEffect(() => {
     const fetchCabins = async () => {
       if (!property?.id) return;
-      const q = query(collection(db, "cabins"), where("propertyId", "==", property.id));
-      const snap = await getDocs(q);
-      setCabins(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cabin)));
+      const { data } = await supabase.from('cabins').select('*').eq('propertyId', property.id);
+      setCabins(data || []);
     };
     fetchCabins();
   }, [property]);

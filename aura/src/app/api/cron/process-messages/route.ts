@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/firebase";
-import { collectionGroup, getDocs, getDoc, setDoc, deleteDoc, doc, updateDoc, query, where, Timestamp } from "firebase/firestore";
+import { supabaseAdmin } from "@/lib/supabase";
 import { WhatsAppMessage } from "@/types/aura";
 
 export const dynamic = 'force-dynamic';
@@ -18,38 +17,34 @@ export async function GET(request: Request) {
   try {
     const now = new Date();
     now.setMinutes(now.getMinutes() + 1); // Margem de segurança
-    const timeLimit = Timestamp.fromDate(now);
+    const timeLimit = now.toISOString();
 
-    const queueQuery = query(
-      collectionGroup(db, "messages"),
-      where("status", "==", "pending"),
-      where("scheduledFor", "<=", timeLimit)
-    );
-    
-    const snapshot = await getDocs(queueQuery);
-    
-    if (snapshot.empty) {
+    const { data: snapshot, error: fetchError } = await supabaseAdmin
+      .from('messages')
+      .select('*')
+      .eq('status', 'pending')
+      .lte('scheduledFor', timeLimit)
+      .limit(15);
+
+    if (fetchError) throw fetchError;
+
+    if (!snapshot || snapshot.length === 0) {
       return NextResponse.json({ success: true, processed: 0, message: "Fila vazia. Nenhuma ação necessária." });
     }
 
     let successCount = 0;
     let failCount = 0;
 
-    // PROTEÇÃO ANTI-SPAM E ANTI-TIMEOUT: Pegamos no máximo 15 mensagens por vez
-    // Se a fila tiver 50, ele processa 15 agora, e daqui a 5 min o Cron processa mais 15.
-    const docsToProcess = snapshot.docs.slice(0, 15);
+    for (const msgDoc of snapshot) {
+      const msg = msgDoc as any as WhatsAppMessage;
 
-    for (const msgDoc of docsToProcess) {
-      const msg = { id: msgDoc.id, ...msgDoc.data() } as WhatsAppMessage;
-      const messageRef = msgDoc.ref; 
-
-      await updateDoc(messageRef, { status: 'processing' });
+      await supabaseAdmin.from('messages').update({ status: 'processing' }).eq('id', msg.id);
 
       try {
-        const propertyDoc = await getDoc(doc(db, "properties", msg.propertyId));
-        if (!propertyDoc.exists()) throw new Error("Propriedade não encontrada");
-        
-        const propertySettings = propertyDoc.data()?.settings;
+        const { data: propertyDoc } = await supabaseAdmin.from('properties').select('settings').eq('id', msg.propertyId).single();
+        if (!propertyDoc) throw new Error("Propriedade não encontrada");
+
+        const propertySettings = propertyDoc.settings as any;
         if (!propertySettings?.whatsappEnabled || !propertySettings?.whatsappConfig?.apiUrl) {
           throw new Error("WhatsApp não configurado ou desligado na propriedade.");
         }
@@ -61,7 +56,7 @@ export async function GET(request: Request) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-api-key': token 
+            'x-api-key': token
           },
           body: JSON.stringify({
             number: msg.to,
@@ -69,80 +64,89 @@ export async function GET(request: Request) {
           })
         });
 
-if (!response.ok) {
+        if (!response.ok) {
           const errorText = await response.text();
           let errorMessage = "Erro na API do WhatsApp Docker";
           try {
             const errorJson = JSON.parse(errorText);
             errorMessage = errorJson.error || errorMessage;
           } catch (e) {
-            errorMessage = errorText; 
+            errorMessage = errorText;
           }
           throw new Error(errorMessage);
         }
 
-        // 🔥 A MÁGICA DA DESDUPLICAÇÃO:
         const responseData = await response.json();
         const metaMessageId = responseData.messageId;
+        const isoNow = new Date().toISOString();
+
         if (metaMessageId) {
-          const finalMessageRef = doc(db, "properties", msg.propertyId, "messages", metaMessageId);
-          await setDoc(finalMessageRef, {
-            ...msg,
-            id: metaMessageId,
-            status: 'sent',
-            attempts: msg.attempts + 1,
-            lastAttemptAt: Timestamp.now(),
-            errorMessage: null
-          });
-          await deleteDoc(messageRef);
+          if (metaMessageId !== msg.id) {
+            await supabaseAdmin.from('messages').insert({
+              ...msg,
+              id: metaMessageId,
+              status: 'sent',
+              attempts: (msg.attempts || 0) + 1,
+              lastAttemptAt: isoNow,
+              errorMessage: null
+            });
+            await supabaseAdmin.from('messages').delete().eq('id', msg.id);
+          } else {
+            await supabaseAdmin.from('messages').update({
+              status: 'sent',
+              attempts: (msg.attempts || 0) + 1,
+              lastAttemptAt: isoNow,
+              errorMessage: null
+            }).eq('id', msg.id);
+          }
         } else {
-          // Fallback caso a API não retorne o ID
-          await updateDoc(messageRef, {
+          await supabaseAdmin.from('messages').update({
             status: 'sent',
-            attempts: msg.attempts + 1,
-            lastAttemptAt: Timestamp.now(),
+            attempts: (msg.attempts || 0) + 1,
+            lastAttemptAt: isoNow,
             errorMessage: null
-          });
+          }).eq('id', msg.id);
         }
-        
+
         successCount++;
 
-        // PROTEÇÃO ANTI-SPAM (A MÁGICA ACONTECE AQUI)
-        // Faz o sistema pausar entre 2 e 4 segundos de forma aleatória antes de ir para a próxima mensagem
         const humanDelay = Math.floor(Math.random() * (4000 - 2000 + 1)) + 2000;
         await sleep(humanDelay);
 
       } catch (error: any) {
         console.error(`Erro ao enviar mensagem ${msg.id}:`, error.message);
-        const nextAttempts = msg.attempts + 1;
-        
+        const nextAttempts = (msg.attempts || 0) + 1;
+        const isoNow = new Date().toISOString();
+
         if (nextAttempts >= 3) {
-          await updateDoc(messageRef, {
+          await supabaseAdmin.from('messages').update({
             status: 'failed',
             attempts: nextAttempts,
-            lastAttemptAt: Timestamp.now(),
+            lastAttemptAt: isoNow,
             errorMessage: error.message || "Erro desconhecido"
-          });
+          }).eq('id', msg.id);
         } else {
           const retryTime = new Date();
-          retryTime.setMinutes(retryTime.getMinutes() + 5); 
-          
-          await updateDoc(messageRef, {
+          retryTime.setMinutes(retryTime.getMinutes() + 5);
+
+          await supabaseAdmin.from('messages').update({
             status: 'pending',
             attempts: nextAttempts,
-            scheduledFor: Timestamp.fromDate(retryTime),
-            lastAttemptAt: Timestamp.now(),
+            scheduledFor: retryTime.toISOString(),
+            lastAttemptAt: isoNow,
             errorMessage: `Falha na tentativa ${nextAttempts}: ${error.message}`
-          });
+          }).eq('id', msg.id);
         }
         failCount++;
       }
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      processed: docsToProcess.length,
-      leftInQueue: snapshot.size - docsToProcess.length, // Diz quantas ficaram de fora para a próxima rodada
+    const { count } = await supabaseAdmin.from('messages').select('*', { count: 'exact', head: true }).eq('status', 'pending').lte('scheduledFor', timeLimit);
+
+    return NextResponse.json({
+      success: true,
+      processed: snapshot.length,
+      leftInQueue: count || 0,
       results: { sent: successCount, delayed_or_failed: failCount }
     });
 

@@ -1,58 +1,43 @@
-import { db } from "@/lib/firebase";
-import { 
-  collection, 
-  doc, 
-  getDoc, 
-  updateDoc, 
-  writeBatch, 
-  serverTimestamp, 
-  query, 
-  where, 
-  getDocs, 
-  orderBy,
-  collectionGroup,
-  limit,
-  setDoc,
-  deleteDoc
-} from "firebase/firestore";
+import { supabase } from "@/lib/supabase";
 import { Stay, Guest, Cabin, FolioItem, AutomationTriggerEvent, MessageTemplate } from "@/types/aura";
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
 import { AutomationService } from "./automation-service";
 
 export const StayService = {
-  /**
-   * Dispara uma automação se a regra estiver ativa na propriedade.
-   * Executado silenciosamente para não travar o fluxo da recepção.
-   */
   async triggerAutomation(propertyId: string, stayId: string, triggerEvent: AutomationTriggerEvent) {
     try {
       // 1. Verifica se a regra existe e está ativa
-      const ruleSnap = await getDoc(doc(db, "properties", propertyId, "automation_rules", triggerEvent));
-      if (!ruleSnap.exists() || !ruleSnap.data().active) return;
-      const rule = ruleSnap.data();
+      const { data: rule } = await supabase
+        .from('automation_rules')
+        .select('*')
+        .eq('propertyId', propertyId)
+        .eq('triggerEvent', triggerEvent)
+        .single();
+
+      if (!rule || !rule.active) return;
 
       // 2. Busca o template da mensagem
-      const templateSnap = await getDoc(doc(db, "properties", propertyId, "message_templates", rule.templateId));
-      if (!templateSnap.exists()) return;
-      const template = { id: templateSnap.id, ...templateSnap.data() } as MessageTemplate;
+      const { data: template } = await supabase
+        .from('message_templates')
+        .select('*')
+        .eq('propertyId', propertyId)
+        .eq('id', rule.templateId)
+        .single();
+
+      if (!template) return;
 
       // 3. Coleta os dados vitais
-      const stayDoc = await getDoc(doc(db, "properties", propertyId, "stays", stayId));
-      if (!stayDoc.exists()) return;
-      const stay = { id: stayDoc.id, ...stayDoc.data() } as Stay;
+      const { data: stay } = await supabase.from('stays').select('*').eq('id', stayId).single();
+      if (!stay) return;
 
-      const guestDoc = await getDoc(doc(db, "properties", propertyId, "guests", stay.guestId));
-      if (!guestDoc.exists()) return;
-      const guest = { id: guestDoc.id, ...guestDoc.data() } as Guest;
+      const { data: guest } = await supabase.from('guests').select('*').eq('id', stay.guestId).single();
+      if (!guest || !guest.phone) return;
 
-      // Se não houver telefone cadastrado, aborta o envio
-      if (!guest.phone) return;
-
-      let cabin;
+      let cabin = undefined;
       if (stay.cabinId) {
-        const cabinDoc = await getDoc(doc(db, "properties", propertyId, "cabins", stay.cabinId));
-        if (cabinDoc.exists()) cabin = { id: cabinDoc.id, ...cabinDoc.data() } as Cabin;
+        const { data: c } = await supabase.from('cabins').select('*').eq('id', stay.cabinId).single();
+        if (c) cabin = c;
       }
 
       // 4. Envia para a Fila de Processamento
@@ -60,11 +45,11 @@ export const StayService = {
         propertyId,
         stayId,
         guest.phone,
-        template,
+        template as MessageTemplate,
         triggerEvent,
-        guest,
-        cabin,
-        stay,
+        guest as Guest,
+        cabin as Cabin,
+        stay as Stay,
         rule.delayMinutes || 0
       );
     } catch (error) {
@@ -72,9 +57,6 @@ export const StayService = {
     }
   },
 
-  /**
-   * Gera um código de acesso único dentro da sub-coleção de estadias da propriedade
-   */
   async generateUniqueAccessCode(propertyId: string): Promise<string> {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     let code = "";
@@ -82,40 +64,33 @@ export const StayService = {
 
     while (!isUnique) {
       code = Array.from({ length: 5 }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
-      
-      const q = query(
-        collection(db, "properties", propertyId, "stays"), 
-        where("accessCode", "==", code)
-      );
-      
-      const snap = await getDocs(q);
-      if (snap.empty) isUnique = true;
+
+      const { data } = await supabase
+        .from('stays')
+        .select('id')
+        .eq('propertyId', propertyId)
+        .eq('accessCode', code);
+
+      if (!data || data.length === 0) isUnique = true;
     }
     return code;
   },
 
-  /**
-   * Encontra o ID da propriedade pesquisando globalmente pelo ID da estadia.
-   */
   async findPropertyIdByStayId(stayId: string): Promise<string | null> {
     try {
-      const staysRef = collectionGroup(db, "stays");
-      const q = query(staysRef, where("id", "==", stayId), limit(1));
-      const snapshot = await getDocs(q);
+      const { data } = await supabase
+        .from('stays')
+        .select('propertyId')
+        .eq('id', stayId)
+        .maybeSingle();
 
-      if (snapshot.empty) return null;
-
-      const doc = snapshot.docs[0];
-      return doc.ref.parent.parent?.id || null;
+      return data?.propertyId || null;
     } catch (error) {
       console.error("Erro ao localizar propriedade da estadia:", error);
       return null;
     }
   },
 
-  /**
-   * Cria registros de estadia na sub-coleção properties/{id}/stays
-   */
   async createStayRecord(params: {
     propertyId: string;
     guestId: string;
@@ -126,36 +101,33 @@ export const StayService = {
     actorId: string;
     actorName: string;
   }) {
-    const batch = writeBatch(db);
     const accessCode = await this.generateUniqueAccessCode(params.propertyId);
     const groupId = params.cabinConfigs.length > 1 ? `GRP-${uuidv4().slice(0, 8).toUpperCase()}` : null;
 
-    params.cabinConfigs.forEach((config) => {
+    const payloads = params.cabinConfigs.map(config => {
       const stayId = uuidv4();
-      const stayRef = doc(db, "properties", params.propertyId, "stays", stayId);
-      
-      batch.set(stayRef, {
+      return {
         id: stayId,
         propertyId: params.propertyId,
         guestId: params.guestId,
         cabinId: config.cabinId,
         groupId,
         accessCode,
-        checkIn: params.checkIn,
-        checkOut: params.checkOut,
+        checkIn: params.checkIn.toISOString(),
+        checkOut: params.checkOut.toISOString(),
         counts: { adults: config.adults, children: config.children, babies: config.babies },
         status: 'pending',
-        automationFlags: { 
-          send48h: params.sendAutomations, 
-          send24h: params.sendAutomations, 
-          preCheckinSent: false, 
-          remindersCount: 0 
-        },
-        createdAt: serverTimestamp()
-      });
+        automationFlags: {
+          send48h: params.sendAutomations,
+          send24h: params.sendAutomations,
+          preCheckinSent: false,
+          remindersCount: 0
+        }
+      };
     });
 
-    await batch.commit();
+    const { error } = await supabase.from('stays').insert(payloads);
+    if (error) throw error;
 
     await AuditService.log({
       propertyId: params.propertyId,
@@ -170,140 +142,99 @@ export const StayService = {
     return { accessCode, groupId };
   },
 
-  /**
-   * Busca uma estadia e seu hóspede (Admin)
-   */
   async getStayWithGuest(propertyId: string, stayId: string) {
-    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
-    const stayDoc = await getDoc(stayRef);
-    
-    if (!stayDoc.exists()) return null;
-    
-    const stayData = { id: stayDoc.id, ...stayDoc.data() } as Stay;
-    const guestDoc = await getDoc(doc(db, "properties", propertyId, "guests", stayData.guestId));
-    
-    return { 
-      stay: stayData, 
-      guest: guestDoc.exists() ? { id: guestDoc.id, ...guestDoc.data() } as Guest : null 
-    };
+    const { data: stay } = await supabase.from('stays').select('*').eq('id', stayId).eq('propertyId', propertyId).single();
+    if (!stay) return null;
+
+    const { data: guest } = await supabase.from('guests').select('*').eq('id', stay.guestId).eq('propertyId', propertyId).maybeSingle();
+
+    return { stay: stay as Stay, guest: guest as Guest | null };
   },
 
-  /**
-   * Finaliza o pré-check-in do hóspede
-   */
   async completePreCheckin(propertyId: string, stayId: string, stayUpdate: Partial<Stay>, guestUpdate: Partial<Guest>) {
-    const batch = writeBatch(db);
-    
-    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
-    const staySnap = await getDoc(stayRef);
-    const gId = staySnap.data()?.guestId;
+    // Busca id do guest
+    const { data: stay } = await supabase.from('stays').select('guestId').eq('id', stayId).single();
+    if (!stay) throw new Error("Stay not found");
 
-    batch.update(stayRef, { 
-      ...stayUpdate, 
-      status: 'pre_checkin_done', 
-      updatedAt: serverTimestamp() 
-    });
-
-    batch.update(doc(db, "properties", propertyId, "guests", gId), { 
-      ...guestUpdate, 
-      updatedAt: serverTimestamp() 
-    });
-
-    return batch.commit();
+    // Supabase JS doesnt have explicit transactions, we do parallel awaited calls
+    await Promise.all([
+      supabase.from('stays').update({ ...stayUpdate, status: 'pre_checkin_done', updatedAt: new Date().toISOString() }).eq('id', stayId),
+      supabase.from('guests').update({ ...guestUpdate, updatedAt: new Date().toISOString() }).eq('id', stay.guestId)
+    ]);
   },
 
-  /**
-   * Busca estadias de um grupo usando COLLECTION GROUP (Portal do Hóspede)
-   */
   async getGroupStays(accessCode: string) {
-    const q = query(
-      collectionGroup(db, "stays"), 
-      where("accessCode", "==", accessCode.toUpperCase()),
-      where("status", "in", ["pending", "pre_checkin_done"])
-    );
-    
-    const snap = await getDocs(q);
-    
-    const stays = await Promise.all(snap.docs.map(async (d) => {
-      const data = d.data() as Stay;
-      const cabinDoc = await getDoc(doc(db, "properties", data.propertyId, "cabins", data.cabinId));
-      
-      return { 
-        ...data, 
-        id: d.id, 
-        cabinName: cabinDoc.exists() ? cabinDoc.data().name : "Acomodação" 
+    const { data: stays, error } = await supabase
+      .from('stays')
+      .select('*')
+      .eq('accessCode', accessCode.toUpperCase())
+      .in('status', ['pending', 'pre_checkin_done']);
+
+    if (error || !stays) return [];
+
+    const enriched = await Promise.all(stays.map(async (stay) => {
+      const { data: cabin } = await supabase.from('cabins').select('name').eq('id', stay.cabinId).maybeSingle();
+      return {
+        ...stay,
+        cabinName: cabin ? cabin.name : "Acomodação"
       };
     }));
-    
-    return stays;
+
+    return enriched;
   },
 
-  /**
-   * Busca Stay + Guest + Cabin (Admin e Portal)
-   */
   async getStayWithGuestAndCabin(propertyId: string, stayId: string) {
-    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
-    const stayDoc = await getDoc(stayRef);
-    if (!stayDoc.exists()) return null;
+    const { data: stay } = await supabase.from('stays').select('*').eq('id', stayId).eq('propertyId', propertyId).single();
+    if (!stay) return null;
 
-    const stayData = { id: stayDoc.id, ...stayDoc.data() } as Stay;
-
-    const [guestDoc, cabinDoc] = await Promise.all([
-      getDoc(doc(db, "properties", propertyId, "guests", stayData.guestId)),
-      getDoc(doc(db, "properties", propertyId, "cabins", stayData.cabinId))
+    const [gRes, cRes] = await Promise.all([
+      supabase.from('guests').select('*').eq('id', stay.guestId).eq('propertyId', propertyId).maybeSingle(),
+      supabase.from('cabins').select('*').eq('id', stay.cabinId).eq('propertyId', propertyId).maybeSingle()
     ]);
 
-    return { 
-      stay: stayData, 
-      guest: guestDoc.exists() ? { id: guestDoc.id, ...guestDoc.data() } as Guest : null,
-      cabin: cabinDoc.exists() ? { id: cabinDoc.id, ...cabinDoc.data() } as Cabin : null
+    return {
+      stay: stay as Stay,
+      guest: gRes.data as Guest | null,
+      cabin: cRes.data as Cabin | null
     };
   },
 
-  /**
-   * Listagem por Status (Admin)
-   */
   async getStaysByStatus(propertyId: string, statusList: string[]) {
     try {
-      const q = query(
-        collection(db, "properties", propertyId, "stays"),
-        where("status", "in", statusList),
-        orderBy("checkIn", "asc")
-      );
-      
-      const snap = await getDocs(q);
-      const stays = await Promise.all(snap.docs.map(async (d) => {
-        const data = d.data() as Stay;
-        const [guestDoc, cabinDoc] = await Promise.all([
-          getDoc(doc(db, "properties", propertyId, "guests", data.guestId)),
-          getDoc(doc(db, "properties", propertyId, "cabins", data.cabinId))
+      const { data: stays, error } = await supabase
+        .from('stays')
+        .select('*')
+        .eq('propertyId', propertyId)
+        .in('status', statusList)
+        .order('checkIn', { ascending: true });
+
+      if (error || !stays) return [];
+
+      const enriched = await Promise.all(stays.map(async (stay) => {
+        const [gRes, cRes] = await Promise.all([
+          supabase.from('guests').select('fullName').eq('id', stay.guestId).maybeSingle(),
+          supabase.from('cabins').select('name').eq('id', stay.cabinId).maybeSingle()
         ]);
 
         return {
-          ...data,
-          id: d.id,
-          guestName: guestDoc.exists() ? guestDoc.data().fullName : "Hóspede desconhecido",
-          cabinName: cabinDoc.exists() ? cabinDoc.data().name : "N/A"
+          ...stay,
+          guestName: gRes.data ? gRes.data.fullName : "Hóspede desconhecido",
+          cabinName: cRes.data ? cRes.data.name : "N/A"
         };
       }));
 
-      return stays;
+      return enriched as any[]; // casting since we mixed frontend extra fields
     } catch (error) {
       console.error("Erro ao listar estadias:", error);
       return [];
     }
   },
 
-  /**
-   * Check-in Físico
-   */
   async performCheckIn(propertyId: string, stayId: string, actorId: string, actorName: string) {
-    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
-
-    await updateDoc(stayRef, {
+    await supabase.from('stays').update({
       status: 'active',
-      checkInActual: serverTimestamp()
-    });
+      checkInActual: new Date().toISOString()
+    }).eq('id', stayId).eq('propertyId', propertyId);
 
     await AuditService.log({
       propertyId,
@@ -315,67 +246,55 @@ export const StayService = {
       details: "Check-in físico realizado pela recepção."
     });
 
-    // DISPARO DE AUTOMAÇÃO: Boas Vindas
     await this.triggerAutomation(propertyId, stayId, 'welcome_checkin');
   },
 
-  /**
-   * Check-out Físico: Libera Cabana E Cria Tarefa de Governança
-   */
   async performCheckOut(propertyId: string, stayId: string, actorId: string, actorName: string) {
-    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
-    const staySnap = await getDoc(stayRef);
-    const cabinId = staySnap.data()?.cabinId;
-
+    const { data: stay } = await supabase.from('stays').select('cabinId').eq('id', stayId).single();
+    const cabinId = stay?.cabinId;
     if (!cabinId) throw new Error("Acomodação não encontrada na reserva.");
 
-    const dailyTasksQuery = query(
-      collection(db, "properties", propertyId, "housekeeping_tasks"),
-      where("cabinId", "==", cabinId),
-      where("status", "==", "pending")
-    );
-    const dailyTasksSnap = await getDocs(dailyTasksQuery);
+    // Update daily tasks to cancelled
+    await supabase.from('housekeeping_tasks')
+      .update({
+        status: 'cancelled',
+        observations: 'Cancelada automaticamente por Check-out (Substituída por Faxina de Troca).',
+        updatedAt: new Date().toISOString()
+      })
+      .eq('propertyId', propertyId)
+      .eq('cabinId', cabinId)
+      .eq('type', 'daily')
+      .eq('status', 'pending');
 
-    const batch = writeBatch(db);
+    // Finish stay
+    await supabase.from('stays')
+      .update({
+        status: 'finished',
+        checkOutActual: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      })
+      .eq('id', stayId);
 
-    dailyTasksSnap.docs.forEach(d => {
-      if (d.data().type === 'daily') {
-        batch.update(d.ref, {
-          status: 'cancelled',
-          observations: 'Cancelada automaticamente por Check-out (Substituída por Faxina de Troca).',
-          updatedAt: serverTimestamp()
-        });
-      }
-    });
+    // Free up cabin
+    await supabase.from('cabins')
+      .update({
+        status: 'cleaning',
+        currentStayId: null
+      })
+      .eq('id', cabinId);
 
-    batch.update(stayRef, {
-      status: 'finished',
-      checkOutActual: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
-
-    const cabinRef = doc(db, "properties", propertyId, "cabins", cabinId);
-    batch.update(cabinRef, {
-      status: 'cleaning',
-      currentStayId: null
-    });
-
+    // Create turnover
     const newTaskId = uuidv4();
-    const taskRef = doc(db, "properties", propertyId, "housekeeping_tasks", newTaskId);
-    batch.set(taskRef, {
+    await supabase.from('housekeeping_tasks').insert({
       id: newTaskId,
       propertyId,
       cabinId,
-      stayId, 
+      stayId,
       type: 'turnover',
       status: 'pending',
-      assignedTo: [], 
-      checklist: [], 
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      assignedTo: [],
+      checklist: []
     });
-
-    await batch.commit();
 
     await AuditService.log({
       propertyId,
@@ -387,49 +306,37 @@ export const StayService = {
       details: `Check-out realizado. Tarefa de Faxina de Troca gerada para a unidade ${cabinId}.`
     });
 
-    // DISPARO DE AUTOMAÇÕES: Agradecimento e NPS (O delay é tratado na Fila)
     await this.triggerAutomation(propertyId, stayId, 'checkout_thanks');
     await this.triggerAutomation(propertyId, stayId, 'nps_survey');
 
     return { success: true };
   },
 
-  /**
-   * Desfaz o Check-out e Reativa a Estadia (Cancela a Tarefa de Governança)
-   */
   async undoCheckOut(propertyId: string, stayId: string, cabinId: string, actorId: string, actorName: string) {
-    const turnoverQuery = query(
-      collection(db, "properties", propertyId, "housekeeping_tasks"),
-      where("stayId", "==", stayId),
-      where("type", "==", "turnover"),
-      where("status", "in", ["pending", "in_progress", "waiting_conference"])
-    );
-    const turnoverSnap = await getDocs(turnoverQuery);
-
-    const batch = writeBatch(db);
-
-    turnoverSnap.docs.forEach(d => {
-      batch.update(d.ref, {
+    await supabase.from('housekeeping_tasks')
+      .update({
         status: 'cancelled',
         observations: 'Check-out desfeito pela Recepção. Tarefa cancelada.',
-        updatedAt: serverTimestamp()
-      });
-    });
+        updatedAt: new Date().toISOString()
+      })
+      .eq('stayId', stayId)
+      .eq('type', 'turnover')
+      .in('status', ['pending', 'in_progress', 'waiting_conference']);
 
-    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
-    batch.update(stayRef, {
-      status: 'active',
-      checkOutActual: null,
-      updatedAt: serverTimestamp()
-    });
+    await supabase.from('stays')
+      .update({
+        status: 'active',
+        checkOutActual: null,
+        updatedAt: new Date().toISOString()
+      })
+      .eq('id', stayId);
 
-    const cabinRef = doc(db, "properties", propertyId, "cabins", cabinId);
-    batch.update(cabinRef, {
-      status: 'occupied',
-      currentStayId: stayId
-    });
-
-    await batch.commit();
+    await supabase.from('cabins')
+      .update({
+        status: 'occupied',
+        currentStayId: stayId
+      })
+      .eq('id', cabinId);
 
     await AuditService.log({
       propertyId,
@@ -440,49 +347,25 @@ export const StayService = {
       entityId: stayId,
       details: `Check-out revertido. Estadia reativada e tarefa de limpeza cancelada.`
     });
-    
-    // Obs: Poderíamos adicionar lógica para deletar a mensagem de NPS da fila aqui, 
-    // mas na maioria das operações isso não é bloqueante.
   },
 
-  /**
-   * Cancela uma estadia pendente
-   */
   async cancelStay(propertyId: string, stayId: string, actorId: string, actorName: string) {
-    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
-    
-    await updateDoc(stayRef, {
-      status: 'cancelled',
-      updatedAt: serverTimestamp()
-    });
+    await supabase.from('stays')
+      .update({ status: 'cancelled', updatedAt: new Date().toISOString() })
+      .eq('id', stayId);
 
     await AuditService.log({
-      propertyId,
-      userId: actorId,
-      userName: actorName,
-      action: "DELETE",
-      entity: "STAY",
-      entityId: stayId,
+      propertyId, userId: actorId, userName: actorName, action: "DELETE", entity: "STAY", entityId: stayId,
       details: "Reserva cancelada administrativamente."
     });
   },
 
-  /**
-   * Atualização manual de dados da ficha
-   */
   async updateStayData(propertyId: string, stayId: string, data: Partial<Stay>, actorId: string, actorName: string) {
-    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
-    await updateDoc(stayRef, { ...data, updatedAt: serverTimestamp() });
+    await supabase.from('stays').update({ ...data, updatedAt: new Date().toISOString() }).eq('id', stayId);
 
     await AuditService.log({
-      propertyId,
-      userId: actorId,
-      userName: actorName,
-      action: "UPDATE",
-      entity: "STAY",
-      entityId: stayId,
-      details: "Ficha de hospedagem editada pela recepção.",
-      newData: data
+      propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
+      details: "Ficha de hospedagem editada pela recepção.", newData: data
     });
   },
 
@@ -491,30 +374,26 @@ export const StayService = {
   // ==========================================
 
   async getStayFolio(propertyId: string, stayId: string): Promise<FolioItem[]> {
-    const q = query(
-      collection(db, "properties", propertyId, "stays", stayId, "folio"),
-      orderBy("createdAt", "desc")
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as FolioItem));
+    const { data } = await supabase
+      .from('folio_items')
+      .select('*')
+      .eq('propertyId', propertyId)
+      .eq('stayId', stayId)
+      .order('createdAt', { ascending: false });
+    return (data || []) as FolioItem[];
   },
 
   async addFolioItemManual(propertyId: string, stayId: string, item: Omit<FolioItem, 'id' | 'createdAt' | 'status'>, actorId: string, actorName: string) {
-    const batch = writeBatch(db);
     const itemId = uuidv4();
-    
-    const folioRef = doc(db, "properties", propertyId, "stays", stayId, "folio", itemId);
-    batch.set(folioRef, {
+    await supabase.from('folio_items').insert({
       ...item,
       id: itemId,
-      status: 'pending',
-      createdAt: serverTimestamp()
+      propertyId,
+      stayId,
+      status: 'pending'
     });
 
-    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
-    batch.update(stayRef, { hasOpenFolio: true });
-
-    await batch.commit();
+    await supabase.from('stays').update({ hasOpenFolio: true }).eq('id', stayId);
 
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
@@ -523,14 +402,10 @@ export const StayService = {
   },
 
   async toggleFolioItemStatus(propertyId: string, stayId: string, itemId: string, newStatus: 'pending' | 'paid', actorId: string, actorName: string) {
-    const folioRef = doc(db, "properties", propertyId, "stays", stayId, "folio", itemId);
-    await updateDoc(folioRef, { status: newStatus });
+    await supabase.from('folio_items').update({ status: newStatus }).eq('id', itemId);
 
-    const q = query(collection(db, "properties", propertyId, "stays", stayId, "folio"), where("status", "==", "pending"));
-    const pendingSnap = await getDocs(q);
-    
-    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
-    await updateDoc(stayRef, { hasOpenFolio: !pendingSnap.empty });
+    const { count } = await supabase.from('folio_items').select('*', { count: 'exact', head: true }).eq('stayId', stayId).eq('status', 'pending');
+    await supabase.from('stays').update({ hasOpenFolio: (count || 0) > 0 }).eq('id', stayId);
 
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
@@ -539,13 +414,10 @@ export const StayService = {
   },
 
   async deleteFolioItem(propertyId: string, stayId: string, itemId: string, itemDescription: string, actorId: string, actorName: string) {
-    const folioRef = doc(db, "properties", propertyId, "stays", stayId, "folio", itemId);
-    await deleteDoc(folioRef);
+    await supabase.from('folio_items').delete().eq('id', itemId);
 
-    const q = query(collection(db, "properties", propertyId, "stays", stayId, "folio"), where("status", "==", "pending"));
-    const pendingSnap = await getDocs(q);
-    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
-    await updateDoc(stayRef, { hasOpenFolio: !pendingSnap.empty });
+    const { count } = await supabase.from('folio_items').select('*', { count: 'exact', head: true }).eq('stayId', stayId).eq('status', 'pending');
+    await supabase.from('stays').update({ hasOpenFolio: (count || 0) > 0 }).eq('id', stayId);
 
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "DELETE", entity: "STAY", entityId: stayId,
@@ -554,11 +426,9 @@ export const StayService = {
   },
 
   async archiveStay(propertyId: string, stayId: string, actorId: string, actorName: string) {
-    const stayRef = doc(db, "properties", propertyId, "stays", stayId);
-    await updateDoc(stayRef, { 
-      status: 'archived',
-      updatedAt: serverTimestamp() 
-    });
+    await supabase.from('stays')
+      .update({ status: 'archived', updatedAt: new Date().toISOString() })
+      .eq('id', stayId);
 
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,

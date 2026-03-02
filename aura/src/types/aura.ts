@@ -143,6 +143,8 @@ export interface Structure {
   bookingType: 'fixed_slots' | 'free_time';
   requiresTurnover: boolean; // Does it require housekeeping after use?
   housekeepingChecklist?: { id: string; label: string }[];
+  messageTemplatePendingId?: string;
+  messageTemplateConfirmedId?: string;
   createdAt?: Timestamp;
 }
 
@@ -443,6 +445,7 @@ export type AutomationTriggerEvent =
   | 'pre_checkout'
   | 'checkout_thanks'
   | 'nps_survey'
+  | 'structure_booking_confirmed'
   | 'custom_scheduled';
 
 // --- REGRAS DE AUTOMAÇÃO (Ligadas/Desligadas pela Pousada) ---
@@ -554,5 +557,9 @@ export interface Staff {
   email: string;
   role: UserRole;
   active: boolean;
+  profilePictureUrl?: string;
+  birthDate?: string;
+  phone?: string;
+  bio?: string;
   createdAt: Timestamp;
 }

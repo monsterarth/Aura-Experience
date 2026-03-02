@@ -1,87 +1,79 @@
-// src/services/whatsapp-service.ts
-import { db } from "@/lib/firebase";
-import { collection, addDoc, doc, updateDoc, serverTimestamp, increment } from "firebase/firestore";
+import { supabase } from "@/lib/supabase";
 import { WhatsAppMessage, Property } from "@/types/aura";
 import { AuditService } from "./audit-service";
 
-/**
- * WhatsAppService: Sistema de mensageria assíncrona do Aura.
- */
 export const WhatsAppService = {
-  /**
-   * Enfileira uma mensagem para envio na coleção de outbox.
-   */
   async enqueueMessage(
     messageData: Omit<WhatsAppMessage, "id" | "status" | "attempts" | "createdAt">,
     actorName: string,
     actorId: string
   ) {
     try {
-      const messageRef = collection(db, "messages");
-      const docRef = await addDoc(messageRef, {
+      const id = crypto.randomUUID();
+
+      const payload = {
         ...messageData,
+        id,
         status: "queued",
         attempts: 0,
-        createdAt: serverTimestamp(),
-      });
+        createdAt: new Date().toISOString(),
+      };
 
-      // Log de envio
+      const { error } = await supabase.from('messages').insert(payload);
+      if (error) throw error;
+
       await AuditService.log({
         propertyId: messageData.propertyId,
         userId: actorId,
         userName: actorName,
         action: "MESSAGE_SENT",
         entity: "MESSAGE",
-        entityId: docRef.id,
+        entityId: id,
         details: `Mensagem enfileirada para ${messageData.to}`
       });
 
-      return docRef.id;
+      return id;
     } catch (error) {
       console.error("[WhatsAppService] Falha ao enfileirar:", error);
       throw error;
     }
   },
 
-  /**
-   * Processa o envio real chamando a API externa.
-   */
   async processMessage(messageId: string, propertyConfig: Property['settings']['whatsappConfig']) {
-    const messageRef = doc(db, "messages", messageId);
-
     if (!propertyConfig) {
       throw new Error("Configuração de WhatsApp não encontrada para esta propriedade.");
     }
 
     try {
-      await updateDoc(messageRef, {
-        attempts: increment(1),
-        lastAttemptAt: serverTimestamp()
-      });
+      const { data: msg } = await supabase.from('messages').select('attempts').eq('id', messageId).single();
+      const currentAttempts = msg?.attempts || 0;
 
-      // Simulação da chamada de API do Synapse / Aura
+      await supabase.from('messages').update({
+        attempts: currentAttempts + 1,
+        lastAttemptAt: new Date().toISOString()
+      }).eq('id', messageId);
+
       const response = await fetch(propertyConfig.apiUrl, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${propertyConfig.token}` 
+          'Authorization': `Bearer ${propertyConfig.token}`
         },
         body: JSON.stringify({ /* payload */ }),
       });
 
       if (!response.ok) throw new Error("API Offline ou Erro de Token.");
 
-      await updateDoc(messageRef, { status: "sent" });
+      await supabase.from('messages').update({ status: "sent" }).eq('id', messageId);
 
     } catch (error: any) {
-      await updateDoc(messageRef, { 
+      await supabase.from('messages').update({
         status: "failed",
-        errorMessage: error.message 
-      });
+        errorMessage: error.message
+      }).eq('id', messageId);
 
-      // Log de falha na auditoria
       await AuditService.log({
-        propertyId: "SYSTEM", 
+        propertyId: "SYSTEM",
         userId: "SYSTEM_AURA",
         userName: "Aura Engine",
         action: "MESSAGE_FAILED",
@@ -92,16 +84,11 @@ export const WhatsAppService = {
     }
   },
 
-  /**
-   * Reenvia uma mensagem que falhou.
-   */
   async resend(messageId: string, propertyId: string, actorName: string, actorId: string) {
-    const messageRef = doc(db, "messages", messageId);
-    
-    await updateDoc(messageRef, {
+    await supabase.from('messages').update({
       status: "queued",
       errorMessage: null
-    });
+    }).eq('id', messageId);
 
     await AuditService.log({
       propertyId,

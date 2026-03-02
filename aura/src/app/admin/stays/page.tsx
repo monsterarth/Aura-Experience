@@ -154,7 +154,7 @@ export default function StaysPage() {
     if (!checkOutDate) return { label: "N/A", color: "text-foreground" };
 
     const today = new Date();
-    const end = checkOutDate.toDate();
+    const end = new Date(checkOutDate);
     const diff = differenceInCalendarDays(end, today);
 
     if (diff < 0) return { label: "Check-out Atrasado", color: "text-red-500" };
@@ -166,7 +166,7 @@ export default function StaysPage() {
   const getFutureStatusInfo = (checkInDate: any, expectedTime?: string) => {
     if (!checkInDate) return "Aguardando";
     const today = new Date();
-    const start = checkInDate.toDate();
+    const start = new Date(checkInDate);
     const diff = differenceInCalendarDays(start, today);
 
     const timeString = expectedTime ? ` às ${expectedTime}` : "";
@@ -300,8 +300,8 @@ export default function StaysPage() {
                           </h3>
                           <div className="flex items-center gap-2 text-foreground/40 text-[10px] font-bold uppercase tracking-widest">
                             <Clock size={12} />
-                            {s.checkIn?.toDate ? format(s.checkIn.toDate(), "dd MMM", { locale: ptBR }) : ''} —
-                            {s.checkOut?.toDate ? format(s.checkOut.toDate(), "dd MMM", { locale: ptBR }) : ''}
+                            {s.checkIn ? format(new Date(s.checkIn), "dd MMM", { locale: ptBR }) : ''} —
+                            {s.checkOut ? format(new Date(s.checkOut), "dd MMM", { locale: ptBR }) : ''}
                           </div>
                         </div>
 
@@ -443,7 +443,7 @@ export default function StaysPage() {
                           <td className="p-4">
                             <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
                               <Clock size={12} />
-                              {s.checkIn?.toDate ? format(s.checkIn.toDate(), "dd/MM") : ''} até {s.checkOut?.toDate ? format(s.checkOut.toDate(), "dd/MM") : ''}
+                              {s.checkIn ? format(new Date(s.checkIn), "dd/MM") : ''} até {s.checkOut ? format(new Date(s.checkOut), "dd/MM") : ''}
                             </div>
                           </td>
 

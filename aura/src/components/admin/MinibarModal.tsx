@@ -5,6 +5,7 @@ import React, { useState, useEffect } from "react";
 import { X, Save, Coffee, Plus, Minus, AlertCircle, ShoppingCart } from "lucide-react";
 import { HousekeepingTask } from "@/types/aura";
 import { HousekeepingService } from "@/services/housekeeping-service";
+import { StayService } from "@/services/stay-service";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -30,7 +31,7 @@ const MINIBAR_CATALOG = [
 export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalProps) {
   const { userData } = useAuth();
   const [loading, setLoading] = useState(false);
-  
+
   // Estado do carrinho: { 'id_do_produto': quantidade }
   const [cart, setCart] = useState<Record<string, number>>({});
 
@@ -48,7 +49,7 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
       const current = prev[productId] || 0;
       const next = current + delta;
       if (next < 0) return prev; // Não permite negativo
-      
+
       const newCart = { ...prev };
       if (next === 0) {
         delete newCart[productId]; // Limpa do objeto se for 0
@@ -76,7 +77,6 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
         totalPrice: product.price * quantity,
         category: 'minibar' as const,
         addedBy: userData?.id || "SYSTEM",
-        status: 'pending'
       };
     });
 
@@ -90,8 +90,8 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
     try {
       // Salva todos os itens no Folio da Estadia
       await Promise.all(
-        itemsToSave.map(item => 
-          HousekeepingService.addFolioItem(task.propertyId, task.stayId!, { ...item, status: 'pending' })
+        itemsToSave.map(item =>
+          StayService.addFolioItemManual(task.propertyId, task.stayId!, item, userData?.id || "SYSTEM", userData?.fullName || "Camareira Aura")
         )
       );
 
@@ -110,12 +110,12 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
       <div className="bg-card border border-border w-full max-w-md rounded-[32px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
-        
+
         {/* HEADER */}
         <div className="p-6 border-b border-border bg-secondary/50 flex justify-between items-center">
           <div>
             <h2 className="text-xl font-bold flex items-center gap-2 text-foreground">
-              <Coffee className="text-blue-500" /> 
+              <Coffee className="text-blue-500" />
               Reposição de Frigobar
             </h2>
             <p className="text-xs text-muted-foreground mt-1 font-bold uppercase tracking-wider">
@@ -153,7 +153,7 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
                 </span>
 
                 <div className="flex items-center gap-3">
-                  <button 
+                  <button
                     onClick={() => updateQuantity(product.id, -1)}
                     disabled={quantity === 0}
                     className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-foreground disabled:opacity-30 disabled:cursor-not-allowed hover:bg-destructive hover:text-white transition-colors"
@@ -161,7 +161,7 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
                     <Minus size={14} />
                   </button>
                   <span className="w-4 text-center font-black text-sm">{quantity}</span>
-                  <button 
+                  <button
                     onClick={() => updateQuantity(product.id, 1)}
                     className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-foreground hover:bg-blue-500 hover:text-white transition-colors"
                   >
@@ -184,12 +184,12 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
             <button onClick={onClose} className="px-4 py-3 font-bold text-xs uppercase text-muted-foreground hover:text-foreground transition-colors">
               Cancelar
             </button>
-            <button 
-              onClick={handleSave} 
+            <button
+              onClick={handleSave}
               disabled={loading || (!task.stayId && totalItems > 0)}
               className="px-6 py-3 bg-blue-600 text-white font-bold text-xs uppercase rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
             >
-              {loading ? "Lançando..." : <><Save size={16}/> Lançar na Conta</>}
+              {loading ? "Lançando..." : <><Save size={16} /> Lançar na Conta</>}
             </button>
           </div>
         </div>

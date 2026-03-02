@@ -59,8 +59,8 @@ export default function StructureBookingsPage() {
             // Filtrar estadias para que o dia selecionado (currentDate) esteja entre checkIn e checkOut
             // ignoramos a hora para a comparação do dia.
             const validStaysForDate = allActiveStays.filter(s => {
-                const checkInDate = s.checkIn?.toDate ? s.checkIn.toDate() : new Date(s.checkIn);
-                const checkOutDate = s.checkOut?.toDate ? s.checkOut.toDate() : new Date(s.checkOut);
+                const checkInDate = s.checkIn ? new Date(s.checkIn) : new Date();
+                const checkOutDate = s.checkOut ? new Date(s.checkOut) : new Date();
 
                 checkInDate.setHours(0, 0, 0, 0);
                 checkOutDate.setHours(23, 59, 59, 999);

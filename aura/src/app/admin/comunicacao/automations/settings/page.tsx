@@ -8,13 +8,13 @@ import { useProperty } from "@/context/PropertyContext";
 import { AutomationService } from "@/services/automation-service";
 import { AutomationRule, MessageTemplate } from "@/types/aura";
 import { Button } from "@/components/ui/button";
-import { 
-  Settings, 
-  ArrowLeft, 
-  FileText, 
-  Plus, 
-  Save, 
-  Trash2, 
+import {
+  Settings,
+  ArrowLeft,
+  FileText,
+  Plus,
+  Save,
+  Trash2,
   Wand2,
   Clock,
   Zap,
@@ -32,6 +32,9 @@ const AVAILABLE_VARIABLES = [
   { key: "{{survey_link}}", label: "Link do NPS", desc: "Pesquisa de Satisfação" },
   { key: "{{wifi_ssid}}", label: "Rede Wi-Fi", desc: "Nome da rede da cabana" },
   { key: "{{wifi_password}}", label: "Senha Wi-Fi", desc: "Senha da rede" },
+  { key: "{{structure_name}}", label: "Nome da Estrutura", desc: "Nome da quadra, bike, etc" },
+  { key: "{{booking_date}}", label: "Data do Uso", desc: "Data que foi agendada a estrutura" },
+  { key: "{{booking_time}}", label: "Hora do Uso", desc: "Hora de início da estrutura" },
 ];
 
 const TRIGGER_DETAILS: Record<string, { label: string, desc: string }> = {
@@ -40,16 +43,17 @@ const TRIGGER_DETAILS: Record<string, { label: string, desc: string }> = {
   'welcome_checkin': { label: 'Boas-vindas', desc: 'Disparado assim que a recepção clica em "Fazer Check-in".' },
   'pre_checkout': { label: 'Instruções de Saída', desc: 'Enviado às 18h do dia anterior à saída.' },
   'checkout_thanks': { label: 'Agradecimento', desc: 'Disparado quando a conta é encerrada (Check-out).' },
-  'nps_survey': { label: 'Pesquisa NPS', desc: 'Enviado X horas após a saída do hóspede.' },
+  'nps_survey': { label: 'Pesquisa NPS', desc: 'Enviado após a saída do hóspede.' },
+  'structure_booking_confirmed': { label: 'Agendamento de Estrutura', desc: 'Disparado ao confirmar a reserva de uma estrutura (quadra/bicicleta).' },
 };
 
 export default function AutomationSettingsPage() {
   const router = useRouter();
   const { currentProperty: property } = useProperty();
-  
+
   const [activeTab, setActiveTab] = useState<'rules' | 'templates'>('rules');
   const [loading, setLoading] = useState(true);
-  
+
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [savingRule, setSavingRule] = useState<string | null>(null);
@@ -104,15 +108,15 @@ export default function AutomationSettingsPage() {
 
   const insertVariable = (variableKey: string) => {
     if (!editingTemplate || !textareaRef.current) return;
-    
+
     const start = textareaRef.current.selectionStart;
     const end = textareaRef.current.selectionEnd;
     const currentBody = editingTemplate.body || "";
-    
+
     const newBody = currentBody.substring(0, start) + variableKey + currentBody.substring(end);
-    
+
     setEditingTemplate({ ...editingTemplate, body: newBody });
-    
+
     // Reposiciona o cursor
     setTimeout(() => {
       if (textareaRef.current) {
@@ -127,7 +131,7 @@ export default function AutomationSettingsPage() {
       alert("Preencha o nome e o texto da mensagem.");
       return;
     }
-    
+
     const success = await AutomationService.saveTemplate(property.id, editingTemplate);
     if (success) {
       await fetchData(); // Recarrega para obter o ID caso seja novo
@@ -145,9 +149,9 @@ export default function AutomationSettingsPage() {
       alert("Este template está sendo usado por uma regra ativa. Altere a regra antes de excluir.");
       return;
     }
-    
+
     if (!confirm("Excluir este template definitivamente?")) return;
-    
+
     const success = await AutomationService.deleteTemplate(property.id, templateId);
     if (success) setTemplates(templates.filter(t => t.id !== templateId));
   };
@@ -172,23 +176,21 @@ export default function AutomationSettingsPage() {
       </header>
 
       <main className="flex-1 p-6 max-w-6xl mx-auto w-full">
-        
+
         {/* Navegação de Abas */}
         <div className="flex space-x-1 bg-muted/50 p-1 rounded-xl mb-8 w-full max-w-md">
           <button
             onClick={() => setActiveTab('rules')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg transition-all ${
-              activeTab === 'rules' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-            }`}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg transition-all ${activeTab === 'rules' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+              }`}
           >
             <Zap className="w-4 h-4" />
             Gatilhos (Regras)
           </button>
           <button
             onClick={() => setActiveTab('templates')}
-            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg transition-all ${
-              activeTab === 'templates' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
-            }`}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg transition-all ${activeTab === 'templates' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+              }`}
           >
             <FileText className="w-4 h-4" />
             Textos (Templates)
@@ -201,16 +203,16 @@ export default function AutomationSettingsPage() {
             <p className="text-muted-foreground">A carregar configurações...</p>
           </div>
         ) : activeTab === 'rules' ? (
-          
+
           /* ABA 1: REGRAS E GATILHOS */
           <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
             {rules.map(rule => {
               const details = TRIGGER_DETAILS[rule.id] || { label: rule.id, desc: 'Gatilho do sistema' };
-              
+
               return (
                 <div key={rule.id} className={`bg-background border rounded-xl p-5 shadow-sm transition-all ${rule.active ? 'border-primary/40 ring-1 ring-primary/10' : 'opacity-75'}`}>
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    
+
                     {/* Info */}
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-1">
@@ -224,10 +226,10 @@ export default function AutomationSettingsPage() {
 
                     {/* Controles */}
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full md:w-auto">
-                      
+
                       <div className="space-y-1.5 w-full sm:w-56">
                         <label className="text-xs font-medium text-muted-foreground">Qual mensagem enviar?</label>
-                        <select 
+                        <select
                           className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-50"
                           value={rule.templateId}
                           onChange={(e) => handleUpdateRuleData(rule.id, 'templateId', e.target.value)}
@@ -241,8 +243,8 @@ export default function AutomationSettingsPage() {
                       <div className="space-y-1.5 w-full sm:w-32">
                         <label className="text-xs font-medium text-muted-foreground">Atraso (Delay)</label>
                         <div className="relative">
-                          <input 
-                            type="number" 
+                          <input
+                            type="number"
                             min="0"
                             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm pl-8 disabled:opacity-50"
                             value={rule.delayMinutes || 0}
@@ -255,8 +257,8 @@ export default function AutomationSettingsPage() {
 
                       <div className="flex items-center justify-end w-full sm:w-auto mt-4 sm:mt-0 pt-2 sm:pt-6">
                         <label className="relative inline-flex items-center cursor-pointer">
-                          <input 
-                            type="checkbox" 
+                          <input
+                            type="checkbox"
                             className="sr-only peer"
                             checked={rule.active}
                             onChange={() => handleToggleRule(rule.id, rule.active)}
@@ -265,7 +267,7 @@ export default function AutomationSettingsPage() {
                           <div className="w-11 h-6 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                         </label>
                       </div>
-                      
+
                     </div>
                   </div>
                 </div>
@@ -274,7 +276,7 @@ export default function AutomationSettingsPage() {
           </div>
 
         ) : (
-          
+
           /* ABA 2: TEMPLATES */
           <div className="animate-in fade-in slide-in-from-bottom-4">
             <div className="flex justify-between items-center mb-6">
@@ -319,7 +321,7 @@ export default function AutomationSettingsPage() {
       {isTemplateModalOpen && editingTemplate && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-background rounded-xl w-full max-w-3xl shadow-xl flex flex-col max-h-[90vh] overflow-hidden">
-            
+
             <div className="flex justify-between items-center p-5 border-b bg-muted/10">
               <div>
                 <h2 className="text-lg font-bold">Construtor de Mensagem</h2>
@@ -331,13 +333,13 @@ export default function AutomationSettingsPage() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 grid grid-cols-1 lg:grid-cols-3 gap-6">
-              
+
               {/* Editor Textual */}
               <div className="lg:col-span-2 space-y-4">
                 <div className="space-y-1.5">
                   <label className="text-sm font-semibold">Nome de Identificação Interna</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="Ex: Boas Vindas Praia 1"
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-medium"
                     value={editingTemplate.name || ""}
@@ -346,7 +348,7 @@ export default function AutomationSettingsPage() {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-semibold">Texto do WhatsApp</label>
-                  <textarea 
+                  <textarea
                     ref={textareaRef}
                     placeholder="Olá {{guest_name}}! Seja bem vindo à..."
                     className="flex min-h-[300px] w-full rounded-md border border-input bg-background px-4 py-3 text-sm resize-none focus-visible:ring-1 focus-visible:ring-primary shadow-inner"
@@ -366,7 +368,7 @@ export default function AutomationSettingsPage() {
                 </p>
                 <div className="flex flex-col gap-2 max-h-[350px] overflow-y-auto pr-1">
                   {AVAILABLE_VARIABLES.map(v => (
-                    <button 
+                    <button
                       key={v.key}
                       onClick={() => insertVariable(v.key)}
                       className="flex flex-col items-start p-2 rounded-md border border-transparent hover:border-primary/30 hover:bg-primary/5 transition-colors text-left"

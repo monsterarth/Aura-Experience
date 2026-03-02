@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase-admin";
+import { supabaseAdmin } from "@/lib/supabase";
 
 export async function POST(req: Request) {
   try {
@@ -10,15 +10,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Parâmetros obrigatórios em falta." }, { status: 400 });
     }
 
-    const messagesRef = adminDb.collection("properties").doc(propertyId).collection("messages");
+    let { data: msgDoc } = await supabaseAdmin.from('messages').select('id').eq('propertyId', propertyId).eq('id', messageId).single();
 
-    // Busca a mensagem (tanto as que chegaram de fora, quanto as que nós enviamos por API)
-    let msgDoc = await messagesRef.doc(messageId).get();
-    
-    if (!msgDoc.exists) {
-      const querySnap = await messagesRef.where("messageIdApi", "==", messageId).limit(1).get();
-      if (!querySnap.empty) {
-        msgDoc = querySnap.docs[0];
+    if (!msgDoc) {
+      const { data: qSnap } = await supabaseAdmin.from('messages').select('id').eq('propertyId', propertyId).eq('messageIdApi', messageId).single();
+      if (qSnap) {
+        msgDoc = qSnap;
       } else {
         return NextResponse.json({ error: "Mensagem não encontrada no banco." }, { status: 404 });
       }
@@ -27,9 +24,9 @@ export async function POST(req: Request) {
     // Aplica a atualização cirúrgica
     if (type === "ack") {
       // 1=Enviado, 2=Entregue, 3=Lido, 4=Áudio Reproduzido
-      await msgDoc.ref.update({ statusApi: ack });
+      await supabaseAdmin.from('messages').update({ statusApi: ack }).eq('id', msgDoc.id);
     } else if (type === "reaction") {
-      await msgDoc.ref.update({ reaction: reaction });
+      await supabaseAdmin.from('messages').update({ reaction: reaction }).eq('id', msgDoc.id);
     }
 
     return NextResponse.json({ success: true });

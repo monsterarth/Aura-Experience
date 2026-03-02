@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
-import { X, Save, Clock, Users, Activity, ImagePlus, Trash2, Plus, Calendar } from "lucide-react";
+import { X, Save, Clock, Users, Activity, ImagePlus, Trash2, Plus, Calendar, Bot } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { StructureService } from "@/services/structure-service";
-import { Structure } from "@/types/aura";
+import { AutomationService } from "@/services/automation-service";
+import { Structure, MessageTemplate } from "@/types/aura";
 import { cn } from "@/lib/utils";
 import { v4 as uuidv4 } from "uuid";
 
@@ -61,6 +62,14 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
             });
         }
     }, [structure, isOpen]);
+
+    const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+
+    useEffect(() => {
+        if (currentProperty?.id && isOpen) {
+            AutomationService.getTemplates(currentProperty.id).then(setTemplates);
+        }
+    }, [currentProperty?.id, isOpen]);
 
     if (!isOpen || !currentProperty) return null;
 
@@ -352,6 +361,43 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
                                     ))}
                                 </div>
                             )}
+                        </div>
+
+                        <div className="space-y-4">
+                            <h3 className="text-xs font-black uppercase text-foreground/50 tracking-widest border-b border-border pb-2 flex items-center gap-2">
+                                <Bot size={14} /> Automações de Agendamento
+                            </h3>
+                            <p className="text-xs text-muted-foreground mb-4">
+                                Personalize as mensagens que serão disparadas automaticamente no WhatsApp do hóspede referente a esta estrutura.
+                            </p>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="bg-secondary/20 p-4 border border-border rounded-xl">
+                                    <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Mensagem: Solicitação Recebida</label>
+                                    <p className="text-[10px] text-muted-foreground mb-3 leading-tight">Dispara assim que o hóspede solicita (ou quando a reserva nasce pendente).</p>
+                                    <select
+                                        value={formData.messageTemplatePendingId || ""}
+                                        onChange={e => setFormData({ ...formData, messageTemplatePendingId: e.target.value })}
+                                        className="w-full bg-background border border-border p-2.5 rounded-lg text-sm outline-none focus:border-primary text-foreground"
+                                    >
+                                        <option value="">Nenhuma (Não enviar)</option>
+                                        {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                    </select>
+                                </div>
+
+                                <div className="bg-secondary/20 p-4 border border-border rounded-xl">
+                                    <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Mensagem: Confirmada</label>
+                                    <p className="text-[10px] text-muted-foreground mb-3 leading-tight">Dispara quando a recepção aprova o agendamento.</p>
+                                    <select
+                                        value={formData.messageTemplateConfirmedId || ""}
+                                        onChange={e => setFormData({ ...formData, messageTemplateConfirmedId: e.target.value })}
+                                        className="w-full bg-background border border-border p-2.5 rounded-lg text-sm outline-none focus:border-primary text-foreground"
+                                    >
+                                        <option value="">Nenhuma (Não enviar)</option>
+                                        {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                    </select>
+                                </div>
+                            </div>
                         </div>
 
                     </form>

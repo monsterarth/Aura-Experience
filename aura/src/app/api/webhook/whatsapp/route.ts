@@ -1,13 +1,12 @@
 //src\app\api\webhook\whatsapp\route.ts
 
 import { NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase-admin";
-import { FieldValue } from "firebase-admin/firestore";
+import { supabaseAdmin } from "@/lib/supabase";
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-const { propertyId, contactNumber, text, direction, messageId, mediaUrl, originalText } = body;
+    const { propertyId, contactNumber, text, direction, messageId, mediaUrl, originalText } = body;
 
     // Validação básica de segurança
     if (!propertyId || !contactNumber || !text) {
@@ -16,28 +15,28 @@ const { propertyId, contactNumber, text, direction, messageId, mediaUrl, origina
 
     console.log(`[WEBHOOK] Mensagem recebida de ${contactNumber} para a propriedade ${propertyId} | Direção: ${direction}`);
 
-    // Referência direta à RAIZ de mensagens da propriedade
-    const messagesRef = adminDb.collection("properties").doc(propertyId).collection("messages");
 
     // ==========================================
     // 🛡️ BARREIRA ANTI-ECO (DESDUPLICAÇÃO)
     // ==========================================
     if (direction === "outbound") {
-      const recentMessages = await messagesRef
-        .where("contactId", "==", contactNumber)
-        .where("direction", "==", "outbound")
-        .orderBy("createdAt", "desc")
-        .limit(1)
-        .get();
+      const { data: recentMessages } = await supabaseAdmin
+        .from("messages")
+        .select("*")
+        .eq("propertyId", propertyId)
+        .eq("contactId", contactNumber)
+        .eq("direction", "outbound")
+        .order("createdAt", { ascending: false })
+        .limit(1);
 
-      if (!recentMessages.empty) {
-        const lastMsg = recentMessages.docs[0].data();
-        
-        // Compara com 'body' que é o padrão do nosso novo CRM
+      if (recentMessages && recentMessages.length > 0) {
+        const lastMsg = recentMessages[0];
+
+        // Compara com 'body'
         if (lastMsg.body === text) {
           let isRecent = false;
           if (lastMsg.createdAt) {
-            const msgTime = lastMsg.createdAt.toDate();
+            const msgTime = new Date(lastMsg.createdAt);
             const diffSeconds = (Date.now() - msgTime.getTime()) / 1000;
             if (diffSeconds < 30) isRecent = true;
           } else {
@@ -53,50 +52,67 @@ const { propertyId, contactNumber, text, direction, messageId, mediaUrl, origina
     }
     // ==========================================
 
-    // 1. Guardar a mensagem na RAIZ exatamente como o CRM lê
-    const newMsgRef = messageId ? messagesRef.doc(messageId) : messagesRef.doc();
-    
-    await newMsgRef.set({
-      id: newMsgRef.id,
+    const newId = messageId || crypto.randomUUID();
+    const isoNow = new Date().toISOString();
+
+    await supabaseAdmin.from("messages").upsert({
+      id: newId,
       propertyId,
       contactId: contactNumber,
       to: direction === "outbound" ? contactNumber : propertyId,
       from: direction === "inbound" ? contactNumber : propertyId,
-      body: text, // CRM usa 'body' em vez de 'text'
-      originalBody: originalText || null, // GUARDA O TEXTO ANTES DO GEMINI
-      mediaUrl: mediaUrl || null,         // GUARDA O LINK DA HOSTINGER
-      direction: direction === "inbound" ? "inbound" : "outbound", // CRM usa 'direction'
+      body: text,
+      originalBody: originalText || null,
+      mediaUrl: mediaUrl || null,
+      direction: direction === "inbound" ? "inbound" : "outbound",
       isAutomated: false,
       status: direction === "inbound" ? "delivered" : "sent",
-      createdAt: FieldValue.serverTimestamp(), // CRM usa 'createdAt'
-      ...(messageId && { messageIdApi: messageId })
-    }, { merge: true });
+      createdAt: isoNow,
+      attempts: 0,
+      ...(messageId && { id: messageId }) // garante caso tenha vindo na API externa
+    }, { onConflict: 'id' });
 
-// 2. Atualizar a Barra Lateral (Pasta 'communications' dita a ordem da lista)
-    const communicationRef = adminDb.collection("properties").doc(propertyId).collection("communications").doc(contactNumber);
-    await communicationRef.set({
+    // 2. Atualizar a Barra Lateral (Communications)
+    // Precisamos de count(unread) incremental
+    const { data: comms } = await supabaseAdmin.from('communications')
+      .select('unread')
+      .eq('id', contactNumber)
+      .eq('propertyId', propertyId)
+      .single();
+
+    const currentUnread = comms?.unread || 0;
+    const newUnread = direction === "inbound" ? currentUnread + 1 : 0;
+
+    await supabaseAdmin.from('communications').upsert({
+      id: contactNumber,
+      propertyId,
       lastMessage: text,
-      updatedAt: FieldValue.serverTimestamp(),
-      unread: direction === "inbound" ? FieldValue.increment(1) : 0,
-      ...(direction === "inbound" && { archived: false }) // 🔥 AUTO-DESARQUIVAR AQUI
-    }, { merge: true });
+      updatedAt: isoNow,
+      unread: newUnread,
+      ...(direction === "inbound" && { archived: false })
+    }, { onConflict: 'id' });
 
-    // 3. (Opcional) Garantir que existe na Agenda, se for um número novo que mandou mensagem
-    const contactRef = adminDb.collection("properties").doc(propertyId).collection("contacts").doc(contactNumber);
-    const contactSnap = await contactRef.get();
-    if (!contactSnap.exists) {
-        await contactRef.set({
-            id: contactNumber,
-            name: "+" + contactNumber,
-            phone: contactNumber,
-            isGuest: false,
-            createdAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp()
-        });
+    // 3. Garantir que existe na Agenda
+    const { data: contact } = await supabaseAdmin.from("contacts")
+      .select("id")
+      .eq("id", contactNumber)
+      .eq("propertyId", propertyId)
+      .single();
+
+    if (!contact) {
+      await supabaseAdmin.from("contacts").insert({
+        id: contactNumber,
+        propertyId,
+        name: "+" + contactNumber,
+        phone: contactNumber,
+        isGuest: false,
+        createdAt: isoNow,
+        updatedAt: isoNow
+      });
     }
 
-    return NextResponse.json({ success: true, message: "Mensagem guardada no Firestore com sucesso." });
-    
+    return NextResponse.json({ success: true, message: "Mensagem guardada no Supabase com sucesso." });
+
   } catch (error: any) {
     console.error("❌ Erro no Webhook do WhatsApp:", error);
     return NextResponse.json({ error: "Erro interno no servidor" }, { status: 500 });

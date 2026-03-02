@@ -2,12 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useProperty } from "@/context/PropertyContext";
-import { collection, query, where, onSnapshot, orderBy, limit } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase";
 import { WhatsAppMessage } from "@/types/aura";
 import { AutomationService } from "@/services/automation-service";
 import { Button } from "@/components/ui/button";
-import { 
+import {
   Bot, CheckCircle2, Clock, AlertCircle, RefreshCw, MessageSquareWarning, Loader2, CalendarClock
 } from "lucide-react";
 
@@ -21,37 +20,51 @@ export default function AutomationsQueuePage() {
   useEffect(() => {
     if (!property?.id) return;
 
-    const messagesRef = collection(db, "properties", property.id, "messages");
-    
-    // ARQUITETURA DE BAIXO CUSTO: Exige o Índice Composto, mas garante limite de Reads no Firebase.
-    const q = query(
-      messagesRef, 
-      where("isAutomated", "==", true),
-      orderBy("createdAt", "desc"),
-      limit(200) // Proteção financeira: Baixa no máximo o histórico recente
-    );
+    const fetchMessages = async () => {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('propertyId', property.id)
+        .eq('isAutomated', true)
+        .order('createdAt', { ascending: false })
+        .limit(200);
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WhatsAppMessage));
-      setMessages(msgs);
+      if (data) {
+        setMessages(data as any[]);
+      }
       setLoading(false);
-    }, (error) => {
-      console.error("Erro ao buscar fila de mensagens. Crie o índice no link do console:", error);
-      setLoading(false);
-    });
+    };
 
-    return () => unsubscribe();
+    fetchMessages();
+
+    // Listen for real-time changes
+    const channel = supabase.channel('automations_queue')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'messages',
+          filter: `propertyId=eq.${property.id}`
+        },
+        () => {
+          fetchMessages();
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
   }, [property?.id]);
 
   const handleRetry = async (messageId: string) => {
     if (!property?.id) return;
     setRetryingId(messageId);
-    
+
     const success = await AutomationService.retryFailedMessage(property.id, messageId);
     if (!success) {
       alert("Não foi possível reenviar a mensagem. Verifique a conexão.");
     }
-    
+
     setRetryingId(null);
   };
 
@@ -66,9 +79,9 @@ export default function AutomationsQueuePage() {
   };
 
   const formatDate = (timestamp: any) => {
-    if (!timestamp?.toDate) return "Data indefinida";
-    return timestamp.toDate().toLocaleString('pt-BR', { 
-      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' 
+    if (!timestamp) return "Data indefinida";
+    return new Date(timestamp).toLocaleString('pt-BR', {
+      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
     });
   };
 
@@ -80,6 +93,7 @@ export default function AutomationsQueuePage() {
       'pre_checkout': 'Instruções de Saída',
       'checkout_thanks': 'Agradecimento (Check-out)',
       'nps_survey': 'Pesquisa NPS',
+      'structure_booking_confirmed': 'Agendamento de Estrutura',
     };
     return trigger ? (triggers[trigger] || trigger) : 'Gatilho Desconhecido';
   };

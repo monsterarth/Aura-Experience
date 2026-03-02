@@ -30,15 +30,15 @@ interface StayDetailsModalProps {
 type TabType = 'reserva' | 'hospede' | 'fnrh' | 'acompanhantes_pet' | 'conta';
 
 const formatDateForInput = (timestamp: any) => {
-  if (!timestamp?.toDate) return "";
-  const d = timestamp.toDate();
+  if (!timestamp) return "";
+  const d = new Date(timestamp);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
 const parseDateFromInput = (dateStr: string, originalTimestamp: any) => {
   if (!dateStr) return null;
   const [year, month, day] = dateStr.split('-').map(Number);
-  const d = originalTimestamp?.toDate ? new Date(originalTimestamp.toDate().getTime()) : new Date();
+  const d = originalTimestamp ? new Date(originalTimestamp) : new Date();
   d.setFullYear(year, month - 1, day);
   return d;
 };
@@ -504,8 +504,8 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                               )}
                               <div>
                                 <span className={item.status === 'paid' ? "line-through" : ""}>{item.description}</span>
-                                <div className="text-[9px] font-mono text-muted-foreground uppercase mt-1 flex items-center gap-1">
-                                  <Clock size={10} /> {item.createdAt?.toDate ? format(item.createdAt.toDate(), "dd/MM HH:mm") : 'Agora'}
+                                <div className="text-[10px] font-bold text-muted-foreground flex items-center gap-1 uppercase tracking-widest mt-0.5">
+                                  <Clock size={10} /> {item.createdAt ? format(new Date(item.createdAt), "dd/MM HH:mm") : 'Agora'}
                                 </div>
                               </div>
                             </td>
@@ -582,7 +582,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                       <Input disabled={isCoreFieldLocked} type="date" value={checkInStr} onChange={e => setCheckInStr(e.target.value)} />
                     ) : (
                       <div className="text-foreground font-mono bg-secondary p-3 rounded-xl text-sm border border-border">
-                        {stay.checkIn?.toDate ? format(stay.checkIn.toDate(), "dd/MM/yyyy") : "Data inválida"}
+                        {stay.checkIn ? format(new Date(stay.checkIn), "dd/MM/yyyy") : "Data inválida"}
                       </div>
                     )}
                   </div>
@@ -592,7 +592,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                       <Input disabled={isCoreFieldLocked} type="date" value={checkOutStr} onChange={e => setCheckOutStr(e.target.value)} />
                     ) : (
                       <div className="text-foreground font-mono bg-secondary p-3 rounded-xl text-sm border border-border">
-                        {stay.checkOut?.toDate ? format(stay.checkOut.toDate(), "dd/MM/yyyy") : "Data inválida"}
+                        {stay.checkOut ? format(new Date(stay.checkOut), "dd/MM/yyyy") : "Data inválida"}
                       </div>
                     )}
                   </div>

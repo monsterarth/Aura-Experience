@@ -1,24 +1,24 @@
 // src/app/api/admin/staff/route.ts
 import { NextResponse } from "next/server";
-import { adminAuth, adminDb } from "@/lib/firebase-admin";
+import { adminAuth } from "@/lib/firebase-admin";
 import { Staff, UserRole } from "@/types/aura";
-import { FieldValue } from "firebase-admin/firestore";
+import { supabaseAdmin } from "@/lib/supabase";
 
 /**
  * POST /api/admin/staff
- * Cria um novo utilizador no Firebase Auth e no Firestore.
+ * Cria um novo utilizador no Supabase Auth e no Banco de Dados.
  */
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { 
-      email, 
-      password, 
-      fullName, 
-      role, 
-      propertyId, 
-      actorId, 
-      actorName 
+    const {
+      email,
+      password,
+      fullName,
+      role,
+      propertyId,
+      actorId,
+      actorName
     } = body;
 
     // 1. Validação básica de campos obrigatórios
@@ -29,60 +29,62 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Criar o utilizador no Firebase Authentication
-    // O Admin SDK permite criar utilizadores sem que eles precisem de fazer login
-    const userRecord = await adminAuth.createUser({
+    // 2. Criar o utilizador no Supabase Authentication
+    const { data: userResponse, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      displayName: fullName,
-      disabled: false,
+      email_confirm: true,
+      user_metadata: {
+        fullName,
+        role
+      }
     });
 
-    const uid = userRecord.uid;
+    if (createError || !userResponse.user) {
+      console.error("[Aura API Error] Falha na criação de Auth:", createError);
+      throw createError;
+    }
 
-    // 3. Criar o documento do funcionário no Firestore
-    const staffData: Omit<Staff, "id"> = {
-      propertyId: propertyId || null, // null apenas para super_admin
+    const uid = userResponse.user.id;
+
+    const staffData = {
+      id: uid,
+      propertyId: propertyId || null,
       fullName,
       email,
       role: role as UserRole,
       active: true,
-      createdAt: FieldValue.serverTimestamp(),
+      createdAt: new Date().toISOString(),
     };
 
-    await adminDb.collection("users").doc(uid).set(staffData);
+    await supabaseAdmin.from("staff").insert(staffData);
 
-    // 4. Gerar Log de Auditoria (Direto via Admin SDK para garantir consistência)
     const auditLog = {
+      id: crypto.randomUUID(),
       propertyId: propertyId || "SYSTEM",
       userId: actorId,
       userName: actorName,
       action: "USER_CREATE",
       entity: "USER",
       entityId: uid,
-      newData: {
-        email,
-        role,
-        fullName
-      },
-      timestamp: FieldValue.serverTimestamp(),
+      newData: { email, role, fullName },
+      timestamp: new Date().toISOString(),
       details: `Novo utilizador ${fullName} criado com o cargo ${role}.`
     };
 
-    await adminDb.collection("audit_logs").add(auditLog);
+    await supabaseAdmin.from("audit_logs").insert(auditLog);
 
     console.log(`[Aura API] Utilizador criado com sucesso: ${uid}`);
 
-    return NextResponse.json({ 
-      success: true, 
-      uid: uid 
+    return NextResponse.json({
+      success: true,
+      uid: uid
     }, { status: 201 });
 
   } catch (error: any) {
     console.error("[Aura API Error] Falha ao criar staff:", error);
-    
-    // Tratamento de erros comuns do Firebase Auth
-    if (error.code === 'auth/email-already-exists') {
+
+    if (error?.message?.includes('User already registered') || error?.code === 'auth/email-already-exists') {
       return NextResponse.json(
         { error: "Este e-mail já está registado no sistema." },
         { status: 400 }
@@ -105,22 +107,11 @@ export async function GET(request: Request) {
   const propertyId = searchParams.get('propertyId');
 
   try {
-    let query = adminDb.collection("users");
-    
-    // Se não for super_admin, filtra pela propriedade
-    let snapshot;
-    if (propertyId) {
-      snapshot = await query.where("propertyId", "==", propertyId).get();
-    } else {
-      snapshot = await query.get();
-    }
+    let query = supabaseAdmin.from('staff').select('*');
+    if (propertyId) query = query.eq('propertyId', propertyId);
 
-    const staffList = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-
-    return NextResponse.json(staffList);
+    const { data: staffList } = await query;
+    return NextResponse.json(staffList || []);
   } catch (error) {
     return NextResponse.json({ error: "Erro ao listar staff." }, { status: 500 });
   }

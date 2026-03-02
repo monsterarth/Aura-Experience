@@ -3,8 +3,7 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
 import { Property, PropertyTheme } from "@/types/aura";
-import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs, limit, doc, getDoc } from "firebase/firestore";
+import { supabase } from "@/lib/supabase";
 import { useAuth } from "./AuthContext";
 
 interface PropertyContextType {
@@ -112,12 +111,16 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
   const fetchPropertyBySlug = useCallback(async (slug: string) => {
     try {
       setLoading(true);
-      const q = query(collection(db, "properties"), where("slug", "==", slug), limit(1));
-      const snap = await getDocs(q);
-      if (snap.empty) throw new Error("Propriedade não encontrada.");
+      const { data, error } = await supabase
+        .from('properties')
+        .select('*')
+        .eq('slug', slug)
+        .limit(1)
+        .single();
 
-      const data = { id: snap.docs[0].id, ...snap.docs[0].data() } as Property;
-      handleSetProperty(data);
+      if (error || !data) throw new Error("Propriedade não encontrada.");
+
+      handleSetProperty(data as Property);
     } catch (err: any) {
       console.error(err);
       setError(err.message);
@@ -130,13 +133,15 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
   const fetchPropertyById = useCallback(async (id: string) => {
     try {
       setLoading(true);
-      const docRef = doc(db, "properties", id);
-      const snap = await getDoc(docRef);
+      const { data, error } = await supabase
+        .from('properties')
+        .select('*')
+        .eq('id', id)
+        .single();
 
-      if (!snap.exists()) throw new Error("Propriedade vinculada não encontrada.");
+      if (error || !data) throw new Error("Propriedade vinculada não encontrada.");
 
-      const data = { id: snap.id, ...snap.data() } as Property;
-      handleSetProperty(data);
+      handleSetProperty(data as Property);
     } catch (err: any) {
       console.error(err);
       setError(err.message);
