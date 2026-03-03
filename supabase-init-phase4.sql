@@ -19,6 +19,10 @@ CREATE TABLE IF NOT EXISTS public.staff (
     "email" TEXT NOT NULL,
     "role" TEXT NOT NULL,
     "active" BOOLEAN DEFAULT true,
+    "profilePictureUrl" TEXT,
+    "birthDate" TEXT,
+    "phone" TEXT,
+    "bio" TEXT,
     "createdAt" TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 CREATE INDEX IF NOT EXISTS staff_propertyId_idx ON public.staff ("propertyId");

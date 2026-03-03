@@ -25,7 +25,7 @@ async function main() {
         .limit(15);
 
     console.log("Matched messages for CRON:", snapshot?.length);
-    if (snapshot?.length > 0) {
+    if (snapshot && snapshot.length > 0) {
         console.log("Sample:", snapshot[0]);
     }
 }

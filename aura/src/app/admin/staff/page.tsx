@@ -3,17 +3,18 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { RoleGuard } from "@/components/auth/RoleGuard";
+import { StaffEditModal } from "@/components/admin/StaffEditModal";
 import { StaffService } from "@/services/staff-service";
 import { Staff, UserRole } from "@/types/aura";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
-import { 
-  Users, 
-  Plus, 
-  Mail, 
-  User, 
-  ShieldCheck, 
-  Loader2, 
+import {
+  Users,
+  Plus,
+  Mail,
+  User,
+  ShieldCheck,
+  Loader2,
   Key,
   Copy
 } from "lucide-react";
@@ -40,7 +41,8 @@ export default function StaffManagementPage() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
-  const [showCreatedModal, setShowCreatedModal] = useState<{pw: string, email: string} | null>(null);
+  const [showCreatedModal, setShowCreatedModal] = useState<{ pw: string, email: string } | null>(null);
+  const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -71,7 +73,7 @@ export default function StaffManagementPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userData || !property) return;
-    
+
     setIsCreating(true);
     try {
       const result = await StaffService.createStaffMember({
@@ -116,10 +118,10 @@ export default function StaffManagementPage() {
                 <label className="text-xs font-bold uppercase text-muted-foreground">Nome Completo</label>
                 <div className="relative">
                   <User className="absolute left-3 top-2.5 text-muted-foreground" size={18} />
-                  <input 
+                  <input
                     required
                     value={formData.fullName}
-                    onChange={e => setFormData({...formData, fullName: e.target.value})}
+                    onChange={e => setFormData({ ...formData, fullName: e.target.value })}
                     placeholder="Ex: Ana Souza"
                     className="w-full pl-10 p-2 bg-background border rounded-lg outline-none focus:ring-2 focus:ring-primary/20"
                   />
@@ -130,11 +132,11 @@ export default function StaffManagementPage() {
                 <label className="text-xs font-bold uppercase text-muted-foreground">E-mail de Acesso</label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-2.5 text-muted-foreground" size={18} />
-                  <input 
+                  <input
                     required
                     type="email"
                     value={formData.email}
-                    onChange={e => setFormData({...formData, email: e.target.value})}
+                    onChange={e => setFormData({ ...formData, email: e.target.value })}
                     placeholder="ana@aura.com"
                     className="w-full pl-10 p-2 bg-background border rounded-lg outline-none focus:ring-2 focus:ring-primary/20"
                   />
@@ -143,9 +145,9 @@ export default function StaffManagementPage() {
 
               <div className="space-y-1">
                 <label className="text-xs font-bold uppercase text-muted-foreground">Cargo / Permissão</label>
-                <select 
+                <select
                   value={formData.role}
-                  onChange={e => setFormData({...formData, role: e.target.value as UserRole})}
+                  onChange={e => setFormData({ ...formData, role: e.target.value as UserRole })}
                   className="w-full p-2 bg-background border rounded-lg outline-none focus:ring-2 focus:ring-primary/20"
                 >
                   <optgroup label="Administrativo e Recepção">
@@ -169,7 +171,7 @@ export default function StaffManagementPage() {
                 </select>
               </div>
 
-              <button 
+              <button
                 disabled={isCreating}
                 className="w-full py-3 bg-primary text-primary-foreground font-bold rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-all disabled:opacity-50"
               >
@@ -195,10 +197,21 @@ export default function StaffManagementPage() {
                   <tr><td colSpan={3} className="p-12 text-center text-muted-foreground">Nenhum funcionário registado.</td></tr>
                 ) : (
                   staffList.map((m) => (
-                    <tr key={m.id} className="hover:bg-muted/30 transition-colors">
+                    <tr key={m.id} className="hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setEditingStaff(m)}>
                       <td className="p-4">
-                        <div className="font-bold">{m.fullName}</div>
-                        <div className="text-xs text-muted-foreground">{m.email}</div>
+                        <div className="flex items-center gap-3">
+                          {m.profilePictureUrl ? (
+                            <img src={m.profilePictureUrl} alt={m.fullName} className="w-10 h-10 rounded-full object-cover border border-border" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
+                              {m.fullName.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <div className="font-bold">{m.fullName}</div>
+                            <div className="text-xs text-muted-foreground">{m.email}</div>
+                          </div>
+                        </div>
                       </td>
                       <td className="p-4">
                         <span className="px-2 py-1 bg-primary/10 text-primary text-[10px] font-bold uppercase rounded-md">
@@ -245,7 +258,7 @@ export default function StaffManagementPage() {
                   <span className="text-xs font-bold block text-muted-foreground uppercase">Senha Provisória</span>
                   <div className="flex justify-between items-center text-primary font-bold">
                     <span>{showCreatedModal.pw}</span>
-                    <button 
+                    <button
                       onClick={() => {
                         navigator.clipboard.writeText(`Email: ${showCreatedModal.email}\nSenha: ${showCreatedModal.pw}`);
                         toast.success("Copiado!");
@@ -258,7 +271,7 @@ export default function StaffManagementPage() {
                 </div>
               </div>
 
-              <button 
+              <button
                 onClick={() => setShowCreatedModal(null)}
                 className="w-full py-3 bg-foreground text-background font-bold rounded-xl"
               >
@@ -266,6 +279,18 @@ export default function StaffManagementPage() {
               </button>
             </div>
           </div>
+        )}
+
+        {/* Modal de Edição */}
+        {editingStaff && (
+          <StaffEditModal
+            staff={editingStaff}
+            onClose={() => setEditingStaff(null)}
+            onSave={() => {
+              setEditingStaff(null);
+              loadStaff();
+            }}
+          />
         )}
       </div>
     </RoleGuard>

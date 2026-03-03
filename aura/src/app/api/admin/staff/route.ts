@@ -1,6 +1,5 @@
 // src/app/api/admin/staff/route.ts
 import { NextResponse } from "next/server";
-import { adminAuth } from "@/lib/firebase-admin";
 import { Staff, UserRole } from "@/types/aura";
 import { supabaseAdmin } from "@/lib/supabase";
 

@@ -40,5 +40,17 @@ export const StaffService = {
     }
 
     return data as Staff[];
+  },
+
+  async updateStaff(staffId: string, updates: Partial<Staff>): Promise<void> {
+    const { error } = await supabase
+      .from('staff')
+      .update(updates)
+      .eq('id', staffId);
+
+    if (error) {
+      console.error("Error updating staff:", error);
+      throw new Error("Erro ao atualizar perfil do funcionário.");
+    }
   }
 };

@@ -9,7 +9,7 @@ import { HousekeepingService } from "@/services/housekeeping-service";
 import { Sparkles, ClipboardCheck, Coffee, ArrowRight, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { auth } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase";
 import { deleteCookie } from "cookies-next";
 import { useRouter } from "next/navigation";
 
@@ -63,7 +63,7 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins }: MaidMobil
   };
 
   const handleLogout = async () => {
-    await auth.signOut();
+    await supabase.auth.signOut();
     deleteCookie('aura-session');
     router.push('/admin/login');
   };

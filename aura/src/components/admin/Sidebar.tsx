@@ -15,7 +15,7 @@ import {
   MessageSquare, Settings, Globe, Menu, X,
   Star, ClipboardList, Calendar, Bot
 } from "lucide-react";
-import { auth } from "@/lib/firebase";
+import { supabase } from "@/lib/supabase";
 import { deleteCookie } from "cookies-next";
 import Image from "next/image";
 
@@ -47,7 +47,7 @@ export const Sidebar = () => {
 
   const handleLogout = async () => {
     try {
-      await auth.signOut();
+      await supabase.auth.signOut();
       deleteCookie('aura-session');
       router.push('/admin/login');
     } catch (error) {
