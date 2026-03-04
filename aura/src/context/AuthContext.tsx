@@ -34,8 +34,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const handleLogout = async () => {
       if (typeof window !== 'undefined' && !window.location.pathname.includes('/admin/login')) {
         deleteCookie('aura-session');
-        await supabase.auth.signOut();
-        window.location.href = '/admin/login';
+        try {
+          await supabase.auth.signOut();
+        } catch (err) {
+          console.error("Erro ao sair no AuthContext:", err);
+        } finally {
+          window.location.href = '/admin/login';
+        }
       }
     };
 

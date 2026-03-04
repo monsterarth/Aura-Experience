@@ -48,10 +48,11 @@ export const Sidebar = () => {
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
-      deleteCookie('aura-session');
-      window.location.href = '/admin/login';
     } catch (error) {
       console.error("Erro ao sair", error);
+    } finally {
+      deleteCookie('aura-session');
+      window.location.href = '/admin/login';
     }
   };
 
