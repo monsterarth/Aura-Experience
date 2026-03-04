@@ -13,7 +13,8 @@ import {
   LayoutDashboard, Users, Home, Wrench,
   Sparkles, Building, ChevronDown, LogOut,
   MessageSquare, Settings, Globe, Menu, X,
-  Star, ClipboardList, Calendar, Bot, FileText
+  Star, ClipboardList, Calendar, Bot, FileText,
+  Loader2
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import { deleteCookie } from "cookies-next";
@@ -28,6 +29,7 @@ export const Sidebar = () => {
 
   // Estado para controle do menu no mobile
   const [isOpen, setIsOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Variáveis da Vercel para o rodapé de versão
   const commitHash = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || "dev";
@@ -46,6 +48,7 @@ export const Sidebar = () => {
   }, [isSuperAdmin]);
 
   const handleLogout = async () => {
+    setIsLoggingOut(true);
     try {
       const supabase = createClientBrowser();
       const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000));
@@ -230,15 +233,19 @@ export const Sidebar = () => {
 
         {/* FOOTER */}
         <div className="pt-4 border-t border-white/5 mt-4 shrink-0 flex flex-col gap-2">
-
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-xs font-bold text-destructive hover:bg-destructive/10 uppercase tracking-wide transition-all"
+            disabled={isLoggingOut}
+            className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-xs font-bold text-destructive hover:bg-destructive/10 uppercase tracking-wide transition-all disabled:opacity-50"
           >
-            <LogOut size={18} /> Sair
+            {isLoggingOut ? (
+              <Loader2 className="w-[18px] h-[18px] animate-spin" />
+            ) : (
+              <LogOut size={18} />
+            )}
+            {isLoggingOut ? "Encerrando..." : "Sair"}
           </button>
 
-          {/* RODAPÉ DA VERSÃO DO BUILD */}
           <div className="text-center pt-2">
             <p className="text-[9px] text-foreground/30 font-mono tracking-widest uppercase">
               Aura {appVersion} • {shortHash}
@@ -246,6 +253,22 @@ export const Sidebar = () => {
           </div>
         </div>
       </aside>
+
+      {/* OVERLAY DE LOGOUT */}
+      {isLoggingOut && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-md z-[100] flex flex-col items-center justify-center animate-in fade-in duration-300">
+          <div className="flex flex-col items-center gap-4">
+            <div className="relative">
+              <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+              <LogOut className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-primary w-6 h-6" />
+            </div>
+            <div className="text-center space-y-2">
+              <h3 className="text-lg font-bold text-foreground">Saindo do Aura...</h3>
+              <p className="text-sm text-muted-foreground">Limpando sua sessão com segurança</p>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };
