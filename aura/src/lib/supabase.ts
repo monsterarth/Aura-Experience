@@ -16,7 +16,24 @@ const globalForSupabase = globalThis as unknown as {
  * Standard Supabase client using the Anon Key.
  * Subject to Row Level Security (RLS).
  */
-export const supabase = globalForSupabase.supabase ?? createClient<any, "public", any>(supabaseUrl, supabaseAnonKey);
+export const supabase = globalForSupabase.supabase ?? createClient<any, "public", any>(
+    supabaseUrl,
+    supabaseAnonKey,
+    {
+        auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true
+        },
+        global: {
+            fetch: (...args) => {
+                const options = args[1] || {};
+                options.cache = 'no-store';
+                return fetch(args[0], options);
+            }
+        }
+    }
+);
 
 if (process.env.NODE_ENV !== 'production') globalForSupabase.supabase = supabase;
 

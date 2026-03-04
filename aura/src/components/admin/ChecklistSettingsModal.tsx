@@ -12,12 +12,10 @@ import { v4 as uuidv4 } from "uuid";
 interface ChecklistSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  propertyId?: string; // Tornar opcional para aceitar o override
-  overridePropertyId?: string; // Novo
-  isInline?: boolean; // Novo
+  propertyId: string;
 }
 
-export function ChecklistSettingsModal({ isOpen, onClose, propertyId, overridePropertyId, isInline }: ChecklistSettingsModalProps) {
+export function ChecklistSettingsModal({ isOpen, onClose, propertyId }: ChecklistSettingsModalProps) {
   const { userData } = useAuth();
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'turnover' | 'daily'>('turnover');
@@ -30,18 +28,16 @@ export function ChecklistSettingsModal({ isOpen, onClose, propertyId, overridePr
     items: []
   });
 
-  const activePropertyId = overridePropertyId || propertyId || "";
-
   useEffect(() => {
-    if (isOpen && activePropertyId) {
+    if (isOpen && propertyId) {
       loadTemplate(activeTab);
     }
-  }, [isOpen, activePropertyId, activeTab]);
+  }, [isOpen, propertyId, activeTab]);
 
   const loadTemplate = async (type: 'turnover' | 'daily') => {
     setLoading(true);
     try {
-      const templates = await HousekeepingService.getChecklistTemplates(activePropertyId);
+      const templates = await HousekeepingService.getChecklistTemplates(propertyId);
       const existing = templates.find((t: any) => t.type === type);
 
       if (existing) {
@@ -93,7 +89,7 @@ export function ChecklistSettingsModal({ isOpen, onClose, propertyId, overridePr
     setLoading(true);
     try {
       await HousekeepingService.saveChecklistTemplate(
-        activePropertyId,
+        propertyId,
         { ...template, items: cleanItems },
         userData?.id || "unknown",
         userData?.fullName || "Admin"
@@ -107,89 +103,8 @@ export function ChecklistSettingsModal({ isOpen, onClose, propertyId, overridePr
     }
   };
 
-  if (!isOpen && !isInline) return null;
+  if (!isOpen) return null;
 
-  if (isInline) {
-    // Renderização embutida na página de Templates Globais
-    return (
-      <div className="bg-card w-full flex flex-col overflow-hidden">
-        {/* TABS */}
-        <div className="flex border-b border-border bg-card pb-2 gap-4">
-          <button
-            onClick={() => setActiveTab('turnover')}
-            className={cn("py-3 text-xs font-bold uppercase tracking-widest border-b-2 transition-all", activeTab === 'turnover' ? "border-primary text-primary" : "border-transparent text-muted-foreground")}
-          >
-            Faxina de Troca (Check-out)
-          </button>
-          <button
-            onClick={() => setActiveTab('daily')}
-            className={cn("py-3 text-xs font-bold uppercase tracking-widest border-b-2 transition-all", activeTab === 'daily' ? "border-primary text-primary" : "border-transparent text-muted-foreground")}
-          >
-            Arrumação Diária
-          </button>
-        </div>
-
-        {/* BODY FAKE COM CÓPIA DO MODAL */}
-        <div className="py-6 space-y-4">
-          {loading ? (
-            <div className="flex justify-center py-10"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>
-          ) : (
-            <>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-sm font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                  <FileText size={16} /> Itens do Checklist {activeTab === 'turnover' ? 'de Troca' : 'Diário'}
-                </h3>
-                <button onClick={addItem} className="text-xs font-bold uppercase text-primary bg-primary/10 px-3 py-1.5 rounded-lg flex items-center gap-1 hover:bg-primary/20">
-                  <Plus size={14} /> Adicionar Tarefa
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {template.items.map((item: any, index: number) => (
-                  <div key={item.id} className="flex items-center gap-3 bg-card border border-border p-2 pr-4 rounded-xl shadow-sm group">
-                    <div className="p-2 text-muted-foreground/30 cursor-grab active:cursor-grabbing hover:text-foreground">
-                      <GripVertical size={16} />
-                    </div>
-                    <div className="w-6 h-6 rounded-full border-2 border-primary/50 flex items-center justify-center shrink-0">
-                      <span className="text-[10px] font-black text-primary">{index + 1}</span>
-                    </div>
-                    <input
-                      value={item.label}
-                      onChange={(e) => updateItem(item.id, e.target.value)}
-                      placeholder="Ex: Trocar toalhas e lençóis..."
-                      className="flex-1 bg-transparent text-sm outline-none text-foreground"
-                      autoFocus={item.label === ""}
-                    />
-                    <button onClick={() => removeItem(item.id)} className="p-2 text-red-500/50 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                ))}
-
-                {template.items.length === 0 && (
-                  <div className="text-center py-10 border-2 border-dashed border-border rounded-xl text-muted-foreground text-sm">
-                    Nenhuma tarefa definida para este checklist.
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-
-        <div className="flex justify-end pt-4 border-t border-border mt-4">
-          <button
-            onClick={handleSave}
-            disabled={loading}
-            className="px-6 py-3 bg-primary text-primary-foreground font-bold text-xs uppercase rounded-xl hover:opacity-90 transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
-          >
-            {loading ? "Salvando..." : <><Save size={16} /> Salvar Padrão Global</>}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Renderização Padrão Modal
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
       <div className="bg-card border border-border w-full max-w-2xl rounded-[32px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
