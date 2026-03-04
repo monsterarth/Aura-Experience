@@ -54,7 +54,6 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Helper robusto para datas mistas (ISO de saída vs Firebase Timestamp de entrada)
   const safeFormatDate = (timestamp: any, formatStr: string) => {
     try {
       if (!timestamp) return '';
@@ -100,14 +99,15 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
     }
 
     const fetchMessages = async () => {
-      const { data } = await supabase.from('messages')
+      const { data, error } = await supabase.from('messages')
         .select('*')
         .eq('propertyId', propertyId)
         .eq('contactId', selectedPhone)
         .order('createdAt', { ascending: false })
         .limit(50);
 
-      setMessages(data ? data.reverse() as any : []);
+      if (error) console.error("Error fetching messages:", error);
+      setMessages(data ? [...data].reverse() as any : []);
       setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     };
 

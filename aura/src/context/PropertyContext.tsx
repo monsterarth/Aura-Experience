@@ -103,7 +103,16 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
   }, []);
 
   const handleSetProperty = useCallback((data: Property | null) => {
-    if (data) updateTheme(data);
+    if (data) {
+      updateTheme(data);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('aura-active-property', data.id);
+      }
+    } else {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('aura-active-property');
+      }
+    }
     setProperty(data);
   }, [updateTheme]);
 
@@ -155,10 +164,20 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
 
     if (initialSlug) {
       fetchPropertyBySlug(initialSlug);
-    } else if (!isSuperAdmin && userData?.propertyId) {
-      // Verifica se a propriedade já está carregada para evitar loops
-      if (property?.id !== userData.propertyId) {
-        fetchPropertyById(userData.propertyId);
+    } else if (!isSuperAdmin) {
+      // Fallback: Tenta pegar o do staff profile, senão pega do localStorage guardado de rotas anteriores
+      const savedId = typeof window !== 'undefined' ? localStorage.getItem('aura-active-property') : null;
+      const targetId = userData?.propertyId || savedId;
+
+      if (targetId && property?.id !== targetId) {
+        fetchPropertyById(targetId);
+      } else {
+        setLoading(false);
+      }
+    } else if (isSuperAdmin) {
+      const savedId = typeof window !== 'undefined' ? localStorage.getItem('aura-active-property') : null;
+      if (savedId && property?.id !== savedId) {
+        fetchPropertyById(savedId);
       } else {
         setLoading(false);
       }

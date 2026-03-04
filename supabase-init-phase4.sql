@@ -198,7 +198,6 @@ CREATE TABLE IF NOT EXISTS public.audit_logs (
 );
 CREATE INDEX IF NOT EXISTS audit_logs_propertyId_idx ON public.audit_logs ("propertyId");
 
--- Allow permissive policies to get the app running smoothly since Firebase Auth is still gate-keeping the system
 ALTER TABLE public.properties ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public Properties" ON public.properties FOR ALL USING (true) WITH CHECK (true);
 

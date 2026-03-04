@@ -33,7 +33,6 @@ export const CabinService = {
     // Força a regra do nome: "Número - Categoria"
     const finalName = `${cabin.number} - ${cabin.category}`;
 
-    // Preparar payload para o Supabase (remove objetos Firebase como Timestamp)
     const payload = {
       ...cabin,
       id,

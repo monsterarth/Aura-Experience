@@ -8,12 +8,14 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { propertyId, contactNumber, text, direction, messageId, mediaUrl, originalText } = body;
 
-    // Validação básica de segurança
-    if (!propertyId || !contactNumber || !text) {
+    // Limpa o número de telefone (ex: remove @s.whatsapp.net e outros caracteres)
+    const cleanContactNumber = contactNumber ? contactNumber.replace('@s.whatsapp.net', '').replace(/[^0-9]/g, '') : '';
+
+    if (!propertyId || !cleanContactNumber || !text) {
       return NextResponse.json({ error: "Parâmetros obrigatórios em falta." }, { status: 400 });
     }
 
-    console.log(`[WEBHOOK] Mensagem recebida de ${contactNumber} para a propriedade ${propertyId} | Direção: ${direction}`);
+    console.log(`[WEBHOOK] Mensagem recebida de ${cleanContactNumber} para a propriedade ${propertyId} | Direção: ${direction}`);
 
 
     // ==========================================
@@ -24,7 +26,7 @@ export async function POST(req: Request) {
         .from("messages")
         .select("*")
         .eq("propertyId", propertyId)
-        .eq("contactId", contactNumber)
+        .eq("contactId", cleanContactNumber)
         .eq("direction", "outbound")
         .order("createdAt", { ascending: false })
         .limit(1);
@@ -44,7 +46,7 @@ export async function POST(req: Request) {
           }
 
           if (isRecent) {
-            console.log(`♻️ [WEBHOOK] Eco de API identificado e bloqueado para ${contactNumber}.`);
+            console.log(`♻️ [WEBHOOK] Eco de API identificado e bloqueado para ${cleanContactNumber}.`);
             return NextResponse.json({ success: true, message: "Eco do sistema ignorado com sucesso." });
           }
         }
@@ -58,9 +60,8 @@ export async function POST(req: Request) {
     await supabaseAdmin.from("messages").upsert({
       id: newId,
       propertyId,
-      contactId: contactNumber,
-      to: direction === "outbound" ? contactNumber : propertyId,
-      from: direction === "inbound" ? contactNumber : propertyId,
+      contactId: cleanContactNumber,
+      to: direction === "outbound" ? cleanContactNumber : propertyId,
       body: text,
       originalBody: originalText || null,
       mediaUrl: mediaUrl || null,
@@ -76,7 +77,7 @@ export async function POST(req: Request) {
     // Precisamos de count(unread) incremental
     const { data: comms } = await supabaseAdmin.from('communications')
       .select('unread')
-      .eq('id', contactNumber)
+      .eq('id', cleanContactNumber)
       .eq('propertyId', propertyId)
       .single();
 
@@ -84,7 +85,7 @@ export async function POST(req: Request) {
     const newUnread = direction === "inbound" ? currentUnread + 1 : 0;
 
     await supabaseAdmin.from('communications').upsert({
-      id: contactNumber,
+      id: cleanContactNumber,
       propertyId,
       lastMessage: text,
       updatedAt: isoNow,
@@ -95,16 +96,16 @@ export async function POST(req: Request) {
     // 3. Garantir que existe na Agenda
     const { data: contact } = await supabaseAdmin.from("contacts")
       .select("id")
-      .eq("id", contactNumber)
+      .eq("id", cleanContactNumber)
       .eq("propertyId", propertyId)
       .single();
 
     if (!contact) {
       await supabaseAdmin.from("contacts").insert({
-        id: contactNumber,
+        id: cleanContactNumber,
         propertyId,
-        name: "+" + contactNumber,
-        phone: contactNumber,
+        name: "+" + cleanContactNumber,
+        phone: cleanContactNumber,
         isGuest: false,
         createdAt: isoNow,
         updatedAt: isoNow

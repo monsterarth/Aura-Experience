@@ -17,7 +17,6 @@ interface MinibarModalProps {
   cabinName: string;
 }
 
-// Catálogo Temporário (No futuro virá de uma coleção "Products/Stock" do Firebase)
 const MINIBAR_CATALOG = [
   { id: 'agua_sem_gas', name: 'Água sem Gás (500ml)', price: 5.00 },
   { id: 'agua_com_gas', name: 'Água com Gás (500ml)', price: 6.00 },

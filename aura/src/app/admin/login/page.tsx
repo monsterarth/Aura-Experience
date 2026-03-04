@@ -69,7 +69,8 @@ export default function AdminLoginPage() {
         throw new Error("Usuário autenticado, mas perfil não encontrado no Aura.");
       }
 
-      if (!userData.active) {
+      const staff = userData as Staff;
+      if (!staff.active) {
         throw new Error("Esta conta foi desativada pela administração.");
       }
 

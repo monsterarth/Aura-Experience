@@ -9,7 +9,6 @@ export const GuestService = {
   async findByDocument(propertyId: string, docNumber: string): Promise<Guest | null> {
     const id = this.normalizeDocument(docNumber);
 
-    // Na nova modelagem o GUEST não usa ID aleatório, nós setamos o id = document normalizado para bater com Firebase
     const { data, error } = await supabase
       .from('guests')
       .select('*')

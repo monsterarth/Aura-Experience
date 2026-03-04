@@ -49,7 +49,7 @@ export const Sidebar = () => {
     try {
       await supabase.auth.signOut();
       deleteCookie('aura-session');
-      router.push('/admin/login');
+      window.location.href = '/admin/login';
     } catch (error) {
       console.error("Erro ao sair", error);
     }

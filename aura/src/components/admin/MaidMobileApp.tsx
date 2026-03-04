@@ -65,7 +65,7 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins }: MaidMobil
   const handleLogout = async () => {
     await supabase.auth.signOut();
     deleteCookie('aura-session');
-    router.push('/admin/login');
+    window.location.href = '/admin/login';
   };
 
   return (
