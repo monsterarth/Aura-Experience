@@ -5,6 +5,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { User as SupabaseUser } from "@supabase/supabase-js";
 import { Staff, UserRole } from "@/types/aura";
+import { deleteCookie } from "cookies-next";
 
 interface AuthContextType {
   user: SupabaseUser | null;
@@ -30,13 +31,38 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     let mounted = true;
 
+    const handleLogout = async () => {
+      if (typeof window !== 'undefined' && !window.location.pathname.includes('/admin/login')) {
+        deleteCookie('aura-session');
+        await supabase.auth.signOut();
+        window.location.href = '/admin/login';
+      }
+    };
+
     async function initializeAuth() {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError) {
+        console.error("Auth session error:", sessionError);
+        await handleLogout();
+        if (mounted) setLoading(false);
+        return;
+      }
 
       if (session?.user) {
         setUser(session.user);
-        const { data: staffData } = await supabase.from('staff').select('*').eq('id', session.user.id).single();
-        if (mounted && staffData) {
+        const { data: staffData, error: staffError } = await supabase.from('staff').select('*').eq('id', session.user.id).single();
+
+        if (staffError) {
+          console.error("Auth staff fetch error:", staffError);
+          // If the error indicates a JWT/Auth issue (e.g., 401 or PGRST301), logout
+          if (staffError.code === 'PGRST301' || staffError.code === '401' || staffError.message.includes('JWT')) {
+            await handleLogout();
+          } else if (mounted) {
+            // Maybe a temporary network error, don't forcefully logout but keep them in "loading" or missing data?
+            // Actually, usually it's best to let the app handle missing userData if it's transient, or redirect to generic error.
+          }
+        } else if (mounted && staffData) {
           setUserData(staffData as Staff);
         }
       } else {
@@ -44,6 +70,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setUser(null);
           setUserData(null);
         }
+        await handleLogout();
       }
       if (mounted) setLoading(false);
     }
@@ -54,13 +81,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       const currentUser = session?.user || null;
       setUser(currentUser);
 
-      if (currentUser) {
-        const { data: staffData } = await supabase.from('staff').select('*').eq('id', currentUser.id).single();
-        if (mounted && staffData) {
+      if (event === 'SIGNED_OUT') {
+        await handleLogout();
+      } else if (currentUser) {
+        const { data: staffData, error: staffError } = await supabase.from('staff').select('*').eq('id', currentUser.id).single();
+
+        if (staffError && (staffError.code === 'PGRST301' || staffError.code === '401' || staffError.message.includes('JWT'))) {
+          await handleLogout();
+        } else if (mounted && staffData) {
           setUserData(staffData as Staff);
         }
       } else {
         if (mounted) setUserData(null);
+        // Force logout if we somehow lose user without SIGNED_OUT event
+        await handleLogout();
       }
       if (mounted) setLoading(false);
     });

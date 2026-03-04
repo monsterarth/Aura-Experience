@@ -120,6 +120,7 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
   const fetchPropertyBySlug = useCallback(async (slug: string) => {
     try {
       setLoading(true);
+      setError(null);
       const { data, error } = await supabase
         .from('properties')
         .select('*')
@@ -142,6 +143,7 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
   const fetchPropertyById = useCallback(async (id: string) => {
     try {
       setLoading(true);
+      setError(null);
       const { data, error } = await supabase
         .from('properties')
         .select('*')
