@@ -2,7 +2,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { createClientBrowser } from "@/lib/supabase-browser";
 import { User as SupabaseUser } from "@supabase/supabase-js";
 import { Staff, UserRole } from "@/types/aura";
 import { deleteCookie } from "cookies-next";
@@ -27,6 +27,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [userData, setUserData] = useState<Staff | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Vercel SSR requirement: instantiate here inside the boundary
+  const supabase = createClientBrowser();
 
   useEffect(() => {
     let mounted = true;
@@ -66,7 +69,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             await handleLogout();
           } else if (mounted) {
             // Maybe a temporary network error, don't forcefully logout but keep them in "loading" or missing data?
-            // Actually, usually it's best to let the app handle missing userData if it's transient, or redirect to generic error.
           }
         } else if (mounted && staffData) {
           setUserData(staffData as Staff);

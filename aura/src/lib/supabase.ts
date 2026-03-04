@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClientBrowser } from './supabase-browser';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -9,32 +10,15 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 const globalForSupabase = globalThis as unknown as {
-    supabase: SupabaseClient<any, "public", any> | undefined;
     supabaseAdmin: SupabaseClient<any, "public", any> | undefined;
 };
 
 /**
- * Standard Supabase client using the Anon Key.
- * Subject to Row Level Security (RLS).
+ * Standard Browser Supabase Client using the Anon Key.
+ * Replaces the old legacy static singleton.
+ * Uses @supabase/ssr to manage cookies correctly.
  */
-export const supabase = globalForSupabase.supabase ?? createClient<any, "public", any>(
-    supabaseUrl,
-    supabaseAnonKey,
-    {
-        auth: {
-            persistSession: true,
-            autoRefreshToken: true,
-            detectSessionInUrl: true
-        },
-        global: {
-            fetch: (...args) => {
-                const options = args[1] || {};
-                options.cache = 'no-store';
-                return fetch(args[0], options);
-            }
-        }
-    }
-);
+export const supabase = createClientBrowser();
 
 /**
  * Admin Supabase client using the Service Role Key.
@@ -62,6 +46,5 @@ export const supabaseAdmin = globalForSupabase.supabaseAdmin ?? createClient<any
 );
 
 if (process.env.NODE_ENV !== 'production') {
-    globalForSupabase.supabase = supabase;
     globalForSupabase.supabaseAdmin = supabaseAdmin;
 }

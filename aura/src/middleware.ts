@@ -1,28 +1,24 @@
 // src/middleware.ts
-import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { updateSession } from '@/lib/supabase-middleware';
 
 /**
- * Middleware do Aura: Proteção de rotas a nível de infraestrutura.
+ * Middleware do Aura: Proteção de rotas a nível de infraestrutura usando @supabase/ssr.
+ * Valida a sessão via cookies para evitar expiração subita de token.
  */
-export function middleware(request: NextRequest) {
-  const session = request.cookies.get('aura-session');
-  const { pathname } = request.nextUrl;
-
-  // 1. Se tentar acessar admin sem sessão -> Login
-  if (pathname.startsWith('/admin') && !pathname.includes('/login') && !session) {
-    return NextResponse.redirect(new URL('/admin/login', request.url));
-  }
-
-  // 2. Se já estiver logado e tentar ir ao login -> Stays (Painel Operacional)
-  // Mudado de /admin/dashboard para /admin/stays que sabemos que existe
-  if (pathname.includes('/admin/login') && session) {
-    return NextResponse.redirect(new URL('/admin/stays', request.url));
-  }
-
-  return NextResponse.next();
+export async function middleware(request: NextRequest) {
+  return await updateSession(request);
 }
 
 export const config = {
-  matcher: ['/admin/:path*'],
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * Feel free to modify this pattern to include more paths.
+     */
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
 };

@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabase";
+import { createClientBrowser } from "@/lib/supabase-browser";
 import { useRouter } from "next/navigation";
 import { setCookie } from "cookies-next";
 import { Loader2, ShieldCheck, Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
@@ -51,6 +51,7 @@ export default function AdminLoginPage() {
     setError(null);
 
     try {
+      const supabase = createClientBrowser();
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
       if (authError || !authData.user) {

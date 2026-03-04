@@ -15,7 +15,7 @@ import {
   MessageSquare, Settings, Globe, Menu, X,
   Star, ClipboardList, Calendar, Bot, FileText
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { createClientBrowser } from "@/lib/supabase-browser";
 import { deleteCookie } from "cookies-next";
 import Image from "next/image";
 
@@ -47,6 +47,7 @@ export const Sidebar = () => {
 
   const handleLogout = async () => {
     try {
+      const supabase = createClientBrowser();
       const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000));
       await Promise.race([supabase.auth.signOut(), timeout]);
     } catch (error) {
