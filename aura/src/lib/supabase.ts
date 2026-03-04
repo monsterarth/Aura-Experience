@@ -10,6 +10,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 const globalForSupabase = globalThis as unknown as {
     supabase: SupabaseClient<any, "public", any> | undefined;
+    supabaseAdmin: SupabaseClient<any, "public", any> | undefined;
 };
 
 /**
@@ -35,11 +36,32 @@ export const supabase = globalForSupabase.supabase ?? createClient<any, "public"
     }
 );
 
-if (process.env.NODE_ENV !== 'production') globalForSupabase.supabase = supabase;
-
 /**
  * Admin Supabase client using the Service Role Key.
  * Bypasses Row Level Security (RLS).
  * MUST ONLY BE USED ON THE SERVER/API ROUTES.
  */
-export const supabaseAdmin = createClient<any, "public", any>(supabaseUrl, supabaseServiceRoleKey || supabaseAnonKey);
+export const supabaseAdmin = globalForSupabase.supabaseAdmin ?? createClient<any, "public", any>(
+    supabaseUrl,
+    supabaseServiceRoleKey || supabaseAnonKey,
+    {
+        auth: {
+            // Desabilita persistência e renovação de token no servidor (previne Memory Leak e Deadlocks no Next.js)
+            persistSession: false,
+            autoRefreshToken: false,
+            detectSessionInUrl: false
+        },
+        global: {
+            fetch: (...args) => {
+                const options = args[1] || {};
+                options.cache = 'no-store';
+                return fetch(args[0], options);
+            }
+        }
+    }
+);
+
+if (process.env.NODE_ENV !== 'production') {
+    globalForSupabase.supabase = supabase;
+    globalForSupabase.supabaseAdmin = supabaseAdmin;
+}

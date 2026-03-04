@@ -47,7 +47,8 @@ export const Sidebar = () => {
 
   const handleLogout = async () => {
     try {
-      await supabase.auth.signOut();
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000));
+      await Promise.race([supabase.auth.signOut(), timeout]);
     } catch (error) {
       console.error("Erro ao sair", error);
     } finally {

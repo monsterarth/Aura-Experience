@@ -35,7 +35,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (typeof window !== 'undefined' && !window.location.pathname.includes('/admin/login')) {
         deleteCookie('aura-session');
         try {
-          await supabase.auth.signOut();
+          const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000));
+          await Promise.race([supabase.auth.signOut(), timeout]);
         } catch (err) {
           console.error("Erro ao sair no AuthContext:", err);
         } finally {
