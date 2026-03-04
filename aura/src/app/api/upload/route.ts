@@ -2,15 +2,16 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export async function POST(request: Request): Promise<NextResponse> {
-    const { searchParams } = new URL(request.url);
-    const filename = searchParams.get('filename');
-
-    if (!filename) {
-        return NextResponse.json({ error: 'Missing filename parameter' }, { status: 400 });
-    }
-
     try {
-        const fileBuffer = await request.arrayBuffer();
+        const formData = await request.formData();
+        const file = formData.get('file') as File;
+
+        if (!file) {
+            return NextResponse.json({ error: 'Nenhum arquivo enviado.' }, { status: 400 });
+        }
+
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const filename = file.name;
 
         // Generate a unique path to avoid collisions
         const uniqueFilename = `${crypto.randomUUID()}-${filename.replace(/[^a-zA-Z0-9.\-_]/g, '')}`;
@@ -19,8 +20,8 @@ export async function POST(request: Request): Promise<NextResponse> {
         // Uses the admin service role to bypass RLS bucket restrictions for server uploads
         const { data, error } = await supabaseAdmin.storage
             .from('images')
-            .upload(filePath, fileBuffer, {
-                contentType: request.headers.get('content-type') || 'application/octet-stream',
+            .upload(filePath, buffer, {
+                contentType: file.type || 'application/octet-stream',
                 upsert: false
             });
 
