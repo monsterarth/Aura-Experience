@@ -49,6 +49,14 @@ export async function updateSession(request: NextRequest) {
                     })
                 },
             },
+            global: {
+                fetch: (...args) => {
+                    const options = args[1] || {};
+                    // Crucial: Bypass Next.js aggressive caching em API Routes para o Supabase
+                    options.cache = 'no-store';
+                    return fetch(args[0], options);
+                }
+            }
         }
     )
 
@@ -59,6 +67,7 @@ export async function updateSession(request: NextRequest) {
     const isAuthRoute = request.nextUrl.pathname.startsWith('/admin') && !request.nextUrl.pathname.includes('/login');
 
     // Protect routes based on explicit user existence
+    // Exclui a própria rota de login pra evitar loops infinitos
     if (isAuthRoute && !user) {
         const url = request.nextUrl.clone()
         url.pathname = '/admin/login'

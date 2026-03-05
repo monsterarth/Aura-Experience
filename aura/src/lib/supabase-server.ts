@@ -31,6 +31,14 @@ export function createClientServer() {
                     }
                 },
             },
+            global: {
+                fetch: (...args) => {
+                    const options = args[1] || {};
+                    // Crucial: Bypass Next.js aggressive caching em API Routes para o Supabase
+                    options.cache = 'no-store';
+                    return fetch(args[0], options);
+                }
+            }
         }
     )
 }

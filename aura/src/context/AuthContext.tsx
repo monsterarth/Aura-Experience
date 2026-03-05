@@ -3,7 +3,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { createClientBrowser } from "@/lib/supabase-browser";
-import { User as SupabaseUser } from "@supabase/supabase-js";
+import { User as SupabaseUser, AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { Staff, UserRole } from "@/types/aura";
 import { deleteCookie } from "cookies-next";
 
@@ -85,7 +85,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     initializeAuth();
 
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
       const currentUser = session?.user || null;
       setUser(currentUser);
 
