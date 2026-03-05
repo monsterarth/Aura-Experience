@@ -172,7 +172,7 @@ export const StayService = {
 
     if (error || !stays) return [];
 
-    const enriched = await Promise.all(stays.map(async (stay) => {
+    const enriched = await Promise.all(stays.map(async (stay: any) => {
       const { data: cabin } = await supabase.from('cabins').select('name').eq('id', stay.cabinId).maybeSingle();
       return {
         ...stay,
@@ -210,7 +210,7 @@ export const StayService = {
 
       if (error || !stays) return [];
 
-      const enriched = await Promise.all(stays.map(async (stay) => {
+      const enriched = await Promise.all(stays.map(async (stay: any) => {
         const [gRes, cRes] = await Promise.all([
           supabase.from('guests').select('fullName').eq('id', stay.guestId).maybeSingle(),
           supabase.from('cabins').select('name').eq('id', stay.cabinId).maybeSingle()

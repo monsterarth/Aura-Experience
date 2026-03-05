@@ -208,11 +208,11 @@ export class AutomationService {
         'pre_checkout', 'checkout_thanks', 'nps_survey', 'structure_booking_confirmed'
       ];
 
-      const existingTriggers = (data || []).map(r => r.triggerEvent || r.id);
-      const missingTriggers = allTriggers.filter(t => !existingTriggers.includes(t));
+      const existingTriggers = (data || []).map((r: any) => r.triggerEvent || r.id);
+      const missingTriggers = allTriggers.filter((t: any) => !existingTriggers.includes(t));
 
       if (missingTriggers.length > 0) {
-        const newRules = missingTriggers.map(trigger => ({
+        const newRules = missingTriggers.map((trigger: any) => ({
           id: trigger,
           triggerEvent: trigger,
           propertyId,
