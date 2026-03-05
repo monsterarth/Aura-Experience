@@ -3,8 +3,6 @@ import { Contact, ContactContext, Stay, Cabin } from "@/types/aura";
 
 function safeToDate(val: any): Date | null {
   if (!val) return null;
-  if (val.toDate) return val.toDate();
-  if (val.seconds) return new Date(val.seconds * 1000);
   if (val instanceof Date) return val;
   return new Date(val);
 }

@@ -17,7 +17,6 @@ import {
   Loader2
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
-import { deleteCookie } from "cookies-next";
 import Image from "next/image";
 
 export const Sidebar = () => {
@@ -56,7 +55,6 @@ export const Sidebar = () => {
     } catch (error) {
       console.error("Erro ao sair", error);
     } finally {
-      deleteCookie('aura-session');
       window.location.href = '/admin/login';
     }
   };

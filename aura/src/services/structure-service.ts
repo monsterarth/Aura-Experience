@@ -269,7 +269,8 @@ export const StructureService = {
         actorId: string,
         actorName: string,
         requiresTurnover: boolean = false,
-        structureId?: string
+        structureId?: string,
+        cancellationReason?: string
     ): Promise<void> {
         await this.updateBooking(propertyId, bookingId, { status }, actorId, actorName);
 
@@ -294,6 +295,27 @@ export const StructureService = {
                     }
                 }
             } catch (e) { console.error("Falha ao disparar automação estrutura - approve:", e) }
+        }
+
+        if (status === 'cancelled' && structureId) {
+            try {
+                const { AutomationService } = await import('./automation-service');
+                const { data: st } = await supabase.from('structures').select('*').eq('id', structureId).single();
+                if (st && st.messageTemplateCancelledId) {
+                    const { data: b } = await supabase.from('structure_bookings').select('*').eq('id', bookingId).single();
+                    if (b?.stayId) {
+                        await AutomationService.triggerStructureBookingAutomation(
+                            propertyId,
+                            b.stayId,
+                            st.name,
+                            b.date,
+                            b.startTime,
+                            st.messageTemplateCancelledId,
+                            cancellationReason
+                        );
+                    }
+                }
+            } catch (e) { console.error("Falha ao disparar automação estrutura - cancel:", e) }
         }
 
         if (status === 'completed' && requiresTurnover && structureId) {

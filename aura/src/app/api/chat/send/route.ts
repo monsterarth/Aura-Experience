@@ -14,8 +14,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Parâmetros incompletos" }, { status: 400 });
     }
 
-    const dockerUrl = process.env.WHATSAPP_DOCKER_URL || "http://187.77.57.154:3001";
-    const apiKey = process.env.WHATSAPP_API_KEY || "Fazenda@2025";
+    const dockerUrl = process.env.WHATSAPP_DOCKER_URL || process.env.WHATSAPP_API_URL;
+    const apiKey = process.env.WHATSAPP_API_KEY;
+
+    if (!dockerUrl || !apiKey) {
+      return NextResponse.json({ error: "Configuração do WhatsApp ausente no servidor." }, { status: 500 });
+    }
 
 
     const response = await fetch(`${dockerUrl}/api/send`, {

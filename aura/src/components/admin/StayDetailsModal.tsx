@@ -35,12 +35,12 @@ const formatDateForInput = (timestamp: any) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-const parseDateFromInput = (dateStr: string, originalTimestamp: any) => {
+const parseDateFromInput = (dateStr: string, originalTimestamp: any): string | null => {
   if (!dateStr) return null;
   const [year, month, day] = dateStr.split('-').map(Number);
   const d = originalTimestamp ? new Date(originalTimestamp) : new Date();
   d.setFullYear(year, month - 1, day);
-  return d;
+  return d.toISOString();
 };
 
 const Label = ({ icon: Icon, children }: { icon: any, children: React.ReactNode }) => (

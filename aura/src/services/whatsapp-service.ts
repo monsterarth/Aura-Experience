@@ -14,7 +14,7 @@ export const WhatsAppService = {
       const payload = {
         ...messageData,
         id,
-        status: "queued",
+        status: "pending",
         attempts: 0,
         createdAt: new Date().toISOString(),
       };
@@ -59,7 +59,9 @@ export const WhatsAppService = {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${propertyConfig.token}`
         },
-        body: JSON.stringify({ /* payload */ }),
+        // TODO: Este método não é utilizado ativamente — o cron process-messages tem sua própria implementação.
+        // Corrigir o payload caso venha a ser utilizado no futuro.
+        body: JSON.stringify({ number: '', message: '' }),
       });
 
       if (!response.ok) throw new Error("API Offline ou Erro de Token.");

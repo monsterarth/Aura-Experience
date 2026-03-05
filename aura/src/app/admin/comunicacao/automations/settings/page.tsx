@@ -4,6 +4,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useProperty } from "@/context/PropertyContext";
 import { AutomationService } from "@/services/automation-service";
 import { AutomationRule, MessageTemplate } from "@/types/aura";
@@ -35,6 +36,7 @@ const AVAILABLE_VARIABLES = [
   { key: "{{structure_name}}", label: "Nome da Estrutura", desc: "Nome da quadra, bike, etc" },
   { key: "{{booking_date}}", label: "Data do Uso", desc: "Data que foi agendada a estrutura" },
   { key: "{{booking_time}}", label: "Hora do Uso", desc: "Hora de início da estrutura" },
+  { key: "{{cancellation_reason}}", label: "Motivo do Cancelamento", desc: "Preenchido ao cancelar agendamento" },
 ];
 
 const TRIGGER_DETAILS: Record<string, { label: string, desc: string }> = {
@@ -208,6 +210,27 @@ export default function AutomationSettingsPage() {
           <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
             {rules.map(rule => {
               const details = TRIGGER_DETAILS[rule.id] || { label: rule.id, desc: 'Gatilho do sistema' };
+
+              // Redirect card for structure booking rules
+              if (rule.id === 'structure_booking_confirmed') {
+                return (
+                  <div key={rule.id} className="bg-background border rounded-xl p-5 shadow-sm transition-all border-amber-500/30">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-1">
+                          <h3 className="text-lg font-bold text-foreground">{details.label}</h3>
+                          <span className="px-2 py-0.5 rounded text-xs font-semibold uppercase bg-amber-100 text-amber-700">Configurado por Estrutura</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{details.desc}</p>
+                        <p className="text-xs text-muted-foreground mt-2">As mensagens de agendamento (solicitação, confirmação e cancelamento) são configuradas individualmente em cada estrutura.</p>
+                      </div>
+                      <Link href="/admin/core/structures" className="px-5 py-2.5 bg-primary text-primary-foreground font-bold rounded-xl text-xs uppercase tracking-wider hover:opacity-90 transition-all flex items-center gap-2 shrink-0">
+                        <Settings className="w-4 h-4" /> Configurar nas Estruturas
+                      </Link>
+                    </div>
+                  </div>
+                );
+              }
 
               return (
                 <div key={rule.id} className={`bg-background border rounded-xl p-5 shadow-sm transition-all ${rule.active ? 'border-primary/40 ring-1 ring-primary/10' : 'opacity-75'}`}>

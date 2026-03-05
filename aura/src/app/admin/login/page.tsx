@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from "react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import { useRouter } from "next/navigation";
-import { setCookie } from "cookies-next";
+
 import { Loader2, ShieldCheck, Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Staff } from "@/types/aura";
@@ -75,12 +75,7 @@ export default function AdminLoginPage() {
         throw new Error("Esta conta foi desativada pela administração.");
       }
 
-      // Cookie de Sessão
-      setCookie('aura-session', 'true', {
-        maxAge: 60 * 60 * 24 * 7,
-        path: '/',
-        sameSite: 'lax'
-      });
+
 
       toast.success(`Bem-vindo de volta, ${userData.fullName.split(' ')[0]}!`);
 

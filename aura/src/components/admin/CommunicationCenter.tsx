@@ -57,8 +57,6 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
   const safeFormatDate = (timestamp: any, formatStr: string) => {
     try {
       if (!timestamp) return '';
-      if (typeof timestamp.toDate === 'function') return format(timestamp.toDate(), formatStr);
-      if (timestamp.seconds !== undefined) return format(new Date(timestamp.seconds * 1000), formatStr);
       return format(new Date(timestamp), formatStr);
     } catch {
       return '';

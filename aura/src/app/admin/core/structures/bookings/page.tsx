@@ -40,6 +40,10 @@ export default function StructureBookingsPage() {
     const [freeTimeStart, setFreeTimeStart] = useState("");
     const [freeTimeEnd, setFreeTimeEnd] = useState("");
 
+    // Cancel Modal State
+    const [cancelModal, setCancelModal] = useState<{ booking: StructureBooking; structureId: string; requiresTurnover: boolean } | null>(null);
+    const [cancelReason, setCancelReason] = useState("");
+
     useEffect(() => {
         if (currentProperty) fetchData();
     }, [currentProperty, currentDate]);
@@ -78,7 +82,7 @@ export default function StructureBookingsPage() {
         }
     };
 
-    const handleStatusChange = async (booking: StructureBooking, newStatus: StructureBooking['status'], structureRequiresTurnover: boolean) => {
+    const handleStatusChange = async (booking: StructureBooking, newStatus: StructureBooking['status'], structureRequiresTurnover: boolean, cancellationReason?: string) => {
         if (!currentProperty || !userData) return;
         try {
             await StructureService.updateBookingStatus(
@@ -88,13 +92,29 @@ export default function StructureBookingsPage() {
                 userData.id,
                 userData.fullName,
                 structureRequiresTurnover,
-                booking.structureId
+                booking.structureId,
+                cancellationReason
             );
             toast.success(`Reserva ${newStatus === 'approved' ? 'Aprovada' : newStatus === 'rejected' ? 'Rejeitada' : newStatus === 'completed' ? 'Finalizada' : 'Cancelada'}`);
             fetchData();
         } catch (error) {
             toast.error("Erro ao atualizar reserva.");
         }
+    };
+
+    const openCancelModal = (booking: StructureBooking, structureId: string, requiresTurnover: boolean) => {
+        setCancelModal({ booking, structureId, requiresTurnover });
+        setCancelReason("");
+    };
+
+    const confirmCancel = async () => {
+        if (!cancelModal || !cancelReason.trim()) {
+            toast.error("Informe o motivo do cancelamento.");
+            return;
+        }
+        await handleStatusChange(cancelModal.booking, 'cancelled', cancelModal.requiresTurnover, cancelReason.trim());
+        setCancelModal(null);
+        setCancelReason("");
     };
 
     const handleCreateBooking = async (e: React.FormEvent) => {
@@ -301,7 +321,7 @@ export default function StructureBookingsPage() {
                                                                                     {booking.type !== 'maintenance_block' && (
                                                                                         <button onClick={() => handleStatusChange(booking, 'completed', structure.requiresTurnover)} className="w-8 h-8 rounded-full bg-green-500 text-white flex items-center justify-center shadow-lg hover:scale-110 transition-transform" title="Concluir Uso"><Check size={14} /></button>
                                                                                     )}
-                                                                                    <button onClick={() => handleStatusChange(booking, 'cancelled', structure.requiresTurnover)} className="w-8 h-8 rounded-full bg-zinc-500 text-white flex items-center justify-center shadow-lg hover:scale-110 transition-transform" title="Remover / Cancelar"><X size={14} /></button>
+                                                                                    <button onClick={() => openCancelModal(booking, structure.id, structure.requiresTurnover)} className="w-8 h-8 rounded-full bg-zinc-500 text-white flex items-center justify-center shadow-lg hover:scale-110 transition-transform" title="Remover / Cancelar"><X size={14} /></button>
                                                                                 </div>
                                                                             )}
                                                                         </div>
@@ -342,7 +362,7 @@ export default function StructureBookingsPage() {
 
                                                                         {/* Ações na lista se for free_time e aprovado (só pra poder cancelar/excluir) */}
                                                                         {structure.bookingType === 'free_time' && (b.status === 'approved' || b.type === 'maintenance_block') && (
-                                                                            <button onClick={() => handleStatusChange(b, 'cancelled', structure.requiresTurnover)} className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg ml-auto transition-colors" title="Cancelar"><X size={16} /></button>
+                                                                            <button onClick={() => openCancelModal(b, structure.id, structure.requiresTurnover)} className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg ml-auto transition-colors" title="Cancelar"><X size={16} /></button>
                                                                         )}
                                                                     </div>
                                                                 </div>
@@ -428,6 +448,42 @@ export default function StructureBookingsPage() {
                             <button onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 hover:bg-accent rounded-xl text-muted-foreground font-bold text-xs uppercase tracking-wider transition-all">Cancelar</button>
                             <button type="submit" form="bookingForm" className="px-6 py-2.5 bg-primary text-primary-foreground font-bold rounded-xl text-xs uppercase tracking-wider hover:opacity-90 transition-all">
                                 Confirmar {bookingType === 'booking' ? 'Agendamento' : 'Bloqueio'}
+                            </button>
+                        </footer>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Cancelamento */}
+            {cancelModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
+                    <div className="bg-card w-full max-w-md rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-border animate-in zoom-in-95 duration-300">
+                        <header className="p-6 border-b border-border bg-secondary/50 flex justify-between items-center">
+                            <div>
+                                <h2 className="text-xl font-bold text-foreground">Cancelar Agendamento</h2>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                    {cancelModal.booking.guestName} • {cancelModal.booking.startTime} - {cancelModal.booking.endTime}
+                                </p>
+                            </div>
+                            <button onClick={() => setCancelModal(null)} className="p-2 hover:bg-destructive/10 hover:text-destructive text-muted-foreground rounded-xl transition-all"><X size={20} /></button>
+                        </header>
+                        <div className="p-6 space-y-4">
+                            <p className="text-sm text-muted-foreground">Informe o motivo do cancelamento. Se configurado, o hóspede receberá uma mensagem no WhatsApp.</p>
+                            <div>
+                                <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Motivo do Cancelamento</label>
+                                <textarea
+                                    value={cancelReason}
+                                    onChange={e => setCancelReason(e.target.value)}
+                                    className="w-full bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-destructive text-foreground min-h-[100px]"
+                                    placeholder="Ex: Condições climáticas adversas, manutenção emergencial..."
+                                    autoFocus
+                                />
+                            </div>
+                        </div>
+                        <footer className="p-4 border-t border-border bg-secondary/30 flex justify-end gap-3">
+                            <button onClick={() => setCancelModal(null)} className="px-5 py-2.5 hover:bg-accent rounded-xl text-muted-foreground font-bold text-xs uppercase tracking-wider transition-all">Voltar</button>
+                            <button onClick={confirmCancel} disabled={!cancelReason.trim()} className="px-6 py-2.5 bg-red-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider hover:opacity-90 transition-all disabled:opacity-40 flex items-center gap-2">
+                                <X size={16} /> Confirmar Cancelamento
                             </button>
                         </footer>
                     </div>

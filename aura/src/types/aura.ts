@@ -1,6 +1,6 @@
 // src/types/aura.ts
 
-export type Timestamp = any; // Firestore ServerTimestamp
+export type Timestamp = string;
 
 export type UserRole =
   | 'super_admin'
@@ -145,6 +145,7 @@ export interface Structure {
   housekeepingChecklist?: { id: string; label: string }[];
   messageTemplatePendingId?: string;
   messageTemplateConfirmedId?: string;
+  messageTemplateCancelledId?: string;
   createdAt?: Timestamp;
 }
 

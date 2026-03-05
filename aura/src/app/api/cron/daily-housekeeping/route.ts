@@ -4,11 +4,10 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { v4 as uuidv4 } from "uuid";
 
 export async function GET(req: Request) {
-  // NOTA: Em produção no Vercel, o ideal é proteger esta rota validando o CRON_SECRET
-  // const authHeader = req.headers.get('authorization');
-  // if (process.env.VERCEL_ENV === 'production' && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-  //   return new NextResponse('Unauthorized', { status: 401 });
-  // }
+  const authHeader = req.headers.get('authorization');
+  if (process.env.NODE_ENV === 'production' && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   console.log("🤖 [CRON] Iniciando motor de geração de Tarefas Diárias de Governança...");
 

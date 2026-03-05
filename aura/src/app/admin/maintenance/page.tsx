@@ -190,7 +190,7 @@ export default function MaintenancePage() {
 
                                 <div className="pt-2 border-t border-border flex items-center justify-between opacity-50 mt-2">
                                     <span className="text-[10px] font-bold uppercase">{task.checklist.length} Subitens</span>
-                                    <span className="text-[10px] font-medium">{new Date(task.createdAt?.seconds * 1000).toLocaleDateString('pt-BR')}</span>
+                                    <span className="text-[10px] font-medium">{task.createdAt ? new Date(task.createdAt).toLocaleDateString('pt-BR') : ''}</span>
                                 </div>
 
                             </div>

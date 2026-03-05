@@ -24,27 +24,39 @@ export const supabase = createClientBrowser();
  * Admin Supabase client using the Service Role Key.
  * Bypasses Row Level Security (RLS).
  * MUST ONLY BE USED ON THE SERVER/API ROUTES.
+ * 
+ * Guard: Only created server-side where SUPABASE_SERVICE_ROLE_KEY exists.
+ * On the browser this module still gets imported (via services), but the
+ * admin client is null and should never be called client-side.
  */
-export const supabaseAdmin = globalForSupabase.supabaseAdmin ?? createClient<any, "public", any>(
-    supabaseUrl,
-    supabaseServiceRoleKey || supabaseAnonKey,
-    {
-        auth: {
-            // Desabilita persistência e renovação de token no servidor (previne Memory Leak e Deadlocks no Next.js)
-            persistSession: false,
-            autoRefreshToken: false,
-            detectSessionInUrl: false
-        },
-        global: {
-            fetch: (...args) => {
-                const options = args[1] || {};
-                options.cache = 'no-store';
-                return fetch(args[0], options);
+function createAdminClient(): SupabaseClient<any, "public", any> | null {
+    if (typeof window !== 'undefined') return null; // Browser — não criar admin client
+    if (!supabaseServiceRoleKey) {
+        console.error("CRITICAL: SUPABASE_SERVICE_ROLE_KEY is missing. Admin operations will fail.");
+        return null;
+    }
+    return createClient<any, "public", any>(
+        supabaseUrl,
+        supabaseServiceRoleKey,
+        {
+            auth: {
+                persistSession: false,
+                autoRefreshToken: false,
+                detectSessionInUrl: false
+            },
+            global: {
+                fetch: (...args) => {
+                    const options = args[1] || {};
+                    options.cache = 'no-store';
+                    return fetch(args[0], options);
+                }
             }
         }
-    }
-);
+    );
+}
 
-if (process.env.NODE_ENV !== 'production') {
+export const supabaseAdmin = globalForSupabase.supabaseAdmin ?? createAdminClient()!;
+
+if (typeof window === 'undefined' && process.env.NODE_ENV !== 'production' && supabaseAdmin) {
     globalForSupabase.supabaseAdmin = supabaseAdmin;
 }

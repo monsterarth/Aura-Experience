@@ -142,10 +142,22 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
         setLoading(true);
         try {
             if (structure) {
+                const updatePayload: Record<string, any> = {};
+                const editableKeys = [
+                    'name', 'category', 'description', 'visibility', 'capacity', 'status',
+                    'bookingType', 'units', 'requiresTurnover', 'operatingHours',
+                    'imageUrl', 'housekeepingChecklist',
+                    'messageTemplatePendingId', 'messageTemplateConfirmedId', 'messageTemplateCancelledId'
+                ];
+                for (const key of editableKeys) {
+                    if ((formData as any)[key] !== undefined) {
+                        updatePayload[key] = (formData as any)[key];
+                    }
+                }
                 await StructureService.updateStructure(
                     currentProperty.id,
                     structure.id,
-                    formData,
+                    updatePayload,
                     userData.id,
                     userData.fullName
                 );
@@ -162,6 +174,7 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
             onSaved();
             onClose();
         } catch (error) {
+            console.error("Erro ao salvar estrutura:", error);
             toast.error("Erro ao salvar estrutura.");
         } finally {
             setLoading(false);
@@ -220,7 +233,7 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
                                     </div>
                                     <div className="col-span-2">
                                         <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Descrição Longa (Portal Hóspede)</label>
-                                        <textarea value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} className="w-full bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-primary text-foreground min-h-[80px]" placeholder="Descreva os equipamentos, regras e detalhes visíveis ao hóspede." />
+                                        <textarea value={formData.description ?? ""} onChange={e => setFormData({ ...formData, description: e.target.value })} className="w-full bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-primary text-foreground min-h-[80px]" placeholder="Descreva os equipamentos, regras e detalhes visíveis ao hóspede." />
                                     </div>
                                 </div>
                             </div>
@@ -392,6 +405,19 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
                                         value={formData.messageTemplateConfirmedId || ""}
                                         onChange={e => setFormData({ ...formData, messageTemplateConfirmedId: e.target.value })}
                                         className="w-full bg-background border border-border p-2.5 rounded-lg text-sm outline-none focus:border-primary text-foreground"
+                                    >
+                                        <option value="">Nenhuma (Não enviar)</option>
+                                        {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                    </select>
+                                </div>
+
+                                <div className="bg-red-500/5 p-4 border border-red-500/20 rounded-xl">
+                                    <label className="text-[10px] font-bold uppercase text-red-500/80 mb-1 block">Mensagem: Cancelamento</label>
+                                    <p className="text-[10px] text-muted-foreground mb-3 leading-tight">Dispara quando a recepção cancela o agendamento. Use {"{{cancellation_reason}}"} no template para incluir o motivo.</p>
+                                    <select
+                                        value={formData.messageTemplateCancelledId || ""}
+                                        onChange={e => setFormData({ ...formData, messageTemplateCancelledId: e.target.value })}
+                                        className="w-full bg-background border border-red-500/20 p-2.5 rounded-lg text-sm outline-none focus:border-red-500 text-foreground"
                                     >
                                         <option value="">Nenhuma (Não enviar)</option>
                                         {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}

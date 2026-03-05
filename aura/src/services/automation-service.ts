@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { Stay, MessageTemplate, WhatsAppMessage, AutomationTriggerEvent, Guest, Cabin, AutomationRule } from "@/types/aura";
 
 export class AutomationService {
-  static async triggerStructureBookingAutomation(propertyId: string, stayId: string, structureName: string, date: string, startTime: string, templateId: string) {
+  static async triggerStructureBookingAutomation(propertyId: string, stayId: string, structureName: string, date: string, startTime: string, templateId: string, cancellationReason?: string) {
     if (!templateId) return;
     try {
       const { data: template } = await supabase.from('message_templates').select('*').eq('propertyId', propertyId).eq('id', templateId).single();
@@ -21,10 +21,14 @@ export class AutomationService {
       }
 
       // Pre-compile structure variables
-      const customBody = template.body
+      let customBody = template.body
         .replace(/{{structure_name}}/g, structureName)
         .replace(/{{booking_date}}/g, new Date(date + "T00:00:00").toLocaleDateString('pt-BR', { timeZone: 'UTC' }))
         .replace(/{{booking_time}}/g, startTime);
+
+      if (cancellationReason) {
+        customBody = customBody.replace(/{{cancellation_reason}}/g, cancellationReason);
+      }
 
       await this.queueMessage(
         propertyId,
@@ -35,7 +39,7 @@ export class AutomationService {
         guest as any,
         cabin as any,
         stay as any,
-        0 // Disparo imediato. (Não usa a regra global de delay)
+        0 // Disparo imediato.
       );
     } catch (error) {
       console.error("Erro no gatilho de agendamento de estrutura:", error);
