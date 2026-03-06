@@ -14,9 +14,12 @@ interface MaintenanceTaskManagerModalProps {
     cabins: Record<string, Cabin>;
     structures: Record<string, Structure>;
     technicians: any[];
+    initialCabinId?: string;
+    initialExpectedStart?: string;
+    initialExpectedEnd?: string;
 }
 
-export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task, cabins, structures, technicians }: MaintenanceTaskManagerModalProps) {
+export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task, cabins, structures, technicians, initialCabinId, initialExpectedStart, initialExpectedEnd }: MaintenanceTaskManagerModalProps) {
     const { userData } = useAuth();
     const [loading, setLoading] = useState(false);
 
@@ -30,7 +33,10 @@ export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task,
         unitId: '',
         assignedTo: [],
         isRecurring: false,
-        recurrenceRule: 'daily'
+        recurrenceRule: 'daily',
+        blocksCabin: false,
+        expectedStart: '',
+        expectedEnd: ''
     });
 
     const [checklist, setChecklist] = useState<MaintenanceChecklistItem[]>([]);
@@ -48,7 +54,10 @@ export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task,
                     unitId: task.unitId || '',
                     assignedTo: task.assignedTo || [],
                     isRecurring: task.isRecurring || false,
-                    recurrenceRule: task.recurrenceRule || 'daily'
+                    recurrenceRule: task.recurrenceRule || 'daily',
+                    blocksCabin: task.blocksCabin || false,
+                    expectedStart: task.expectedStart || '',
+                    expectedEnd: task.expectedEnd || ''
                 });
                 setChecklist(task.checklist || []);
             } else {
@@ -57,12 +66,15 @@ export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task,
                     description: '',
                     priority: 'medium',
                     status: 'pending',
-                    cabinId: '',
+                    cabinId: initialCabinId || '',
                     structureId: '',
                     unitId: '',
                     assignedTo: [],
                     isRecurring: false,
-                    recurrenceRule: 'daily'
+                    recurrenceRule: 'daily',
+                    blocksCabin: !!(initialExpectedStart && initialExpectedEnd),
+                    expectedStart: initialExpectedStart || '',
+                    expectedEnd: initialExpectedEnd || ''
                 });
                 setChecklist([]);
             }
@@ -79,7 +91,9 @@ export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task,
         try {
             const payload = {
                 ...formData,
-                checklist
+                checklist,
+                expectedStart: formData.blocksCabin && formData.expectedStart ? new Date(formData.expectedStart).toISOString() : undefined,
+                expectedEnd: formData.blocksCabin && formData.expectedEnd ? new Date(formData.expectedEnd).toISOString() : undefined,
             };
 
             if (task) {
@@ -214,6 +228,47 @@ export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task,
                                         <option value="">Toda a Estrutura</option>
                                         {structures[formData.structureId].units!.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
                                     </select>
+                                </div>
+                            )}
+
+                            {/* BLOCK SETTINGS */}
+                            {(formData.cabinId || formData.structureId) && (
+                                <div className="mt-4 pt-4 border-t border-border/50">
+                                    <label className="flex items-center gap-2 cursor-pointer w-max mb-3">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.blocksCabin}
+                                            onChange={e => setFormData({ ...formData, blocksCabin: e.target.checked })}
+                                            className="w-4 h-4 rounded border-border text-primary focus:ring-primary"
+                                        />
+                                        <span className="text-sm font-bold text-foreground">Interdita a Acomodação/Estrutura?</span>
+                                    </label>
+
+                                    {formData.blocksCabin && (
+                                        <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                            <div>
+                                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest hidden md:block">Início Previsto</label>
+                                                <input
+                                                    type="datetime-local"
+                                                    required={formData.blocksCabin}
+                                                    value={formData.expectedStart ? formData.expectedStart.slice(0, 16) : ''}
+                                                    onChange={e => setFormData({ ...formData, expectedStart: e.target.value })}
+                                                    className="w-full bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-primary mt-1"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest hidden md:block">Fim Previsto</label>
+                                                <input
+                                                    type="datetime-local"
+                                                    required={formData.blocksCabin}
+                                                    value={formData.expectedEnd ? formData.expectedEnd.slice(0, 16) : ''}
+                                                    min={formData.expectedStart ? formData.expectedStart.slice(0, 16) : ''}
+                                                    onChange={e => setFormData({ ...formData, expectedEnd: e.target.value })}
+                                                    className="w-full bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-primary mt-1"
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>

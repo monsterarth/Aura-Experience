@@ -286,6 +286,10 @@ export interface MaintenanceTask {
   unitId?: string; // If applicable to a specific unit of a structure
   stayId?: string; // If applicable during a specific stay
 
+  blocksCabin?: boolean; // Determines if this task blocks the cabin from being rented
+  expectedStart?: string; // ISO String (start date/time of the block)
+  expectedEnd?: string; // ISO String (end date/time of the block)
+
   title: string;
   description: string;
   priority: 'low' | 'medium' | 'high' | 'urgent';

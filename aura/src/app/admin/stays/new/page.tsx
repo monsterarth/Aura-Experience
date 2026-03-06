@@ -1,7 +1,7 @@
 // src/app/admin/stays/new/page.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { GuestService } from "@/services/guest-service";
@@ -26,7 +26,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 // Importações do Calendário
 import { addDays, format } from "date-fns";
@@ -43,10 +43,16 @@ interface CabinSelection {
   babies: number;
 }
 
-export default function NewStayPage() {
+function NewStayPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { userData } = useAuth();
   const { currentProperty: contextProperty } = useProperty();
+
+  // Query params from reservation map drag-to-create
+  const prefilledCabinId = searchParams.get('cabinId');
+  const prefilledCheckIn = searchParams.get('checkIn');
+  const prefilledCheckOut = searchParams.get('checkOut');
 
   const [loading, setLoading] = useState(false);
   const [searchingGuest, setSearchingGuest] = useState(false);
@@ -61,9 +67,14 @@ export default function NewStayPage() {
 
   const [cabinSelections, setCabinSelections] = useState<CabinSelection[]>([]);
 
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({
-    from: addDays(new Date(), 1),
-    to: addDays(new Date(), 3),
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
+    if (prefilledCheckIn && prefilledCheckOut) {
+      return {
+        from: new Date(prefilledCheckIn + 'T12:00:00'),
+        to: new Date(prefilledCheckOut + 'T12:00:00'),
+      };
+    }
+    return { from: addDays(new Date(), 1), to: addDays(new Date(), 3) };
   });
 
   const [sendAutomations, setSendAutomations] = useState(true);
@@ -71,8 +82,18 @@ export default function NewStayPage() {
 
   useEffect(() => {
     if (contextProperty?.id) {
-      CabinService.getCabinsByProperty(contextProperty.id).then(setAvailableCabins);
+      CabinService.getCabinsByProperty(contextProperty.id).then((cabinsData) => {
+        setAvailableCabins(cabinsData);
+        // Pre-select cabin from query params (reservation map)
+        if (prefilledCabinId && cabinSelections.length === 0) {
+          const match = cabinsData.find(c => c.id === prefilledCabinId);
+          if (match) {
+            setCabinSelections([{ cabinId: match.id, name: match.name, adults: 2, children: 0, babies: 0 }]);
+          }
+        }
+      });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contextProperty?.id]);
 
   const handleSearchGuest = async () => {
@@ -425,5 +446,13 @@ export default function NewStayPage() {
         )}
       </div>
     </RoleGuard>
+  );
+}
+
+export default function NewStayPage() {
+  return (
+    <Suspense fallback={<div className="p-8 flex items-center justify-center"><span className="text-muted-foreground">Carregando...</span></div>}>
+      <NewStayPageContent />
+    </Suspense>
   );
 }

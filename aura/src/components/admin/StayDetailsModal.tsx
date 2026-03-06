@@ -173,7 +173,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
     const channel = supabase.channel(`folio_${stay.id}`)
       .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'stay_folio', filter: `stayId=eq.${stay.id}` },
+        { event: '*', schema: 'public', table: 'folio_items', filter: `stayId=eq.${stay.id}` },
         () => loadFolio()
       )
       .subscribe();
