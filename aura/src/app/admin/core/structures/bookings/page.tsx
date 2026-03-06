@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { format, addDays, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Calendar, Check, X, Clock, MapPin, User, Plus, Info, Wrench } from "lucide-react";
@@ -10,6 +10,7 @@ import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { Structure, StructureBooking, TimeSlot, Stay } from "@/types/aura";
 import { StayService } from "@/services/stay-service";
+import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
 type ModalState = {
@@ -44,11 +45,7 @@ export default function StructureBookingsPage() {
     const [cancelModal, setCancelModal] = useState<{ booking: StructureBooking; structureId: string; requiresTurnover: boolean } | null>(null);
     const [cancelReason, setCancelReason] = useState("");
 
-    useEffect(() => {
-        if (currentProperty) fetchData();
-    }, [currentProperty, currentDate]);
-
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         if (!currentProperty) return;
         setLoading(true);
         try {
@@ -60,8 +57,6 @@ export default function StructureBookingsPage() {
                 StayService.getStaysByStatus(currentProperty.id, ['pending', 'pre_checkin_done', 'active', 'late_checkout'])
             ]);
 
-            // Filtrar estadias para que o dia selecionado (currentDate) esteja entre checkIn e checkOut
-            // ignoramos a hora para a comparação do dia.
             const validStaysForDate = allActiveStays.filter(s => {
                 const checkInDate = s.checkIn ? new Date(s.checkIn) : new Date();
                 const checkOutDate = s.checkOut ? new Date(s.checkOut) : new Date();
@@ -80,7 +75,27 @@ export default function StructureBookingsPage() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [currentProperty, currentDate]);
+
+    useEffect(() => {
+        if (currentProperty) fetchData();
+    }, [fetchData]);
+
+    // Realtime: escuta mudanças na tabela structure_bookings
+    useEffect(() => {
+        if (!currentProperty) return;
+
+        const channel = supabase.channel(`bookings_${currentProperty.id}`)
+            .on('postgres_changes',
+                { event: '*', schema: 'public', table: 'structure_bookings', filter: `propertyId=eq.${currentProperty.id}` },
+                () => fetchData()
+            )
+            .subscribe();
+
+        return () => { supabase.removeChannel(channel); };
+    }, [currentProperty, fetchData]);
+
+    // fetchData is now defined above as a useCallback
 
     const handleStatusChange = async (booking: StructureBooking, newStatus: StructureBooking['status'], structureRequiresTurnover: boolean, cancellationReason?: string) => {
         if (!currentProperty || !userData) return;

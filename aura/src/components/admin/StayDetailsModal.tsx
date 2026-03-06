@@ -18,6 +18,7 @@ import { CabinService } from "@/services/cabin-service";
 import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import { sanitizeDocumentForFnrh, validateCPF } from "@/lib/utils-checkin";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
 import { Stay, Guest, Cabin, FolioItem } from "@/types/aura";
 
 interface StayDetailsModalProps {
@@ -165,6 +166,20 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   useEffect(() => {
     initData();
   }, [initData]);
+
+  // Realtime: escuta mudanças na tabela stay_folio para esta estadia
+  useEffect(() => {
+    if (!isOpen || !stay?.id) return;
+
+    const channel = supabase.channel(`folio_${stay.id}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'stay_folio', filter: `stayId=eq.${stay.id}` },
+        () => loadFolio()
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [isOpen, stay?.id]);
 
   const loadFolio = async () => {
     if (!stay) return;

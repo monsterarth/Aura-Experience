@@ -6,6 +6,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { StayService } from "@/services/stay-service";
+import { supabase } from "@/lib/supabase";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import {
   Calendar, Search, Loader2, AlertCircle,
@@ -73,6 +74,20 @@ export default function StaysPage() {
       setStays([]);
     }
   }, [loadStays, contextProperty?.id]);
+
+  // Realtime: escuta mudanças na tabela stays
+  useEffect(() => {
+    if (!contextProperty?.id) return;
+
+    const channel = supabase.channel(`stays_${contextProperty.id}`)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'stays', filter: `propertyId=eq.${contextProperty.id}` },
+        () => loadStays()
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [contextProperty?.id, loadStays]);
 
   // --- Handlers ---
   const handleOpenFicha = async (stay: any) => {
