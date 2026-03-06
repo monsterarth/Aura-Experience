@@ -125,7 +125,12 @@ export default function PropertySettingsPage() {
             pt: "Bem-vindo à nossa propriedade. Solicitamos respeito aos horários de silêncio (22h às 08h) e cuidado com os itens da cabana. Danos ao patrimônio estarão sujeitos a cobranças e multas aplicáveis.",
             en: "Welcome to our property. We kindly ask you to respect quiet hours (10 PM to 8 AM) and take care of cabin items. Damages are subject to charges.",
             es: "Bienvenido a nuestra propiedad. Solicitamos respetar el horario de silencio (22h a 08h) y cuidar los artículos de la cabaña. Los daños estarán sujetos a cargos."
-        }
+        },
+
+        // Pet Settings
+        acceptsPets: true,
+        petMinWeight: 1,
+        petMaxWeight: 15
     });
 
     useEffect(() => {
@@ -542,6 +547,59 @@ export default function PropertySettingsPage() {
                                         value={settings.petPolicyAlert}
                                         onChange={(val: any) => setSettings({ ...settings, petPolicyAlert: val })}
                                     />
+
+                                    <div className="pt-2 border-t border-border"></div>
+
+                                    {/* Pet Settings */}
+                                    <div className="space-y-6">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <p className="text-sm font-bold text-foreground">Aceita Pets?</p>
+                                                <p className="text-xs text-muted-foreground">Se desativado, a seção de pets não aparecerá no pré-check-in.</p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setSettings({ ...settings, acceptsPets: !settings.acceptsPets })}
+                                                className={cn(
+                                                    "relative w-14 h-7 rounded-full transition-colors duration-200",
+                                                    settings.acceptsPets ? "bg-orange-500" : "bg-secondary border border-border"
+                                                )}
+                                            >
+                                                <span className={cn(
+                                                    "absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200",
+                                                    settings.acceptsPets && "translate-x-7"
+                                                )} />
+                                            </button>
+                                        </div>
+
+                                        {settings.acceptsPets && (
+                                            <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-200">
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Peso Mínimo (kg)</label>
+                                                    <input
+                                                        type="number"
+                                                        min={1}
+                                                        max={60}
+                                                        value={settings.petMinWeight}
+                                                        onChange={e => setSettings({ ...settings, petMinWeight: parseInt(e.target.value) || 1 })}
+                                                        className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Peso Máximo (kg)</label>
+                                                    <input
+                                                        type="number"
+                                                        min={1}
+                                                        max={60}
+                                                        value={settings.petMaxWeight}
+                                                        onChange={e => setSettings({ ...settings, petMaxWeight: parseInt(e.target.value) || 15 })}
+                                                        className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
+                                                    />
+                                                </div>
+                                                <p className="col-span-2 text-xs text-muted-foreground">Pets fora desta faixa de peso serão bloqueados no formulário de pré-check-in.</p>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </section>
 

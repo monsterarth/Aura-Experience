@@ -6,9 +6,9 @@ import { useParams, useRouter } from "next/navigation";
 import { StayService } from "@/services/stay-service";
 import { PropertyService } from "@/services/property-service";
 import { fetchCEP } from "@/lib/utils-checkin";
-import { 
-  Loader2, CheckCircle2, User, MapPin, 
-  Dog, ArrowRight, Edit3, ChevronDown, 
+import {
+  Loader2, CheckCircle2, User, MapPin,
+  Dog, ArrowRight, Edit3, ChevronDown,
   Users, Plane, AlertCircle, Plus, Trash2, Clock, CheckCircle, FileText, X, Globe
 } from "lucide-react";
 import { toast } from "sonner";
@@ -293,15 +293,15 @@ function hexToHSL(hex: string): string {
 export default function UnifiedPreCheckin() {
   const { stayId } = useParams();
   const router = useRouter();
-  
+
   const [lang, setLang] = useState<LangType>('pt');
   const t = translations[lang];
 
   const [step, setStep] = useState<'loading' | 'error' | 'group_manager' | 'already_done' | 'form' | 'success'>('loading');
   const [isSaving, setIsSaving] = useState(false);
   const [loadingCep, setLoadingCep] = useState(false);
-  const [timeWarning, setTimeWarning] = useState<{type: 'early' | 'late', message: string} | null>(null);
-  
+  const [timeWarning, setTimeWarning] = useState<{ type: 'early' | 'late', message: string } | null>(null);
+
   const [policyModal, setPolicyModal] = useState<'general' | 'privacy' | 'pet' | null>(null);
 
   const [agreedGeneral, setAgreedGeneral] = useState(false);
@@ -309,21 +309,22 @@ export default function UnifiedPreCheckin() {
   const [agreedPet, setAgreedPet] = useState(false);
 
   const [propertyData, setPropertyData] = useState<any>(null);
-  const [guest, setGuest] = useState<any>({ 
-    address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", complement: "" }, 
-    document: { number: "" }, 
+  const [guest, setGuest] = useState<any>({
+    address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", complement: "" },
+    document: { number: "" },
     nationality: "Brasil", fullName: "", birthDate: "", gender: "", phone: "", email: ""
   });
-  
-  const [stay, setStay] = useState<any>({ 
-    transportation: 'Carro', 
+
+  const [stay, setStay] = useState<any>({
+    transportation: 'Carro',
     petDetails: { species: 'Cachorro', weight: 5, name: "", breed: "" },
     lastCity: "", nextCity: "", vehiclePlate: "", expectedArrivalTime: "",
     additionalGuests: [], counts: { adults: 1, children: 0, babies: 0 }
   });
-  
+
   const [cabin, setCabin] = useState<any>(null);
   const [groupStays, setGroupStays] = useState<any[]>([]);
+  const [countdown, setCountdown] = useState(5);
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [showCountrySelect, setShowCountrySelect] = useState(false);
@@ -340,50 +341,50 @@ export default function UnifiedPreCheckin() {
     async function loadData() {
       try {
         if (!stayId) {
-            setStep('error');
-            return;
+          setStep('error');
+          return;
         }
 
         const targetPropertyId = await StayService.findPropertyIdByStayId(stayId as string);
         if (!targetPropertyId) {
-            setStep('error');
-            return;
+          setStep('error');
+          return;
         }
 
         const [data, propData] = await Promise.all([
-            StayService.getStayWithGuestAndCabin(targetPropertyId, stayId as string),
-            PropertyService.getPropertyById(targetPropertyId)
+          StayService.getStayWithGuestAndCabin(targetPropertyId, stayId as string),
+          PropertyService.getPropertyById(targetPropertyId)
         ]);
-        
+
         if (data && propData) {
-            setPropertyData(propData);
-            
-            setGuest((prev: any) => ({ ...prev, ...data.guest, address: { ...prev.address, ...(data.guest?.address || {}) }, document: { ...prev.document, ...(data.guest?.document || {}) }}));
-            setStay((prev: any) => ({ ...prev, ...data.stay, propertyId: targetPropertyId, petDetails: { ...prev.petDetails, ...(data.stay?.petDetails || {}) }, additionalGuests: data.stay.additionalGuests || [], counts: data.stay.counts || { adults: 1, children: 0, babies: 0 }}));
-            setCabin(data.cabin);
+          setPropertyData(propData);
 
-            if (data.stay.groupId) {
-                const allStays = await StayService.getGroupStays(data.stay.accessCode);
-                setGroupStays(allStays);
-                
-                const urlParams = new URLSearchParams(window.location.search);
-                const fromGroup = urlParams.get('fromGroup');
+          setGuest((prev: any) => ({ ...prev, ...data.guest, address: { ...prev.address, ...(data.guest?.address || {}) }, document: { ...prev.document, ...(data.guest?.document || {}) } }));
+          setStay((prev: any) => ({ ...prev, ...data.stay, propertyId: targetPropertyId, petDetails: { ...prev.petDetails, ...(data.stay?.petDetails || {}) }, additionalGuests: data.stay.additionalGuests || [], counts: data.stay.counts || { adults: 1, children: 0, babies: 0 } }));
+          setCabin(data.cabin);
 
-                if (allStays.length > 1 && !fromGroup) {
-                    setStep('group_manager');
-                    return; 
-                }
+          if (data.stay.groupId) {
+            const allStays = await StayService.getGroupStays(data.stay.accessCode);
+            setGroupStays(allStays);
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const fromGroup = urlParams.get('fromGroup');
+
+            if (allStays.length > 1 && !fromGroup) {
+              setStep('group_manager');
+              return;
             }
+          }
 
-            const isAlreadyFilled = !!data.stay.expectedArrivalTime && !!data.guest?.document?.number;
-            
-            if (isAlreadyFilled) {
-                setStep('already_done');
-            } else {
-                setStep('form');
-            }
+          const isAlreadyFilled = !!data.stay.expectedArrivalTime && !!data.guest?.document?.number;
+
+          if (isAlreadyFilled) {
+            setStep('already_done');
+          } else {
+            setStep('form');
+          }
         } else {
-            setStep('error');
+          setStep('error');
         }
       } catch (error) {
         setStep('error');
@@ -392,21 +393,42 @@ export default function UnifiedPreCheckin() {
     loadData();
   }, [stayId]);
 
+  // Auto-redirect countdown para a próxima unidade pendente do grupo (na tela de sucesso)
+  useEffect(() => {
+    if (step !== 'success') return;
+    const pendingStays = groupStays.filter(s => !s.expectedArrivalTime && s.id !== stayId);
+    const nextPendingStay = pendingStays.length > 0 ? pendingStays[0] : null;
+    if (!nextPendingStay) return;
+
+    setCountdown(5);
+    const timer = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          window.location.href = `/check-in/form/${nextPendingStay.id}?fromGroup=1`;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [step, groupStays, stayId]);
+
   const handleCEPChange = async (cep: string) => {
     setGuest((prev: any) => ({ ...prev, address: { ...prev.address, zipCode: cep } }));
     const cleanCep = cep.replace(/\D/g, "");
     if (cleanCep.length === 8 && guest.nationality === "Brasil") {
       setLoadingCep(true);
       try {
-          const data = await fetchCEP(cleanCep);
-          if (data && !data.erro) {
-            setGuest((prev: any) => ({
-              ...prev,
-              address: { ...prev.address, street: data.logradouro || "", neighborhood: data.bairro || "", city: data.localidade || "", state: data.uf || "", zipCode: cleanCep, country: "Brasil" }
-            }));
-            toast.success(t.loadingLoc);
-          }
-      } catch (err) {} finally { setLoadingCep(false); }
+        const data = await fetchCEP(cleanCep);
+        if (data && !data.erro) {
+          setGuest((prev: any) => ({
+            ...prev,
+            address: { ...prev.address, street: data.logradouro || "", neighborhood: data.bairro || "", city: data.localidade || "", state: data.uf || "", zipCode: cleanCep, country: "Brasil" }
+          }));
+          toast.success(t.loadingLoc);
+        }
+      } catch (err) { } finally { setLoadingCep(false); }
     }
   };
 
@@ -425,10 +447,10 @@ export default function UnifiedPreCheckin() {
     if (!stay.lastCity) errors.push(t.origin);
     if (!stay.nextCity) errors.push(t.dest);
     if (!stay.expectedArrivalTime) errors.push(t.arrTime);
-    
+
     stay.additionalGuests?.forEach((g: any, index: number) => {
-        if (!g.fullName) errors.push(`${t.companions} #${index + 1} (${t.fullName})`);
-        if (!g.document && g.type === 'adult') errors.push(`${t.companions} #${index + 1} (${t.doc})`);
+      if (!g.fullName) errors.push(`${t.companions} #${index + 1} (${t.fullName})`);
+      if (!g.document && g.type === 'adult') errors.push(`${t.companions} #${index + 1} (${t.doc})`);
     });
 
     if (!agreedGeneral) errors.push(t.polGen);
@@ -454,8 +476,8 @@ export default function UnifiedPreCheckin() {
     e.preventDefault();
     const emptyErrors = validateForm();
     if (emptyErrors.length > 0) {
-        alert(`Faltam os seguintes campos ou termos:\n\n- ${emptyErrors.join("\n- ")}`);
-        return;
+      alert(`Faltam os seguintes campos ou termos:\n\n- ${emptyErrors.join("\n- ")}`);
+      return;
     }
 
     const checkInTime = propertyData?.settings?.checkInTime || "14:00";
@@ -463,19 +485,19 @@ export default function UnifiedPreCheckin() {
     const arrTime = stay.expectedArrivalTime;
 
     if (!timeWarning) {
-        if (arrTime < checkInTime) {
-            let msg = propertyData?.settings?.earlyCheckInMessage?.[lang] || propertyData?.settings?.earlyCheckInMessage?.pt || `Standard check-in starts at [checkintime].`;
-            msg = msg.replace(/\[expectedArrivalTime\]/g, arrTime).replace(/\[checkintime\]/g, checkInTime);
-            setTimeWarning({ type: 'early', message: msg });
-            return; 
-        }
+      if (arrTime < checkInTime) {
+        let msg = propertyData?.settings?.earlyCheckInMessage?.[lang] || propertyData?.settings?.earlyCheckInMessage?.pt || `Standard check-in starts at [checkintime].`;
+        msg = msg.replace(/\[expectedArrivalTime\]/g, arrTime).replace(/\[checkintime\]/g, checkInTime);
+        setTimeWarning({ type: 'early', message: msg });
+        return;
+      }
 
-        if (arrTime > receptionEndTime) {
-            let msg = propertyData?.settings?.lateCheckInMessage?.[lang] || propertyData?.settings?.lateCheckInMessage?.pt || `Reception closes at [receptionendtime].`;
-            msg = msg.replace(/\[expectedArrivalTime\]/g, arrTime).replace(/\[receptionendtime\]/g, receptionEndTime);
-            setTimeWarning({ type: 'late', message: msg });
-            return; 
-        }
+      if (arrTime > receptionEndTime) {
+        let msg = propertyData?.settings?.lateCheckInMessage?.[lang] || propertyData?.settings?.lateCheckInMessage?.pt || `Reception closes at [receptionendtime].`;
+        msg = msg.replace(/\[expectedArrivalTime\]/g, arrTime).replace(/\[receptionendtime\]/g, receptionEndTime);
+        setTimeWarning({ type: 'late', message: msg });
+        return;
+      }
     }
 
     executeSave();
@@ -487,52 +509,52 @@ export default function UnifiedPreCheckin() {
     const c = theme.colors;
     if (!c) return {};
     return {
-        '--primary': hexToHSL(c.primary),
-        '--primary-foreground': hexToHSL(c.onPrimary),
-        '--secondary': hexToHSL(c.secondary),
-        '--secondary-foreground': hexToHSL(c.onSecondary),
-        '--background': hexToHSL(c.background),
-        '--card': hexToHSL(c.surface),
-        '--card-foreground': hexToHSL(c.textMain),
-        '--foreground': hexToHSL(c.textMain),
-        '--muted': hexToHSL(c.secondary),
-        '--muted-foreground': hexToHSL(c.textMuted),
-        '--accent': hexToHSL(c.accent),
-        '--border': hexToHSL(c.accent),
-        '--radius': theme.shape?.radius || '0.5rem'
+      '--primary': hexToHSL(c.primary),
+      '--primary-foreground': hexToHSL(c.onPrimary),
+      '--secondary': hexToHSL(c.secondary),
+      '--secondary-foreground': hexToHSL(c.onSecondary),
+      '--background': hexToHSL(c.background),
+      '--card': hexToHSL(c.surface),
+      '--card-foreground': hexToHSL(c.textMain),
+      '--foreground': hexToHSL(c.textMain),
+      '--muted': hexToHSL(c.secondary),
+      '--muted-foreground': hexToHSL(c.textMuted),
+      '--accent': hexToHSL(c.accent),
+      '--border': hexToHSL(c.accent),
+      '--radius': theme.shape?.radius || '0.5rem'
     } as React.CSSProperties;
   };
 
   const PropertyHeader = () => {
-      if (!propertyData) return null;
-      return (
-          <header className="flex flex-col items-center justify-center space-y-4 mb-8 animate-in fade-in slide-in-from-top-4 relative">
-              <div className="absolute top-0 right-0 flex bg-secondary rounded-lg p-1 border border-border">
-                  {(['pt', 'en', 'es'] as const).map(l => (
-                      <button
-                          key={l} type="button" onClick={() => setLang(l)}
-                          className={cn("px-2 py-1 text-[10px] font-bold uppercase rounded-md transition-all", lang === l ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
-                      >
-                          {l}
-                      </button>
-                  ))}
-              </div>
-              
-              <div className="pt-4 flex flex-col items-center">
-                {propertyData.logoUrl ? (
-                    <img src={propertyData.logoUrl} alt={propertyData.name} className="h-16 md:h-20 object-contain drop-shadow-md" />
-                ) : (
-                    <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center text-primary-foreground font-black text-3xl shadow-lg">
-                        {propertyData.name.charAt(0) || "A"}
-                    </div>
-                )}
-                <div className="text-center mt-2">
-                    <h2 className="text-2xl font-black text-foreground tracking-tighter">{propertyData.name}</h2>
-                    {propertyData.slogan && <p className="text-muted-foreground text-sm font-medium italic mt-1">{propertyData.slogan}</p>}
-                </div>
-              </div>
-          </header>
-      );
+    if (!propertyData) return null;
+    return (
+      <header className="flex flex-col items-center justify-center space-y-4 mb-8 animate-in fade-in slide-in-from-top-4 relative">
+        <div className="absolute top-0 right-0 flex bg-secondary rounded-lg p-1 border border-border">
+          {(['pt', 'en', 'es'] as const).map(l => (
+            <button
+              key={l} type="button" onClick={() => setLang(l)}
+              className={cn("px-2 py-1 text-[10px] font-bold uppercase rounded-md transition-all", lang === l ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+
+        <div className="pt-4 flex flex-col items-center">
+          {propertyData.logoUrl ? (
+            <img src={propertyData.logoUrl} alt={propertyData.name} className="h-16 md:h-20 object-contain drop-shadow-md" />
+          ) : (
+            <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center text-primary-foreground font-black text-3xl shadow-lg">
+              {propertyData.name.charAt(0) || "A"}
+            </div>
+          )}
+          <div className="text-center mt-2">
+            <h2 className="text-2xl font-black text-foreground tracking-tighter">{propertyData.name}</h2>
+            {propertyData.slogan && <p className="text-muted-foreground text-sm font-medium italic mt-1">{propertyData.slogan}</p>}
+          </div>
+        </div>
+      </header>
+    );
   };
 
   // Helper para nomear a exibição do Transporte sem alterar o valor no BD
@@ -549,20 +571,22 @@ export default function UnifiedPreCheckin() {
   const generalPolicyText = propertyData?.settings?.generalPolicyText?.[lang] || propertyData?.settings?.generalPolicyText?.pt || "General policy not defined.";
   const privacyPolicyText = propertyData?.settings?.privacyPolicyText?.[lang] || propertyData?.settings?.privacyPolicyText?.pt || "Privacy policy not defined.";
 
-  if (step === 'loading') return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary" size={40}/></div>;
-  
+  if (step === 'loading') return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary" size={40} /></div>;
+
   if (step === 'error') return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-6 text-center" style={getThemeStyles()}>
-        <div className="max-w-md space-y-4 animate-in fade-in zoom-in duration-300">
-          <AlertCircle size={64} className="mx-auto text-destructive opacity-80" />
-          <h1 className="text-2xl font-black text-foreground uppercase tracking-tighter">{t.errorTitle}</h1>
-          <p className="text-muted-foreground">{t.errorDesc}</p>
-        </div>
+    <div className="min-h-screen bg-background flex items-center justify-center p-6 text-center" style={getThemeStyles()}>
+      <div className="max-w-md space-y-4 animate-in fade-in zoom-in duration-300">
+        <AlertCircle size={64} className="mx-auto text-destructive opacity-80" />
+        <h1 className="text-2xl font-black text-foreground uppercase tracking-tighter">{t.errorTitle}</h1>
+        <p className="text-muted-foreground">{t.errorDesc}</p>
       </div>
+    </div>
   );
 
   if (step === 'success') {
     const pendingStays = groupStays.filter(s => !s.expectedArrivalTime && s.id !== stayId);
+    const nextPendingStay = pendingStays.length > 0 ? pendingStays[0] : null;
+
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center" style={getThemeStyles()}>
         <PropertyHeader />
@@ -570,29 +594,48 @@ export default function UnifiedPreCheckin() {
           <CheckCircle2 size={80} className="mx-auto text-green-500" />
           <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter">{t.successTitle}</h1>
           <p className="text-muted-foreground">{t.successDesc}</p>
-          
+
           <div className="p-4 bg-secondary rounded-2xl border border-border">
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">{t.resCode}</p>
-              <p className="text-3xl font-black text-primary tracking-widest mt-2">{stay.accessCode}</p>
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">{t.resCode}</p>
+            <p className="text-3xl font-black text-primary tracking-widest mt-2">{stay.accessCode}</p>
           </div>
 
           <div className="pt-4 space-y-3">
             {groupStays.length > 1 && pendingStays.length > 0 ? (
-                <div className="space-y-4 bg-primary/5 border border-primary/20 p-6 rounded-3xl">
-                    <p className="text-sm font-medium text-foreground">
-                        {t.pendingStays} (<strong>{pendingStays.length}</strong>)
-                    </p>
-                    <button onClick={() => setStep('group_manager')} className="w-full py-4 bg-primary text-primary-foreground font-black uppercase tracking-widest rounded-2xl hover:opacity-90 transition-all shadow-lg shadow-primary/20">
-                        {t.nextUnit}
-                    </button>
+              <div className="space-y-4 bg-primary/5 border border-primary/20 p-6 rounded-3xl">
+                <p className="text-sm font-medium text-foreground">
+                  {t.pendingStays} (<strong>{pendingStays.length}</strong>)
+                </p>
+
+                {/* Countdown progress bar */}
+                <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all duration-1000 ease-linear"
+                    style={{ width: `${(countdown / 5) * 100}%` }}
+                  />
                 </div>
-            ) : (
-                <button 
-                  onClick={() => window.open(`https://wa.me/${propertyData?.settings?.whatsappNumber?.replace(/\D/g, '') || ''}`, '_blank')} 
-                  className="w-full py-4 bg-green-600 text-white font-black uppercase tracking-widest rounded-2xl hover:bg-green-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-600/20"
+                <p className="text-xs text-muted-foreground">
+                  {lang === 'en'
+                    ? `Redirecting to next unit in ${countdown}s...`
+                    : lang === 'es'
+                      ? `Redirigiendo a la siguiente unidad en ${countdown}s...`
+                      : `Redirecionando para a próxima unidade em ${countdown}s...`}
+                </p>
+
+                <button
+                  onClick={() => window.location.href = `/check-in/form/${nextPendingStay!.id}?fromGroup=1`}
+                  className="w-full py-4 bg-primary text-primary-foreground font-black uppercase tracking-widest rounded-2xl hover:opacity-90 transition-all shadow-lg shadow-primary/20"
                 >
-                    {t.whatsappBtn}
+                  {t.nextUnit}
                 </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => window.open(`https://wa.me/${propertyData?.settings?.whatsappNumber?.replace(/\D/g, '') || ''}`, '_blank')}
+                className="w-full py-4 bg-green-600 text-white font-black uppercase tracking-widest rounded-2xl hover:bg-green-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-600/20"
+              >
+                {t.whatsappBtn}
+              </button>
             )}
           </div>
         </div>
@@ -616,11 +659,11 @@ export default function UnifiedPreCheckin() {
             <button onClick={() => setStep('form')} className="w-full py-4 bg-primary text-primary-foreground font-black uppercase tracking-widest rounded-2xl hover:opacity-90 transition-all shadow-lg shadow-primary/20">
               {t.reviewBtn}
             </button>
-            <button 
-                onClick={() => window.open(`https://wa.me/${propertyData?.settings?.whatsappNumber?.replace(/\D/g, '') || ''}`, '_blank')} 
-                className="w-full py-4 bg-secondary text-foreground font-bold rounded-2xl hover:bg-accent transition-all"
+            <button
+              onClick={() => window.open(`https://wa.me/${propertyData?.settings?.whatsappNumber?.replace(/\D/g, '') || ''}`, '_blank')}
+              className="w-full py-4 bg-secondary text-foreground font-bold rounded-2xl hover:bg-accent transition-all"
             >
-                {t.whatsappBtn}
+              {t.whatsappBtn}
             </button>
           </div>
         </div>
@@ -639,29 +682,30 @@ export default function UnifiedPreCheckin() {
         </div>
         <div className="grid gap-4 w-full max-w-md">
           {groupStays.map((s) => {
-            const isStayDone = !!s.expectedArrivalTime; 
+            const isStayDone = !!s.expectedArrivalTime;
             return (
-            <button 
-              key={s.id} 
-              onClick={() => {
-                if (s.id !== stayId) window.location.href = `/check-in/form/${s.id}?fromGroup=1`;
-                else setStep(isStayDone ? 'already_done' : 'form');
-              }}
-              className={cn(
-                "p-6 rounded-[32px] border text-left transition-all flex justify-between items-center group shadow-sm",
-                s.id === stayId ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "border-border bg-secondary hover:bg-accent hover:border-primary/40"
-              )}
-            >
-              <div>
-                <p className="text-[10px] font-bold text-muted-foreground uppercase">{t.unit}</p>
-                <p className="text-xl font-black text-foreground">{s.cabinName || "Acomodação"}</p>
-                <span className={cn("text-[9px] font-bold uppercase mt-2 inline-block px-2 py-1 rounded", isStayDone ? "bg-green-500/10 text-green-600" : "bg-orange-500/10 text-orange-600")}>
+              <button
+                key={s.id}
+                onClick={() => {
+                  if (s.id !== stayId) window.location.href = `/check-in/form/${s.id}?fromGroup=1`;
+                  else setStep(isStayDone ? 'already_done' : 'form');
+                }}
+                className={cn(
+                  "p-6 rounded-[32px] border text-left transition-all flex justify-between items-center group shadow-sm",
+                  s.id === stayId ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "border-border bg-secondary hover:bg-accent hover:border-primary/40"
+                )}
+              >
+                <div>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase">{t.unit}</p>
+                  <p className="text-xl font-black text-foreground">{s.cabinName || "Acomodação"}</p>
+                  <span className={cn("text-[9px] font-bold uppercase mt-2 inline-block px-2 py-1 rounded", isStayDone ? "bg-green-500/10 text-green-600" : "bg-orange-500/10 text-orange-600")}>
                     {isStayDone ? t.done : t.pending}
-                </span>
-              </div>
-              <ArrowRight size={20} className={cn("transition-transform group-hover:translate-x-1", s.id === stayId ? "text-primary" : "text-muted-foreground")} />
-            </button>
-          )})}
+                  </span>
+                </div>
+                <ArrowRight size={20} className={cn("transition-transform group-hover:translate-x-1", s.id === stayId ? "text-primary" : "text-muted-foreground")} />
+              </button>
+            )
+          })}
         </div>
       </main>
     );
@@ -669,21 +713,21 @@ export default function UnifiedPreCheckin() {
 
   return (
     <main className="min-h-screen bg-background text-foreground p-6 pb-24 font-sans relative" style={getThemeStyles()}>
-      
+
       <PropertyHeader />
 
       <form onSubmit={handleSaveIntercept} className="max-w-2xl mx-auto space-y-12 animate-in fade-in duration-700">
-        
+
         {/* 1. Identidade Titular */}
         <section className="space-y-6">
           <h3 className="text-xl font-black border-l-4 border-primary pl-4 uppercase tracking-tighter flex items-center gap-2">
-             <User size={20} className="text-primary"/> 1. {t.titleHolder}
+            <User size={20} className="text-primary" /> 1. {t.titleHolder}
           </h3>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="relative">
               <label className="text-[10px] font-bold text-muted-foreground uppercase mb-2 block">{t.nationality}</label>
-              <button 
+              <button
                 type="button"
                 onClick={() => setShowCountrySelect(!showCountrySelect)}
                 className="w-full bg-secondary border border-border p-4 rounded-2xl flex items-center justify-between hover:border-primary/50 transition-colors"
@@ -696,7 +740,7 @@ export default function UnifiedPreCheckin() {
 
               {showCountrySelect && (
                 <div className="absolute top-full left-0 w-full mt-2 bg-card border border-border rounded-2xl z-50 shadow-2xl overflow-hidden animate-in slide-in-from-top-2">
-                  <input 
+                  <input
                     className="w-full p-4 bg-secondary border-b border-border outline-none text-sm text-foreground placeholder:text-muted-foreground"
                     placeholder={t.searchCountry}
                     value={searchCountry}
@@ -705,9 +749,9 @@ export default function UnifiedPreCheckin() {
                   />
                   <div className="max-h-60 overflow-y-auto custom-scrollbar">
                     {countries.filter(c => c.name.toLowerCase().includes(searchCountry.toLowerCase())).map(c => (
-                      <button 
+                      <button
                         key={c.name} type="button"
-                        onClick={() => { setGuest({...guest, nationality: c.name}); setShowCountrySelect(false); }}
+                        onClick={() => { setGuest({ ...guest, nationality: c.name }); setShowCountrySelect(false); }}
                         className="w-full p-4 text-left hover:bg-accent flex items-center gap-3 text-sm font-medium transition-colors"
                       >
                         <span>{c.flag}</span> {c.name}
@@ -720,11 +764,11 @@ export default function UnifiedPreCheckin() {
 
             <div className="space-y-1">
               <label className="text-[10px] font-bold text-muted-foreground uppercase">
-                 {guest.nationality === "Brasil" ? "CPF *" : t.doc}
+                {guest.nationality === "Brasil" ? "CPF *" : t.doc}
               </label>
-              <input 
-                value={guest.document?.number || ""} 
-                onChange={e => setGuest({...guest, document: { ...guest.document, number: e.target.value }})}
+              <input
+                value={guest.document?.number || ""}
+                onChange={e => setGuest({ ...guest, document: { ...guest.document, number: e.target.value } })}
                 className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 transition-colors text-sm"
                 placeholder={guest.nationality === "Brasil" ? "000.000.000-00" : "Documento"}
               />
@@ -734,190 +778,209 @@ export default function UnifiedPreCheckin() {
           <div className="space-y-1">
             <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.fullName}</label>
             <div className="flex gap-2">
-              <input 
+              <input
                 readOnly={!isEditingName}
                 value={guest.fullName || ""}
-                onChange={e => setGuest({...guest, fullName: e.target.value})}
+                onChange={e => setGuest({ ...guest, fullName: e.target.value })}
                 className={cn(
-                    "flex-1 bg-secondary p-4 rounded-2xl outline-none transition-all text-sm font-medium", 
-                    isEditingName ? "border border-primary focus:border-primary" : "border border-border opacity-80"
+                  "flex-1 bg-secondary p-4 rounded-2xl outline-none transition-all text-sm font-medium",
+                  isEditingName ? "border border-primary focus:border-primary" : "border border-border opacity-80"
                 )}
               />
-              <button 
-                type="button" 
-                onClick={() => setIsEditingName(!isEditingName)} 
+              <button
+                type="button"
+                onClick={() => setIsEditingName(!isEditingName)}
                 className="p-4 bg-secondary rounded-2xl text-primary border border-border hover:bg-accent transition-colors"
               >
-                <Edit3 size={18}/>
+                <Edit3 size={18} />
               </button>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-             <div className="space-y-1">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.birth}</label>
-                <input type="date" 
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.birth}</label>
+              <input type="date"
                 value={guest.birthDate || ""}
-                onChange={e => setGuest({...guest, birthDate: e.target.value})}
-                className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none text-sm font-medium focus:border-primary/50 transition-colors [color-scheme:light] dark:[color-scheme:dark]" 
-                />
-             </div>
-             <div className="space-y-1">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.gender}</label>
-                <select 
+                onChange={e => setGuest({ ...guest, birthDate: e.target.value })}
+                className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none text-sm font-medium focus:border-primary/50 transition-colors [color-scheme:light] dark:[color-scheme:dark]"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.gender}</label>
+              <select
                 value={guest.gender || ""}
-                onChange={e => setGuest({...guest, gender: e.target.value})}
+                onChange={e => setGuest({ ...guest, gender: e.target.value })}
                 className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none text-sm font-medium focus:border-primary/50 transition-colors appearance-none"
-                >
+              >
                 <option value="" disabled>{t.select}</option>
                 <option value="M">{t.male}</option>
                 <option value="F">{t.female}</option>
                 <option value="O">{t.other}</option>
-                </select>
-             </div>
+              </select>
+            </div>
           </div>
         </section>
 
         {/* 2. Acompanhantes */}
         <section className="space-y-6">
-            <div className="flex justify-between items-center border-b border-border pb-4">
-                <h3 className="text-xl font-black border-l-4 border-primary pl-4 uppercase tracking-tighter flex items-center gap-2">
-                    <Users size={20} className="text-primary"/> 2. {t.companions}
-                </h3>
-            </div>
-            
-            <div className="space-y-4">
-                {stay.additionalGuests?.map((g: any, idx: number) => (
-                    <div key={idx} className="bg-secondary border border-border p-4 rounded-2xl space-y-4 animate-in slide-in-from-left">
-                        <div className="flex justify-between items-center">
-                            <span className="text-[10px] font-bold uppercase text-primary bg-background border border-border px-3 py-1.5 rounded-lg">
-                                {g.type === 'adult' ? t.adult : g.type === 'child' ? t.child : t.free}
-                            </span>
-                            <button type="button" onClick={() => {
-                                setStay((prev: any) => ({ ...prev, additionalGuests: prev.additionalGuests.filter((_: any, i: number) => i !== idx) }));
-                            }} className="text-destructive hover:bg-destructive/10 p-2 rounded-lg transition-colors"><Trash2 size={16}/></button>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-bold uppercase text-muted-foreground">{t.fullName}</label>
-                                <input 
-                                    value={g.fullName} 
-                                    onChange={e => {
-                                        const newGuests = [...stay.additionalGuests];
-                                        newGuests[idx].fullName = e.target.value;
-                                        setStay({ ...stay, additionalGuests: newGuests });
-                                    }}
-                                    className="w-full bg-background border border-border p-3 rounded-xl outline-none text-sm focus:border-primary/50 transition-colors"
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-bold uppercase text-muted-foreground">{t.doc} {g.type === 'adult' ? '*' : t.docOpt}</label>
-                                <input 
-                                    value={g.document} 
-                                    onChange={e => {
-                                        const newGuests = [...stay.additionalGuests];
-                                        newGuests[idx].document = e.target.value;
-                                        setStay({ ...stay, additionalGuests: newGuests });
-                                    }}
-                                    className="w-full bg-background border border-border p-3 rounded-xl outline-none text-sm focus:border-primary/50 transition-colors"
-                                />
-                            </div>
-                        </div>
-                    </div>
-                ))}
+          <div className="flex justify-between items-center border-b border-border pb-4">
+            <h3 className="text-xl font-black border-l-4 border-primary pl-4 uppercase tracking-tighter flex items-center gap-2">
+              <Users size={20} className="text-primary" /> 2. {t.companions}
+            </h3>
+            {cabin?.capacity && (
+              <span className="text-[10px] font-bold uppercase text-muted-foreground bg-secondary px-3 py-1.5 rounded-lg border border-border">
+                {1 + (stay.additionalGuests?.length || 0)}/{cabin.capacity}
+              </span>
+            )}
+          </div>
 
+          <div className="space-y-4">
+            {stay.additionalGuests?.map((g: any, idx: number) => (
+              <div key={idx} className="bg-secondary border border-border p-4 rounded-2xl space-y-4 animate-in slide-in-from-left">
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-bold uppercase text-primary bg-background border border-border px-3 py-1.5 rounded-lg">
+                    {g.type === 'adult' ? t.adult : g.type === 'child' ? t.child : t.free}
+                  </span>
+                  <button type="button" onClick={() => {
+                    setStay((prev: any) => ({ ...prev, additionalGuests: prev.additionalGuests.filter((_: any, i: number) => i !== idx) }));
+                  }} className="text-destructive hover:bg-destructive/10 p-2 rounded-lg transition-colors"><Trash2 size={16} /></button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold uppercase text-muted-foreground">{t.fullName}</label>
+                    <input
+                      value={g.fullName}
+                      onChange={e => {
+                        const newGuests = [...stay.additionalGuests];
+                        newGuests[idx].fullName = e.target.value;
+                        setStay({ ...stay, additionalGuests: newGuests });
+                      }}
+                      className="w-full bg-background border border-border p-3 rounded-xl outline-none text-sm focus:border-primary/50 transition-colors"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold uppercase text-muted-foreground">{t.doc} {g.type === 'adult' ? '*' : t.docOpt}</label>
+                    <input
+                      value={g.document}
+                      onChange={e => {
+                        const newGuests = [...stay.additionalGuests];
+                        newGuests[idx].document = e.target.value;
+                        setStay({ ...stay, additionalGuests: newGuests });
+                      }}
+                      className="w-full bg-background border border-border p-3 rounded-xl outline-none text-sm focus:border-primary/50 transition-colors"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {(() => {
+              const maxCapacity = cabin?.capacity || 99;
+              const currentTotal = 1 + (stay.additionalGuests?.length || 0);
+              const isFull = currentTotal >= maxCapacity;
+              const addGuest = (type: string) => {
+                if (isFull) {
+                  toast.error(lang === 'en' ? `Maximum capacity reached (${maxCapacity} guests)` : lang === 'es' ? `Capacidad máxima alcanzada (${maxCapacity} huéspedes)` : `Capacidade máxima atingida (${maxCapacity} hóspedes)`);
+                  return;
+                }
+                setStay((p: any) => ({ ...p, additionalGuests: [...p.additionalGuests, { id: Date.now().toString(), type, fullName: "", document: "" }] }));
+              };
+              return (
                 <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-                    <button type="button" onClick={() => setStay((p: any) => ({...p, additionalGuests: [...p.additionalGuests, {id: Date.now().toString(), type: 'adult', fullName: "", document: ""}]}))} className="flex-1 min-w-[120px] py-3 bg-secondary border border-border hover:border-primary/50 rounded-xl flex items-center justify-center gap-2 text-xs font-bold uppercase transition-all">
-                        <Plus size={14}/> {t.adult}
-                    </button>
-                    <button type="button" onClick={() => setStay((p: any) => ({...p, additionalGuests: [...p.additionalGuests, {id: Date.now().toString(), type: 'child', fullName: "", document: ""}]}))} className="flex-1 min-w-[120px] py-3 bg-secondary border border-border hover:border-primary/50 rounded-xl flex items-center justify-center gap-2 text-xs font-bold uppercase transition-all">
-                        <Plus size={14}/> {t.child}
-                    </button>
-                    <button type="button" onClick={() => setStay((p: any) => ({...p, additionalGuests: [...p.additionalGuests, {id: Date.now().toString(), type: 'free', fullName: "", document: ""}]}))} className="flex-1 min-w-[120px] py-3 bg-secondary border border-border hover:border-primary/50 rounded-xl flex items-center justify-center gap-2 text-xs font-bold uppercase transition-all">
-                        <Plus size={14}/> {t.free}
-                    </button>
+                  <button type="button" disabled={isFull} onClick={() => addGuest('adult')} className={cn("flex-1 min-w-[120px] py-3 bg-secondary border border-border rounded-xl flex items-center justify-center gap-2 text-xs font-bold uppercase transition-all", isFull ? "opacity-40 cursor-not-allowed" : "hover:border-primary/50")}>
+                    <Plus size={14} /> {t.adult}
+                  </button>
+                  <button type="button" disabled={isFull} onClick={() => addGuest('child')} className={cn("flex-1 min-w-[120px] py-3 bg-secondary border border-border rounded-xl flex items-center justify-center gap-2 text-xs font-bold uppercase transition-all", isFull ? "opacity-40 cursor-not-allowed" : "hover:border-primary/50")}>
+                    <Plus size={14} /> {t.child}
+                  </button>
+                  <button type="button" disabled={isFull} onClick={() => addGuest('free')} className={cn("flex-1 min-w-[120px] py-3 bg-secondary border border-border rounded-xl flex items-center justify-center gap-2 text-xs font-bold uppercase transition-all", isFull ? "opacity-40 cursor-not-allowed" : "hover:border-primary/50")}>
+                    <Plus size={14} /> {t.free}
+                  </button>
                 </div>
-                
-                <div className="bg-primary/5 border border-primary/20 p-3 rounded-xl mt-2">
-                    <p className="text-[10px] text-primary/80 font-medium text-center">
-                        {t.ageRule}
-                    </p>
-                </div>
+              );
+            })()}
+
+            <div className="bg-primary/5 border border-primary/20 p-3 rounded-xl mt-2">
+              <p className="text-[10px] text-primary/80 font-medium text-center">
+                {t.ageRule}
+              </p>
             </div>
+          </div>
         </section>
 
         {/* 3. Residência */}
         <section className="space-y-6">
           <h3 className="text-xl font-black border-l-4 border-primary pl-4 uppercase tracking-tighter flex items-center gap-2">
-             <MapPin size={20} className="text-primary"/> 3. {t.residence}
+            <MapPin size={20} className="text-primary" /> 3. {t.residence}
           </h3>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="md:col-span-1 space-y-1">
               <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.zip}</label>
               <div className="relative">
-                <input 
-                    value={guest.address?.zipCode || ""}
-                    onChange={e => handleCEPChange(e.target.value)} 
-                    className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm transition-colors"
-                    placeholder="00000-000"
+                <input
+                  value={guest.address?.zipCode || ""}
+                  onChange={e => handleCEPChange(e.target.value)}
+                  className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm transition-colors"
+                  placeholder="00000-000"
                 />
                 {loadingCep && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 animate-spin text-primary" size={16} />}
               </div>
             </div>
-            
+
             <div className="md:col-span-3 space-y-1">
               <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.street}</label>
-              <input 
-                value={guest.address?.street || ""} 
-                onChange={e => setGuest({...guest, address: {...guest.address, street: e.target.value}})}
-                className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm transition-colors" 
+              <input
+                value={guest.address?.street || ""}
+                onChange={e => setGuest({ ...guest, address: { ...guest.address, street: e.target.value } })}
+                className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm transition-colors"
               />
             </div>
-            
+
             <div className="md:col-span-1 space-y-1">
               <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.number}</label>
-              <input 
-                value={guest.address?.number || ""} 
-                onChange={e => setGuest({...guest, address: {...guest.address, number: e.target.value}})} 
-                className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm transition-colors" 
+              <input
+                value={guest.address?.number || ""}
+                onChange={e => setGuest({ ...guest, address: { ...guest.address, number: e.target.value } })}
+                className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm transition-colors"
                 placeholder="S/N"
               />
             </div>
-            
+
             <div className="md:col-span-3 space-y-1">
               <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.complement}</label>
-              <input 
-                value={guest.address?.complement || ""} 
-                onChange={e => setGuest({...guest, address: {...guest.address, complement: e.target.value}})} 
-                className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm transition-colors" 
+              <input
+                value={guest.address?.complement || ""}
+                onChange={e => setGuest({ ...guest, address: { ...guest.address, complement: e.target.value } })}
+                className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm transition-colors"
               />
             </div>
 
             <div className="md:col-span-2 space-y-1">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.neighborhood}</label>
-                <input 
-                    value={guest.address?.neighborhood || ""} 
-                    onChange={e => setGuest({...guest, address: {...guest.address, neighborhood: e.target.value}})} 
-                    className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm transition-colors" 
-                />
+              <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.neighborhood}</label>
+              <input
+                value={guest.address?.neighborhood || ""}
+                onChange={e => setGuest({ ...guest, address: { ...guest.address, neighborhood: e.target.value } })}
+                className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm transition-colors"
+              />
             </div>
             <div className="md:col-span-1 space-y-1">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.city}</label>
-                <input 
-                    value={guest.address?.city || ""} 
-                    onChange={e => setGuest({...guest, address: {...guest.address, city: e.target.value}})} 
-                    className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm transition-colors" 
-                />
+              <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.city}</label>
+              <input
+                value={guest.address?.city || ""}
+                onChange={e => setGuest({ ...guest, address: { ...guest.address, city: e.target.value } })}
+                className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm transition-colors"
+              />
             </div>
             <div className="md:col-span-1 space-y-1">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.state}</label>
-                <input 
-                    value={guest.address?.state || ""} 
-                    onChange={e => setGuest({...guest, address: {...guest.address, state: e.target.value}})} 
-                    className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm transition-colors" 
-                    maxLength={2}
-                />
+              <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.state}</label>
+              <input
+                value={guest.address?.state || ""}
+                onChange={e => setGuest({ ...guest, address: { ...guest.address, state: e.target.value } })}
+                className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm transition-colors"
+                maxLength={2}
+              />
             </div>
           </div>
         </section>
@@ -925,56 +988,56 @@ export default function UnifiedPreCheckin() {
         {/* 4. Viagem & Logística */}
         <section className="bg-secondary/30 border border-border p-8 rounded-[40px] space-y-8">
           <div className="space-y-6">
-             <h3 className="text-xl font-black border-l-4 border-primary pl-4 uppercase tracking-tighter flex items-center gap-2 text-foreground">
-                <Plane size={20} className="text-primary"/> 4. {t.travel}
-             </h3>
-             
-             <div className="space-y-1">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.arrTime}</label>
-                <div className="flex items-center gap-2 bg-background border border-border p-4 rounded-2xl focus-within:border-primary/50 transition-colors">
-                    <Clock size={18} className="text-primary"/>
-                    <input 
-                        type="time"
-                        value={stay.expectedArrivalTime || ""}
-                        onChange={e => setStay({...stay, expectedArrivalTime: e.target.value})}
-                        className="bg-transparent outline-none text-foreground font-bold w-full [color-scheme:light] dark:[color-scheme:dark]"
-                    />
-                </div>
-             </div>
+            <h3 className="text-xl font-black border-l-4 border-primary pl-4 uppercase tracking-tighter flex items-center gap-2 text-foreground">
+              <Plane size={20} className="text-primary" /> 4. {t.travel}
+            </h3>
 
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase flex flex-col">
-                        <span>{t.origin}</span>
-                        <span className="text-[8px] font-normal opacity-70 normal-case mb-1 mt-0.5">{t.originDesc}</span>
-                    </label>
-                    <input 
-                    value={stay.lastCity || ""}
-                    onChange={e => setStay({...stay, lastCity: e.target.value})}
-                    className="w-full bg-background border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm transition-colors" 
-                    />
-                </div>
-                <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase flex flex-col">
-                        <span>{t.dest}</span>
-                        <span className="text-[8px] font-normal opacity-70 normal-case mb-1 mt-0.5">{t.destDesc}</span>
-                    </label>
-                    <input 
-                    value={stay.nextCity || ""}
-                    onChange={e => setStay({...stay, nextCity: e.target.value})}
-                    className="w-full bg-background border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm transition-colors" 
-                    />
-                </div>
-             </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.arrTime}</label>
+              <div className="flex items-center gap-2 bg-background border border-border p-4 rounded-2xl focus-within:border-primary/50 transition-colors">
+                <Clock size={18} className="text-primary" />
+                <input
+                  type="time"
+                  value={stay.expectedArrivalTime || ""}
+                  onChange={e => setStay({ ...stay, expectedArrivalTime: e.target.value })}
+                  className="bg-transparent outline-none text-foreground font-bold w-full [color-scheme:light] dark:[color-scheme:dark]"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-muted-foreground uppercase flex flex-col">
+                  <span>{t.origin}</span>
+                  <span className="text-[8px] font-normal opacity-70 normal-case mb-1 mt-0.5">{t.originDesc}</span>
+                </label>
+                <input
+                  value={stay.lastCity || ""}
+                  onChange={e => setStay({ ...stay, lastCity: e.target.value })}
+                  className="w-full bg-background border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm transition-colors"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-muted-foreground uppercase flex flex-col">
+                  <span>{t.dest}</span>
+                  <span className="text-[8px] font-normal opacity-70 normal-case mb-1 mt-0.5">{t.destDesc}</span>
+                </label>
+                <input
+                  value={stay.nextCity || ""}
+                  onChange={e => setStay({ ...stay, nextCity: e.target.value })}
+                  className="w-full bg-background border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm transition-colors"
+                />
+              </div>
+            </div>
           </div>
 
           <div className="space-y-4">
             <p className="text-xs font-black uppercase tracking-widest text-primary">{t.transport}</p>
             <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
               {['Carro', 'Onibus', 'Avião', 'Navio', 'Outro'].map(m => (
-                <button 
+                <button
                   key={m} type="button"
-                  onClick={() => setStay({...stay, transportation: m})}
+                  onClick={() => setStay({ ...stay, transportation: m })}
                   className={cn("p-3 rounded-xl border text-[9px] font-black uppercase transition-all", stay.transportation === m ? "bg-primary text-primary-foreground border-primary shadow-md" : "bg-background border-border text-muted-foreground hover:bg-accent")}
                 >
                   {getTransportLabel(m)}
@@ -986,7 +1049,7 @@ export default function UnifiedPreCheckin() {
           {stay.transportation === 'Carro' && (
             <div className="space-y-2 animate-in slide-in-from-top-2">
               <label className="text-[10px] font-bold uppercase text-muted-foreground">{t.carPlate}</label>
-              <input value={stay.vehiclePlate || ""} onChange={e => setStay({...stay, vehiclePlate: e.target.value.toUpperCase()})} placeholder="ABC1D23" className="w-full bg-background border border-border p-5 rounded-3xl font-mono text-2xl tracking-widest text-primary text-center focus:border-primary/50 outline-none transition-colors" />
+              <input value={stay.vehiclePlate || ""} onChange={e => setStay({ ...stay, vehiclePlate: e.target.value.toUpperCase() })} placeholder="ABC1D23" className="w-full bg-background border border-border p-5 rounded-3xl font-mono text-2xl tracking-widest text-primary text-center focus:border-primary/50 outline-none transition-colors" />
             </div>
           )}
 
@@ -994,9 +1057,9 @@ export default function UnifiedPreCheckin() {
             <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{t.roomSetup}: {cabin?.name}</p>
             <div className="grid grid-cols-1 gap-3">
               {(cabin?.allowedSetups || ["Casal Padrão"]).map((setup: string) => (
-                <button 
+                <button
                   key={setup} type="button"
-                  onClick={() => setStay({...stay, roomSetupNotes: setup})}
+                  onClick={() => setStay({ ...stay, roomSetupNotes: setup })}
                   className={cn("p-4 rounded-2xl border text-left text-sm font-bold transition-all", stay.roomSetupNotes === setup ? "bg-foreground text-background border-foreground shadow-md" : "bg-background border-border text-muted-foreground hover:bg-accent")}
                 >
                   {setup}
@@ -1007,100 +1070,177 @@ export default function UnifiedPreCheckin() {
         </section>
 
         {/* 5. Pets */}
-        <section className="bg-orange-500/5 border border-orange-500/20 p-8 rounded-[40px] space-y-6">
-          <label className="flex items-center gap-4 cursor-pointer group">
-            <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center transition-colors", stay.hasPet ? "bg-orange-500 text-white shadow-lg shadow-orange-500/30" : "bg-background border border-orange-500/20 text-orange-500")}>
-              <Dog size={24} />
-            </div>
-            <div className="flex-1">
-              <p className="font-black text-lg text-foreground">{t.petTitle}</p>
-              <p className="text-[10px] text-muted-foreground uppercase font-bold">{t.petDesc}</p>
-            </div>
-            <input type="checkbox" checked={stay.hasPet} onChange={e => {
-                setStay({...stay, hasPet: e.target.checked});
-                if(!e.target.checked) setAgreedPet(false); 
-            }} className="w-6 h-6 accent-orange-500 rounded-lg cursor-pointer" />
-          </label>
+        {propertyData?.settings?.acceptsPets !== false && (
+          <section className="bg-orange-500/5 border border-orange-500/20 p-8 rounded-[40px] space-y-6">
+            <label className="flex items-center gap-4 cursor-pointer group">
+              <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center transition-colors", stay.hasPet ? "bg-orange-500 text-white shadow-lg shadow-orange-500/30" : "bg-background border border-orange-500/20 text-orange-500")}>
+                <Dog size={24} />
+              </div>
+              <div className="flex-1">
+                <p className="font-black text-lg text-foreground">{t.petTitle}</p>
+                <p className="text-[10px] text-muted-foreground uppercase font-bold">{t.petDesc}</p>
+              </div>
+              <input type="checkbox" checked={stay.hasPet} onChange={e => {
+                setStay({ ...stay, hasPet: e.target.checked });
+                if (!e.target.checked) setAgreedPet(false);
+              }} className="w-6 h-6 accent-orange-500 rounded-lg cursor-pointer" />
+            </label>
 
-          {stay.hasPet && (
-            <div className="space-y-6 animate-in zoom-in duration-300">
-              
-              <div className="text-xs text-orange-600/90 bg-orange-500/10 p-4 rounded-xl border border-orange-500/20 leading-relaxed font-medium">
+            {stay.hasPet && (
+              <div className="space-y-6 animate-in zoom-in duration-300">
+
+                <div className="text-xs text-orange-600/90 bg-orange-500/10 p-4 rounded-xl border border-orange-500/20 leading-relaxed font-medium">
                   {petPolicyAlert}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <input 
-                placeholder={t.petName} 
-                value={stay.petDetails?.name || ""}
-                onChange={e => setStay({...stay, petDetails: {...stay.petDetails, name: e.target.value}})}
-                className="bg-background border border-border p-4 rounded-2xl text-sm focus:border-orange-500/50 outline-none transition-colors text-foreground" 
-                />
-                <input 
-                placeholder={t.petBreed}
-                value={stay.petDetails?.breed || ""}
-                onChange={e => setStay({...stay, petDetails: {...stay.petDetails, breed: e.target.value}})}
-                className="bg-background border border-border p-4 rounded-2xl text-sm focus:border-orange-500/50 outline-none transition-colors text-foreground" 
-                />
-                <select 
-                 value={stay.petDetails?.species || "Cachorro"}
-                 onChange={e => setStay({...stay, petDetails: {...stay.petDetails, species: e.target.value}})}
-                 className="bg-background border border-border p-4 rounded-2xl text-sm outline-none focus:border-orange-500/50 transition-colors text-foreground appearance-none"
-                >
-                  <option value="Cachorro">{t.petDog}</option>
-                  <option value="Gato">{t.petCat}</option>
-                  <option value="Outro">{t.petOther}</option>
-                </select>
-              </div>
-              <div className="space-y-3">
-                <div className="flex justify-between text-[10px] font-bold uppercase text-orange-600">
-                  <span>{t.petWeight}: {stay.petDetails?.weight || 5}kg</span>
                 </div>
-                <input 
-                  type="range" min="1" max="40" 
-                  value={stay.petDetails?.weight || 5} 
-                  onChange={e => setStay({...stay, petDetails: {...stay.petDetails, weight: parseInt(e.target.value)}})}
-                  className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-orange-500"
-                />
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <input
+                    placeholder={t.petName}
+                    value={stay.petDetails?.name || ""}
+                    onChange={e => setStay({ ...stay, petDetails: { ...stay.petDetails, name: e.target.value } })}
+                    className="bg-background border border-border p-4 rounded-2xl text-sm focus:border-orange-500/50 outline-none transition-colors text-foreground"
+                  />
+                  <input
+                    placeholder={t.petBreed}
+                    value={stay.petDetails?.breed || ""}
+                    onChange={e => setStay({ ...stay, petDetails: { ...stay.petDetails, breed: e.target.value } })}
+                    className="bg-background border border-border p-4 rounded-2xl text-sm focus:border-orange-500/50 outline-none transition-colors text-foreground"
+                  />
+                  <select
+                    value={stay.petDetails?.species || "Cachorro"}
+                    onChange={e => setStay({ ...stay, petDetails: { ...stay.petDetails, species: e.target.value } })}
+                    className="bg-background border border-border p-4 rounded-2xl text-sm outline-none focus:border-orange-500/50 transition-colors text-foreground appearance-none"
+                  >
+                    <option value="Cachorro">{t.petDog}</option>
+                    <option value="Gato">{t.petCat}</option>
+                    <option value="Outro">{t.petOther}</option>
+                  </select>
+                </div>
+
+                {/* Weight Slider with Size Categories */}
+                {(() => {
+                  const petMinWeight = propertyData?.settings?.petMinWeight || 1;
+                  const petMaxWeight = propertyData?.settings?.petMaxWeight || 60;
+                  const currentWeight = stay.petDetails?.weight || 5;
+
+                  const getSizeLabel = (w: number) => {
+                    if (w <= 5) return { label: lang === 'en' ? 'Toy/Miniature' : lang === 'es' ? 'Miniatura/Toy' : 'Miniatura/Toy', color: 'text-blue-500' };
+                    if (w <= 10) return { label: lang === 'en' ? 'Small' : lang === 'es' ? 'Pequeño' : 'Pequeno', color: 'text-green-500' };
+                    if (w <= 25) return { label: lang === 'en' ? 'Medium' : lang === 'es' ? 'Mediano' : 'Médio', color: 'text-yellow-600' };
+                    if (w <= 45) return { label: lang === 'en' ? 'Large' : lang === 'es' ? 'Grande' : 'Grande', color: 'text-orange-500' };
+                    return { label: lang === 'en' ? 'Giant' : lang === 'es' ? 'Gigante' : 'Gigante', color: 'text-red-500' };
+                  };
+
+                  const sizeInfo = getSizeLabel(currentWeight);
+                  const isBlocked = currentWeight < petMinWeight || currentWeight > petMaxWeight;
+
+                  const handleWeightChange = (newWeight: number) => {
+                    if (newWeight < petMinWeight) {
+                      toast.error(lang === 'en' ? `Minimum pet weight accepted: ${petMinWeight}kg` : lang === 'es' ? `Peso mínimo aceptado: ${petMinWeight}kg` : `Peso mínimo aceito: ${petMinWeight}kg`);
+                      setStay({ ...stay, petDetails: { ...stay.petDetails, weight: petMinWeight } });
+                      return;
+                    }
+                    if (newWeight > petMaxWeight) {
+                      toast.error(lang === 'en' ? `Maximum pet weight accepted: ${petMaxWeight}kg` : lang === 'es' ? `Peso máximo aceptado: ${petMaxWeight}kg` : `Peso máximo aceito: ${petMaxWeight}kg`);
+                      setStay({ ...stay, petDetails: { ...stay.petDetails, weight: petMaxWeight } });
+                      return;
+                    }
+                    setStay({ ...stay, petDetails: { ...stay.petDetails, weight: newWeight } });
+                  };
+
+                  // Size category markers
+                  const categories = [
+                    { label: 'Miniatura', max: 5 },
+                    { label: lang === 'en' ? 'Small' : 'Pequeno', max: 10 },
+                    { label: lang === 'en' ? 'Medium' : 'Médio', max: 25 },
+                    { label: lang === 'en' ? 'Large' : 'Grande', max: 45 },
+                    { label: lang === 'en' ? 'Giant' : 'Gigante', max: 60 }
+                  ];
+
+                  return (
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-end">
+                        <div>
+                          <span className="text-[10px] font-bold uppercase text-orange-600">{t.petWeight}</span>
+                          <p className={cn("text-2xl font-black", sizeInfo.color)}>
+                            {currentWeight}kg
+                            <span className="text-sm font-bold ml-2 opacity-80">— {sizeInfo.label}</span>
+                          </p>
+                        </div>
+                        {isBlocked && (
+                          <span className="text-[9px] font-bold uppercase bg-red-500/10 text-red-500 px-2 py-1 rounded-lg">
+                            {lang === 'en' ? 'Not accepted' : lang === 'es' ? 'No aceptado' : 'Não aceito'}
+                          </span>
+                        )}
+                      </div>
+
+                      <input
+                        type="range" min={1} max={60}
+                        value={currentWeight}
+                        onChange={e => handleWeightChange(parseInt(e.target.value))}
+                        className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-orange-500"
+                      />
+
+                      {/* Category markers */}
+                      <div className="flex justify-between text-[8px] font-bold uppercase text-muted-foreground px-0.5">
+                        {categories.map((cat, i) => {
+                          const isInRange = cat.max >= petMinWeight && (i === 0 ? 1 : categories[i - 1].max + 1) <= petMaxWeight;
+                          return (
+                            <span key={cat.label} className={cn("text-center", !isInRange && "opacity-30 line-through")}>
+                              {cat.label}<br />≤{cat.max}kg
+                            </span>
+                          );
+                        })}
+                      </div>
+
+                      {/* Accepted range indicator */}
+                      <div className="bg-orange-500/5 border border-orange-500/10 p-2 rounded-lg text-center">
+                        <p className="text-[9px] font-bold text-orange-600/70 uppercase">
+                          {lang === 'en' ? `Accepted range: ${petMinWeight}kg — ${petMaxWeight}kg` : lang === 'es' ? `Rango aceptado: ${petMinWeight}kg — ${petMaxWeight}kg` : `Faixa aceita: ${petMinWeight}kg — ${petMaxWeight}kg`}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
-            </div>
-          )}
-        </section>
+            )}
+          </section>
+        )}
 
         {/* 6. Termos e Políticas */}
         <section className="bg-card border border-border p-8 rounded-[40px] space-y-6 shadow-sm">
-            <h3 className="text-xl font-black border-l-4 border-primary pl-4 uppercase tracking-tighter flex items-center gap-2 text-foreground">
-                <FileText size={20} className="text-primary"/> 5. {t.termsTitle}
-            </h3>
-            <p className="text-sm text-muted-foreground">{t.termsDesc}</p>
-            
-            <div className="space-y-4 pt-4">
-                <label className="flex items-start gap-4 cursor-pointer group p-3 hover:bg-secondary rounded-2xl transition-colors">
-                    <input type="checkbox" checked={agreedGeneral} onChange={e => setAgreedGeneral(e.target.checked)} className="mt-1 w-5 h-5 accent-primary cursor-pointer shrink-0" />
-                    <span className="text-sm text-foreground">{t.agree} <button type="button" onClick={(e) => {e.preventDefault(); setPolicyModal('general');}} className="text-primary hover:underline font-bold transition-all">{t.polGen}</button> *</span>
-                </label>
-                
-                <label className="flex items-start gap-4 cursor-pointer group p-3 hover:bg-secondary rounded-2xl transition-colors">
-                    <input type="checkbox" checked={agreedPrivacy} onChange={e => setAgreedPrivacy(e.target.checked)} className="mt-1 w-5 h-5 accent-primary cursor-pointer shrink-0" />
-                    <span className="text-sm text-foreground">{t.agree} <button type="button" onClick={(e) => {e.preventDefault(); setPolicyModal('privacy');}} className="text-primary hover:underline font-bold transition-all">{t.polPriv}</button> *</span>
-                </label>
+          <h3 className="text-xl font-black border-l-4 border-primary pl-4 uppercase tracking-tighter flex items-center gap-2 text-foreground">
+            <FileText size={20} className="text-primary" /> 5. {t.termsTitle}
+          </h3>
+          <p className="text-sm text-muted-foreground">{t.termsDesc}</p>
 
-                {stay.hasPet && (
-                    <label className="flex items-start gap-4 cursor-pointer group p-3 hover:bg-orange-500/5 rounded-2xl transition-colors border border-orange-500/10">
-                        <input type="checkbox" checked={agreedPet} onChange={e => setAgreedPet(e.target.checked)} className="mt-1 w-5 h-5 accent-orange-500 cursor-pointer shrink-0" />
-                        <span className="text-sm text-foreground">{t.agree} <button type="button" onClick={(e) => {e.preventDefault(); setPolicyModal('pet');}} className="text-orange-500 hover:underline font-bold transition-all">{t.polPet}</button> *</span>
-                    </label>
-                )}
-            </div>
+          <div className="space-y-4 pt-4">
+            <label className="flex items-start gap-4 cursor-pointer group p-3 hover:bg-secondary rounded-2xl transition-colors">
+              <input type="checkbox" checked={agreedGeneral} onChange={e => setAgreedGeneral(e.target.checked)} className="mt-1 w-5 h-5 accent-primary cursor-pointer shrink-0" />
+              <span className="text-sm text-foreground">{t.agree} <button type="button" onClick={(e) => { e.preventDefault(); setPolicyModal('general'); }} className="text-primary hover:underline font-bold transition-all">{t.polGen}</button> *</span>
+            </label>
+
+            <label className="flex items-start gap-4 cursor-pointer group p-3 hover:bg-secondary rounded-2xl transition-colors">
+              <input type="checkbox" checked={agreedPrivacy} onChange={e => setAgreedPrivacy(e.target.checked)} className="mt-1 w-5 h-5 accent-primary cursor-pointer shrink-0" />
+              <span className="text-sm text-foreground">{t.agree} <button type="button" onClick={(e) => { e.preventDefault(); setPolicyModal('privacy'); }} className="text-primary hover:underline font-bold transition-all">{t.polPriv}</button> *</span>
+            </label>
+
+            {stay.hasPet && (
+              <label className="flex items-start gap-4 cursor-pointer group p-3 hover:bg-orange-500/5 rounded-2xl transition-colors border border-orange-500/10">
+                <input type="checkbox" checked={agreedPet} onChange={e => setAgreedPet(e.target.checked)} className="mt-1 w-5 h-5 accent-orange-500 cursor-pointer shrink-0" />
+                <span className="text-sm text-foreground">{t.agree} <button type="button" onClick={(e) => { e.preventDefault(); setPolicyModal('pet'); }} className="text-orange-500 hover:underline font-bold transition-all">{t.polPet}</button> *</span>
+              </label>
+            )}
+          </div>
         </section>
 
         <div className="flex items-center gap-2 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-2xl text-yellow-600 text-xs font-medium">
-            <AlertCircle size={16} className="shrink-0" />
-            <p>{t.mandatoryWarn}</p>
+          <AlertCircle size={16} className="shrink-0" />
+          <p>{t.mandatoryWarn}</p>
         </div>
 
-        <button 
-          type="submit" 
+        <button
+          type="submit"
           disabled={isSaving}
           className="w-full py-8 bg-primary text-primary-foreground font-black text-2xl uppercase tracking-widest rounded-[32px] hover:opacity-90 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 shadow-xl shadow-primary/20"
         >
@@ -1116,28 +1256,28 @@ export default function UnifiedPreCheckin() {
             <div className={cn("w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-sm", timeWarning.type === 'early' ? "bg-blue-500/10 text-blue-500" : "bg-orange-500/10 text-orange-500")}>
               <Clock size={40} />
             </div>
-            
+
             <div className="space-y-2">
-                <h3 className="text-2xl font-black uppercase tracking-tighter text-foreground">{t.timeWarnTitle}</h3>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
-                  {timeWarning.message}
-                </p>
+              <h3 className="text-2xl font-black uppercase tracking-tighter text-foreground">{t.timeWarnTitle}</h3>
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">
+                {timeWarning.message}
+              </p>
             </div>
 
             <div className="flex flex-col gap-3 pt-4">
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => {
                   setTimeWarning(null);
-                  executeSave(); 
-                }} 
+                  executeSave();
+                }}
                 className="w-full py-4 bg-primary text-primary-foreground font-black uppercase tracking-widest rounded-2xl hover:opacity-90 transition-all shadow-lg shadow-primary/20"
               >
                 {t.awareBtn}
               </button>
-              <button 
-                type="button" 
-                onClick={() => setTimeWarning(null)} 
+              <button
+                type="button"
+                onClick={() => setTimeWarning(null)}
                 className="w-full py-4 bg-secondary text-foreground font-bold rounded-2xl hover:bg-accent transition-all"
               >
                 {t.backBtn}
@@ -1149,32 +1289,32 @@ export default function UnifiedPreCheckin() {
 
       {/* MODAL DE LEITURA DE POLÍTICAS */}
       {policyModal && (
-          <div className="fixed inset-0 z-[110] flex items-end md:items-center justify-center p-4 md:p-8 bg-background/90 backdrop-blur-sm animate-in fade-in duration-300">
-             <div className="bg-card border border-border w-full max-w-2xl max-h-[85vh] rounded-[32px] shadow-2xl flex flex-col animate-in slide-in-from-bottom-8 md:zoom-in-95">
-                 <div className="p-6 border-b border-border flex justify-between items-center shrink-0">
-                     <h3 className={cn("font-black text-xl flex items-center gap-2", policyModal === 'pet' ? "text-orange-500" : "text-primary")}>
-                         {policyModal === 'general' ? <FileText/> : policyModal === 'privacy' ? <FileText/> : <Dog/>}
-                         {policyModal === 'general' ? t.polGen : policyModal === 'privacy' ? t.polPriv : t.polPet}
-                     </h3>
-                     <button type="button" onClick={() => setPolicyModal(null)} className="p-2 hover:bg-secondary rounded-full text-muted-foreground transition-colors"><X size={20}/></button>
-                 </div>
-                 
-                 <div className="p-6 overflow-y-auto custom-scrollbar text-sm text-foreground whitespace-pre-wrap leading-relaxed font-medium">
-                     {policyModal === 'general' ? generalPolicyText : policyModal === 'privacy' ? privacyPolicyText : petPolicyText}
-                 </div>
-                 
-                 <div className="p-6 border-t border-border shrink-0 bg-secondary/50 rounded-b-[32px]">
-                     <button type="button" onClick={() => {
-                        if(policyModal === 'general') setAgreedGeneral(true);
-                        if(policyModal === 'privacy') setAgreedPrivacy(true);
-                        if(policyModal === 'pet') setAgreedPet(true);
-                        setPolicyModal(null);
-                     }} className={cn("w-full py-4 text-primary-foreground font-black uppercase tracking-widest rounded-xl hover:opacity-90 transition-all", policyModal === 'pet' ? "bg-orange-500 text-white" : "bg-primary")}>
-                         {t.readAgree}
-                     </button>
-                 </div>
-             </div>
+        <div className="fixed inset-0 z-[110] flex items-end md:items-center justify-center p-4 md:p-8 bg-background/90 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="bg-card border border-border w-full max-w-2xl max-h-[85vh] rounded-[32px] shadow-2xl flex flex-col animate-in slide-in-from-bottom-8 md:zoom-in-95">
+            <div className="p-6 border-b border-border flex justify-between items-center shrink-0">
+              <h3 className={cn("font-black text-xl flex items-center gap-2", policyModal === 'pet' ? "text-orange-500" : "text-primary")}>
+                {policyModal === 'general' ? <FileText /> : policyModal === 'privacy' ? <FileText /> : <Dog />}
+                {policyModal === 'general' ? t.polGen : policyModal === 'privacy' ? t.polPriv : t.polPet}
+              </h3>
+              <button type="button" onClick={() => setPolicyModal(null)} className="p-2 hover:bg-secondary rounded-full text-muted-foreground transition-colors"><X size={20} /></button>
+            </div>
+
+            <div className="p-6 overflow-y-auto custom-scrollbar text-sm text-foreground whitespace-pre-wrap leading-relaxed font-medium">
+              {policyModal === 'general' ? generalPolicyText : policyModal === 'privacy' ? privacyPolicyText : petPolicyText}
+            </div>
+
+            <div className="p-6 border-t border-border shrink-0 bg-secondary/50 rounded-b-[32px]">
+              <button type="button" onClick={() => {
+                if (policyModal === 'general') setAgreedGeneral(true);
+                if (policyModal === 'privacy') setAgreedPrivacy(true);
+                if (policyModal === 'pet') setAgreedPet(true);
+                setPolicyModal(null);
+              }} className={cn("w-full py-4 text-primary-foreground font-black uppercase tracking-widest rounded-xl hover:opacity-90 transition-all", policyModal === 'pet' ? "bg-orange-500 text-white" : "bg-primary")}>
+                {t.readAgree}
+              </button>
+            </div>
           </div>
+        </div>
       )}
 
     </main>

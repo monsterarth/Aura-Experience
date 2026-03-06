@@ -1,63 +1,95 @@
 // src/app/check-in/login/page.tsx
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { StayService } from "@/services/stay-service";
 import { Loader2, ArrowRight, Key } from "lucide-react";
 import { toast } from "sonner";
 
-export default function GuestLoginPage() {
+function GuestLoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const codeFromUrl = searchParams.get("code");
+
   const [accessCode, setAccessCode] = useState("");
   const [loading, setLoading] = useState(false);
+  const [autoLoading, setAutoLoading] = useState(!!codeFromUrl);
+  const hasAutoSubmitted = useRef(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (accessCode.length < 5) return toast.error("Código inválido (mínimo 5 caracteres)");
+  const executeLogin = async (code: string) => {
+    if (code.length < 5) {
+      toast.error("Código inválido (mínimo 5 caracteres)");
+      setAutoLoading(false);
+      return;
+    }
 
     setLoading(true);
     try {
-      // 1. Buscar estadia pelo código (pode retornar uma lista se for grupo, mas aqui simplificamos para 1)
-      const stays = await StayService.getGroupStays(accessCode);
-      
+      const stays = await StayService.getGroupStays(code);
+
       if (!stays || stays.length === 0) {
         toast.error("Código não encontrado ou estadia inválida.");
         setLoading(false);
+        setAutoLoading(false);
         return;
       }
 
-      // 2. Lógica de Redirecionamento
-      // Se for um grupo, idealmente redirecionaríamos para uma página de seleção,
-      // mas aqui vamos pegar a primeira para simplificar o MVP
       const stay = stays[0];
 
       toast.success(`Bem-vindo, ${stay.guestId ? "Hóspede" : "Visitante"}!`);
 
-      // Se já fez check-in físico ou pré-checkin completo -> Portal
-      // Se está pendente -> Formulário
       if (stay.status === 'active' || stay.status === 'pre_checkin_done') {
-         router.push(`/check-in/${stay.accessCode}`); // Rota do Portal (Dashboard)
+        router.push(`/check-in/${stay.accessCode}`);
       } else {
-         router.push(`/check-in/form/${stay.id}`); // Rota do Formulário FNRH
+        router.push(`/check-in/form/${stay.id}`);
       }
 
     } catch (error) {
       console.error(error);
       toast.error("Erro ao acessar sistema.");
       setLoading(false);
+      setAutoLoading(false);
     }
   };
+
+  // Auto-login quando o código vem na URL (?code=XXXXX)
+  useEffect(() => {
+    if (codeFromUrl && !hasAutoSubmitted.current) {
+      hasAutoSubmitted.current = true;
+      const code = codeFromUrl.toUpperCase();
+      setAccessCode(code);
+      executeLogin(code);
+    }
+  }, [codeFromUrl]);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    executeLogin(accessCode);
+  };
+
+  // Tela de loading quando está fazendo auto-login via URL
+  if (autoLoading) {
+    return (
+      <div className="min-h-[100dvh] flex flex-col items-center justify-center p-4 md:p-6 bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-slate-50 relative overflow-hidden font-sans">
+        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent opacity-100 z-0"></div>
+        <div className="z-10 flex flex-col items-center gap-6 animate-in fade-in duration-700">
+          <Loader2 className="w-12 h-12 text-primary animate-spin" />
+          <p className="text-slate-500 dark:text-slate-400 text-sm font-medium">Acessando sua reserva...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[100dvh] flex flex-col items-center justify-center p-4 md:p-6 bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-slate-50 relative overflow-hidden font-sans">
       {/* Background Effects Suaves */}
       <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent opacity-100 z-0"></div>
-      
+
       <div className="z-10 w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
         {/* Card Principal */}
         <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl shadow-xl dark:shadow-2xl p-8 md:p-10 space-y-8 relative overflow-hidden">
-          
+
           {/* Linha de Destaque no Topo do Card */}
           <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-primary to-blue-500"></div>
 
@@ -71,7 +103,7 @@ export default function GuestLoginPage() {
 
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
-              <input 
+              <input
                 autoFocus
                 value={accessCode}
                 onChange={(e) => setAccessCode(e.target.value.toUpperCase())}
@@ -80,9 +112,9 @@ export default function GuestLoginPage() {
                 maxLength={5}
               />
             </div>
-            
-            <button 
-              type="submit" 
+
+            <button
+              type="submit"
               disabled={loading || accessCode.length < 5}
               className="w-full bg-primary hover:bg-primary/90 text-white dark:text-zinc-950 font-bold uppercase tracking-wide py-4 rounded-2xl flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg hover:shadow-primary/25 active:scale-[0.98]"
             >
@@ -99,5 +131,17 @@ export default function GuestLoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function GuestLoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-[100dvh] flex items-center justify-center bg-slate-50 dark:bg-zinc-950">
+        <Loader2 className="w-10 h-10 text-primary animate-spin" />
+      </div>
+    }>
+      <GuestLoginContent />
+    </Suspense>
   );
 }
