@@ -14,7 +14,7 @@ import {
   Sparkles, Building, ChevronDown, LogOut,
   MessageSquare, Settings, Globe, Menu, X,
   Star, ClipboardList, Calendar, Bot, FileText,
-  Loader2
+  Loader2, ChevronLeft, ChevronRight
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import Image from "next/image";
@@ -29,6 +29,7 @@ export const Sidebar = () => {
   // Estado para controle do menu no mobile
   const [isOpen, setIsOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   // Variáveis da Vercel para o rodapé de versão
   const commitHash = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || "dev";
@@ -131,30 +132,47 @@ export const Sidebar = () => {
 
       {/* SIDEBAR */}
       <aside className={cn(
-        "fixed lg:static top-0 left-0 z-50 h-[100dvh] w-72 bg-card border-r border-white/5 flex flex-col p-4 transition-transform duration-300 shadow-2xl lg:shadow-none",
-        isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        "fixed lg:static top-0 left-0 z-50 h-[100dvh] bg-card border-r border-white/5 flex flex-col p-4 transition-all duration-300 shadow-2xl lg:shadow-none flex-shrink-0 relative group/sidebar",
+        isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+        isCollapsed ? "w-[88px]" : "w-72"
       )}>
 
+        {/* BOTÃO COLLAPSE NO DESKTOP */}
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className="hidden lg:flex items-center justify-center absolute -right-3.5 top-8 z-50 w-7 h-7 bg-card border border-white/10 text-muted-foreground hover:text-primary rounded-full shadow-md transition-colors"
+        >
+          {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+        </button>
+
         {/* HEADER SIDEBAR (Dinâmico pela Propriedade) */}
-        <div className="mb-8 px-2 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className={cn("mb-8 flex items-center", isCollapsed ? "justify-center px-0" : "justify-between px-2")}>
+          <div className="flex items-center gap-3 min-w-0">
             {property?.logoUrl ? (
-              <div className="relative w-10 h-10 rounded-lg overflow-hidden bg-white/5 border border-white/10 flex-shrink-0">
+              <div
+                className="relative w-10 h-10 rounded-lg overflow-hidden bg-white/5 border border-white/10 flex-shrink-0"
+                title={isCollapsed ? property.name : undefined}
+              >
                 <Image src={property.logoUrl} alt={property.name} fill className="object-cover" />
               </div>
             ) : (
-              <div className="w-10 h-10 bg-primary/20 text-primary rounded-lg flex items-center justify-center font-black flex-shrink-0 border border-primary/30 shadow-[0_0_15px_rgba(var(--primary),0.2)]">
+              <div
+                className="w-10 h-10 bg-primary/20 text-primary rounded-lg flex items-center justify-center font-black flex-shrink-0 border border-primary/30 shadow-[0_0_15px_rgba(var(--primary),0.2)]"
+                title={isCollapsed ? (property ? property.name : "Aura Engine") : undefined}
+              >
                 {property ? property.name.charAt(0).toUpperCase() : "A"}
               </div>
             )}
-            <div className="flex flex-col min-w-0">
-              <span className="font-bold text-foreground tracking-tight truncate text-sm">
-                {property ? property.name : "Aura Engine"}
-              </span>
-              <span className="text-[9px] text-muted-foreground uppercase tracking-widest font-semibold">
-                Workspace
-              </span>
-            </div>
+            {!isCollapsed && (
+              <div className="flex flex-col min-w-0">
+                <span className="font-bold text-foreground tracking-tight truncate text-sm">
+                  {property ? property.name : "Aura Engine"}
+                </span>
+                <span className="text-[9px] text-muted-foreground uppercase tracking-widest font-semibold truncate">
+                  Workspace
+                </span>
+              </div>
+            )}
           </div>
           {/* BOTÃO FECHAR NO MOBILE */}
           <button onClick={() => setIsOpen(false)} className="lg:hidden p-2 text-muted-foreground hover:bg-secondary rounded-xl flex-shrink-0">
@@ -163,8 +181,8 @@ export const Sidebar = () => {
         </div>
 
         {/* SELETOR GLOBAL - Apenas para Super Admin */}
-        {isSuperAdmin && (
-          <div className="mb-6 p-3 bg-white/5 rounded-2xl border border-white/5 space-y-2">
+        {isSuperAdmin && !isCollapsed && (
+          <div className="mb-6 p-3 bg-white/5 rounded-2xl border border-white/5 space-y-2 animate-in fade-in duration-300">
             <label className="text-[9px] font-black text-foreground/40 uppercase tracking-widest px-1">Alternar Propriedade</label>
             <div className="relative group">
               <Building className="absolute left-3 top-1/2 -translate-y-1/2 text-primary" size={14} />
@@ -184,24 +202,30 @@ export const Sidebar = () => {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="flex-1 overflow-y-auto custom-scrollbar -mx-2 px-2">
           {/* BLOCO: OPERAÇÃO */}
           {filteredOperacao.length > 0 && (
             <div className="space-y-1 mb-8">
-              <p className="px-4 text-[10px] font-black text-foreground/40 uppercase tracking-widest mb-2">Operação</p>
+              {isCollapsed ? (
+                <div className="w-full h-px bg-white/5 my-4" />
+              ) : (
+                <p className="px-4 text-[10px] font-black text-foreground/40 uppercase tracking-widest mb-2">Operação</p>
+              )}
               {filteredOperacao.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
+                  title={isCollapsed ? item.title : undefined}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-3.5 rounded-xl text-xs font-bold transition-all uppercase tracking-wide",
+                    "flex items-center gap-3 rounded-xl text-xs font-bold transition-all uppercase tracking-wide",
+                    isCollapsed ? "justify-center p-3.5" : "px-4 py-3.5",
                     pathname === item.href || (pathname.startsWith(item.href) && item.href !== "/admin/core/dashboard")
                       ? "bg-primary text-black shadow-[0_0_20px_rgba(var(--primary),0.3)]"
                       : "text-foreground/40 hover:text-foreground hover:bg-white/5"
                   )}
                 >
-                  <item.icon size={18} />
-                  {item.title}
+                  <item.icon size={18} className="shrink-0" />
+                  {!isCollapsed && <span className="truncate">{item.title}</span>}
                 </Link>
               ))}
             </div>
@@ -210,20 +234,26 @@ export const Sidebar = () => {
           {/* BLOCO: SETUP */}
           {filteredSetup.length > 0 && (
             <div className="space-y-1 pb-4">
-              <p className="px-4 text-[10px] font-black text-foreground/40 uppercase tracking-widest mb-2">Setup</p>
+              {isCollapsed ? (
+                <div className="w-full h-px bg-white/5 my-4" />
+              ) : (
+                <p className="px-4 text-[10px] font-black text-foreground/40 uppercase tracking-widest mb-2">Setup</p>
+              )}
               {filteredSetup.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
+                  title={isCollapsed ? item.title : undefined}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-3.5 rounded-xl text-xs font-bold transition-all uppercase tracking-wide",
+                    "flex items-center gap-3 rounded-xl text-xs font-bold transition-all uppercase tracking-wide",
+                    isCollapsed ? "justify-center p-3.5" : "px-4 py-3.5",
                     pathname === item.href || (pathname.startsWith(item.href) && item.href !== "/admin/core/properties")
                       ? "bg-primary text-black shadow-[0_0_20px_rgba(var(--primary),0.3)]"
                       : "text-foreground/40 hover:text-foreground hover:bg-white/5"
                   )}
                 >
-                  <item.icon size={18} />
-                  {item.title}
+                  <item.icon size={18} className="shrink-0" />
+                  {!isCollapsed && <span className="truncate">{item.title}</span>}
                 </Link>
               ))}
             </div>
@@ -235,21 +265,27 @@ export const Sidebar = () => {
           <button
             onClick={handleLogout}
             disabled={isLoggingOut}
-            className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-xs font-bold text-destructive hover:bg-destructive/10 uppercase tracking-wide transition-all disabled:opacity-50"
+            title={isCollapsed ? "Sair" : undefined}
+            className={cn(
+              "flex items-center gap-3 rounded-xl text-xs font-bold text-destructive hover:bg-destructive/10 uppercase tracking-wide transition-all disabled:opacity-50",
+              isCollapsed ? "justify-center p-3.5" : "px-4 py-3 w-full"
+            )}
           >
             {isLoggingOut ? (
-              <Loader2 className="w-[18px] h-[18px] animate-spin" />
+              <Loader2 className="w-[18px] h-[18px] animate-spin shrink-0" />
             ) : (
-              <LogOut size={18} />
+              <LogOut size={18} className="shrink-0" />
             )}
-            {isLoggingOut ? "Encerrando..." : "Sair"}
+            {!isCollapsed && <span className="truncate">{isLoggingOut ? "Encerrando..." : "Sair"}</span>}
           </button>
 
-          <div className="text-center pt-2">
-            <p className="text-[9px] text-foreground/30 font-mono tracking-widest uppercase">
-              Aura {appVersion} • {shortHash}
-            </p>
-          </div>
+          {!isCollapsed && (
+            <div className="text-center pt-2">
+              <p className="text-[9px] text-foreground/30 font-mono tracking-widest uppercase truncate">
+                Aura {appVersion} • {shortHash}
+              </p>
+            </div>
+          )}
         </div>
       </aside>
 

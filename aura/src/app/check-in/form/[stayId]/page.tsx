@@ -306,6 +306,8 @@ export default function UnifiedPreCheckin() {
   const [loadingCep, setLoadingCep] = useState(false);
   const [timeWarning, setTimeWarning] = useState<{ type: 'early' | 'late', message: string } | null>(null);
 
+  const [newAccessCode, setNewAccessCode] = useState<string | null>(null);
+
   const [fnrhDomains, setFnrhDomains] = useState<{
     generos: FnrhDomain[];
     racas: FnrhDomain[];
@@ -410,26 +412,7 @@ export default function UnifiedPreCheckin() {
     loadData();
   }, [stayId]);
 
-  // Auto-redirect countdown para a próxima unidade pendente do grupo (na tela de sucesso)
-  useEffect(() => {
-    if (step !== 'success') return;
-    const pendingStays = groupStays.filter(s => !s.expectedArrivalTime && s.id !== stayId);
-    const nextPendingStay = pendingStays.length > 0 ? pendingStays[0] : null;
-    if (!nextPendingStay) return;
-
-    setCountdown(5);
-    const timer = setInterval(() => {
-      setCountdown(prev => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          window.location.href = `/check-in/form/${nextPendingStay.id}?fromGroup=1`;
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [step, groupStays, stayId]);
+  // Auto-redirect removed
 
   const handleCEPChange = async (cep: string) => {
     setGuest((prev: any) => ({ ...prev, address: { ...prev.address, zipCode: cep } }));
@@ -515,7 +498,8 @@ export default function UnifiedPreCheckin() {
         }))
       };
 
-      await StayService.completePreCheckin(stay.propertyId, stayId as string, fnrhStayPayload, fnrhGuestPayload);
+      const returnedCode = await StayService.completePreCheckin(stay.propertyId, stayId as string, fnrhStayPayload, fnrhGuestPayload);
+      setNewAccessCode(returnedCode);
       setStep('success');
     } catch (error: any) {
       alert(`Erro: ${error.message}`);
@@ -644,59 +628,55 @@ export default function UnifiedPreCheckin() {
   );
 
   if (step === 'success') {
-    const pendingStays = groupStays.filter(s => !s.expectedArrivalTime && s.id !== stayId);
-    const nextPendingStay = pendingStays.length > 0 ? pendingStays[0] : null;
+    // If it was a group stay, the accessCode will be different from stay.accessCode (which is the old group code)
+    const isSeparatedFromGroup = newAccessCode !== null && newAccessCode !== stay.accessCode;
 
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center" style={getThemeStyles()}>
         <PropertyHeader />
         <div className="max-w-md space-y-6 animate-in zoom-in duration-300 w-full">
           <CheckCircle2 size={80} className="mx-auto text-green-500" />
-          <h1 className="text-4xl font-black text-foreground uppercase tracking-tighter">{t.successTitle}</h1>
+          <h1 className="text-3xl font-black text-foreground uppercase tracking-tighter">{t.successTitle}</h1>
           <p className="text-muted-foreground">{t.successDesc}</p>
 
-          <div className="p-4 bg-secondary rounded-2xl border border-border">
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">{t.resCode}</p>
-            <p className="text-3xl font-black text-primary tracking-widest mt-2">{stay.accessCode}</p>
+          <div className="p-6 bg-secondary rounded-3xl border border-border shadow-sm">
+            {isSeparatedFromGroup && (
+              <p className="text-xs font-bold text-orange-500 bg-orange-500/10 px-3 py-1 rounded inline-block uppercase tracking-widest mb-3">Novo Código Gerado</p>
+            )}
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+              {isSeparatedFromGroup ? "Código Exclusivo da Acomodação" : t.resCode}
+            </p>
+            <p className="text-4xl font-black text-primary tracking-widest mt-3">{newAccessCode || stay.accessCode}</p>
+
+            {isSeparatedFromGroup && (
+              <p className="text-sm mt-4 text-foreground/80 font-medium">Use este novo código para acessar o WI-FI, fazer pedidos e ver avisos desta acomodação.</p>
+            )}
           </div>
 
           <div className="pt-4 space-y-3">
-            {groupStays.length > 1 && pendingStays.length > 0 ? (
-              <div className="space-y-4 bg-primary/5 border border-primary/20 p-6 rounded-3xl">
-                <p className="text-sm font-medium text-foreground">
-                  {t.pendingStays} (<strong>{pendingStays.length}</strong>)
-                </p>
-
-                {/* Countdown progress bar */}
-                <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
-                  <div
-                    className="h-full bg-primary rounded-full transition-all duration-1000 ease-linear"
-                    style={{ width: `${(countdown / 5) * 100}%` }}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {lang === 'en'
-                    ? `Redirecting to next unit in ${countdown}s...`
-                    : lang === 'es'
-                      ? `Redirigiendo a la siguiente unidad en ${countdown}s...`
-                      : `Redirecionando para a próxima unidade em ${countdown}s...`}
-                </p>
-
-                <button
-                  onClick={() => window.location.href = `/check-in/form/${nextPendingStay!.id}?fromGroup=1`}
-                  className="w-full py-4 bg-primary text-primary-foreground font-black uppercase tracking-widest rounded-2xl hover:opacity-90 transition-all shadow-lg shadow-primary/20"
-                >
-                  {t.nextUnit}
-                </button>
-              </div>
+            {stay.groupId ? (
+              <button
+                onClick={() => window.location.href = `/check-in/${stay.accessCode}`}
+                className="w-full py-4 bg-primary text-primary-foreground font-black uppercase tracking-widest rounded-2xl flex flex-col items-center hover:opacity-90 transition-all shadow-lg shadow-primary/20"
+              >
+                <span>Voltar para o Grupo</span>
+                <span className="text-[10px] font-medium opacity-80 normal-case tracking-normal">({stay.accessCode})</span>
+              </button>
             ) : (
               <button
-                onClick={() => window.open(`https://wa.me/${propertyData?.settings?.whatsappNumber?.replace(/\D/g, '') || ''}`, '_blank')}
-                className="w-full py-4 bg-green-600 text-white font-black uppercase tracking-widest rounded-2xl hover:bg-green-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-600/20"
+                onClick={() => window.location.href = `/check-in/${newAccessCode || stay.accessCode}`}
+                className="w-full py-4 bg-primary text-primary-foreground font-black uppercase tracking-widest rounded-2xl hover:opacity-90 transition-all shadow-lg shadow-primary/20"
               >
-                {t.whatsappBtn}
+                Acessar Portal
               </button>
             )}
+
+            <button
+              onClick={() => window.open(`https://wa.me/${propertyData?.settings?.whatsappNumber?.replace(/\D/g, '') || ''}`, '_blank')}
+              className="w-full py-4 bg-secondary text-foreground font-bold rounded-2xl hover:bg-accent transition-all flex items-center justify-center gap-2"
+            >
+              {t.whatsappBtn}
+            </button>
           </div>
         </div>
       </div>

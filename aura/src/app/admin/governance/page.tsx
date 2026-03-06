@@ -16,7 +16,7 @@ import { MinibarModal } from "@/components/admin/MinibarModal";
 import { MaidMobileApp } from "@/components/admin/MaidMobileApp";
 import {
   Sparkles, Clock, CheckCircle2, AlertCircle,
-  Coffee, ArrowRight, ClipboardCheck, Plus, UserPlus, Settings2, Edit3, MessageSquare
+  Coffee, ArrowRight, ClipboardCheck, Plus, UserPlus, Settings2, Edit3, MessageSquare, Archive, Calendar as CalendarIcon, X
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -36,6 +36,7 @@ export default function GovernancePage() {
   const [isMinibarOpen, setIsMinibarOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isManagerOpen, setIsManagerOpen] = useState(false);
+  const [isArchiveOpen, setIsArchiveOpen] = useState(false);
 
   useEffect(() => {
     if (!property) return;
@@ -164,6 +165,15 @@ export default function GovernancePage() {
   const inProgressTasks = tasks.filter(t => t.status === 'in_progress');
   const waitingTasks = tasks.filter(t => t.status === 'waiting_conference');
   const completedTasks = tasks.filter(t => t.status === 'completed');
+
+  // Funcionalidade de Arquivo (Últimos 7 dias)
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const recentCompletedTasks = completedTasks.filter(t => {
+    const dateStr = t.finishedAt || t.updatedAt || t.createdAt;
+    if (!dateStr) return false;
+    return new Date(dateStr) >= sevenDaysAgo;
+  });
 
   const KanbanColumn = ({ title, icon: Icon, colorClass, items }: { title: string, icon: any, colorClass: string, items: HousekeepingTask[] }) => (
     <div className="flex-1 min-w-[300px] flex flex-col bg-muted/20 border border-border rounded-2xl overflow-hidden">
@@ -294,6 +304,10 @@ export default function GovernancePage() {
             </button>
           )}
 
+          <button onClick={() => setIsArchiveOpen(true)} className="hidden md:flex flex-row px-4 py-2 bg-secondary text-foreground rounded-xl text-xs font-bold uppercase hover:bg-accent transition-all border border-border items-center gap-2 shadow-sm">
+            <Archive size={14} /> Arquivo
+          </button>
+
           <button onClick={() => { setSelectedTask(null); setIsManagerOpen(true); }} className="px-4 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-bold uppercase hover:opacity-90 transition-all shadow-sm flex items-center gap-2">
             <Plus size={14} /> Nova Tarefa
           </button>
@@ -305,7 +319,6 @@ export default function GovernancePage() {
           <KanbanColumn title="A Fazer" icon={ClipboardCheck} colorClass="text-zinc-500" items={pendingTasks} />
           <KanbanColumn title="Limpando" icon={Sparkles} colorClass="text-blue-500" items={inProgressTasks} />
           <KanbanColumn title="Conferência" icon={AlertCircle} colorClass="text-orange-500" items={waitingTasks} />
-          <KanbanColumn title="Pronto" icon={CheckCircle2} colorClass="text-green-500" items={completedTasks} />
         </div>
       </div>
 
@@ -317,6 +330,74 @@ export default function GovernancePage() {
         isOpen={isManagerOpen} onClose={() => setIsManagerOpen(false)}
         propertyId={property.id} task={selectedTask} cabins={cabins} structures={structures} maids={maids}
       />
+
+      {/* MODAL DE ARQUIVO (últimos 7 dias) */}
+      {isArchiveOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+          <div className="bg-card border border-border w-full max-w-3xl rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+            <header className="p-6 border-b border-border flex justify-between items-center shrink-0">
+              <div>
+                <h2 className="text-xl font-black uppercase text-foreground tracking-tighter flex items-center gap-2">
+                  <Archive size={20} className="text-muted-foreground" />
+                  Arquivo de Governança
+                </h2>
+                <p className="text-xs text-muted-foreground font-medium mt-1">
+                  Atividades de limpeza concluídas na última semana.
+                </p>
+              </div>
+              <button onClick={() => setIsArchiveOpen(false)} className="p-2 bg-secondary text-muted-foreground hover:text-foreground rounded-full hover:bg-white/5 transition-colors">
+                <X size={20} />
+              </button>
+            </header>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-secondary/20">
+              {recentCompletedTasks.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Archive size={40} className="mx-auto mb-4 opacity-20" />
+                  <p className="text-sm font-bold uppercase tracking-widest">Nenhuma limpeza validada esta semana.</p>
+                </div>
+              ) : (
+                recentCompletedTasks.map(task => {
+                  const safeAssignedArray = Array.isArray(task.assignedTo)
+                    ? task.assignedTo
+                    : (typeof task.assignedTo === 'string' ? [task.assignedTo] : []);
+                  const assignedNames = safeAssignedArray.length > 0
+                    ? safeAssignedArray.map(id => maids.find(m => m.id === id)?.fullName.split(' ')[0]).filter(Boolean).join(', ')
+                    : "Ninguém";
+
+                  return (
+                    <div key={task.id} className="bg-card border border-border p-4 rounded-xl flex items-center justify-between gap-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          {task.structureId ? <Sparkles size={12} className="text-purple-500" /> : task.type === 'turnover' ? <AlertCircle size={12} className="text-orange-500" /> : <Coffee size={12} className="text-blue-500" />}
+                          <p className="font-bold text-sm">
+                            {task.structureId ? (structures[task.structureId]?.name || "Estrutura") : (cabins[task.cabinId!]?.name || "Cabana")}
+                          </p>
+                        </div>
+                        <p className="text-xs text-muted-foreground uppercase tracking-widest font-bold">
+                          {task.structureId ? 'Estrutura' : task.type === 'turnover' ? 'Faxina de Troca' : 'Arrumação Diária'}
+                        </p>
+                        <div className="flex items-center gap-2 mt-3">
+                          <span className="text-[10px] bg-green-500/10 text-green-600 px-2 py-0.5 rounded font-bold uppercase">
+                            Liberado
+                          </span>
+                          <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-mono">
+                            <CalendarIcon size={10} />
+                            {task.finishedAt ? new Date(task.finishedAt).toLocaleDateString('pt-BR') : ''}
+                          </span>
+                          <span className="text-[10px] text-foreground/50 font-bold uppercase">• Resp: {assignedNames}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+            <footer className="p-6 border-t border-border shrink-0 text-center">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Aura Engine • Auditoria</p>
+            </footer>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

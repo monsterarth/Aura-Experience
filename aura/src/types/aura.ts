@@ -60,10 +60,14 @@ export interface Property {
     hasBreakfast: boolean;
     hasKDS: boolean;
     whatsappEnabled: boolean;
+    whatsappNumber?: string;
     whatsappConfig?: {
       apiUrl: string;
       token: string;
-    }
+    };
+    petPolicyText?: Record<string, string>;
+    generalPolicyText?: Record<string, string>;
+    privacyPolicyText?: Record<string, string>;
   };
   createdAt: Timestamp;
 }
@@ -433,6 +437,7 @@ export interface Stay {
     send24h: boolean;
     preCheckinSent: boolean;
     remindersCount: number;
+    termsAccepted?: boolean;
   };
 
   housekeepingItems?: { id: string; label: string }[];

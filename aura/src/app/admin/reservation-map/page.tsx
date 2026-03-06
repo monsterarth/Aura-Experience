@@ -17,7 +17,7 @@ import { Cabin, Stay, MaintenanceTask, HousekeepingTask, Guest, Staff, Structure
 import { cn } from "@/lib/utils";
 import {
     ChevronLeft, ChevronRight, CalendarDays, Loader2,
-    MapPin, Building2, Circle, Wrench, Sparkles, Home
+    MapPin, Building2, Circle, Wrench, Sparkles, Home, BedDouble
 } from "lucide-react";
 import { format, addDays, differenceInCalendarDays, startOfDay, isSameDay, isWithinInterval, isBefore, isAfter } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -39,7 +39,7 @@ interface StayWithGuest extends Stay {
 // ==========================================
 const DAY_WIDTH = 64;
 const CABIN_COL_WIDTH = 180;
-const ROW_HEIGHT = 52;
+const ROW_HEIGHT = 42;
 const VISIBLE_DAYS = 21; // 3 weeks view
 
 // ==========================================
@@ -58,11 +58,21 @@ function getCabinStatusLabel(status: Cabin["status"]) {
 
 function getCabinStatusColor(status: Cabin["status"]) {
     switch (status) {
-        case "available": return "text-emerald-400 bg-emerald-500/15 border-emerald-500/30";
-        case "occupied": return "text-red-400 bg-red-500/15 border-red-500/30";
-        case "cleaning": return "text-amber-400 bg-amber-500/15 border-amber-500/30";
-        case "maintenance": return "text-neutral-400 bg-neutral-500/15 border-neutral-500/30";
-        default: return "text-muted-foreground bg-muted border-border";
+        case "available": return "text-emerald-500";
+        case "occupied": return "text-red-500";
+        case "cleaning": return "text-amber-500";
+        case "maintenance": return "text-neutral-500";
+        default: return "text-muted-foreground";
+    }
+}
+
+function renderCabinStatusIcon(status: Cabin["status"]) {
+    switch (status) {
+        case "available": return <BedDouble size={16} />;
+        case "occupied": return <BedDouble size={16} />;
+        case "cleaning": return <Sparkles size={16} />;
+        case "maintenance": return <Wrench size={16} />;
+        default: return <Circle size={16} />;
     }
 }
 
@@ -631,16 +641,19 @@ export default function ReservationMapPage() {
                                         style={{ height: ROW_HEIGHT }}
                                         onClick={() => handleCabinStatusClick(cabin)}
                                     >
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-xs font-black text-foreground truncate tracking-tight">
+                                        <div className="flex-1 min-w-0 pr-2">
+                                            <p className="text-xs font-black text-foreground truncate tracking-tight text-right">
                                                 {cabin.name}
                                             </p>
                                         </div>
                                         <div className={cn(
-                                            "shrink-0 px-2 py-0.5 rounded-md border text-[8px] font-black uppercase tracking-wider",
-                                            getCabinStatusColor(cabin.status)
-                                        )}>
-                                            {getCabinStatusLabel(cabin.status)}
+                                            "shrink-0 flex items-center justify-center w-6 h-6 rounded-md",
+                                            getCabinStatusColor(cabin.status),
+                                            cabin.status === 'available' ? 'bg-emerald-500/10' :
+                                                cabin.status === 'occupied' ? 'bg-red-500/10' :
+                                                    cabin.status === 'cleaning' ? 'bg-amber-500/10' : 'bg-neutral-500/10'
+                                        )} title={getCabinStatusLabel(cabin.status)}>
+                                            {renderCabinStatusIcon(cabin.status)}
                                         </div>
                                     </div>
                                 ))}

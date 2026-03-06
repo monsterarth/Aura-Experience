@@ -11,7 +11,7 @@ import { StaffService } from "@/services/staff-service";
 import { MaintenanceTask, Cabin, Structure, Staff } from "@/types/aura";
 import { MaintenanceTaskManagerModal } from "@/components/admin/maintenance/MaintenanceTaskManagerModal";
 import { MaintenanceCompletionModal } from "@/components/admin/maintenance/MaintenanceCompletionModal";
-import { Clock, Hammer, AlertCircle, CheckCircle2, PlayCircle, Plus, Edit3, Settings2 } from "lucide-react";
+import { Clock, Hammer, AlertCircle, CheckCircle2, PlayCircle, Plus, Edit3, Settings2, Archive, Calendar as CalendarIcon, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +27,7 @@ export default function MaintenancePage() {
 
     const [isManagerOpen, setIsManagerOpen] = useState(false);
     const [isCompletionOpen, setIsCompletionOpen] = useState(false);
+    const [isArchiveOpen, setIsArchiveOpen] = useState(false);
     const [selectedTask, setSelectedTask] = useState<MaintenanceTask | null>(null);
 
     useEffect(() => {
@@ -100,6 +101,15 @@ export default function MaintenancePage() {
     const inProgressTasks = tasks.filter(t => t.status === 'in_progress');
     const waitingTasks = tasks.filter(t => t.status === 'waiting_conference');
     const completedTasks = tasks.filter(t => t.status === 'completed');
+
+    // Funcionalidade de Arquivo (Últimos 7 dias)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const recentCompletedTasks = completedTasks.filter(t => {
+        const dateStr = t.finishedAt || t.updatedAt || t.createdAt;
+        if (!dateStr) return false;
+        return new Date(dateStr) >= sevenDaysAgo;
+    });
 
     const KanbanColumn = ({ title, icon: Icon, colorClass, items }: { title: string, icon: any, colorClass: string, items: MaintenanceTask[] }) => (
         <div className="flex-1 min-w-[300px] flex flex-col bg-muted/20 border border-border rounded-2xl overflow-hidden">
@@ -215,6 +225,12 @@ export default function MaintenancePage() {
 
                 <div className="flex gap-2">
                     <button
+                        onClick={() => setIsArchiveOpen(true)}
+                        className="px-4 py-2 bg-secondary text-foreground font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-accent transition-colors flex items-center gap-2 shadow-sm border border-border"
+                    >
+                        <Archive size={16} /> Arquivo
+                    </button>
+                    <button
                         onClick={() => { setSelectedTask(null); setIsManagerOpen(true); }}
                         className="px-4 py-2 bg-primary text-primary-foreground font-bold text-xs uppercase tracking-widest rounded-xl hover:opacity-90 transition-opacity flex items-center gap-2 shadow-sm"
                     >
@@ -244,12 +260,6 @@ export default function MaintenancePage() {
                         colorClass="text-orange-500"
                         items={waitingTasks}
                     />
-                    <KanbanColumn
-                        title="Histórico (Concluídas)"
-                        icon={CheckCircle2}
-                        colorClass="text-green-500 opacity-60 flex-none"
-                        items={completedTasks.slice(0, 50)}
-                    />
                 </div>
             </div>
 
@@ -272,6 +282,59 @@ export default function MaintenancePage() {
                 cabins={cabins}
                 structures={structures}
             />
+
+            {/* MODAL DE ARQUIVO (últimos 7 dias) */}
+            {isArchiveOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
+                    <div className="bg-card border border-border w-full max-w-3xl rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+                        <header className="p-6 border-b border-border flex justify-between items-center shrink-0">
+                            <div>
+                                <h2 className="text-xl font-black uppercase text-foreground tracking-tighter flex items-center gap-2">
+                                    <Archive size={20} className="text-muted-foreground" />
+                                    Arquivo de Manutenção
+                                </h2>
+                                <p className="text-xs text-muted-foreground font-medium mt-1">
+                                    Tarefas finalizadas nos últimos 7 dias.
+                                </p>
+                            </div>
+                            <button onClick={() => setIsArchiveOpen(false)} className="p-2 bg-secondary text-muted-foreground hover:text-foreground rounded-full hover:bg-white/5 transition-colors">
+                                <X size={20} />
+                            </button>
+                        </header>
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-secondary/20">
+                            {recentCompletedTasks.length === 0 ? (
+                                <div className="text-center py-12 text-muted-foreground">
+                                    <Archive size={40} className="mx-auto mb-4 opacity-20" />
+                                    <p className="text-sm font-bold uppercase tracking-widest">Nenhuma OS finalizada esta semana.</p>
+                                </div>
+                            ) : (
+                                recentCompletedTasks.map(task => (
+                                    <div key={task.id} className="bg-card border border-border p-4 rounded-xl flex items-center justify-between gap-4">
+                                        <div>
+                                            <p className="font-bold text-sm">{task.title}</p>
+                                            <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{task.description}</p>
+                                            <div className="flex items-center gap-2 mt-2">
+                                                <span className="text-[10px] bg-green-500/10 text-green-600 px-2 py-0.5 rounded font-bold uppercase">
+                                                    Concluído
+                                                </span>
+                                                <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-mono">
+                                                    <CalendarIcon size={10} />
+                                                    {task.finishedAt ? new Date(task.finishedAt).toLocaleDateString('pt-BR') : ''}
+                                                </span>
+                                                {task.cabinId && <span className="text-[10px] text-primary font-bold uppercase">• {cabins[task.cabinId]?.name}</span>}
+                                                {task.structureId && <span className="text-[10px] text-primary font-bold uppercase">• {structures[task.structureId]?.name}</span>}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                        <footer className="p-6 border-t border-border shrink-0 text-center">
+                            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Aura Engine • Auditoria</p>
+                        </footer>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

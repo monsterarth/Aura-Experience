@@ -128,6 +128,7 @@ export class SurveyService {
 
       return { success: true, templateId: id };
     } catch (error) {
+      console.error("Erro interno ao criar template:", error);
       return { success: false, error: "Falha ao salvar a pesquisa." };
     }
   }
@@ -178,6 +179,7 @@ export class SurveyService {
       await supabase.from('survey_templates').update(templateData).eq('id', templateId);
       return { success: true };
     } catch (error) {
+      console.error("Erro interno ao atualizar template:", error);
       return { success: false, error: "Falha ao atualizar a pesquisa." };
     }
   }

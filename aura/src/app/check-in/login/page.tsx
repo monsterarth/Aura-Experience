@@ -26,7 +26,7 @@ function GuestLoginContent() {
 
     setLoading(true);
     try {
-      const stays = await StayService.getGroupStays(code);
+      const stays = await StayService.getStaysByAccessCode(code);
 
       if (!stays || stays.length === 0) {
         toast.error("Código não encontrado ou estadia inválida.");
@@ -38,12 +38,8 @@ function GuestLoginContent() {
       const stay = stays[0];
 
       toast.success(`Bem-vindo, ${stay.guestId ? "Hóspede" : "Visitante"}!`);
-
-      if (stay.status === 'active' || stay.status === 'pre_checkin_done') {
-        router.push(`/check-in/${stay.accessCode}`);
-      } else {
-        router.push(`/check-in/form/${stay.id}`);
-      }
+      // Sempre levar para o terminal central do hóspede
+      router.push(`/check-in/${stay.accessCode}`);
 
     } catch (error) {
       console.error(error);

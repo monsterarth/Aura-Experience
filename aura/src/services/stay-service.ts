@@ -151,16 +151,56 @@ export const StayService = {
     return { stay: stay as Stay, guest: guest as Guest | null };
   },
 
-  async completePreCheckin(propertyId: string, stayId: string, stayUpdate: Partial<Stay>, guestUpdate: Partial<Guest>) {
-    // Busca id do guest
-    const { data: stay } = await supabase.from('stays').select('guestId').eq('id', stayId).single();
+  async completePreCheckin(propertyId: string, stayId: string, stayUpdate: Partial<Stay>, guestUpdate: Partial<Guest>): Promise<string> {
+    // Busca id do guest e dados de grupo
+    const { data: stay } = await supabase.from('stays').select('guestId, groupId, accessCode').eq('id', stayId).single();
     if (!stay) throw new Error("Stay not found");
+
+    let finalAccessCode = stay.accessCode;
+
+    // Se a reserva é de grupo, desmembra o código para dar um dashboard privado à cabana
+    if (stay.groupId) {
+      finalAccessCode = await this.generateUniqueAccessCode(propertyId);
+      stayUpdate.accessCode = finalAccessCode;
+
+      // Log audit
+      await AuditService.log({
+        propertyId,
+        userId: stay.guestId,
+        userName: "Guest",
+        action: "UPDATE",
+        entity: "STAY",
+        entityId: stayId,
+        details: `Código de acesso desmembrado do grupo. Novo código gerado: ${finalAccessCode}`
+      });
+    }
 
     // Supabase JS doesnt have explicit transactions, we do parallel awaited calls
     await Promise.all([
       supabase.from('stays').update({ ...stayUpdate, status: 'pre_checkin_done', updatedAt: new Date().toISOString() }).eq('id', stayId),
       supabase.from('guests').update({ ...guestUpdate, updatedAt: new Date().toISOString() }).eq('id', stay.guestId)
     ]);
+
+    return finalAccessCode;
+  },
+
+  async getStaysByAccessCode(accessCode: string) {
+    const { data: stays, error } = await supabase
+      .from('stays')
+      .select('*')
+      .eq('accessCode', accessCode.toUpperCase());
+
+    if (error || !stays) return [];
+
+    const enriched = await Promise.all(stays.map(async (stay: any) => {
+      const { data: cabin } = await supabase.from('cabins').select('name').eq('id', stay.cabinId).maybeSingle();
+      return {
+        ...stay,
+        cabinName: cabin ? cabin.name : "Acomodação"
+      };
+    }));
+
+    return enriched;
   },
 
   async getGroupStays(accessCode: string) {
