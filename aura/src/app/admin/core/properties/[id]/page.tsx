@@ -579,7 +579,7 @@ export default function PropertySettingsPage() {
                                                     <input
                                                         type="number"
                                                         min={1}
-                                                        max={60}
+                                                        max={40}
                                                         value={settings.petMinWeight}
                                                         onChange={e => setSettings({ ...settings, petMinWeight: parseInt(e.target.value) || 1 })}
                                                         className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
@@ -590,7 +590,7 @@ export default function PropertySettingsPage() {
                                                     <input
                                                         type="number"
                                                         min={1}
-                                                        max={60}
+                                                        max={40}
                                                         value={settings.petMaxWeight}
                                                         onChange={e => setSettings({ ...settings, petMaxWeight: parseInt(e.target.value) || 15 })}
                                                         className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"

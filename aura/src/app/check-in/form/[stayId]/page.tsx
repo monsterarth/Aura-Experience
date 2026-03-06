@@ -1120,7 +1120,7 @@ export default function UnifiedPreCheckin() {
                 {/* Weight Slider with Size Categories */}
                 {(() => {
                   const petMinWeight = propertyData?.settings?.petMinWeight || 1;
-                  const petMaxWeight = propertyData?.settings?.petMaxWeight || 60;
+                  const petMaxWeight = propertyData?.settings?.petMaxWeight || 40;
                   const currentWeight = stay.petDetails?.weight || 5;
 
                   const getSizeLabel = (w: number) => {
@@ -1153,8 +1153,8 @@ export default function UnifiedPreCheckin() {
                     { label: 'Miniatura', max: 5 },
                     { label: lang === 'en' ? 'Small' : 'Pequeno', max: 10 },
                     { label: lang === 'en' ? 'Medium' : 'Médio', max: 25 },
-                    { label: lang === 'en' ? 'Large' : 'Grande', max: 45 },
-                    { label: lang === 'en' ? 'Giant' : 'Gigante', max: 60 }
+                    { label: lang === 'en' ? 'Large' : 'Grande', max: 40 },
+                    { label: lang === 'en' ? 'Giant' : 'Gigante', max: 40 }
                   ];
 
                   return (
@@ -1175,7 +1175,7 @@ export default function UnifiedPreCheckin() {
                       </div>
 
                       <input
-                        type="range" min={1} max={60}
+                        type="range" min={1} max={40}
                         value={currentWeight}
                         onChange={e => handleWeightChange(parseInt(e.target.value))}
                         className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-orange-500"
