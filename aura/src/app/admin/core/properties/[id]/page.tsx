@@ -144,9 +144,10 @@ export default function PropertySettingsPage() {
             setProperty(data);
 
             // Uso de (data as any) para contornar TS strict em campos novos como slogan
+            const rawSlogan = (data as any).slogan || (data.settings as any)?.slogan || "";
             setBasicInfo({
                 name: data.name || "",
-                slogan: (data as any).slogan || "",
+                slogan: rawSlogan,
                 logoUrl: data.logoUrl || ""
             });
 
@@ -173,7 +174,10 @@ export default function PropertySettingsPage() {
                     petPolicyAlert: parseMultiLang(s.petPolicyAlert, prev.petPolicyAlert),
                     petPolicyText: parseMultiLang(s.petPolicyText, prev.petPolicyText),
                     privacyPolicyText: parseMultiLang(s.privacyPolicyText, prev.privacyPolicyText),
-                    generalPolicyText: parseMultiLang(s.generalPolicyText, prev.generalPolicyText)
+                    generalPolicyText: parseMultiLang(s.generalPolicyText, prev.generalPolicyText),
+                    acceptsPets: s.acceptsPets !== undefined ? s.acceptsPets : prev.acceptsPets,
+                    petMinWeight: s.petMinWeight !== undefined ? s.petMinWeight : prev.petMinWeight,
+                    petMaxWeight: s.petMaxWeight !== undefined ? s.petMaxWeight : prev.petMaxWeight
                 }));
             }
 
@@ -192,12 +196,12 @@ export default function PropertySettingsPage() {
             // Usa (as any) para aceitar os campos extras mesclados com o settings original
             const updatedPayload: any = {
                 name: basicInfo.name,
-                slogan: basicInfo.slogan,
                 logoUrl: basicInfo.logoUrl,
                 theme: theme,
                 settings: {
                     ...property.settings,
-                    ...settings
+                    ...settings,
+                    slogan: basicInfo.slogan
                 }
             };
 

@@ -39,6 +39,7 @@ const translations = {
     male: "Masculino",
     female: "Feminino",
     other: "Outro",
+    occupation: "Profissão *",
     companions: "Acompanhantes",
     adult: "Adulto",
     child: "Criança",
@@ -118,6 +119,7 @@ const translations = {
     male: "Male",
     female: "Female",
     other: "Other",
+    occupation: "Occupation *",
     companions: "Companions",
     adult: "Adult",
     child: "Child",
@@ -197,6 +199,7 @@ const translations = {
     male: "Masculino",
     female: "Femenino",
     other: "Otro",
+    occupation: "Profesión *",
     companions: "Acompañantes",
     adult: "Adulto",
     child: "Niño",
@@ -438,6 +441,7 @@ export default function UnifiedPreCheckin() {
     if (!guest.document?.number) errors.push(t.doc);
     if (!guest.birthDate) errors.push(t.birth);
     if (!guest.gender) errors.push(t.gender);
+    if (!guest.occupation) errors.push(t.occupation);
     if (!guest.address?.zipCode) errors.push(t.zip);
     if (!guest.address?.street) errors.push(t.street);
     if (!guest.address?.number) errors.push(t.number);
@@ -820,6 +824,16 @@ export default function UnifiedPreCheckin() {
               </select>
             </div>
           </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.occupation}</label>
+            <input
+              value={guest.occupation || ""}
+              onChange={e => setGuest({ ...guest, occupation: e.target.value })}
+              className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 transition-colors text-sm font-medium"
+              placeholder={t.occupation.replace(" *", "")}
+            />
+          </div>
         </section>
 
         {/* 2. Acompanhantes */}
@@ -1117,11 +1131,11 @@ export default function UnifiedPreCheckin() {
                   </select>
                 </div>
 
-                {/* Weight Slider with Size Categories */}
+                {/* Weight Selector with Size Categories */}
                 {(() => {
                   const petMinWeight = propertyData?.settings?.petMinWeight || 1;
                   const petMaxWeight = propertyData?.settings?.petMaxWeight || 40;
-                  const currentWeight = stay.petDetails?.weight || 5;
+                  const currentWeight = stay.petDetails?.weight || Math.max(5, petMinWeight);
 
                   const getSizeLabel = (w: number) => {
                     if (w <= 5) return { label: lang === 'en' ? 'Toy/Miniature' : lang === 'es' ? 'Miniatura/Toy' : 'Miniatura/Toy', color: 'text-blue-500' };
@@ -1135,27 +1149,19 @@ export default function UnifiedPreCheckin() {
                   const isBlocked = currentWeight < petMinWeight || currentWeight > petMaxWeight;
 
                   const handleWeightChange = (newWeight: number) => {
-                    if (newWeight < petMinWeight) {
-                      toast.error(lang === 'en' ? `Minimum pet weight accepted: ${petMinWeight}kg` : lang === 'es' ? `Peso mínimo aceptado: ${petMinWeight}kg` : `Peso mínimo aceito: ${petMinWeight}kg`);
-                      setStay({ ...stay, petDetails: { ...stay.petDetails, weight: petMinWeight } });
-                      return;
-                    }
-                    if (newWeight > petMaxWeight) {
-                      toast.error(lang === 'en' ? `Maximum pet weight accepted: ${petMaxWeight}kg` : lang === 'es' ? `Peso máximo aceptado: ${petMaxWeight}kg` : `Peso máximo aceito: ${petMaxWeight}kg`);
-                      setStay({ ...stay, petDetails: { ...stay.petDetails, weight: petMaxWeight } });
-                      return;
-                    }
+                    if (isNaN(newWeight)) return;
                     setStay({ ...stay, petDetails: { ...stay.petDetails, weight: newWeight } });
                   };
 
-                  // Size category markers
-                  const categories = [
-                    { label: 'Miniatura', max: 5 },
-                    { label: lang === 'en' ? 'Small' : 'Pequeno', max: 10 },
-                    { label: lang === 'en' ? 'Medium' : 'Médio', max: 25 },
-                    { label: lang === 'en' ? 'Large' : 'Grande', max: 40 },
-                    { label: lang === 'en' ? 'Giant' : 'Gigante', max: 40 }
-                  ];
+                  const handleBlur = (w: number) => {
+                    let finalW = w;
+                    if (w < petMinWeight) finalW = petMinWeight;
+                    if (w > petMaxWeight) finalW = petMaxWeight;
+                    setStay({ ...stay, petDetails: { ...stay.petDetails, weight: finalW } });
+                  };
+
+                  const decrement = () => handleWeightChange(Math.max(petMinWeight, currentWeight - 1));
+                  const increment = () => handleWeightChange(Math.min(petMaxWeight, currentWeight + 1));
 
                   return (
                     <div className="space-y-4">
@@ -1163,7 +1169,7 @@ export default function UnifiedPreCheckin() {
                         <div>
                           <span className="text-[10px] font-bold uppercase text-orange-600">{t.petWeight}</span>
                           <p className={cn("text-2xl font-black", sizeInfo.color)}>
-                            {currentWeight}kg
+                            {currentWeight}{currentWeight >= 40 && petMaxWeight >= 40 ? '+' : ''}kg
                             <span className="text-sm font-bold ml-2 opacity-80">— {sizeInfo.label}</span>
                           </p>
                         </div>
@@ -1174,29 +1180,44 @@ export default function UnifiedPreCheckin() {
                         )}
                       </div>
 
-                      <input
-                        type="range" min={1} max={40}
-                        value={currentWeight}
-                        onChange={e => handleWeightChange(parseInt(e.target.value))}
-                        className="w-full h-2 bg-secondary rounded-lg appearance-none cursor-pointer accent-orange-500"
-                      />
+                      {/* Premium Stepper */}
+                      <div className="flex items-center gap-4 bg-background border border-border p-2 rounded-2xl w-full">
+                        <button
+                          type="button"
+                          onClick={decrement}
+                          disabled={currentWeight <= petMinWeight}
+                          className="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-xl bg-secondary text-foreground hover:bg-orange-500 hover:text-white disabled:opacity-30 disabled:hover:bg-secondary disabled:hover:text-foreground transition-all active:scale-95"
+                        >
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        </button>
 
-                      {/* Category markers */}
-                      <div className="flex justify-between text-[8px] font-bold uppercase text-muted-foreground px-0.5">
-                        {categories.map((cat, i) => {
-                          const isInRange = cat.max >= petMinWeight && (i === 0 ? 1 : categories[i - 1].max + 1) <= petMaxWeight;
-                          return (
-                            <span key={cat.label} className={cn("text-center", !isInRange && "opacity-30 line-through")}>
-                              {cat.label}<br />≤{cat.max}kg
-                            </span>
-                          );
-                        })}
+                        <div className="flex-1 text-center relative">
+                          <input
+                            type="number"
+                            value={currentWeight || ""}
+                            onChange={(e) => handleWeightChange(parseInt(e.target.value))}
+                            onBlur={(e) => handleBlur(parseInt(e.target.value) || petMinWeight)}
+                            className="w-full text-center bg-transparent border-none outline-none text-2xl font-black text-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                          <span className="text-xs font-bold text-muted-foreground uppercase absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                            {currentWeight >= 40 && petMaxWeight >= 40 ? '+ kg' : 'kg'}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={increment}
+                          disabled={currentWeight >= petMaxWeight}
+                          className="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-xl bg-secondary text-foreground hover:bg-orange-500 hover:text-white disabled:opacity-30 disabled:hover:bg-secondary disabled:hover:text-foreground transition-all active:scale-95"
+                        >
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        </button>
                       </div>
 
                       {/* Accepted range indicator */}
                       <div className="bg-orange-500/5 border border-orange-500/10 p-2 rounded-lg text-center">
                         <p className="text-[9px] font-bold text-orange-600/70 uppercase">
-                          {lang === 'en' ? `Accepted range: ${petMinWeight}kg — ${petMaxWeight}kg` : lang === 'es' ? `Rango aceptado: ${petMinWeight}kg — ${petMaxWeight}kg` : `Faixa aceita: ${petMinWeight}kg — ${petMaxWeight}kg`}
+                          {lang === 'en' ? `Accepted range: ${petMinWeight}kg — ${petMaxWeight >= 40 ? '40+' : petMaxWeight}kg` : lang === 'es' ? `Rango aceptado: ${petMinWeight}kg — ${petMaxWeight >= 40 ? '40+' : petMaxWeight}kg` : `Faixa aceita: ${petMinWeight}kg — ${petMaxWeight >= 40 ? '40+' : petMaxWeight}kg`}
                         </p>
                       </div>
                     </div>
