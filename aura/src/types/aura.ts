@@ -77,11 +77,12 @@ export interface Guest {
   email: string;
   phone: string;
   document: {
-    type: 'CPF' | 'Passaporte' | 'DNI';
+    type: string; // FNRH ID
     number: string;
   };
   birthDate: string;
-  gender: 'M' | 'F' | 'Outro';
+  gender: string; // FNRH ID
+  raca?: string; // FNRH ID
   occupation: string;
   address: {
     street: string;
@@ -92,6 +93,7 @@ export interface Guest {
     state: string;
     zipCode: string;
     country: string;
+    ibgeCityId?: string; // FNRH requirement
   };
   allergies: string[];
   updatedAt: Timestamp;
@@ -405,8 +407,8 @@ export interface Stay {
   }[];
 
   // FNRH
-  travelReason: 'Turismo' | 'Negocios' | 'Congresso' | 'Saude' | 'Outros';
-  transportation: 'Carro' | 'Onibus' | 'Avião' | 'Navio' | 'Outro';
+  travelReason: string; // FNRH ID
+  transportation: string; // FNRH ID
 
   lastCity: string;
   nextCity: string;

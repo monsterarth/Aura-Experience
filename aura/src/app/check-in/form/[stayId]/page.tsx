@@ -5,12 +5,13 @@ import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { StayService } from "@/services/stay-service";
 import { PropertyService } from "@/services/property-service";
-import { fetchCEP } from "@/lib/utils-checkin";
 import {
   Loader2, CheckCircle2, User, MapPin,
   Dog, ArrowRight, Edit3, ChevronDown,
   Users, Plane, AlertCircle, Plus, Trash2, Clock, CheckCircle, FileText, X, Globe
 } from "lucide-react";
+import { fetchCEP, sanitizeDocumentForFnrh, validateCPF } from "@/lib/utils-checkin";
+import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -305,6 +306,14 @@ export default function UnifiedPreCheckin() {
   const [loadingCep, setLoadingCep] = useState(false);
   const [timeWarning, setTimeWarning] = useState<{ type: 'early' | 'late', message: string } | null>(null);
 
+  const [fnrhDomains, setFnrhDomains] = useState<{
+    generos: FnrhDomain[];
+    racas: FnrhDomain[];
+    transportes: FnrhDomain[];
+    motivos: FnrhDomain[];
+    tiposDocumento: FnrhDomain[];
+  } | null>(null);
+
   const [policyModal, setPolicyModal] = useState<'general' | 'privacy' | 'pet' | null>(null);
 
   const [agreedGeneral, setAgreedGeneral] = useState(false);
@@ -313,13 +322,14 @@ export default function UnifiedPreCheckin() {
 
   const [propertyData, setPropertyData] = useState<any>(null);
   const [guest, setGuest] = useState<any>({
-    address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", complement: "" },
-    document: { number: "" },
-    nationality: "Brasil", fullName: "", birthDate: "", gender: "", phone: "", email: ""
+    address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", complement: "", ibgeCityId: "" },
+    document: { number: "", type: "CPF" },
+    nationality: "Brasil", fullName: "", birthDate: "", gender: "", raca: "NAO_DECLARADO", phone: "", email: ""
   });
 
   const [stay, setStay] = useState<any>({
-    transportation: 'Carro',
+    transportation: 'CARRO',
+    travelReason: 'TURISMO',
     petDetails: { species: 'Cachorro', weight: 5, name: "", breed: "" },
     lastCity: "", nextCity: "", vehiclePlate: "", expectedArrivalTime: "",
     additionalGuests: [], counts: { adults: 1, children: 0, babies: 0 }
@@ -330,8 +340,6 @@ export default function UnifiedPreCheckin() {
   const [countdown, setCountdown] = useState(5);
 
   const [isEditingName, setIsEditingName] = useState(false);
-  const [showCountrySelect, setShowCountrySelect] = useState(false);
-  const [searchCountry, setSearchCountry] = useState("");
 
   useEffect(() => {
     const browserLang = navigator.language.slice(0, 2);
@@ -354,13 +362,19 @@ export default function UnifiedPreCheckin() {
           return;
         }
 
-        const [data, propData] = await Promise.all([
+        const [data, propData, generos, racas, transportes, motivos, tiposDocumento] = await Promise.all([
           StayService.getStayWithGuestAndCabin(targetPropertyId, stayId as string),
-          PropertyService.getPropertyById(targetPropertyId)
+          PropertyService.getPropertyById(targetPropertyId),
+          FnrhService.getGeneros(),
+          FnrhService.getRacas(),
+          FnrhService.getMeiosTransporte(),
+          FnrhService.getMotivosViagem(),
+          FnrhService.getTiposDocumento()
         ]);
 
         if (data && propData) {
           setPropertyData(propData);
+          setFnrhDomains({ generos, racas, transportes, motivos, tiposDocumento });
 
           setGuest((prev: any) => ({ ...prev, ...data.guest, address: { ...prev.address, ...(data.guest?.address || {}) }, document: { ...prev.document, ...(data.guest?.document || {}) } }));
           setStay((prev: any) => ({ ...prev, ...data.stay, propertyId: targetPropertyId, petDetails: { ...prev.petDetails, ...(data.stay?.petDetails || {}) }, additionalGuests: data.stay.additionalGuests || [], counts: data.stay.counts || { adults: 1, children: 0, babies: 0 } }));
@@ -420,14 +434,23 @@ export default function UnifiedPreCheckin() {
   const handleCEPChange = async (cep: string) => {
     setGuest((prev: any) => ({ ...prev, address: { ...prev.address, zipCode: cep } }));
     const cleanCep = cep.replace(/\D/g, "");
-    if (cleanCep.length === 8 && guest.nationality === "Brasil") {
+    if (cleanCep.length === 8) {
       setLoadingCep(true);
       try {
         const data = await fetchCEP(cleanCep);
         if (data && !data.erro) {
           setGuest((prev: any) => ({
             ...prev,
-            address: { ...prev.address, street: data.logradouro || "", neighborhood: data.bairro || "", city: data.localidade || "", state: data.uf || "", zipCode: cleanCep, country: "Brasil" }
+            address: {
+              ...prev.address,
+              street: data.logradouro || "",
+              neighborhood: data.bairro || "",
+              city: data.localidade || "",
+              state: data.uf || "",
+              zipCode: cleanCep,
+              country: "Brasil",
+              ibgeCityId: data.ibge || ""
+            }
           }));
           toast.success(t.loadingLoc);
         }
@@ -438,7 +461,11 @@ export default function UnifiedPreCheckin() {
   const validateForm = () => {
     const errors = [];
     if (!guest.fullName) errors.push(t.fullName);
-    if (!guest.document?.number) errors.push(t.doc);
+    if (!guest.document?.number) {
+      errors.push(t.doc);
+    } else if (guest.document?.type === "CPF" && !validateCPF(guest.document.number)) {
+      errors.push("CPF Inválido");
+    }
     if (!guest.birthDate) errors.push(t.birth);
     if (!guest.gender) errors.push(t.gender);
     if (!guest.occupation) errors.push(t.occupation);
@@ -454,7 +481,11 @@ export default function UnifiedPreCheckin() {
 
     stay.additionalGuests?.forEach((g: any, index: number) => {
       if (!g.fullName) errors.push(`${t.companions} #${index + 1} (${t.fullName})`);
-      if (!g.document && g.type === 'adult') errors.push(`${t.companions} #${index + 1} (${t.doc})`);
+      if (!g.document && g.type === 'adult') {
+        errors.push(`${t.companions} #${index + 1} (${t.doc})`);
+      } else if (g.document && sanitizeDocumentForFnrh(g.document).length === 11 && !validateCPF(g.document)) {
+        errors.push(`${t.companions} #${index + 1} (CPF Inválido)`);
+      }
     });
 
     if (!agreedGeneral) errors.push(t.polGen);
@@ -467,7 +498,24 @@ export default function UnifiedPreCheckin() {
   const executeSave = async () => {
     setIsSaving(true);
     try {
-      await StayService.completePreCheckin(stay.propertyId, stayId as string, stay, guest);
+      // Create a payload copy with sanitized fields for FNRH
+      const fnrhGuestPayload = {
+        ...guest,
+        document: {
+          ...guest.document,
+          number: sanitizeDocumentForFnrh(guest.document?.number)
+        }
+      };
+
+      const fnrhStayPayload = {
+        ...stay,
+        additionalGuests: stay.additionalGuests.map((ag: any) => ({
+          ...ag,
+          document: ag.document ? sanitizeDocumentForFnrh(ag.document) : ""
+        }))
+      };
+
+      await StayService.completePreCheckin(stay.propertyId, stayId as string, fnrhStayPayload, fnrhGuestPayload);
       setStep('success');
     } catch (error: any) {
       alert(`Erro: ${error.message}`);
@@ -505,6 +553,14 @@ export default function UnifiedPreCheckin() {
     }
 
     executeSave();
+  };
+
+  const handleCPFBlur = (docType: string, docNumber: string, guestType: string = "Titular") => {
+    if (docType === "CPF" && docNumber) {
+      if (!validateCPF(docNumber)) {
+        toast.error(`CPF Inválido (${guestType})`);
+      }
+    }
   };
 
   const getThemeStyles = () => {
@@ -728,53 +784,41 @@ export default function UnifiedPreCheckin() {
             <User size={20} className="text-primary" /> 1. {t.titleHolder}
           </h3>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="relative">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase mb-2 block">{t.nationality}</label>
-              <button
-                type="button"
-                onClick={() => setShowCountrySelect(!showCountrySelect)}
-                className="w-full bg-secondary border border-border p-4 rounded-2xl flex items-center justify-between hover:border-primary/50 transition-colors"
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="col-span-1 space-y-1">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.nationality}</label>
+              <select
+                value={guest.nationality || "Brasil"}
+                onChange={e => setGuest({ ...guest, nationality: e.target.value })}
+                className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 transition-colors text-sm appearance-none"
               >
-                <span className="flex items-center gap-2 text-sm font-medium">
-                  {countries.find(c => c.name === guest.nationality)?.flag || "🏳️"} {guest.nationality || t.select}
-                </span>
-                <ChevronDown size={16} className="text-muted-foreground" />
-              </button>
-
-              {showCountrySelect && (
-                <div className="absolute top-full left-0 w-full mt-2 bg-card border border-border rounded-2xl z-50 shadow-2xl overflow-hidden animate-in slide-in-from-top-2">
-                  <input
-                    className="w-full p-4 bg-secondary border-b border-border outline-none text-sm text-foreground placeholder:text-muted-foreground"
-                    placeholder={t.searchCountry}
-                    value={searchCountry}
-                    onChange={e => setSearchCountry(e.target.value)}
-                    autoFocus
-                  />
-                  <div className="max-h-60 overflow-y-auto custom-scrollbar">
-                    {countries.filter(c => c.name.toLowerCase().includes(searchCountry.toLowerCase())).map(c => (
-                      <button
-                        key={c.name} type="button"
-                        onClick={() => { setGuest({ ...guest, nationality: c.name }); setShowCountrySelect(false); }}
-                        className="w-full p-4 text-left hover:bg-accent flex items-center gap-3 text-sm font-medium transition-colors"
-                      >
-                        <span>{c.flag}</span> {c.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+                {countries.map(c => (
+                  <option key={c.name} value={c.name}>{c.name}</option>
+                ))}
+              </select>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase">
-                {guest.nationality === "Brasil" ? "CPF *" : t.doc}
-              </label>
+            <div className="col-span-1 space-y-1">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.doc}</label>
+              <select
+                value={guest.document?.type || ""}
+                onChange={e => setGuest({ ...guest, document: { ...guest.document, type: e.target.value } })}
+                className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 transition-colors text-sm appearance-none"
+              >
+                {fnrhDomains?.tiposDocumento.map(d => (
+                  <option key={d.id} value={d.id}>{d.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="col-span-2 space-y-1">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase">Nº de Identificação</label>
               <input
                 value={guest.document?.number || ""}
                 onChange={e => setGuest({ ...guest, document: { ...guest.document, number: e.target.value } })}
+                onBlur={() => handleCPFBlur(guest.document?.type, guest.document?.number)}
                 className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 transition-colors text-sm"
-                placeholder={guest.nationality === "Brasil" ? "000.000.000-00" : "Documento"}
+                placeholder={guest.document?.type === "CPF" ? "000.000.000-00" : "Documento"}
               />
             </div>
           </div>
@@ -801,7 +845,7 @@ export default function UnifiedPreCheckin() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-4">
             <div className="space-y-1">
               <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.birth}</label>
               <input type="date"
@@ -810,18 +854,33 @@ export default function UnifiedPreCheckin() {
                 className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none text-sm font-medium focus:border-primary/50 transition-colors [color-scheme:light] dark:[color-scheme:dark]"
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.gender}</label>
-              <select
-                value={guest.gender || ""}
-                onChange={e => setGuest({ ...guest, gender: e.target.value })}
-                className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none text-sm font-medium focus:border-primary/50 transition-colors appearance-none"
-              >
-                <option value="" disabled>{t.select}</option>
-                <option value="M">{t.male}</option>
-                <option value="F">{t.female}</option>
-                <option value="O">{t.other}</option>
-              </select>
+            <div className="grid grid-cols-2 gap-2 opacity-80 pt-2 border-t border-border mt-2">
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-muted-foreground uppercase">{t.gender} (Opcional)</label>
+                <select
+                  value={guest.gender || "NAO_INFORMADO"}
+                  onChange={e => setGuest({ ...guest, gender: e.target.value })}
+                  className="w-full bg-secondary border border-border p-3 rounded-xl outline-none text-xs font-medium focus:border-primary/50 transition-colors appearance-none"
+                >
+                  <option value="" disabled>{t.select}</option>
+                  {fnrhDomains?.generos.map(g => (
+                    <option key={g.id} value={g.id}>{g.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-bold text-muted-foreground uppercase">Raça / Cor (Opcional)</label>
+                <select
+                  value={guest.raca || "NAO_DECLARADO"}
+                  onChange={e => setGuest({ ...guest, raca: e.target.value })}
+                  className="w-full bg-secondary border border-border p-3 rounded-xl outline-none text-xs font-medium focus:border-primary/50 transition-colors appearance-none"
+                >
+                  <option value="" disabled>{t.select}</option>
+                  {fnrhDomains?.racas.map(r => (
+                    <option key={r.id} value={r.id}>{r.label}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
@@ -882,6 +941,7 @@ export default function UnifiedPreCheckin() {
                         newGuests[idx].document = e.target.value;
                         setStay({ ...stay, additionalGuests: newGuests });
                       }}
+                      onBlur={() => handleCPFBlur("CPF", g.document, "Acompanhante")}
                       className="w-full bg-background border border-border p-3 rounded-xl outline-none text-sm focus:border-primary/50 transition-colors"
                     />
                   </div>
@@ -1043,26 +1103,39 @@ export default function UnifiedPreCheckin() {
                 />
               </div>
             </div>
-          </div>
 
-          <div className="space-y-4">
-            <p className="text-xs font-black uppercase tracking-widest text-primary">{t.transport}</p>
-            <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
-              {['Carro', 'Onibus', 'Avião', 'Navio', 'Outro'].map(m => (
-                <button
-                  key={m} type="button"
-                  onClick={() => setStay({ ...stay, transportation: m })}
-                  className={cn("p-3 rounded-xl border text-[9px] font-black uppercase transition-all", stay.transportation === m ? "bg-primary text-primary-foreground border-primary shadow-md" : "bg-background border-border text-muted-foreground hover:bg-accent")}
-                >
-                  {getTransportLabel(m)}
-                </button>
-              ))}
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase">Motivo da Viagem (FNRH)</label>
+              <select
+                value={stay.travelReason || ""}
+                onChange={e => setStay({ ...stay, travelReason: e.target.value })}
+                className="w-full bg-background border border-border p-4 rounded-2xl outline-none text-sm font-medium focus:border-primary/50 transition-colors appearance-none"
+              >
+                <option value="" disabled>{t.select}</option>
+                {fnrhDomains?.motivos.map(m => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
             </div>
           </div>
 
-          {stay.transportation === 'Carro' && (
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-muted-foreground uppercase text-primary">Meio de Transporte (FNRH)</label>
+            <select
+              value={stay.transportation || ""}
+              onChange={e => setStay({ ...stay, transportation: e.target.value })}
+              className="w-full bg-background border border-border p-4 rounded-2xl outline-none text-sm font-medium focus:border-primary/50 transition-colors appearance-none"
+            >
+              <option value="" disabled>{t.select}</option>
+              {fnrhDomains?.transportes.map(m => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {['CARRO', 'MOTO'].includes(stay.transportation) && (
             <div className="space-y-2 animate-in slide-in-from-top-2">
-              <label className="text-[10px] font-bold uppercase text-muted-foreground">{t.carPlate}</label>
+              <label className="text-[10px] font-bold uppercase text-muted-foreground">Placa do Veículo (Opcional)</label>
               <input value={stay.vehiclePlate || ""} onChange={e => setStay({ ...stay, vehiclePlate: e.target.value.toUpperCase() })} placeholder="ABC1D23" className="w-full bg-background border border-border p-5 rounded-3xl font-mono text-2xl tracking-widest text-primary text-center focus:border-primary/50 outline-none transition-colors" />
             </div>
           )}

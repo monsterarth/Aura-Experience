@@ -1,0 +1,1512 @@
+   
+ 
+   
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+Documento de Integração 
+Versão 2.0 de 28/01/2026 
+ 
+
+   
+ 
+  2 de 44 
+ 
+Introdução ................................ ................................ ................................ .............. 3 
+Visão Geral ................................ ................................ ................................ ............. 3 
+Descrição ................................ ................................ ................................ ............ 3 
+Versão mais recente ................................ ................................ ............................  3 
+URL Base ................................ ................................ ................................ ............. 3 
+Autenticação – Basic Authentication ................................ ................................ ........ 4 
+Como funciona ................................ ................................ ................................ .... 4 
+Usuário e senha ................................ ................................ ................................ ... 4 
+Como codificar em Base64 ................................ ................................ ...................  4 
+Linux: ................................ ................................ ................................ ............... 4 
+Windows: ................................ ................................ ................................ ......... 5 
+Exemplo prático ................................ ................................ ................................ ... 5 
+Observações ................................ ................................ ................................ ....... 5 
+Exemplo de fluxo de uso dos endpoints ................................ ................................ .... 6 
+Endpoints ................................ ................................ ................................ ............... 7 
+Orientações gerais - válidas para todos os endpoints ................................ ............. 7 
+Domínios................................ ................................ ................................ ............. 7 
+Descrição ................................ ................................ ................................ ......... 7 
+Endpoints ................................ ................................ ................................ ......... 7 
+GET /dominios/fnrh/meios_transporte................................ ................................  8 
+GET /dominios/fnrh/motivos_viagem ................................ ................................ .. 8 
+GET /dominios/hospedes/situacoes ................................ ................................ ... 8 
+GET /dominios/pessoas/generos ................................ ................................ ....... 8 
+GET /dominios/pessoas/opcao_deficiencia ................................ ........................  8 
+GET /dominios/pessoas/racas ................................ ................................ ........... 8 
+GET /dominios/pessoas/tipos_deficiencia ................................ ..........................  8 
+GET /dominios/pessoas/tipos_documento ................................ .........................  8 
+GET /dominios/pessoas/tipos_nacionalidade ................................ .....................  9 
+Exemplo de resposta................................ ................................ ......................  9 
+️Hospedagem ................................ ................................ ................................ ..... 9 
+Descrição ................................ ................................ ................................ ......... 9 
+Endpoints ................................ ................................ ................................ ......... 9 
+   
+ 
+  3 de 44 
+ 
+POST /hospedagem/registrar ................................ ................................ ............. 9 
+Parâmetros de consulta (Query Parameters)................................ ....................  9 
+Body - Orientações ................................ ................................ ........................  9 
+Descrição dos campos do Body ................................ ................................ .... 10 
+Exemplo de resposta................................ ................................ ....................  11 
+Hóspedes ................................ ................................ ................................ .......... 13 
+Descrição ................................ ................................ ................................ ....... 13 
+Endpoints ................................ ................................ ................................ ....... 13 
+PATCH /hospedes/{hospede_id}/checkin................................ ..........................  13 
+Parâmetros de rota (Path Parameters) ................................ ...........................  13 
+PATCH /hospedes/{hospede_id}/checkout ................................ .......................  13 
+Parâmetros de rota (Path Parameters) ................................ ...........................  14 
+PATCH /hospedes/{hospede_id}/no-show ................................ ........................  14 
+Parâmetros de rota (Path Parameters) ................................ ...........................  14 
+GET /hospedes/{hospede_id} ................................ ................................ ........... 14 
+Parâmetros de rota (Path Parameters) ................................ ...........................  14 
+Exemplo de Resposta ................................ ................................ ...................  14 
+GET /hospedes/pre-checkins ................................ ................................ ........... 17 
+Parâmetros de consulta (Query Parameters)................................ ..................  17 
+Exemplo de resposta................................ ................................ ....................  17 
+Pessoas ................................ ................................ ................................ ............ 18 
+Descrição ................................ ................................ ................................ ....... 18 
+Endpoints ................................ ................................ ................................ ....... 18 
+GET /pessoas/{pessoa_id} ................................ ................................ ............... 18 
+Parâmetros de rota (Path Parameters) ................................ ...........................  18 
+Exemplo de resposta................................ ................................ ....................  19 
+GET /pessoas/documento/{tipo_documento}/{numero_documento} ..................  21 
+Exemplo de resposta................................ ................................ ....................  22 
+Parâmetros de rota (Path Parameters) ................................ ...........................  23 
+POST /pessoas ................................ ................................ ...............................  24 
+Parâmetros de rota (Path Parameters) ................................ ...........................  24 
+Body - Orientações ................................ ................................ ......................  24 
+   
+ 
+  4 de 44 
+ 
+Exemplo de Body ................................ ................................ .........................  24 
+Reservas ................................ ................................ ................................ ........... 25 
+Descrição ................................ ................................ ................................ ....... 25 
+Endpoints ................................ ................................ ................................ ....... 25 
+GET /reservas ................................ ................................ ................................ . 26 
+Parâmetros de rota (Path Parameters) ................................ ...........................  26 
+POST /reservas ................................ ................................ ...............................  26 
+Body - Orientações ................................ ................................ ......................  26 
+Descrição dos campos do Body ................................ ................................ .... 26 
+GET /reservas/{reserva_id} ................................ ................................ ............... 27 
+Parâmetros de rota (Path Parameters) ................................ ...........................  27 
+DEL /reservas/{reserva_id} ................................ ................................ ............... 27 
+Parâmetros de rota (Path Parameters) ................................ ...........................  27 
+PUT /reservas/{reserva_id} ................................ ................................ ............... 27 
+Parâmetros de rota (Path Parameters) ................................ ...........................  28 
+POST /reservas/{reserva_id}/cancelar................................ ...............................  28 
+Parâmetros de rota (Path Parameters) ................................ ...........................  28 
+POST /reservas/{reserva_id}/checkin ................................ ................................  28 
+Parâmetros de rota (Path Parameters) ................................ ...........................  29 
+POST /reservas/{reserva_id}/checkout ................................ ..............................  29 
+Parâmetros de rota (Path Parameters) ................................ ...........................  29 
+GET /reservas/{reserva_id}/hospedes ................................ ...............................  29 
+Parâmetros de rota (Path Parameters) ................................ ...........................  29 
+POST /reservas/{reserva_id}/hospedes ................................ .............................  30 
+Parâmetros de rota (Path Parameters) ................................ ...........................  30 
+Body - Orientações ................................ ................................ ......................  30 
+POST /reservas/{reserva_id}/vincular-hospede/{hospede_id} .............................  30 
+Parâmetros de rota (Path Parameters) ................................ ...........................  31 
+Fichas ................................ ................................ ................................ ............... 31 
+Descrição ................................ ................................ ................................ ....... 31 
+Endpoints ................................ ................................ ................................ ....... 31 
+GET /fichas ................................ ................................ ................................ ..... 31 
+   
+ 
+  5 de 44 
+ 
+Parâmetros de consulta (Query Parameters)................................ ..................  31 
+Exemplo de resposta................................ ................................ ....................  31 
+Erros Comuns ................................ ................................ ................................ ....... 33 
+400 Bad Request ................................ ................................ ................................  33 
+Exemplo: ................................ ................................ ................................ ..... 33 
+401 Unauthorized ................................ ................................ ...............................  33 
+Exemplo: ................................ ................................ ................................ ..... 33 
+403 Not Found ................................ ................................ ................................ ... 33 
+Exemplo: ................................ ................................ ................................ ..... 33 
+404 Not Found ................................ ................................ ................................ ... 34 
+Exemplo: ................................ ................................ ................................ ..... 35 
+409 Conflict ................................ ................................ ................................ ....... 35 
+Exemplo: ................................ ................................ ................................ ..... 35 
+422 Unprocessable Entity ................................ ................................ ...................  35 
+Exemplo: ................................ ................................ ................................ ..... 35 
+500 Internal Server Error ................................ ................................ .....................  35 
+Exemplo: ................................ ................................ ................................ ..... 35 
+Perguntas Frequentes (FAQ) ................................ ................................ ..................  35 
+Qual o funcionamento de "Pré-Check-ins"? ................................ .........................  36 
+Qual a diferença entre "Get Pessoa" e "Get Hospede"? ................................ ......... 36 
+Como devo proceder para registrar ou consultar dados de hóspedes sem a figura da 
+reserva (ou seja, sem vincular a uma reserva imediatamente)? .............................  36 
+Quais são os valores aceitos para o filtro situacao em GET /reservas? ...................  37 
+Os endpoints são idempotentes? Posso reenviar a mesma requisição 
+POST/PUT/PATCH em caso de falha de rede? ................................ .......................  37 
+Qual o formato esperado para datas e horas (timestamps) nos campos da API? E 
+qual fuso horário é utilizado? ................................ ................................ .............. 38 
+Glossário ................................ ................................ ................................ .............. 38 
+ 
+ 
+   
+ 
+  6 de 44 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+   
+ 
+  7 de 44 
+ 
+Documentação de API REST 
+Documentação das API’s de integração do FNRH 
+Introdução 
+Este documento tem como objetivo apresentar a especificação técnica da API REST 
+desenvolvida para o gerenciamento d os dados que geram as Fichas Nacionais de 
+Registro de Hóspedes (FNRH). 
+Este documento descreve todos os endpoints disponíveis, seus respectivos fluxos de 
+uso, exemplos de requisição e resposta, além de boas práticas de consumo da API. 
+Visão Geral 
+Descrição 
+A API foi projetada para ser simples, clara e eficiente, atendendo tanto aos sistemas 
+internos quanto a integrações com parceiros externos (como PMS - Property 
+Management System, ou Sistema de Gestão de propriedades Hoteleiras, em t radução 
+livre). Através desta interface, é possível realizar ações como:  
+• Criar e gerenciar reservas; 
+• Registrar check-ins e check-outs de hóspedes; 
+• Consultar dados de pessoas e hóspedes; 
+• Cancelar reservas e registrar no-shows; e 
+• Executar fluxos completos de hospedagem em uma única chamada. 
+A autenticação com a API é feita via HTTP Basic Authentication, garantindo segurança e 
+controle de acesso sobre os dados transacionados. 
+Versão mais recente 
+A versão mais recente deste documento pode ser obtida no item MANUAIS do site do 
+FNRH do Ministério do Turismo:  
+https://www.gov.br/turismo/pt-br/acesso-a-informacao/acoes-e-
+programas/programas-projetos-acoes-obras-e-atividades/ficha-nacional-de-registro-
+de-hospedes 
+ 
+ 
+   
+ 
+  8 de 44 
+ 
+URL Base 
+Homologação: https://hom-lowcode.serpro.gov.br/FNRH_API/rest/v2/ 
+Produção: https://fnrh.turismo.serpro.gov.br/FNRH_API/rest/v2/ 
+Autenticação – Basic Authentication 
+A autenticação da API é feita utilizando o padrão HTTP Basic Authentication, que exige o 
+envio de um par de credenciais (usuário e senha) codificados em Base64 no cabeçalho 
+Authorization de cada requisição. 
+Como funciona 
+O cliente da API deve enviar o cabeçalho Authorization no seguinte formato: 
+Authorization: Basic <credenciais_codificadas> 
+Onde <credenciais_codificadas> é a string resultante da codificação em base64 do 
+texto: 
+usuario:senha 
+Usuário e senha 
+Para ter acesso ao usuário e senha, é necessário acessar o sistema FNRH_SRH e 
+navegar até o módulo Chave de Acesso API’s. 
+Nessa tela são exibidos os dados de usuário e senha (chave). 
+Caso necessário, é possível gerar uma nova chave, de modo que ao realizar esse 
+procedimento, a chave antiga será inutilizada. 
+Como codificar em Base64 
+Para codificar em base64 é preciso seguir o passo a passo a baixo de acordo com o 
+Sistema Operacional em uso: 
+Linux: 
+1. Abra o Terminal; 
+2. Separe o texto a ser codificado. Para esse exe mplo utilizaremos 
+“joao:senha123”; 
+3. Digite o seguinte comando: 
+ 
+echo ”joao:senha123” | base64 
+
+   
+ 
+  9 de 44 
+ 
+4. O terminal retornará o texto entre aspas codificado em base 64 e você obterá um 
+retorno como o ilustrado a seguir: 
+ 
+Windows: 
+1. Abra o Prompt de Comando; 
+2. Separe o texto a ser codificado. Para esse exemplo utilizaremos 
+“joao:senha123”; 
+3. Digite o seguinte comando: 
+[Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes("joao:senha123")) 
+4. O terminal retornará o texto entre aspas codificado em base 64 e você obterá um 
+retorno como o ilustrado a seguir: 
+ 
+ 
+Exemplo prático 
+Suponha que o nome de usuário seja empresa123 e a senha seja senhaSegura! 
+Concatene os dados: 
+empresa123:senhaSegura! 
+Codifique em base64: 
+ZW1wcmVzYTEyMzpzZW5oYVNlZ3VyYSE= 
+Envie o cabeçalho HTTP: 
+Authorization: Basic ZW1wcmVzYTEyMzpzZW5oYVNlZ3VyYSE= 
+Observações 
+Governança: As credenciais devem ser geradas e fornecidas pela equipe responsável 
+do meio de hospedagem, através do Sistema de Registro de Hóspedes. 
+Comunicação: A comunicação com a API deve ser feita via HTTPS para garantir a 
+segurança da autenticação. 
+
+   
+ 
+  10 de 44 
+ 
+Segurança: A chave de acesso (senha) não expira. Caso uma nova chave seja gerada 
+no sistema, a anterior será invalidada permanentemente. Guarde suas credenciais 
+com segurança. 
+Exemplo de fluxo de uso dos endpoints 
+Existem diversos fluxos possíveis de endpoits para o envio das informações ao MTur. 
+Aqui listamos apenas um deles, em sua forma mais direta, passo a passo: 
+1) Criar reserva   
+POST /reservas  
+  
+2) Acrescentar +1 hóspede na reserva já criada  
+GET /pessoas/documento/{tipo}/{número} (para buscar o id da pessoa)  
+Se existe a pessoa, retorna o id  
+ 
+Se não existe a pessoa, ela tem que criada 
+POST /pessoas  
+  
+POST reservas/{reserva id}/hospedes  
+  
+3) VINCULAR o pré check-in de balcão na reserva  
+POST /reservas/{reserva_id}/vincular-hospede/{hospede_id}  
+  
+4) Efetuar o check-in  
+4.1) Individual de cada hóspede:  
+PATCH /hospedes/{hospede_id}/checkin   
+4.2) De todos os hóspedes da reserva (na mesma data/hora)  
+POST /reservas/{reserva_id}/checkin  
+  
+5) Efetuar o check-out  
+   
+ 
+  11 de 44 
+ 
+5.1) Individual de cada hóspede: 
+PATCH /hospedes/{hospede_id}/checkout  
+5.2) De todos os hóspedes da reserva (na mesma data/hora) 
+POST /reservas/{reserva_id}/checkout  
+ 
+Além do fluxo passo a passo apresentado acima, uma outra opção é informar todos 
+esses passos em apenas um método: 
+POST /hospedagem/registrar 
+ 
+Endpoints 
+Orientações gerais - válidas para todos os endpoints 
+• Os scripts atualizados de cada endpoint podem ser consultados no respectivo 
+swagger de cada ambiente (aqui)  
+• Código de país: definidos pelo IBGE conforme Registro de Referência de Países 
+do órgão. A documentação do serviço pode ser acessada aqui 
+ 
+Domínios 
+Descrição 
+Esses endpoints fornecem listas de valores fixos (domínios) utilizados em outros 
+endpoints da API, como tipos de documento, motivos de viagem etc. É uma boa prática 
+consultar esses endpoints para garantir que os valores enviados em outr as requisições 
+sejam válidos. 
+Endpoints 
+Método URL Descrição 
+GET /dominios/fnrh/meios_transporte Lista os meios de transporte. 
+GET /dominios/fnrh/motivos_viagem Lista os motivos de viagem. 
+GET /dominios/hospedes/situacoes Lista as possíveis situações de um 
+hóspede. 
+GET /dominios/pessoas/generos Lista os gêneros. 
+GET /dominios/pessoas/opcao_deficiencia Lista as opções para declaração de 
+deficiência. 
+GET /dominios/pessoas/racas Lista as raças. 
+   
+ 
+  12 de 44 
+ 
+GET /dominios/pessoas/tipos_deficiencia Lista os tipos de deficiência. 
+GET /dominios/pessoas/tipos_documento Lista os tipos de documentos 
+aceitos. 
+GET /dominios/pessoas/tipos_nacionalidade Lista os tipos de nacionalidade. 
+ 
+GET /dominios/fnrh/meios_transporte 
+Retorna a lista de meios de transporte. 
+GET /dominios/fnrh/motivos_viagem 
+Retorna a lista de motivos de viagem. 
+GET /dominios/hospedes/situacoes 
+Retorna a lista de situações de hóspedes. 
+GET /dominios/pessoas/generos 
+Retorna a lista de gêneros de pessoas. 
+GET /dominios/pessoas/opcao_deficiencia 
+Retorna a lista de opções de deficiências de pessoas. 
+GET /dominios/pessoas/racas 
+Retorna a lista de raças de pessoas. 
+GET /dominios/pessoas/tipos_deficiencia 
+Retorna a lista de tipos de deficiências de pessoas. 
+ 
+   
+ 
+  13 de 44 
+ 
+GET /dominios/pessoas/tipos_documento 
+Retorna a lista de tipos de documentos de pessoas. 
+GET /dominios/pessoas/tipos_nacionalidade 
+Retorna a lista de tipos de nacionalidade de pessoas. 
+Exemplo de resposta 
+{ 
+    "dados": [ 
+        {"id": "BRASILEIRO", "label": "Brasileiro"}, 
+        {"id": "ESTRANGEIRO", "label": "Estrangeiro"} 
+    ] 
+} 
+ 
+ 
+️Hospedagem 
+Descrição 
+Endpoint principal que permite registrar uma reserva e seus hóspedes em uma única 
+chamada. 
+Endpoints 
+Método URL Descrição 
+POST /hospedagem/registrar Cria a reserva e registra os hóspedes. 
+ 
+POST /hospedagem/registrar 
+Cria a reserva e registra os hóspedes. 
+Parâmetros de consulta (Query Parameters) 
+Parâmetro Tipo Obrigatório Descrição 
+cpf_solicitante string Sim CPF do usuário que está 
+realizando o registro. 
+ 
+Body - Orientações 
+• origem_reserva_id – opções: “MEIOHOSPEDAGEM” ou “OTA” 
+   
+ 
+  14 de 44 
+ 
+• responsável - se aplica quando o hóspede é um dependente. Nesse caso, aqui 
+deve ser informado o tipo e o número do documento do responsável pelo 
+dependente 
+• situacao_hospede – Uma destas opções: 
+o "PRECHECKIN_PENDENTE" 
+▪ checkin_em, checkout_em e dados_ficha não devem ser 
+informados 
+o "CHECKIN_REALIZADO" 
+▪ Nesse caso deve ser informado checkin_em e dados_ficha 
+o "CHECKOUT_REALIZADO" 
+▪ Nesse caso devem ser informados checkin_em, checkout_em e 
+dados_ficha 
+o "NOSHOW" 
+▪ checkin_em, checkout_em e dados_ficha não devem ser 
+informados 
+• nacionalidade: Código IBGE do País de residência do hóspede 
+• PaisNacionalidade_id: Sigla IBGE do País de nacionalidade do hóspede 
+• PaisResidencia_id: Sigla IBGE do País de residência do hóspede 
+• estado_id: Sigla IBGE do Estado de residência do hóspede 
+Descrição dos campos do Body 
+ 
+Campo Tipo Obrigatóri
+o Descrição 
+reserva object Sim Objeto contendo os detalhes 
+da reserva. 
+reserva.numero_reserva string Sim Código único da reserva no 
+sistema do hotel/PMS. 
+reserva.numero_reserva_ota string Não 
+Código da reserva na agência 
+de viagens online (OTA), se 
+aplicável. 
+reserva.data_entrada date Sim Data de entrada no formato 
+AAAA-MM-DD. 
+reserva.data_saida date Sim Data de saída no formato 
+AAAA-MM-DD. 
+reserva.quantidade_hospede_adul
+to integer Não Número de adultos na 
+reserva. 
+reserva.quantidade_hospede_men
+or integer Não Número de menores de idade 
+na reserva. 
+reserva.origem_reserva_id string Não ID da origem da reserva. Ex: 
+MEIOHOSPEDAGEM. 
+dados_hospede array Não Lista de objetos, onde cada 
+objeto representa um 
+hóspede. 
+   
+ 
+  15 de 44 
+ 
+dados_hospede[].is_principal boolea
+n 
+Não true se este for o hóspede 
+principal/responsável pela 
+reserva. 
+dados_hospede[].situacao_hosped
+e string Não 
+Situação inicial do hóspede. 
+Use CHECKIN_REALIZADO 
+para registrar a entrada. Veja 
+os valores em 
+/dominios/hospedes/situacoe
+s. 
+dados_hospede[].check_in_em date Opcional 
+Data e hora do check-in no 
+formato ISO 8601 (AAAA-MM-
+DDTHH:mm:ss.sssZ). 
+Obrigatório se 
+situacao_hospede for 
+CHECKIN_REALIZADO. 
+dados_hospede[].check_out_em date Não Data e hora do check-out no 
+formato ISO 8601. 
+dados_hospede[].dados_pessoais object Não Objeto com as informações 
+pessoais do hóspede. 
+... ... Não 
+Os demais campos, como 
+nome, documento_id, etc, 
+devem ser preenchidos 
+conforme a necessidade. 
+ 
+Exemplo de resposta 
+{ 
+  "reserva": { 
+    "numero_reserva": "", 
+    "numero_reserva_ota": "", 
+    "data_entrada": "2014-12-31", 
+    "data_saida": "2014-12-31", 
+    "quantidade_hospede_adulto": 0, 
+    "quantidade_hospede_menor": 0, 
+    "origem_reserva_id": "" 
+  }, 
+  "dados_hospede": [ 
+    { 
+      "is_principal": false, 
+      "situacao_hospede": "", 
+      "check_in_em": "2014-12-31T23:59:59.938Z", 
+      "check_out_em": "2014-12-31T23:59:59.938Z", 
+      "dados_pessoais": { 
+        "nome": "", 
+        "nome_social": "", 
+   
+ 
+  16 de 44 
+ 
+        "tipo_nacionalidade_id": "", 
+        "nacionalidade": "", 
+        “PaisNacionalidade_id”: “”, 
+        "genero_id": "", 
+        "GeneroDescricao": "", 
+        "data_nascimento": "2014-12-31", 
+        "raca_id": "", 
+        "deficiencia_id": "", 
+        "tipo_deficiencia_id": "", 
+        "documento_id": { 
+          "numero_documento": "", 
+          "tipo_documento_id": "" 
+        }, 
+        "contato": { 
+          "email": "", 
+          "telefone": "", 
+          "cep": "", 
+          "logradouro": "", 
+          "numero": "", 
+          "complemento": "", 
+          "bairro": "", 
+          “PaisResidencia_id”: “”, 
+          "cidade_id": 1234567891234567, 
+          "estado_id": "", 
+          "PaisId": "" 
+        }, 
+        "PaisNacionalidadeId": "" 
+      }, 
+      "responsavel": { 
+        "numero_documento": "", 
+        "tipo_documento_id": "" 
+      }, 
+      "dados_ficha": { 
+        "motivo_viagem_id": "", 
+        "meio_transporte_id": "" 
+      } 
+    } 
+  ] 
+} 
+ 
+   
+ 
+  17 de 44 
+ 
+ 
+Hóspedes 
+Descrição 
+Endpoints para gerenciar o ciclo de vida de um hóspede individualmente (check -in, 
+check-out, etc) e consultar seus dados. 
+Endpoints 
+Método URL Descrição 
+PATCH /hospedes/{hospede_id}/checkin Realiza o check-in de um hóspede. 
+PATCH /hospedes/{hospede_id}/checkout Realiza o check-out de um hóspede. 
+PATCH /hospedes/{hospede_id}/no-show Marca um hóspede como “no-show” 
+(não comparecimento.) 
+GET /hospedes/{hospede_id} Consulta os dados detalhados de um 
+hóspede específico. 
+GET /hospedes/pre-checkins Lista informações de pré-check-in de 
+hóspede. 
+ 
+PATCH /hospedes/{hospede_id}/checkin 
+Realiza o check-in de um hóspede, atualizando sua situação e a data/hora do evento. 
+Parâmetros de rota (Path Parameters) 
+Parâmetro Tipo Obrigatório Descrição 
+hospede_id string Sim O ID único do hóspede a ser 
+atualizado. 
+ 
+ 
+   
+ 
+  18 de 44 
+ 
+PATCH /hospedes/{hospede_id}/checkout 
+Realiza o check-out de um hóspede, atualizando sua situação e a data/hora do evento. 
+Parâmetros de rota (Path Parameters) 
+Parâmetro Tipo Obrigatório Descrição 
+hospede_id string Sim O ID único do hóspede a ser 
+atualizado. 
+ 
+PATCH /hospedes/{hospede_id}/no-show 
+Marca o hóspede como “no-show” (não comparecimento), atualizando sua situação. 
+Parâmetros de rota (Path Parameters) 
+Parâmetro Tipo Obrigatório Descrição 
+hospede_id string Sim O ID único do hóspede a ser 
+atualizado. 
+ 
+GET /hospedes/{hospede_id} 
+Retorna as informações de um hóspede de acordo com seu id. 
+Parâmetros de rota (Path Parameters) 
+Parâmetro Tipo Obrigatório Descrição 
+hospede_id string Sim O ID único do hóspede a ser 
+atualizado. 
+ 
+Exemplo de Resposta 
+{ 
+  "dados": { 
+    "hospede_id": "", 
+    "reserva": { 
+      "reserva_id": "", 
+      "numero_reserva": "", 
+      "numero_ota": "", 
+      "situacao": { 
+        "id": "", 
+        "label": "" 
+      }, 
+      "origem": { 
+        "id": "", 
+        "label": "" 
+      }, 
+      "data_entrada": "2014-12-31", 
+      "data_saida": "2014-12-31", 
+      "quantidade_hospede_adulto": 0, 
+   
+ 
+  19 de 44 
+ 
+      "quantidade_hospede_menor": 0 
+    }, 
+    "situacao": { 
+      "id": "", 
+      "label": "" 
+    }, 
+    "responsavel": { 
+      "id": "", 
+      "pessoa": { 
+        "id": "", 
+        "documento": { 
+          "numero_documento": "", 
+          "tipo_documento": { 
+            "id": "", 
+            "label": "" 
+          } 
+        }, 
+        "dado_pessoal": { 
+          "nome": "", 
+          "nome_social": "", 
+          "genero": { 
+            "id": "", 
+            "label": "" 
+          }, 
+          "GeneroDescricao": "", 
+          "data_nascimento": "2014-12-31", 
+          "raca_id": { 
+            "id": "", 
+            "label": "" 
+          }, 
+          "deficiencia": { 
+            "possui_deficiencia": { 
+              "id": "", 
+              "label": "" 
+            }, 
+            "tipo_deficiencia": { 
+              "id": "", 
+              "label": "" 
+            } 
+          },   
+          "nacionalidade": { 
+            "tipo_nacionalidade": { 
+              "id": "", 
+              "label": "" 
+            }, 
+            "pais": { 
+              "sigla": "", 
+              "nome": "" 
+   
+ 
+  20 de 44 
+ 
+            } 
+          }, 
+          "PaisNacionalidadeId": "", 
+        }, 
+        "contato": { 
+          "email": "", 
+          "telefone": "", 
+          "endereco": { 
+            "id": "", 
+            “PaisResidencia_id”: “”, 
+            "cep": "", 
+            "logradouro": "", 
+            "numero": "", 
+            "complemento": "", 
+            "bairro": "", 
+            "cidade": { 
+              "id": 1234567891234567, 
+              "nome": "", 
+              "estado": { 
+                "uf": "", 
+                "nome": "" 
+              } 
+            }, 
+            "Pais": { 
+              "Sigla": "", 
+              "Nome": "", 
+              "NomeEN": "", 
+              "NomeES": "", 
+              "IdExterno": 1234567891234567, 
+              "Ativo": false, 
+              "AtualizadoEm": "2014-12-31T23:59:59.938Z" 
+            } 
+          } 
+        } 
+      }, 
+      "situacao": { 
+        "id": "", 
+        "label": "" 
+      }, 
+      "is_principal": false, 
+      "checkin_em": "2014-12-31T23:59:59.938Z", 
+      "checkout_em": "2014-12-31T23:59:59.938Z", 
+      "pre_checkin_em": "2014-12-31T23:59:59.938Z" 
+    }, 
+    "fnrh": { 
+      "id": "", 
+      "motivo_viagem": { 
+        "id": "", 
+   
+ 
+  21 de 44 
+ 
+        "label": "" 
+      }, 
+      "meio_transporte": { 
+        "id": "", 
+        "label": "" 
+      } 
+    }, 
+    "is_principal": false, 
+    "checkin_em": "2014-12-31T23:59:59.938Z", 
+    "checkout_em": "2014-12-31T23:59:59.938Z", 
+    "pre_checkin_em": "2014-12-31T23:59:59.938Z" 
+  } 
+} 
+ 
+ 
+ 
+ 
+ 
+GET /hospedes/pre-checkins 
+Retorna as informações de um hóspede em determinado período, de acordo com seu 
+documento. Somente caso sua situacao_id atual seja PRECHECKIN_REALIZADO 
+Parâmetros de consulta (Query Parameters) 
+Parâmetro Tipo Obrigatório Descrição 
+exibir_vinculado boolean Sim true se deseja exibir vinculado. 
+data_inicio date Sim Data de entrada no formato AAAA-MM-
+DD. 
+data_fim date Sim Data de saída no formato AAAA-MM-DD. 
+tipo_documento string Não Tipo de documento do hóspede (CPF ou 
+PASSAPORTE). 
+numero_documento string Não Número de documento do hóspede 
+(apenas dígitos). 
+ 
+ 
+Exemplo de resposta 
+{ 
+  "dados": [ 
+    { 
+      "hospede_id": "e39f1ed1-bc94-4114-ba02-a012df6084ff", 
+   
+ 
+  22 de 44 
+ 
+      "pessoa_id": "f658320b-f26c-4742-8f2d-bbb3d7cb19f7", 
+      "nome": "JOAO SILVA", 
+      "nome_social": "JOAO SILVERIO", 
+      "tipo_nacionalidade": "Brasil", 
+"PaisNacionalidade_id": "BR", 
+      "genero": "Masculino", 
+      "data_nascimento": "1990-01-02", 
+      "numero_documento": "12345678919", 
+      "tipo_documento": "CPF", 
+"responsavel_id": " e39f1ed1-bc94-4114-ba02-a012df6084uy", 
+"situacao_hospede_id": "", 
+ 
+    } 
+  ] 
+} 
+ 
+Pessoas 
+Descrição 
+Endpoints para criar e consultar registros de pessoas. Uma "pessoa" pode se tornar um 
+"hóspede" ao ser associada a uma reserva. 
+Endpoints 
+Método URL Descrição 
+GET /pessoas/{pessoa_id} Consulta os dados de uma pessoa 
+pelo seu pessoa_id. 
+GET /pessoas/documento/{tipo_documento}/
+{numero_documento} 
+Consulta os dados de uma pessoa 
+pelo seu documento. 
+POST /pessoas Cria um novo tipo de pessoa. 
+ 
+GET /pessoas/{pessoa_id} 
+Retorna os dados de uma pessoa com base em seu pessoa_id. 
+Parâmetros de rota (Path Parameters) 
+Parâmetro Tipo Descrição 
+pessoa_id string O ID único da pessoa a ser consultada. 
+ 
+ 
+   
+ 
+  23 de 44 
+ 
+ 
+Exemplo de resposta 
+{ 
+  "dados": { 
+    "id": "", 
+    "documento": { 
+      "numero_documento": "", 
+      "tipo_documento": { 
+        "id": "", 
+        "label": "" 
+      } 
+    }, 
+    "dado_pessoal": { 
+      "nome": "", 
+      "nome_social": "", 
+      "genero": { 
+        "id": "", 
+        "label": "" 
+      }, 
+      "GeneroDescricao": "", 
+      "data_nascimento": "2014-12-31", 
+      "raca_id": { 
+        "id": "", 
+        "label": "" 
+      }, 
+   
+ 
+  24 de 44 
+ 
+      "deficiencia": { 
+        "possui_deficiencia": { 
+          "id": "", 
+          "label": "" 
+        }, 
+        "tipo_deficiencia": { 
+          "id": "", 
+          "label": "" 
+        } 
+      }, 
+      "nacionalidade": { 
+        "tipo_nacionalidade": { 
+          "id": "", 
+          "label": "" 
+        }, 
+        "pais": { 
+          "sigla": "", 
+          "nome": "" 
+        } 
+      } 
+    “PaisNacionalidade_id”: “”, 
+    }, 
+    "contato": { 
+      "email": "", 
+      "telefone": "", 
+   
+ 
+  25 de 44 
+ 
+      "endereco": { 
+        "id": "", 
+        “PaisResidencia_id”: “”, 
+        "cep": "", 
+        "logradouro": "", 
+        "numero": "", 
+        "complemento": "", 
+        "bairro": "", 
+        "cidade": { 
+          "id": 1234567891234567, 
+          "nome": "", 
+          "estado": { 
+            "uf": "", 
+            "nome": "" 
+          } 
+        } 
+      } 
+    } 
+  } 
+} 
+ 
+GET /pessoas/documento/{tipo_documento}/{numero_documento} 
+Retorna os dados de uma pessoa com base com base em seu documento. 
+• Se a pessoa já existir no sistema, retornará os seus dados e também o pessoa_id 
+   
+ 
+  26 de 44 
+ 
+• Se a pessoa ainda não estiver cadastrada no sistema, retornarão os dados 
+existentes no GOV.BR. Nesse caso não retornará o pessoa_id 
+Exemplo de resposta 
+{ 
+  "alerta": { 
+    "mensagem": "", 
+    "situacao": "" 
+  }, 
+  "dados": { 
+    "id": "", 
+    "documento": { 
+      "numero_documento": "", 
+      "tipo_documento": { 
+        "id": "", 
+        "label": "" 
+      } 
+    }, 
+    "dado_pessoal": { 
+      "nome": "", 
+      "nome_social": "", 
+      "genero": { 
+        "id": "", 
+        "label": "" 
+      }, 
+      "GeneroDescricao": "", 
+      "data_nascimento": "2014-12-31", 
+      "raca_id": { 
+        "id": "", 
+        "label": "" 
+      }, 
+      "deficiencia": { 
+        "possui_deficiencia": { 
+          "id": "", 
+          "label": "" 
+        }, 
+        "tipo_deficiencia": { 
+          "id": "", 
+          "label": "" 
+        } 
+      }, 
+   
+ 
+  27 de 44 
+ 
+      "nacionalidade": { 
+        "tipo_nacionalidade": { 
+          "id": "", 
+          "label": "" 
+        }, 
+        "pais": { 
+          "sigla": "", 
+          "nome": "" 
+        } 
+      } 
+    “PaisNacionalidade_id”: “”, 
+    }, 
+    "contato": { 
+      "email": "", 
+      "telefone": "", 
+      "endereco": { 
+        "id": "", 
+        “PaisResidencia_id”: “”, 
+        "cep": "", 
+        "logradouro": "", 
+        "numero": "", 
+        "complemento": "", 
+        "bairro": "", 
+        "cidade": { 
+          "id": 1234567891234567, 
+          "nome": "", 
+          "estado": { 
+            "uf": "", 
+            "nome": "" 
+          } 
+        } 
+      } 
+    } 
+  } 
+} 
+ 
+ 
+Parâmetros de rota (Path Parameters) 
+Parâmetro Tipo Obrigatório Descrição 
+   
+ 
+  28 de 44 
+ 
+tipo_documento string Sim Tipo de documento do hóspede (CPF 
+ou PASSAPORTE). 
+numero_documento string Sim Número de documento do hóspede 
+(apenas dígitos). 
+ 
+ 
+POST /pessoas 
+Registra os dados de uma nova pessoa no sistema. 
+Parâmetros de rota (Path Parameters) 
+Parâmetro Tipo Obrigatório Descrição 
+cpf_solicitante string Sim CPF do usuário que está realizando o 
+registro. 
+ 
+Body - Orientações 
+• nacionalidade: Código IBGE do País de residência do hóspede 
+• PaisNacionalidade_id: Sigla IBGE do País de nacionalidade do hóspede 
+• PaisResidencia_id: Sigla IBGE do País de residência do hóspede 
+• cidade_id: Código IBGE da Cidade de residência do hóspede 
+• estado_id: Sigla IBGE do Estado de residência do hóspede 
+Exemplo de Body 
+{ 
+  "pessoa": { 
+    "nome": "Karla Dias", 
+    "nome_social": "", 
+    "tipo_nacionalidade_id": "", 
+    "nacionalidade": "", 
+    "PaisNacionalidade_id": "BR", 
+ 
+    "genero_id": "", 
+    "Genero_Descricao": "", 
+ 
+    "data_nascimento": "1991-01-01", 
+    "raca_id": "", 
+    "deficiencia_id": "", 
+    "tipo_deficiencia_id": "", 
+   
+ 
+  29 de 44 
+ 
+    "documento_id": { 
+      "numero_documento": "123456789211", 
+      "tipo_documento_id": "PASSAPORTE" 
+    }, 
+    "contato": { 
+      "email": "", 
+      "telefone": "", 
+      "cep": "", 
+      "logradouro": "", 
+      "numero": "", 
+      "complemento": "", 
+      "bairro": "", 
+      "PaisResidencia_id": "BR", 
+ 
+      "cidade_id": 3548708, 
+      "estado_id": "" 
+    } 
+  } 
+} 
+ 
+Reservas 
+Descrição 
+Endpoints utilizados para o ciclo de vida completo de uma reserva, incluindo consulta 
+de reservas  em locais para hospedagem, bem como dados de situação, código da 
+reserva, data de entrada, data de saída, quantidade de hóspedes e outros, conforme 
+visto no exemplo de resposta esperada. 
+Endpoints 
+Método URL Descrição 
+GET /reservas Lista reservas com base em filtros. 
+POST /reservas Cria uma nova reserva. 
+GET /reservas/{reserva_id} Consulta os dados de uma reserva 
+específica. 
+DEL /reservas/{reserva_id} Exclui uma reserva. 
+PUT /reservas/{reserva_id} Atualiza todos os dados de uma reserva. 
+POST /reservas/{reserva_id}/checkin  
+POST /reservas/{reserva_id}/checkout  
+POST /reservas/{reserva_id}/cancelar Cancela uma reserva. 
+   
+ 
+  30 de 44 
+ 
+GET /reservas/{reserva_id}/hospedes Lista os hóspedes associados a uma 
+reserva. 
+POST /reservas/{reserva_id}/hospedes Adiciona um hóspede a uma reserva 
+existente. 
+POST /reservas/{reserva_id}/vincular-
+hospede/{hospede_id} 
+Vincula um hóspede (de um pré-check-
+in) a uma reserva. 
+ 
+GET /reservas 
+Lista as reservas com paginação. Retorna no máximo 20 reservas por requisição. 
+Parâmetros de rota (Path Parameters) 
+Parâmetro Tipo Obrigatório Descrição 
+page_number integer Sim O número da página a ser retornada. 
+situacao string Não 
+Filtra por situação da reserva (valores 
+aceitos: CRIADA, EM_ANDAMENTO, 
+CONCLUIDA, CANCELADA e 
+NOSHOW). 
+codigo_reserva string Não Filtra pelo número da reserva 
+data_entrada date Não Filtra por data de entrada no formato 
+AAAA-MM-DD. 
+data_saida date Não Filtra por data de saída no formato 
+AAAA-MM-DD. 
+ 
+ 
+POST /reservas 
+Cria uma reserva no sistema. Requer informações como datas e quantidade de 
+hóspedes. 
+Body - Orientações 
+• origem_reserva_id – opções: “MEIOHOSPEDAGEM” ou “OTA” 
+ 
+ 
+ 
+   
+ 
+  31 de 44 
+ 
+Descrição dos campos do Body 
+ 
+Campo Tipo Obrigatório Descrição 
+numero_reserva string Sim Código único da reserva 
+no sistema do hotel/PMS. 
+numero_reserva_ota string Não 
+Código da reserva na 
+agência de viagens online 
+(OTA), se aplicável. 
+data_entrada date Sim Data de entrada no 
+formato AAAA-MM-DD. 
+data_saida date Sim Data de saída no formato 
+AAAA-MM-DD. 
+quantidade_hospede_adulto integer Não Número de adultos na 
+reserva. 
+quantidade_hospede_menor integer Não Número de menores de 
+idade na reserva. 
+origem_reserva_id string Não ID da origem da reserva. 
+Ex: MEIOHOSPEDAGEM. 
+ 
+GET /reservas/{reserva_id} 
+Retorna os dados de uma reserva específica, incluindo status e datas. 
+Parâmetros de rota (Path Parameters) 
+Parâmetro Tipo Obrigatório Descrição 
+reserva_id string Sim ID da reserva. 
+ 
+DEL /reservas/{reserva_id} 
+Remove uma reserva. Essa ação é limitada a reservas que ainda não possuem 
+hóspedes com check-in realizado. 
+Parâmetros de rota (Path Parameters) 
+Parâmetro Tipo Obrigatório Descrição 
+reserva_id string Sim ID da reserva. 
+ 
+ 
+   
+ 
+  32 de 44 
+ 
+PUT /reservas/{reserva_id} 
+Atualiza completamente os dados de uma reserva existente. Todos os campos do 
+corpo da requisição devem ser enviados, pois a operação substitui o recurso existente. 
+Parâmetros de rota (Path Parameters) 
+Parâmetro Tipo Obrigatório Descrição 
+reserva_id string Sim ID da reserva. 
+ 
+POST /reservas/{reserva_id}/cancelar 
+Cancela uma reserva. Altera o status para "CANCELADA". Pode depender de regras 
+como ausência de check-in. 
+Parâmetros de rota (Path Parameters) 
+Parâmetro Tipo Obrigatório Descrição 
+reserva_id string Sim ID da reserva. 
+ 
+ 
+   
+ 
+  33 de 44 
+ 
+POST /reservas/{reserva_id}/checkin 
+Efetua o check-in dos hóspede registrados na reserva 
+Parâmetros de rota (Path Parameters) 
+Parâmetro Tipo Obrigatório Descrição 
+reserva_id string Sim ID da reserva. 
+ 
+ 
+POST /reservas/{reserva_id}/checkout 
+Efetua o check-out dos hóspede registrados na reserva 
+Parâmetros de rota (Path Parameters) 
+Parâmetro Tipo Obrigatório Descrição 
+reserva_id string Sim ID da reserva. 
+ 
+GET /reservas/{reserva_id}/hospedes 
+Retorna a listagem de todos os hóspedes associados a uma reserva específica. 
+Parâmetros de rota (Path Parameters) 
+Parâmetro Tipo Obrigatório Descrição 
+reserva_id string Sim ID da reserva. 
+ 
+Exemplo de resposta 
+ 
+{ 
+  "dados": [ 
+    { 
+      "pessoa": { 
+        "pessoa_id": "", 
+        "nome": "", 
+        "nome_social": "", 
+        "nacionalidade_id": "", 
+        "nacionalidade": "", 
+        “PaisNacionalidade_id”: “”, 
+        "genero_id": "", 
+        "genero": "", 
+        "GeneroDescricao": "", 
+        "data_nascimento": "2014-12-31", 
+   
+ 
+  34 de 44 
+ 
+        "numero": "", 
+        "tipo_documento_id": "", 
+        "tipo_documento": "" 
+      }, 
+      "hospede": { 
+        "hospede_id": "", 
+        "reserva_id": "", 
+        "pessoa_id": "", 
+        "hospedagem_id": 1234567891234567, 
+        "situacao_hospede_id": "", 
+        "situacao_hospede": "", 
+        "situacao_cor": "", 
+        "responsavel_quarto": false, 
+        "nome_responsavel": "", 
+        "checkin_em": "2014-12-31T23:59:59.938Z", 
+        "checkout_em": "2014-12-31T23:59:59.938Z" 
+      } 
+    } 
+  ] 
+} 
+POST /reservas/{reserva_id}/hospedes 
+Adiciona hóspedes a uma reserva existente. 
+Parâmetros de rota (Path Parameters) 
+Parâmetro Tipo Obrigatório Descrição 
+reserva_id string Sim ID da reserva. 
+ 
+Body - Orientações 
+• responsavel_id - se aplica quando o hóspede é um dependente. Nesse caso, 
+aqui deve ser informado o id do hóspede responsável pelo dependente 
+ 
+ 
+ 
+   
+ 
+  35 de 44 
+ 
+POST /reservas/{reserva_id}/vincular-hospede/{hospede_id} 
+Vincula um hóspede existente a uma reserva. Utilizado para vincular pré-check-ins não 
+vinculados. 
+Parâmetros de rota (Path Parameters) 
+Parâmetro Tipo Obrigatório Descrição 
+reserva_id string Sim ID da reserva. 
+hospede_id string Sim ID do hóspede. 
+ 
+Fichas 
+Descrição 
+Endpoint único que retorna a informação das fichas do Meio de Hospedagem 
+Endpoints 
+Método URL Descrição 
+GET /fichas Lista as fichas do Meio de Hospedagem 
+ 
+GET /fichas 
+Retorna a lista de fichas do meio de hospedagem 
+Parâmetros de consulta (Query Parameters) 
+Parâmetro Tipo Obrigatório Descrição 
+page_number integer Sim Número da página de retorno 
+status string Não  
+tipo_documento string Não  
+numero_documento string Não  
+nome string Não  
+data_inicial date Não  
+data_final date Não  
+ 
+Exemplo de resposta 
+{ 
+  "dados": [ 
+    { 
+      "Id": "", 
+      "ResponsavelId": "", 
+      "Status": "", 
+      "MeioHospedagemId": "", 
+      "NumeroDocumento": "", 
+   
+ 
+  36 de 44 
+ 
+      "TipoDocumentoId": "", 
+      "Nome": "", 
+      "Nacionalidade": "", 
+ 
+      “PaisNacionalidade_id”: “”, 
+      "GeneroId": "", 
+      "DataNascimento": "2014-12-31", 
+      "CidadeId": 1234567891234567, 
+      "RacaId": "", 
+      "TipoDeficienciaId": "", 
+      "DeficienciaId": "", 
+      "MotivoViagemId": "", 
+      "MeioTransporteId": "", 
+      "EntradaPrevistaEm": "2014-12-31", 
+      "SaidaPrevistaEm": "2014-12-31", 
+      "PreCheckinEm": "2014-12-31T23:59:59.938Z", 
+      "CheckinEm": "2014-12-31T23:59:59.938Z", 
+      "CheckoutEm": "2014-12-31T23:59:59.938Z", 
+      "CriadaEm": "2014-12-31T23:59:59.938Z", 
+      "UltimaAtualizacaoEm": "2014-12-31T23:59:59.938Z", 
+      "StatusFichaId": "", 
+      "StatusFichaLabel": "", 
+      “PaisResidencia_id”: “”, 
+      "UF": "", 
+      "Cidade": "", 
+      "UltimaAlteracaoEm": "2014-12-31T23:59:59.938Z" 
+    } 
+  ] 
+} 
+   
+ 
+  37 de 44 
+ 
+ 
+ 
+ 
+ 
+Erros Comuns 
+A API pode retornar os seguintes códigos de erro em respostas malformadas ou 
+inválidas: 
+400 Bad Request 
+A requisição possui sintaxe incorreta ou parâmetros inválidos. 
+Exemplo: 
+{ 
+    "error": "Bad Request", 
+    "message": "O campo 'nome' é obrigatório." 
+} 
+401 Unauthorized 
+A autenticação falhou ou o token de acesso é inválido/ausente. 
+Exemplo: 
+{ 
+    "error": "Unauthorized", 
+    "message": "Token inválido ou ausente." 
+} 
+403 Not Found 
+A requisição foi compreendida, mas o usuário não tem permissão para executá-la. 
+   
+ 
+  38 de 44 
+ 
+Exemplo: 
+{ 
+    "error": "Forbidden", 
+    "message": "Você não tem permissão para acessar este recurso." 
+} 
+ 
+   
+ 
+  39 de 44 
+ 
+404 Not Found 
+O recurso solicitado não foi encontrado. 
+Exemplo: 
+{ 
+    "error": "Not Found", 
+    "message": "Usuário não encontrado." 
+} 
+409 Conflict 
+A solicitação não pôde ser concluída devido a um conflito com o estado atual do 
+recurso. 
+Exemplo: 
+{ 
+    "error": "Conflict", 
+    "message": "E-mail já cadastrado." 
+} 
+422 Unprocessable Entity 
+Os dados fornecidos são semanticamente inválidos. 
+Exemplo: 
+{ 
+    "error": "Unprocessable Entity", 
+    "message": "Formato do CPF inválido." 
+} 
+500 Internal Server Error 
+Erro inesperado no servidor. 
+Exemplo: 
+{ 
+    "error": "Internal Server Error", 
+    "message": "Erro ao conectar ao banco de dados." 
+} 
+   
+ 
+  40 de 44 
+ 
+Perguntas Frequentes (FAQ) 
+Esta seção aborda algumas das dúvidas mais comuns sobre a utilização da API.  
+Qual o funcionamento de "Pré-Check-ins"? 
+O conceito de "Ficha" (FNRH) está intrinsecamente ligado aos dados do hóspede e da 
+reserva. O endpoint GET /hospedes/pre -checkins é utilizado para listar hóspedes que 
+realizaram o pré-check-in e ainda não foram vinculados a uma reserva formal ou estão 
+em um estado de pré -registro. Esses registros de pré -check-in já contêm os dados da 
+FNRH. 
+Qual a diferença entre "Get Pessoa" e "Get Hospede"? 
+GET /pessoas/{id} ou GET 
+/pessoas/documento/{tipo_documento}/{numero_documento}: Estes endpoints 
+são para consultar os dados de uma Pessoa no sistema. Uma Pessoa é uma entidade 
+genérica que representa um indivíduo, independentemente de estar ou não hospedado. 
+GET /hospedes/{id}:  Este endpoint é para consultar os dados de um Hóspede. Um 
+Hóspede é uma Pessoa que está associada a uma reserva ou a um processo de 
+hospedagem (como um pré -check-in). O registro de Hóspede contém informações 
+específicas da estadia, como situação (check-in, check-out), dados da FNRH, etc. 
+Como devo proceder para registrar ou consultar dados de hóspedes 
+sem a figura da reserva (ou seja, sem vincular a uma reserva 
+imediatamente)? 
+Se o objetivo é registrar uma pessoa no sistema sem que ela esteja imediatamente 
+vinculada a uma reserva, você deve utilizar o endpoint POST /pessoas. Para consultar os 
+dados dessa pessoa posteriormente, utilize GET /pessoas/{id} ou GET 
+/pessoas/documento/{tipo_documento}/{numero_documento}. 
+O endpoint GET /hospedes/pre-checkins lista registros de hóspedes que já iniciaram um 
+processo de pré -check-in, mas que podem ainda não estar formalmente vinculados a 
+uma reserva. Esses registros já são considerados "hóspedes" no contexto do FNRH, 
+mesmo que a reserva ainda não esteja completa ou vinculada. 
+Para fluxos onde a reserva não é criada de imediato, mas o hóspede precisa ser 
+registrado para fins de FNRH (como um pré-check-in), o processo geralmente envolve: 
+1. Registro da Pessoa: POST /pessoas (se a pessoa ainda não estiver cadastrada); 
+2. Criação do Pré -Check-in: O sistema interno do meio de hospedagem deve 
+iniciar o processo de pré -check-in, que pode gerar um registro de hóspede com 
+   
+ 
+  41 de 44 
+ 
+status PRECHECKIN_NAOVINCULADO, PRECHECKIN_PENDENTE ou 
+PRECHECKIN_REALIZADO; 
+3. Consulta de Pré -Check-ins: GET /hospedes/pre -checkins para listar esses 
+hóspedes pendentes; 
+4. Vínculo à Reserva:  Quando a reserva for criada ou identificada, utilize POST 
+/reservas/{reserva_id}/vincular-hospede/{hospede_id} para associar o hóspede 
+do pré-check-in à reserva. 
+Quais são os valores aceitos para o filtro situacao em GET /reservas? 
+A API possui diferentes conjuntos de "situações" para diferentes entidades: 
+Situações de Hóspedes:  Referem-se ao estado de um hóspede individual. A lista 
+completa de valores válidos para hóspedes pode ser obtida no endpoint GET 
+/dominios/hospedes/situacoes. 
+Os seguintes valores pertencem a esse contexto: 
+• CANCELADO 
+• CHECKIN_REALIZADO 
+• CHECKOUT_REALIZADO 
+• NOSHOW 
+• PRECHECKIN_NAOVINCULADO 
+• PRECHECKIN_PENDENTE 
+• PRECHECKIN_REALIZADO 
+Situações de Reservas:  Referem-se ao estado da reserva como um todo. O endpoint 
+GET /reservas filtra por esta situação. Os valores são diferentes dos de hóspedes. 
+Os valores corretos para filtrar as reservas são: 
+• CRIADA 
+• EM_ANDAMENTO 
+• CONCLUIDA 
+• CANCELADA 
+• NOSHOW 
+Os endpoints são idempotentes? Posso reenviar a mesma requisição 
+POST/PUT/PATCH em caso de falha de rede? 
+Requisições GET e DELETE:  São naturalmente idempotentes. Reenviá -las múltiplas 
+vezes não causará efeitos colaterais adicionais. 
+   
+ 
+  42 de 44 
+ 
+Requisições PUT: São projetadas para serem idempotentes. Reenviar uma requisição 
+PUT com o mesmo corpo e para o mesmo recurso resultará no mesmo estado final do 
+recurso. 
+Requisições POST: Por padrão, requisições POST não são idempotentes, o que significa 
+que reenviá -las pode criar recursos duplicados (ex: duas reservas idênticas). No 
+entanto, a API FNRH implementa mecanismos para garantir a idempotência em 
+endpoints POST (como POST /hosped agem/registrar e POST /reservas) através de 
+validações internas que impedem a duplicação de registros com base em chaves de 
+negócio (ex: numero_reserva). 
+Qual o formato esperado para datas e horas (timestamps) nos 
+campos da API? E qual fuso horário é utilizado? 
+Todos os campos de data e hora na API (ex: data_entrada, check_in_em) devem seguir o 
+padrão ISO 8601. 
+Datas: AAAA-MM-DD (ex: 2024-12-31) 
+Datas e Horas: AAAA-MM-DDTHH:mm:ss.sssZ (ex: 2024-12-31T23:59:59.938Z) 
+O sufixo Z indica que a data/hora está em UTC (Coordinated Universal Time). É 
+responsabilidade do sistema cliente converter as datas/horas para o fuso horário local, 
+se necessário, antes de enviar ou após receber os dados da API. 
+ 
+ 
+   
+ 
+  43 de 44 
+ 
+Glossário 
+Esta seção define os termos técnicos e específicos utilizados ao longo da 
+documentação da API. 
+• API (Application Programming Interface):  Conjunto de definições e protocolos 
+que permite a comunicação e interação entre diferentes softwares. 
+• Base64: Um esquema de codificação que representa dados binários em um 
+formato de texto ASCII, comumente usado para transmitir dados de forma segura 
+em ambientes de texto. 
+• Check-in: O processo de registro da entrada de um hóspede no meio de 
+hospedagem, marcando o início da sua estadia. 
+• Check-out: O processo de registro da saída de um hóspede do meio de 
+hospedagem, marcando o fim da sua estadia.Domínio: Conjunto de valores pré-
+definidos e aceitos para um determinado campo na API (ex: tipos de documento, 
+motivos de viagem, situações de hóspede). 
+• Endpoint: Um URL específico que representa um recurso na API e permite a 
+interação com ele (ex: /reservas, /pessoas/{id}). 
+• FNRH (Ficha Nacional de Registro de Hóspedes):  Documento obrigatório para 
+o registro de hóspedes em meios de hospedagem no Brasil, coletando dados 
+para fins estatísticos e de segurança. 
+• Hóspede: Uma pessoa que está ou esteve associada a um processo de 
+hospedagem (reserva, check-in, pré-check-in...) no contexto do FNRH. 
+• HTTP Basic Authentication:  Método de autenticação simples onde o nome de 
+usuário e a senha são enviados codificados em Base64 no cabeçalho 
+Authorization de cada requisição HTTP. 
+• No-Show: Situação em que um hóspede com reserva confirmada não 
+comparece para o check-in na data prevista. 
+• Pessoa: Uma entidade genérica que representa um indivíduo cadastrado no 
+sistema, independentemente de sua relação com uma hospedagem. Pode se 
+tornar um hóspede. 
+• PMS (Property Management System):  Sistema de Gestão de Propriedades 
+Hoteleiras, software utilizado para gerenciar operações diárias de hotéis, como 
+reservas, check-in/out, faturamento, manutenção, etc. 
+• Pré-check-in: Processo de registro antecipado de dados do hóspede antes da 
+chegada física ao meio de hospedagem, agilizando o processo de check -
+in.Reserva: Um registro de uma futura ou atual estadia de um ou mais hóspedes 
+em um meio de hospedagem. 
+• REST (Representational State Transfer):  Estilo arquitetural para sistemas 
+distribuídos, que define um conjunto de princípios para a comunicação entre 
+   
+ 
+  44 de 44 
+ 
+cliente e servidor, utilizando operações HTTP padrão (GET, POST, PUT, DELETE, 
+PATCH). 

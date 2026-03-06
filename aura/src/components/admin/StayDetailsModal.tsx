@@ -15,6 +15,8 @@ import { useAuth } from "@/context/AuthContext";
 import { StayService } from "@/services/stay-service";
 import { GuestService } from "@/services/guest-service";
 import { CabinService } from "@/services/cabin-service";
+import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
+import { sanitizeDocumentForFnrh, validateCPF } from "@/lib/utils-checkin";
 import { cn } from "@/lib/utils";
 import { Stay, Guest, Cabin, FolioItem } from "@/types/aura";
 
@@ -81,6 +83,14 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const [guestData, setGuestData] = useState<Partial<Guest>>({});
   const [cabins, setCabins] = useState<Cabin[]>([]);
 
+  const [fnrhDomains, setFnrhDomains] = useState<{
+    generos: FnrhDomain[];
+    racas: FnrhDomain[];
+    transportes: FnrhDomain[];
+    motivos: FnrhDomain[];
+    tiposDocumento: FnrhDomain[];
+  } | null>(null);
+
   const [checkInStr, setCheckInStr] = useState("");
   const [checkOutStr, setCheckOutStr] = useState("");
 
@@ -96,6 +106,15 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   useEffect(() => {
     if (isOpen && stay?.propertyId) {
       CabinService.getCabinsByProperty(stay.propertyId).then(setCabins);
+      Promise.all([
+        FnrhService.getGeneros(),
+        FnrhService.getRacas(),
+        FnrhService.getMeiosTransporte(),
+        FnrhService.getMotivosViagem(),
+        FnrhService.getTiposDocumento()
+      ]).then(([generos, racas, transportes, motivos, tiposDocumento]) => {
+        setFnrhDomains({ generos, racas, transportes, motivos, tiposDocumento });
+      });
     }
   }, [isOpen, stay?.propertyId]);
 
@@ -127,12 +146,14 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
         document: guest.document || { type: 'CPF', number: '' },
         birthDate: guest.birthDate || "",
         gender: guest.gender || "Outro",
+        raca: guest.raca || "NAO_DECLARADO",
         occupation: guest.occupation || "",
         email: guest.email || "",
         phone: guest.phone || "",
         address: guest.address || {
           street: "", number: "", neighborhood: "",
-          city: "", state: "", zipCode: "", country: "Brasil"
+          city: "", state: "", zipCode: "", country: "Brasil",
+          ibgeCityId: ""
         }
       });
 
@@ -248,7 +269,8 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
           city: data.localidade || prev.address?.city || "",
           state: data.uf || prev.address?.state || "",
           country: "Brasil",
-          zipCode: data.cep || prev.address?.zipCode || ""
+          zipCode: data.cep || prev.address?.zipCode || "",
+          ibgeCityId: data.ibge || prev.address?.ibgeCityId || ""
         }
       }));
       toast.success("Endereço preenchido com sucesso!");
@@ -265,22 +287,48 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   };
 
   const handleSave = async () => {
+    if (guestData.document?.type === "CPF" && guestData.document.number) {
+      if (!validateCPF(guestData.document.number)) {
+        toast.error("CPF do Titular Inválido.");
+        return;
+      }
+    }
+
+    if (formData.additionalGuests?.some(ag => ag.document && sanitizeDocumentForFnrh(ag.document).length === 11 && !validateCPF(ag.document))) {
+      toast.error("CPF de um dos hóspedes extras é inválido.");
+      return;
+    }
+
     const cleanHousekeeping = formData.housekeepingItems?.filter(i => i.label.trim() !== "") || [];
     setLoading(true);
     try {
       const parsedCheckIn = parseDateFromInput(checkInStr, stay.checkIn);
       const parsedCheckOut = parseDateFromInput(checkOutStr, stay.checkOut);
 
-      const stayPayload: Partial<Stay> = {
+      // FNRH Strict: Sanitize document strings for digits only
+      const fnrhStayPayload: Partial<Stay> = {
         ...formData,
         housekeepingItems: cleanHousekeeping,
         checkIn: parsedCheckIn || stay.checkIn,
         checkOut: parsedCheckOut || stay.checkOut,
+        additionalGuests: formData.additionalGuests?.map(ag => ({
+          ...ag,
+          document: ag.document ? sanitizeDocumentForFnrh(ag.document) : ""
+        }))
+      };
+
+      const fnrhGuestPayload: Partial<Guest> = {
+        id: guest.id,
+        ...guestData,
+        document: {
+          ...guestData.document!,
+          number: sanitizeDocumentForFnrh(guestData.document?.number)
+        }
       };
 
       await Promise.all([
-        StayService.updateStayData(stay.propertyId, stay.id, stayPayload, userData?.id || "ADMIN", userData?.fullName || "Recepção"),
-        GuestService.upsertGuest(stay.propertyId, { id: guest.id, ...guestData } as Guest)
+        StayService.updateStayData(stay.propertyId, stay.id, fnrhStayPayload, userData?.id || "ADMIN", userData?.fullName || "Recepção"),
+        GuestService.upsertGuest(stay.propertyId, fnrhGuestPayload as Guest)
       ]);
 
       toast.success("Ficha da hospedagem atualizada!");
@@ -686,16 +734,32 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                   <div>
                     <Label icon={User}>Gênero</Label>
                     <Select disabled={isCoreFieldLocked} value={guestData.gender} onChange={e => setGuestData({ ...guestData, gender: e.target.value as any })}>
-                      <option value="M">Masculino</option>
-                      <option value="F">Feminino</option>
-                      <option value="Outro">Outro</option>
+                      <option value="" disabled>Selecione...</option>
+                      {fnrhDomains?.generos.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
+                    </Select>
+                  </div>
+                  <div>
+                    <Label icon={User}>Raça / Cor</Label>
+                    <Select disabled={isCoreFieldLocked} value={guestData.raca} onChange={e => setGuestData({ ...guestData, raca: e.target.value as any })}>
+                      <option value="" disabled>Selecione...</option>
+                      {fnrhDomains?.racas.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
                     </Select>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label icon={FileText}>Documento ({guestData.document?.type})</Label>
-                    <Input disabled={isCoreFieldLocked} value={guestData.document?.number} onChange={e => setGuestData({ ...guestData, document: { ...guestData.document!, number: e.target.value } })} />
+                    <Label icon={FileText}>Documento</Label>
+                    <div className="flex gap-2">
+                      <Select
+                        className="w-1/3 text-[10px]"
+                        disabled={isCoreFieldLocked}
+                        value={guestData.document?.type}
+                        onChange={e => setGuestData({ ...guestData, document: { ...guestData.document!, type: e.target.value } })}
+                      >
+                        {fnrhDomains?.tiposDocumento.map(d => <option key={d.id} value={d.id}>{d.id}</option>)}
+                      </Select>
+                      <Input disabled={isCoreFieldLocked} value={guestData.document?.number} onBlur={() => { if (guestData.document?.type === "CPF" && guestData.document?.number && !validateCPF(guestData.document.number)) toast.error("CPF do Titular Inválido") }} onChange={e => setGuestData({ ...guestData, document: { ...guestData.document!, number: e.target.value } })} />
+                    </div>
                   </div>
                   <div>
                     <Label icon={Briefcase}>Profissão</Label>
@@ -728,6 +792,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                     <Input disabled={isCoreFieldLocked} placeholder="Cidade" value={guestData.address?.city} onChange={e => setGuestData({ ...guestData, address: { ...guestData.address!, city: e.target.value } })} />
                     <Input disabled={isCoreFieldLocked} placeholder="UF" value={guestData.address?.state} onChange={e => setGuestData({ ...guestData, address: { ...guestData.address!, state: e.target.value } })} />
                   </div>
+                  <Input disabled={isCoreFieldLocked} placeholder="Cód. IBGE (Localidade FNRH)" value={guestData.address?.ibgeCityId || ""} onChange={e => setGuestData({ ...guestData, address: { ...guestData.address!, ibgeCityId: e.target.value } })} />
                 </div>
               </div>
             </div>
@@ -773,7 +838,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                       <div key={idx} className="bg-secondary/50 border border-border p-3 rounded-xl flex items-center gap-3">
                         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2">
                           <Input disabled={isCoreFieldLocked} value={g.fullName} onChange={e => updateAdditionalGuest(idx, 'fullName', e.target.value)} placeholder="Nome Completo" />
-                          <Input disabled={isCoreFieldLocked} value={g.document} onChange={e => updateAdditionalGuest(idx, 'document', e.target.value)} placeholder="Documento" />
+                          <Input disabled={isCoreFieldLocked} value={g.document} onBlur={() => { if (g.document && g.document.replace(/\D/g, '').length === 11 && !validateCPF(g.document)) toast.error("CPF de Hóspede Extra Inválido"); }} onChange={e => updateAdditionalGuest(idx, 'document', e.target.value)} placeholder="Documento" />
                         </div>
                         <div className="w-20 text-center shrink-0">
                           <span className="text-[9px] font-bold uppercase bg-background border border-border px-2 py-1 rounded text-muted-foreground">
@@ -835,26 +900,20 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                 <div>
                   <Label icon={Plane}>Motivo da Viagem</Label>
                   <Select disabled={isCoreFieldLocked} value={formData.travelReason} onChange={e => setFormData({ ...formData, travelReason: e.target.value as any })}>
-                    <option value="Turismo">Turismo</option>
-                    <option value="Negocios">Negócios</option>
-                    <option value="Congresso">Congresso/Feira</option>
-                    <option value="Saude">Saúde</option>
-                    <option value="Outros">Outros</option>
+                    <option value="" disabled>Selecione...</option>
+                    {fnrhDomains?.motivos.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
                   </Select>
                 </div>
                 <div>
                   <Label icon={Car}>Meio de Transporte</Label>
                   <Select disabled={isCoreFieldLocked} value={formData.transportation} onChange={e => setFormData({ ...formData, transportation: e.target.value as any })}>
-                    <option value="Carro">Carro Próprio/Alugado</option>
-                    <option value="Onibus">Ônibus</option>
-                    <option value="Avião">Avião</option>
-                    <option value="Navio">Navio</option>
-                    <option value="Outro">Outro</option>
+                    <option value="" disabled>Selecione...</option>
+                    {fnrhDomains?.transportes.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                   </Select>
                 </div>
-                {formData.transportation === 'Carro' && (
+                {['CARRO', 'MOTO'].includes(formData.transportation || '') && (
                   <div>
-                    <Label icon={Car}>Placa do Veículo</Label>
+                    <Label icon={Car}>Placa do Veículo (Opcional)</Label>
                     <Input disabled={isCoreFieldLocked} value={formData.vehiclePlate} onChange={e => setFormData({ ...formData, vehiclePlate: e.target.value })} placeholder="XXX-0000" />
                   </div>
                 )}

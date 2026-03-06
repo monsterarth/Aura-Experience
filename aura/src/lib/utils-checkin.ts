@@ -20,6 +20,15 @@ export const fetchCEP = async (cep: string) => {
   return res.json();
 };
 
+/**
+ * Ensures a document string contains only digits.
+ * FNRH 2026 API strict requirement.
+ */
+export const sanitizeDocumentForFnrh = (doc: string | undefined): string => {
+  if (!doc) return "";
+  return doc.replace(/\D/g, "");
+};
+
 export const translations = {
   pt: { welcome: "Bem-vindo", identity: "Identidade", address: "Endereço", arrival: "Sua Chegada", pet: "Trarei um Pet", finish: "Finalizar" },
   en: { welcome: "Welcome", identity: "Identity", address: "Address", arrival: "Your Arrival", pet: "I'll bring a Pet", finish: "Finish" },
