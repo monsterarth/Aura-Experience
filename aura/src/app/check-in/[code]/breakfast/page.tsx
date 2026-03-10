@@ -479,24 +479,26 @@ function BreakfastWizard() {
                                                 if (!hasFlavors) {
                                                     return (
                                                         <div key={item.id} className="bg-card p-4 rounded-2xl border border-border flex flex-col gap-3">
-                                                            <div className="flex items-start justify-between gap-4">
+                                                            <div className="flex items-start gap-3">
                                                                 {item.imageUrl && (
-                                                                    <div className="w-16 h-16 shrink-0 rounded-xl overflow-hidden bg-secondary">
+                                                                    <div className="w-12 h-12 shrink-0 rounded-xl overflow-hidden bg-secondary">
                                                                         <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
                                                                     </div>
                                                                 )}
-                                                                <div className="flex-1">
+                                                                <div className="flex-1 min-w-0">
                                                                     <h3 className="font-bold text-sm">{item.name}</h3>
                                                                     {item.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{item.description}</p>}
                                                                     {item.price > 0 && <p className="text-primary font-black mt-1 text-sm">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.price)}</p>}
-
                                                                     {!isUnitPool && (
-                                                                        <p className="text-xs font-bold text-primary bg-primary/10 px-2 py-1 rounded w-max mt-2">
+                                                                        <p className="text-xs font-bold text-primary bg-primary/10 px-2 py-1 rounded mt-2">
                                                                             Quantos hóspedes querem?
                                                                         </p>
                                                                     )}
                                                                 </div>
-                                                                <div className="flex items-center gap-3 bg-secondary rounded-xl p-1 border border-border shrink-0">
+                                                            </div>
+                                                            <div className="flex items-center justify-between gap-3">
+                                                                <span className="text-xs text-muted-foreground font-medium">{qty > 0 ? `${qty} selecionado(s)` : ""}</span>
+                                                                <div className="flex items-center gap-3 bg-secondary rounded-xl p-1 border border-border">
                                                                     <button
                                                                         onClick={() => firstSelectionId && removeSelection(firstSelectionId)}
                                                                         disabled={qty === 0}
@@ -523,21 +525,19 @@ function BreakfastWizard() {
 
                                                 return (
                                                     <div key={item.id} className="bg-card p-4 rounded-2xl border border-border space-y-3">
-                                                        <div className="flex justify-between items-start gap-4">
+                                                        <div className="flex items-start gap-3">
                                                             {displayImage && (
-                                                                <div className="w-16 h-16 shrink-0 rounded-xl overflow-hidden bg-secondary">
+                                                                <div className="w-12 h-12 shrink-0 rounded-xl overflow-hidden bg-secondary">
                                                                     <img src={displayImage} alt={item.name} className="w-full h-full object-cover transition-all duration-300" />
                                                                 </div>
                                                             )}
-                                                            <div className="flex-1">
+                                                            <div className="flex-1 min-w-0">
                                                                 <h4 className="font-bold text-sm">{item.name}</h4>
                                                                 {item.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{item.description}</p>}
+                                                                {item.price > 0 && (
+                                                                    <span className="text-primary font-bold text-xs mt-1 block">+{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.price)} (cada)</span>
+                                                                )}
                                                             </div>
-                                                            {item.price > 0 && (
-                                                                <div className="shrink-0">
-                                                                    <span className="text-primary font-bold text-xs text-right">+{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.price)} (cada)</span>
-                                                                </div>
-                                                            )}
                                                         </div>
                                                         {!isUnitPool && (
                                                             <p className="text-xs font-bold text-primary bg-primary/10 px-2 py-1 rounded mt-2">
