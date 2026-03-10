@@ -138,18 +138,56 @@ export default function FBOrdersPage() {
                         )}
                     </div>
 
-                    <div className="border-t-2 border-b-2 border-dashed border-black py-4 mb-4 space-y-3">
-                        {printingOrder.items.filter((it: any) => it.menuItemId !== 'guest_observations').map((it: any, i: number) => (
-                            <div key={i} className="text-sm font-bold space-y-0.5">
-                                <div className="flex gap-2">
-                                    <span className="w-8 shrink-0">{it.quantity}X</span>
-                                    <span className="flex-1 uppercase">{it.name}</span>
+                    <div className="border-t-2 border-b-2 border-dashed border-black py-4 mb-4">
+                        {(() => {
+                            const regularItems = (printingOrder.items as any[]).filter(it => it.menuItemId !== 'guest_observations');
+                            const individualItems = regularItems.filter(it => it.guestName);
+                            const groupItems = regularItems.filter(it => !it.guestName);
+
+                            // Agrupar itens individuais por nome do hóspede
+                            const guestGroups: Record<string, any[]> = {};
+                            individualItems.forEach(it => {
+                                if (!guestGroups[it.guestName]) guestGroups[it.guestName] = [];
+                                guestGroups[it.guestName].push(it);
+                            });
+                            const guestNames = Object.keys(guestGroups);
+
+                            return (
+                                <div className="space-y-3">
+                                    {/* Itens individuais agrupados por hóspede */}
+                                    {guestNames.map(name => (
+                                        <div key={name}>
+                                            <div className="font-extrabold text-sm uppercase border-b border-black pb-0.5 mb-1.5">
+                                                ▸ {name}
+                                            </div>
+                                            <div className="pl-2 space-y-1">
+                                                {guestGroups[name].map((it: any, i: number) => (
+                                                    <div key={i} className="text-sm">
+                                                        <span className="font-bold">{it.quantity}X {it.name.toUpperCase()}</span>
+                                                        {it.flavor && <div className="pl-4 text-xs font-normal">Sabor: {it.flavor}</div>}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    {/* Itens de grupo */}
+                                    {groupItems.length > 0 && (
+                                        <div className={guestNames.length > 0 ? "pt-2 border-t border-dashed border-black" : ""}>
+                                            {guestNames.length > 0 && (
+                                                <div className="font-extrabold text-xs uppercase mb-1.5">PARA O GRUPO:</div>
+                                            )}
+                                            {groupItems.map((it: any, i: number) => (
+                                                <div key={i} className="text-sm font-bold space-y-0.5">
+                                                    <span>{it.quantity}X {it.name.toUpperCase()}</span>
+                                                    {it.notes && <div className="pl-4 text-xs font-normal">{it.notes}</div>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
-                                {it.flavor && <div className="pl-8 text-xs font-normal">Sabor: {it.flavor}</div>}
-                                {it.guestName && <div className="pl-8 text-xs font-bold uppercase">→ {it.guestName}</div>}
-                                {!it.guestName && it.notes && <div className="pl-8 text-xs">{it.notes}</div>}
-                            </div>
-                        ))}
+                            );
+                        })()}
                     </div>
 
                     {(() => {
