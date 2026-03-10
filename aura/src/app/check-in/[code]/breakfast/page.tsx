@@ -109,13 +109,6 @@ function BreakfastWizard() {
         return arr;
     }, [totalGuests]);
 
-    // Inicializa os nomes editáveis quando o número de hóspedes é resolvido
-    useEffect(() => {
-        if (totalGuests > 0 && guestNames.length === 0) {
-            setGuestNames(guestIdentifiers);
-        }
-    }, [totalGuests]); // eslint-disable-line react-hooks/exhaustive-deps
-
     useEffect(() => {
         async function init() {
             try {
@@ -125,6 +118,10 @@ function BreakfastWizard() {
 
                 const s = stays[0] as Stay;
                 setStay(s);
+
+                // Inicializar nomes com o valor correto de counts da estadia
+                const realCount = Math.max(1, (s.counts?.adults || 0) + (s.counts?.children || 0));
+                setGuestNames(Array.from({ length: realCount }, (_, i) => `Hóspede ${i + 1}`));
 
                 const prop = await PropertyService.getPropertyById(s.propertyId);
                 if (!prop) return;
@@ -457,20 +454,22 @@ function BreakfastWizard() {
                 {step === 1 && (
                     <div className="space-y-8 animate-in slide-in-from-right-4 duration-500 relative">
 
-                        {/* Bloco de nomes — apenas para grupos com categoria individual */}
-                        {categories.some(c => c.selectionTarget === 'individual') && totalGuests > 1 && (
+                        {/* Bloco de nomes — para qualquer categoria individual */}
+                        {categories.some(c => c.selectionTarget === 'individual') && (
                             <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
                                 <p className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                                    <Info size={12} /> Quem está hospedado?
+                                    <Info size={12} /> {totalGuests === 1 ? 'Identifique-se' : 'Quem está hospedado?'}
                                 </p>
                                 {guestNames.map((name, idx) => (
                                     <div key={idx} className="flex items-center gap-3">
-                                        <span className="text-xs text-muted-foreground shrink-0 w-20">Hóspede {idx + 1}</span>
+                                        <span className="text-xs text-muted-foreground shrink-0 w-20">
+                                            {totalGuests === 1 ? 'Seu nome' : `Hóspede ${idx + 1}`}
+                                        </span>
                                         <input
                                             value={name}
                                             onChange={e => setGuestNames(prev => prev.map((n, i) => i === idx ? e.target.value : n))}
                                             className="flex-1 bg-secondary border border-border px-3 py-2 rounded-xl text-sm font-bold outline-none focus:border-primary/50 transition-all"
-                                            placeholder={`Hóspede ${idx + 1}`}
+                                            placeholder={totalGuests === 1 ? 'Seu nome' : `Hóspede ${idx + 1}`}
                                         />
                                     </div>
                                 ))}

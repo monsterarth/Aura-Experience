@@ -147,6 +147,7 @@ export default function FBOrdersPage() {
                                 </div>
                                 {it.flavor && <div className="pl-8 text-xs font-normal">Sabor: {it.flavor}</div>}
                                 {it.guestName && <div className="pl-8 text-xs font-bold uppercase">→ {it.guestName}</div>}
+                                {!it.guestName && it.notes && <div className="pl-8 text-xs">{it.notes}</div>}
                             </div>
                         ))}
                     </div>
@@ -249,8 +250,9 @@ export default function FBOrdersPage() {
                                                     </span>
                                                     <div className="flex-1 min-w-0">
                                                         <span className="font-bold text-sm text-foreground leading-tight block">{item.name}</span>
-                                                        {item.flavor && <span className="text-xs text-muted-foreground">Sabor: {item.flavor}</span>}
+                                                        {item.flavor && <span className="text-xs text-muted-foreground block">Sabor: {item.flavor}</span>}
                                                         {item.guestName && <span className="text-xs font-bold text-primary block">→ {item.guestName}</span>}
+                                                        {!item.guestName && item.notes && <span className="text-xs text-muted-foreground block">{item.notes}</span>}
                                                     </div>
                                                 </div>
                                             </div>
