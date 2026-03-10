@@ -17,7 +17,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="flex min-h-screen bg-background text-foreground">
           {/* Só mostra a Sidebar se não for a página de login */}
           {!isLoginPage && <Sidebar />}
-          <main className="flex-1 flex flex-col w-full min-h-screen overflow-x-hidden">
+          <main className="flex-1 flex flex-col min-w-0 min-h-screen overflow-x-hidden">
             <div className="w-full max-w-[1300px] mx-auto flex-1 pb-20 lg:pb-0">
               {children}
             </div>
