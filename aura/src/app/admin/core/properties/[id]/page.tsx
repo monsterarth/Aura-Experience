@@ -645,7 +645,7 @@ export default function PropertySettingsPage() {
                                     <Coffee size={20} /> Café da Manhã
                                 </h3>
                                 <div className="space-y-4">
-                                    <p className="text-xs text-muted-foreground">O módulo de café da manhã agora é configurado na aba "Gastronomia (F&B)".</p>
+                                    <p className="text-xs text-muted-foreground">O módulo de café da manhã agora é configurado na aba &quot;Gastronomia (F&amp;B)&quot;.</p>
                                 </div>
                             </section>
 
