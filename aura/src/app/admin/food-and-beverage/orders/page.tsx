@@ -138,14 +138,25 @@ export default function FBOrdersPage() {
                         )}
                     </div>
 
-                    <div className="border-t-2 border-b-2 border-dashed border-black py-4 mb-4 space-y-2">
-                        {printingOrder.items.map((it: any, i: number) => (
-                            <div key={i} className="flex justify-between items-start text-sm font-bold">
-                                <span className="w-8">{it.quantity}X</span>
-                                <span className="flex-1 uppercase">{it.name}</span>
+                    <div className="border-t-2 border-b-2 border-dashed border-black py-4 mb-4 space-y-3">
+                        {printingOrder.items.filter((it: any) => it.menuItemId !== 'guest_observations').map((it: any, i: number) => (
+                            <div key={i} className="text-sm font-bold space-y-0.5">
+                                <div className="flex gap-2">
+                                    <span className="w-8 shrink-0">{it.quantity}X</span>
+                                    <span className="flex-1 uppercase">{it.name}</span>
+                                </div>
+                                {it.flavor && <div className="pl-8 text-xs font-normal">Sabor: {it.flavor}</div>}
+                                {it.guestName && <div className="pl-8 text-xs font-bold uppercase">→ {it.guestName}</div>}
                             </div>
                         ))}
                     </div>
+
+                    {printingOrder.items.find((it: any) => it.menuItemId === 'guest_observations') && (
+                        <div className="border-b-2 border-dashed border-black pb-4 mb-4">
+                            <p className="font-extrabold text-sm uppercase mb-1">OBSERVAÇÕES:</p>
+                            <p className="text-sm whitespace-pre-wrap break-words">{printingOrder.items.find((it: any) => it.menuItemId === 'guest_observations').notes}</p>
+                        </div>
+                    )}
 
                     <div className="text-center font-bold text-sm mb-4">
                         TOTAL: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(printingOrder.totalPrice)}
@@ -227,16 +238,27 @@ export default function FBOrdersPage() {
 
                                     {/* ITEMS LIST */}
                                     <div className="p-5 flex-1 space-y-3 overflow-y-auto max-h-[250px] custom-scrollbar">
-                                        {itemsList.map((item, idx) => (
-                                            <div key={idx} className="flex gap-3">
-                                                <span className="font-black text-primary bg-primary/10 w-7 h-7 flex items-center justify-center rounded-lg text-sm shrink-0">
-                                                    {item.quantity}x
-                                                </span>
-                                                <span className="font-bold text-sm text-foreground pt-1 leading-tight">
-                                                    {item.name}
-                                                </span>
+                                        {itemsList.filter((item: any) => item.menuItemId !== 'guest_observations').map((item: any, idx: number) => (
+                                            <div key={idx} className="space-y-0.5">
+                                                <div className="flex gap-3">
+                                                    <span className="font-black text-primary bg-primary/10 w-7 h-7 flex items-center justify-center rounded-lg text-sm shrink-0">
+                                                        {item.quantity}x
+                                                    </span>
+                                                    <div className="flex-1 min-w-0">
+                                                        <span className="font-bold text-sm text-foreground leading-tight block">{item.name}</span>
+                                                        {item.flavor && <span className="text-xs text-muted-foreground">Sabor: {item.flavor}</span>}
+                                                        {item.guestName && <span className="text-xs font-bold text-primary block">→ {item.guestName}</span>}
+                                                    </div>
+                                                </div>
                                             </div>
                                         ))}
+                                        {/* Observações gerais */}
+                                        {itemsList.find((item: any) => item.menuItemId === 'guest_observations') && (
+                                            <div className="mt-3 pt-3 border-t border-border/50">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Observações</p>
+                                                <p className="text-xs text-foreground whitespace-pre-wrap break-words">{itemsList.find((item: any) => item.menuItemId === 'guest_observations').notes}</p>
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* ACTIONS */}

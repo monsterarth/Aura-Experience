@@ -91,6 +91,8 @@ function BreakfastWizard() {
     const [skippedGuests, setSkippedGuests] = useState<Record<string, boolean>>({});
     const [currentGuestIdxPerCat, setCurrentGuestIdxPerCat] = useState<Record<string, number>>({});
     const [pendingFlavorSelection, setPendingFlavorSelection] = useState<{ categoryId: string, guestName: string, menuItem: FBMenuItem } | null>(null);
+    const [guestNames, setGuestNames] = useState<string[]>([]);
+    const [observationsText, setObservationsText] = useState('');
 
     const totalGuests = useMemo(() => {
         if (!stay) return 1;
@@ -106,6 +108,13 @@ function BreakfastWizard() {
         }
         return arr;
     }, [totalGuests]);
+
+    // Inicializa os nomes editáveis quando o número de hóspedes é resolvido
+    useEffect(() => {
+        if (totalGuests > 0 && guestNames.length === 0) {
+            setGuestNames(guestIdentifiers);
+        }
+    }, [totalGuests]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         async function init() {
@@ -264,6 +273,18 @@ function BreakfastWizard() {
                     notes
                 };
             });
+
+            // Observações gerais como item especial
+            if (observationsText.trim()) {
+                orderItems.push({
+                    menuItemId: 'guest_observations',
+                    name: 'Observações Gerais',
+                    quantity: 1,
+                    unitPrice: 0,
+                    totalPrice: 0,
+                    notes: observationsText.trim(),
+                } as any);
+            }
 
             const totalPrice = orderItems.reduce((acc, curr) => acc + curr.totalPrice, 0);
 
@@ -435,6 +456,27 @@ function BreakfastWizard() {
                 {/* STEP 1: Seleção de Itens */}
                 {step === 1 && (
                     <div className="space-y-8 animate-in slide-in-from-right-4 duration-500 relative">
+
+                        {/* Bloco de nomes — apenas para grupos com categoria individual */}
+                        {categories.some(c => c.selectionTarget === 'individual') && totalGuests > 1 && (
+                            <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
+                                <p className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                                    <Info size={12} /> Quem está hospedado?
+                                </p>
+                                {guestNames.map((name, idx) => (
+                                    <div key={idx} className="flex items-center gap-3">
+                                        <span className="text-xs text-muted-foreground shrink-0 w-20">Hóspede {idx + 1}</span>
+                                        <input
+                                            value={name}
+                                            onChange={e => setGuestNames(prev => prev.map((n, i) => i === idx ? e.target.value : n))}
+                                            className="flex-1 bg-secondary border border-border px-3 py-2 rounded-xl text-sm font-bold outline-none focus:border-primary/50 transition-all"
+                                            placeholder={`Hóspede ${idx + 1}`}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
                         {categories.map(category => {
                             const catItems = items.filter(i => i.categoryId === category.id);
                             if (catItems.length === 0) return null;
@@ -607,8 +649,9 @@ function BreakfastWizard() {
                                             {guestIdentifiers.map((guest, idx) => {
                                                 const currentIdx = currentGuestIdxPerCat[category.id] || 0;
                                                 const isActive = currentIdx === idx;
-                                                const hasSelections = selections.some(s => s.guestName === guest && catItems.some(i => i.id === s.menuItemId));
-                                                const isSkipped = skippedGuests[`${category.id}_${guest}`];
+                                                const displayName = guestNames[idx] || guest;
+                                                const hasSelections = selections.some(s => s.guestName === displayName && catItems.some(i => i.id === s.menuItemId));
+                                                const isSkipped = skippedGuests[`${category.id}_${idx}`];
                                                 const isFinished = hasSelections || isSkipped;
 
                                                 return (
@@ -622,7 +665,7 @@ function BreakfastWizard() {
                                                             isFinished && !isActive ? "opacity-60 border-primary/30" : ""
                                                         )}
                                                     >
-                                                        {guest}
+                                                        {displayName}
                                                         {isFinished && <CheckCircle2 size={14} className={isActive ? "text-primary-foreground" : "text-primary"} />}
                                                     </button>
                                                 )
@@ -634,6 +677,7 @@ function BreakfastWizard() {
                                             {(() => {
                                                 const currentIdx = currentGuestIdxPerCat[category.id] || 0;
                                                 const guest = guestIdentifiers[currentIdx];
+                                                const displayName = guestNames[currentIdx] || guest;
 
                                                 return (
                                                     <div key={guest} className="space-y-4 p-4 md:p-6 bg-secondary/10 rounded-3xl border border-primary/10 relative overflow-hidden ring-1 ring-inset ring-foreground/5 shadow-inner">
@@ -641,15 +685,15 @@ function BreakfastWizard() {
 
                                                         <div className="flex items-center justify-between mb-4">
                                                             <div className="flex items-center gap-2">
-                                                                <h3 className="font-bold text-sm uppercase tracking-widest bg-background border border-border w-max px-3 py-1 rounded-full text-foreground shadow-sm">{guest}</h3>
+                                                                <h3 className="font-bold text-sm uppercase tracking-widest bg-background border border-border w-max px-3 py-1 rounded-full text-foreground shadow-sm">{displayName}</h3>
                                                             </div>
-                                                            {skippedGuests[`${category.id}_${guest}`] ? (
-                                                                <button onClick={() => setSkippedGuests(prev => ({ ...prev, [`${category.id}_${guest}`]: false }))} className="text-[10px] font-bold text-primary uppercase underline">Escolher Itens</button>
+                                                            {skippedGuests[`${category.id}_${currentIdx}`] ? (
+                                                                <button onClick={() => setSkippedGuests(prev => ({ ...prev, [`${category.id}_${currentIdx}`]: false }))} className="text-[10px] font-bold text-primary uppercase underline">Escolher Itens</button>
                                                             ) : (
                                                                 <button
                                                                     onClick={() => {
-                                                                        setSelections(prev => prev.filter(s => !(s.guestName === guest && catItems.some(i => i.id === s.menuItemId))));
-                                                                        setSkippedGuests(prev => ({ ...prev, [`${category.id}_${guest}`]: true }));
+                                                                        setSelections(prev => prev.filter(s => !(s.guestName === displayName && catItems.some(i => i.id === s.menuItemId))));
+                                                                        setSkippedGuests(prev => ({ ...prev, [`${category.id}_${currentIdx}`]: true }));
                                                                         if (currentIdx < guestIdentifiers.length - 1) {
                                                                             setCurrentGuestIdxPerCat(prev => ({ ...prev, [category.id]: currentIdx + 1 }));
                                                                         }
@@ -661,12 +705,12 @@ function BreakfastWizard() {
                                                             )}
                                                         </div>
 
-                                                        {skippedGuests[`${category.id}_${guest}`] ? (
+                                                        {skippedGuests[`${category.id}_${currentIdx}`] ? (
                                                             <div className="bg-secondary/50 border border-dashed border-border p-6 rounded-2xl text-center">
                                                                 <AlertCircle size={24} className="mx-auto text-muted-foreground mb-2 opacity-50" />
-                                                                <p className="text-[11px] font-black text-muted-foreground uppercase tracking-widest">{guest} pulou esta etapa</p>
+                                                                <p className="text-[11px] font-black text-muted-foreground uppercase tracking-widest">{displayName} pulou esta etapa</p>
                                                             </div>
-                                                        ) : pendingFlavorSelection?.categoryId === category.id && pendingFlavorSelection?.guestName === guest ? (
+                                                        ) : pendingFlavorSelection?.categoryId === category.id && pendingFlavorSelection?.guestName === displayName ? (
                                                             <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300">
                                                                 <button onClick={() => setPendingFlavorSelection(null)} className="text-[10px] font-bold text-muted-foreground uppercase flex items-center gap-1 mb-2 hover:text-foreground">
                                                                     <ArrowLeft size={12} /> Voltar para as opções
@@ -684,11 +728,11 @@ function BreakfastWizard() {
                                                                             <button
                                                                                 key={f.name}
                                                                                 onClick={() => {
-                                                                                    addSelection(pendingFlavorSelection.menuItem.id, guest, f.name);
+                                                                                    addSelection(pendingFlavorSelection.menuItem.id, displayName, f.name);
                                                                                     setPendingFlavorSelection(null);
 
                                                                                     // Auto advance se o limite foi atingido
-                                                                                    const guestQty = selections.filter(s => s.guestName === guest && catItems.some(i => i.id === s.menuItemId)).reduce((sum, s) => sum + s.quantity, 0) + 1;
+                                                                                    const guestQty = selections.filter(s => s.guestName === displayName && catItems.some(i => i.id === s.menuItemId)).reduce((sum, s) => sum + s.quantity, 0) + 1;
                                                                                     if (guestQty >= (category.maxPerGuest || 1)) {
                                                                                         setTimeout(() => {
                                                                                             if (currentIdx < guestIdentifiers.length - 1) {
@@ -713,8 +757,8 @@ function BreakfastWizard() {
                                                             <div className="grid gap-3 animate-in fade-in duration-300">
                                                                 {catItems.map(item => {
                                                                     const hasFlavors = item.flavors && item.flavors.length > 0;
-                                                                    const qty = getTotalQuantity(item.id, guest);
-                                                                    const guestSelectionsForItem = selections.filter(s => s.menuItemId === item.id && s.guestName === guest);
+                                                                    const qty = getTotalQuantity(item.id, displayName);
+                                                                    const guestSelectionsForItem = selections.filter(s => s.menuItemId === item.id && s.guestName === displayName);
 
                                                                     // Determine image to display
                                                                     let displayImage = item.imageUrl;
@@ -733,10 +777,10 @@ function BreakfastWizard() {
                                                                             )}
                                                                             <div className="flex-1 cursor-pointer" onClick={() => {
                                                                                 if (hasFlavors) {
-                                                                                    setPendingFlavorSelection({ categoryId: category.id, guestName: guest, menuItem: item });
+                                                                                    setPendingFlavorSelection({ categoryId: category.id, guestName: displayName, menuItem: item });
                                                                                 } else if (qty === 0) {
-                                                                                    addSelection(item.id, guest);
-                                                                                    const guestQty = selections.filter(s => s.guestName === guest && catItems.some(i => i.id === s.menuItemId)).reduce((sum, s) => sum + s.quantity, 0) + 1;
+                                                                                    addSelection(item.id, displayName);
+                                                                                    const guestQty = selections.filter(s => s.guestName === displayName && catItems.some(i => i.id === s.menuItemId)).reduce((sum, s) => sum + s.quantity, 0) + 1;
                                                                                     if (guestQty >= (category.maxPerGuest || 1)) {
                                                                                         setTimeout(() => {
                                                                                             if (currentIdx < guestIdentifiers.length - 1) {
@@ -755,11 +799,11 @@ function BreakfastWizard() {
                                                                                 {qty > 0 && !hasFlavors ? (
                                                                                     <div className="flex items-center gap-2 bg-secondary rounded-lg p-0.5 border border-border">
                                                                                         <button onClick={() => {
-                                                                                            const sel = selections.find(s => s.menuItemId === item.id && s.guestName === guest);
+                                                                                            const sel = selections.find(s => s.menuItemId === item.id && s.guestName === displayName);
                                                                                             if (sel) removeSelection(sel.id);
                                                                                         }} className="w-8 h-8 flex items-center justify-center bg-background rounded-md shadow-sm text-foreground"><Minus size={14} /></button>
                                                                                         <span className="w-4 text-center font-bold text-sm">{qty}</span>
-                                                                                        <button onClick={() => addSelection(item.id, guest)} className="w-8 h-8 flex items-center justify-center text-primary bg-background rounded-md shadow-sm"><Plus size={14} /></button>
+                                                                                        <button onClick={() => addSelection(item.id, displayName)} className="w-8 h-8 flex items-center justify-center text-primary bg-background rounded-md shadow-sm"><Plus size={14} /></button>
                                                                                     </div>
                                                                                 ) : guestSelectionsForItem.length > 0 && hasFlavors ? (
                                                                                     <div className="flex flex-col gap-1 items-end">
@@ -776,10 +820,10 @@ function BreakfastWizard() {
                                                                                         onClick={(e) => {
                                                                                             e.stopPropagation();
                                                                                             if (hasFlavors) {
-                                                                                                setPendingFlavorSelection({ categoryId: category.id, guestName: guest, menuItem: item });
+                                                                                                setPendingFlavorSelection({ categoryId: category.id, guestName: displayName, menuItem: item });
                                                                                             } else {
-                                                                                                addSelection(item.id, guest);
-                                                                                                const guestQty = selections.filter(s => s.guestName === guest && catItems.some(i => i.id === s.menuItemId)).reduce((sum, s) => sum + s.quantity, 0) + 1;
+                                                                                                addSelection(item.id, displayName);
+                                                                                                const guestQty = selections.filter(s => s.guestName === displayName && catItems.some(i => i.id === s.menuItemId)).reduce((sum, s) => sum + s.quantity, 0) + 1;
                                                                                                 if (guestQty >= (category.maxPerGuest || 1)) {
                                                                                                     setTimeout(() => {
                                                                                                         if (currentIdx < guestIdentifiers.length - 1) {
@@ -820,6 +864,20 @@ function BreakfastWizard() {
                                 </section>
                             );
                         })}
+
+                        {/* Observações gerais */}
+                        <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
+                            <p className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                                <Info size={12} /> Observações / Pedidos Especiais
+                            </p>
+                            <textarea
+                                value={observationsText}
+                                onChange={e => setObservationsText(e.target.value)}
+                                placeholder='Ex: "João não quer ervilhas" ou "Sem glúten para a Maria"'
+                                rows={3}
+                                className="w-full bg-secondary border border-border px-3 py-2 rounded-xl text-sm outline-none focus:border-primary/50 transition-all resize-none"
+                            />
+                        </div>
 
                         <div className="h-20"></div> {/* Spacing for sticky bottom bar */}
                     </div>
@@ -904,6 +962,13 @@ function BreakfastWizard() {
                                 <div className="mt-6 pt-4 border-t border-border flex justify-between items-center">
                                     <span className="font-black uppercase tracking-widest text-muted-foreground">Total Extras</span>
                                     <span className="text-xl font-black text-primary">{totalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                                </div>
+                            )}
+
+                            {observationsText.trim() && (
+                                <div className="mt-4 p-4 bg-secondary/50 border border-border rounded-2xl">
+                                    <p className="text-xs font-black uppercase tracking-widest text-muted-foreground mb-1 flex items-center gap-1"><Info size={12} /> Observações</p>
+                                    <p className="text-sm text-foreground whitespace-pre-wrap break-words">{observationsText}</p>
                                 </div>
                             )}
 
