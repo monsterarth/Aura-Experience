@@ -1,0 +1,427 @@
+"use client";
+
+import React, { useState, useEffect, Suspense } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { StayService } from "@/services/stay-service";
+import { PropertyService } from "@/services/property-service";
+import { StructureService } from "@/services/structure-service";
+import { Stay, Property, Structure, TimeSlot, StructureBooking } from "@/types/aura";
+import { Loader2, ArrowLeft, Calendar, Info, CheckCircle2, ChevronRight, MapPin, Clock } from "lucide-react";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+
+// --- Theme Helper ---
+function hexToHSL(hex: string): string {
+    if (!hex) return '0 0% 0%';
+    hex = hex.replace(/^#/, '');
+    if (hex.length === 3) hex = hex.split('').map(x => x + x).join('');
+    let r = parseInt(hex.substring(0, 2), 16) / 255;
+    let g = parseInt(hex.substring(2, 4), 16) / 255;
+    let b = parseInt(hex.substring(4, 6), 16) / 255;
+    let max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0, l = (max + min) / 2;
+    if (max !== min) {
+        let d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
+    return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
+}
+
+function getThemeStyles(propertyData?: Property | null) {
+    const theme = propertyData?.theme;
+    if (!theme) return {};
+    const c = theme.colors;
+    if (!c) return {};
+    return {
+        '--primary': hexToHSL(c.primary),
+        '--primary-foreground': hexToHSL(c.onPrimary),
+        '--secondary': hexToHSL(c.secondary),
+        '--secondary-foreground': hexToHSL(c.onSecondary),
+        '--background': hexToHSL(c.background),
+        '--card': hexToHSL(c.surface),
+        '--card-foreground': hexToHSL(c.textMain),
+        '--foreground': hexToHSL(c.textMain),
+        '--muted': hexToHSL(c.secondary),
+        '--muted-foreground': hexToHSL(c.textMuted),
+        '--accent': hexToHSL(c.accent),
+        '--border': hexToHSL(c.accent),
+        '--radius': theme.shape?.radius || '0.5rem'
+    } as React.CSSProperties;
+}
+
+function StructuresWizard() {
+    const { code } = useParams();
+    const router = useRouter();
+
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [success, setSuccess] = useState(false);
+
+    const [stay, setStay] = useState<Stay | null>(null);
+    const [property, setProperty] = useState<Property | null>(null);
+    const [structures, setStructures] = useState<Structure[]>([]);
+
+    // Wizard State
+    const [step, setStep] = useState<0 | 1 | 2>(0);
+    // 0 = Select Structure
+    // 1 = Select Date and Time
+    // 2 = Confirm
+
+    const [selectedStructure, setSelectedStructure] = useState<Structure | null>(null);
+    const [selectedDate, setSelectedDate] = useState<string>("");
+    const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([]);
+    const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
+
+    const [notes, setNotes] = useState("");
+
+    useEffect(() => {
+        async function init() {
+            try {
+                if (!code) return;
+                const stays = await StayService.getStaysByAccessCode(code as string);
+                if (!stays || stays.length === 0) return;
+
+                const s = stays[0] as Stay;
+                setStay(s);
+
+                const prop = await PropertyService.getPropertyById(s.propertyId);
+                if (!prop) return;
+                setProperty(prop as Property);
+
+                const allStructures = await StructureService.getStructures(prop.id);
+                // Apenas estruturas que Hóspedes podem ver/pedir
+                const guestStructures = allStructures.filter(st => st.visibility === 'guest_auto_approve' || st.visibility === 'guest_request');
+
+                // Set default date to today
+                const today = new Date();
+                setSelectedDate(today.toISOString().split('T')[0]);
+
+                setStructures(guestStructures);
+                setLoading(false);
+            } catch (error) {
+                console.error(error);
+                toast.error("Erro ao carregar os espaços.");
+                setLoading(false);
+            }
+        }
+        init();
+    }, [code]);
+
+    // Fetch slots when date or structure changes
+    useEffect(() => {
+        async function fetchSlots() {
+            if (!property || !selectedStructure || !selectedDate) return;
+            try {
+                const bookings = await StructureService.getBookingsByDate(property.id, selectedStructure.id, selectedDate);
+                const slots = StructureService.generateTimeSlots(selectedStructure, bookings);
+                setAvailableSlots(slots);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        if (step === 1) {
+            fetchSlots();
+        }
+    }, [selectedDate, selectedStructure, property, step]);
+
+    const handleSelectStructure = (s: Structure) => {
+        setSelectedStructure(s);
+        setSelectedSlot(null);
+        setStep(1);
+    };
+
+    const submitBooking = async () => {
+        if (!stay || !property || !selectedStructure || !selectedDate || !selectedSlot) return;
+
+        setSaving(true);
+        try {
+            const guestName = stay.guestId ? "Hóspede" : "Acomodação"; // Podíamos puxar do GuestContext. Mas aqui é genérico.
+
+            const bookingStatus = selectedStructure.visibility === 'guest_auto_approve' ? 'approved' : 'pending';
+
+            await StructureService.createBooking(property.id, {
+                structureId: selectedStructure.id,
+                propertyId: property.id,
+                stayId: stay.id,
+                guestId: stay.guestId,
+                guestName: guestName,
+                date: selectedDate,
+                startTime: selectedSlot.startTime,
+                endTime: selectedSlot.endTime,
+                status: bookingStatus,
+                source: 'guest',
+                type: 'booking',
+                notes: notes
+            }, stay.guestId, "Guest App");
+
+            setSuccess(true);
+        } catch (error) {
+            console.error(error);
+            toast.error("Erro ao solicitar agendamento. Pode estar ocupado.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (loading || !property) {
+        return (
+            <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-slate-50">
+                <Loader2 className="w-12 h-12 text-primary animate-spin" />
+            </div>
+        );
+    }
+
+    const themeStyles = getThemeStyles(property);
+
+    if (structures.length === 0) {
+        return (
+            <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6 text-center" style={themeStyles}>
+                <Calendar size={48} className="text-muted-foreground mb-4 opacity-50" />
+                <h1 className="text-2xl font-black uppercase">Nenhum Espaço</h1>
+                <p className="text-muted-foreground mt-2">Nossas áreas comuns não exigem agendamento no momento ou estão indisponíveis.</p>
+                <button onClick={() => router.push(`/check-in/${code}`)} className="mt-8 px-6 py-3 bg-secondary rounded-xl font-bold uppercase text-xs tracking-widest">
+                    Voltar
+                </button>
+            </div>
+        );
+    }
+
+    if (success) {
+        return (
+            <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6 text-center" style={themeStyles}>
+                <div className="absolute top-0 left-0 w-full h-[30vh] bg-gradient-to-b from-green-500/20 to-background pointer-events-none -z-10"></div>
+                <div className="w-24 h-24 bg-green-500 text-white rounded-full flex items-center justify-center mb-6 animate-in zoom-in shadow-xl shadow-green-500/30">
+                    <CheckCircle2 size={48} />
+                </div>
+
+                {selectedStructure?.visibility === 'guest_auto_approve' ? (
+                    <h1 className="text-3xl font-black uppercase tracking-tighter">Agendamento Confirmado!</h1>
+                ) : (
+                    <h1 className="text-3xl font-black uppercase tracking-tighter">Solicitação Enviada!</h1>
+                )}
+
+                <div className="bg-card border border-border p-6 rounded-2xl mt-6">
+                    <p className="text-muted-foreground">
+                        {selectedStructure?.visibility === 'guest_auto_approve'
+                            ? "Sua reserva do espaço foi confirmada. Aproveite seu momento!"
+                            : "Aguarde a confirmação da nossa equipe na recepção via WhatsApp."}
+                        <br /><br />
+                        <strong className="text-foreground">{selectedStructure?.name}</strong><br />
+                        <strong className="text-foreground">{selectedDate.split('-').reverse().join('/')}</strong> das <strong className="text-foreground">{selectedSlot?.startTime} às {selectedSlot?.endTime}</strong>
+                    </p>
+                </div>
+                <button onClick={() => router.push(`/check-in/${code}`)} className="mt-8 px-8 py-4 w-full max-w-xs bg-primary text-primary-foreground rounded-2xl font-black uppercase text-sm tracking-widest shadow-xl shadow-primary/20">
+                    Voltar ao Portal
+                </button>
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-[100dvh] bg-background text-foreground flex flex-col font-sans relative" style={themeStyles}>
+            <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-border p-4 flex items-center gap-4">
+                <button
+                    onClick={() => step > 0 ? setStep((step - 1) as any) : router.push(`/check-in/${code}`)}
+                    className="p-2 hover:bg-secondary rounded-full transition-colors"
+                >
+                    <ArrowLeft size={24} />
+                </button>
+                <div className="flex-1">
+                    <h1 className="text-lg font-black uppercase tracking-tighter">Agendamentos</h1>
+                    {/* Stepper Dots */}
+                    <div className="flex items-center gap-1 mt-1">
+                        {[0, 1, 2].map(i => (
+                            <div key={i} className={cn("h-1 rounded-full transition-all", step >= i ? "w-8 bg-primary" : "w-2 bg-secondary")} />
+                        ))}
+                    </div>
+                </div>
+            </header>
+
+            <main className="flex-1 p-4 pb-48 w-full max-w-2xl mx-auto space-y-6">
+
+                {/* STEP 0: Select Structure */}
+                {step === 0 && (
+                    <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
+                        <div className="bg-primary text-primary-foreground rounded-3xl p-6 shadow-xl shadow-primary/10 overflow-hidden relative">
+                            <div className="absolute right-0 top-0 w-32 h-32 bg-white/10 rounded-bl-full translate-x-1/4 -translate-y-1/4 blur-xl"></div>
+                            <Calendar size={32} className="mb-4 opacity-80" />
+                            <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">Reserve o seu momento</h2>
+                            <p className="opacity-90 leading-relaxed text-sm">Escolha uma de nossas áreas para agendar o seu uso exclusivo.</p>
+                        </div>
+
+                        <div className="grid gap-4">
+                            {structures.map(s => (
+                                <button
+                                    key={s.id}
+                                    onClick={() => handleSelectStructure(s)}
+                                    className="bg-card border border-border p-5 rounded-3xl flex items-center gap-4 text-left hover:border-primary/50 hover:shadow-md transition-all group"
+                                >
+                                    {s.imageUrl ? (
+                                        <div className="w-16 h-16 rounded-2xl overflow-hidden shrink-0 bg-secondary">
+                                            <img src={s.imageUrl} alt={s.name} className="w-full h-full object-cover" />
+                                        </div>
+                                    ) : (
+                                        <div className="w-12 h-12 bg-secondary rounded-2xl flex items-center justify-center shrink-0">
+                                            <MapPin size={24} className="text-muted-foreground group-hover:text-primary transition-colors" />
+                                        </div>
+                                    )}
+                                    <div className="flex-1">
+                                        <h3 className="font-black text-lg">{s.name}</h3>
+                                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{s.description || "Nenhuma descrição."}</p>
+                                        <div className="flex items-center gap-2 mt-2">
+                                            <span className="text-[10px] bg-secondary px-2 py-0.5 rounded font-bold uppercase tracking-widest text-muted-foreground">
+                                                {s.operatingHours?.slotDurationMinutes} min
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <ChevronRight size={20} className="text-muted-foreground group-hover:text-primary transition-colors" />
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* STEP 1: Select Date and Time */}
+                {step === 1 && selectedStructure && (
+                    <div className="space-y-6 animate-in slide-in-from-right-4 duration-500 relative">
+                        <div className="border-b border-border pb-4">
+                            <h2 className="text-xl font-black uppercase tracking-tighter">{selectedStructure.name}</h2>
+                            <p className="text-xs text-muted-foreground mt-1">Selecione o dia e o horário desejado.</p>
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Data do Agendamento</label>
+                            <input
+                                type="date"
+                                min={new Date().toISOString().split('T')[0]}
+                                value={selectedDate}
+                                onChange={(e) => { setSelectedDate(e.target.value); setSelectedSlot(null); }}
+                                className="w-full bg-card border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-bold"
+                            />
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Horários Disponíveis ({selectedStructure.operatingHours?.slotDurationMinutes}m)</label>
+
+                            {availableSlots.length > 0 ? (
+                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                                    {availableSlots.map(slot => (
+                                        <button
+                                            key={slot.startTime}
+                                            disabled={!slot.available}
+                                            onClick={() => setSelectedSlot(slot)}
+                                            className={cn(
+                                                "py-3 rounded-xl font-bold text-sm transition-all border-2 flex flex-col items-center gap-1",
+                                                !slot.available ? "opacity-30 bg-secondary border-transparent cursor-not-allowed" :
+                                                    selectedSlot?.startTime === slot.startTime ? "border-primary bg-primary/10 text-primary" : "border-transparent bg-secondary text-foreground hover:bg-secondary/80"
+                                            )}
+                                        >
+                                            <Clock size={16} className={!slot.available ? "opacity-50" : selectedSlot?.startTime === slot.startTime ? "text-primary" : "text-muted-foreground"} />
+                                            <span>{slot.startTime}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="bg-secondary/50 border border-border p-6 rounded-2xl text-center">
+                                    <p className="text-sm font-bold text-muted-foreground">Nenhum horário gerado para este dia.</p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="h-20"></div> {/* Spacing for sticky bottom bar */}
+                    </div>
+                )}
+
+
+                {/* STEP 2: Confirm */}
+                {step === 2 && selectedStructure && selectedSlot && (
+                    <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
+                        <div className="bg-card border border-border rounded-3xl p-6 shadow-sm">
+                            <h2 className="text-xl font-black uppercase tracking-tighter mb-4 border-b border-border pb-2">Resumo da Reserva</h2>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Espaço</p>
+                                    <p className="font-black text-lg">{selectedStructure.name}</p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Data</p>
+                                        <p className="font-bold">{selectedDate.split('-').reverse().join('/')}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Horário</p>
+                                        <p className="font-black text-primary">{selectedSlot.startTime} às {selectedSlot.endTime}</p>
+                                    </div>
+                                </div>
+                                {selectedStructure.visibility === 'guest_request' && (
+                                    <div className="bg-orange-500/10 border border-orange-500/20 p-3 rounded-xl flex gap-3 text-orange-600 dark:text-orange-400">
+                                        <Info size={16} className="shrink-0 mt-0.5" />
+                                        <p className="text-xs font-semibold">Este agendamento requer aprovação da recepção. Você será notificado sobre o status.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest ml-2">Observações (Opcional)</label>
+                            <textarea
+                                value={notes}
+                                onChange={(e) => setNotes(e.target.value)}
+                                className="w-full bg-card border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm resize-none h-24"
+                                placeholder="Alguma observação especial?"
+                            />
+                        </div>
+
+                    </div>
+                )}
+            </main>
+
+            {/* Bottom Floating Bar */}
+            {(step === 1 || step === 2) && (
+                <div className="fixed bottom-0 left-0 w-full bg-background/90 backdrop-blur-xl border-t border-border p-4 z-50 animate-in slide-in-from-bottom-12">
+                    <div className="max-w-2xl mx-auto">
+                        {step === 1 && (
+                            <button
+                                onClick={() => setStep(2)}
+                                disabled={!selectedSlot}
+                                className="w-full py-4 bg-primary text-primary-foreground rounded-2xl font-black uppercase tracking-widest flex items-center justify-between px-6 shadow-xl shadow-primary/20 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:shadow-none"
+                            >
+                                <span>Prosseguir</span>
+                                <ChevronRight size={20} />
+                            </button>
+                        )}
+                        {step === 2 && (
+                            <button
+                                onClick={submitBooking}
+                                disabled={saving}
+                                className="w-full py-4 bg-green-500 text-white rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-green-500/20 hover:bg-green-600 transition-all disabled:opacity-50 disabled:shadow-none"
+                            >
+                                {saving ? <Loader2 size={24} className="animate-spin" /> : <CheckCircle2 size={24} />}
+                                <span>{selectedStructure?.visibility === 'guest_auto_approve' ? "Confirmar Reserva" : "Enviar Solicitação"}</span>
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+export default function GuestStructuresPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-[100dvh] flex items-center justify-center bg-slate-50">
+                <Loader2 className="w-10 h-10 text-primary animate-spin" />
+            </div>
+        }>
+            <StructuresWizard />
+        </Suspense>
+    );
+}

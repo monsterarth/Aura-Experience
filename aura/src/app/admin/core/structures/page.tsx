@@ -66,10 +66,10 @@ export default function StructuresPage() {
     };
 
     return (
-        <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
-            <div className="flex justify-between items-center">
+        <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-4 md:space-y-8 animate-in fade-in duration-500">
+            <div className="flex justify-between items-center gap-4">
                 <div>
-                    <h1 className="text-3xl font-black text-foreground tracking-tight">Estruturas Adicionais</h1>
+                    <h1 className="text-xl md:text-3xl font-black text-foreground tracking-tight">Estruturas Adicionais</h1>
                     <p className="text-muted-foreground mt-1">Gerencie quadras, spas, saunas e salas de massagem da propriedade.</p>
                 </div>
                 <button

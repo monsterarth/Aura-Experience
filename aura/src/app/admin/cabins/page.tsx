@@ -142,10 +142,10 @@ export default function CabinsPage() {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-10 animate-in fade-in duration-500">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-4 md:space-y-10 animate-in fade-in duration-500">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-4xl font-black tracking-tighter flex items-center gap-3 italic text-foreground">
+          <h1 className="text-2xl md:text-4xl font-black tracking-tighter flex items-center gap-3 italic text-foreground">
             <Home className="text-primary" size={36} /> {property?.name}
           </h1>
           <p className="text-muted-foreground font-bold uppercase text-[10px] tracking-widest mt-2 px-1">Gestão de Unidades & Inventário</p>

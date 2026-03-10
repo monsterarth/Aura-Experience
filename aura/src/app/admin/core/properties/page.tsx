@@ -100,10 +100,10 @@ export default function CorePropertiesPage() {
   }
 
   return (
-    <div className="p-8 max-w-6xl mx-auto space-y-10">
+    <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-4 md:space-y-10">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-black tracking-tight flex items-center gap-3">
+          <h1 className="text-2xl md:text-4xl font-black tracking-tight flex items-center gap-3">
             <Building2 className="text-primary" size={36} /> Aura Core
           </h1>
           <p className="text-muted-foreground">Gestão global de instâncias e multi-tenancy.</p>

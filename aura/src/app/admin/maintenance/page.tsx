@@ -212,7 +212,7 @@ export default function MaintenancePage() {
     );
 
     return (
-        <div className="h-full flex flex-col space-y-4 px-2 md:px-0">
+        <div className="h-full flex flex-col space-y-4 p-4 md:p-0">
 
             {/* HEADER */}
             <div className="flex items-center justify-between mt-2 md:mt-0">

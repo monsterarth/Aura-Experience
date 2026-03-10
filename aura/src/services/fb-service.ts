@@ -1,0 +1,262 @@
+import { supabase } from '@/lib/supabase';
+import { FBCategory, FBMenuItem, FBOrder, FBSettings } from '@/types/aura';
+
+const mapCategory = (dbObj: any): FBCategory => ({
+    id: dbObj.id,
+    propertyId: dbObj.property_id,
+    name: dbObj.name,
+    type: dbObj.type,
+    selectionTarget: dbObj.selection_target,
+    maxPerGuest: dbObj.max_per_guest,
+    order: dbObj.order,
+    imageUrl: dbObj.image_url,
+    createdAt: dbObj.created_at,
+});
+
+const mapMenuItem = (dbObj: any): FBMenuItem => ({
+    id: dbObj.id,
+    propertyId: dbObj.property_id,
+    categoryId: dbObj.category_id,
+    name: dbObj.name,
+    description: dbObj.description,
+    price: dbObj.price,
+    ingredients: dbObj.ingredients,
+    flavors: dbObj.flavors,
+    active: dbObj.active,
+    order: dbObj.order,
+    imageUrl: dbObj.image_url,
+    createdAt: dbObj.created_at,
+});
+
+const mapOrder = (dbObj: any): FBOrder => ({
+    id: dbObj.id,
+    propertyId: dbObj.property_id,
+    stayId: dbObj.stay_id,
+    type: dbObj.type,
+    modality: dbObj.modality,
+    status: dbObj.status,
+    items: dbObj.items,
+    totalPrice: dbObj.total_price,
+    deliveryTime: dbObj.delivery_time,
+    deliveryDate: dbObj.delivery_date,
+    createdAt: dbObj.created_at,
+    updatedAt: dbObj.updated_at,
+});
+
+export const fbService = {
+    // --- SETTINGS ---
+    async updateSettings(propertyId: string, fbSettings: FBSettings): Promise<void> {
+        const { data: currentProperty, error: fetchError } = await supabase
+            .from('properties')
+            .select('settings')
+            .eq('id', propertyId)
+            .single();
+
+        if (fetchError) throw fetchError;
+
+        const newSettings = {
+            ...currentProperty.settings,
+            fbSettings,
+        };
+
+        const { error } = await supabase
+            .from('properties')
+            .update({ settings: newSettings })
+            .eq('id', propertyId);
+
+        if (error) throw error;
+    },
+
+    // --- CATEGORIES ---
+    async getCategories(propertyId: string): Promise<FBCategory[]> {
+        const { data, error } = await supabase
+            .from('fb_categories')
+            .select('*')
+            .eq('property_id', propertyId)
+            .order('order', { ascending: true })
+            .order('name');
+        if (error) throw error;
+        return (data || []).map(mapCategory);
+    },
+
+    async createCategory(
+        propertyId: string,
+        name: string,
+        type: FBCategory['type'],
+        selectionTarget?: 'individual' | 'group_portion' | 'group_unit',
+        maxPerGuest?: number,
+        order: number = 0,
+        imageUrl?: string
+    ): Promise<FBCategory> {
+        const { data, error } = await supabase
+            .from('fb_categories')
+            .insert([{ property_id: propertyId, name, type, selection_target: selectionTarget, max_per_guest: maxPerGuest, order, image_url: imageUrl }])
+            .select()
+            .single();
+        if (error) throw error;
+        return mapCategory(data);
+    },
+
+    async updateCategory(
+        id: string,
+        name: string,
+        type: FBCategory['type'],
+        selectionTarget?: 'individual' | 'group_portion' | 'group_unit',
+        maxPerGuest?: number,
+        order?: number,
+        imageUrl?: string
+    ): Promise<FBCategory> {
+        const toUpdate: any = { name, type, selection_target: selectionTarget, max_per_guest: maxPerGuest };
+        if (order !== undefined) toUpdate.order = order;
+        if (imageUrl !== undefined) toUpdate.image_url = imageUrl;
+
+        const { data, error } = await supabase
+            .from('fb_categories')
+            .update(toUpdate)
+            .eq('id', id)
+            .select()
+            .single();
+        if (error) throw error;
+        return mapCategory(data);
+    },
+
+    async deleteCategory(id: string): Promise<void> {
+        const { error } = await supabase
+            .from('fb_categories')
+            .delete()
+            .eq('id', id);
+        if (error) throw error;
+    },
+
+    async updateCategoryOrder(updates: { id: string, order: number }[]): Promise<void> {
+        // Since Supabase RPC is the standard way to do bulk updates, we can just do simple loops or 
+        // individual updates if the amount is small. We will do individual updates for simplicity.
+        for (const update of updates) {
+            await supabase.from('fb_categories').update({ order: update.order }).eq('id', update.id);
+        }
+    },
+
+    // --- MENU ITEMS ---
+    async getMenuItems(propertyId: string): Promise<FBMenuItem[]> {
+        const { data, error } = await supabase
+            .from('fb_menu_items')
+            .select('*')
+            .eq('property_id', propertyId)
+            .order('order', { ascending: true })
+            .order('name');
+        if (error) throw error;
+        return (data || []).map(mapMenuItem);
+    },
+
+    async createMenuItem(item: Omit<FBMenuItem, 'id' | 'createdAt'>): Promise<FBMenuItem> {
+        const { data, error } = await supabase
+            .from('fb_menu_items')
+            .insert([
+                {
+                    property_id: item.propertyId,
+                    category_id: item.categoryId,
+                    name: item.name,
+                    description: item.description,
+                    price: item.price,
+                    ingredients: item.ingredients,
+                    flavors: item.flavors,
+                    active: item.active,
+                    order: item.order || 0,
+                    image_url: item.imageUrl,
+                },
+            ])
+            .select()
+            .single();
+        if (error) throw error;
+        return mapMenuItem(data);
+    },
+
+    async updateMenuItem(id: string, item: Partial<FBMenuItem>): Promise<FBMenuItem> {
+        const toUpdate: any = {};
+        if (item.name !== undefined) toUpdate.name = item.name;
+        if (item.categoryId !== undefined) toUpdate.category_id = item.categoryId;
+        if (item.description !== undefined) toUpdate.description = item.description;
+        if (item.price !== undefined) toUpdate.price = item.price;
+        if (item.ingredients !== undefined) toUpdate.ingredients = item.ingredients;
+        if (item.flavors !== undefined) toUpdate.flavors = item.flavors;
+        if (item.active !== undefined) toUpdate.active = item.active;
+        if (item.order !== undefined) toUpdate.order = item.order;
+        if (item.imageUrl !== undefined) toUpdate.image_url = item.imageUrl;
+
+        const { data, error } = await supabase
+            .from('fb_menu_items')
+            .update(toUpdate)
+            .eq('id', id)
+            .select()
+            .single();
+        if (error) throw error;
+        return mapMenuItem(data);
+    },
+
+    async deleteMenuItem(id: string): Promise<void> {
+        const { error } = await supabase
+            .from('fb_menu_items')
+            .delete()
+            .eq('id', id);
+        if (error) throw error;
+    },
+
+    async updateMenuItemOrder(updates: { id: string, order: number }[]): Promise<void> {
+        for (const update of updates) {
+            await supabase.from('fb_menu_items').update({ order: update.order }).eq('id', update.id);
+        }
+    },
+
+    // --- ORDERS ---
+    async createOrder(order: Omit<FBOrder, 'id' | 'createdAt' | 'updatedAt'>): Promise<FBOrder> {
+        const { data, error } = await supabase
+            .from('fb_orders')
+            .insert([
+                {
+                    property_id: order.propertyId,
+                    stay_id: order.stayId,
+                    type: order.type,
+                    modality: order.modality,
+                    status: order.status,
+                    items: order.items,
+                    total_price: order.totalPrice,
+                    delivery_time: order.deliveryTime,
+                    delivery_date: order.deliveryDate,
+                },
+            ])
+            .select()
+            .single();
+        if (error) throw error;
+        return mapOrder(data);
+    },
+
+    async getOrders(propertyId: string, filters?: { date?: string; type?: 'breakfast' | 'restaurant' }): Promise<FBOrder[]> {
+        let query = supabase
+            .from('fb_orders')
+            .select('*')
+            .eq('property_id', propertyId)
+            .order('created_at', { ascending: false });
+
+        if (filters?.date) {
+            query = query.eq('delivery_date', filters.date);
+        }
+        if (filters?.type) {
+            query = query.eq('type', filters.type);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+        return (data || []).map(mapOrder);
+    },
+
+    async updateOrderStatus(id: string, status: FBOrder['status']): Promise<FBOrder> {
+        const { data, error } = await supabase
+            .from('fb_orders')
+            .update({ status, updated_at: new Date().toISOString() })
+            .eq('id', id)
+            .select()
+            .single();
+        if (error) throw error;
+        return mapOrder(data);
+    }
+};

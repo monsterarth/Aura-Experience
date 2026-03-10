@@ -6,9 +6,10 @@ interface ImageUploadProps {
     value?: string;
     onUploadSuccess: (url: string) => void;
     className?: string;
+    path?: string;
 }
 
-export function ImageUpload({ value, onUploadSuccess, className = '' }: ImageUploadProps) {
+export function ImageUpload({ value, onUploadSuccess, className = '', path = 'profiles' }: ImageUploadProps) {
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -29,7 +30,7 @@ export function ImageUpload({ value, onUploadSuccess, className = '' }: ImageUpl
         setIsUploading(true);
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('path', 'profiles');
+        formData.append('path', path);
 
         try {
             const response = await fetch('/api/upload', {

@@ -199,12 +199,12 @@ export default function StaysPage() {
 
   return (
     <RoleGuard allowedRoles={["super_admin", "admin", "reception", "governance"]}>
-      <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
+      <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-4 md:space-y-8 animate-in fade-in duration-500">
 
         {/* Header */}
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-1">
-            <h1 className="text-4xl font-black tracking-tighter flex items-center gap-3 text-foreground">
+            <h1 className="text-2xl md:text-4xl font-black tracking-tighter flex items-center gap-3 text-foreground">
               <Calendar className="text-primary" size={36} /> Painel Operacional
             </h1>
             <div className="flex items-center gap-2">
@@ -290,7 +290,7 @@ export default function StaysPage() {
                       key={s.id}
                       className="group bg-card border border-white/5 rounded-[40px] overflow-hidden hover:border-primary/40 transition-all flex flex-col shadow-lg"
                     >
-                      <div className="p-8 space-y-6 flex-1">
+                      <div className="p-5 md:p-8 space-y-4 md:space-y-6 flex-1">
                         {/* Topo do Card */}
                         <div className="flex justify-between items-start">
                           <div className="px-4 py-1.5 bg-primary/10 border border-primary/20 rounded-full">
@@ -421,8 +421,8 @@ export default function StaysPage() {
 
             {/* RENDERIZAÇÃO 2: TABELA COMPACTA (Para Encerradas e Histórico) */}
             {activeTab === 'encerradas' && (
-              <div className="bg-card border border-white/5 rounded-3xl overflow-hidden shadow-sm">
-                <table className="w-full text-left">
+              <div className="bg-card border border-white/5 rounded-3xl overflow-hidden shadow-sm overflow-x-auto">
+                <table className="w-full text-left min-w-[600px]">
                   <thead className="bg-muted/50 border-b border-border">
                     <tr>
                       <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground w-32">Cabana</th>

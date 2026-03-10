@@ -6,7 +6,7 @@ import { StayService } from "@/services/stay-service";
 import { SurveyService } from "@/services/survey-service";
 import { PropertyService } from "@/services/property-service";
 import { Stay, Property } from "@/types/aura";
-import { Loader2, CheckCircle, FileText, Share, AlertCircle, Phone, Star, ArrowRight } from "lucide-react";
+import { Loader2, CheckCircle, FileText, Share, AlertCircle, Phone, Star, ArrowRight, Coffee, Calendar, BellRing, BookOpen, Wifi, Key, Ticket, MessageSquare, Menu, X, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -75,6 +75,10 @@ function GuestHubContent() {
     const [agreedPrivacy, setAgreedPrivacy] = useState(false);
     const [agreedPet, setAgreedPet] = useState(false);
     const [isSavingTerms, setIsSavingTerms] = useState(false);
+
+    // Modals
+    const [showWifiModal, setShowWifiModal] = useState(false);
+    const [showGateModal, setShowGateModal] = useState(false);
 
     useEffect(() => {
         async function init() {
@@ -323,54 +327,199 @@ function GuestHubContent() {
             );
         }
 
-        // DASHBOARD DO HOSPEDE (ainda não existe, renderizar mock / placeholder)
+        // DASHBOARD DO HOSPEDE
+        const fbEnabled = property?.settings?.fbSettings?.breakfast?.enabled &&
+            (property.settings.fbSettings.breakfast.modality === 'delivery' || property.settings.fbSettings.breakfast.modality === 'both');
+
         return (
-            <div className="min-h-screen bg-background text-foreground flex flex-col p-6 items-center" style={themeStyles}>
-                {/* Falso Dashboard Skeleton / Placeholder Premium */}
-                <div className="w-full max-w-md space-y-6 mt-8 animate-in slide-in-from-bottom-6 duration-700">
+            <div className="min-h-screen bg-background text-foreground flex flex-col items-center relative overflow-hidden font-sans" style={themeStyles}>
+                {/* Dynamic Background Element */}
+                <div className="absolute top-0 left-0 w-full h-[40vh] bg-gradient-to-b from-primary/20 to-background pointer-events-none -z-10"></div>
+                <div className="absolute -top-32 -left-32 w-96 h-96 bg-primary/20 rounded-full blur-3xl opacity-50 pointer-events-none -z-10"></div>
+                <div className="absolute top-20 -right-20 w-72 h-72 bg-secondary/30 rounded-full blur-3xl pointer-events-none -z-10"></div>
 
-                    {/* Saudação */}
-                    <div className="flex items-center gap-4 bg-card border border-border p-6 rounded-3xl shadow-sm">
-                        <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center text-primary text-xl font-black uppercase">
-                            {(property?.name?.charAt(0) || "A")}
-                        </div>
-                        <div>
-                            <p className="text-muted-foreground text-sm font-semibold uppercase tracking-widest">Bem-vindo(a)</p>
-                            <h1 className="text-2xl font-black text-foreground">{property?.name || "Acomodação"}</h1>
-                        </div>
-                    </div>
+                <div className="w-full max-w-md p-6 space-y-8 animate-in slide-in-from-bottom-6 duration-700 pb-24">
 
-                    {/* Estado da Reserva */}
-                    <div className="bg-primary text-primary-foreground rounded-3xl p-6 shadow-xl shadow-primary/20 relative overflow-hidden">
-                        {/* Efeitos Decorativos */}
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
-
-                        <div className="relative z-10">
-                            <p className="opacity-80 text-sm font-semibold uppercase tracking-wider mb-2">Hospedagem Ativa</p>
-                            <p className="text-3xl font-black tracking-tighter">Cabana {property?.name ? "01" : ""}</p>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <button className="bg-secondary p-6 rounded-3xl border border-border flex flex-col items-center justify-center gap-3 hover:bg-accent transition-colors">
-                            <Share className="text-primary w-8 h-8" />
-                            <p className="font-black uppercase tracking-tight text-sm text-foreground">Compartilhar Wi-Fi</p>
-                        </button>
-                        <button onClick={() => window.open(`https://wa.me/${property?.settings?.whatsappNumber?.replace(/\D/g, '') || ''}`, '_blank')} className="bg-secondary p-6 rounded-3xl border border-border flex flex-col items-center justify-center gap-3 hover:bg-accent transition-colors">
-                            <Phone className="text-primary w-8 h-8" />
-                            <p className="font-black uppercase tracking-tight text-sm text-foreground">Falar com Recepção</p>
+                    {/* Header / Brand */}
+                    <div className="flex items-center justify-between">
+                        {property?.logoUrl ? (
+                            <img src={property.logoUrl} alt={property.name} className="h-12 w-auto object-contain" />
+                        ) : (
+                            <h2 className="text-xl font-black uppercase tracking-widest text-primary">{property?.name || "Aura"}</h2>
+                        )}
+                        <button className="w-10 h-10 bg-secondary/80 backdrop-blur-md rounded-full flex items-center justify-center text-foreground hover:bg-secondary transition-colors shadow-sm">
+                            <Menu size={20} />
                         </button>
                     </div>
 
-                    <div className="p-8 border-2 border-dashed border-border rounded-3xl text-center flex flex-col items-center justify-center space-y-3 opacity-60">
-                        <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center mb-2">
-                            <AlertCircle className="text-muted-foreground w-6 h-6" />
-                        </div>
-                        <p className="font-black text-lg text-foreground uppercase tracking-tight">Em Construção</p>
-                        <p className="text-sm text-muted-foreground">O painel completo com pedidos de serviço, consumo e mais estará disponível em breve.</p>
+                    {/* Hero Section */}
+                    <div className="space-y-1">
+                        <p className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">Bem-vindo(a) à sua</p>
+                        <h1 className="text-4xl font-black tracking-tighter text-foreground leading-none">
+                            {(stay as any).cabinName || "Cabana"}
+                        </h1>
+                        <p className="text-sm font-medium text-muted-foreground mt-2 flex items-center gap-2">
+                            <Calendar size={14} className="opacity-50" /> Check-out: {new Date(stay.checkOut).toLocaleDateString('pt-BR')}
+                        </p>
                     </div>
 
+                    {/* Quick Action Cards Grid */}
+                    <div className="grid grid-cols-2 gap-3">
+                        {/* Breakfast */}
+                        {fbEnabled && (
+                            <button onClick={() => router.push(`/check-in/${code}/breakfast`)} className="col-span-2 relative overflow-hidden bg-card border border-border p-5 rounded-[2rem] shadow-sm hover:shadow-md hover:border-primary/50 transition-all flex items-center justify-between group">
+                                <div className="absolute -right-4 -top-4 w-24 h-24 bg-primary/10 rounded-full blur-xl group-hover:bg-primary/20 transition-all"></div>
+                                <div className="flex items-center gap-4 relative z-10">
+                                    <div className="w-12 h-12 bg-primary text-primary-foreground rounded-2xl flex items-center justify-center shadow-lg shadow-primary/30 shrink-0">
+                                        <Coffee size={24} />
+                                    </div>
+                                    <div className="text-left">
+                                        <h3 className="font-black text-lg tracking-tight uppercase">Café da Manhã</h3>
+                                        <p className="text-xs font-medium text-muted-foreground">Agende seu delivery na cabana</p>
+                                    </div>
+                                </div>
+                                <ArrowRight size={20} className="text-primary opacity-50 group-hover:opacity-100 group-hover:translate-x-1 transition-all z-10" />
+                            </button>
+                        )}
+
+                        {/* Scheduling */}
+                        <button onClick={() => router.push(`/check-in/${code}/structures`)} className="col-span-2 sm:col-span-1 bg-card border border-border p-5 rounded-[2rem] shadow-sm hover:shadow-md hover:border-primary/50 transition-all flex flex-col gap-3 group">
+                            <div className="w-10 h-10 bg-secondary rounded-2xl flex items-center justify-center text-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                                <Calendar size={20} />
+                            </div>
+                            <div className="text-left">
+                                <h3 className="font-bold text-sm uppercase tracking-wider">Agendamentos</h3>
+                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">Reservar espaços</p>
+                            </div>
+                        </button>
+
+                        {/* Concierge */}
+                        <button className="col-span-2 sm:col-span-1 bg-card border border-border p-5 rounded-[2rem] shadow-sm hover:shadow-md hover:border-primary/50 transition-all flex flex-col gap-3 group opacity-70">
+                            <div className="w-10 h-10 bg-secondary rounded-2xl flex items-center justify-center text-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                                <BellRing size={20} />
+                            </div>
+                            <div className="text-left">
+                                <h3 className="font-bold text-sm uppercase tracking-wider">Concierge</h3>
+                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">Em breve</p>
+                            </div>
+                        </button>
+
+                        {/* Wi-Fi */}
+                        <button onClick={() => setShowWifiModal(true)} className="col-span-1 bg-card border border-border p-5 rounded-[2rem] shadow-sm hover:shadow-md hover:border-primary/50 transition-all flex flex-col gap-3 group">
+                            <div className="w-10 h-10 bg-secondary rounded-2xl flex items-center justify-center text-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                                <Wifi size={20} />
+                            </div>
+                            <div className="text-left">
+                                <h3 className="font-bold text-sm uppercase tracking-wider">Wi-Fi</h3>
+                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">Ver senha</p>
+                            </div>
+                        </button>
+
+                        {/* Gates/Access */}
+                        <button onClick={() => setShowGateModal(true)} className="col-span-1 bg-card border border-border p-5 rounded-[2rem] shadow-sm hover:shadow-md hover:border-primary/50 transition-all flex flex-col gap-3 group">
+                            <div className="w-10 h-10 bg-secondary rounded-2xl flex items-center justify-center text-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                                <Key size={20} />
+                            </div>
+                            <div className="text-left">
+                                <h3 className="font-bold text-sm uppercase tracking-wider">Acessos</h3>
+                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">Senhas e portões</p>
+                            </div>
+                        </button>
+
+                        {/* Guides */}
+                        <button className="col-span-1 bg-card border border-border p-5 rounded-[2rem] shadow-sm hover:shadow-md hover:border-primary/50 transition-all flex flex-col gap-3 group">
+                            <div className="w-10 h-10 bg-secondary rounded-2xl flex items-center justify-center text-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                                <BookOpen size={20} />
+                            </div>
+                            <div className="text-left">
+                                <h3 className="font-bold text-sm uppercase tracking-wider">Guias</h3>
+                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">Manuais e regras</p>
+                            </div>
+                        </button>
+
+                        {/* Events */}
+                        <button className="col-span-1 bg-card border border-border p-5 rounded-[2rem] shadow-sm hover:shadow-md hover:border-primary/50 transition-all flex flex-col gap-3 group opacity-70">
+                            <div className="w-10 h-10 bg-secondary rounded-2xl flex items-center justify-center text-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                                <Ticket size={20} />
+                            </div>
+                            <div className="text-left">
+                                <h3 className="font-bold text-sm uppercase tracking-wider">Eventos</h3>
+                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">Em breve</p>
+                            </div>
+                        </button>
+
+                        {/* Surveys (Full Width) */}
+                        <button onClick={() => router.push(`/feedback/${stay.id}`)} className="col-span-2 bg-secondary/50 border border-border/50 p-5 rounded-[2rem] shadow-sm hover:shadow-md hover:border-primary/50 transition-all flex items-center gap-4 group mt-2">
+                            <div className="w-10 h-10 bg-card rounded-2xl flex items-center justify-center text-foreground group-hover:bg-yellow-500 group-hover:text-white transition-colors shadow-sm">
+                                <Star size={20} />
+                            </div>
+                            <div className="text-left flex-1">
+                                <h3 className="font-bold text-sm uppercase tracking-wider">Sua Opinião</h3>
+                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">Deixe seu feedback para nós</p>
+                            </div>
+                            <ArrowRight size={16} className="text-muted-foreground group-hover:text-foreground transition-colors" />
+                        </button>
+                    </div>
+
+                    {/* Actions */}
+                    <button onClick={() => window.open(`https://wa.me/${property?.settings?.whatsappNumber?.replace(/\D/g, '') || ''}`, '_blank')} className="w-full py-4 bg-foreground text-background font-black uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 hover:opacity-90 shadow-xl mt-8">
+                        <MessageSquare size={18} /> Recepção (WhatsApp)
+                    </button>
                 </div>
+
+                {/* --- MODALS --- */}
+                {/* Wi-Fi Modal */}
+                {showWifiModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in">
+                        <div className="bg-card w-full max-w-sm rounded-3xl shadow-2xl p-6 relative border border-border animate-in zoom-in-95">
+                            <button onClick={() => setShowWifiModal(false)} className="absolute top-4 right-4 p-2 bg-secondary rounded-full hover:bg-accent transition-colors">
+                                <X size={20} />
+                            </button>
+                            <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-6">
+                                <Wifi size={32} />
+                            </div>
+                            <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">Conexão Wi-Fi</h2>
+
+                            {(stay as any).cabinWifi ? (
+                                <div className="space-y-4 mt-6">
+                                    <div className="bg-secondary p-4 rounded-2xl border border-border">
+                                        <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Rede (SSID)</p>
+                                        <p className="text-lg font-black mt-1">{(stay as any).cabinWifi.ssid}</p>
+                                    </div>
+                                    <div className="bg-secondary p-4 rounded-2xl border border-border">
+                                        <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Senha</p>
+                                        <p className="text-lg font-black mt-1">{(stay as any).cabinWifi.password || 'Sem senha'}</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="bg-secondary/50 p-6 rounded-2xl text-center mt-6 border border-border/50">
+                                    <p className="text-sm font-medium text-muted-foreground">O Wi-Fi da acomodação não foi configurado.</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* Gates Modal */}
+                {showGateModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in">
+                        <div className="bg-card w-full max-w-sm rounded-3xl shadow-2xl p-6 relative border border-border animate-in zoom-in-95">
+                            <button onClick={() => setShowGateModal(false)} className="absolute top-4 right-4 p-2 bg-secondary rounded-full hover:bg-accent transition-colors">
+                                <X size={20} />
+                            </button>
+                            <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-6">
+                                <Lock size={32} />
+                            </div>
+                            <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">Seu Acesso</h2>
+                            <p className="text-muted-foreground text-sm mb-6">Utilize o código abaixo para acessar a propriedade e a sua cabana/acomodação.</p>
+
+                            <div className="bg-secondary p-6 rounded-2xl border border-border text-center">
+                                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">Código de Acesso</p>
+                                <p className="text-4xl font-black text-primary tracking-widest">{stay.accessCode}</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }

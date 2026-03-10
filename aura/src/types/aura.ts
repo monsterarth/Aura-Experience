@@ -68,6 +68,9 @@ export interface Property {
     petPolicyText?: Record<string, string>;
     generalPolicyText?: Record<string, string>;
     privacyPolicyText?: Record<string, string>;
+
+    // NOVO: Configurações do Módulo de F&B
+    fbSettings?: FBSettings;
   };
   createdAt: Timestamp;
 }
@@ -574,4 +577,104 @@ export interface Staff {
   phone?: string;
   bio?: string;
   createdAt: Timestamp;
+}
+
+// ==========================================
+// MÓDULO DE F&B (Restaurante e Café da Manhã)
+// ==========================================
+
+export interface FBSettings {
+  restaurant: {
+    enabled: boolean;
+    name: string;
+    operatingHours: {
+      dayOfWeek: number; // 0 (Dom) a 6 (Sáb)
+      openTime: string; // HH:mm
+      closeTime: string; // HH:mm
+      isClosed?: boolean;
+    }[];
+  };
+  breakfast: {
+    enabled: boolean;
+    modality: 'delivery' | 'buffet' | 'both';
+    name: string;
+    buffetHours?: {
+      dayOfWeek: number;
+      openTime: string;
+      closeTime: string;
+    }[];
+    delivery?: {
+      orderWindowStart: string; // Horário início dos pedidos no dia anterior (ex: 18:00)
+      orderWindowEnd: string; // Horário limite dos pedidos (ex: 22:00)
+      deliveryTimes: string[]; // Lista de horários para entrega (ex: ["08:30", "09:30", "10:30"])
+      welcomeMessage?: string; // Título/Mensagem de boas vindas do Wizard
+      instructions?: string; // Instruções do Passo a Passo
+    };
+  };
+}
+
+export type FBCategoryType = 'breakfast' | 'restaurant' | 'both';
+
+export interface FBCategory {
+  id: string;
+  propertyId: string;
+  name: string;
+  type: FBCategoryType;
+  selectionTarget?: 'individual' | 'group_portion' | 'group_unit';
+  maxPerGuest?: number;
+  order?: number;
+  imageUrl?: string;
+  createdAt: Timestamp;
+}
+
+export interface FBIngredient {
+  name: string;
+  cost: number;
+  quantity?: string; // Para controle futuro
+}
+
+export interface FBFlavor {
+  name: string;
+  imageUrl?: string;
+  ingredients?: FBIngredient[];
+}
+
+export interface FBMenuItem {
+  id: string;
+  propertyId: string;
+  categoryId: string;
+  name: string;
+  description?: string;
+  price: number;
+  ingredients: FBIngredient[];
+  flavors?: FBFlavor[];
+  active: boolean;
+  order?: number;
+  imageUrl?: string | null;
+  createdAt: Timestamp;
+}
+
+export interface FBOrderItem {
+  menuItemId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  notes?: string;
+  flavor?: string;
+  guestName?: string;
+}
+
+export interface FBOrder {
+  id: string;
+  propertyId: string;
+  stayId?: string | null;
+  type: 'breakfast' | 'restaurant';
+  modality: 'delivery' | 'buffet' | 'table';
+  status: 'pending' | 'confirmed' | 'preparing' | 'delivered' | 'cancelled';
+  items: FBOrderItem[];
+  totalPrice: number;
+  deliveryTime?: string; // e.g., "08:30"
+  deliveryDate?: string; // YYYY-MM-DD
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }

@@ -90,7 +90,7 @@ export default function SuperAdminDashboard() {
 
   return (
     <RoleGuard allowedRoles={["super_admin"]}>
-      <div className="p-8 max-w-[1600px] mx-auto space-y-10 animate-in fade-in duration-500">
+      <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-4 md:space-y-10 animate-in fade-in duration-500">
 
         {/* Header */}
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-border pb-8">

@@ -37,7 +37,7 @@ function hexToHSL(hex: string): string {
     return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
 }
 
-type TabType = 'visual' | 'operational' | 'policies' | 'danger';
+type TabType = 'visual' | 'operational' | 'f_b' | 'policies' | 'danger';
 type MultiLangObj = { pt: string, en: string, es: string };
 
 // Helper para converter strings antigas do banco em objetos Multilíngues
@@ -130,7 +130,27 @@ export default function PropertySettingsPage() {
         // Pet Settings
         acceptsPets: true,
         petMinWeight: 1,
-        petMaxWeight: 15
+        petMaxWeight: 15,
+
+        // NOVO: F&B Settings Detalhado
+        fbSettings: {
+            restaurant: {
+                enabled: false,
+                name: "Restaurante Principal",
+                operatingHours: []
+            },
+            breakfast: {
+                enabled: false,
+                modality: "buffet" as 'delivery' | 'buffet' | 'both',
+                name: "Café da Manhã",
+                buffetHours: [],
+                delivery: {
+                    orderWindowStart: "18:00",
+                    orderWindowEnd: "22:00",
+                    deliveryTimes: ["08:30", "09:30", "10:30"]
+                }
+            }
+        }
     });
 
     useEffect(() => {
@@ -177,7 +197,8 @@ export default function PropertySettingsPage() {
                     generalPolicyText: parseMultiLang(s.generalPolicyText, prev.generalPolicyText),
                     acceptsPets: s.acceptsPets !== undefined ? s.acceptsPets : prev.acceptsPets,
                     petMinWeight: s.petMinWeight !== undefined ? s.petMinWeight : prev.petMinWeight,
-                    petMaxWeight: s.petMaxWeight !== undefined ? s.petMaxWeight : prev.petMaxWeight
+                    petMaxWeight: s.petMaxWeight !== undefined ? s.petMaxWeight : prev.petMaxWeight,
+                    fbSettings: s.fbSettings || prev.fbSettings
                 }));
             }
 
@@ -337,7 +358,7 @@ export default function PropertySettingsPage() {
     if (loading) return <div className="flex justify-center p-24"><Loader2 className="animate-spin text-primary" size={40} /></div>;
 
     return (
-        <div className="p-8 max-w-[1600px] mx-auto space-y-8 min-h-screen">
+        <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-4 md:space-y-8 min-h-screen">
             {/* Header */}
             <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
@@ -345,7 +366,7 @@ export default function PropertySettingsPage() {
                         <ArrowLeft size={20} />
                     </button>
                     <div>
-                        <h1 className="text-3xl font-black tracking-tight flex items-center gap-3">
+                        <h1 className="text-xl md:text-3xl font-black tracking-tight flex items-center gap-3">
                             {basicInfo.name || property?.name}
                         </h1>
                         <p className="text-muted-foreground text-sm font-medium mt-1">Gerencie a identidade, regras e políticas globais.</p>
@@ -380,6 +401,12 @@ export default function PropertySettingsPage() {
                     className={cn("pb-4 font-bold uppercase tracking-widest text-xs flex items-center gap-2 transition-all border-b-2 whitespace-nowrap", activeTab === 'policies' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}
                 >
                     <ShieldCheck size={16} /> Políticas & Termos
+                </button>
+                <button
+                    onClick={() => setActiveTab('f_b')}
+                    className={cn("pb-4 font-bold uppercase tracking-widest text-xs flex items-center gap-2 transition-all border-b-2 whitespace-nowrap", activeTab === 'f_b' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}
+                >
+                    <Coffee size={16} /> Gastronomia (F&B)
                 </button>
                 {isSuperAdmin && (
                     <button
@@ -607,43 +634,18 @@ export default function PropertySettingsPage() {
                                 </div>
                             </section>
 
-                            {/* Horários: Café da Manhã */}
-                            <section className="bg-card border border-border p-8 rounded-[32px] space-y-6">
+                            {/* Horários: Café da Manhã (Movido para F&B) */}
+                            <section className="bg-card border border-border p-8 rounded-[32px] space-y-6 opacity-50 relative overflow-hidden">
+                                <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-10 flex items-center justify-center">
+                                    <div className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-bold uppercase tracking-widest text-xs flex items-center gap-2">
+                                        <Coffee size={16} /> Movido para aba Gastronomia
+                                    </div>
+                                </div>
                                 <h3 className="font-bold text-lg flex items-center gap-2 text-primary">
                                     <Coffee size={20} /> Café da Manhã
                                 </h3>
                                 <div className="space-y-4">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Modalidade Padrão</label>
-                                        <select
-                                            value={settings.breakfastModality}
-                                            onChange={e => setSettings({ ...settings, breakfastModality: e.target.value })}
-                                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground appearance-none"
-                                        >
-                                            <option value="buffet">Buffet Livre (Presencial)</option>
-                                            <option value="delivery">Delivery (Na Cabana)</option>
-                                        </select>
-                                        <p className="text-xs text-muted-foreground">Esta opção define o que o hóspede visualiza primeiro no portal.</p>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-6 pt-4 border-t border-border">
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Início do Buffet</label>
-                                            <input type="time" value={settings.buffetStartTime} onChange={e => setSettings({ ...settings, buffetStartTime: e.target.value })} className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground [color-scheme:light] dark:[color-scheme:dark]" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Fim do Buffet</label>
-                                            <input type="time" value={settings.buffetEndTime} onChange={e => setSettings({ ...settings, buffetEndTime: e.target.value })} className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground [color-scheme:light] dark:[color-scheme:dark]" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Início Pedidos Delivery</label>
-                                            <input type="time" value={settings.deliveryStartTime} onChange={e => setSettings({ ...settings, deliveryStartTime: e.target.value })} className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground [color-scheme:light] dark:[color-scheme:dark]" />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Fim Pedidos Delivery</label>
-                                            <input type="time" value={settings.deliveryEndTime} onChange={e => setSettings({ ...settings, deliveryEndTime: e.target.value })} className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground [color-scheme:light] dark:[color-scheme:dark]" />
-                                        </div>
-                                    </div>
+                                    <p className="text-xs text-muted-foreground">O módulo de café da manhã agora é configurado na aba "Gastronomia (F&B)".</p>
                                 </div>
                             </section>
 
@@ -723,6 +725,161 @@ export default function PropertySettingsPage() {
                             />
 
                         </section>
+                    )}
+
+                    {activeTab === 'f_b' && (
+                        <div className="space-y-8 animate-in fade-in">
+                            {/* RESTAURANTE */}
+                            <section className="bg-card border border-border p-8 rounded-[32px] space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="font-bold text-lg flex items-center gap-2 text-primary">
+                                        Restaurante
+                                    </h3>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSettings(prev => ({
+                                            ...prev,
+                                            fbSettings: { ...prev.fbSettings, restaurant: { ...prev.fbSettings.restaurant, enabled: !prev.fbSettings.restaurant.enabled } }
+                                        }))}
+                                        className={cn(
+                                            "relative w-14 h-7 rounded-full transition-colors duration-200",
+                                            settings.fbSettings.restaurant.enabled ? "bg-primary" : "bg-secondary border border-border"
+                                        )}
+                                    >
+                                        <span className={cn(
+                                            "absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200",
+                                            settings.fbSettings.restaurant.enabled && "translate-x-7"
+                                        )} />
+                                    </button>
+                                </div>
+
+                                {settings.fbSettings.restaurant.enabled && (
+                                    <div className="space-y-4 pt-4 border-t border-border animate-in fade-in">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Nome do Restaurante</label>
+                                            <input
+                                                value={settings.fbSettings.restaurant.name}
+                                                onChange={e => setSettings(prev => ({
+                                                    ...prev,
+                                                    fbSettings: { ...prev.fbSettings, restaurant: { ...prev.fbSettings.restaurant, name: e.target.value } }
+                                                }))}
+                                                className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
+                                            />
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">O horário de funcionamento será gerenciado posteriormente dentro do Módulo F&B Menu.</p>
+                                    </div>
+                                )}
+                            </section>
+
+                            {/* CAFÉ DA MANHÃ */}
+                            <section className="bg-card border border-border p-8 rounded-[32px] space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="font-bold text-lg flex items-center gap-2 text-primary">
+                                        <Coffee size={20} /> Café da Manhã
+                                    </h3>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSettings(prev => ({
+                                            ...prev,
+                                            fbSettings: { ...prev.fbSettings, breakfast: { ...prev.fbSettings.breakfast, enabled: !prev.fbSettings.breakfast.enabled } }
+                                        }))}
+                                        className={cn(
+                                            "relative w-14 h-7 rounded-full transition-colors duration-200",
+                                            settings.fbSettings.breakfast.enabled ? "bg-primary" : "bg-secondary border border-border"
+                                        )}
+                                    >
+                                        <span className={cn(
+                                            "absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200",
+                                            settings.fbSettings.breakfast.enabled && "translate-x-7"
+                                        )} />
+                                    </button>
+                                </div>
+
+                                {settings.fbSettings.breakfast.enabled && (
+                                    <div className="space-y-6 pt-4 border-t border-border animate-in fade-in">
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Nome do Café</label>
+                                                <input
+                                                    value={settings.fbSettings.breakfast.name}
+                                                    onChange={e => setSettings(prev => ({
+                                                        ...prev,
+                                                        fbSettings: { ...prev.fbSettings, breakfast: { ...prev.fbSettings.breakfast, name: e.target.value } }
+                                                    }))}
+                                                    className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Modalidade</label>
+                                                <select
+                                                    value={settings.fbSettings.breakfast.modality}
+                                                    onChange={e => setSettings(prev => ({
+                                                        ...prev,
+                                                        fbSettings: { ...prev.fbSettings, breakfast: { ...prev.fbSettings.breakfast, modality: e.target.value as any } }
+                                                    }))}
+                                                    className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground appearance-none"
+                                                >
+                                                    <option value="buffet">Apenas Buffet Livre</option>
+                                                    <option value="delivery">Apenas Delivery (Na Cabana)</option>
+                                                    <option value="both">Buffet + Delivery</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        {(settings.fbSettings.breakfast.modality === 'delivery' || settings.fbSettings.breakfast.modality === 'both') && (
+                                            <div className="bg-secondary p-6 rounded-2xl space-y-4">
+                                                <h4 className="font-bold text-sm">Configuração de Pedidos (Delivery)</h4>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="space-y-2">
+                                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Início Pedidos (Dia Anterior)</label>
+                                                        <input
+                                                            type="time"
+                                                            value={settings.fbSettings.breakfast.delivery?.orderWindowStart || "18:00"}
+                                                            onChange={e => setSettings(prev => ({
+                                                                ...prev,
+                                                                fbSettings: { ...prev.fbSettings, breakfast: { ...prev.fbSettings.breakfast, delivery: { ...prev.fbSettings.breakfast.delivery!, orderWindowStart: e.target.value } } }
+                                                            }))}
+                                                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Limite Pedidos</label>
+                                                        <input
+                                                            type="time"
+                                                            value={settings.fbSettings.breakfast.delivery?.orderWindowEnd || "22:00"}
+                                                            onChange={e => setSettings(prev => ({
+                                                                ...prev,
+                                                                fbSettings: { ...prev.fbSettings, breakfast: { ...prev.fbSettings.breakfast, delivery: { ...prev.fbSettings.breakfast.delivery!, orderWindowEnd: e.target.value } } }
+                                                            }))}
+                                                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Horários de Entrega (Separados por vírgula)</label>
+                                                    <input
+                                                        type="text"
+                                                        placeholder="08:30, 09:30, 10:30"
+                                                        value={settings.fbSettings.breakfast.delivery?.deliveryTimes?.join(", ") || ""}
+                                                        onChange={e => {
+                                                            const arr = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
+                                                            setSettings(prev => ({
+                                                                ...prev,
+                                                                fbSettings: { ...prev.fbSettings, breakfast: { ...prev.fbSettings.breakfast, delivery: { ...prev.fbSettings.breakfast.delivery!, deliveryTimes: arr } } }
+                                                            }))
+                                                        }}
+                                                        className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+
+                                    </div>
+                                )}
+                            </section>
+
+                        </div>
                     )}
 
                     {activeTab === 'danger' && isSuperAdmin && (

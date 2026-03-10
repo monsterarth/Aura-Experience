@@ -14,7 +14,7 @@ import {
   Sparkles, Building, ChevronDown, LogOut,
   MessageSquare, Settings, Globe, Menu, X,
   Star, ClipboardList, Calendar, Bot, FileText,
-  Loader2, ChevronLeft, ChevronRight
+  Loader2, ChevronLeft, ChevronRight, BellRing, Coffee
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import Image from "next/image";
@@ -72,13 +72,15 @@ export const Sidebar = () => {
   // BLOCO 1: OPERAÇÃO DIÁRIA
   // ==========================================
   const operacaoItems = [
-    { title: "Dashboard", icon: LayoutDashboard, href: "/admin/core/dashboard", roles: ["super_admin"] },
+    { title: "Painel Aura", icon: LayoutDashboard, href: "/admin/core/dashboard", roles: ["super_admin"] },
+    { title: "Recepção", icon: BellRing, href: "/admin/reception", roles: ["super_admin", "admin", "reception"] },
     { title: "Estadias", icon: Home, href: "/admin/stays", roles: ["super_admin", "admin", "reception", "governance"] },
     { title: "Mapa de Reservas", icon: Calendar, href: "/admin/reservation-map", roles: ["super_admin", "admin", "reception"] },
     { title: "Comunicação", icon: MessageSquare, href: "/admin/comunicacao", roles: ["super_admin", "admin", "reception"] },
     { title: "Governança", icon: Sparkles, href: "/admin/governance", roles: ["super_admin", "admin", "governance"] },
     { title: "Agenda Estrut.", icon: Calendar, href: "/admin/core/structures/bookings", roles: ["super_admin", "admin", "reception"] },
     { title: "Manutenção", icon: Wrench, href: "/admin/maintenance", roles: ["super_admin", "admin", "maintenance"] },
+    { title: "Gastronomia", icon: Coffee, href: "/admin/food-and-beverage/menu", roles: ["super_admin", "admin", "reception", "kitchen", "waiter"] },
     { title: "Avaliações", icon: Star, href: "/admin/surveys/responses", roles: ["super_admin", "admin", "reception"] },
   ];
 

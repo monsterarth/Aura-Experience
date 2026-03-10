@@ -96,10 +96,10 @@ export default function StaffManagementPage() {
 
   return (
     <RoleGuard allowedRoles={["super_admin", "admin"]}>
-      <div className="p-8 max-w-7xl mx-auto space-y-8">
+      <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-4 md:space-y-8">
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-black tracking-tight flex items-center gap-2">
+            <h1 className="text-xl md:text-3xl font-black tracking-tight flex items-center gap-2">
               <Users className="text-primary" /> Equipa Aura
             </h1>
             <p className="text-muted-foreground">Gira os acessos e permissões da propriedade.</p>

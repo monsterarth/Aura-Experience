@@ -193,10 +193,11 @@ export const StayService = {
     if (error || !stays) return [];
 
     const enriched = await Promise.all(stays.map(async (stay: any) => {
-      const { data: cabin } = await supabase.from('cabins').select('name').eq('id', stay.cabinId).maybeSingle();
+      const { data: cabin } = await supabase.from('cabins').select('name, wifi').eq('id', stay.cabinId).maybeSingle();
       return {
         ...stay,
-        cabinName: cabin ? cabin.name : "Acomodação"
+        cabinName: cabin ? cabin.name : "Acomodação",
+        cabinWifi: cabin ? cabin.wifi : undefined
       };
     }));
 
