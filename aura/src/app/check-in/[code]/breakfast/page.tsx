@@ -119,9 +119,13 @@ function BreakfastWizard() {
                 const s = stays[0] as Stay;
                 setStay(s);
 
-                // Inicializar nomes com o valor correto de counts da estadia
-                const realCount = Math.max(1, (s.counts?.adults || 0) + (s.counts?.children || 0));
-                setGuestNames(Array.from({ length: realCount }, (_, i) => `Hóspede ${i + 1}`));
+                // Buscar titular e construir lista de nomes reais dos hóspedes
+                const stayData = await StayService.getStayWithGuestAndCabin(s.propertyId, s.id);
+                const primaryFirstName = stayData?.guest?.fullName?.split(' ')[0] || 'Hóspede 1';
+                const additionalFirstNames = (s.additionalGuests || [])
+                    .filter((g: any) => g.type !== 'free')
+                    .map((g: any, i: number) => g.fullName?.split(' ')[0] || `Hóspede ${i + 2}`);
+                setGuestNames([primaryFirstName, ...additionalFirstNames]);
 
                 const prop = await PropertyService.getPropertyById(s.propertyId);
                 if (!prop) return;
@@ -453,28 +457,6 @@ function BreakfastWizard() {
                 {/* STEP 1: Seleção de Itens */}
                 {step === 1 && (
                     <div className="space-y-8 animate-in slide-in-from-right-4 duration-500 relative">
-
-                        {/* Bloco de nomes — para qualquer categoria individual */}
-                        {categories.some(c => c.selectionTarget === 'individual') && (
-                            <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
-                                <p className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                                    <Info size={12} /> {totalGuests === 1 ? 'Identifique-se' : 'Quem está hospedado?'}
-                                </p>
-                                {guestNames.map((name, idx) => (
-                                    <div key={idx} className="flex items-center gap-3">
-                                        <span className="text-xs text-muted-foreground shrink-0 w-20">
-                                            {totalGuests === 1 ? 'Seu nome' : `Hóspede ${idx + 1}`}
-                                        </span>
-                                        <input
-                                            value={name}
-                                            onChange={e => setGuestNames(prev => prev.map((n, i) => i === idx ? e.target.value : n))}
-                                            className="flex-1 bg-secondary border border-border px-3 py-2 rounded-xl text-sm font-bold outline-none focus:border-primary/50 transition-all"
-                                            placeholder={totalGuests === 1 ? 'Seu nome' : `Hóspede ${idx + 1}`}
-                                        />
-                                    </div>
-                                ))}
-                            </div>
-                        )}
 
                         {categories.map(category => {
                             const catItems = items.filter(i => i.categoryId === category.id);
