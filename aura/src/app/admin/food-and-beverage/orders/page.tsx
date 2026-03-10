@@ -151,12 +151,15 @@ export default function FBOrdersPage() {
                         ))}
                     </div>
 
-                    {printingOrder.items.find((it: any) => it.menuItemId === 'guest_observations') && (
-                        <div className="border-b-2 border-dashed border-black pb-4 mb-4">
-                            <p className="font-extrabold text-sm uppercase mb-1">OBSERVAÇÕES:</p>
-                            <p className="text-sm whitespace-pre-wrap break-words">{printingOrder.items.find((it: any) => it.menuItemId === 'guest_observations').notes}</p>
-                        </div>
-                    )}
+                    {(() => {
+                        const obs = (printingOrder.items as any[]).find(it => it.menuItemId === 'guest_observations');
+                        return obs ? (
+                            <div className="border-b-2 border-dashed border-black pb-4 mb-4">
+                                <p className="font-extrabold text-sm uppercase mb-1">OBSERVAÇÕES:</p>
+                                <p className="text-sm whitespace-pre-wrap break-words">{obs.notes}</p>
+                            </div>
+                        ) : null;
+                    })()}
 
                     <div className="text-center font-bold text-sm mb-4">
                         TOTAL: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(printingOrder.totalPrice)}
