@@ -134,7 +134,7 @@ export const Sidebar = () => {
 
       {/* SIDEBAR */}
       <aside className={cn(
-        "fixed lg:static top-0 left-0 z-50 h-[100dvh] bg-card border-r border-white/5 flex flex-col p-4 transition-all duration-300 shadow-2xl lg:shadow-none flex-shrink-0 relative group/sidebar",
+        "fixed lg:static top-0 left-0 z-50 h-[100dvh] bg-card border-r border-white/5 flex flex-col p-4 transition-all duration-300 shadow-2xl lg:shadow-none flex-shrink-0 lg:relative group/sidebar",
         isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         isCollapsed ? "w-[88px]" : "w-72"
       )}>
