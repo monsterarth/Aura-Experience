@@ -213,7 +213,8 @@ export interface HousekeepingTask {
   unitId?: string; // Para uma unidade específica da estrutura
   stayId?: string; // Para limpezas diárias vinculadas a uma estadia ativa
   type: 'turnover' | 'daily' | 'custom'; // Turnover = Faxina de Troca | Daily = Arrumação | Custom = Personalizada
-  status: 'pending' | 'in_progress' | 'waiting_conference' | 'completed' | 'cancelled';
+  status: 'pending' | 'in_progress' | 'waiting_conference' | 'completed' | 'cancelled' | 'paused' | 'skipped';
+  paused_until?: string; // ISO timestamp — DND
 
   // Controle de Pessoal
   assignedTo?: string[]; // Múltiplas camareiras
@@ -301,7 +302,9 @@ export interface MaintenanceTask {
   title: string;
   description: string;
   priority: 'low' | 'medium' | 'high' | 'urgent';
-  status: 'pending' | 'in_progress' | 'waiting_conference' | 'completed' | 'cancelled';
+  status: 'pending' | 'in_progress' | 'waiting_conference' | 'completed' | 'cancelled' | 'paused';
+  pausedUntil?: string;    // ISO timestamp — DND pause
+  previousStatus?: string; // Status before DND pause
 
   assignedTo: string[]; // General assignees for the card
 
@@ -446,6 +449,10 @@ export interface Stay {
 
   housekeepingItems?: { id: string; label: string }[];
   hasOpenFolio?: boolean; // Flag para o ícone de alerta
+
+  // DND — Não Perturbe
+  dnd_enabled?: boolean;
+  dnd_until?: string; // ISO timestamp
 
   createdAt: Timestamp;
 }
@@ -711,6 +718,20 @@ export type EventCategory =
   | 'birthday'
   | 'other';
 export type EventStatus = 'draft' | 'published' | 'cancelled' | 'finished';
+
+// ==========================================
+// MÓDULO DE BUGS / PROBLEMAS DO SISTEMA
+// ==========================================
+
+export interface SystemBug {
+  id: string;
+  stayId?: string;
+  propertyId: string;
+  description: string;
+  browser_info?: string;
+  status: 'open' | 'in_progress' | 'resolved';
+  createdAt: Timestamp;
+}
 
 export interface Event {
   id: string;

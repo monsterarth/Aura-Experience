@@ -5,8 +5,11 @@ import { useParams, useRouter } from "next/navigation";
 import { StayService } from "@/services/stay-service";
 import { SurveyService } from "@/services/survey-service";
 import { PropertyService } from "@/services/property-service";
-import { Stay, Property } from "@/types/aura";
-import { Loader2, CheckCircle, FileText, Share, AlertCircle, Phone, Star, ArrowRight, Coffee, Calendar, BellRing, BookOpen, Wifi, Key, Ticket, MessageSquare, Menu, X, Lock } from "lucide-react";
+import { StructureService } from "@/services/structure-service";
+import { Stay, Property, Structure } from "@/types/aura";
+import { Loader2, CheckCircle, FileText, Share, AlertCircle, Phone, Star, ArrowRight, Coffee, Calendar, BellRing, BookOpen, Wifi, Key, Ticket, MessageSquare, Menu, X, Lock, Moon, Clock, Flag } from "lucide-react";
+import { toggleGuestDND } from "@/app/actions/dnd-actions";
+import { reportCabinIssue, reportStructureIssue, reportAppBug } from "@/app/actions/issue-actions";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -90,6 +93,27 @@ const hubTranslations = {
         checkoutTitle: 'Obrigado pela visita!',
         checkoutDesc: 'Agradecemos por nos escolher. Volte sempre e tenha uma ótima viagem!',
         needHelp: 'Precisou de algo?',
+        dnd: 'Não Perturbe',
+        dndSub: 'Suspender limpeza do quarto',
+        dndActive: 'Modo Não Perturbe ativo',
+        dndUntil: 'Retoma às',
+        dndConfirmTitle: 'Suspender a limpeza?',
+        dndOption1h: '1 hora',
+        dndOption24h: '24 horas',
+        dndOption48h: '48 horas',
+        dndCancel: 'Cancelar',
+        dndDisable: 'Retomar limpeza normal',
+        reportProblem: 'Reportar Problema',
+        reportProblemSub: 'Informe algo que precisa de atenção',
+        cabinIssue: 'Problema na Cabana',
+        commonAreaIssue: 'Área Comum',
+        appBug: 'Bug no App',
+        canEnterNow: 'Pode entrar agora?',
+        submitReport: 'Enviar Relatório',
+        reportSent: 'Relatório enviado! Obrigado.',
+        describeIssue: 'Descreva o problema...',
+        selectArea: 'Selecione a área afetada',
+        back: 'Voltar',
     },
     en: {
         welcome: 'Welcome to your',
@@ -124,6 +148,27 @@ const hubTranslations = {
         checkoutTitle: 'Thank you for your visit!',
         checkoutDesc: 'We appreciate you choosing us. Come back soon and have a great trip!',
         needHelp: 'Need anything?',
+        dnd: 'Do Not Disturb',
+        dndSub: 'Pause room cleaning',
+        dndActive: 'Do Not Disturb is active',
+        dndUntil: 'Resumes at',
+        dndConfirmTitle: 'Pause cleaning?',
+        dndOption1h: '1 hour',
+        dndOption24h: '24 hours',
+        dndOption48h: '48 hours',
+        dndCancel: 'Cancel',
+        dndDisable: 'Resume normal cleaning',
+        reportProblem: 'Report a Problem',
+        reportProblemSub: 'Let us know what needs attention',
+        cabinIssue: 'Cabin Issue',
+        commonAreaIssue: 'Common Area',
+        appBug: 'App Bug',
+        canEnterNow: 'Can staff enter now?',
+        submitReport: 'Submit Report',
+        reportSent: 'Report sent! Thank you.',
+        describeIssue: 'Describe the problem...',
+        selectArea: 'Select the affected area',
+        back: 'Back',
     },
     es: {
         welcome: 'Bienvenido(a) a su',
@@ -158,6 +203,27 @@ const hubTranslations = {
         checkoutTitle: '¡Gracias por su visita!',
         checkoutDesc: 'Gracias por elegirnos. ¡Vuelva pronto y que tenga un buen viaje!',
         needHelp: '¿Necesita algo?',
+        dnd: 'No Molestar',
+        dndSub: 'Pausar limpieza de habitación',
+        dndActive: 'Modo No Molestar activo',
+        dndUntil: 'Reanuda a las',
+        dndConfirmTitle: '¿Pausar la limpieza?',
+        dndOption1h: '1 hora',
+        dndOption24h: '24 horas',
+        dndOption48h: '48 horas',
+        dndCancel: 'Cancelar',
+        dndDisable: 'Reanudar limpieza normal',
+        reportProblem: 'Reportar Problema',
+        reportProblemSub: 'Infórmenos qué necesita atención',
+        cabinIssue: 'Problema en la Cabaña',
+        commonAreaIssue: 'Área Común',
+        appBug: 'Error en la App',
+        canEnterNow: '¿Puede entrar el personal ahora?',
+        submitReport: 'Enviar Reporte',
+        reportSent: '¡Reporte enviado! Gracias.',
+        describeIssue: 'Describa el problema...',
+        selectArea: 'Seleccione el área afectada',
+        back: 'Volver',
     },
 };
 
@@ -186,6 +252,19 @@ function GuestHubContent() {
     // Modals
     const [showWifiModal, setShowWifiModal] = useState(false);
     const [showGateModal, setShowGateModal] = useState(false);
+    const [showDndModal, setShowDndModal] = useState(false);
+    const [dndEnabled, setDndEnabled] = useState(false);
+    const [dndUntil, setDndUntil] = useState<string | null>(null);
+    const [dndLoading, setDndLoading] = useState(false);
+
+    // Issue reporting
+    const [isReportOpen, setIsReportOpen] = useState(false);
+    const [reportStep, setReportStep] = useState<'type' | 'cabin' | 'structure' | 'bug'>('type');
+    const [reportDescription, setReportDescription] = useState('');
+    const [canEnterNow, setCanEnterNow] = useState(false);
+    const [reportStructureId, setReportStructureId] = useState('');
+    const [structures, setStructures] = useState<Structure[]>([]);
+    const [reportLoading, setReportLoading] = useState(false);
 
     useEffect(() => {
         async function init() {
@@ -206,9 +285,17 @@ function GuestHubContent() {
                 setStays(stays as Stay[]);
                 const firstStay = stays[0] as Stay;
                 setStay(firstStay);
+                setDndEnabled(firstStay.dnd_enabled ?? false);
+                setDndUntil(firstStay.dnd_until ?? null);
 
                 const prop = await PropertyService.getPropertyById(firstStay.propertyId);
                 setProperty(prop as Property);
+
+                // Fetch structures for issue reporting flow
+                try {
+                    const structuresData = await StructureService.getStructures(firstStay.propertyId);
+                    setStructures(structuresData as Structure[]);
+                } catch { /* silently ignore */ }
 
                 // Ler idioma preferido do hóspede, fallback para idioma do browser
                 try {
@@ -448,6 +535,30 @@ function GuestHubContent() {
         }
 
         // DASHBOARD DO HOSPEDE
+        const handleDnd = async (durationHours: number | null) => {
+            setDndLoading(true);
+            setShowDndModal(false);
+            try {
+                const result = await toggleGuestDND(stay.id, stay.accessCode, durationHours);
+                if (result.success) {
+                    setDndEnabled(durationHours !== null);
+                    setDndUntil(result.dnd_until ?? null);
+                    toast.success(durationHours === null ? 'Limpeza retomada!' : 'Modo Não Perturbe ativado.');
+                } else {
+                    toast.error('Não foi possível atualizar o Não Perturbe.');
+                }
+            } catch {
+                toast.error('Erro ao atualizar Não Perturbe.');
+            } finally {
+                setDndLoading(false);
+            }
+        };
+
+        // 48h option is only shown if checkout is more than 48h away
+        const hoursUntilCheckout = stay.checkOut
+            ? (new Date(stay.checkOut).getTime() - Date.now()) / (1000 * 60 * 60)
+            : 999;
+
         const fbEnabled = property?.settings?.fbSettings?.breakfast?.enabled &&
             (property.settings.fbSettings.breakfast.modality === 'delivery' || property.settings.fbSettings.breakfast.modality === 'both');
 
@@ -572,6 +683,69 @@ function GuestHubContent() {
                             </div>
                         </button>
 
+                        {/* DND Card (Full Width) */}
+                        <div className={cn(
+                            "col-span-2 p-5 rounded-[2rem] border transition-all",
+                            dndEnabled
+                                ? "bg-yellow-500/5 border-yellow-500/50"
+                                : "bg-card border-border shadow-sm"
+                        )}>
+                            <div className="flex items-center justify-between gap-4">
+                                <div className="flex items-center gap-4">
+                                    <div className={cn(
+                                        "w-10 h-10 rounded-2xl flex items-center justify-center shrink-0",
+                                        dndEnabled ? "bg-yellow-500 text-white" : "bg-secondary text-foreground"
+                                    )}>
+                                        <Moon size={20} />
+                                    </div>
+                                    <div className="text-left">
+                                        <h3 className="font-bold text-sm uppercase tracking-wider">
+                                            {dndEnabled ? t.dndActive : t.dnd}
+                                        </h3>
+                                        {dndEnabled && dndUntil ? (
+                                            <p className="text-[10px] font-medium text-yellow-600 mt-0.5 flex items-center gap-1">
+                                                <Clock size={10} />
+                                                {t.dndUntil} {new Date(dndUntil).toLocaleTimeString(lang === 'en' ? 'en-US' : lang === 'es' ? 'es-ES' : 'pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                            </p>
+                                        ) : (
+                                            <p className="text-[10px] font-medium text-muted-foreground mt-0.5">{t.dndSub}</p>
+                                        )}
+                                    </div>
+                                </div>
+                                {dndEnabled ? (
+                                    <button
+                                        onClick={() => handleDnd(null)}
+                                        disabled={dndLoading}
+                                        className="text-[10px] font-bold uppercase px-3 py-2 bg-yellow-500/10 text-yellow-700 hover:bg-yellow-500 hover:text-white rounded-xl transition-all disabled:opacity-50 shrink-0"
+                                    >
+                                        {dndLoading ? <Loader2 size={14} className="animate-spin" /> : t.dndDisable}
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={() => setShowDndModal(true)}
+                                        disabled={dndLoading}
+                                        className="text-[10px] font-bold uppercase px-3 py-2 bg-secondary text-foreground hover:bg-primary hover:text-primary-foreground rounded-xl transition-all disabled:opacity-50 shrink-0"
+                                    >
+                                        {dndLoading ? <Loader2 size={14} className="animate-spin" /> : 'Ativar'}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Report Problem (Full Width) */}
+                        <button
+                            onClick={() => { setReportStep('type'); setReportDescription(''); setCanEnterNow(false); setReportStructureId(''); setIsReportOpen(true); }}
+                            className="col-span-2 bg-card border border-border p-5 rounded-[2rem] shadow-sm hover:shadow-md hover:border-red-400/50 transition-all flex items-center gap-4 group"
+                        >
+                            <div className="w-10 h-10 bg-secondary rounded-2xl flex items-center justify-center text-foreground group-hover:bg-red-500 group-hover:text-white transition-colors shrink-0">
+                                <Flag size={20} />
+                            </div>
+                            <div className="text-left flex-1">
+                                <h3 className="font-bold text-sm uppercase tracking-wider">{t.reportProblem}</h3>
+                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">{t.reportProblemSub}</p>
+                            </div>
+                        </button>
+
                         {/* Surveys (Full Width) */}
                         <button onClick={() => router.push(`/feedback/${stay.id}`)} className="col-span-2 bg-secondary/50 border border-border/50 p-5 rounded-[2rem] shadow-sm hover:shadow-md hover:border-primary/50 transition-all flex items-center gap-4 group mt-2">
                             <div className="w-10 h-10 bg-card rounded-2xl flex items-center justify-center text-foreground group-hover:bg-yellow-500 group-hover:text-white transition-colors shadow-sm">
@@ -620,6 +794,213 @@ function GuestHubContent() {
                                     <p className="text-sm font-medium text-muted-foreground">O Wi-Fi da acomodação não foi configurado.</p>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                )}
+
+                {/* DND Modal */}
+                {showDndModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in">
+                        <div className="bg-card w-full max-w-sm rounded-3xl shadow-2xl p-6 relative border border-border animate-in zoom-in-95">
+                            <button onClick={() => setShowDndModal(false)} className="absolute top-4 right-4 p-2 bg-secondary rounded-full hover:bg-accent transition-colors">
+                                <X size={20} />
+                            </button>
+                            <div className="w-16 h-16 bg-yellow-500/10 rounded-full flex items-center justify-center text-yellow-500 mb-4">
+                                <Moon size={32} />
+                            </div>
+                            <h2 className="text-2xl font-black uppercase tracking-tighter mb-1">{t.dndConfirmTitle}</h2>
+                            <p className="text-sm text-muted-foreground mb-6">Faxinas de troca (check-out) nunca são suspensas.</p>
+                            <div className="flex flex-col gap-3">
+                                <button onClick={() => handleDnd(1)} className="w-full py-3 bg-yellow-500/10 text-yellow-700 hover:bg-yellow-500 hover:text-white font-bold uppercase rounded-2xl transition-all text-sm">
+                                    {t.dndOption1h}
+                                </button>
+                                <button onClick={() => handleDnd(24)} className="w-full py-3 bg-yellow-500/10 text-yellow-700 hover:bg-yellow-500 hover:text-white font-bold uppercase rounded-2xl transition-all text-sm">
+                                    {t.dndOption24h}
+                                </button>
+                                {hoursUntilCheckout >= 48 && (
+                                    <button onClick={() => handleDnd(48)} className="w-full py-3 bg-yellow-500/10 text-yellow-700 hover:bg-yellow-500 hover:text-white font-bold uppercase rounded-2xl transition-all text-sm">
+                                        {t.dndOption48h}
+                                    </button>
+                                )}
+                                <button onClick={() => setShowDndModal(false)} className="w-full py-3 bg-secondary text-muted-foreground hover:bg-accent font-bold uppercase rounded-2xl transition-all text-sm mt-1">
+                                    {t.dndCancel}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Report Problem Modal */}
+                {isReportOpen && (
+                    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in">
+                        <div className="bg-card w-full max-w-sm rounded-3xl shadow-2xl relative border border-border animate-in slide-in-from-bottom-4 sm:zoom-in-95 overflow-hidden">
+                            <header className="p-6 pb-4 flex items-center justify-between border-b border-border">
+                                <div className="flex items-center gap-3">
+                                    {reportStep !== 'type' && (
+                                        <button onClick={() => setReportStep('type')} className="p-1.5 bg-secondary rounded-full hover:bg-accent transition-colors">
+                                            <ArrowRight size={14} className="rotate-180" />
+                                        </button>
+                                    )}
+                                    <div className="w-8 h-8 bg-red-500/10 rounded-full flex items-center justify-center text-red-500">
+                                        <Flag size={16} />
+                                    </div>
+                                    <h2 className="text-lg font-black uppercase tracking-tighter">{t.reportProblem}</h2>
+                                </div>
+                                <button onClick={() => setIsReportOpen(false)} className="p-2 bg-secondary rounded-full hover:bg-accent transition-colors">
+                                    <X size={18} />
+                                </button>
+                            </header>
+
+                            <div className="p-6 space-y-4">
+                                {/* Step 1 — Type selection */}
+                                {reportStep === 'type' && (
+                                    <div className="flex flex-col gap-3">
+                                        <button
+                                            onClick={() => setReportStep('cabin')}
+                                            className="w-full py-4 bg-secondary hover:bg-primary hover:text-primary-foreground rounded-2xl font-bold text-sm uppercase tracking-wider transition-all flex items-center gap-3 px-4"
+                                        >
+                                            <Key size={18} className="shrink-0" /> {t.cabinIssue}
+                                        </button>
+                                        <button
+                                            onClick={() => setReportStep('structure')}
+                                            className="w-full py-4 bg-secondary hover:bg-primary hover:text-primary-foreground rounded-2xl font-bold text-sm uppercase tracking-wider transition-all flex items-center gap-3 px-4"
+                                        >
+                                            <BellRing size={18} className="shrink-0" /> {t.commonAreaIssue}
+                                        </button>
+                                        <button
+                                            onClick={() => setReportStep('bug')}
+                                            className="w-full py-4 bg-secondary hover:bg-primary hover:text-primary-foreground rounded-2xl font-bold text-sm uppercase tracking-wider transition-all flex items-center gap-3 px-4"
+                                        >
+                                            <AlertCircle size={18} className="shrink-0" /> {t.appBug}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Step 2a — Cabin issue */}
+                                {reportStep === 'cabin' && (
+                                    <div className="space-y-4">
+                                        <textarea
+                                            value={reportDescription}
+                                            onChange={e => setReportDescription(e.target.value)}
+                                            placeholder={t.describeIssue}
+                                            rows={4}
+                                            className="w-full bg-secondary border border-border rounded-2xl p-4 text-sm resize-none focus:outline-none focus:border-primary/50"
+                                        />
+                                        {dndEnabled && (
+                                            <label className="flex items-center gap-3 p-4 bg-yellow-500/10 border border-yellow-400/30 rounded-2xl cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={canEnterNow}
+                                                    onChange={e => setCanEnterNow(e.target.checked)}
+                                                    className="w-5 h-5 accent-yellow-500"
+                                                />
+                                                <span className="text-sm font-semibold text-yellow-700">{t.canEnterNow}</span>
+                                            </label>
+                                        )}
+                                        <button
+                                            onClick={async () => {
+                                                if (!reportDescription.trim()) return;
+                                                setReportLoading(true);
+                                                try {
+                                                    const result = await reportCabinIssue(stay.id, stay.accessCode, reportDescription, canEnterNow);
+                                                    if (result.success) {
+                                                        toast.success(t.reportSent);
+                                                        setIsReportOpen(false);
+                                                        if (canEnterNow && dndEnabled) {
+                                                            setDndEnabled(false);
+                                                            setDndUntil(null);
+                                                        }
+                                                    } else {
+                                                        toast.error('Erro ao enviar relatório.');
+                                                    }
+                                                } catch { toast.error('Erro ao enviar relatório.'); }
+                                                finally { setReportLoading(false); }
+                                            }}
+                                            disabled={reportLoading || !reportDescription.trim()}
+                                            className="w-full py-4 bg-primary text-primary-foreground font-black uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                        >
+                                            {reportLoading ? <Loader2 size={18} className="animate-spin" /> : t.submitReport}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Step 2b — Structure issue */}
+                                {reportStep === 'structure' && (
+                                    <div className="space-y-4">
+                                        <select
+                                            value={reportStructureId}
+                                            onChange={e => setReportStructureId(e.target.value)}
+                                            className="w-full bg-secondary border border-border rounded-2xl px-4 py-3 text-sm font-medium focus:outline-none focus:border-primary/50"
+                                        >
+                                            <option value="">{t.selectArea}</option>
+                                            {structures.map(s => (
+                                                <option key={s.id} value={s.id}>{s.name}</option>
+                                            ))}
+                                        </select>
+                                        <textarea
+                                            value={reportDescription}
+                                            onChange={e => setReportDescription(e.target.value)}
+                                            placeholder={t.describeIssue}
+                                            rows={4}
+                                            className="w-full bg-secondary border border-border rounded-2xl p-4 text-sm resize-none focus:outline-none focus:border-primary/50"
+                                        />
+                                        <button
+                                            onClick={async () => {
+                                                if (!reportDescription.trim() || !reportStructureId) return;
+                                                setReportLoading(true);
+                                                try {
+                                                    const result = await reportStructureIssue(stay.id, stay.accessCode, reportStructureId, reportDescription);
+                                                    if (result.success) {
+                                                        toast.success(t.reportSent);
+                                                        setIsReportOpen(false);
+                                                    } else {
+                                                        toast.error('Erro ao enviar relatório.');
+                                                    }
+                                                } catch { toast.error('Erro ao enviar relatório.'); }
+                                                finally { setReportLoading(false); }
+                                            }}
+                                            disabled={reportLoading || !reportDescription.trim() || !reportStructureId}
+                                            className="w-full py-4 bg-primary text-primary-foreground font-black uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                        >
+                                            {reportLoading ? <Loader2 size={18} className="animate-spin" /> : t.submitReport}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Step 2c — App bug */}
+                                {reportStep === 'bug' && (
+                                    <div className="space-y-4">
+                                        <textarea
+                                            value={reportDescription}
+                                            onChange={e => setReportDescription(e.target.value)}
+                                            placeholder={t.describeIssue}
+                                            rows={4}
+                                            className="w-full bg-secondary border border-border rounded-2xl p-4 text-sm resize-none focus:outline-none focus:border-primary/50"
+                                        />
+                                        <button
+                                            onClick={async () => {
+                                                if (!reportDescription.trim()) return;
+                                                setReportLoading(true);
+                                                try {
+                                                    const browserInfo = navigator.userAgent;
+                                                    const result = await reportAppBug(stay.id, stay.accessCode, reportDescription, browserInfo);
+                                                    if (result.success) {
+                                                        toast.success(t.reportSent);
+                                                        setIsReportOpen(false);
+                                                    } else {
+                                                        toast.error('Erro ao enviar relatório.');
+                                                    }
+                                                } catch { toast.error('Erro ao enviar relatório.'); }
+                                                finally { setReportLoading(false); }
+                                            }}
+                                            disabled={reportLoading || !reportDescription.trim()}
+                                            className="w-full py-4 bg-primary text-primary-foreground font-black uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                        >
+                                            {reportLoading ? <Loader2 size={18} className="animate-spin" /> : t.submitReport}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 )}

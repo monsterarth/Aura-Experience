@@ -3,6 +3,15 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { v4 as uuidv4 } from "uuid";
 
+async function getGovEndTime(propertyId: string): Promise<string> {
+  const { data } = await supabaseAdmin
+    .from('properties')
+    .select('settings')
+    .eq('id', propertyId)
+    .single();
+  return (data?.settings as any)?.govEndTime ?? '17:00';
+}
+
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization');
   if (process.env.NODE_ENV === 'production' && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -45,6 +54,30 @@ export async function GET(req: Request) {
 
         if (existingTasks && existingTasks.length > 0) continue;
 
+        // Check DND status
+        const isDndActive =
+          stay.dnd_enabled &&
+          stay.dnd_until &&
+          new Date(stay.dnd_until) > new Date();
+
+        let taskStatus = 'pending';
+        let pausedUntil: string | null = null;
+
+        if (isDndActive) {
+          const govEndTime = await getGovEndTime(propertyId);
+          const [endH, endM] = govEndTime.split(':').map(Number);
+          const todayGovEnd = new Date(today);
+          todayGovEnd.setHours(endH, endM, 0, 0);
+
+          const dndUntil = new Date(stay.dnd_until);
+          if (dndUntil >= todayGovEnd) {
+            taskStatus = 'skipped';
+          } else {
+            taskStatus = 'paused';
+            pausedUntil = stay.dnd_until;
+          }
+        }
+
         const taskId = uuidv4();
         await supabaseAdmin.from('housekeeping_tasks').insert({
           id: taskId,
@@ -52,7 +85,8 @@ export async function GET(req: Request) {
           cabinId: stay.cabinId,
           stayId: stay.id,
           type: 'daily',
-          status: 'pending',
+          status: taskStatus,
+          paused_until: pausedUntil,
           checklist: [],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()

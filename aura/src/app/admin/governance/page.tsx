@@ -16,7 +16,7 @@ import { MinibarModal } from "@/components/admin/MinibarModal";
 import { MaidMobileApp } from "@/components/admin/MaidMobileApp";
 import {
   Sparkles, Clock, CheckCircle2, AlertCircle,
-  Coffee, ArrowRight, ClipboardCheck, Plus, UserPlus, Settings2, Edit3, MessageSquare, Archive, Calendar as CalendarIcon, X
+  Coffee, ArrowRight, ClipboardCheck, Plus, UserPlus, Settings2, Edit3, MessageSquare, Archive, Calendar as CalendarIcon, X, Moon
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -161,10 +161,11 @@ export default function GovernancePage() {
     }
   };
 
-  const pendingTasks = tasks.filter(t => t.status === 'pending');
+  const pendingTasks = tasks.filter(t => t.status === 'pending' || t.status === 'paused');
   const inProgressTasks = tasks.filter(t => t.status === 'in_progress');
   const waitingTasks = tasks.filter(t => t.status === 'waiting_conference');
   const completedTasks = tasks.filter(t => t.status === 'completed');
+  const skippedTasks = tasks.filter(t => t.status === 'skipped');
 
   // Funcionalidade de Arquivo (Últimos 7 dias)
   const sevenDaysAgo = new Date();
@@ -221,8 +222,14 @@ export default function GovernancePage() {
                 </div>
 
                 <div className="space-y-2">
-                  {task.status === 'pending' ? (
+                  {(task.status === 'pending' || task.status === 'paused') ? (
                     <div className="flex flex-col gap-3">
+                      {task.status === 'paused' && task.paused_until && (
+                        <div className="flex items-center gap-2 bg-yellow-500/10 text-yellow-700 px-3 py-2 rounded-lg text-[10px] font-bold uppercase">
+                          <Moon size={12} />
+                          Não Perturbe — retoma às {new Date(task.paused_until).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      )}
                       <div className="flex items-center gap-2 bg-secondary/50 p-2 rounded-lg border border-border">
                         <UserPlus size={14} className="text-muted-foreground shrink-0" />
                         <select
@@ -241,7 +248,11 @@ export default function GovernancePage() {
                             <Coffee size={12} /> Frigobar
                           </button>
                         )}
-                        <button onClick={() => handleStartTask(task.id)} className="flex-1 py-2 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground text-[10px] font-bold uppercase rounded-lg transition-all flex justify-center items-center gap-1">
+                        <button
+                          onClick={() => handleStartTask(task.id)}
+                          disabled={task.status === 'paused' && !!task.paused_until && new Date(task.paused_until) > new Date()}
+                          className="flex-1 py-2 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground text-[10px] font-bold uppercase rounded-lg transition-all flex justify-center items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
                           <ArrowRight size={12} /> Iniciar
                         </button>
                       </div>
@@ -321,6 +332,29 @@ export default function GovernancePage() {
           <KanbanColumn title="Conferência" icon={AlertCircle} colorClass="text-orange-500" items={waitingTasks} />
         </div>
       </div>
+
+      {/* Skipped tasks — DND */}
+      {skippedTasks.length > 0 && (
+        <div className="border border-yellow-500/30 bg-yellow-500/5 rounded-2xl p-4 space-y-3">
+          <h3 className="text-xs font-black uppercase tracking-widest text-yellow-700 flex items-center gap-2">
+            <Moon size={14} /> Não Realizadas — Recusadas pelo Hóspede ({skippedTasks.length})
+          </h3>
+          <div className="flex flex-wrap gap-3">
+            {skippedTasks.map(task => (
+              <div key={task.id} className="bg-card border border-border rounded-xl p-3 flex items-center gap-3 opacity-60 min-w-[220px]">
+                {task.type === 'turnover' ? <AlertCircle size={14} className="text-orange-500 shrink-0" /> : <Coffee size={14} className="text-blue-500 shrink-0" />}
+                <div>
+                  <p className="text-xs font-bold text-foreground">{cabins[task.cabinId!]?.name || 'Cabana'}</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest">
+                    {task.type === 'turnover' ? 'Faxina de Troca' : 'Arrumação Diária'}
+                  </p>
+                </div>
+                <span className="ml-auto text-[9px] bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 px-2 py-0.5 rounded font-bold uppercase shrink-0">Pulada</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <ChecklistSettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} propertyId={property.id} />
       <HousekeepingChecklistModal isOpen={isChecklistOpen} onClose={() => setIsChecklistOpen(false)} task={selectedTask} cabinName={selectedTask ? (selectedTask.structureId ? structures[selectedTask.structureId]?.name : cabins[selectedTask.cabinId || ""]?.name || "") : ""} onComplete={() => { }} />

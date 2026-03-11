@@ -11,7 +11,7 @@ import { StaffService } from "@/services/staff-service";
 import { MaintenanceTask, Cabin, Structure, Staff } from "@/types/aura";
 import { MaintenanceTaskManagerModal } from "@/components/admin/maintenance/MaintenanceTaskManagerModal";
 import { MaintenanceCompletionModal } from "@/components/admin/maintenance/MaintenanceCompletionModal";
-import { Clock, Hammer, AlertCircle, CheckCircle2, PlayCircle, Plus, Edit3, Settings2, Archive, Calendar as CalendarIcon, X } from "lucide-react";
+import { Clock, Hammer, AlertCircle, CheckCircle2, PlayCircle, Plus, Edit3, Settings2, Archive, Calendar as CalendarIcon, X, Moon } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -97,7 +97,7 @@ export default function MaintenancePage() {
         }
     };
 
-    const pendingTasks = tasks.filter(t => t.status === 'pending');
+    const pendingTasks = tasks.filter(t => t.status === 'pending' || t.status === 'paused');
     const inProgressTasks = tasks.filter(t => t.status === 'in_progress');
     const waitingTasks = tasks.filter(t => t.status === 'waiting_conference');
     const completedTasks = tasks.filter(t => t.status === 'completed');
@@ -129,7 +129,17 @@ export default function MaintenancePage() {
                         const isManager = userData?.role === 'admin' || userData?.role === 'super_admin' || userData?.role === 'maintenance';
 
                         return (
-                            <div key={task.id} className="bg-card border border-border p-4 rounded-xl shadow-sm space-y-4 hover:border-primary/50 transition-colors group relative">
+                            <div key={task.id} className={cn(
+                                "bg-card border p-4 rounded-xl shadow-sm space-y-4 hover:border-primary/50 transition-colors group relative",
+                                task.status === 'paused' ? "border-yellow-400 opacity-75" : "border-border"
+                            )}>
+                                {task.status === 'paused' && (
+                                    <div className="flex items-center gap-2 bg-yellow-500/10 text-yellow-700 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase mb-2">
+                                        <Moon size={12} />
+                                        DND
+                                        {task.pausedUntil && ` — retoma às ${new Date(task.pausedUntil).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}
+                                    </div>
+                                )}
                                 {isManager && (
                                     <button
                                         onClick={() => { setSelectedTask(task); setIsManagerOpen(true); }}
