@@ -532,8 +532,9 @@ export interface AuditLog {
   | 'USER_CREATE' | 'USER_UPDATE'
   | 'CREATE_STAY' | 'COMPLETE_STAY' | 'STAY_GROUP_CREATE'
   | 'STRUCTURE_CREATED' | 'STRUCTURE_UPDATED' | 'STRUCTURE_DELETED'
-  | 'STRUCTURE_BOOKING_CREATED' | 'STRUCTURE_BOOKING_STATUS_CHANGED';
-  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'MAINTENANCE';
+  | 'STRUCTURE_BOOKING_CREATED' | 'STRUCTURE_BOOKING_STATUS_CHANGED'
+  | 'EVENT_CREATED' | 'EVENT_UPDATED' | 'EVENT_DELETED' | 'EVENT_PUBLISHED';
+  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'MAINTENANCE' | 'EVENT';
   entityId: string;
   oldData?: any;
   newData?: any;
@@ -690,6 +691,53 @@ export interface FBOrder {
   totalPrice: number;
   deliveryTime?: string; // e.g., "08:30"
   deliveryDate?: string; // YYYY-MM-DD
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+// ==========================================
+// MÓDULO DE EVENTOS
+// ==========================================
+
+export type EventType = 'local' | 'external' | 'private';
+export type EventCategory =
+  | 'entertainment'
+  | 'gastronomy'
+  | 'sports'
+  | 'culture'
+  | 'nightlife'
+  | 'corporate'
+  | 'wedding'
+  | 'birthday'
+  | 'other';
+export type EventStatus = 'draft' | 'published' | 'cancelled' | 'finished';
+
+export interface Event {
+  id: string;
+  propertyId: string;
+  title: string;
+  titleEn?: string;
+  titleEs?: string;
+  description?: string;
+  descriptionEn?: string;
+  descriptionEs?: string;
+  type: EventType;
+  category: EventCategory;
+  status: EventStatus;
+  visibility: 'all_guests' | 'public';
+  featured: boolean;
+  startDate: string;   // YYYY-MM-DD
+  endDate?: string;    // YYYY-MM-DD
+  startTime?: string;  // HH:mm
+  endTime?: string;    // HH:mm
+  location?: string;
+  locationUrl?: string;
+  price?: number;
+  priceDescription?: string;
+  maxCapacity?: number;
+  imageUrl?: string;
+  externalUrl?: string;
+  privateEventId?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

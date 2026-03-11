@@ -88,3 +88,12 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
+
+@layer components {
+  .field-label {
+    @apply text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1.5;
+  }
+  .field-input {
+    @apply bg-secondary border border-white/10 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary/50 transition-all text-foreground placeholder:text-muted-foreground/50;
+  }
+}

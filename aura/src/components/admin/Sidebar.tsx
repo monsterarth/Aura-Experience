@@ -14,7 +14,8 @@ import {
   Sparkles, Building, ChevronDown, LogOut,
   MessageSquare, Settings, Globe, Menu, X,
   Star, ClipboardList, Calendar, Bot, FileText,
-  Loader2, ChevronLeft, ChevronRight, BellRing, Coffee
+  Loader2, ChevronLeft, ChevronRight, BellRing, Coffee,
+  Ticket, CalendarDays
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import Image from "next/image";
@@ -76,6 +77,8 @@ export const Sidebar = () => {
     { title: "Recepção", icon: BellRing, href: "/admin/reception", roles: ["super_admin", "admin", "reception"] },
     { title: "Estadias", icon: Home, href: "/admin/stays", roles: ["super_admin", "admin", "reception", "governance"] },
     { title: "Mapa de Reservas", icon: Calendar, href: "/admin/reservation-map", roles: ["super_admin", "admin", "reception"] },
+    { title: "Calendário", icon: CalendarDays, href: "/admin/calendario", roles: ["super_admin", "admin", "reception"] },
+    { title: "Eventos", icon: Ticket, href: "/admin/eventos", roles: ["super_admin", "admin", "reception"] },
     { title: "Comunicação", icon: MessageSquare, href: "/admin/comunicacao", roles: ["super_admin", "admin", "reception"] },
     { title: "Governança", icon: Sparkles, href: "/admin/governance", roles: ["super_admin", "admin", "governance"] },
     { title: "Agenda Estrut.", icon: Calendar, href: "/admin/core/structures/bookings", roles: ["super_admin", "admin", "reception"] },

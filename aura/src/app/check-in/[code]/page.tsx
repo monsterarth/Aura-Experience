@@ -73,6 +73,7 @@ const hubTranslations = {
         guides: 'Guias',
         guidesSub: 'Manuais e regras',
         events: 'Eventos',
+        eventsSub: 'Na região e na pousada',
         survey: 'Avaliar Estadia',
         surveySub: 'Compartilhe sua experiência',
         whatsapp: 'Falar com a Recepção',
@@ -106,6 +107,7 @@ const hubTranslations = {
         guides: 'Guides',
         guidesSub: 'Manuals & rules',
         events: 'Events',
+        eventsSub: 'In the area & at the resort',
         survey: 'Rate your stay',
         surveySub: 'Share your experience',
         whatsapp: 'Contact Reception',
@@ -139,6 +141,7 @@ const hubTranslations = {
         guides: 'Guías',
         guidesSub: 'Manuales y reglas',
         events: 'Eventos',
+        eventsSub: 'En la zona y el hotel',
         survey: 'Evaluar estadía',
         surveySub: 'Comparte tu experiencia',
         whatsapp: 'Contactar Recepción',
@@ -559,13 +562,13 @@ function GuestHubContent() {
                         </button>
 
                         {/* Events */}
-                        <button className="col-span-1 bg-card border border-border p-5 rounded-[2rem] shadow-sm hover:shadow-md hover:border-primary/50 transition-all flex flex-col gap-3 group opacity-70">
+                        <button onClick={() => router.push(`/check-in/${code}/events`)} className="col-span-1 bg-card border border-border p-5 rounded-[2rem] shadow-sm hover:shadow-md hover:border-primary/50 transition-all flex flex-col gap-3 group">
                             <div className="w-10 h-10 bg-secondary rounded-2xl flex items-center justify-center text-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                                 <Ticket size={20} />
                             </div>
                             <div className="text-left">
                                 <h3 className="font-bold text-sm uppercase tracking-wider">{t.events}</h3>
-                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">{t.comingSoon}</p>
+                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">{t.eventsSub}</p>
                             </div>
                         </button>
 
