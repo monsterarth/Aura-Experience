@@ -5,6 +5,8 @@ const mapCategory = (dbObj: any): FBCategory => ({
     id: dbObj.id,
     propertyId: dbObj.property_id,
     name: dbObj.name,
+    name_en: dbObj.name_en || undefined,
+    name_es: dbObj.name_es || undefined,
     type: dbObj.type,
     selectionTarget: dbObj.selection_target,
     maxPerGuest: dbObj.max_per_guest,
@@ -18,7 +20,11 @@ const mapMenuItem = (dbObj: any): FBMenuItem => ({
     propertyId: dbObj.property_id,
     categoryId: dbObj.category_id,
     name: dbObj.name,
+    name_en: dbObj.name_en || undefined,
+    name_es: dbObj.name_es || undefined,
     description: dbObj.description,
+    description_en: dbObj.description_en || undefined,
+    description_es: dbObj.description_es || undefined,
     price: dbObj.price,
     ingredients: dbObj.ingredients,
     flavors: dbObj.flavors,
@@ -86,11 +92,13 @@ export const fbService = {
         selectionTarget?: 'individual' | 'group_portion' | 'group_unit',
         maxPerGuest?: number,
         order: number = 0,
-        imageUrl?: string
+        imageUrl?: string,
+        name_en?: string,
+        name_es?: string
     ): Promise<FBCategory> {
         const { data, error } = await supabase
             .from('fb_categories')
-            .insert([{ property_id: propertyId, name, type, selection_target: selectionTarget, max_per_guest: maxPerGuest, order, image_url: imageUrl }])
+            .insert([{ property_id: propertyId, name, name_en: name_en || null, name_es: name_es || null, type, selection_target: selectionTarget, max_per_guest: maxPerGuest, order, image_url: imageUrl }])
             .select()
             .single();
         if (error) throw error;
@@ -104,9 +112,11 @@ export const fbService = {
         selectionTarget?: 'individual' | 'group_portion' | 'group_unit',
         maxPerGuest?: number,
         order?: number,
-        imageUrl?: string
+        imageUrl?: string,
+        name_en?: string,
+        name_es?: string
     ): Promise<FBCategory> {
-        const toUpdate: any = { name, type, selection_target: selectionTarget, max_per_guest: maxPerGuest };
+        const toUpdate: any = { name, name_en: name_en || null, name_es: name_es || null, type, selection_target: selectionTarget, max_per_guest: maxPerGuest };
         if (order !== undefined) toUpdate.order = order;
         if (imageUrl !== undefined) toUpdate.image_url = imageUrl;
 
@@ -156,7 +166,11 @@ export const fbService = {
                     property_id: item.propertyId,
                     category_id: item.categoryId,
                     name: item.name,
+                    name_en: item.name_en || null,
+                    name_es: item.name_es || null,
                     description: item.description,
+                    description_en: item.description_en || null,
+                    description_es: item.description_es || null,
                     price: item.price,
                     ingredients: item.ingredients,
                     flavors: item.flavors,
@@ -174,8 +188,12 @@ export const fbService = {
     async updateMenuItem(id: string, item: Partial<FBMenuItem>): Promise<FBMenuItem> {
         const toUpdate: any = {};
         if (item.name !== undefined) toUpdate.name = item.name;
+        if (item.name_en !== undefined) toUpdate.name_en = item.name_en || null;
+        if (item.name_es !== undefined) toUpdate.name_es = item.name_es || null;
         if (item.categoryId !== undefined) toUpdate.category_id = item.categoryId;
         if (item.description !== undefined) toUpdate.description = item.description;
+        if (item.description_en !== undefined) toUpdate.description_en = item.description_en || null;
+        if (item.description_es !== undefined) toUpdate.description_es = item.description_es || null;
         if (item.price !== undefined) toUpdate.price = item.price;
         if (item.ingredients !== undefined) toUpdate.ingredients = item.ingredients;
         if (item.flavors !== undefined) toUpdate.flavors = item.flavors;

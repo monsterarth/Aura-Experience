@@ -23,12 +23,14 @@ export default function FBMenuPage() {
     const [editingCategory, setEditingCategory] = useState<FBCategory | null>(null);
     const [categoryForm, setCategoryForm] = useState<{
         name: string;
+        name_en: string;
+        name_es: string;
         type: FBCategory['type'];
         selectionTarget: 'individual' | 'group_portion' | 'group_unit';
         maxPerGuest: number;
         imageUrl: string;
         order: number;
-    }>({ name: "", type: "both", selectionTarget: "individual", maxPerGuest: 1, imageUrl: "", order: 0 });
+    }>({ name: "", name_en: "", name_es: "", type: "both", selectionTarget: "individual", maxPerGuest: 1, imageUrl: "", order: 0 });
 
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
     const [settingsForm, setSettingsForm] = useState({ welcomeMessage: "", instructions: "" });
@@ -37,7 +39,11 @@ export default function FBMenuPage() {
     const [editingItem, setEditingItem] = useState<FBMenuItem | null>(null);
     const [itemForm, setItemForm] = useState<{
         name: string;
+        name_en: string;
+        name_es: string;
         description: string;
+        description_en: string;
+        description_es: string;
         price: number;
         categoryId: string;
         active: boolean;
@@ -46,11 +52,11 @@ export default function FBMenuPage() {
         imageUrl: string;
         order: number;
     }>({
-        name: "", description: "", price: 0, categoryId: "", active: true, ingredients: [], flavors: [], imageUrl: "", order: 0
+        name: "", name_en: "", name_es: "", description: "", description_en: "", description_es: "", price: 0, categoryId: "", active: true, ingredients: [], flavors: [], imageUrl: "", order: 0
     });
 
     // Temp states for lists
-    const [tempFlavor, setTempFlavor] = useState<FBFlavor>({ name: "", imageUrl: "", ingredients: [] });
+    const [tempFlavor, setTempFlavor] = useState<FBFlavor>({ name: "", name_en: "", name_es: "", imageUrl: "", ingredients: [] });
 
     // Ingredient Temp State for Item form
     const [tempIngredient, setTempIngredient] = useState<FBIngredient>({ name: "", cost: 0, quantity: "" });
@@ -58,6 +64,9 @@ export default function FBMenuPage() {
     // For flavors ingredient management
     const [editingFlavorIndex, setEditingFlavorIndex] = useState<number | null>(null);
     const [tempFlavorIngredient, setTempFlavorIngredient] = useState<FBIngredient>({ name: "", cost: 0, quantity: "" });
+
+    // Language tab for modal forms
+    const [formLangTab, setFormLangTab] = useState<'pt' | 'en' | 'es'>('pt');
 
     useEffect(() => {
         if (currentProperty) {
@@ -92,6 +101,8 @@ export default function FBMenuPage() {
             setEditingCategory(isClone ? null : cat);
             setCategoryForm({
                 name: isClone ? `${cat.name} (Cópia)` : cat.name,
+                name_en: cat.name_en || "",
+                name_es: cat.name_es || "",
                 type: cat.type,
                 selectionTarget: (cat.selectionTarget as any) || 'individual',
                 maxPerGuest: cat.maxPerGuest || 1,
@@ -100,8 +111,9 @@ export default function FBMenuPage() {
             });
         } else {
             setEditingCategory(null);
-            setCategoryForm({ name: "", type: "both", selectionTarget: "individual", maxPerGuest: 1, imageUrl: "", order: categories.length });
+            setCategoryForm({ name: "", name_en: "", name_es: "", type: "both", selectionTarget: "individual", maxPerGuest: 1, imageUrl: "", order: categories.length });
         }
+        setFormLangTab('pt');
         setIsCategoryModalOpen(true);
     }
 
@@ -110,10 +122,10 @@ export default function FBMenuPage() {
         setSaving(true);
         try {
             if (editingCategory) {
-                await fbService.updateCategory(editingCategory.id, categoryForm.name, categoryForm.type, categoryForm.selectionTarget, categoryForm.maxPerGuest, categoryForm.order, categoryForm.imageUrl);
+                await fbService.updateCategory(editingCategory.id, categoryForm.name, categoryForm.type, categoryForm.selectionTarget, categoryForm.maxPerGuest, categoryForm.order, categoryForm.imageUrl, categoryForm.name_en, categoryForm.name_es);
                 toast.success("Categoria atualizada.");
             } else {
-                await fbService.createCategory(currentProperty.id, categoryForm.name, categoryForm.type, categoryForm.selectionTarget, categoryForm.maxPerGuest, categoryForm.order, categoryForm.imageUrl);
+                await fbService.createCategory(currentProperty.id, categoryForm.name, categoryForm.type, categoryForm.selectionTarget, categoryForm.maxPerGuest, categoryForm.order, categoryForm.imageUrl, categoryForm.name_en, categoryForm.name_es);
                 toast.success("Categoria criada.");
             }
             setIsCategoryModalOpen(false);
@@ -193,7 +205,11 @@ export default function FBMenuPage() {
             setEditingItem(isClone ? null : item);
             setItemForm({
                 name: isClone ? `${item.name} (Cópia)` : item.name,
+                name_en: item.name_en || "",
+                name_es: item.name_es || "",
                 description: item.description || "",
+                description_en: item.description_en || "",
+                description_es: item.description_es || "",
                 price: item.price,
                 categoryId: isClone && catId ? catId : item.categoryId,
                 active: item.active,
@@ -206,7 +222,11 @@ export default function FBMenuPage() {
             setEditingItem(null);
             setItemForm({
                 name: "",
+                name_en: "",
+                name_es: "",
                 description: "",
+                description_en: "",
+                description_es: "",
                 price: 0,
                 categoryId: catId || (categories.length > 0 ? categories[0].id : ""),
                 active: true,
@@ -216,6 +236,7 @@ export default function FBMenuPage() {
                 order: items.filter(i => i.categoryId === catId).length
             });
         }
+        setFormLangTab('pt');
         setEditingFlavorIndex(null);
         setIsItemModalOpen(true);
     }
@@ -279,7 +300,7 @@ export default function FBMenuPage() {
             ...prev,
             flavors: [...prev.flavors, { ...tempFlavor }]
         }));
-        setTempFlavor({ name: "", imageUrl: "", ingredients: [] });
+        setTempFlavor({ name: "", name_en: "", name_es: "", imageUrl: "", ingredients: [] });
     }
 
     function removeFlavor(index: number) {
@@ -500,12 +521,31 @@ export default function FBMenuPage() {
                         <div className="p-6 space-y-4">
                             <div className="space-y-2">
                                 <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Nome da Categoria</label>
-                                <input
-                                    value={categoryForm.name}
-                                    onChange={e => setCategoryForm({ ...categoryForm, name: e.target.value })}
-                                    className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
-                                    placeholder="Ex: Bebidas Frias"
-                                />
+                                {/* Language tabs */}
+                                <div className="flex gap-1 p-1 bg-muted rounded-lg w-fit mb-2">
+                                    {(['pt', 'en', 'es'] as const).map(l => (
+                                        <button key={l} type="button"
+                                            onClick={() => setFormLangTab(l)}
+                                            className={cn("px-3 py-1 text-xs font-bold uppercase rounded-md transition-all",
+                                                formLangTab === l ? "bg-background shadow-sm text-foreground" : "text-muted-foreground")}
+                                        >{l}</button>
+                                    ))}
+                                </div>
+                                {formLangTab === 'pt' && (
+                                    <input value={categoryForm.name} onChange={e => setCategoryForm({...categoryForm, name: e.target.value})}
+                                        className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none focus:border-primary/50"
+                                        placeholder="Ex: Bebidas" />
+                                )}
+                                {formLangTab === 'en' && (
+                                    <input value={categoryForm.name_en || ""} onChange={e => setCategoryForm({...categoryForm, name_en: e.target.value})}
+                                        className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none focus:border-blue-500/50"
+                                        placeholder="Ex: Beverages" />
+                                )}
+                                {formLangTab === 'es' && (
+                                    <input value={categoryForm.name_es || ""} onChange={e => setCategoryForm({...categoryForm, name_es: e.target.value})}
+                                        className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none focus:border-orange-500/50"
+                                        placeholder="Ex: Bebidas" />
+                                )}
                             </div>
                             <div className="space-y-2">
                                 <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Imagem da Categoria (Opcional)</label>
@@ -591,12 +631,31 @@ export default function FBMenuPage() {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-2 md:col-span-2">
                                     <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Nome do Produto</label>
-                                    <input
-                                        value={itemForm.name}
-                                        onChange={e => setItemForm({ ...itemForm, name: e.target.value })}
-                                        className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
-                                        placeholder="Ex: Hambúrguer Artesanal"
-                                    />
+                                    {/* Language tabs */}
+                                    <div className="flex gap-1 p-1 bg-muted rounded-lg w-fit mb-2">
+                                        {(['pt', 'en', 'es'] as const).map(l => (
+                                            <button key={l} type="button"
+                                                onClick={() => setFormLangTab(l)}
+                                                className={cn("px-3 py-1 text-xs font-bold uppercase rounded-md transition-all",
+                                                    formLangTab === l ? "bg-background shadow-sm text-foreground" : "text-muted-foreground")}
+                                            >{l}</button>
+                                        ))}
+                                    </div>
+                                    {formLangTab === 'pt' && (
+                                        <input value={itemForm.name} onChange={e => setItemForm({...itemForm, name: e.target.value})}
+                                            className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none focus:border-primary/50"
+                                            placeholder="Ex: Hambúrguer Artesanal" />
+                                    )}
+                                    {formLangTab === 'en' && (
+                                        <input value={itemForm.name_en || ""} onChange={e => setItemForm({...itemForm, name_en: e.target.value})}
+                                            className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none focus:border-blue-500/50"
+                                            placeholder="Ex: Artisan Burger" />
+                                    )}
+                                    {formLangTab === 'es' && (
+                                        <input value={itemForm.name_es || ""} onChange={e => setItemForm({...itemForm, name_es: e.target.value})}
+                                            className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none focus:border-orange-500/50"
+                                            placeholder="Ex: Hamburguesa Artesanal" />
+                                    )}
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Categoria</label>
@@ -632,12 +691,21 @@ export default function FBMenuPage() {
                                 </div>
                                 <div className="space-y-2 md:col-span-2">
                                     <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Descrição / Composição</label>
-                                    <input
-                                        value={itemForm.description}
-                                        onChange={e => setItemForm({ ...itemForm, description: e.target.value })}
-                                        className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
-                                        placeholder="Ex: Pão brioche, blend 180g, queijo prato..."
-                                    />
+                                    {formLangTab === 'pt' && (
+                                        <input value={itemForm.description} onChange={e => setItemForm({...itemForm, description: e.target.value})}
+                                            className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none focus:border-primary/50"
+                                            placeholder="Ex: Pão brioche, blend 180g, queijo prato..." />
+                                    )}
+                                    {formLangTab === 'en' && (
+                                        <input value={itemForm.description_en || ""} onChange={e => setItemForm({...itemForm, description_en: e.target.value})}
+                                            className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none focus:border-blue-500/50"
+                                            placeholder="Ex: Brioche bun, 180g blend, cheddar cheese..." />
+                                    )}
+                                    {formLangTab === 'es' && (
+                                        <input value={itemForm.description_es || ""} onChange={e => setItemForm({...itemForm, description_es: e.target.value})}
+                                            className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none focus:border-orange-500/50"
+                                            placeholder="Ex: Pan brioche, mezcla 180g, queso cheddar..." />
+                                    )}
                                 </div>
                                 <div className="space-y-2 md:col-span-2">
                                     <label className="flex items-center gap-3 p-4 bg-background border border-border rounded-xl cursor-pointer hover:bg-secondary/50">
@@ -666,6 +734,12 @@ export default function FBMenuPage() {
                                             placeholder="Ex: Frango, Queijo, Sem Sal..."
                                         />
                                         <button onClick={addFlavor} disabled={!tempFlavor.name} className="p-3 bg-secondary rounded-xl text-primary font-bold hover:bg-primary/10 transition-colors">Adicionar</button>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 mt-2">
+                                        <input value={tempFlavor.name_en || ""} onChange={e => setTempFlavor({...tempFlavor, name_en: e.target.value})}
+                                            placeholder="Nome (EN)" className="bg-secondary border border-border p-2 rounded-lg text-xs outline-none" />
+                                        <input value={tempFlavor.name_es || ""} onChange={e => setTempFlavor({...tempFlavor, name_es: e.target.value})}
+                                            placeholder="Nombre (ES)" className="bg-secondary border border-border p-2 rounded-lg text-xs outline-none" />
                                     </div>
                                     {itemForm.flavors.length > 0 && (
                                         <div className="flex flex-col gap-2 mt-4">

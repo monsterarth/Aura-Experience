@@ -55,6 +55,60 @@ function getThemeStyles(propertyData?: Property | null) {
     } as React.CSSProperties;
 }
 
+const structuresTranslations = {
+    pt: {
+        pageTitle: 'Agendamentos', noSpaces: 'Nenhum Espaço',
+        noSpacesDesc: 'Nossas áreas comuns não exigem agendamento no momento ou estão indisponíveis.',
+        back: 'Voltar', backToPortal: 'Voltar ao Portal',
+        confirmedTitle: 'Agendamento Confirmado!', requestedTitle: 'Solicitação Enviada!',
+        confirmedDesc: 'Sua reserva do espaço foi confirmada. Aproveite seu momento!',
+        requestedDesc: 'Aguarde a confirmação da nossa equipe na recepção via WhatsApp.',
+        heroTitle: 'Reserve o seu momento',
+        heroDesc: 'Escolha uma de nossas áreas para agendar o seu uso exclusivo.',
+        selectDate: 'Data do Agendamento', availableSlots: 'Horários Disponíveis',
+        noSlots: 'Nenhum horário gerado para este dia.',
+        summaryTitle: 'Resumo da Reserva', space: 'Espaço', date: 'Data', time: 'Horário',
+        approvalNotice: 'Este agendamento requer aprovação da recepção. Você será notificado sobre o status.',
+        notes: 'Observações (Opcional)', notesPlaceholder: 'Alguma observação especial?',
+        proceed: 'Prosseguir', confirmBooking: 'Confirmar Reserva', sendRequest: 'Enviar Solicitação',
+        selectSlot: 'Selecione o dia e o horário desejado.',
+    },
+    en: {
+        pageTitle: 'Reservations', noSpaces: 'No Spaces',
+        noSpacesDesc: 'Our common areas do not require booking at the moment or are unavailable.',
+        back: 'Back', backToPortal: 'Back to Portal',
+        confirmedTitle: 'Booking Confirmed!', requestedTitle: 'Request Sent!',
+        confirmedDesc: 'Your space booking has been confirmed. Enjoy your time!',
+        requestedDesc: 'Please wait for confirmation from our front desk via WhatsApp.',
+        heroTitle: 'Book your moment',
+        heroDesc: 'Choose one of our areas to book your exclusive use.',
+        selectDate: 'Booking Date', availableSlots: 'Available Times',
+        noSlots: 'No time slots generated for this day.',
+        summaryTitle: 'Booking Summary', space: 'Space', date: 'Date', time: 'Time',
+        approvalNotice: 'This booking requires front desk approval. You will be notified of the status.',
+        notes: 'Notes (Optional)', notesPlaceholder: 'Any special requests?',
+        proceed: 'Continue', confirmBooking: 'Confirm Booking', sendRequest: 'Send Request',
+        selectSlot: 'Select the day and time you prefer.',
+    },
+    es: {
+        pageTitle: 'Reservas', noSpaces: 'Sin Espacios',
+        noSpacesDesc: 'Nuestras áreas comunes no requieren reserva en este momento o no están disponibles.',
+        back: 'Volver', backToPortal: 'Volver al Portal',
+        confirmedTitle: '¡Reserva Confirmada!', requestedTitle: '¡Solicitud Enviada!',
+        confirmedDesc: '¡Tu reserva del espacio ha sido confirmada. Disfruta tu momento!',
+        requestedDesc: 'Espera la confirmación de nuestra recepción vía WhatsApp.',
+        heroTitle: 'Reserva tu momento',
+        heroDesc: 'Elige una de nuestras áreas para reservar su uso exclusivo.',
+        selectDate: 'Fecha de la Reserva', availableSlots: 'Horarios Disponibles',
+        noSlots: 'No hay horarios generados para este día.',
+        summaryTitle: 'Resumen de la Reserva', space: 'Espacio', date: 'Fecha', time: 'Horario',
+        approvalNotice: 'Esta reserva requiere aprobación de recepción. Será notificado del estado.',
+        notes: 'Observaciones (Opcional)', notesPlaceholder: '¿Alguna observación especial?',
+        proceed: 'Continuar', confirmBooking: 'Confirmar Reserva', sendRequest: 'Enviar Solicitud',
+        selectSlot: 'Selecciona el día y el horario deseado.',
+    },
+};
+
 function StructuresWizard() {
     const { code } = useParams();
     const router = useRouter();
@@ -79,6 +133,8 @@ function StructuresWizard() {
     const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
 
     const [notes, setNotes] = useState("");
+    const [lang, setLang] = useState<'pt' | 'en' | 'es'>('pt');
+    const t = structuresTranslations[lang];
 
     useEffect(() => {
         async function init() {
@@ -89,6 +145,18 @@ function StructuresWizard() {
 
                 const s = stays[0] as Stay;
                 setStay(s);
+
+                // Ler idioma preferido do hóspede
+                try {
+                    const stayData = await StayService.getStayWithGuestAndCabin(s.propertyId, s.id);
+                    if (stayData?.guest?.preferredLanguage) {
+                        setLang(stayData.guest.preferredLanguage as 'pt' | 'en' | 'es');
+                    } else {
+                        const bl = navigator.language.slice(0, 2);
+                        if (bl === 'es') setLang('es');
+                        else if (bl === 'en') setLang('en');
+                    }
+                } catch { /* silently ignore */ }
 
                 const prop = await PropertyService.getPropertyById(s.propertyId);
                 if (!prop) return;
@@ -183,10 +251,10 @@ function StructuresWizard() {
         return (
             <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6 text-center" style={themeStyles}>
                 <Calendar size={48} className="text-muted-foreground mb-4 opacity-50" />
-                <h1 className="text-2xl font-black uppercase">Nenhum Espaço</h1>
-                <p className="text-muted-foreground mt-2">Nossas áreas comuns não exigem agendamento no momento ou estão indisponíveis.</p>
+                <h1 className="text-2xl font-black uppercase">{t.noSpaces}</h1>
+                <p className="text-muted-foreground mt-2">{t.noSpacesDesc}</p>
                 <button onClick={() => router.push(`/check-in/${code}`)} className="mt-8 px-6 py-3 bg-secondary rounded-xl font-bold uppercase text-xs tracking-widest">
-                    Voltar
+                    {t.back}
                 </button>
             </div>
         );
@@ -201,23 +269,21 @@ function StructuresWizard() {
                 </div>
 
                 {selectedStructure?.visibility === 'guest_auto_approve' ? (
-                    <h1 className="text-3xl font-black uppercase tracking-tighter">Agendamento Confirmado!</h1>
+                    <h1 className="text-3xl font-black uppercase tracking-tighter">{t.confirmedTitle}</h1>
                 ) : (
-                    <h1 className="text-3xl font-black uppercase tracking-tighter">Solicitação Enviada!</h1>
+                    <h1 className="text-3xl font-black uppercase tracking-tighter">{t.requestedTitle}</h1>
                 )}
 
                 <div className="bg-card border border-border p-6 rounded-2xl mt-6">
                     <p className="text-muted-foreground">
-                        {selectedStructure?.visibility === 'guest_auto_approve'
-                            ? "Sua reserva do espaço foi confirmada. Aproveite seu momento!"
-                            : "Aguarde a confirmação da nossa equipe na recepção via WhatsApp."}
+                        {selectedStructure?.visibility === 'guest_auto_approve' ? t.confirmedDesc : t.requestedDesc}
                         <br /><br />
                         <strong className="text-foreground">{selectedStructure?.name}</strong><br />
                         <strong className="text-foreground">{selectedDate.split('-').reverse().join('/')}</strong> das <strong className="text-foreground">{selectedSlot?.startTime} às {selectedSlot?.endTime}</strong>
                     </p>
                 </div>
                 <button onClick={() => router.push(`/check-in/${code}`)} className="mt-8 px-8 py-4 w-full max-w-xs bg-primary text-primary-foreground rounded-2xl font-black uppercase text-sm tracking-widest shadow-xl shadow-primary/20">
-                    Voltar ao Portal
+                    {t.backToPortal}
                 </button>
             </div>
         );
@@ -233,7 +299,7 @@ function StructuresWizard() {
                     <ArrowLeft size={24} />
                 </button>
                 <div className="flex-1">
-                    <h1 className="text-lg font-black uppercase tracking-tighter">Agendamentos</h1>
+                    <h1 className="text-lg font-black uppercase tracking-tighter">{t.pageTitle}</h1>
                     {/* Stepper Dots */}
                     <div className="flex items-center gap-1 mt-1">
                         {[0, 1, 2].map(i => (
@@ -251,8 +317,8 @@ function StructuresWizard() {
                         <div className="bg-primary text-primary-foreground rounded-3xl p-6 shadow-xl shadow-primary/10 overflow-hidden relative">
                             <div className="absolute right-0 top-0 w-32 h-32 bg-white/10 rounded-bl-full translate-x-1/4 -translate-y-1/4 blur-xl"></div>
                             <Calendar size={32} className="mb-4 opacity-80" />
-                            <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">Reserve o seu momento</h2>
-                            <p className="opacity-90 leading-relaxed text-sm">Escolha uma de nossas áreas para agendar o seu uso exclusivo.</p>
+                            <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">{t.heroTitle}</h2>
+                            <p className="opacity-90 leading-relaxed text-sm">{t.heroDesc}</p>
                         </div>
 
                         <div className="grid gap-4">
@@ -292,11 +358,11 @@ function StructuresWizard() {
                     <div className="space-y-6 animate-in slide-in-from-right-4 duration-500 relative">
                         <div className="border-b border-border pb-4">
                             <h2 className="text-xl font-black uppercase tracking-tighter">{selectedStructure.name}</h2>
-                            <p className="text-xs text-muted-foreground mt-1">Selecione o dia e o horário desejado.</p>
+                            <p className="text-xs text-muted-foreground mt-1">{t.selectSlot}</p>
                         </div>
 
                         <div className="space-y-3">
-                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Data do Agendamento</label>
+                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">{t.selectDate}</label>
                             <input
                                 type="date"
                                 min={new Date().toISOString().split('T')[0]}
@@ -307,7 +373,7 @@ function StructuresWizard() {
                         </div>
 
                         <div className="space-y-3">
-                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Horários Disponíveis ({selectedStructure.operatingHours?.slotDurationMinutes}m)</label>
+                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">{t.availableSlots} ({selectedStructure.operatingHours?.slotDurationMinutes}m)</label>
 
                             {availableSlots.length > 0 ? (
                                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
@@ -329,7 +395,7 @@ function StructuresWizard() {
                                 </div>
                             ) : (
                                 <div className="bg-secondary/50 border border-border p-6 rounded-2xl text-center">
-                                    <p className="text-sm font-bold text-muted-foreground">Nenhum horário gerado para este dia.</p>
+                                    <p className="text-sm font-bold text-muted-foreground">{t.noSlots}</p>
                                 </div>
                             )}
                         </div>
@@ -343,39 +409,39 @@ function StructuresWizard() {
                 {step === 2 && selectedStructure && selectedSlot && (
                     <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
                         <div className="bg-card border border-border rounded-3xl p-6 shadow-sm">
-                            <h2 className="text-xl font-black uppercase tracking-tighter mb-4 border-b border-border pb-2">Resumo da Reserva</h2>
+                            <h2 className="text-xl font-black uppercase tracking-tighter mb-4 border-b border-border pb-2">{t.summaryTitle}</h2>
 
                             <div className="space-y-4">
                                 <div>
-                                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Espaço</p>
+                                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t.space}</p>
                                     <p className="font-black text-lg">{selectedStructure.name}</p>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Data</p>
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t.date}</p>
                                         <p className="font-bold">{selectedDate.split('-').reverse().join('/')}</p>
                                     </div>
                                     <div>
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Horário</p>
-                                        <p className="font-black text-primary">{selectedSlot.startTime} às {selectedSlot.endTime}</p>
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t.time}</p>
+                                        <p className="font-black text-primary">{selectedSlot.startTime} — {selectedSlot.endTime}</p>
                                     </div>
                                 </div>
                                 {selectedStructure.visibility === 'guest_request' && (
                                     <div className="bg-orange-500/10 border border-orange-500/20 p-3 rounded-xl flex gap-3 text-orange-600 dark:text-orange-400">
                                         <Info size={16} className="shrink-0 mt-0.5" />
-                                        <p className="text-xs font-semibold">Este agendamento requer aprovação da recepção. Você será notificado sobre o status.</p>
+                                        <p className="text-xs font-semibold">{t.approvalNotice}</p>
                                     </div>
                                 )}
                             </div>
                         </div>
 
                         <div className="space-y-2">
-                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest ml-2">Observações (Opcional)</label>
+                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest ml-2">{t.notes}</label>
                             <textarea
                                 value={notes}
                                 onChange={(e) => setNotes(e.target.value)}
                                 className="w-full bg-card border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm resize-none h-24"
-                                placeholder="Alguma observação especial?"
+                                placeholder={t.notesPlaceholder}
                             />
                         </div>
 
@@ -393,7 +459,7 @@ function StructuresWizard() {
                                 disabled={!selectedSlot}
                                 className="w-full py-4 bg-primary text-primary-foreground rounded-2xl font-black uppercase tracking-widest flex items-center justify-between px-6 shadow-xl shadow-primary/20 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:shadow-none"
                             >
-                                <span>Prosseguir</span>
+                                <span>{t.proceed}</span>
                                 <ChevronRight size={20} />
                             </button>
                         )}
@@ -404,7 +470,7 @@ function StructuresWizard() {
                                 className="w-full py-4 bg-green-500 text-white rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-green-500/20 hover:bg-green-600 transition-all disabled:opacity-50 disabled:shadow-none"
                             >
                                 {saving ? <Loader2 size={24} className="animate-spin" /> : <CheckCircle2 size={24} />}
-                                <span>{selectedStructure?.visibility === 'guest_auto_approve' ? "Confirmar Reserva" : "Enviar Solicitação"}</span>
+                                <span>{selectedStructure?.visibility === 'guest_auto_approve' ? t.confirmBooking : t.sendRequest}</span>
                             </button>
                         )}
                     </div>

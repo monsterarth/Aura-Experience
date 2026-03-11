@@ -621,7 +621,9 @@ export type FBCategoryType = 'breakfast' | 'restaurant' | 'both';
 export interface FBCategory {
   id: string;
   propertyId: string;
-  name: string;
+  name: string;       // PT — padrão/fallback
+  name_en?: string;
+  name_es?: string;
   type: FBCategoryType;
   selectionTarget?: 'individual' | 'group_portion' | 'group_unit';
   maxPerGuest?: number;
@@ -637,7 +639,9 @@ export interface FBIngredient {
 }
 
 export interface FBFlavor {
-  name: string;
+  name: string;       // PT — padrão/fallback
+  name_en?: string;
+  name_es?: string;
   imageUrl?: string;
   ingredients?: FBIngredient[];
 }
@@ -646,8 +650,12 @@ export interface FBMenuItem {
   id: string;
   propertyId: string;
   categoryId: string;
-  name: string;
-  description?: string;
+  name: string;            // PT — padrão/fallback
+  name_en?: string;
+  name_es?: string;
+  description?: string;    // PT
+  description_en?: string;
+  description_es?: string;
   price: number;
   ingredients: FBIngredient[];
   flavors?: FBFlavor[];

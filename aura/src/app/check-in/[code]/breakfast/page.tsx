@@ -64,6 +64,78 @@ export interface OrderSelection {
     guestName?: string; // Para identificação 'Hóspede 1', 'Hóspede 2'
 }
 
+const breakfastTranslations = {
+    pt: {
+        pageTitle: 'Café da Manhã', unavailable: 'Serviço Indisponível',
+        unavailableDesc: 'O Café da manhã não está ativo no momento.',
+        buffetTitle: 'Café da Manhã', buffetDesc: 'Nosso café da manhã é servido no formato Buffet em nosso restaurante central.',
+        availableTimes: 'Horários Disponíveis', backToPortal: 'Voltar ao Portal', back: 'Voltar',
+        confirmed: 'Pedido Confirmado!', selectTime: 'Para qual horário?', buildBasket: 'Montar Cesta',
+        maxPerGuest: (n: number) => `Máx. ${n} item(s) por hóspede`,
+        nextGuest: 'Próximo Hóspede', skip: 'Nenhum / Pular',
+        skipped: (name: string) => `${name} pulou esta etapa`,
+        chooseItems: 'Escolher Itens', backToOptions: 'Voltar para as opções', selectedFlavor: 'Sabor selecionado:',
+        orderSummary: 'Resumo do Pedido', confirm: 'Confirmar Pedido Final', reviewOrder: 'Revisar Pedido',
+        addFlavor: '+ Adicionar Sabor...', limitReached: 'Limite Atingido',
+        deliveryScheduled: 'Entrega agendada', change: 'Alterar', extras: 'Total Extras', included: 'Incluso',
+        observations: 'Observações / Pedidos Especiais',
+        groupPortionHint: 'Quantos hóspedes querem?',
+        groupPortionHintFlavors: 'Quantos hóspedes querem? (Adicione os sabores abaixo)',
+        choosePerPerson: (n: number) => `Escolha seus itens (${n} unidades por pessoa)`,
+        groupOptions: 'Opções para o Grupo',
+        identifyGuests: 'Identifique-se',
+        whoIsStaying: 'Quem está hospedado?',
+        yourName: 'Seu nome', guestN: (n: number) => `Hóspede ${n}`,
+        forNPeople: (n: number) => `para ${n} pessoa(s)`,
+    },
+    en: {
+        pageTitle: 'Breakfast', unavailable: 'Service Unavailable',
+        unavailableDesc: 'Breakfast service is not active at the moment.',
+        buffetTitle: 'Breakfast', buffetDesc: 'Our breakfast is served buffet-style at our central restaurant.',
+        availableTimes: 'Available Times', backToPortal: 'Back to Portal', back: 'Back',
+        confirmed: 'Order Confirmed!', selectTime: 'What time do you prefer?', buildBasket: 'Build Basket',
+        maxPerGuest: (n: number) => `Max. ${n} item(s) per guest`,
+        nextGuest: 'Next Guest', skip: 'None / Skip',
+        skipped: (name: string) => `${name} skipped this step`,
+        chooseItems: 'Choose Items', backToOptions: 'Back to options', selectedFlavor: 'Selected flavor:',
+        orderSummary: 'Order Summary', confirm: 'Confirm Final Order', reviewOrder: 'Review Order',
+        addFlavor: '+ Add Flavor...', limitReached: 'Limit Reached',
+        deliveryScheduled: 'Scheduled delivery', change: 'Change', extras: 'Extra Total', included: 'Included',
+        observations: 'Special Requests',
+        groupPortionHint: 'How many guests want this?',
+        groupPortionHintFlavors: 'How many guests want this? (Add flavors below)',
+        choosePerPerson: (n: number) => `Choose your items (${n} per person)`,
+        groupOptions: 'Group Options',
+        identifyGuests: 'Identify yourself',
+        whoIsStaying: 'Who is staying?',
+        yourName: 'Your name', guestN: (n: number) => `Guest ${n}`,
+        forNPeople: (n: number) => `for ${n} guest(s)`,
+    },
+    es: {
+        pageTitle: 'Desayuno', unavailable: 'Servicio No Disponible',
+        unavailableDesc: 'El servicio de desayuno no está activo en este momento.',
+        buffetTitle: 'Desayuno', buffetDesc: 'Nuestro desayuno se sirve en formato Buffet en nuestro restaurante central.',
+        availableTimes: 'Horarios Disponibles', backToPortal: 'Volver al Portal', back: 'Volver',
+        confirmed: '¡Pedido Confirmado!', selectTime: '¿Para qué horario?', buildBasket: 'Armar Canasta',
+        maxPerGuest: (n: number) => `Máx. ${n} ítem(s) por persona`,
+        nextGuest: 'Siguiente Huésped', skip: 'Ninguno / Omitir',
+        skipped: (name: string) => `${name} omitió este paso`,
+        chooseItems: 'Elegir Ítems', backToOptions: 'Volver a las opciones', selectedFlavor: 'Sabor seleccionado:',
+        orderSummary: 'Resumen del Pedido', confirm: 'Confirmar Pedido Final', reviewOrder: 'Revisar Pedido',
+        addFlavor: '+ Agregar Sabor...', limitReached: 'Límite Alcanzado',
+        deliveryScheduled: 'Entrega programada', change: 'Cambiar', extras: 'Total Extras', included: 'Incluido',
+        observations: 'Observaciones / Pedidos Especiales',
+        groupPortionHint: '¿Cuántos huéspedes quieren?',
+        groupPortionHintFlavors: '¿Cuántos huéspedes quieren? (Agregue sabores abajo)',
+        choosePerPerson: (n: number) => `Elija sus ítems (${n} por persona)`,
+        groupOptions: 'Opciones para el Grupo',
+        identifyGuests: 'Identifíquese',
+        whoIsStaying: '¿Quién está hospedado?',
+        yourName: 'Su nombre', guestN: (n: number) => `Huésped ${n}`,
+        forNPeople: (n: number) => `para ${n} persona(s)`,
+    },
+};
+
 function BreakfastWizard() {
     const { code } = useParams();
     const router = useRouter();
@@ -93,6 +165,14 @@ function BreakfastWizard() {
     const [pendingFlavorSelection, setPendingFlavorSelection] = useState<{ categoryId: string, guestName: string, menuItem: FBMenuItem } | null>(null);
     const [guestNames, setGuestNames] = useState<string[]>([]);
     const [observationsText, setObservationsText] = useState('');
+    const [lang, setLang] = useState<'pt' | 'en' | 'es'>('pt');
+    const t = breakfastTranslations[lang];
+
+    const locName = (item: { name: string; name_en?: string; name_es?: string }) =>
+        (lang === 'en' && item.name_en) ? item.name_en : (lang === 'es' && item.name_es) ? item.name_es : item.name;
+    const locDesc = (item: { description?: string; description_en?: string; description_es?: string }) =>
+        (lang === 'en' && item.description_en) ? item.description_en :
+        (lang === 'es' && item.description_es) ? item.description_es : (item.description || undefined);
 
     const totalGuests = useMemo(() => {
         if (!stay) return 1;
@@ -126,6 +206,9 @@ function BreakfastWizard() {
                     .filter((g: any) => g.type !== 'free')
                     .map((g: any, i: number) => g.fullName?.split(' ')[0] || `Hóspede ${i + 2}`);
                 setGuestNames([primaryFirstName, ...additionalFirstNames]);
+                if (stayData?.guest?.preferredLanguage) {
+                    setLang(stayData.guest.preferredLanguage as 'pt' | 'en' | 'es');
+                }
 
                 const prop = await PropertyService.getPropertyById(s.propertyId);
                 if (!prop) return;
@@ -329,10 +412,10 @@ function BreakfastWizard() {
         return (
             <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6 text-center" style={themeStyles}>
                 <Coffee size={48} className="text-muted-foreground mb-4 opacity-50" />
-                <h1 className="text-2xl font-black uppercase">Serviço Indisponível</h1>
-                <p className="text-muted-foreground mt-2">O Café da manhã não está ativo no momento.</p>
+                <h1 className="text-2xl font-black uppercase">{t.unavailable}</h1>
+                <p className="text-muted-foreground mt-2">{t.unavailableDesc}</p>
                 <button onClick={() => router.push(`/check-in/${code}`)} className="mt-8 px-6 py-3 bg-secondary rounded-xl font-bold uppercase text-xs tracking-widest">
-                    Voltar
+                    {t.back}
                 </button>
             </div>
         );
@@ -345,13 +428,11 @@ function BreakfastWizard() {
                 <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mb-6">
                     <Utensils size={40} className="text-primary" />
                 </div>
-                <h1 className="text-3xl font-black uppercase tracking-tighter">Café da Manhã</h1>
-                <p className="text-muted-foreground mt-2 max-w-sm">
-                    Nosso café da manhã é servido no formato Buffet em nosso restaurante central.
-                </p>
+                <h1 className="text-3xl font-black uppercase tracking-tighter">{t.buffetTitle}</h1>
+                <p className="text-muted-foreground mt-2 max-w-sm">{t.buffetDesc}</p>
 
                 <div className="mt-8 w-full max-w-sm bg-card border border-border rounded-2xl p-6 text-left">
-                    <h3 className="font-bold text-sm uppercase text-muted-foreground mb-4 tracking-widest">Horários Disponíveis</h3>
+                    <h3 className="font-bold text-sm uppercase text-muted-foreground mb-4 tracking-widest">{t.availableTimes}</h3>
                     {fb.buffetHours?.map((h, i) => (
                         <div key={i} className="flex justify-between items-center py-2 border-b border-border/50 last:border-0">
                             <span className="font-semibold">{['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'][h.dayOfWeek]}</span>
@@ -361,7 +442,7 @@ function BreakfastWizard() {
                 </div>
 
                 <button onClick={() => router.push(`/check-in/${code}`)} className="mt-8 px-6 py-3 bg-secondary rounded-xl font-bold uppercase text-xs tracking-widest">
-                    Voltar ao Portal
+                    {t.backToPortal}
                 </button>
             </div>
         )
@@ -375,10 +456,10 @@ function BreakfastWizard() {
                 <div className="w-24 h-24 bg-green-500 text-white rounded-full flex items-center justify-center mb-6 animate-in zoom-in shadow-xl shadow-green-500/30">
                     <CheckCircle2 size={48} />
                 </div>
-                <h1 className="text-3xl font-black uppercase tracking-tighter">Pedido Confirmado!</h1>
+                <h1 className="text-3xl font-black uppercase tracking-tighter">{t.confirmed}</h1>
                 <div className="bg-card border border-border p-6 rounded-2xl mt-6">
                     <p className="text-muted-foreground">
-                        Seu café será entregue no dia <strong className="text-foreground">{deliveryDate}</strong> às <strong className="text-foreground">{deliveryTime}</strong> na sua cabana.
+                        {t.deliveryScheduled}: <strong className="text-foreground">{deliveryDate}</strong> {lang === 'pt' ? 'às' : lang === 'es' ? 'a las' : 'at'} <strong className="text-foreground">{deliveryTime}</strong>
                     </p>
                 </div>
                 <button onClick={() => router.push(`/check-in/${code}`)} className="mt-8 px-8 py-4 w-full max-w-xs bg-primary text-primary-foreground rounded-2xl font-black uppercase text-sm tracking-widest shadow-xl shadow-primary/20">
@@ -402,7 +483,7 @@ function BreakfastWizard() {
                     <ArrowLeft size={24} />
                 </button>
                 <div className="flex-1">
-                    <h1 className="text-lg font-black uppercase tracking-tighter">Café da Manhã</h1>
+                    <h1 className="text-lg font-black uppercase tracking-tighter">{t.pageTitle}</h1>
                     {/* Stepper Dots */}
                     <div className="flex items-center gap-1 mt-1">
                         {[0, 1, 2].map(i => (
@@ -426,7 +507,7 @@ function BreakfastWizard() {
                         </div>
 
                         <div className="bg-card border border-border p-6 rounded-3xl space-y-4">
-                            <h3 className="font-bold uppercase tracking-widest text-muted-foreground text-xs">Para qual horário?</h3>
+                            <h3 className="font-bold uppercase tracking-widest text-muted-foreground text-xs">{t.selectTime}</h3>
 
                             <div className="grid grid-cols-2 gap-3">
                                 {fb.delivery?.deliveryTimes?.map(t => (
@@ -449,7 +530,7 @@ function BreakfastWizard() {
                             disabled={!deliveryTime}
                             className="w-full py-4 bg-foreground text-background font-black uppercase tracking-widest rounded-2xl shadow-xl flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50"
                         >
-                            Montar Cesta <ChevronRight size={20} />
+                            {t.buildBasket} <ChevronRight size={20} />
                         </button>
                     </div>
                 )}
@@ -471,14 +552,14 @@ function BreakfastWizard() {
                                 return (
                                     <section key={category.id} className="space-y-4">
                                         <div className="border-b border-border pb-2">
-                                            <h2 className="text-lg font-black uppercase tracking-tighter">{category.name}</h2>
+                                            <h2 className="text-lg font-black uppercase tracking-tighter">{locName(category)}</h2>
                                             {isUnitPool ? (
                                                 <p className="text-xs text-muted-foreground uppercase tracking-widest font-bold">
-                                                    Escolha seus itens ({category.maxPerGuest || 1} unidades por pessoa)
+                                                    {t.choosePerPerson(category.maxPerGuest || 1)}
                                                 </p>
                                             ) : (
                                                 <p className="text-xs text-muted-foreground uppercase tracking-widest font-bold">
-                                                    Opções para o Grupo
+                                                    {t.groupOptions}
                                                 </p>
                                             )}
                                         </div>
@@ -509,12 +590,12 @@ function BreakfastWizard() {
                                                                     </div>
                                                                 )}
                                                                 <div className="flex-1 min-w-0">
-                                                                    <h3 className="font-bold text-sm">{item.name}</h3>
-                                                                    {item.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{item.description}</p>}
+                                                                    <h3 className="font-bold text-sm">{locName(item)}</h3>
+                                                                    {locDesc(item) && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{locDesc(item)}</p>}
                                                                     {item.price > 0 && <p className="text-primary font-black mt-1 text-sm">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.price)}</p>}
                                                                     {!isUnitPool && (
                                                                         <p className="text-xs font-bold text-primary bg-primary/10 px-2 py-1 rounded mt-2">
-                                                                            Quantos hóspedes querem?
+                                                                            {t.groupPortionHint}
                                                                         </p>
                                                                     )}
                                                                 </div>
@@ -555,8 +636,8 @@ function BreakfastWizard() {
                                                                 </div>
                                                             )}
                                                             <div className="flex-1 min-w-0">
-                                                                <h4 className="font-bold text-sm">{item.name}</h4>
-                                                                {item.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{item.description}</p>}
+                                                                <h4 className="font-bold text-sm">{locName(item)}</h4>
+                                                                {locDesc(item) && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{locDesc(item)}</p>}
                                                                 {item.price > 0 && (
                                                                     <span className="text-primary font-bold text-xs mt-1 block">+{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.price)} (cada)</span>
                                                                 )}
@@ -564,7 +645,7 @@ function BreakfastWizard() {
                                                         </div>
                                                         {!isUnitPool && (
                                                             <p className="text-xs font-bold text-primary bg-primary/10 px-2 py-1 rounded mt-2">
-                                                                Quantos hóspedes querem? (Adicione os sabores abaixo)
+                                                                {t.groupPortionHintFlavors}
                                                             </p>
                                                         )}
 
@@ -600,9 +681,9 @@ function BreakfastWizard() {
                                                                     }
                                                                 }}
                                                             >
-                                                                <option value="" disabled>{isMaxedOut ? "Limite Atingido" : "+ Adicionar Sabor..."}</option>
+                                                                <option value="" disabled>{isMaxedOut ? t.limitReached : t.addFlavor}</option>
                                                                 {item.flavors!.map(f => (
-                                                                    <option key={f.name} value={f.name}>{f.name}</option>
+                                                                    <option key={f.name} value={f.name}>{locName(f)}</option>
                                                                 ))}
                                                             </select>
                                                         </div>
@@ -618,9 +699,9 @@ function BreakfastWizard() {
                             return (
                                 <section key={category.id} className="space-y-6">
                                     <div className="border-b border-border pb-2">
-                                        <h2 className="text-lg font-black uppercase tracking-tighter">{category.name}</h2>
+                                        <h2 className="text-lg font-black uppercase tracking-tighter">{locName(category)}</h2>
                                         <p className="text-xs text-muted-foreground uppercase tracking-widest font-bold flex items-center gap-1">
-                                            <AlertCircle size={12} /> Máx. {category.maxPerGuest || 1} item(s) por hóspede
+                                            <AlertCircle size={12} /> {t.maxPerGuest(category.maxPerGuest || 1)}
                                         </p>
                                     </div>
 
@@ -669,7 +750,7 @@ function BreakfastWizard() {
                                                                 <h3 className="font-bold text-sm uppercase tracking-widest bg-background border border-border w-max px-3 py-1 rounded-full text-foreground shadow-sm">{displayName}</h3>
                                                             </div>
                                                             {skippedGuests[`${category.id}_${currentIdx}`] ? (
-                                                                <button onClick={() => setSkippedGuests(prev => ({ ...prev, [`${category.id}_${currentIdx}`]: false }))} className="text-[10px] font-bold text-primary uppercase underline">Escolher Itens</button>
+                                                                <button onClick={() => setSkippedGuests(prev => ({ ...prev, [`${category.id}_${currentIdx}`]: false }))} className="text-[10px] font-bold text-primary uppercase underline">{t.chooseItems}</button>
                                                             ) : (
                                                                 <button
                                                                     onClick={() => {
@@ -681,7 +762,7 @@ function BreakfastWizard() {
                                                                     }}
                                                                     className="text-[10px] font-bold text-muted-foreground hover:text-foreground uppercase underline transition-colors"
                                                                 >
-                                                                    Nenhum / Pular
+                                                                    {t.skip}
                                                                 </button>
                                                             )}
                                                         </div>
@@ -689,19 +770,19 @@ function BreakfastWizard() {
                                                         {skippedGuests[`${category.id}_${currentIdx}`] ? (
                                                             <div className="bg-secondary/50 border border-dashed border-border p-6 rounded-2xl text-center">
                                                                 <AlertCircle size={24} className="mx-auto text-muted-foreground mb-2 opacity-50" />
-                                                                <p className="text-[11px] font-black text-muted-foreground uppercase tracking-widest">{displayName} pulou esta etapa</p>
+                                                                <p className="text-[11px] font-black text-muted-foreground uppercase tracking-widest">{t.skipped(displayName)}</p>
                                                             </div>
                                                         ) : pendingFlavorSelection?.categoryId === category.id && pendingFlavorSelection?.guestName === displayName ? (
                                                             <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300">
                                                                 <button onClick={() => setPendingFlavorSelection(null)} className="text-[10px] font-bold text-muted-foreground uppercase flex items-center gap-1 mb-2 hover:text-foreground">
-                                                                    <ArrowLeft size={12} /> Voltar para as opções
+                                                                    <ArrowLeft size={12} /> {t.backToOptions}
                                                                 </button>
                                                                 <div className="bg-card p-4 rounded-3xl border border-primary/20 shadow-sm relative overflow-hidden">
                                                                     <div className="flex items-center gap-4 relative z-10 bg-card rounded-t-xl mb-4 pb-4 border-b border-border/50">
                                                                         {pendingFlavorSelection.menuItem.imageUrl && <img src={pendingFlavorSelection.menuItem.imageUrl} className="w-14 h-14 rounded-xl object-cover bg-secondary" />}
                                                                         <div>
-                                                                            <h4 className="font-bold text-sm text-primary">{pendingFlavorSelection.menuItem.name}</h4>
-                                                                            <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mt-1">Sabor selecionado:</p>
+                                                                            <h4 className="font-bold text-sm text-primary">{locName(pendingFlavorSelection.menuItem)}</h4>
+                                                                            <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mt-1">{t.selectedFlavor}</p>
                                                                         </div>
                                                                     </div>
                                                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 relative z-10">
@@ -726,7 +807,7 @@ function BreakfastWizard() {
                                                                             >
                                                                                 <div className="flex items-center gap-3">
                                                                                     {f.imageUrl && <img src={f.imageUrl} className="w-10 h-10 rounded-lg object-cover bg-secondary" />}
-                                                                                    <span className="font-bold text-sm text-foreground">{f.name}</span>
+                                                                                    <span className="font-bold text-sm text-foreground">{locName(f)}</span>
                                                                                 </div>
                                                                                 <ChevronRight size={16} className="text-muted-foreground/50" />
                                                                             </button>
@@ -771,8 +852,8 @@ function BreakfastWizard() {
                                                                                     }
                                                                                 }
                                                                             }}>
-                                                                                <h4 className="font-bold text-sm">{item.name}</h4>
-                                                                                {item.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2 pr-4">{item.description}</p>}
+                                                                                <h4 className="font-bold text-sm">{locName(item)}</h4>
+                                                                                {locDesc(item) && <p className="text-xs text-muted-foreground mt-1 line-clamp-2 pr-4">{locDesc(item)}</p>}
                                                                                 {item.price > 0 && <span className="text-primary font-bold text-xs mt-1 block">+{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.price)}</span>}
                                                                             </div>
 
@@ -833,7 +914,7 @@ function BreakfastWizard() {
                                                                     onClick={() => setCurrentGuestIdxPerCat(prev => ({ ...prev, [category.id]: currentIdx + 1 }))}
                                                                     className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground font-black tracking-widest text-[10px] uppercase rounded-xl hover:opacity-90 transition-all shadow-md shadow-primary/20"
                                                                 >
-                                                                    Próximo Hóspede <ArrowRight size={14} />
+                                                                    {t.nextGuest} <ArrowRight size={14} />
                                                                 </button>
                                                             </div>
                                                         )}
@@ -849,7 +930,7 @@ function BreakfastWizard() {
                         {/* Observações gerais */}
                         <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
                             <p className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                                <Info size={12} /> Observações / Pedidos Especiais
+                                <Info size={12} /> {t.observations}
                             </p>
                             <textarea
                                 value={observationsText}
@@ -868,13 +949,13 @@ function BreakfastWizard() {
                 {step === 2 && (
                     <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
                         <div className="bg-card border border-border rounded-3xl p-6 shadow-sm">
-                            <h2 className="text-xl font-black uppercase tracking-tighter mb-4 border-b border-border pb-2">Resumo do Pedido</h2>
+                            <h2 className="text-xl font-black uppercase tracking-tighter mb-4 border-b border-border pb-2">{t.orderSummary}</h2>
                             <div className="flex justify-between items-center mb-6 bg-secondary p-4 rounded-2xl">
                                 <div>
-                                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Entrega agendada</p>
-                                    <p className="font-black mt-1 text-foreground">{deliveryDate} às {deliveryTime}</p>
+                                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{t.deliveryScheduled}</p>
+                                    <p className="font-black mt-1 text-foreground">{deliveryDate} {lang === 'pt' ? 'às' : lang === 'es' ? 'a las' : 'at'} {deliveryTime}</p>
                                 </div>
-                                <button onClick={() => setStep(0)} className="text-primary font-bold text-xs uppercase underline">Alterar</button>
+                                <button onClick={() => setStep(0)} className="text-primary font-bold text-xs uppercase underline">{t.change}</button>
                             </div>
 
                             <div className="space-y-6">
@@ -888,14 +969,14 @@ function BreakfastWizard() {
 
                                     return (
                                         <div key={cat.id} className="space-y-2">
-                                            <h3 className="text-xs font-black uppercase tracking-widest text-muted-foreground bg-secondary/50 px-3 py-1 rounded w-max">{cat.name}</h3>
+                                            <h3 className="text-xs font-black uppercase tracking-widest text-muted-foreground bg-secondary/50 px-3 py-1 rounded w-max">{locName(cat)}</h3>
 
                                             {cat.selectionTarget === 'group_unit' ? (
                                                 <div className="bg-background border border-border/50 rounded-xl p-3">
                                                     <p className="text-sm font-medium">
                                                         {catItemsInCart.map(sel => {
                                                             const itemDef = items.find(i => i.id === sel.menuItemId);
-                                                            return `${sel.quantity}x ${itemDef?.name}`;
+                                                            return `${sel.quantity}x ${itemDef ? locName(itemDef) : ''}`;
                                                         }).join(' | ')}
                                                     </p>
                                                 </div>
@@ -912,13 +993,13 @@ function BreakfastWizard() {
                                                                         <p className="font-bold text-sm">
                                                                             {cat.selectionTarget === 'individual' ? (
                                                                                 <>
-                                                                                    {item.name}
-                                                                                    {sel.flavor && <span className="text-muted-foreground font-normal"> de {sel.flavor}</span>}
-                                                                                    {sel.guestName && <span className="text-primary font-black ml-1">para {sel.guestName}</span>}
+                                                                                    {locName(item)}
+                                                                                    {sel.flavor && <span className="text-muted-foreground font-normal"> {lang === 'en' ? 'flavor' : lang === 'es' ? 'sabor' : 'de'} {sel.flavor}</span>}
+                                                                                    {sel.guestName && <span className="text-primary font-black ml-1">{lang === 'en' ? 'for' : lang === 'es' ? 'para' : 'para'} {sel.guestName}</span>}
                                                                                 </>
                                                                             ) : (
                                                                                 <>
-                                                                                    {item.name} <span className="text-muted-foreground font-normal">para {sel.quantity} pessoa(s)</span>
+                                                                                    {locName(item)} <span className="text-muted-foreground font-normal">{t.forNPeople(sel.quantity)}</span>
                                                                                 </>
                                                                             )}
                                                                         </p>
@@ -927,7 +1008,7 @@ function BreakfastWizard() {
                                                                 {item.price > 0 ? (
                                                                     <span className="font-mono text-sm">{(item.price * sel.quantity).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
                                                                 ) : (
-                                                                    <span className="font-mono text-xs text-green-500 font-bold uppercase mt-0.5">Incluso</span>
+                                                                    <span className="font-mono text-xs text-green-500 font-bold uppercase mt-0.5">{t.included}</span>
                                                                 )}
                                                             </div>
                                                         )
@@ -941,7 +1022,7 @@ function BreakfastWizard() {
 
                             {totalPrice > 0 && (
                                 <div className="mt-6 pt-4 border-t border-border flex justify-between items-center">
-                                    <span className="font-black uppercase tracking-widest text-muted-foreground">Total Extras</span>
+                                    <span className="font-black uppercase tracking-widest text-muted-foreground">{t.extras}</span>
                                     <span className="text-xl font-black text-primary">{totalPrice.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
                                 </div>
                             )}
@@ -970,7 +1051,7 @@ function BreakfastWizard() {
                                     disabled={totalItems === 0}
                                     className="w-full py-4 bg-primary text-primary-foreground rounded-2xl font-black uppercase tracking-widest flex items-center justify-between px-6 shadow-xl shadow-primary/20 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:shadow-none"
                                 >
-                                    <span>Revisar Pedido</span>
+                                    <span>{t.reviewOrder}</span>
                                     <div className="flex items-center gap-2">
                                         <span className="bg-black/20 px-2 py-1 rounded-lg text-xs">{totalItems} itens</span>
                                         <ChevronRight size={18} />
@@ -984,7 +1065,7 @@ function BreakfastWizard() {
                                     className="w-full py-4 bg-green-500 text-white rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-green-500/20 hover:bg-green-600 transition-all disabled:opacity-50 disabled:shadow-none"
                                 >
                                     {saving ? <Loader2 size={24} className="animate-spin" /> : <CheckCircle2 size={24} />}
-                                    <span>Confirmar Pedido Final</span>
+                                    <span>{t.confirm}</span>
                                 </button>
                             )}
                         </div>
