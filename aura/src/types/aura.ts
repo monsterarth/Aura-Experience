@@ -610,8 +610,12 @@ export interface FBSettings {
       orderWindowStart: string; // Horário início dos pedidos no dia anterior (ex: 18:00)
       orderWindowEnd: string; // Horário limite dos pedidos (ex: 22:00)
       deliveryTimes: string[]; // Lista de horários para entrega (ex: ["08:30", "09:30", "10:30"])
-      welcomeMessage?: string; // Título/Mensagem de boas vindas do Wizard
-      instructions?: string; // Instruções do Passo a Passo
+      welcomeMessage?: string; // Título/Mensagem de boas vindas do Wizard (PT)
+      welcomeMessage_en?: string;
+      welcomeMessage_es?: string;
+      instructions?: string; // Instruções do Passo a Passo (PT)
+      instructions_en?: string;
+      instructions_es?: string;
     };
   };
 }

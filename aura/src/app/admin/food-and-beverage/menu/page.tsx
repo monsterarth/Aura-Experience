@@ -33,7 +33,10 @@ export default function FBMenuPage() {
     }>({ name: "", name_en: "", name_es: "", type: "both", selectionTarget: "individual", maxPerGuest: 1, imageUrl: "", order: 0 });
 
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-    const [settingsForm, setSettingsForm] = useState({ welcomeMessage: "", instructions: "" });
+    const [settingsForm, setSettingsForm] = useState({ 
+        welcomeMessage: "", welcomeMessage_en: "", welcomeMessage_es: "", 
+        instructions: "", instructions_en: "", instructions_es: "" 
+    });
 
     const [isItemModalOpen, setIsItemModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<FBMenuItem | null>(null);
@@ -72,7 +75,11 @@ export default function FBMenuPage() {
         if (currentProperty) {
             setSettingsForm({
                 welcomeMessage: currentProperty.settings?.fbSettings?.breakfast?.delivery?.welcomeMessage || "",
-                instructions: currentProperty.settings?.fbSettings?.breakfast?.delivery?.instructions || ""
+                welcomeMessage_en: currentProperty.settings?.fbSettings?.breakfast?.delivery?.welcomeMessage_en || "",
+                welcomeMessage_es: currentProperty.settings?.fbSettings?.breakfast?.delivery?.welcomeMessage_es || "",
+                instructions: currentProperty.settings?.fbSettings?.breakfast?.delivery?.instructions || "",
+                instructions_en: currentProperty.settings?.fbSettings?.breakfast?.delivery?.instructions_en || "",
+                instructions_es: currentProperty.settings?.fbSettings?.breakfast?.delivery?.instructions_es || "",
             });
             loadData();
         }
@@ -185,7 +192,11 @@ export default function FBMenuPage() {
                     delivery: {
                         ...(currentFbSettings.breakfast.delivery || { orderWindowStart: "18:00", orderWindowEnd: "22:00", deliveryTimes: [] }),
                         welcomeMessage: settingsForm.welcomeMessage,
-                        instructions: settingsForm.instructions
+                        welcomeMessage_en: settingsForm.welcomeMessage_en,
+                        welcomeMessage_es: settingsForm.welcomeMessage_es,
+                        instructions: settingsForm.instructions,
+                        instructions_en: settingsForm.instructions_en,
+                        instructions_es: settingsForm.instructions_es,
                     }
                 }
             };
@@ -513,12 +524,12 @@ export default function FBMenuPage() {
             {/* MODAL CATEGORIA */}
             {isCategoryModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-card w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl scale-in-center">
-                        <div className="p-6 flex justify-between items-center border-b border-border">
+                    <div className="bg-card w-full max-w-md max-h-[90vh] flex flex-col rounded-[32px] overflow-hidden shadow-2xl scale-in-center">
+                        <div className="p-6 flex justify-between items-center border-b border-border shrink-0">
                             <h2 className="text-xl font-black">{editingCategory ? "Editar Categoria" : "Nova Categoria"}</h2>
                             <button onClick={() => setIsCategoryModalOpen(false)} className="p-2 hover:bg-secondary rounded-full"><X size={20} /></button>
                         </div>
-                        <div className="p-6 space-y-4">
+                        <div className="p-6 space-y-4 overflow-y-auto custom-scrollbar">
                             <div className="space-y-2">
                                 <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Nome da Categoria</label>
                                 {/* Language tabs */}
@@ -917,30 +928,53 @@ export default function FBMenuPage() {
             {/* MODAL SETTINGS */}
             {isSettingsModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-                    <div className="bg-card w-full max-w-xl flex flex-col rounded-[32px] overflow-hidden shadow-2xl scale-in-center">
-                        <div className="p-6 flex justify-between items-center border-b border-border">
+                    <div className="bg-card w-full max-w-xl flex flex-col max-h-[90vh] rounded-[32px] overflow-hidden shadow-2xl scale-in-center">
+                        <div className="p-6 flex justify-between items-center border-b border-border shrink-0">
                             <h2 className="text-xl font-black">Configurações (Dashboard Hóspede)</h2>
                             <button onClick={() => setIsSettingsModalOpen(false)} className="p-2 hover:bg-secondary rounded-full"><X size={20} /></button>
                         </div>
 
-                        <div className="p-6 space-y-6">
+                        <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar">
+                            {/* Language tabs */}
+                            <div className="flex gap-1 p-1 bg-muted rounded-lg w-fit mb-2">
+                                {(['pt', 'en', 'es'] as const).map(l => (
+                                    <button key={l} type="button"
+                                        onClick={() => setFormLangTab(l)}
+                                        className={cn("px-3 py-1 text-xs font-bold uppercase rounded-md transition-all",
+                                            formLangTab === l ? "bg-background shadow-sm text-foreground" : "text-muted-foreground")}
+                                    >{l}</button>
+                                ))}
+                            </div>
+
                             <div className="space-y-2">
                                 <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Mensagem de Boas Vindas (Delivery Cesta)</label>
-                                <textarea
-                                    value={settingsForm.welcomeMessage}
-                                    onChange={e => setSettingsForm({ ...settingsForm, welcomeMessage: e.target.value })}
-                                    className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground min-h-[100px]"
-                                    placeholder="Ex: Bom dia! Que tal montar sua cesta perfeita para amanhã?"
-                                />
+                                {formLangTab === 'pt' && (
+                                    <textarea value={settingsForm.welcomeMessage} onChange={e => setSettingsForm({ ...settingsForm, welcomeMessage: e.target.value })}
+                                        className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground min-h-[100px]" placeholder="Ex: Bom dia! Que tal montar sua cesta perfeita para amanhã?" />
+                                )}
+                                {formLangTab === 'en' && (
+                                    <textarea value={settingsForm.welcomeMessage_en} onChange={e => setSettingsForm({ ...settingsForm, welcomeMessage_en: e.target.value })}
+                                        className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-blue-500/50 text-foreground min-h-[100px]" placeholder="Ex: Good morning! Let's build your perfect basket for tomorrow?" />
+                                )}
+                                {formLangTab === 'es' && (
+                                    <textarea value={settingsForm.welcomeMessage_es} onChange={e => setSettingsForm({ ...settingsForm, welcomeMessage_es: e.target.value })}
+                                        className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-orange-500/50 text-foreground min-h-[100px]" placeholder="Ex: ¡Buenos días! ¿Qué tal armar tu canasta perfecta para mañana?" />
+                                )}
                             </div>
                             <div className="space-y-2">
                                 <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Instruções Passo-a-Passo</label>
-                                <textarea
-                                    value={settingsForm.instructions}
-                                    onChange={e => setSettingsForm({ ...settingsForm, instructions: e.target.value })}
-                                    className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground min-h-[100px]"
-                                    placeholder="Instruções na tela do pedido..."
-                                />
+                                {formLangTab === 'pt' && (
+                                    <textarea value={settingsForm.instructions} onChange={e => setSettingsForm({ ...settingsForm, instructions: e.target.value })}
+                                        className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground min-h-[100px]" placeholder="Instruções na tela do pedido..." />
+                                )}
+                                {formLangTab === 'en' && (
+                                    <textarea value={settingsForm.instructions_en} onChange={e => setSettingsForm({ ...settingsForm, instructions_en: e.target.value })}
+                                        className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-blue-500/50 text-foreground min-h-[100px]" placeholder="Instructions on the order screen..." />
+                                )}
+                                {formLangTab === 'es' && (
+                                    <textarea value={settingsForm.instructions_es} onChange={e => setSettingsForm({ ...settingsForm, instructions_es: e.target.value })}
+                                        className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-orange-500/50 text-foreground min-h-[100px]" placeholder="Instrucciones en la pantalla de pedidos..." />
+                                )}
                             </div>
                         </div>
                         <div className="p-6 border-t border-border flex justify-end gap-3 bg-secondary/30">

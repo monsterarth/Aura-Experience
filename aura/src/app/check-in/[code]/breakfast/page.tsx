@@ -173,6 +173,14 @@ function BreakfastWizard() {
     const locDesc = (item: { description?: string; description_en?: string; description_es?: string }) =>
         (lang === 'en' && item.description_en) ? item.description_en :
         (lang === 'es' && item.description_es) ? item.description_es : (item.description || undefined);
+    const locWelcome = (delivery: any) =>
+        (lang === 'en' && delivery?.welcomeMessage_en) ? delivery.welcomeMessage_en :
+        (lang === 'es' && delivery?.welcomeMessage_es) ? delivery.welcomeMessage_es :
+        (delivery?.welcomeMessage || (lang === 'en' ? "Good morning starts here" : lang === 'es' ? "Buenos días comienza aquí" : "Bom dia começa aqui"));
+    const locInstructions = (delivery: any) =>
+        (lang === 'en' && delivery?.instructions_en) ? delivery.instructions_en :
+        (lang === 'es' && delivery?.instructions_es) ? delivery.instructions_es :
+        (delivery?.instructions || (lang === 'en' ? `Create your perfect basket. Deadline: ${delivery?.orderWindowEnd || "22:00"}.` : lang === 'es' ? `Crea tu canasta perfecta. Límite: ${delivery?.orderWindowEnd || "22:00"}.` : `Crie a cesta perfeita para amanhã. O limite para pedidos é hoje até as ${delivery?.orderWindowEnd || "22:00"}.`));
 
     const totalGuests = useMemo(() => {
         if (!stay) return 1;
@@ -500,9 +508,9 @@ function BreakfastWizard() {
                         <div className="bg-primary text-primary-foreground rounded-3xl p-6 shadow-xl shadow-primary/10 overflow-hidden relative">
                             <div className="absolute right-0 top-0 w-32 h-32 bg-white/10 rounded-bl-full translate-x-1/4 -translate-y-1/4 blur-xl"></div>
                             <Coffee size={32} className="mb-4 opacity-80" />
-                            <h2 className="text-2xl font-black uppercase tracking-tighter mb-2 whitespace-pre-wrap break-words">{fb.delivery?.welcomeMessage || "Bom dia inicia aqui"}</h2>
+                            <h2 className="text-2xl font-black uppercase tracking-tighter mb-2 whitespace-pre-wrap break-words">{locWelcome(fb.delivery)}</h2>
                             <p className="opacity-90 leading-relaxed text-sm whitespace-pre-wrap break-words">
-                                {fb.delivery?.instructions || `Crie a cesta perfeita para amanhã. O limite para pedidos é hoje até as ${fb.delivery?.orderWindowEnd || "22:00"}.`}
+                                {locInstructions(fb.delivery)}
                             </p>
                         </div>
 

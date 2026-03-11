@@ -1,0 +1,1 @@
+﻿src/app/check-in/[code]/breakfast/page.tsx(9,108): error TS2440: Import declaration conflicts with local declaration of 'X'.
