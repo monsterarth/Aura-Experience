@@ -484,6 +484,7 @@ export default function UnifiedPreCheckin() {
       // Create a payload copy with sanitized fields for FNRH
       const fnrhGuestPayload = {
         ...guest,
+        preferredLanguage: lang,
         document: {
           ...guest.document,
           number: sanitizeDocumentForFnrh(guest.document?.number)

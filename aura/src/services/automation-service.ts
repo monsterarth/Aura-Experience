@@ -82,6 +82,12 @@ export class AutomationService {
     return parsedText;
   }
 
+  static getBodyForLanguage(template: MessageTemplate, language?: string): string {
+    if (language === 'en' && template.body_en) return template.body_en;
+    if (language === 'es' && template.body_es) return template.body_es;
+    return template.body; // fallback: PT
+  }
+
   static async queueMessage(
     propertyId: string,
     stayId: string,
@@ -94,7 +100,8 @@ export class AutomationService {
     delayMinutes: number = 0
   ): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
-      const finalMessageBody = this.parseVariables(template.body, guest, cabin, stay);
+      const body = this.getBodyForLanguage(template, guest.preferredLanguage);
+      const finalMessageBody = this.parseVariables(body, guest, cabin, stay);
 
       const now = new Date();
       if (delayMinutes > 0) {
@@ -179,6 +186,8 @@ export class AutomationService {
         id,
         name: templateData.name,
         body: templateData.body,
+        body_en: templateData.body_en || null,
+        body_es: templateData.body_es || null,
         propertyId,
         updatedAt: new Date().toISOString()
       };

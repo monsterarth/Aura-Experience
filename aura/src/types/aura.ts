@@ -103,6 +103,7 @@ export interface Guest {
     ibgeCityId?: string; // FNRH requirement
   };
   allergies: string[];
+  preferredLanguage?: 'pt' | 'en' | 'es';
   updatedAt: Timestamp;
 }
 
@@ -480,7 +481,9 @@ export interface MessageTemplate {
   id: string;
   propertyId: string;
   name: string; // Ex: "Boas Vindas Padrão"
-  body: string; // Texto com variáveis ex: "Olá {{guest_name}}..."
+  body: string;      // PT — obrigatório, padrão de fallback
+  body_en?: string;  // EN — opcional
+  body_es?: string;  // ES — opcional
   variables: string[]; // Controle interno de quais variáveis o texto exige
   createdAt: Timestamp;
   updatedAt: Timestamp;

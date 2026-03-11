@@ -63,6 +63,7 @@ export default function AutomationSettingsPage() {
   // Template Modal State
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Partial<MessageTemplate> | null>(null);
+  const [templateLangTab, setTemplateLangTab] = useState<'pt' | 'en' | 'es'>('pt');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const fetchData = async () => {
@@ -105,6 +106,7 @@ export default function AutomationSettingsPage() {
     } else {
       setEditingTemplate({ name: "", body: "", variables: [] });
     }
+    setTemplateLangTab('pt');
     setIsTemplateModalOpen(true);
   };
 
@@ -320,7 +322,14 @@ export default function AutomationSettingsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {templates.map(template => (
                   <div key={template.id} className="bg-background border rounded-xl p-5 shadow-sm flex flex-col">
-                    <h3 className="font-bold text-foreground mb-2 line-clamp-1">{template.name}</h3>
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <h3 className="font-bold text-foreground line-clamp-1">{template.name}</h3>
+                      <div className="flex gap-1 shrink-0">
+                        <span className="text-[9px] font-black px-1.5 py-0.5 bg-primary/10 text-primary rounded">PT</span>
+                        {template.body_en && <span className="text-[9px] font-black px-1.5 py-0.5 bg-blue-500/10 text-blue-500 rounded">EN</span>}
+                        {template.body_es && <span className="text-[9px] font-black px-1.5 py-0.5 bg-orange-500/10 text-orange-500 rounded">ES</span>}
+                      </div>
+                    </div>
                     <p className="text-sm text-muted-foreground line-clamp-3 mb-4 flex-1 bg-muted/30 p-3 rounded-lg border border-dashed">
                       {template.body}
                     </p>
@@ -370,14 +379,43 @@ export default function AutomationSettingsPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-semibold">Texto do WhatsApp</label>
-                  <textarea
-                    ref={textareaRef}
-                    placeholder="Olá {{guest_name}}! Seja bem vindo à..."
-                    className="flex min-h-[300px] w-full rounded-md border border-input bg-background px-4 py-3 text-sm resize-none focus-visible:ring-1 focus-visible:ring-primary shadow-inner"
-                    value={editingTemplate.body || ""}
-                    onChange={(e) => setEditingTemplate({ ...editingTemplate, body: e.target.value })}
-                  />
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-semibold">Texto do WhatsApp</label>
+                    <div className="flex gap-1 p-1 bg-muted rounded-lg">
+                      {(['pt', 'en', 'es'] as const).map(l => (
+                        <button key={l} type="button"
+                          onClick={() => setTemplateLangTab(l)}
+                          className={`px-3 py-1 text-xs font-bold uppercase rounded-md transition-all ${templateLangTab === l ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                        >{l}</button>
+                      ))}
+                    </div>
+                  </div>
+                  {templateLangTab === 'pt' && (
+                    <textarea
+                      ref={textareaRef}
+                      placeholder="Olá {{guest_name}}! Seja bem vindo à..."
+                      className="flex min-h-[300px] w-full rounded-md border border-input bg-background px-4 py-3 text-sm resize-none focus-visible:ring-1 focus-visible:ring-primary shadow-inner"
+                      value={editingTemplate.body || ""}
+                      onChange={(e) => setEditingTemplate({ ...editingTemplate, body: e.target.value })}
+                    />
+                  )}
+                  {templateLangTab === 'en' && (
+                    <textarea
+                      placeholder="Hi {{guest_name}}! Welcome to..."
+                      className="flex min-h-[300px] w-full rounded-md border border-input bg-background px-4 py-3 text-sm resize-none focus-visible:ring-1 focus-visible:ring-blue-500 shadow-inner"
+                      value={editingTemplate.body_en || ""}
+                      onChange={(e) => setEditingTemplate({ ...editingTemplate, body_en: e.target.value })}
+                    />
+                  )}
+                  {templateLangTab === 'es' && (
+                    <textarea
+                      placeholder="Hola {{guest_name}}! Bienvenido a..."
+                      className="flex min-h-[300px] w-full rounded-md border border-input bg-background px-4 py-3 text-sm resize-none focus-visible:ring-1 focus-visible:ring-orange-500 shadow-inner"
+                      value={editingTemplate.body_es || ""}
+                      onChange={(e) => setEditingTemplate({ ...editingTemplate, body_es: e.target.value })}
+                    />
+                  )}
+                  <p className="text-[10px] text-muted-foreground">PT é obrigatório e serve de fallback. EN e ES são enviados automaticamente para hóspedes com esse idioma preferido.</p>
                 </div>
               </div>
 

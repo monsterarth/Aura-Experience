@@ -56,12 +56,116 @@ function getThemeStyles(propertyData?: Property | null) {
 }
 
 
+const hubTranslations = {
+    pt: {
+        welcome: 'Bem-vindo(a) à sua',
+        checkout: 'Check-out',
+        breakfast: 'Café da Manhã',
+        breakfastSub: 'Agende seu delivery na cabana',
+        scheduling: 'Agendamentos',
+        schedulingSub: 'Reservar espaços',
+        concierge: 'Concierge',
+        comingSoon: 'Em breve',
+        wifi: 'Wi-Fi',
+        wifiSub: 'Ver senha',
+        access: 'Acessos',
+        accessSub: 'Senhas e portões',
+        guides: 'Guias',
+        guidesSub: 'Manuais e regras',
+        events: 'Eventos',
+        survey: 'Avaliar Estadia',
+        surveySub: 'Compartilhe sua experiência',
+        whatsapp: 'Falar com a Recepção',
+        whatsappSub: 'Suporte via WhatsApp',
+        termsTitle: 'Revisão de Termos',
+        termsDesc: 'Por favor, leia e aceite nossas políticas para ter acesso ao portal.',
+        policyGeneral: 'Política Geral',
+        policyPrivacy: 'Privacidade (LGPD)',
+        policyPet: 'Política Pet',
+        agreedGeneral: 'Li e concordo com a Política Geral',
+        agreedPrivacy: 'Li e concordo com a Privacidade (LGPD)',
+        agreedPet: 'Li e concordo com a Política Pet',
+        proceed: 'Prosseguir',
+        checkoutTitle: 'Obrigado pela visita!',
+        checkoutDesc: 'Agradecemos por nos escolher. Volte sempre e tenha uma ótima viagem!',
+        needHelp: 'Precisou de algo?',
+    },
+    en: {
+        welcome: 'Welcome to your',
+        checkout: 'Check-out',
+        breakfast: 'Breakfast',
+        breakfastSub: 'Schedule delivery to your cabin',
+        scheduling: 'Reservations',
+        schedulingSub: 'Book spaces',
+        concierge: 'Concierge',
+        comingSoon: 'Coming soon',
+        wifi: 'Wi-Fi',
+        wifiSub: 'See password',
+        access: 'Access',
+        accessSub: 'Codes & gates',
+        guides: 'Guides',
+        guidesSub: 'Manuals & rules',
+        events: 'Events',
+        survey: 'Rate your stay',
+        surveySub: 'Share your experience',
+        whatsapp: 'Contact Reception',
+        whatsappSub: 'WhatsApp support',
+        termsTitle: 'Terms Review',
+        termsDesc: 'Please read and accept our policies to access the portal.',
+        policyGeneral: 'General Policy',
+        policyPrivacy: 'Privacy (LGPD)',
+        policyPet: 'Pet Policy',
+        agreedGeneral: 'I have read and agree to the General Policy',
+        agreedPrivacy: 'I have read and agree to Privacy (LGPD)',
+        agreedPet: 'I have read and agree to the Pet Policy',
+        proceed: 'Continue',
+        checkoutTitle: 'Thank you for your visit!',
+        checkoutDesc: 'We appreciate you choosing us. Come back soon and have a great trip!',
+        needHelp: 'Need anything?',
+    },
+    es: {
+        welcome: 'Bienvenido(a) a su',
+        checkout: 'Check-out',
+        breakfast: 'Desayuno',
+        breakfastSub: 'Programa tu entrega en la cabaña',
+        scheduling: 'Reservas',
+        schedulingSub: 'Reservar espacios',
+        concierge: 'Conserjería',
+        comingSoon: 'Próximamente',
+        wifi: 'Wi-Fi',
+        wifiSub: 'Ver contraseña',
+        access: 'Accesos',
+        accessSub: 'Claves y portones',
+        guides: 'Guías',
+        guidesSub: 'Manuales y reglas',
+        events: 'Eventos',
+        survey: 'Evaluar estadía',
+        surveySub: 'Comparte tu experiencia',
+        whatsapp: 'Contactar Recepción',
+        whatsappSub: 'Soporte por WhatsApp',
+        termsTitle: 'Revisión de Términos',
+        termsDesc: 'Por favor, lea y acepte nuestras políticas para acceder al portal.',
+        policyGeneral: 'Política General',
+        policyPrivacy: 'Privacidad (LGPD)',
+        policyPet: 'Política de Mascotas',
+        agreedGeneral: 'He leído y acepto la Política General',
+        agreedPrivacy: 'He leído y acepto la Privacidad (LGPD)',
+        agreedPet: 'He leído y acepto la Política de Mascotas',
+        proceed: 'Continuar',
+        checkoutTitle: '¡Gracias por su visita!',
+        checkoutDesc: 'Gracias por elegirnos. ¡Vuelva pronto y que tenga un buen viaje!',
+        needHelp: '¿Necesita algo?',
+    },
+};
+
 function GuestHubContent() {
     const { code } = useParams();
     const router = useRouter();
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [lang, setLang] = useState<'pt' | 'en' | 'es'>('pt');
+    const t = hubTranslations[lang];
 
     const [stays, setStays] = useState<Stay[]>([]);
     const [stay, setStay] = useState<Stay | null>(null);
@@ -102,6 +206,19 @@ function GuestHubContent() {
 
                 const prop = await PropertyService.getPropertyById(firstStay.propertyId);
                 setProperty(prop as Property);
+
+                // Ler idioma preferido do hóspede, fallback para idioma do browser
+                try {
+                    const stayData = await StayService.getStayWithGuestAndCabin(firstStay.propertyId, firstStay.id);
+                    const savedLang = stayData?.guest?.preferredLanguage;
+                    if (savedLang && ['pt', 'en', 'es'].includes(savedLang)) {
+                        setLang(savedLang as 'pt' | 'en' | 'es');
+                    } else {
+                        const browserLang = navigator.language.slice(0, 2);
+                        if (browserLang === 'es') setLang('es');
+                        else if (browserLang === 'en') setLang('en');
+                    }
+                } catch { /* silently ignore — UI defaults to PT */ }
 
                 if (stays.length === 1) {
                     if (firstStay.status === 'pending' || firstStay.status === 'pre_checkin_done') {
@@ -347,19 +464,23 @@ function GuestHubContent() {
                         ) : (
                             <h2 className="text-xl font-black uppercase tracking-widest text-primary">{property?.name || "Aura"}</h2>
                         )}
-                        <button className="w-10 h-10 bg-secondary/80 backdrop-blur-md rounded-full flex items-center justify-center text-foreground hover:bg-secondary transition-colors shadow-sm">
-                            <Menu size={20} />
-                        </button>
+                        <div className="flex bg-secondary/80 backdrop-blur-md rounded-lg p-1 border border-border/50">
+                            {(['pt', 'en', 'es'] as const).map(l => (
+                                <button key={l} onClick={() => setLang(l)}
+                                    className={cn("px-2 py-1 text-[10px] font-bold uppercase rounded-md transition-all", lang === l ? "bg-primary text-primary-foreground" : "text-muted-foreground")}
+                                >{l}</button>
+                            ))}
+                        </div>
                     </div>
 
                     {/* Hero Section */}
                     <div className="space-y-1">
-                        <p className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">Bem-vindo(a) à sua</p>
+                        <p className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">{t.welcome}</p>
                         <h1 className="text-4xl font-black tracking-tighter text-foreground leading-none">
                             {(stay as any).cabinName || "Cabana"}
                         </h1>
                         <p className="text-sm font-medium text-muted-foreground mt-2 flex items-center gap-2">
-                            <Calendar size={14} className="opacity-50" /> Check-out: {new Date(stay.checkOut).toLocaleDateString('pt-BR')}
+                            <Calendar size={14} className="opacity-50" /> {t.checkout}: {new Date(stay.checkOut).toLocaleDateString('pt-BR')}
                         </p>
                     </div>
 
@@ -374,8 +495,8 @@ function GuestHubContent() {
                                         <Coffee size={24} />
                                     </div>
                                     <div className="text-left">
-                                        <h3 className="font-black text-lg tracking-tight uppercase">Café da Manhã</h3>
-                                        <p className="text-xs font-medium text-muted-foreground">Agende seu delivery na cabana</p>
+                                        <h3 className="font-black text-lg tracking-tight uppercase">{t.breakfast}</h3>
+                                        <p className="text-xs font-medium text-muted-foreground">{t.breakfastSub}</p>
                                     </div>
                                 </div>
                                 <ArrowRight size={20} className="text-primary opacity-50 group-hover:opacity-100 group-hover:translate-x-1 transition-all z-10" />
@@ -388,8 +509,8 @@ function GuestHubContent() {
                                 <Calendar size={20} />
                             </div>
                             <div className="text-left">
-                                <h3 className="font-bold text-sm uppercase tracking-wider">Agendamentos</h3>
-                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">Reservar espaços</p>
+                                <h3 className="font-bold text-sm uppercase tracking-wider">{t.scheduling}</h3>
+                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">{t.schedulingSub}</p>
                             </div>
                         </button>
 
@@ -399,8 +520,8 @@ function GuestHubContent() {
                                 <BellRing size={20} />
                             </div>
                             <div className="text-left">
-                                <h3 className="font-bold text-sm uppercase tracking-wider">Concierge</h3>
-                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">Em breve</p>
+                                <h3 className="font-bold text-sm uppercase tracking-wider">{t.concierge}</h3>
+                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">{t.comingSoon}</p>
                             </div>
                         </button>
 
@@ -410,8 +531,8 @@ function GuestHubContent() {
                                 <Wifi size={20} />
                             </div>
                             <div className="text-left">
-                                <h3 className="font-bold text-sm uppercase tracking-wider">Wi-Fi</h3>
-                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">Ver senha</p>
+                                <h3 className="font-bold text-sm uppercase tracking-wider">{t.wifi}</h3>
+                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">{t.wifiSub}</p>
                             </div>
                         </button>
 
@@ -421,8 +542,8 @@ function GuestHubContent() {
                                 <Key size={20} />
                             </div>
                             <div className="text-left">
-                                <h3 className="font-bold text-sm uppercase tracking-wider">Acessos</h3>
-                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">Senhas e portões</p>
+                                <h3 className="font-bold text-sm uppercase tracking-wider">{t.access}</h3>
+                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">{t.accessSub}</p>
                             </div>
                         </button>
 
@@ -432,8 +553,8 @@ function GuestHubContent() {
                                 <BookOpen size={20} />
                             </div>
                             <div className="text-left">
-                                <h3 className="font-bold text-sm uppercase tracking-wider">Guias</h3>
-                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">Manuais e regras</p>
+                                <h3 className="font-bold text-sm uppercase tracking-wider">{t.guides}</h3>
+                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">{t.guidesSub}</p>
                             </div>
                         </button>
 
@@ -443,8 +564,8 @@ function GuestHubContent() {
                                 <Ticket size={20} />
                             </div>
                             <div className="text-left">
-                                <h3 className="font-bold text-sm uppercase tracking-wider">Eventos</h3>
-                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">Em breve</p>
+                                <h3 className="font-bold text-sm uppercase tracking-wider">{t.events}</h3>
+                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">{t.comingSoon}</p>
                             </div>
                         </button>
 
@@ -454,8 +575,8 @@ function GuestHubContent() {
                                 <Star size={20} />
                             </div>
                             <div className="text-left flex-1">
-                                <h3 className="font-bold text-sm uppercase tracking-wider">Sua Opinião</h3>
-                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">Deixe seu feedback para nós</p>
+                                <h3 className="font-bold text-sm uppercase tracking-wider">{t.survey}</h3>
+                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">{t.surveySub}</p>
                             </div>
                             <ArrowRight size={16} className="text-muted-foreground group-hover:text-foreground transition-colors" />
                         </button>
@@ -463,7 +584,7 @@ function GuestHubContent() {
 
                     {/* Actions */}
                     <button onClick={() => window.open(`https://wa.me/${property?.settings?.whatsappNumber?.replace(/\D/g, '') || ''}`, '_blank')} className="w-full py-4 bg-foreground text-background font-black uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 hover:opacity-90 shadow-xl mt-8">
-                        <MessageSquare size={18} /> Recepção (WhatsApp)
+                        <MessageSquare size={18} /> {t.whatsapp}
                     </button>
                 </div>
 
