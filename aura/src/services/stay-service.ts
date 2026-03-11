@@ -176,10 +176,13 @@ export const StayService = {
     }
 
     // Supabase JS doesnt have explicit transactions, we do parallel awaited calls
-    await Promise.all([
+    const [stayRes, guestRes] = await Promise.all([
       supabase.from('stays').update({ ...stayUpdate, status: 'pre_checkin_done', updatedAt: new Date().toISOString() }).eq('id', stayId),
       supabase.from('guests').update({ ...guestUpdate, updatedAt: new Date().toISOString() }).eq('id', stay.guestId)
     ]);
+
+    if (stayRes.error) throw new Error(`Falha ao atualizar a estadia: ${stayRes.error.message}`);
+    if (guestRes.error) throw new Error(`Falha ao atualizar os dados do hóspede: ${guestRes.error.message}`);
 
     return finalAccessCode;
   },
