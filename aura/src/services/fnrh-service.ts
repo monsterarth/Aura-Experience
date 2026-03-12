@@ -85,4 +85,34 @@ export class FnrhService {
         ];
     }
 
+    /**
+     * GET /dominios/pessoas/nacionalidades
+     * Lista curada de nacionalidades frequentes no turismo brasileiro (padrão FNRH).
+     */
+    static async getNacionalidades(): Promise<FnrhDomain[]> {
+        return [
+            { id: "Brasileira", label: "Brasileira" },
+            { id: "Americana", label: "Americana (EUA)" },
+            { id: "Argentina", label: "Argentina" },
+            { id: "Portuguesa", label: "Portuguesa" },
+            { id: "Uruguaia", label: "Uruguaia" },
+            { id: "Chilena", label: "Chilena" },
+            { id: "Paraguaia", label: "Paraguaia" },
+            { id: "Colombiana", label: "Colombiana" },
+            { id: "Peruana", label: "Peruana" },
+            { id: "Boliviana", label: "Boliviana" },
+            { id: "Venezuelana", label: "Venezuelana" },
+            { id: "Francesa", label: "Francesa" },
+            { id: "Italiana", label: "Italiana" },
+            { id: "Espanhola", label: "Espanhola" },
+            { id: "Alemã", label: "Alemã" },
+            { id: "Britânica", label: "Britânica" },
+            { id: "Canadense", label: "Canadense" },
+            { id: "Mexicana", label: "Mexicana" },
+            { id: "Japonesa", label: "Japonesa" },
+            { id: "Chinesa", label: "Chinesa" },
+            { id: "Outra", label: "Outra" },
+        ];
+    }
+
 }

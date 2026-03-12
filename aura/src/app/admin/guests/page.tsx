@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { GuestService } from "@/services/guest-service";
+import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { Guest } from "@/types/aura";
 import { cn } from "@/lib/utils";
@@ -289,6 +290,22 @@ function GuestDetailPanel({
   const [stays, setStays] = useState<StayRow[]>([]);
   const [loadingStays, setLoadingStays] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [fnrhDomains, setFnrhDomains] = useState<{
+    tiposDocumento: FnrhDomain[];
+    generos: FnrhDomain[];
+    nacionalidades: FnrhDomain[];
+  } | null>(null);
+
+  // Load FNRH domains once
+  useEffect(() => {
+    Promise.all([
+      FnrhService.getTiposDocumento(),
+      FnrhService.getGeneros(),
+      FnrhService.getNacionalidades(),
+    ]).then(([tiposDocumento, generos, nacionalidades]) => {
+      setFnrhDomains({ tiposDocumento, generos, nacionalidades });
+    });
+  }, []);
 
   // Sync form when guest prop changes
   useEffect(() => {
@@ -446,7 +463,15 @@ function GuestDetailPanel({
                 </div>
                 <div>
                   <FieldLabel>Tipo de Documento</FieldLabel>
-                  <FieldInput value={formData.document?.type} onChange={v => setDoc("type", v)} disabled={disabled} placeholder="CPF, Passaporte..." />
+                  <select
+                    value={formData.document?.type ?? ""}
+                    onChange={e => setDoc("type", e.target.value)}
+                    disabled={disabled}
+                    className={cn("w-full bg-secondary border border-border rounded-xl px-3 py-2 text-sm text-foreground outline-none transition-all", disabled ? "opacity-60 cursor-default" : "focus:border-primary/50")}
+                  >
+                    <option value="" disabled>Selecione...</option>
+                    {fnrhDomains?.tiposDocumento.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+                  </select>
                 </div>
                 <div>
                   <FieldLabel>Número do Documento</FieldLabel>
@@ -458,11 +483,27 @@ function GuestDetailPanel({
                 </div>
                 <div>
                   <FieldLabel>Gênero</FieldLabel>
-                  <FieldInput value={formData.gender} onChange={v => set("gender", v)} disabled={disabled} />
+                  <select
+                    value={formData.gender ?? ""}
+                    onChange={e => set("gender", e.target.value)}
+                    disabled={disabled}
+                    className={cn("w-full bg-secondary border border-border rounded-xl px-3 py-2 text-sm text-foreground outline-none transition-all", disabled ? "opacity-60 cursor-default" : "focus:border-primary/50")}
+                  >
+                    <option value="" disabled>Selecione...</option>
+                    {fnrhDomains?.generos.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
+                  </select>
                 </div>
                 <div>
                   <FieldLabel>Nacionalidade</FieldLabel>
-                  <FieldInput value={formData.nationality} onChange={v => set("nationality", v)} disabled={disabled} />
+                  <select
+                    value={formData.nationality ?? ""}
+                    onChange={e => set("nationality", e.target.value)}
+                    disabled={disabled}
+                    className={cn("w-full bg-secondary border border-border rounded-xl px-3 py-2 text-sm text-foreground outline-none transition-all", disabled ? "opacity-60 cursor-default" : "focus:border-primary/50")}
+                  >
+                    <option value="" disabled>Selecione...</option>
+                    {fnrhDomains?.nacionalidades.map(n => <option key={n.id} value={n.id}>{n.label}</option>)}
+                  </select>
                 </div>
                 <div>
                   <FieldLabel>Idioma Preferido</FieldLabel>
@@ -665,9 +706,9 @@ const EMPTY_GUEST: Omit<Guest, 'updatedAt'> = {
   fullName: '',
   email: '',
   phone: '',
-  nationality: 'Brasil',
+  nationality: 'Brasileira',
   birthDate: '',
-  gender: '',
+  gender: 'NAO_INFORMADO',
   occupation: '',
   document: { type: 'CPF', number: '' },
   address: { street: '', number: '', neighborhood: '', city: '', state: '', zipCode: '', country: 'Brasil' },
@@ -690,6 +731,21 @@ function NewGuestPanel({
 }) {
   const [formData, setFormData] = useState<Omit<Guest, 'updatedAt'>>({ ...EMPTY_GUEST, propertyId });
   const [saving, setSaving] = useState(false);
+  const [fnrhDomains, setFnrhDomains] = useState<{
+    tiposDocumento: FnrhDomain[];
+    generos: FnrhDomain[];
+    nacionalidades: FnrhDomain[];
+  } | null>(null);
+
+  useEffect(() => {
+    Promise.all([
+      FnrhService.getTiposDocumento(),
+      FnrhService.getGeneros(),
+      FnrhService.getNacionalidades(),
+    ]).then(([tiposDocumento, generos, nacionalidades]) => {
+      setFnrhDomains({ tiposDocumento, generos, nacionalidades });
+    });
+  }, []);
 
   const set = (field: keyof Guest, value: any) =>
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -760,11 +816,8 @@ function NewGuestPanel({
                 onChange={e => setDoc("type", e.target.value)}
                 className="w-full bg-secondary border border-border rounded-xl px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50"
               >
-                <option value="CPF">CPF</option>
-                <option value="Passaporte">Passaporte</option>
-                <option value="RG">RG</option>
-                <option value="CNH">CNH</option>
-                <option value="RNE">RNE</option>
+                <option value="" disabled>Selecione...</option>
+                {fnrhDomains?.tiposDocumento.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
               </select>
             </div>
             <div>
@@ -777,11 +830,25 @@ function NewGuestPanel({
             </div>
             <div>
               <FieldLabel>Gênero</FieldLabel>
-              <FieldInput value={formData.gender} onChange={v => set("gender", v)} disabled={false} placeholder="M / F / Outro" />
+              <select
+                value={formData.gender ?? ""}
+                onChange={e => set("gender", e.target.value)}
+                className="w-full bg-secondary border border-border rounded-xl px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50"
+              >
+                <option value="" disabled>Selecione...</option>
+                {fnrhDomains?.generos.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
+              </select>
             </div>
             <div>
               <FieldLabel>Nacionalidade</FieldLabel>
-              <FieldInput value={formData.nationality} onChange={v => set("nationality", v)} disabled={false} />
+              <select
+                value={formData.nationality ?? ""}
+                onChange={e => set("nationality", e.target.value)}
+                className="w-full bg-secondary border border-border rounded-xl px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50"
+              >
+                <option value="" disabled>Selecione...</option>
+                {fnrhDomains?.nacionalidades.map(n => <option key={n.id} value={n.id}>{n.label}</option>)}
+              </select>
             </div>
             <div>
               <FieldLabel>Idioma Preferido</FieldLabel>
