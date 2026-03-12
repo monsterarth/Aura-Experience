@@ -148,7 +148,7 @@ export default function KdsPage() {
   useEffect(() => {
     if (!propertyId) return;
     const channel = supabase.channel(`kds_${propertyId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'fb_orders', filter: `propertyId=eq.${propertyId}` }, loadData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fb_orders', filter: `property_id=eq.${propertyId}` }, loadData)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [propertyId, loadData]);

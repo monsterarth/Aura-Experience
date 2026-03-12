@@ -6,6 +6,27 @@ import {
   BreakfastSession, BreakfastAttendance, BreakfastTable, BreakfastVisitor, FBOrder
 } from "@/types/aura";
 
+// fb_orders usa snake_case — mapeamos para camelCase do domínio
+const mapSalonOrder = (d: any): FBOrder => ({
+  id: d.id,
+  propertyId: d.property_id,
+  stayId: d.stay_id ?? null,
+  type: d.type,
+  modality: d.modality,
+  status: d.status,
+  items: d.items ?? [],
+  totalPrice: d.total_price ?? 0,
+  deliveryTime: d.delivery_time ?? undefined,
+  deliveryDate: d.delivery_date ?? undefined,
+  tableId: d.table_id ?? undefined,
+  attendanceId: d.attendance_id ?? undefined,
+  requestedBy: d.requested_by ?? undefined,
+  guestName: d.guest_name ?? undefined,
+  cabinName: d.cabin_name ?? undefined,
+  createdAt: d.created_at,
+  updatedAt: d.updated_at,
+});
+
 export const BreakfastSalonService = {
 
   // ==========================================
@@ -239,20 +260,20 @@ export const BreakfastSalonService = {
       .from('fb_orders')
       .insert({
         id,
-        propertyId,
-        stayId: stayId ?? null,
+        property_id: propertyId,
+        stay_id: stayId ?? null,
         type: 'breakfast',
         modality: 'buffet',
         status: 'pending',
         items,
-        totalPrice,
-        tableId,
-        attendanceId: attendanceId ?? null,
-        requestedBy: 'waiter',
-        guestName: guestName ?? null,
-        cabinName: cabinName ?? null,
-        createdAt: now,
-        updatedAt: now,
+        total_price: totalPrice,
+        table_id: tableId,
+        attendance_id: attendanceId ?? null,
+        requested_by: 'waiter',
+        guest_name: guestName ?? null,
+        cabin_name: cabinName ?? null,
+        created_at: now,
+        updated_at: now,
       })
       .select('*')
       .single();
@@ -267,11 +288,10 @@ export const BreakfastSalonService = {
       details: `Pedido buffet pelo garçom. Mesa: ${tableId}. ${items.length} item(ns).`,
     });
 
-    return data as FBOrder;
+    return mapSalonOrder(data);
   },
 
   async getOrdersBySession(propertyId: string, sessionId: string): Promise<FBOrder[]> {
-    // Get table IDs for the session
     const { data: tables } = await supabase
       .from('breakfast_tables')
       .select('id')
@@ -284,13 +304,13 @@ export const BreakfastSalonService = {
     const { data } = await supabase
       .from('fb_orders')
       .select('*')
-      .eq('propertyId', propertyId)
+      .eq('property_id', propertyId)
       .eq('modality', 'buffet')
-      .in('tableId', tableIds)
+      .in('table_id', tableIds)
       .neq('status', 'cancelled')
-      .order('createdAt', { ascending: true });
+      .order('created_at', { ascending: true });
 
-    return (data || []) as FBOrder[];
+    return (data || []).map(mapSalonOrder);
   },
 
   async updateOrderStatus(
@@ -299,7 +319,7 @@ export const BreakfastSalonService = {
   ): Promise<void> {
     await supabase
       .from('fb_orders')
-      .update({ status: newStatus, updatedAt: new Date().toISOString() })
+      .update({ status: newStatus, updated_at: new Date().toISOString() })
       .eq('id', orderId);
   },
 

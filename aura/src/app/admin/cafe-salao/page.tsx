@@ -468,7 +468,7 @@ export default function CafeSalaoPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'breakfast_attendance', filter: `propertyId=eq.${propertyId}` }, loadData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'breakfast_tables', filter: `propertyId=eq.${propertyId}` }, loadData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'breakfast_visitors', filter: `propertyId=eq.${propertyId}` }, loadData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'fb_orders', filter: `propertyId=eq.${propertyId}` }, loadData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fb_orders', filter: `property_id=eq.${propertyId}` }, loadData)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [propertyId, loadData]);
