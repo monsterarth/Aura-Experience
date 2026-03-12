@@ -84,6 +84,7 @@ export const Sidebar = () => {
     { title: "Governança", icon: Sparkles, href: "/admin/governance", roles: ["super_admin", "admin", "governance"] },
     { title: "Agenda Estrut.", icon: Calendar, href: "/admin/core/structures/bookings", roles: ["super_admin", "admin", "reception"] },
     { title: "Manutenção", icon: Wrench, href: "/admin/maintenance", roles: ["super_admin", "admin", "maintenance"] },
+    { title: "Café Salão", icon: Coffee, href: "/admin/cafe-salao", roles: ["super_admin", "admin", "reception", "kitchen", "waiter"] },
     { title: "Gastronomia", icon: Coffee, href: "/admin/food-and-beverage/menu", roles: ["super_admin", "admin", "reception", "kitchen", "waiter"] },
     { title: "Concierge", icon: ShoppingBag, href: "/admin/concierge", roles: ["super_admin", "admin", "reception"] },
     { title: "Avaliações", icon: Star, href: "/admin/surveys/responses", roles: ["super_admin", "admin", "reception"] },

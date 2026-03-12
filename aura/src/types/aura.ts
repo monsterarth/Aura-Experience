@@ -545,8 +545,9 @@ export interface AuditLog {
   | 'STRUCTURE_CREATED' | 'STRUCTURE_UPDATED' | 'STRUCTURE_DELETED'
   | 'STRUCTURE_BOOKING_CREATED' | 'STRUCTURE_BOOKING_STATUS_CHANGED'
   | 'EVENT_CREATED' | 'EVENT_UPDATED' | 'EVENT_DELETED' | 'EVENT_PUBLISHED'
-  | 'CONCIERGE_REQUESTED' | 'CONCIERGE_DELIVERED' | 'CONCIERGE_RETURNED' | 'CONCIERGE_LOST';
-  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE';
+  | 'CONCIERGE_REQUESTED' | 'CONCIERGE_DELIVERED' | 'CONCIERGE_RETURNED' | 'CONCIERGE_LOST'
+  | 'FB_ORDER_CREATED' | 'FB_ORDER_STATUS_CHANGED';
+  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER';
   entityId: string;
   oldData?: any;
   newData?: any;
@@ -704,8 +705,63 @@ export interface FBOrder {
   totalPrice: number;
   deliveryTime?: string; // e.g., "08:30"
   deliveryDate?: string; // YYYY-MM-DD
+  tableId?: string;
+  attendanceId?: string;
+  requestedBy?: 'guest' | 'waiter';
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+// ==========================================
+// MÓDULO CAFÉ SALÃO (Buffet)
+// ==========================================
+
+export interface BreakfastSession {
+  id: string;
+  propertyId: string;
+  date: string; // YYYY-MM-DD
+  status: 'open' | 'closed';
+  openedAt?: Timestamp;
+  closedAt?: Timestamp;
+  openedBy?: string;
+  createdAt: Timestamp;
+}
+
+export interface BreakfastAttendance {
+  id: string;
+  propertyId: string;
+  sessionId: string;
+  stayId: string;
+  guestName: string;
+  cabinName: string;
+  additionalGuests?: string[]; // nomes dos acompanhantes
+  status: 'expected' | 'arrived' | 'seated' | 'left' | 'absent' | 'inactive';
+  tableId?: string | null;
+  arrivedAt?: Timestamp;
+  seatedAt?: Timestamp;
+  leftAt?: Timestamp;
+  date: string; // YYYY-MM-DD
+  createdAt: Timestamp;
+}
+
+export interface BreakfastTable {
+  id: string;
+  propertyId: string;
+  sessionId: string;
+  name: string;
+  status: 'open' | 'closed';
+  createdAt: Timestamp;
+  closedAt?: Timestamp;
+  createdBy?: string;
+}
+
+export interface BreakfastVisitor {
+  id: string;
+  propertyId: string;
+  sessionId: string;
+  tableId: string;
+  name: string;
+  createdAt: Timestamp;
 }
 
 // ==========================================

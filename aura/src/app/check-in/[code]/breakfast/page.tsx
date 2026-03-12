@@ -5,7 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { StayService } from "@/services/stay-service";
 import { PropertyService } from "@/services/property-service";
 import { fbService } from "@/services/fb-service";
-import { Stay, Property, FBCategory, FBMenuItem, FBOrder } from "@/types/aura";
+import { BreakfastSalonService } from "@/services/breakfast-salon-service";
+import { supabase } from "@/lib/supabase";
+import { Stay, Property, FBCategory, FBMenuItem, FBOrder, BreakfastAttendance } from "@/types/aura";
 import { Loader2, ArrowLeft, Coffee, Plus, Minus, Info, CheckCircle2, ChevronRight, Utensils, AlertCircle, X, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -172,6 +174,13 @@ function BreakfastWizard() {
     const [windowOpen, setWindowOpen] = useState(true);
     const [windowConfig, setWindowConfig] = useState<{ start: string; end: string } | null>(null);
 
+    // Buffet a-la-carte states
+    const [buffetAttendance, setBuffetAttendance] = useState<BreakfastAttendance | null | undefined>(undefined);
+    const [buffetSelections, setBuffetSelections] = useState<Record<string, boolean>>({});
+    const [buffetSubmitting, setBuffetSubmitting] = useState(false);
+    const [buffetSuccess, setBuffetSuccess] = useState(false);
+    const [buffetExistingOrder, setBuffetExistingOrder] = useState<FBOrder | null>(null);
+
     const locName = (item: { name: string; name_en?: string; name_es?: string }) =>
         (lang === 'en' && item.name_en) ? item.name_en : (lang === 'es' && item.name_es) ? item.name_es : item.name;
     const locDesc = (item: { description?: string; description_en?: string; description_es?: string }) =>
@@ -253,12 +262,23 @@ function BreakfastWizard() {
                     setDeliveryTime(times[0]);
                 }
 
-                // Verificar se já existe pedido para amanhã
+                // Verificar se já existe pedido para amanhã (delivery)
                 const tomorrowISO = new Date(Date.now() + 86400000).toISOString().split('T')[0];
                 const existing = await fbService.getOrderForStayDate(s.id, tomorrowISO, 'breakfast');
                 if (existing) {
                     setExistingOrder(existing);
                     if (existing.deliveryTime) setDeliveryTime(existing.deliveryTime);
+                }
+
+                // Buffet: verificar se hóspede está alocado em mesa
+                const attendance = await BreakfastSalonService.getAttendanceByStay(s.propertyId, s.id);
+                setBuffetAttendance(attendance ?? null);
+
+                // Verificar se já fez pedido buffet hoje
+                const todayISO = new Date().toISOString().split('T')[0];
+                const existingBuffet = await fbService.getOrderForStayDate(s.id, todayISO, 'breakfast');
+                if (existingBuffet?.modality === 'buffet') {
+                    setBuffetExistingOrder(existingBuffet);
                 }
 
                 // Verificar janela de horário para pedidos
@@ -468,31 +488,170 @@ function BreakfastWizard() {
         );
     }
 
-    // Modalidade: Apenas Buffet — ou modality não configurada (fallback seguro)
+    // Modalidade: Buffet com pedido a-la-carte
     if (effectiveModality !== 'delivery') {
-        return (
-            <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6 text-center" style={themeStyles}>
-                <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mb-6">
-                    <Utensils size={40} className="text-primary" />
+        // Loading attendance
+        if (buffetAttendance === undefined) {
+            return (
+                <div className="min-h-screen bg-background text-foreground flex items-center justify-center" style={themeStyles}>
+                    <Loader2 className="animate-spin text-primary" size={32} />
                 </div>
-                <h1 className="text-3xl font-black uppercase tracking-tighter">{t.buffetTitle}</h1>
-                <p className="text-muted-foreground mt-2 max-w-sm">{t.buffetDesc}</p>
+            );
+        }
 
-                <div className="mt-8 w-full max-w-sm bg-card border border-border rounded-2xl p-6 text-left">
-                    <h3 className="font-bold text-sm uppercase text-muted-foreground mb-4 tracking-widest">{t.availableTimes}</h3>
-                    {fb.buffetHours?.map((h, i) => (
-                        <div key={i} className="flex justify-between items-center py-2 border-b border-border/50 last:border-0">
-                            <span className="font-semibold">{['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'][h.dayOfWeek]}</span>
-                            <span className="font-black text-primary">{h.openTime} às {h.closeTime}</span>
+        // Pedido já feito — exibir confirmação
+        if (buffetSuccess || buffetExistingOrder) {
+            return (
+                <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6 text-center" style={themeStyles}>
+                    <div className="w-20 h-20 bg-green-500 text-white rounded-full flex items-center justify-center mb-5 shadow-xl shadow-green-500/30">
+                        <CheckCircle2 size={40} />
+                    </div>
+                    <h1 className="text-2xl font-black uppercase tracking-tighter">{t.confirmed}</h1>
+                    <p className="text-muted-foreground mt-2">Seu pedido foi enviado à cozinha.</p>
+                    {buffetExistingOrder && (
+                        <div className="mt-6 w-full max-w-sm bg-card border border-border rounded-2xl p-4 text-left space-y-2">
+                            {buffetExistingOrder.items.map((item, i) => (
+                                <p key={i} className="text-sm text-foreground">· {item.name}</p>
+                            ))}
                         </div>
-                    ))}
+                    )}
+                    <button onClick={() => router.push(`/check-in/${code}`)} className="mt-8 px-6 py-3 bg-secondary rounded-xl font-bold uppercase text-xs tracking-widest">
+                        {t.backToPortal}
+                    </button>
+                </div>
+            );
+        }
+
+        // Hóspede não está sentado em mesa
+        if (!buffetAttendance || buffetAttendance.status !== 'seated') {
+            return (
+                <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6 text-center" style={themeStyles}>
+                    <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mb-6">
+                        <Utensils size={40} className="text-primary animate-pulse" />
+                    </div>
+                    <h1 className="text-2xl font-black uppercase tracking-tighter">{t.buffetTitle}</h1>
+                    <p className="text-muted-foreground mt-3 max-w-sm">
+                        {lang === 'en' ? 'Waiting for the waiter to assign your table...' :
+                         lang === 'es' ? 'Esperando que el camarero asigne su mesa...' :
+                         'Aguardando o garçom alocar sua mesa...'}
+                    </p>
+                    <p className="text-xs text-muted-foreground/50 mt-2">
+                        {lang === 'en' ? 'Please wait to be seated.' :
+                         lang === 'es' ? 'Por favor, espere ser ubicado.' :
+                         'Por favor, aguarde ser acomodado.'}
+                    </p>
+                    <button onClick={() => router.push(`/check-in/${code}`)} className="mt-10 px-6 py-3 bg-secondary rounded-xl font-bold uppercase text-xs tracking-widest">
+                        {t.backToPortal}
+                    </button>
+                </div>
+            );
+        }
+
+        // Hóspede sentado — exibir itens a-la-carte
+        const handleBuffetOrder = async () => {
+            if (!stay) return;
+            const selectedItems = items
+                .filter(i => buffetSelections[i.id])
+                .map(i => ({
+                    menuItemId: i.id,
+                    name: i.name,
+                    quantity: 1,
+                    unitPrice: i.price || 0,
+                }));
+            if (!selectedItems.length) return toast.error(lang === 'en' ? 'Select at least 1 item.' : lang === 'es' ? 'Seleccione al menos 1 ítem.' : 'Selecione ao menos 1 item.');
+            setBuffetSubmitting(true);
+            try {
+                const now = new Date().toISOString();
+                const id = crypto.randomUUID();
+                await supabase.from('fb_orders').insert({
+                    id,
+                    propertyId: stay.propertyId,
+                    stayId: stay.id,
+                    type: 'breakfast',
+                    modality: 'buffet',
+                    status: 'pending',
+                    items: selectedItems,
+                    totalPrice: selectedItems.reduce((s, i) => s + i.unitPrice, 0),
+                    tableId: buffetAttendance.tableId,
+                    attendanceId: buffetAttendance.id,
+                    requestedBy: 'guest',
+                    deliveryDate: new Date().toISOString().split('T')[0],
+                    createdAt: now,
+                    updatedAt: now,
+                });
+                setBuffetSuccess(true);
+            } catch {
+                toast.error(lang === 'en' ? 'Error submitting order.' : lang === 'es' ? 'Error al enviar el pedido.' : 'Erro ao enviar pedido.');
+            } finally {
+                setBuffetSubmitting(false);
+            }
+        };
+
+        return (
+            <div className="min-h-screen bg-background text-foreground pb-24" style={themeStyles}>
+                {/* Header */}
+                <div className="sticky top-0 bg-background/95 backdrop-blur-sm border-b border-border px-4 py-3 flex items-center gap-3 z-10">
+                    <button onClick={() => router.push(`/check-in/${code}`)} className="p-2 hover:bg-secondary rounded-xl">
+                        <ArrowLeft size={20} />
+                    </button>
+                    <div>
+                        <h1 className="font-black text-foreground">{t.buffetTitle}</h1>
+                        <p className="text-[10px] text-muted-foreground">
+                            {lang === 'en' ? 'Select your items' : lang === 'es' ? 'Seleccione sus ítems' : 'Selecione seus itens'}
+                        </p>
+                    </div>
                 </div>
 
-                <button onClick={() => router.push(`/check-in/${code}`)} className="mt-8 px-6 py-3 bg-secondary rounded-xl font-bold uppercase text-xs tracking-widest">
-                    {t.backToPortal}
-                </button>
+                {/* Items */}
+                <div className="px-4 pt-4 space-y-6">
+                    {categories.map(cat => {
+                        const catItems = items.filter(i => i.categoryId === cat.id);
+                        if (!catItems.length) return null;
+                        return (
+                            <div key={cat.id}>
+                                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-3">{locName(cat)}</p>
+                                <div className="space-y-2">
+                                    {catItems.map(item => (
+                                        <button
+                                            key={item.id}
+                                            onClick={() => setBuffetSelections(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+                                            className={cn(
+                                                "w-full flex items-center justify-between p-4 rounded-2xl border text-left transition-all",
+                                                buffetSelections[item.id]
+                                                    ? "bg-primary/10 border-primary/40"
+                                                    : "bg-card border-border hover:border-primary/20"
+                                            )}
+                                        >
+                                            <div className="flex-1 min-w-0">
+                                                <p className={cn("font-bold text-sm", buffetSelections[item.id] ? "text-primary" : "text-foreground")}>{locName(item)}</p>
+                                                {locDesc(item) && <p className="text-xs text-muted-foreground mt-0.5 truncate">{locDesc(item)}</p>}
+                                            </div>
+                                            <div className={cn("w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ml-3 transition-all",
+                                                buffetSelections[item.id] ? "bg-primary border-primary" : "border-border"
+                                            )}>
+                                                {buffetSelections[item.id] && <CheckCircle2 size={14} className="text-primary-foreground" />}
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                {/* Fixed bottom CTA */}
+                <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/95 backdrop-blur-sm border-t border-border">
+                    <button
+                        onClick={handleBuffetOrder}
+                        disabled={buffetSubmitting || Object.values(buffetSelections).every(v => !v)}
+                        className="w-full py-4 bg-primary text-primary-foreground font-black uppercase tracking-widest text-sm rounded-2xl disabled:opacity-40 flex items-center justify-center gap-2"
+                    >
+                        {buffetSubmitting ? <Loader2 size={18} className="animate-spin" /> : <ChevronRight size={18} />}
+                        {lang === 'en' ? 'Confirm Order' : lang === 'es' ? 'Confirmar Pedido' : 'Confirmar Pedido'}
+                    </button>
+                </div>
             </div>
-        )
+        );
     }
 
     // Janela de pedido fechada e sem pedido existente para editar
