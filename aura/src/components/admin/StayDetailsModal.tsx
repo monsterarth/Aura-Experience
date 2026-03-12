@@ -7,7 +7,7 @@ import {
   MapPin, Phone, Mail, Car, FileText,
   Users, CheckCircle, Clock, Plane,
   Briefcase, PawPrint, Trash2, Plus,
-  LogOut, RotateCcw, Sparkles, Receipt, RefreshCw, ShoppingCart
+  LogOut, RotateCcw, Sparkles, Receipt, RefreshCw, ShoppingCart, Coffee
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -138,7 +138,8 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
         hasPet: stay.hasPet || false,
         petDetails: stay.petDetails || { name: "", species: "Cachorro", weight: 0, breed: "" },
         additionalGuests: stay.additionalGuests || [],
-        housekeepingItems: stay.housekeepingItems || []
+        housekeepingItems: stay.housekeepingItems || [],
+        cestaBreakfastEnabled: stay.cestaBreakfastEnabled || false
       });
 
       setGuestData({
@@ -728,6 +729,50 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                     ))}
                   </div>
                 )}
+              </div>
+
+              {/* Café da Manhã — Cesta Especial */}
+              <div className="space-y-4 col-span-1 md:col-span-2 border-t border-border pt-6">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                    <Coffee size={16} className="text-amber-500" />
+                    Café da Manhã — Cesta Especial
+                  </h3>
+                </div>
+                <p className="text-xs text-muted-foreground -mt-2">
+                  Quando ativado, este hóspede poderá montar e enviar um pedido de cesta de café da manhã,
+                  mesmo que a propriedade opere no modo buffet.
+                </p>
+                <div className={cn(
+                  "flex items-center justify-between p-4 rounded-xl border transition-all",
+                  formData.cestaBreakfastEnabled
+                    ? "bg-amber-500/10 border-amber-500/30"
+                    : "bg-secondary border-border"
+                )}>
+                  <div>
+                    <p className="text-sm font-bold text-foreground">Cesta habilitada para este hóspede</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {formData.cestaBreakfastEnabled
+                        ? "Hóspede pode solicitar a cesta via portal."
+                        : "Seguindo configuração padrão da propriedade."}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!isEditing || isGovOnly}
+                    onClick={() => setFormData({ ...formData, cestaBreakfastEnabled: !formData.cestaBreakfastEnabled })}
+                    className={cn(
+                      "relative w-12 h-6 rounded-full transition-all shrink-0",
+                      "disabled:opacity-50 disabled:cursor-not-allowed",
+                      formData.cestaBreakfastEnabled ? "bg-amber-500" : "bg-border"
+                    )}
+                  >
+                    <span className={cn(
+                      "absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform",
+                      formData.cestaBreakfastEnabled && "translate-x-6"
+                    )} />
+                  </button>
+                </div>
               </div>
 
             </div>

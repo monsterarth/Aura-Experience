@@ -63,3 +63,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_maintenance_recurrence_unique
 CREATE UNIQUE INDEX IF NOT EXISTS idx_concierge_pending_dedup
   ON concierge_requests ("stayId", "itemId")
   WHERE status = 'pending';
+
+-- ============================================================
+-- FEATURE: Cesta especial de café da manhã por estadia
+-- ============================================================
+ALTER TABLE stays
+  ADD COLUMN IF NOT EXISTS "cestaBreakfastEnabled" BOOLEAN DEFAULT false;

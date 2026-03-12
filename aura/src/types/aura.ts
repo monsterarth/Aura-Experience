@@ -452,6 +452,8 @@ export interface Stay {
   housekeepingItems?: { id: string; label: string }[];
   hasOpenFolio?: boolean; // Flag para o ícone de alerta
 
+  cestaBreakfastEnabled?: boolean;
+
   // DND — Não Perturbe
   dnd_enabled?: boolean;
   dnd_until?: string; // ISO timestamp
