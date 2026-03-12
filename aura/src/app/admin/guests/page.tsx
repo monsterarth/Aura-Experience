@@ -15,7 +15,7 @@ import { useRouter } from "next/navigation";
 import {
   UserSearch, Search, MapPin, Phone, Mail, FileText,
   Edit2, Save, X, Plus, Loader2, ChevronLeft,
-  Users, Merge, Calendar, Home, AlertTriangle, Globe, Cake, User
+  Users, Merge, Calendar, Home, AlertTriangle, Globe, Cake, User, UserPlus
 } from "lucide-react";
 
 // ==========================================
@@ -379,7 +379,7 @@ function GuestDetailPanel({
                 <Merge size={15} />
               </button>
               <button
-                onClick={() => router.push("/admin/stays/new")}
+                onClick={() => router.push(`/admin/stays/new?guestId=${guest.id}`)}
                 title="Nova Reserva"
                 className="p-2.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-xl transition-all"
               >
@@ -570,7 +570,7 @@ function GuestDetailPanel({
             <div className="flex items-center justify-between">
               <p className="text-xs text-foreground/40">{stays.length} estadia(s) encontrada(s)</p>
               <button
-                onClick={() => router.push("/admin/stays/new")}
+                onClick={() => router.push(`/admin/stays/new?guestId=${guest.id}`)}
                 className="flex items-center gap-1.5 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
               >
                 <Plus size={12} /> Nova Reserva
@@ -655,6 +655,198 @@ function AllergyInput({ onAdd }: { onAdd: (v: string) => void }) {
 // MAIN PAGE
 // ==========================================
 
+// ==========================================
+// NEW GUEST PANEL
+// ==========================================
+
+const EMPTY_GUEST: Omit<Guest, 'updatedAt'> = {
+  id: '',
+  propertyId: '',
+  fullName: '',
+  email: '',
+  phone: '',
+  nationality: 'Brasil',
+  birthDate: '',
+  gender: '',
+  occupation: '',
+  document: { type: 'CPF', number: '' },
+  address: { street: '', number: '', neighborhood: '', city: '', state: '', zipCode: '', country: 'Brasil' },
+  allergies: [],
+  preferredLanguage: 'pt',
+};
+
+function NewGuestPanel({
+  propertyId,
+  onBack,
+  onCreated,
+  actorId,
+  actorName,
+}: {
+  propertyId: string;
+  onBack: () => void;
+  onCreated: (g: Guest) => void;
+  actorId: string;
+  actorName: string;
+}) {
+  const [formData, setFormData] = useState<Omit<Guest, 'updatedAt'>>({ ...EMPTY_GUEST, propertyId });
+  const [saving, setSaving] = useState(false);
+
+  const set = (field: keyof Guest, value: any) =>
+    setFormData(prev => ({ ...prev, [field]: value }));
+  const setAddress = (field: string, value: string) =>
+    setFormData(prev => ({ ...prev, address: { ...prev.address, [field]: value } }));
+  const setDoc = (field: string, value: string) =>
+    setFormData(prev => ({ ...prev, document: { ...prev.document, [field]: value } }));
+
+  const handleSave = async () => {
+    if (!formData.fullName.trim()) return toast.error("Nome é obrigatório.");
+    if (!formData.document.number.trim()) return toast.error("Número do documento é obrigatório.");
+    setSaving(true);
+    try {
+      const id = await GuestService.upsertGuest(propertyId, formData as any);
+      const created = { ...formData, id, updatedAt: new Date().toISOString() } as Guest;
+      toast.success("Hóspede criado com sucesso.");
+      onCreated(created);
+    } catch {
+      toast.error("Erro ao criar hóspede.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="p-6 border-b border-white/5 flex items-center gap-4">
+        <button onClick={onBack} className="lg:hidden p-2 hover:bg-white/5 rounded-xl transition-colors text-foreground/40 hover:text-foreground">
+          <ChevronLeft size={18} />
+        </button>
+        <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+          <UserPlus size={22} className="text-primary" />
+        </div>
+        <div className="flex-1">
+          <h2 className="text-xl font-black text-foreground tracking-tight">Novo Hóspede</h2>
+          <p className="text-xs text-foreground/40 mt-0.5">Preencha os dados do cadastro</p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={onBack} className="px-3 py-2.5 text-foreground/40 hover:text-foreground text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-white/5 transition-all">
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-primary text-black text-[10px] font-black uppercase tracking-widest rounded-xl hover:opacity-90 transition-all disabled:opacity-50"
+          >
+            {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+            Criar
+          </button>
+        </div>
+      </div>
+
+      {/* Form */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+
+        <section className="space-y-3">
+          <h3 className="text-[9px] font-black text-foreground/20 uppercase tracking-widest border-b border-white/5 pb-2">Identificação</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="md:col-span-2">
+              <FieldLabel>Nome Completo *</FieldLabel>
+              <FieldInput value={formData.fullName} onChange={v => set("fullName", v)} disabled={false} placeholder="Nome completo" />
+            </div>
+            <div>
+              <FieldLabel>Tipo de Documento *</FieldLabel>
+              <select
+                value={formData.document.type}
+                onChange={e => setDoc("type", e.target.value)}
+                className="w-full bg-secondary border border-border rounded-xl px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50"
+              >
+                <option value="CPF">CPF</option>
+                <option value="Passaporte">Passaporte</option>
+                <option value="RG">RG</option>
+                <option value="CNH">CNH</option>
+                <option value="RNE">RNE</option>
+              </select>
+            </div>
+            <div>
+              <FieldLabel>Número do Documento *</FieldLabel>
+              <FieldInput value={formData.document.number} onChange={v => setDoc("number", v)} disabled={false} placeholder="000.000.000-00" />
+            </div>
+            <div>
+              <FieldLabel>Nascimento</FieldLabel>
+              <FieldInput value={formData.birthDate} onChange={v => set("birthDate", v)} disabled={false} type="date" />
+            </div>
+            <div>
+              <FieldLabel>Gênero</FieldLabel>
+              <FieldInput value={formData.gender} onChange={v => set("gender", v)} disabled={false} placeholder="M / F / Outro" />
+            </div>
+            <div>
+              <FieldLabel>Nacionalidade</FieldLabel>
+              <FieldInput value={formData.nationality} onChange={v => set("nationality", v)} disabled={false} />
+            </div>
+            <div>
+              <FieldLabel>Idioma Preferido</FieldLabel>
+              <select
+                value={formData.preferredLanguage ?? "pt"}
+                onChange={e => set("preferredLanguage", e.target.value)}
+                className="w-full bg-secondary border border-border rounded-xl px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50"
+              >
+                <option value="pt">Português</option>
+                <option value="en">English</option>
+                <option value="es">Español</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-[9px] font-black text-foreground/20 uppercase tracking-widest border-b border-white/5 pb-2">Contato</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <FieldLabel>Email</FieldLabel>
+              <FieldInput value={formData.email} onChange={v => set("email", v)} disabled={false} type="email" />
+            </div>
+            <div>
+              <FieldLabel>Telefone / WhatsApp</FieldLabel>
+              <FieldInput value={formData.phone} onChange={v => set("phone", v)} disabled={false} placeholder="+55 (00) 00000-0000" />
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="text-[9px] font-black text-foreground/20 uppercase tracking-widest border-b border-white/5 pb-2">Endereço</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="md:col-span-2">
+              <FieldLabel>Rua</FieldLabel>
+              <FieldInput value={formData.address?.street} onChange={v => setAddress("street", v)} disabled={false} />
+            </div>
+            <div>
+              <FieldLabel>Número</FieldLabel>
+              <FieldInput value={formData.address?.number} onChange={v => setAddress("number", v)} disabled={false} />
+            </div>
+            <div>
+              <FieldLabel>Cidade</FieldLabel>
+              <FieldInput value={formData.address?.city} onChange={v => setAddress("city", v)} disabled={false} />
+            </div>
+            <div>
+              <FieldLabel>Estado</FieldLabel>
+              <FieldInput value={formData.address?.state} onChange={v => setAddress("state", v)} disabled={false} />
+            </div>
+            <div>
+              <FieldLabel>País</FieldLabel>
+              <FieldInput value={formData.address?.country} onChange={v => setAddress("country", v)} disabled={false} />
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// MAIN PAGE
+// ==========================================
+
 export default function GuestsPage() {
   const { userData } = useAuth();
   const { currentProperty: contextProperty } = useProperty();
@@ -663,6 +855,7 @@ export default function GuestsPage() {
   const [guests, setGuests] = useState<Guest[]>([]);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Guest | null>(null);
+  const [creatingNew, setCreatingNew] = useState(false);
   const [showPanel, setShowPanel] = useState(false); // mobile state
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -685,6 +878,7 @@ export default function GuestsPage() {
   }, [search, loadGuests]);
 
   const handleSelect = (g: Guest) => {
+    setCreatingNew(false);
     setSelected(g);
     setShowPanel(true);
   };
@@ -700,6 +894,18 @@ export default function GuestsPage() {
     loadGuests(search || undefined);
   };
 
+  const handleNewGuest = () => {
+    setSelected(null);
+    setCreatingNew(true);
+    setShowPanel(true);
+  };
+
+  const handleCreated = (g: Guest) => {
+    setCreatingNew(false);
+    setSelected(g);
+    loadGuests(search || undefined);
+  };
+
   return (
     <RoleGuard allowedRoles={["super_admin", "admin", "reception"]}>
       <div className="flex h-[calc(100vh-0px)] overflow-hidden">
@@ -712,13 +918,21 @@ export default function GuestsPage() {
         )}>
           {/* Header */}
           <div className="p-6 border-b border-white/5 space-y-4">
-            <div>
-              <h1 className="text-2xl font-black tracking-tighter flex items-center gap-2 text-foreground">
-                <UserSearch className="text-primary" size={24} /> Hóspedes
-              </h1>
-              <p className="text-xs text-foreground/40 mt-0.5 flex items-center gap-1">
-                <MapPin size={11} /> {contextProperty?.name ?? "Carregando..."}
-              </p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h1 className="text-2xl font-black tracking-tighter flex items-center gap-2 text-foreground">
+                  <UserSearch className="text-primary" size={24} /> Hóspedes
+                </h1>
+                <p className="text-xs text-foreground/40 mt-0.5 flex items-center gap-1">
+                  <MapPin size={11} /> {contextProperty?.name ?? "Carregando..."}
+                </p>
+              </div>
+              <button
+                onClick={handleNewGuest}
+                className="shrink-0 flex items-center gap-1.5 px-3 py-2 bg-primary text-black text-[10px] font-black uppercase tracking-widest rounded-xl hover:opacity-90 transition-all"
+              >
+                <UserPlus size={13} /> Novo
+              </button>
             </div>
             {/* Search */}
             <div className="relative">
@@ -794,7 +1008,15 @@ export default function GuestsPage() {
           !showPanel && "hidden lg:flex lg:flex-col",
           showPanel && "flex flex-col"
         )}>
-          {selected && contextProperty?.id ? (
+          {creatingNew && contextProperty?.id ? (
+            <NewGuestPanel
+              propertyId={contextProperty.id}
+              onBack={() => { setCreatingNew(false); setShowPanel(false); }}
+              onCreated={handleCreated}
+              actorId={userData?.id ?? "ADMIN"}
+              actorName={userData?.fullName ?? "Recepção"}
+            />
+          ) : selected && contextProperty?.id ? (
             <GuestDetailPanel
               key={selected.id}
               guest={selected}
@@ -813,6 +1035,12 @@ export default function GuestsPage() {
                 <p className="font-black text-foreground/30">Selecione um hóspede</p>
                 <p className="text-xs text-foreground/20 mt-1">Clique em um nome na lista para ver os detalhes</p>
               </div>
+              <button
+                onClick={handleNewGuest}
+                className="flex items-center gap-2 px-5 py-3 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-black uppercase tracking-widest rounded-2xl transition-all"
+              >
+                <UserPlus size={14} /> Criar Novo Hóspede
+              </button>
             </div>
           )}
         </div>

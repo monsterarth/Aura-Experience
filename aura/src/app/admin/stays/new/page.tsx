@@ -49,10 +49,11 @@ function NewStayPageContent() {
   const { userData } = useAuth();
   const { currentProperty: contextProperty } = useProperty();
 
-  // Query params from reservation map drag-to-create
+  // Query params from reservation map drag-to-create and guests page
   const prefilledCabinId = searchParams.get('cabinId');
   const prefilledCheckIn = searchParams.get('checkIn');
   const prefilledCheckOut = searchParams.get('checkOut');
+  const prefilledGuestId = searchParams.get('guestId');
 
   const [loading, setLoading] = useState(false);
   const [searchingGuest, setSearchingGuest] = useState(false);
@@ -81,15 +82,24 @@ function NewStayPageContent() {
   const [createdInfo, setCreatedInfo] = useState<{ code: string } | null>(null);
 
   useEffect(() => {
-    if (contextProperty?.id) {
-      CabinService.getCabinsByProperty(contextProperty.id).then((cabinsData) => {
-        setAvailableCabins(cabinsData);
-        // Pre-select cabin from query params (reservation map)
-        if (prefilledCabinId && cabinSelections.length === 0) {
-          const match = cabinsData.find(c => c.id === prefilledCabinId);
-          if (match) {
-            setCabinSelections([{ cabinId: match.id, name: match.name, adults: 2, children: 0, babies: 0 }]);
-          }
+    if (!contextProperty?.id) return;
+
+    CabinService.getCabinsByProperty(contextProperty.id).then((cabinsData) => {
+      setAvailableCabins(cabinsData);
+      if (prefilledCabinId && cabinSelections.length === 0) {
+        const match = cabinsData.find(c => c.id === prefilledCabinId);
+        if (match) {
+          setCabinSelections([{ cabinId: match.id, name: match.name, adults: 2, children: 0, babies: 0 }]);
+        }
+      }
+    });
+
+    // Pre-fill guest from guestId query param (comes from /admin/guests)
+    if (prefilledGuestId) {
+      GuestService.findByDocument(contextProperty.id, prefilledGuestId).then(guest => {
+        if (guest) {
+          setDocNumber(guest.id);
+          setGuestData({ fullName: guest.fullName, email: guest.email || "", phone: guest.phone });
         }
       });
     }
