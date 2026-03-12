@@ -350,9 +350,15 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
       toast.success("Ficha da hospedagem atualizada!");
       setIsEditing(false);
       if (onUpdate) onUpdate();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Erro ao salvar alterações.");
+      const msg = error?.message ?? '';
+      if (msg.startsWith('CABIN_NOT_AVAILABLE')) {
+        const label = msg.split(':')[2] ?? 'indisponível';
+        toast.error(`Transferência bloqueada: acomodação ${label}. Verifique antes de prosseguir.`);
+      } else {
+        toast.error("Erro ao salvar alterações.");
+      }
     } finally {
       setLoading(false);
     }
