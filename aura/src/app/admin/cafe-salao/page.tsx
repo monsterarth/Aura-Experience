@@ -92,8 +92,8 @@ function WaiterOrderDialog({
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    supabase.from('fb_categories').select('*').eq('propertyId', propertyId).in('type', ['breakfast', 'both']).eq('ala_carte', true).then(({ data }: { data: FBCategory[] | null }) => setCategories((data || []) as FBCategory[]));
-    supabase.from('fb_menu_items').select('*').eq('propertyId', propertyId).eq('active', true).then(({ data }: { data: FBMenuItem[] | null }) => setMenuItems((data || []) as FBMenuItem[]));
+    supabase.from('fb_categories').select('*').eq('property_id', propertyId).in('type', ['breakfast', 'both']).eq('ala_carte', true).then(({ data }: { data: any[] | null }) => setCategories((data || []).map(d => ({ id: d.id, propertyId: d.property_id, name: d.name, name_en: d.name_en, name_es: d.name_es, type: d.type, selectionTarget: d.selection_target, maxPerGuest: d.max_per_guest, alaCarte: d.ala_carte ?? false, order: d.order, imageUrl: d.image_url, createdAt: d.created_at } as FBCategory))));
+    supabase.from('fb_menu_items').select('*').eq('property_id', propertyId).eq('active', true).then(({ data }: { data: any[] | null }) => setMenuItems((data || []).map(d => ({ id: d.id, propertyId: d.property_id, categoryId: d.category_id, name: d.name, name_en: d.name_en, name_es: d.name_es, description: d.description, price: d.price, ingredients: d.ingredients || [], flavors: d.flavors, active: d.active, order: d.order, imageUrl: d.image_url, createdAt: d.created_at } as FBMenuItem))));
   }, [propertyId]);
 
   const openTables = tables.filter(t => t.status === 'open');
