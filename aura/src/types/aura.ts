@@ -540,8 +540,9 @@ export interface AuditLog {
   | 'CREATE_STAY' | 'COMPLETE_STAY' | 'STAY_GROUP_CREATE'
   | 'STRUCTURE_CREATED' | 'STRUCTURE_UPDATED' | 'STRUCTURE_DELETED'
   | 'STRUCTURE_BOOKING_CREATED' | 'STRUCTURE_BOOKING_STATUS_CHANGED'
-  | 'EVENT_CREATED' | 'EVENT_UPDATED' | 'EVENT_DELETED' | 'EVENT_PUBLISHED';
-  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'MAINTENANCE' | 'EVENT';
+  | 'EVENT_CREATED' | 'EVENT_UPDATED' | 'EVENT_DELETED' | 'EVENT_PUBLISHED'
+  | 'CONCIERGE_REQUESTED' | 'CONCIERGE_DELIVERED' | 'CONCIERGE_RETURNED' | 'CONCIERGE_LOST';
+  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE';
   entityId: string;
   oldData?: any;
   newData?: any;
@@ -731,6 +732,50 @@ export interface SystemBug {
   browser_info?: string;
   status: 'open' | 'in_progress' | 'resolved';
   createdAt: Timestamp;
+}
+
+// ==========================================
+// MÓDULO DE CONCIERGE
+// ==========================================
+
+export type ConciergeCategory = 'consumption' | 'loan';
+export type ConciergeRequestStatus = 'pending' | 'delivered' | 'returned' | 'lost';
+
+export interface ConciergeItem {
+  id: string;
+  propertyId: string;
+  name: string;
+  name_en?: string;
+  name_es?: string;
+  description?: string;
+  description_en?: string;
+  description_es?: string;
+  category: ConciergeCategory;
+  price: number;
+  loss_price?: number;
+  included_qty: number;
+  image_url?: string;
+  active: boolean;
+  order?: number;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface ConciergeRequest {
+  id: string;
+  propertyId: string;
+  stayId: string;
+  cabinId?: string;
+  itemId: string;
+  quantity: number;
+  status: ConciergeRequestStatus;
+  total_price?: number;
+  notes?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  // Joined fields
+  item?: ConciergeItem;
+  cabinName?: string;
 }
 
 export interface Event {

@@ -15,7 +15,7 @@ import {
   MessageSquare, Settings, Globe, Menu, X,
   Star, ClipboardList, Calendar, Bot, FileText,
   Loader2, ChevronLeft, ChevronRight, BellRing, Coffee,
-  Ticket, CalendarDays
+  Ticket, CalendarDays, ShoppingBag, Package
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import Image from "next/image";
@@ -84,6 +84,7 @@ export const Sidebar = () => {
     { title: "Agenda Estrut.", icon: Calendar, href: "/admin/core/structures/bookings", roles: ["super_admin", "admin", "reception"] },
     { title: "Manutenção", icon: Wrench, href: "/admin/maintenance", roles: ["super_admin", "admin", "maintenance"] },
     { title: "Gastronomia", icon: Coffee, href: "/admin/food-and-beverage/menu", roles: ["super_admin", "admin", "reception", "kitchen", "waiter"] },
+    { title: "Concierge", icon: ShoppingBag, href: "/admin/concierge", roles: ["super_admin", "admin", "reception"] },
     { title: "Avaliações", icon: Star, href: "/admin/surveys/responses", roles: ["super_admin", "admin", "reception"] },
   ];
 
@@ -103,6 +104,7 @@ export const Sidebar = () => {
     { title: "Templates Aura", icon: FileText, href: "/admin/core/templates", roles: ["super_admin"] },
     { title: "Cabanas", icon: Building, href: "/admin/cabins", roles: ["super_admin", "admin", "governance"] },
     { title: "Estruturas", icon: Home, href: "/admin/core/structures", roles: ["super_admin", "admin"] },
+    { title: "Catálogo Concierge", icon: Package, href: "/admin/core/concierge", roles: ["super_admin", "admin"] },
     { title: "Equipe", icon: Users, href: "/admin/staff", roles: ["super_admin", "admin"] },
     { title: "Propriedades", icon: Globe, href: "/admin/core/properties", roles: ["super_admin"] },
   ];

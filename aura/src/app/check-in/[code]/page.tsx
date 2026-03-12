@@ -68,6 +68,7 @@ const hubTranslations = {
         scheduling: 'Agendamentos',
         schedulingSub: 'Reservar espaços',
         concierge: 'Concierge',
+        conciergeSub: 'Solicitar itens e serviços',
         comingSoon: 'Em breve',
         wifi: 'Wi-Fi',
         wifiSub: 'Ver senha',
@@ -123,6 +124,7 @@ const hubTranslations = {
         scheduling: 'Reservations',
         schedulingSub: 'Book spaces',
         concierge: 'Concierge',
+        conciergeSub: 'Request items & services',
         comingSoon: 'Coming soon',
         wifi: 'Wi-Fi',
         wifiSub: 'See password',
@@ -178,6 +180,7 @@ const hubTranslations = {
         scheduling: 'Reservas',
         schedulingSub: 'Reservar espacios',
         concierge: 'Conserjería',
+        conciergeSub: 'Solicitar artículos y servicios',
         comingSoon: 'Próximamente',
         wifi: 'Wi-Fi',
         wifiSub: 'Ver contraseña',
@@ -629,13 +632,13 @@ function GuestHubContent() {
                         </button>
 
                         {/* Concierge */}
-                        <button className="col-span-2 sm:col-span-1 bg-card border border-border p-5 rounded-[2rem] shadow-sm hover:shadow-md hover:border-primary/50 transition-all flex flex-col gap-3 group opacity-70">
+                        <button onClick={() => router.push(`/check-in/${code}/concierge`)} className="col-span-2 sm:col-span-1 bg-card border border-border p-5 rounded-[2rem] shadow-sm hover:shadow-md hover:border-primary/50 transition-all flex flex-col gap-3 group">
                             <div className="w-10 h-10 bg-secondary rounded-2xl flex items-center justify-center text-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                                 <BellRing size={20} />
                             </div>
                             <div className="text-left">
                                 <h3 className="font-bold text-sm uppercase tracking-wider">{t.concierge}</h3>
-                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">{t.comingSoon}</p>
+                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">{t.conciergeSub}</p>
                             </div>
                         </button>
 
