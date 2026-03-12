@@ -448,8 +448,12 @@ function BreakfastWizard() {
     const themeStyles = getThemeStyles(property);
     const fb = property.settings?.fbSettings?.breakfast;
 
-    // Override: admin pode habilitar cesta por estadia mesmo com modality 'buffet'
-    const effectiveModality = stay?.cestaBreakfastEnabled === true ? 'delivery' : fb?.modality;
+    // Resolve modality: 'both' usa dailyMode definido pela recepção (fallback: 'delivery')
+    const resolvedModality = fb?.modality === 'both'
+        ? (fb?.dailyMode ?? 'delivery')
+        : fb?.modality;
+    // Override por estadia: admin pode forçar wizard mesmo com propriedade em buffet
+    const effectiveModality = stay?.cestaBreakfastEnabled === true ? 'delivery' : resolvedModality;
 
     if (!fb || !fb.enabled) {
         return (
@@ -464,8 +468,8 @@ function BreakfastWizard() {
         );
     }
 
-    // Modalidade: Apenas Buffet
-    if (effectiveModality === 'buffet') {
+    // Modalidade: Apenas Buffet — ou modality não configurada (fallback seguro)
+    if (effectiveModality !== 'delivery') {
         return (
             <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6 text-center" style={themeStyles}>
                 <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center mb-6">

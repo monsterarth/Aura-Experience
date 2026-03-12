@@ -630,6 +630,7 @@ export interface FBSettings {
       instructions_en?: string;
       instructions_es?: string;
     };
+    dailyMode?: 'delivery' | 'buffet'; // Override operacional definido pela recepção (só relevante quando modality === 'both')
   };
 }
 

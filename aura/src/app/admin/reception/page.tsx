@@ -7,62 +7,288 @@ import {
     Sparkles, CheckCircle2, Timer, BellRing,
     Home, Utensils, Info, Check, X, Megaphone, CheckCircle, Star
 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-// Mock Data
-const TOP_STATS = {
-    checkinsPendentes: 4,
-    checkoutsPendentes: 2,
-    preCheckins48h: 12,
-    cabanasWalkIn: 3
-};
-
-const PEDIDOS = [
-    { id: 1, type: "concierge", title: "Lenha Extra", cabin: "Cabana 01", time: "10 min", status: "waiting" },
-    { id: 2, type: "loan", title: "Kit Fondue", cabin: "Cabana 03", time: "15 min", status: "progress" },
-];
-
-const FAXINAS = [
-    { id: 1, cabin: "Cabana 02", type: "Checkout", progress: 60, timeLeft: "25 min" },
-    { id: 2, cabin: "Cabana 05", type: "Retoque", progress: 90, timeLeft: "5 min" },
-];
-
-const CABANAS_LIBERADAS = ["Cabana 04", "Cabana 07"];
-
-const ESTRUTURAS = [
-    { name: "Spa", status: "in_use", by: "Cabana 01", until: "14:00" },
-    { name: "Fogo de Chão", status: "upcoming", by: "Cabana 03", at: "15:00" },
-    { name: "Sauna", status: "freed", time: "Há 10 min", needCleaning: true }
-];
-
-const ALERTS = [
-    {
-        type: "review",
-        title: "Avaliação Negativa (Detrator)",
-        desc: "Cabana 06 avaliou a estadia com nota 6/10 (Falta de água quente).",
-        time: "Há 2 horas"
-    },
-    {
-        type: "message_error",
-        title: "Falha: Mensagem de Boas-vindas",
-        desc: "Não foi possível enviar WhatsApp para João (Cabana 02).",
-        time: "Há 15 min"
-    }
-];
-
-const BREAKFAST_ORDERS = [
-    { cabin: "Cabana 01", time: "08:30", items: "2x Ovos, 1x Suco Laranja", status: "preparing" },
-    { cabin: "Cabana 03", time: "09:00", items: "Cesta Completa, S/ Glúten", status: "pending" },
-];
+import { useAuth } from "@/context/AuthContext";
+import { useProperty } from "@/context/PropertyContext";
+import { supabase } from "@/lib/supabase";
+import { HousekeepingService } from "@/services/housekeeping-service";
+import { ConciergeService } from "@/services/concierge-service";
+import { StructureService } from "@/services/structure-service";
+import { fbService } from "@/services/fb-service";
+import { StayService } from "@/services/stay-service";
+import { HousekeepingTask, ConciergeRequest, FBOrder, StructureBooking, Structure, Cabin } from "@/types/aura";
+import { toast } from "sonner";
 
 export default function ReceptionDashboard() {
+    const { userData } = useAuth();
+    const { currentProperty: property, loading: propLoading } = useProperty();
+
     const [currentTime, setCurrentTime] = useState(new Date());
     const [breakfastMode, setBreakfastMode] = useState<"buffet" | "delivery">("delivery");
+    const [loading, setLoading] = useState(true);
 
+    // Stats
+    const [stats, setStats] = useState({ checkins: 0, checkouts: 0, preCheckins: 0, walkIns: 0 });
+
+    // Governança
+    const [hkTasks, setHkTasks] = useState<HousekeepingTask[]>([]);
+    const [cabins, setCabins] = useState<Cabin[]>([]);
+
+    // Estruturas
+    const [structures, setStructures] = useState<Structure[]>([]);
+    const [structureBookings, setStructureBookings] = useState<StructureBooking[]>([]);
+    const [bookingCabinNames, setBookingCabinNames] = useState<Record<string, string>>({});
+
+    // Alertas
+    const [detractors, setDetractors] = useState<any[]>([]);
+    const [msgFailures, setMsgFailures] = useState<any[]>([]);
+
+    // Concierge (realtime)
+    const [pendingRequests, setPendingRequests] = useState<ConciergeRequest[]>([]);
+
+    // F&B
+    const [breakfastOrders, setBreakfastOrders] = useState<FBOrder[]>([]);
+    const [orderCabinNames, setOrderCabinNames] = useState<Record<string, string>>({});
+
+    // Clock
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 60000);
         return () => clearInterval(timer);
     }, []);
+
+    // Sincronizar switch de café com valor persistido
+    useEffect(() => {
+        const saved = property?.settings?.fbSettings?.breakfast?.dailyMode;
+        if (saved) setBreakfastMode(saved);
+    }, [property?.id]);
+
+    // ==========================================
+    // HELPERS
+    // ==========================================
+
+    function formatTimeAgo(iso: string): string {
+        const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+        if (mins < 60) return `Há ${mins} min`;
+        const h = Math.floor(mins / 60);
+        return `Há ${h} hora${h > 1 ? 's' : ''}`;
+    }
+
+    function getTaskProgress(task: HousekeepingTask): number {
+        if (!task.checklist.length)
+            return task.status === 'in_progress' ? 30 : task.status === 'waiting_conference' ? 95 : 0;
+        return Math.round(task.checklist.filter(i => i.checked).length / task.checklist.length * 100);
+    }
+
+    function getElapsed(task: HousekeepingTask): string {
+        if (!task.startedAt) return 'Aguardando';
+        const mins = Math.round((Date.now() - new Date(task.startedAt as string).getTime()) / 60000);
+        return `${mins} min`;
+    }
+
+    function getTaskLocationName(task: HousekeepingTask): string {
+        if (task.cabinId) return cabins.find(c => c.id === task.cabinId)?.name ?? '—';
+        return structures.find(s => s.id === task.structureId)?.name ?? '—';
+    }
+
+    function formatOrderItems(items: any[]): string {
+        return items.filter(i => i.menuItemId !== 'guest_observations')
+            .map(i => `${i.quantity}x ${i.name}`).join(', ');
+    }
+
+    // ==========================================
+    // DATA LOADERS
+    // ==========================================
+
+    async function loadCabins() {
+        const { data } = await supabase.from('cabins').select('id, name, status').eq('propertyId', property!.id);
+        const result = (data || []) as Cabin[];
+        setCabins(result);
+        return result;
+    }
+
+    async function loadStats() {
+        const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+        const in48h = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+        const [a, b, c, d] = await Promise.all([
+            supabase.from('stays').select('id', { count: 'exact', head: true })
+                .eq('propertyId', property!.id)
+                .gte('checkIn', todayStart.toISOString()).lte('checkIn', todayEnd.toISOString())
+                .in('status', ['pending', 'pre_checkin_done']),
+            supabase.from('stays').select('id', { count: 'exact', head: true })
+                .eq('propertyId', property!.id)
+                .gte('checkOut', todayStart.toISOString()).lte('checkOut', todayEnd.toISOString())
+                .eq('status', 'active'),
+            supabase.from('stays').select('id', { count: 'exact', head: true })
+                .eq('propertyId', property!.id)
+                .gte('checkIn', todayStart.toISOString()).lte('checkIn', in48h.toISOString())
+                .eq('status', 'pending'),
+            supabase.from('cabins').select('id', { count: 'exact', head: true })
+                .eq('propertyId', property!.id).eq('status', 'available'),
+        ]);
+        setStats({ checkins: a.count || 0, checkouts: b.count || 0, preCheckins: c.count || 0, walkIns: d.count || 0 });
+    }
+
+    async function loadStructures(cabinsData: Cabin[]) {
+        const today = new Date().toISOString().split('T')[0];
+        const [structs, bookings] = await Promise.all([
+            StructureService.getStructures(property!.id),
+            StructureService.getAllBookingsByDate(property!.id, today),
+        ]);
+        setStructures(structs);
+        const active = bookings.filter(b => !['cancelled', 'rejected'].includes(b.status));
+        setStructureBookings(active);
+
+        const nameMap: Record<string, string> = {};
+        await Promise.all(active.filter(b => b.stayId).map(async b => {
+            const { data: stay } = await supabase.from('stays').select('cabinId').eq('id', b.stayId!).single();
+            if (stay?.cabinId) {
+                const cabin = cabinsData.find(c => c.id === stay.cabinId);
+                if (cabin) nameMap[b.id] = cabin.name;
+            }
+        }));
+        setBookingCabinNames(nameMap);
+    }
+
+    async function loadAlerts(cabinsData: Cabin[]) {
+        const since48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+        const [surveyRes, msgRes] = await Promise.all([
+            supabase.from('survey_responses').select('id, stayId, metrics, createdAt')
+                .eq('propertyId', property!.id).gte('createdAt', since48h).order('createdAt', { ascending: false }),
+            supabase.from('messages').select('id, triggerEvent, to, createdAt')
+                .eq('propertyId', property!.id).eq('status', 'failed')
+                .gte('createdAt', since48h).order('createdAt', { ascending: false }).limit(5),
+        ]);
+
+        const detractorList = (surveyRes.data || []).filter((r: any) => r.metrics?.isDetractor === true);
+        const enriched = await Promise.all(detractorList.slice(0, 5).map(async (r: any) => {
+            const { data: stay } = await supabase.from('stays').select('cabinId').eq('id', r.stayId).maybeSingle();
+            const cabin = stay?.cabinId ? cabinsData.find(c => c.id === stay.cabinId) : null;
+            return { ...r, cabinName: cabin?.name || 'Hóspede' };
+        }));
+
+        setDetractors(enriched);
+        setMsgFailures(msgRes.data || []);
+    }
+
+    async function loadBreakfast() {
+        const today = new Date().toISOString().split('T')[0];
+        const orders = await fbService.getOrders(property!.id, { date: today, type: 'breakfast' });
+        const active = orders.filter(o => o.status !== 'cancelled');
+        setBreakfastOrders(active);
+
+        const cabinMap: Record<string, string> = {};
+        await Promise.all(active.filter(o => o.stayId).map(async o => {
+            if (cabinMap[o.stayId!]) return;
+            const info = await StayService.getStayWithGuestAndCabin(property!.id, o.stayId!);
+            if (info?.cabin) cabinMap[o.stayId!] = info.cabin.name;
+        }));
+        setOrderCabinNames(cabinMap);
+    }
+
+    async function handleBreakfastModeToggle(mode: 'delivery' | 'buffet') {
+        setBreakfastMode(mode);
+        try {
+            await fbService.setDailyBreakfastMode(property!.id, mode);
+        } catch {
+            toast.error('Erro ao salvar modalidade do café.');
+        }
+    }
+
+    async function loadInitialData() {
+        if (!property) return;
+        setLoading(true);
+        try {
+            const cabinsData = await loadCabins();
+            await Promise.all([
+                loadStats(),
+                loadStructures(cabinsData),
+                loadAlerts(cabinsData),
+                loadBreakfast(),
+            ]);
+        } catch {
+            toast.error('Erro ao carregar dados da recepção.');
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    useEffect(() => {
+        if (!property?.id) return;
+        loadInitialData();
+
+        const unsubHK = HousekeepingService.listenToActiveTasks(property.id, setHkTasks);
+        const unsubConcierge = ConciergeService.listenToPendingRequests(property.id, setPendingRequests);
+
+        const staysChannel = supabase.channel(`reception_stays_${property.id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'stays',
+                filter: `propertyId=eq.${property.id}` }, loadStats)
+            .subscribe();
+
+        return () => { unsubHK(); unsubConcierge(); supabase.removeChannel(staysChannel); };
+    }, [property?.id]);
+
+    // ==========================================
+    // DERIVED VALUES
+    // ==========================================
+
+    const activeTasks = hkTasks.filter(t => ['pending', 'in_progress', 'waiting_conference'].includes(t.status));
+
+    const recentlyReleasedCabins = hkTasks
+        .filter(t => t.status === 'completed' && t.cabinId && t.finishedAt &&
+            Date.now() - new Date(t.finishedAt as string).getTime() < 4 * 60 * 60 * 1000)
+        .map(t => cabins.find(c => c.id === t.cabinId)?.name ?? t.cabinId!);
+
+    const nowHHMM = currentTime.toTimeString().slice(0, 5);
+    const structureAgenda = structureBookings.map(b => {
+        const structure = structures.find(s => s.id === b.structureId);
+        const guestLabel = bookingCabinNames[b.id] || b.guestName || '—';
+        let displayStatus: 'in_use' | 'upcoming' | 'freed';
+        if (b.status === 'completed') displayStatus = 'freed';
+        else if (b.startTime <= nowHHMM && nowHHMM < b.endTime) displayStatus = 'in_use';
+        else displayStatus = 'upcoming';
+        const [eh, em] = b.endTime.split(':').map(Number);
+        const endMins = eh * 60 + em;
+        const nowMins = currentTime.getHours() * 60 + currentTime.getMinutes();
+        const freeMins = Math.max(0, nowMins - endMins);
+        return {
+            id: b.id, name: structure?.name ?? '—', status: displayStatus,
+            by: guestLabel, until: b.endTime, at: b.startTime,
+            time: `Há ${freeMins} min`, needCleaning: displayStatus === 'freed' && structure?.requiresTurnover,
+        };
+    });
+
+    const alertItems = [
+        ...detractors.map(r => ({
+            type: 'review' as const,
+            title: 'Avaliação Negativa (Detrator)',
+            desc: `${r.cabinName} avaliou com nota ${r.metrics?.npsScore ?? r.metrics?.averageRating ?? '—'}/10.`,
+            time: formatTimeAgo(r.createdAt),
+        })),
+        ...msgFailures.map(m => ({
+            type: 'message_error' as const,
+            title: 'Falha: Mensagem Automática',
+            desc: `Não foi possível enviar (${m.triggerEvent || 'automação'}) para ${m.to || 'hóspede'}.`,
+            time: formatTimeAgo(m.createdAt),
+        })),
+    ].slice(0, 5);
+
+    // ==========================================
+    // GUARDS
+    // ==========================================
+
+    if (propLoading) return (
+        <div className="flex items-center justify-center h-64">
+            <Loader2 className="animate-spin w-8 h-8 text-primary" />
+        </div>
+    );
+    if (!property) return (
+        <div className="p-8 text-center text-muted-foreground">
+            Selecione uma propriedade para ver a recepção.
+        </div>
+    );
 
     return (
         <div className="p-4 lg:p-8 space-y-6 lg:space-y-8 animate-in fade-in duration-500 max-w-[1600px] mx-auto">
@@ -104,28 +330,28 @@ export default function ReceptionDashboard() {
                 <StatCard
                     icon={LogIn}
                     label="Check-ins Hoje"
-                    value={TOP_STATS.checkinsPendentes}
+                    value={stats.checkins}
                     color="text-blue-400"
                     bg="bg-blue-400/10"
                 />
                 <StatCard
                     icon={LogOut}
                     label="Check-outs Hoje"
-                    value={TOP_STATS.checkoutsPendentes}
+                    value={stats.checkouts}
                     color="text-orange-400"
                     bg="bg-orange-400/10"
                 />
                 <StatCard
                     icon={CalendarCheck}
                     label="Pré-check-ins (48h)"
-                    value={TOP_STATS.preCheckins48h}
+                    value={stats.preCheckins}
                     color="text-emerald-400"
                     bg="bg-emerald-400/10"
                 />
                 <StatCard
                     icon={Home}
                     label="Disponíveis Walk-in"
-                    value={TOP_STATS.cabanasWalkIn}
+                    value={stats.walkIns}
                     color="text-purple-400"
                     bg="bg-purple-400/10"
                     highlight
@@ -147,31 +373,34 @@ export default function ReceptionDashboard() {
                         </div>
 
                         <div className="space-y-4">
-                            {FAXINAS.map(f => (
-                                <div key={f.id} className="bg-white/5 border border-white/10 rounded-2xl p-3 flex flex-col gap-2">
+                            {activeTasks.length === 0 && (
+                                <p className="text-xs text-muted-foreground text-center py-4">Nenhuma tarefa ativa.</p>
+                            )}
+                            {activeTasks.map(task => (
+                                <div key={task.id} className="bg-white/5 border border-white/10 rounded-2xl p-3 flex flex-col gap-2">
                                     <div className="flex justify-between items-center">
-                                        <span className="font-bold text-sm">{f.cabin}</span>
+                                        <span className="font-bold text-sm">{getTaskLocationName(task)}</span>
                                         <span className="text-[10px] uppercase font-bold text-primary tracking-wider bg-primary/10 px-2 py-0.5 rounded-full">
-                                            {f.type}
+                                            {task.type === 'turnover' ? 'Faxina' : task.type === 'daily' ? 'Diária' : 'Avulsa'}
                                         </span>
                                     </div>
                                     <div className="w-full bg-black/40 rounded-full h-1.5 overflow-hidden">
-                                        <div className="bg-primary h-full rounded-full transition-all duration-1000" style={{ width: `${f.progress}%` }} />
+                                        <div className="bg-primary h-full rounded-full transition-all duration-1000" style={{ width: `${getTaskProgress(task)}%` }} />
                                     </div>
                                     <div className="flex justify-between items-center text-xs text-muted-foreground">
-                                        <span className="flex items-center gap-1"><Timer size={12} /> {f.timeLeft} left</span>
-                                        <span>{f.progress}%</span>
+                                        <span className="flex items-center gap-1"><Timer size={12} /> {getElapsed(task)} left</span>
+                                        <span>{getTaskProgress(task)}%</span>
                                     </div>
                                 </div>
                             ))}
 
-                            {CABANAS_LIBERADAS.length > 0 && (
+                            {recentlyReleasedCabins.length > 0 && (
                                 <div className="pt-3 border-t border-white/10">
                                     <p className="text-xs text-muted-foreground mb-2">Recém liberadas:</p>
                                     <div className="flex flex-wrap gap-2">
-                                        {CABANAS_LIBERADAS.map(c => (
-                                            <span key={c} className="bg-emerald-500/10 text-emerald-400 text-xs font-semibold px-2 py-1 rounded-lg border border-emerald-500/20 flex items-center gap-1">
-                                                <CheckCircle2 size={12} /> {c}
+                                        {recentlyReleasedCabins.map(name => (
+                                            <span key={name} className="bg-emerald-500/10 text-emerald-400 text-xs font-semibold px-2 py-1 rounded-lg border border-emerald-500/20 flex items-center gap-1">
+                                                <CheckCircle2 size={12} /> {name}
                                             </span>
                                         ))}
                                     </div>
@@ -187,8 +416,11 @@ export default function ReceptionDashboard() {
                             Agenda das Estruturas
                         </h2>
                         <div className="space-y-3">
-                            {ESTRUTURAS.map((est, i) => (
-                                <div key={i} className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/5">
+                            {structureAgenda.length === 0 && (
+                                <p className="text-xs text-muted-foreground text-center py-4">Nenhuma reserva hoje.</p>
+                            )}
+                            {structureAgenda.map(est => (
+                                <div key={est.id} className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/5">
                                     <div className="flex items-center gap-3">
                                         <div className={cn(
                                             "w-2 h-2 rounded-full",
@@ -226,7 +458,10 @@ export default function ReceptionDashboard() {
                             Atenção Requerida (48h)
                         </h2>
                         <div className="space-y-3">
-                            {ALERTS.map((alert, i) => (
+                            {alertItems.length === 0 && (
+                                <p className="text-xs text-muted-foreground text-center py-4">Nenhum alerta nas últimas 48h.</p>
+                            )}
+                            {alertItems.map((alert, i) => (
                                 <div key={i} className="bg-black/20 border border-red-500/10 rounded-2xl p-3 flex gap-3">
                                     <div className="shrink-0 mt-0.5">
                                         {alert.type === 'review' ? (
@@ -252,37 +487,31 @@ export default function ReceptionDashboard() {
                                 <BellRing className="w-5 h-5 text-blue-400" />
                                 Pedidos dos Hóspedes
                             </h2>
-                            <span className="text-[10px] bg-white/10 text-muted-foreground px-2 py-1 rounded-lg uppercase font-bold tracking-widest border border-white/5">
-                                Em Breve
-                            </span>
                         </div>
 
-                        <div className="space-y-3 opacity-60 pointer-events-none grayscale-[0.5] transition-all hover:grayscale-0 hover:opacity-100">
-                            {PEDIDOS.map(p => (
+                        <div className="space-y-3">
+                            {pendingRequests.length === 0 && (
+                                <p className="text-xs text-muted-foreground text-center py-4">Nenhum pedido pendente.</p>
+                            )}
+                            {pendingRequests.map(p => (
                                 <div key={p.id} className="bg-white/5 border border-white/5 rounded-2xl p-3 flex justify-between items-center">
                                     <div>
                                         <span className="text-[10px] uppercase font-bold text-blue-400 tracking-wider">
-                                            {p.type === 'loan' ? 'Empréstimo' : 'Concierge'}
+                                            {p.item?.category === 'loan' ? 'Empréstimo' : 'Concierge'}
                                         </span>
-                                        <p className="font-bold text-sm mt-0.5">{p.title}</p>
-                                        <p className="text-xs text-muted-foreground">{p.cabin}</p>
+                                        <p className="font-bold text-sm mt-0.5">{p.item?.name ?? p.itemId}</p>
+                                        <p className="text-xs text-muted-foreground">{p.cabinName ?? '—'}</p>
                                     </div>
                                     <div className="text-right flex flex-col items-end gap-1">
-                                        <span className={cn(
-                                            "text-xs font-medium px-2 py-0.5 rounded-full border",
-                                            p.status === 'waiting' ? "bg-orange-500/10 text-orange-400 border-orange-500/20" : "bg-blue-500/10 text-blue-400 border-blue-500/20"
-                                        )}>
-                                            {p.status === 'waiting' ? 'Aguardando' : 'Em Andamento'}
+                                        <span className="text-xs font-medium px-2 py-0.5 rounded-full border bg-orange-500/10 text-orange-400 border-orange-500/20">
+                                            Aguardando
                                         </span>
                                         <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                            <Timer size={12} /> {p.time}
+                                            <Timer size={12} /> {formatTimeAgo(p.createdAt)}
                                         </span>
                                     </div>
                                 </div>
                             ))}
-                            <div className="mt-4 text-center p-3 border border-dashed border-white/10 rounded-xl">
-                                <p className="text-xs text-muted-foreground">O módulo de Pedidos será ativado na próxima atualização.</p>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -295,7 +524,8 @@ export default function ReceptionDashboard() {
                             Café da Manhã & F&B
                         </h2>
 
-                        {/* SWITCH MODALIDADE */}
+                        {/* SWITCH MODALIDADE — visível apenas para propriedades com modality 'both' */}
+                        {property.settings?.fbSettings?.breakfast?.modality === 'both' && (
                         <div className="bg-white/5 border border-white/10 rounded-2xl p-1 flex relative mb-6">
                             <div className={cn(
                                 "absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-xl bg-primary transition-all duration-300 shadow-md",
@@ -303,7 +533,7 @@ export default function ReceptionDashboard() {
                             )} />
 
                             <button
-                                onClick={() => setBreakfastMode('delivery')}
+                                onClick={() => handleBreakfastModeToggle('delivery')}
                                 className={cn(
                                     "relative z-10 flex-1 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors",
                                     breakfastMode === 'delivery' ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground"
@@ -312,7 +542,7 @@ export default function ReceptionDashboard() {
                                 Cesta Delivery
                             </button>
                             <button
-                                onClick={() => setBreakfastMode('buffet')}
+                                onClick={() => handleBreakfastModeToggle('buffet')}
                                 className={cn(
                                     "relative z-10 flex-1 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors",
                                     breakfastMode === 'buffet' ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground"
@@ -321,24 +551,30 @@ export default function ReceptionDashboard() {
                                 Buffet Salão
                             </button>
                         </div>
+                        )}
 
                         <div className="flex items-center justify-between mb-3">
                             <h3 className="text-sm font-semibold text-foreground/80">Pedidos p/ Hoje (Delivery)</h3>
                             <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-mono">
-                                {BREAKFAST_ORDERS.length}
+                                {breakfastOrders.length}
                             </span>
                         </div>
 
                         <div className="space-y-3 flex-1">
-                            {BREAKFAST_ORDERS.map((order, i) => (
-                                <div key={i} className="bg-black/20 border border-white/5 rounded-2xl p-3 flex flex-col gap-2">
+                            {breakfastOrders.length === 0 && (
+                                <p className="text-xs text-muted-foreground text-center py-4">Nenhum pedido de café da manhã hoje.</p>
+                            )}
+                            {breakfastOrders.map(order => (
+                                <div key={order.id} className="bg-black/20 border border-white/5 rounded-2xl p-3 flex flex-col gap-2">
                                     <div className="flex justify-between items-center">
-                                        <span className="font-bold text-sm text-amber-100">{order.cabin}</span>
+                                        <span className="font-bold text-sm text-amber-100">
+                                            {orderCabinNames[order.stayId!] ?? 'Cabana'}
+                                        </span>
                                         <span className="text-xs bg-white/10 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono text-muted-foreground">
-                                            <Clock size={10} /> {order.time}
+                                            <Clock size={10} /> {order.deliveryTime ?? '—'}
                                         </span>
                                     </div>
-                                    <p className="text-xs text-muted-foreground italic">&quot;{order.items}&quot;</p>
+                                    <p className="text-xs text-muted-foreground italic">&quot;{formatOrderItems(order.items as any[])}&quot;</p>
                                     <div className="flex justify-end mt-1">
                                         {order.status === 'preparing' ? (
                                             <span className="text-[10px] uppercase font-bold text-amber-400 flex items-center gap-1">

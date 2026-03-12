@@ -73,6 +73,23 @@ export const fbService = {
         if (error) throw error;
     },
 
+    async setDailyBreakfastMode(propertyId: string, mode: 'delivery' | 'buffet'): Promise<void> {
+        const { data: prop, error: fetchError } = await supabase
+            .from('properties')
+            .select('settings')
+            .eq('id', propertyId)
+            .single();
+
+        if (fetchError) throw fetchError;
+
+        const current = (prop?.settings?.fbSettings || {}) as FBSettings;
+        const updated: FBSettings = {
+            ...current,
+            breakfast: { ...current.breakfast, dailyMode: mode } as FBSettings['breakfast'],
+        };
+        await this.updateSettings(propertyId, updated);
+    },
+
     // --- CATEGORIES ---
     async getCategories(propertyId: string): Promise<FBCategory[]> {
         const { data, error } = await supabase
