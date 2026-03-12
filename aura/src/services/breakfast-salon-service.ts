@@ -225,9 +225,11 @@ export const BreakfastSalonService = {
     stayId: string | null,
     tableId: string,
     attendanceId: string | null,
-    items: { menuItemId: string; name: string; quantity: number; unitPrice: number; flavor?: string }[],
+    items: { menuItemId: string; name: string; quantity: number; unitPrice: number; flavor?: string; guestName?: string }[],
     actorId: string,
-    actorName: string
+    actorName: string,
+    guestName: string | null = null,
+    cabinName: string | null = null
   ): Promise<FBOrder> {
     const id = uuidv4();
     const totalPrice = items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
@@ -247,6 +249,8 @@ export const BreakfastSalonService = {
         tableId,
         attendanceId: attendanceId ?? null,
         requestedBy: 'waiter',
+        guestName: guestName ?? null,
+        cabinName: cabinName ?? null,
         createdAt: now,
         updatedAt: now,
       })

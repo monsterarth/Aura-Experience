@@ -71,6 +71,8 @@ const ORDER_STATUS_COLOR: Record<string, string> = {
 // WAITER ORDER DIALOG
 // ==========================================
 
+type ItemSelection = { selected: boolean; flavor?: string };
+
 function WaiterOrderDialog({
   propertyId,
   tables,
@@ -88,7 +90,8 @@ function WaiterOrderDialog({
   const [menuItems, setMenuItems] = useState<FBMenuItem[]>([]);
   const [selectedTableId, setSelectedTableId] = useState("");
   const [selectedAttendanceId, setSelectedAttendanceId] = useState<string | null>(null);
-  const [selections, setSelections] = useState<Record<string, number>>({});
+  const [selectedAttendanceName, setSelectedAttendanceName] = useState<string | null>(null);
+  const [selections, setSelections] = useState<Record<string, ItemSelection>>({});
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -99,15 +102,37 @@ function WaiterOrderDialog({
   const openTables = tables.filter(t => t.status === 'open');
   const tableAttendances = attendances.filter(a => a.tableId === selectedTableId && a.status === 'seated');
 
+  const hasPendingFlavors = menuItems.some(i =>
+    selections[i.id]?.selected &&
+    (i.flavors?.length ?? 0) > 0 &&
+    !selections[i.id]?.flavor
+  );
+
   const toggle = (itemId: string) => {
-    setSelections(prev => ({ ...prev, [itemId]: prev[itemId] ? 0 : 1 }));
+    setSelections(prev => {
+      const current = prev[itemId];
+      if (current?.selected) return { ...prev, [itemId]: { selected: false } };
+      return { ...prev, [itemId]: { selected: true } };
+    });
+  };
+
+  const selectFlavor = (itemId: string, flavor: string) => {
+    setSelections(prev => ({ ...prev, [itemId]: { ...prev[itemId], flavor } }));
   };
 
   const handleSubmit = async () => {
     if (!selectedTableId) return toast.error("Selecione uma mesa.");
+    if (hasPendingFlavors) return toast.error("Escolha o sabor de todos os itens selecionados.");
     const items = menuItems
-      .filter(i => selections[i.id])
-      .map(i => ({ menuItemId: i.id, name: i.name, quantity: 1, unitPrice: i.price || 0 }));
+      .filter(i => selections[i.id]?.selected)
+      .map(i => ({
+        menuItemId: i.id,
+        name: i.name,
+        quantity: 1,
+        unitPrice: i.price || 0,
+        flavor: selections[i.id]?.flavor,
+        guestName: selectedAttendanceName ?? undefined,
+      }));
     if (!items.length) return toast.error("Selecione ao menos 1 item.");
     setSubmitting(true);
     try {
@@ -132,7 +157,7 @@ function WaiterOrderDialog({
             <p className="text-[9px] font-black text-foreground/30 uppercase tracking-widest mb-2">Mesa</p>
             <div className="flex flex-wrap gap-2">
               {openTables.map(t => (
-                <button key={t.id} onClick={() => { setSelectedTableId(t.id); setSelectedAttendanceId(null); }}
+                <button key={t.id} onClick={() => { setSelectedTableId(t.id); setSelectedAttendanceId(null); setSelectedAttendanceName(null); }}
                   className={cn("px-3 py-1.5 rounded-xl text-xs font-bold border transition-all", selectedTableId === t.id ? "bg-primary text-black border-primary" : "bg-secondary border-border text-foreground/60")}
                 >{t.name}</button>
               ))}
@@ -140,19 +165,24 @@ function WaiterOrderDialog({
             </div>
           </div>
 
-          {/* Hóspede (opcional) */}
-          {selectedTableId && tableAttendances.length > 0 && (
+          {/* Hóspede */}
+          {selectedTableId && (
             <div>
-              <p className="text-[9px] font-black text-foreground/30 uppercase tracking-widest mb-2">Hóspede (opcional)</p>
+              <p className="text-[9px] font-black text-foreground/30 uppercase tracking-widest mb-2">Hóspede</p>
               <div className="flex flex-wrap gap-2">
-                <button onClick={() => setSelectedAttendanceId(null)} className={cn("px-3 py-1.5 rounded-xl text-xs font-bold border transition-all", !selectedAttendanceId ? "bg-primary/10 border-primary text-primary" : "bg-secondary border-border text-foreground/60")}>
-                  Mesa geral
+                <button onClick={() => { setSelectedAttendanceId(null); setSelectedAttendanceName(null); }}
+                  className={cn("px-3 py-1.5 rounded-xl text-xs font-bold border transition-all", !selectedAttendanceId ? "bg-primary/10 border-primary text-primary" : "bg-secondary border-border text-foreground/60")}
+                >
+                  Mesa Geral
                 </button>
                 {tableAttendances.map(a => (
-                  <button key={a.id} onClick={() => setSelectedAttendanceId(a.id)}
+                  <button key={a.id} onClick={() => { setSelectedAttendanceId(a.id); setSelectedAttendanceName(a.guestName); }}
                     className={cn("px-3 py-1.5 rounded-xl text-xs font-bold border transition-all", selectedAttendanceId === a.id ? "bg-primary/10 border-primary text-primary" : "bg-secondary border-border text-foreground/60")}
                   >{a.guestName}</button>
                 ))}
+                {tableAttendances.length === 0 && (
+                  <p className="text-xs text-foreground/30">Nenhum hóspede sentado nesta mesa</p>
+                )}
               </div>
             </div>
           )}
@@ -166,12 +196,23 @@ function WaiterOrderDialog({
                 <p className="text-[9px] font-black text-foreground/30 uppercase tracking-widest mb-2">{cat.name}</p>
                 <div className="space-y-2">
                   {catItems.map(item => (
-                    <button key={item.id} onClick={() => toggle(item.id)}
-                      className={cn("w-full flex items-center justify-between p-3 rounded-2xl border text-left transition-all", selections[item.id] ? "bg-primary/10 border-primary/40" : "bg-secondary border-border")}
-                    >
-                      <span className="text-sm font-bold text-foreground">{item.name}</span>
-                      {selections[item.id] ? <Check size={16} className="text-primary shrink-0" /> : <Plus size={16} className="text-foreground/30 shrink-0" />}
-                    </button>
+                    <div key={item.id}>
+                      <button onClick={() => toggle(item.id)}
+                        className={cn("w-full flex items-center justify-between p-3 rounded-2xl border text-left transition-all", selections[item.id]?.selected ? "bg-primary/10 border-primary/40" : "bg-secondary border-border")}
+                      >
+                        <span className="text-sm font-bold text-foreground">{item.name}</span>
+                        {selections[item.id]?.selected ? <Check size={16} className="text-primary shrink-0" /> : <Plus size={16} className="text-foreground/30 shrink-0" />}
+                      </button>
+                      {selections[item.id]?.selected && (item.flavors?.length ?? 0) > 0 && (
+                        <div className="mt-1.5 ml-2 flex flex-wrap gap-1.5">
+                          {item.flavors!.map(f => (
+                            <button key={f.name} onClick={() => selectFlavor(item.id, f.name)}
+                              className={cn("px-2.5 py-1 rounded-lg text-xs font-bold border transition-all", selections[item.id]?.flavor === f.name ? "bg-primary text-black border-primary" : "bg-background/60 border-border text-foreground/50 hover:border-primary/40")}
+                            >{f.name}</button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
@@ -180,7 +221,7 @@ function WaiterOrderDialog({
         </div>
 
         <div className="p-4 border-t border-white/5">
-          <button onClick={handleSubmit} disabled={submitting || !selectedTableId}
+          <button onClick={handleSubmit} disabled={submitting || !selectedTableId || hasPendingFlavors}
             className="w-full py-4 bg-primary text-black font-black uppercase tracking-widest text-xs rounded-2xl disabled:opacity-40 flex items-center justify-center gap-2"
           >
             {submitting ? <Loader2 size={16} className="animate-spin" /> : <ChefHat size={16} />}
@@ -455,7 +496,9 @@ export default function CafeSalaoPage() {
       attendanceId,
       items,
       userData?.id ?? "waiter",
-      actorName
+      actorName,
+      att?.guestName ?? null,
+      att?.cabinName ?? null
     );
     toast.success("Pedido enviado para a cozinha!");
     loadData();
@@ -715,6 +758,9 @@ export default function CafeSalaoPage() {
                       <div className="flex items-start justify-between mb-2">
                         <div>
                           <p className="font-black text-foreground text-sm">{table?.name ?? "Mesa"}</p>
+                          {o.guestName && (
+                            <p className="text-[10px] text-foreground/40">{o.guestName} · {o.cabinName}</p>
+                          )}
                           <p className="text-[10px] text-foreground/40">
                             {format(new Date(o.createdAt), "HH:mm")} · {o.requestedBy === 'guest' ? 'Hóspede' : 'Garçom'}
                           </p>
@@ -725,7 +771,7 @@ export default function CafeSalaoPage() {
                       </div>
                       <div className="space-y-1 mb-3">
                         {o.items.map((item, i) => (
-                          <p key={i} className="text-xs text-foreground/70">· {item.name} {item.quantity > 1 ? `×${item.quantity}` : ''}</p>
+                          <p key={i} className="text-xs text-foreground/70">· {item.name} {item.flavor ? `(${item.flavor})` : ''} {item.quantity > 1 ? `×${item.quantity}` : ''}</p>
                         ))}
                       </div>
                       {o.status === 'preparing' && (

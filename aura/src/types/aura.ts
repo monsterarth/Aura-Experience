@@ -709,6 +709,8 @@ export interface FBOrder {
   tableId?: string;
   attendanceId?: string;
   requestedBy?: 'guest' | 'waiter';
+  guestName?: string;   // denormalizado do attendance para relatórios
+  cabinName?: string;   // idem
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
