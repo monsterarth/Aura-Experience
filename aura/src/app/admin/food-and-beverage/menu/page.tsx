@@ -30,7 +30,8 @@ export default function FBMenuPage() {
         maxPerGuest: number;
         imageUrl: string;
         order: number;
-    }>({ name: "", name_en: "", name_es: "", type: "both", selectionTarget: "individual", maxPerGuest: 1, imageUrl: "", order: 0 });
+        alaCarte: boolean;
+    }>({ name: "", name_en: "", name_es: "", type: "both", selectionTarget: "individual", maxPerGuest: 1, imageUrl: "", order: 0, alaCarte: false });
 
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
     const [settingsForm, setSettingsForm] = useState({ 
@@ -114,11 +115,12 @@ export default function FBMenuPage() {
                 selectionTarget: (cat.selectionTarget as any) || 'individual',
                 maxPerGuest: cat.maxPerGuest || 1,
                 imageUrl: cat.imageUrl || "",
-                order: isClone ? categories.length : (cat.order || 0)
+                order: isClone ? categories.length : (cat.order || 0),
+                alaCarte: cat.alaCarte ?? false,
             });
         } else {
             setEditingCategory(null);
-            setCategoryForm({ name: "", name_en: "", name_es: "", type: "both", selectionTarget: "individual", maxPerGuest: 1, imageUrl: "", order: categories.length });
+            setCategoryForm({ name: "", name_en: "", name_es: "", type: "both", selectionTarget: "individual", maxPerGuest: 1, imageUrl: "", order: categories.length, alaCarte: false });
         }
         setFormLangTab('pt');
         setIsCategoryModalOpen(true);
@@ -129,10 +131,10 @@ export default function FBMenuPage() {
         setSaving(true);
         try {
             if (editingCategory) {
-                await fbService.updateCategory(editingCategory.id, categoryForm.name, categoryForm.type, categoryForm.selectionTarget, categoryForm.maxPerGuest, categoryForm.order, categoryForm.imageUrl, categoryForm.name_en, categoryForm.name_es);
+                await fbService.updateCategory(editingCategory.id, categoryForm.name, categoryForm.type, categoryForm.selectionTarget, categoryForm.maxPerGuest, categoryForm.order, categoryForm.imageUrl, categoryForm.name_en, categoryForm.name_es, categoryForm.alaCarte);
                 toast.success("Categoria atualizada.");
             } else {
-                await fbService.createCategory(currentProperty.id, categoryForm.name, categoryForm.type, categoryForm.selectionTarget, categoryForm.maxPerGuest, categoryForm.order, categoryForm.imageUrl, categoryForm.name_en, categoryForm.name_es);
+                await fbService.createCategory(currentProperty.id, categoryForm.name, categoryForm.type, categoryForm.selectionTarget, categoryForm.maxPerGuest, categoryForm.order, categoryForm.imageUrl, categoryForm.name_en, categoryForm.name_es, categoryForm.alaCarte);
                 toast.success("Categoria criada.");
             }
             setIsCategoryModalOpen(false);
@@ -446,6 +448,11 @@ export default function FBMenuPage() {
                                                     {cat.selectionTarget === 'individual' ? `Por Hóspede (Max: ${cat.maxPerGuest || 1})` : cat.selectionTarget === 'group_portion' ? 'Por Grupo (Porções)' : `Por Grupo (Piscina: ${cat.maxPerGuest || 1} un)`}
                                                 </span>
                                             )}
+                                            {cat.alaCarte && (
+                                                <span className="px-2 py-0.5 rounded bg-orange-500/10 border border-orange-500/20 text-[10px] font-bold uppercase tracking-widest text-orange-500">
+                                                    À La Carte
+                                                </span>
+                                            )}
                                         </div>
                                         <p className="text-xs text-muted-foreground mt-1">{catItems.length} {catItems.length === 1 ? 'item' : 'itens'}</p>
                                     </div>
@@ -580,6 +587,19 @@ export default function FBMenuPage() {
                                     <option value="breakfast">Somente no Café da Manhã</option>
                                 </select>
                             </div>
+                            <div className="flex items-center justify-between p-4 bg-secondary rounded-xl border border-border">
+                                <div>
+                                    <p className="text-sm font-bold text-foreground">À La Carte (Buffet)</p>
+                                    <p className="text-xs text-muted-foreground">Exibe esta categoria no pedido à la carte do salão</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setCategoryForm({ ...categoryForm, alaCarte: !categoryForm.alaCarte })}
+                                    className={cn("w-12 h-6 rounded-full transition-all relative shrink-0", categoryForm.alaCarte ? "bg-primary" : "bg-foreground/20")}
+                                >
+                                    <span className={cn("absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow", categoryForm.alaCarte ? "left-7" : "left-1")} />
+                                </button>
+                            </div>
                             <div className="space-y-2">
                                 <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Lógica de Pedido (Delivery)</label>
                                 <select
@@ -592,9 +612,9 @@ export default function FBMenuPage() {
                                     <option value="group_unit">Por Grupo - Unidades (Ex: Pães. Pergunta escolha livre no limite total do grupo)</option>
                                 </select>
                             </div>
-                            {categoryForm.selectionTarget === 'individual' && (
+                            {(categoryForm.selectionTarget === 'individual' || categoryForm.alaCarte) && (
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Nº Máximo de intens (Por hóspede)</label>
+                                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Nº Máximo de itens (Por hóspede)</label>
                                     <input
                                         type="number"
                                         min="1"

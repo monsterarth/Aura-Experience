@@ -10,6 +10,7 @@ const mapCategory = (dbObj: any): FBCategory => ({
     type: dbObj.type,
     selectionTarget: dbObj.selection_target,
     maxPerGuest: dbObj.max_per_guest,
+    alaCarte: dbObj.ala_carte ?? false,
     order: dbObj.order,
     imageUrl: dbObj.image_url,
     createdAt: dbObj.created_at,
@@ -111,11 +112,12 @@ export const fbService = {
         order: number = 0,
         imageUrl?: string,
         name_en?: string,
-        name_es?: string
+        name_es?: string,
+        alaCarte?: boolean
     ): Promise<FBCategory> {
         const { data, error } = await supabase
             .from('fb_categories')
-            .insert([{ property_id: propertyId, name, name_en: name_en || null, name_es: name_es || null, type, selection_target: selectionTarget, max_per_guest: maxPerGuest, order, image_url: imageUrl }])
+            .insert([{ property_id: propertyId, name, name_en: name_en || null, name_es: name_es || null, type, selection_target: selectionTarget, max_per_guest: maxPerGuest, order, image_url: imageUrl, ala_carte: alaCarte ?? false }])
             .select()
             .single();
         if (error) throw error;
@@ -131,9 +133,10 @@ export const fbService = {
         order?: number,
         imageUrl?: string,
         name_en?: string,
-        name_es?: string
+        name_es?: string,
+        alaCarte?: boolean
     ): Promise<FBCategory> {
-        const toUpdate: any = { name, name_en: name_en || null, name_es: name_es || null, type, selection_target: selectionTarget, max_per_guest: maxPerGuest };
+        const toUpdate: any = { name, name_en: name_en || null, name_es: name_es || null, type, selection_target: selectionTarget, max_per_guest: maxPerGuest, ala_carte: alaCarte ?? false };
         if (order !== undefined) toUpdate.order = order;
         if (imageUrl !== undefined) toUpdate.image_url = imageUrl;
 

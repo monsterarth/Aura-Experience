@@ -79,6 +79,7 @@ const breakfastTranslations = {
         chooseItems: 'Escolher Itens', backToOptions: 'Voltar para as opções', selectedFlavor: 'Sabor selecionado:',
         orderSummary: 'Resumo do Pedido', confirm: 'Confirmar Pedido Final', reviewOrder: 'Revisar Pedido',
         addFlavor: '+ Adicionar Sabor...', limitReached: 'Limite Atingido',
+        categoryLimit: (n: number) => `Limite de ${n} item(s) atingido nesta categoria.`,
         deliveryScheduled: 'Entrega agendada', change: 'Alterar', extras: 'Total Extras', included: 'Incluso',
         observations: 'Observações / Pedidos Especiais',
         groupPortionHint: 'Quantos hóspedes querem?',
@@ -102,6 +103,7 @@ const breakfastTranslations = {
         chooseItems: 'Choose Items', backToOptions: 'Back to options', selectedFlavor: 'Selected flavor:',
         orderSummary: 'Order Summary', confirm: 'Confirm Final Order', reviewOrder: 'Review Order',
         addFlavor: '+ Add Flavor...', limitReached: 'Limit Reached',
+        categoryLimit: (n: number) => `Limit of ${n} item(s) reached for this category.`,
         deliveryScheduled: 'Scheduled delivery', change: 'Change', extras: 'Extra Total', included: 'Included',
         observations: 'Special Requests',
         groupPortionHint: 'How many guests want this?',
@@ -125,6 +127,7 @@ const breakfastTranslations = {
         chooseItems: 'Elegir Ítems', backToOptions: 'Volver a las opciones', selectedFlavor: 'Sabor seleccionado:',
         orderSummary: 'Resumen del Pedido', confirm: 'Confirmar Pedido Final', reviewOrder: 'Revisar Pedido',
         addFlavor: '+ Agregar Sabor...', limitReached: 'Límite Alcanzado',
+        categoryLimit: (n: number) => `Límite de ${n} ítem(s) alcanzado para esta categoría.`,
         deliveryScheduled: 'Entrega programada', change: 'Cambiar', extras: 'Total Extras', included: 'Incluido',
         observations: 'Observaciones / Pedidos Especiales',
         groupPortionHint: '¿Cuántos huéspedes quieren?',
@@ -548,6 +551,24 @@ function BreakfastWizard() {
         }
 
         // Hóspede sentado — exibir itens a-la-carte
+        const buffetCategories = categories.filter(c => c.alaCarte);
+
+        const handleBuffetToggle = (item: FBMenuItem) => {
+            const isSelected = buffetSelections[item.id];
+            if (!isSelected) {
+                const cat = buffetCategories.find(c => c.id === item.categoryId);
+                if (cat?.maxPerGuest && cat.maxPerGuest > 0) {
+                    const catItems = items.filter(i => i.categoryId === cat.id);
+                    const count = catItems.filter(i => buffetSelections[i.id]).length;
+                    if (count >= cat.maxPerGuest) {
+                        toast.error(t.categoryLimit(cat.maxPerGuest));
+                        return;
+                    }
+                }
+            }
+            setBuffetSelections(prev => ({ ...prev, [item.id]: !prev[item.id] }));
+        };
+
         const handleBuffetOrder = async () => {
             if (!stay) return;
             const selectedItems = items
@@ -604,35 +625,55 @@ function BreakfastWizard() {
 
                 {/* Items */}
                 <div className="px-4 pt-4 space-y-6">
-                    {categories.map(cat => {
+                    {buffetCategories.map(cat => {
                         const catItems = items.filter(i => i.categoryId === cat.id);
                         if (!catItems.length) return null;
+                        const hasLimit = (cat.maxPerGuest ?? 0) > 0;
+                        const selectedCount = hasLimit ? catItems.filter(i => buffetSelections[i.id]).length : 0;
+                        const limitReached = hasLimit && selectedCount >= (cat.maxPerGuest ?? 0);
                         return (
                             <div key={cat.id}>
-                                <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-3">{locName(cat)}</p>
+                                <div className="flex items-center justify-between mb-3">
+                                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">{locName(cat)}</p>
+                                    {hasLimit && (
+                                        <span className={cn(
+                                            "text-[10px] font-bold px-2 py-0.5 rounded-full",
+                                            limitReached ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+                                        )}>
+                                            {selectedCount}/{cat.maxPerGuest}
+                                        </span>
+                                    )}
+                                </div>
                                 <div className="space-y-2">
-                                    {catItems.map(item => (
-                                        <button
-                                            key={item.id}
-                                            onClick={() => setBuffetSelections(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
-                                            className={cn(
-                                                "w-full flex items-center justify-between p-4 rounded-2xl border text-left transition-all",
-                                                buffetSelections[item.id]
-                                                    ? "bg-primary/10 border-primary/40"
-                                                    : "bg-card border-border hover:border-primary/20"
-                                            )}
-                                        >
-                                            <div className="flex-1 min-w-0">
-                                                <p className={cn("font-bold text-sm", buffetSelections[item.id] ? "text-primary" : "text-foreground")}>{locName(item)}</p>
-                                                {locDesc(item) && <p className="text-xs text-muted-foreground mt-0.5 truncate">{locDesc(item)}</p>}
-                                            </div>
-                                            <div className={cn("w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ml-3 transition-all",
-                                                buffetSelections[item.id] ? "bg-primary border-primary" : "border-border"
-                                            )}>
-                                                {buffetSelections[item.id] && <CheckCircle2 size={14} className="text-primary-foreground" />}
-                                            </div>
-                                        </button>
-                                    ))}
+                                    {catItems.map(item => {
+                                        const isSelected = buffetSelections[item.id];
+                                        const isBlocked = limitReached && !isSelected;
+                                        return (
+                                            <button
+                                                key={item.id}
+                                                onClick={() => handleBuffetToggle(item)}
+                                                disabled={isBlocked}
+                                                className={cn(
+                                                    "w-full flex items-center justify-between p-4 rounded-2xl border text-left transition-all",
+                                                    isSelected
+                                                        ? "bg-primary/10 border-primary/40"
+                                                        : isBlocked
+                                                        ? "bg-card border-border opacity-40 cursor-not-allowed"
+                                                        : "bg-card border-border hover:border-primary/20"
+                                                )}
+                                            >
+                                                <div className="flex-1 min-w-0">
+                                                    <p className={cn("font-bold text-sm", isSelected ? "text-primary" : "text-foreground")}>{locName(item)}</p>
+                                                    {locDesc(item) && <p className="text-xs text-muted-foreground mt-0.5 truncate">{locDesc(item)}</p>}
+                                                </div>
+                                                <div className={cn("w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ml-3 transition-all",
+                                                    isSelected ? "bg-primary border-primary" : "border-border"
+                                                )}>
+                                                    {isSelected && <CheckCircle2 size={14} className="text-primary-foreground" />}
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         );

@@ -646,6 +646,7 @@ export interface FBCategory {
   type: FBCategoryType;
   selectionTarget?: 'individual' | 'group_portion' | 'group_unit';
   maxPerGuest?: number;
+  alaCarte?: boolean;  // Se true, aparece no pedido a-la-carte do buffet
   order?: number;
   imageUrl?: string;
   createdAt: Timestamp;

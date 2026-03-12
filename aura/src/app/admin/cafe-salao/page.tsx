@@ -92,7 +92,7 @@ function WaiterOrderDialog({
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    supabase.from('fb_categories').select('*').eq('propertyId', propertyId).in('type', ['breakfast', 'both']).then(({ data }: { data: FBCategory[] | null }) => setCategories((data || []) as FBCategory[]));
+    supabase.from('fb_categories').select('*').eq('propertyId', propertyId).in('type', ['breakfast', 'both']).eq('ala_carte', true).then(({ data }: { data: FBCategory[] | null }) => setCategories((data || []) as FBCategory[]));
     supabase.from('fb_menu_items').select('*').eq('propertyId', propertyId).eq('active', true).then(({ data }: { data: FBMenuItem[] | null }) => setMenuItems((data || []) as FBMenuItem[]));
   }, [propertyId]);
 
