@@ -501,10 +501,13 @@ export const StayService = {
       .eq('id', stayId).eq('propertyId', propertyId);
 
     if (isActive) {
-      await Promise.all([
-        supabase.from('cabins').update({ status: oldCabinDisposition, currentStayId: null }).eq('id', oldCabinId),
-        supabase.from('cabins').update({ status: 'occupied', currentStayId: stayId }).eq('id', newCabinId),
-      ]);
+      // Occupy new cabin first
+      await supabase.from('cabins').update({ status: 'occupied', currentStayId: stayId }).eq('id', newCabinId);
+
+      // Release old cabin in two steps: clear currentStayId (may trigger a DB trigger that sets cleaning),
+      // then explicitly set the desired status to ensure final state is correct regardless of any trigger.
+      await supabase.from('cabins').update({ currentStayId: null }).eq('id', oldCabinId);
+      await supabase.from('cabins').update({ status: oldCabinDisposition }).eq('id', oldCabinId);
 
       if (oldCabinDisposition === 'cleaning') {
         await supabase.from('housekeeping_tasks').insert({
