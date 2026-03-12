@@ -471,6 +471,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const allowedSetups = selectedCabin?.allowedSetups?.length ? selectedCabin.allowedSetups : ["double", "twin", "triple", "other"];
 
   return (
+    <>
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
       <div className="bg-card border border-border w-full max-w-5xl rounded-[32px] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-300">
 
@@ -1073,5 +1074,6 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
         </div>
       </div>
     )}
+    </>
   );
 }
