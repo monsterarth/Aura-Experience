@@ -301,10 +301,34 @@ export const StayService = {
   },
 
   async performCheckIn(propertyId: string, stayId: string, actorId: string, actorName: string) {
-    await supabase.from('stays').update({
+    // 1. Buscar dados da estadia
+    const { data: stay } = await supabase
+      .from('stays').select('cabinId, checkIn').eq('id', stayId).single();
+    if (!stay) throw new Error('STAY_NOT_FOUND');
+
+    // 2. Validar status da acomodação
+    const { data: cabin } = await supabase
+      .from('cabins').select('status').eq('id', stay.cabinId).single();
+    if (!cabin || cabin.status !== 'available') {
+      throw new Error(`CABIN_NOT_AVAILABLE:${cabin?.status ?? 'unknown'}`);
+    }
+
+    // 3. Montar update — substituir checkIn pela data real se diferente
+    const now = new Date();
+    const updates: Record<string, any> = {
       status: 'active',
-      checkInActual: new Date().toISOString()
-    }).eq('id', stayId).eq('propertyId', propertyId);
+      checkInActual: now.toISOString(),
+    };
+    const scheduledDay = new Date(stay.checkIn).toDateString();
+    if (now.toDateString() !== scheduledDay) {
+      updates.checkIn = now.toISOString();
+    }
+
+    // 4. Atualizar estadia e cabin em paralelo
+    await Promise.all([
+      supabase.from('stays').update(updates).eq('id', stayId).eq('propertyId', propertyId),
+      supabase.from('cabins').update({ status: 'occupied', currentStayId: stayId }).eq('id', stay.cabinId),
+    ]);
 
     await AuditService.log({
       propertyId,
@@ -313,7 +337,9 @@ export const StayService = {
       action: "CHECKIN",
       entity: "STAY",
       entityId: stayId,
-      details: "Check-in físico realizado pela recepção."
+      details: updates.checkIn
+        ? `Check-in físico realizado. Data prevista substituída pelo check-in real.`
+        : "Check-in físico realizado pela recepção."
     });
 
     await this.triggerAutomation(propertyId, stayId, 'welcome_checkin');

@@ -186,6 +186,10 @@ export default function StaysPage() {
 
     const timeString = expectedTime ? ` às ${expectedTime}` : "";
 
+    if (diff < 0) {
+      const dateStr = format(start, "dd/MM", { locale: ptBR });
+      return `Atrasado · Previsto ${dateStr}${timeString}`;
+    }
     if (diff === 0) return `Chegada Hoje${timeString}`;
     if (diff === 1) return `Chegada Amanhã${timeString}`;
     if (expectedTime) return `Chegada em ${diff} dias${timeString}`;
@@ -326,7 +330,10 @@ export default function StaysPage() {
                           {activeTab === 'futuras' && (
                             <div className="bg-secondary p-4 rounded-3xl border border-white/5">
                               <p className="text-[9px] font-bold text-foreground/20 uppercase mb-1">Previsão</p>
-                              <p className="text-sm font-black text-foreground tracking-wide">
+                              <p className={cn(
+                                "text-sm font-black tracking-wide",
+                                new Date(s.checkIn) < new Date() ? "text-red-400" : "text-foreground"
+                              )}>
                                 {getFutureStatusInfo(s.checkIn, s.expectedArrivalTime)}
                               </p>
                             </div>
@@ -394,9 +401,24 @@ export default function StaysPage() {
                                   alert("ATENÇÃO: Hóspede sem documento registrado. Solicite o documento antes de confirmar o check-in.");
                                 }
                                 if (confirm(`Confirmar entrada de ${guestName}?`) && contextProperty?.id && userData?.id) {
-                                  await StayService.performCheckIn(contextProperty.id, s.id, userData.id, userData.fullName);
-                                  loadStays();
-                                  toast.success("Check-in realizado!");
+                                  try {
+                                    await StayService.performCheckIn(contextProperty.id, s.id, userData.id, userData.fullName);
+                                    loadStays();
+                                    toast.success("Check-in realizado!");
+                                  } catch (err: any) {
+                                    const msg = err?.message ?? '';
+                                    if (msg.startsWith('CABIN_NOT_AVAILABLE')) {
+                                      const statusMap: Record<string, string> = {
+                                        occupied: 'ocupada por outra estadia',
+                                        cleaning: 'em limpeza',
+                                        maintenance: 'em manutenção',
+                                      };
+                                      const cabinStatus = msg.split(':')[1] ?? '';
+                                      toast.error(`Check-in bloqueado: acomodação ${statusMap[cabinStatus] ?? 'indisponível'}. Verifique antes de prosseguir.`);
+                                    } else {
+                                      toast.error("Erro ao realizar check-in.");
+                                    }
+                                  }
                                 }
                               }}
                               className="flex-1 bg-primary text-black text-[10px] font-black uppercase py-4 rounded-2xl hover:shadow-[0_0_20px_rgba(var(--primary),0.4)] transition-all tracking-widest"
