@@ -443,27 +443,28 @@ export default function ReservationMapPage() {
         setIsDnDActionModalOpen(false);
         if (!dndData || !contextProperty?.id) return;
 
-        await moveStayToCabin(dndData.stayId, dndData.newCabinId);
-
-        if (createTurnover) {
-            try {
-                // Free up old cabin & create turnover task
-                await supabase.from('cabins').update({ status: 'cleaning', currentStayId: null }).eq('id', dndData.oldCabinId);
-                await supabase.from('housekeeping_tasks').insert({
-                    id: crypto.randomUUID(),
-                    propertyId: contextProperty.id,
-                    cabinId: dndData.oldCabinId,
-                    type: 'turnover',
-                    status: 'pending',
-                    assignedTo: [],
-                    checklist: []
-                });
-                toast.success("Estadia movida e faxina de troca gerada.");
-                loadData();
-            } catch (err) {
-                console.error(err);
-                toast.error("Estadia foi movida, mas ocorreu erro ao criar faxina.");
+        setLoading(true);
+        try {
+            await StayService.transferCabin(
+                contextProperty.id,
+                dndData.stayId,
+                dndData.newCabinId,
+                createTurnover ? 'cleaning' : 'available',
+                userData?.id || "admin",
+                userData?.fullName || "Admin"
+            );
+            toast.success(createTurnover ? "Estadia movida e faxina de troca gerada." : "Acomodação alterada com sucesso.");
+            loadData();
+        } catch (err: any) {
+            console.error(err);
+            const msg = err?.message ?? '';
+            if (msg.startsWith('CABIN_NOT_AVAILABLE')) {
+                const label = msg.split(':')[2] ?? 'indisponível';
+                toast.error(`Transferência bloqueada: acomodação ${label}.`);
+            } else {
+                toast.error("Erro ao alterar acomodação.");
             }
+            setLoading(false);
         }
         setDnDData(null);
     };
@@ -472,18 +473,26 @@ export default function ReservationMapPage() {
         if (!contextProperty?.id) return;
         setLoading(true);
         try {
-            await StayService.updateStayData(
+            // Non-active stays: just reassign cabin, no cabin status changes needed
+            await StayService.transferCabin(
                 contextProperty.id,
                 stayId,
-                { cabinId: newCabinId },
+                newCabinId,
+                'available',
                 userData?.id || "admin",
                 userData?.fullName || "Admin"
             );
             toast.success("Acomodação alterada com sucesso.");
             loadData();
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
-            toast.error("Erro ao alterar acomodação.");
+            const msg = err?.message ?? '';
+            if (msg.startsWith('CABIN_NOT_AVAILABLE')) {
+                const label = msg.split(':')[2] ?? 'indisponível';
+                toast.error(`Transferência bloqueada: acomodação ${label}.`);
+            } else {
+                toast.error("Erro ao alterar acomodação.");
+            }
             setLoading(false);
         }
     };

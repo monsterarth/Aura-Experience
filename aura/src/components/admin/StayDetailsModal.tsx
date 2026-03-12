@@ -84,6 +84,9 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const [guestData, setGuestData] = useState<Partial<Guest>>({});
   const [cabins, setCabins] = useState<Cabin[]>([]);
 
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [pendingTransferCabinId, setPendingTransferCabinId] = useState<string | null>(null);
+
   const [fnrhDomains, setFnrhDomains] = useState<{
     generos: FnrhDomain[];
     racas: FnrhDomain[];
@@ -315,15 +318,30 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
       return;
     }
 
+    // Detect cabin change before saving
+    const cabinChanged = formData.cabinId && formData.cabinId !== stay.cabinId;
+    if (cabinChanged && stay.status === 'active') {
+      // Ask about old cabin fate before proceeding
+      setPendingTransferCabinId(formData.cabinId!);
+      setTransferDialogOpen(true);
+      return;
+    }
+
+    await doSave(cabinChanged ? formData.cabinId! : null, null);
+  };
+
+  const doSave = async (newCabinId: string | null, oldCabinDisposition: 'cleaning' | 'available' | null) => {
     const cleanHousekeeping = formData.housekeepingItems?.filter(i => i.label.trim() !== "") || [];
     setLoading(true);
     try {
       const parsedCheckIn = parseDateFromInput(checkInStr, stay.checkIn);
       const parsedCheckOut = parseDateFromInput(checkOutStr, stay.checkOut);
 
-      // FNRH Strict: Sanitize document strings for digits only
+      // Strip cabinId from general payload — transfer is handled separately
+      const { cabinId: _cabinId, ...restFormData } = formData;
+
       const fnrhStayPayload: Partial<Stay> = {
-        ...formData,
+        ...restFormData,
         housekeepingItems: cleanHousekeeping,
         checkIn: parsedCheckIn || stay.checkIn,
         checkOut: parsedCheckOut || stay.checkOut,
@@ -342,10 +360,20 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
         }
       };
 
-      await Promise.all([
+      const ops: Promise<any>[] = [
         StayService.updateStayData(stay.propertyId, stay.id, fnrhStayPayload, userData?.id || "ADMIN", userData?.fullName || "Recepção"),
         GuestService.upsertGuest(stay.propertyId, fnrhGuestPayload as Guest)
-      ]);
+      ];
+
+      // Handle cabin transfer separately
+      if (newCabinId && oldCabinDisposition) {
+        ops.push(StayService.transferCabin(stay.propertyId, stay.id, newCabinId, oldCabinDisposition, userData?.id || "ADMIN", userData?.fullName || "Recepção"));
+      } else if (newCabinId && stay.status !== 'active') {
+        // Pending stay: just reassign, no cabin status changes needed
+        ops.push(StayService.transferCabin(stay.propertyId, stay.id, newCabinId, 'available', userData?.id || "ADMIN", userData?.fullName || "Recepção"));
+      }
+
+      await Promise.all(ops);
 
       toast.success("Ficha da hospedagem atualizada!");
       setIsEditing(false);
@@ -1002,5 +1030,48 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
         </div>
       </div>
     </div>
+
+    {/* Transfer Cabin Dialog */}
+    {transferDialogOpen && (
+      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+        <div className="bg-background w-full max-w-sm rounded-[24px] overflow-hidden shadow-2xl p-6 text-center animate-in zoom-in-95 duration-200">
+          <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Sparkles className="text-amber-500" size={32} />
+          </div>
+          <h2 className="text-xl font-bold text-foreground mb-2">Mudança de Acomodação</h2>
+          <p className="text-sm text-foreground/60 mb-6">
+            O hóspede já realizou check-in. A acomodação anterior precisa de limpeza de troca?
+          </p>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={async () => {
+                setTransferDialogOpen(false);
+                await doSave(pendingTransferCabinId, 'cleaning');
+                setPendingTransferCabinId(null);
+              }}
+              className="w-full py-3 px-4 bg-amber-500/10 border border-amber-500 text-amber-600 font-bold uppercase tracking-wider text-xs rounded-xl hover:bg-amber-500 hover:text-white transition-all"
+            >
+              Sim, Gerar Faxina (Troca)
+            </button>
+            <button
+              onClick={async () => {
+                setTransferDialogOpen(false);
+                await doSave(pendingTransferCabinId, 'available');
+                setPendingTransferCabinId(null);
+              }}
+              className="w-full py-3 px-4 bg-secondary text-foreground font-bold uppercase tracking-wider text-xs rounded-xl hover:bg-muted border border-border transition-all"
+            >
+              Não, Apenas Liberar
+            </button>
+            <button
+              onClick={() => { setTransferDialogOpen(false); setPendingTransferCabinId(null); }}
+              className="w-full py-3 px-4 text-muted-foreground font-bold uppercase tracking-wider text-xs rounded-xl hover:bg-secondary/50 transition-all mt-2"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   );
 }

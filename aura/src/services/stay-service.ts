@@ -457,56 +457,74 @@ export const StayService = {
   },
 
   async updateStayData(propertyId: string, stayId: string, data: Partial<Stay>, actorId: string, actorName: string) {
-    // Detect cabin transfer on active stays
-    if (data.cabinId) {
-      const { data: current } = await supabase
-        .from('stays').select('cabinId, status').eq('id', stayId).single();
-
-      if (current && current.cabinId !== data.cabinId) {
-        const oldCabinId = current.cabinId;
-        const newCabinId = data.cabinId;
-
-        // Validate new cabin availability
-        const { data: newCabin } = await supabase
-          .from('cabins').select('status').eq('id', newCabinId).single();
-        if (!newCabin || newCabin.status !== 'available') {
-          const statusMap: Record<string, string> = {
-            occupied: 'ocupada por outra estadia',
-            cleaning: 'em limpeza',
-            maintenance: 'em manutenção',
-          };
-          const label = statusMap[newCabin?.status ?? ''] ?? 'indisponível';
-          throw new Error(`CABIN_NOT_AVAILABLE:${newCabin?.status ?? 'unknown'}:${label}`);
-        }
-
-        // Update stays record
-        await supabase.from('stays').update({ ...data, updatedAt: new Date().toISOString() }).eq('id', stayId);
-
-        // Swap cabin statuses (only if stay is active)
-        if (current.status === 'active') {
-          await Promise.all([
-            supabase.from('cabins').update({ status: 'cleaning', currentStayId: null }).eq('id', oldCabinId),
-            supabase.from('cabins').update({ status: 'occupied', currentStayId: stayId }).eq('id', newCabinId),
-          ]);
-        } else {
-          // For pending stays just free old cabin and reserve new one conceptually (no status change needed)
-          // cabins stay available until check-in
-        }
-
-        await AuditService.log({
-          propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
-          details: `Transferência de cabana: ${oldCabinId} → ${newCabinId}.${current.status === 'active' ? ' Cabana antiga enviada para limpeza.' : ''}`,
-          newData: data
-        });
-        return;
-      }
-    }
-
     await supabase.from('stays').update({ ...data, updatedAt: new Date().toISOString() }).eq('id', stayId);
 
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
       details: "Ficha de hospedagem editada pela recepção.", newData: data
+    });
+  },
+
+  async transferCabin(
+    propertyId: string,
+    stayId: string,
+    newCabinId: string,
+    oldCabinDisposition: 'cleaning' | 'available',
+    actorId: string,
+    actorName: string
+  ) {
+    const { data: stay } = await supabase
+      .from('stays').select('cabinId, status').eq('id', stayId).single();
+    if (!stay) throw new Error('STAY_NOT_FOUND');
+
+    const oldCabinId = stay.cabinId;
+    const isActive = stay.status === 'active';
+
+    // Validate new cabin availability (only matters for active stays occupying cabins)
+    if (isActive) {
+      const { data: newCabin } = await supabase
+        .from('cabins').select('status').eq('id', newCabinId).single();
+      if (!newCabin || newCabin.status !== 'available') {
+        const statusMap: Record<string, string> = {
+          occupied: 'ocupada por outra estadia',
+          cleaning: 'em limpeza',
+          maintenance: 'em manutenção',
+        };
+        const label = statusMap[newCabin?.status ?? ''] ?? 'indisponível';
+        throw new Error(`CABIN_NOT_AVAILABLE:${newCabin?.status ?? 'unknown'}:${label}`);
+      }
+    }
+
+    // Update stay
+    await supabase.from('stays')
+      .update({ cabinId: newCabinId, updatedAt: new Date().toISOString() })
+      .eq('id', stayId).eq('propertyId', propertyId);
+
+    if (isActive) {
+      await Promise.all([
+        supabase.from('cabins').update({ status: oldCabinDisposition, currentStayId: null }).eq('id', oldCabinId),
+        supabase.from('cabins').update({ status: 'occupied', currentStayId: stayId }).eq('id', newCabinId),
+      ]);
+
+      if (oldCabinDisposition === 'cleaning') {
+        await supabase.from('housekeeping_tasks').insert({
+          id: uuidv4(),
+          propertyId,
+          cabinId: oldCabinId,
+          stayId,
+          type: 'turnover',
+          status: 'pending',
+          assignedTo: [],
+          checklist: []
+        });
+      }
+    }
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
+      details: isActive
+        ? `Transferência de cabana: ${oldCabinId} → ${newCabinId}. Cabana antiga: ${oldCabinDisposition === 'cleaning' ? 'enviada para limpeza' : 'liberada'}.`
+        : `Cabana da reserva alterada: ${oldCabinId} → ${newCabinId}.`
     });
   },
 
