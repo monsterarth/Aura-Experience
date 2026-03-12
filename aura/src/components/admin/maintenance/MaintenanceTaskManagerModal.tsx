@@ -5,6 +5,7 @@ import { MaintenanceService } from "@/services/maintenance-service";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { ImageUpload } from "@/components/admin/ImageUpload";
 
 interface MaintenanceTaskManagerModalProps {
     isOpen: boolean;
@@ -36,7 +37,8 @@ export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task,
         recurrenceRule: 'daily',
         blocksCabin: false,
         expectedStart: '',
-        expectedEnd: ''
+        expectedEnd: '',
+        imageUrl: ''
     });
 
     const [checklist, setChecklist] = useState<MaintenanceChecklistItem[]>([]);
@@ -57,7 +59,8 @@ export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task,
                     recurrenceRule: task.recurrenceRule || 'daily',
                     blocksCabin: task.blocksCabin || false,
                     expectedStart: task.expectedStart || '',
-                    expectedEnd: task.expectedEnd || ''
+                    expectedEnd: task.expectedEnd || '',
+                    imageUrl: task.imageUrl || ''
                 });
                 setChecklist(task.checklist || []);
             } else {
@@ -74,7 +77,8 @@ export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task,
                     recurrenceRule: 'daily',
                     blocksCabin: !!(initialExpectedStart && initialExpectedEnd),
                     expectedStart: initialExpectedStart || '',
-                    expectedEnd: initialExpectedEnd || ''
+                    expectedEnd: initialExpectedEnd || '',
+                    imageUrl: ''
                 });
                 setChecklist([]);
             }
@@ -159,6 +163,21 @@ export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task,
                                     value={formData.description}
                                     onChange={e => setFormData({ ...formData, description: e.target.value })}
                                 />
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest mb-1 block">Foto / Evidência (Opcional)</label>
+                                <div className="h-32 bg-secondary border border-border rounded-xl overflow-hidden relative">
+                                    <ImageUpload
+                                        value={formData.imageUrl}
+                                        onUploadSuccess={(url) => setFormData({ ...formData, imageUrl: url })}
+                                    />
+                                    {!formData.imageUrl && (
+                                        <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-50">
+                                            <span className="text-[10px] font-bold uppercase">Anexar foto do problema</span>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">

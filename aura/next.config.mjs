@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-    images: {
+  images: {
     remotePatterns: [
       {
         protocol: 'https',
@@ -9,6 +9,10 @@ const nextConfig = {
       {
         protocol: 'https',
         hostname: 'i.imgur.com', // O Imgur usa muito esse subdomínio para os links diretos (.png)
+      },
+      {
+        protocol: 'https',
+        hostname: '*.supabase.co',
       }
     ],
   },

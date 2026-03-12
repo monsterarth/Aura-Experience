@@ -8,11 +8,13 @@ import { MaintenanceService } from "@/services/maintenance-service";
 import { CabinService } from "@/services/cabin-service";
 import { StructureService } from "@/services/structure-service";
 import { StaffService } from "@/services/staff-service";
-import { MaintenanceTask, Cabin, Structure, Staff } from "@/types/aura";
+import { MaintenanceChecklistItem, MaintenanceTask, Cabin, Structure, Staff } from "@/types/aura";
 import { MaintenanceTaskManagerModal } from "@/components/admin/maintenance/MaintenanceTaskManagerModal";
 import { MaintenanceCompletionModal } from "@/components/admin/maintenance/MaintenanceCompletionModal";
+import { StaffMobileHub } from "@/components/admin/StaffMobileHub";
 import { Clock, Hammer, AlertCircle, CheckCircle2, PlayCircle, Plus, Edit3, Settings2, Archive, Calendar as CalendarIcon, X, Moon } from "lucide-react";
 import { toast } from "sonner";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 export default function MaintenancePage() {
@@ -29,6 +31,7 @@ export default function MaintenancePage() {
     const [isCompletionOpen, setIsCompletionOpen] = useState(false);
     const [isArchiveOpen, setIsArchiveOpen] = useState(false);
     const [selectedTask, setSelectedTask] = useState<MaintenanceTask | null>(null);
+    const [enlargedImage, setEnlargedImage] = useState<string | null>(null);
 
     useEffect(() => {
         if (!property) return;
@@ -84,8 +87,131 @@ export default function MaintenancePage() {
 
     // Mobile App View restriction if user is ONLY a technician
     if (userData?.role === 'technician') {
-        // We would return a Mobile version here like we did for maids, but for now we let them use the Kanban or build a custom mobile view later.
-        // For MVP, we let them view his assigned tasks in a stacked layout.
+        const myTasks = tasks.filter(t => !t.assignedTo || t.assignedTo.length === 0 || t.assignedTo.includes(userData.id!));
+        const myPending = myTasks.filter(t => t.status === 'pending' || t.status === 'paused');
+        const myInProgress = myTasks.filter(t => t.status === 'in_progress');
+        const myWaiting = myTasks.filter(t => t.status === 'waiting_conference');
+
+        const TaskCard = ({ task }: { task: MaintenanceTask }) => (
+            <div className={cn(
+                "bg-card border p-4 rounded-[2rem] shadow-sm space-y-4 transition-colors relative mb-4 flex flex-col items-start text-left w-full",
+                task.status === 'paused' ? "border-yellow-400 opacity-75" : "border-border"
+            )}>
+                {task.status === 'paused' && (
+                    <div className="flex items-center gap-2 bg-yellow-500/10 text-yellow-700 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase mb-2">
+                        <Moon size={12} /> DND {task.pausedUntil && ` — retoma às ${new Date(task.pausedUntil).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}
+                    </div>
+                )}
+                <div className="flex items-center gap-2 mb-1 w-full flex-wrap">
+                    <p className={cn(
+                        "text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded border leading-none pt-1 pb-0.5",
+                        task.priority === 'urgent' ? 'border-red-500/30 text-red-500 bg-red-500/10' :
+                            task.priority === 'high' ? 'border-orange-500/30 text-orange-500 bg-orange-500/10' :
+                                task.priority === 'medium' ? 'border-yellow-500/30 text-yellow-600 bg-yellow-500/10' :
+                                    'border-blue-500/30 text-blue-500 bg-blue-500/10'
+                    )}>
+                        {task.priority === 'urgent' ? 'Urgente' : task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Média' : 'Baixa'}
+                    </p>
+                    {task.isRecurring && <span className="text-[10px] bg-indigo-500/10 text-indigo-500 px-2 rounded font-bold uppercase py-0.5">Recorrente</span>}
+                </div>
+                <h4 className="font-bold text-lg text-foreground leading-tight">{task.title}</h4>
+                <p className="text-sm text-muted-foreground line-clamp-2">{task.description}</p>
+                {task.imageUrl && (
+                    <button onClick={() => setEnlargedImage(task.imageUrl!)} className="relative mt-2 h-32 w-full rounded-2xl overflow-hidden border border-border group block text-left">
+                        <Image src={task.imageUrl} alt="Evidência do Problema" fill className="object-cover group-hover:scale-105 transition-transform" />
+                        <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-lg font-bold uppercase tracking-widest backdrop-blur-md">Ampliar</div>
+                    </button>
+                )}
+                {task.cabinId && <p className="text-xs font-bold text-primary mt-2">📍 {cabins[task.cabinId]?.name || "Cabana Desconhecida"}</p>}
+                {task.structureId && <p className="text-xs font-bold text-primary mt-2">📍 {structures[task.structureId]?.name || "Estrutura"} {task.unitId && (structures[task.structureId]?.units?.find(u => u.id === task.unitId)?.name ? ` (${structures[task.structureId]?.units?.find(u => u.id === task.unitId)?.name})` : '')}</p>}
+
+                <div className="w-full space-y-2 pt-4 border-t border-border">
+                    {task.status === 'pending' ? (
+                        <button onClick={() => handleStartTask(task.id)} className="w-full flex items-center justify-center gap-2 bg-primary/10 hover:bg-primary text-primary hover:text-primary-foreground font-bold p-3 rounded-2xl transition-all text-xs uppercase cursor-pointer">
+                            <PlayCircle size={16} /> Iniciar Manutenção
+                        </button>
+                    ) : task.status === 'in_progress' ? (
+                        <button onClick={() => { setSelectedTask(task); setIsCompletionOpen(true); }} className="w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white font-bold p-3 rounded-2xl transition-all text-xs uppercase">
+                            <CheckCircle2 size={16} /> Finalizar Tarefa
+                        </button>
+                    ) : task.status === 'waiting_conference' ? (
+                        <div className="bg-orange-500/10 border border-orange-500/30 p-3 rounded-2xl w-full text-center">
+                            <p className="text-xs text-orange-600 font-bold flex items-center justify-center gap-2"><AlertCircle size={14} /> Aguardando Validação</p>
+                        </div>
+                    ) : null}
+                </div>
+            </div>
+        );
+
+        return (
+            <StaffMobileHub 
+                propertyId={property.id} 
+                userData={userData} 
+                renderTasks={() => (
+                    <div className="flex flex-col h-[100dvh] bg-background">
+                {enlargedImage && (
+                    <div className="fixed inset-0 z-[200] bg-black/90 flex flex-col items-center justify-center p-4" onClick={() => setEnlargedImage(null)}>
+                        <button onClick={() => setEnlargedImage(null)} className="absolute top-4 right-4 text-white bg-black/50 p-2 rounded-full backdrop-blur-md z-10"><X size={24} /></button>
+                        <div className="relative w-full h-full max-h-[80vh]">
+                            <Image src={enlargedImage} alt="Fullscreen image" fill className="object-contain" />
+                        </div>
+                    </div>
+                )}
+                
+                <MaintenanceCompletionModal
+                    isOpen={isCompletionOpen}
+                    onClose={() => { setIsCompletionOpen(false); setSelectedTask(null); }}
+                    propertyId={property.id}
+                    task={selectedTask}
+                    cabins={cabins}
+                    structures={structures}
+                />
+
+                <div className="p-6 border-b border-border bg-card shrink-0">
+                    <h1 className="text-2xl font-bold tracking-tight">Minhas Tarefas</h1>
+                    <p className="text-sm text-muted-foreground mt-1">
+                        Visualize e gerencie as manutenções atribuídas a você.
+                    </p>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-secondary/10">
+                    {myInProgress.length > 0 && (
+                        <div className="mb-8 block">
+                            <h3 className="font-bold text-sm uppercase tracking-widest text-primary flex items-center gap-2 mb-4">
+                                <PlayCircle size={16} /> Em Andamento
+                            </h3>
+                            {myInProgress.map(t => <TaskCard key={t.id} task={t} />)}
+                        </div>
+                    )}
+                    
+                    {myPending.length > 0 && (
+                        <div className="mb-8 block">
+                            <h3 className="font-bold text-sm uppercase tracking-widest text-foreground flex items-center gap-2 mb-4">
+                                <Hammer size={16} /> Pendentes
+                            </h3>
+                            {myPending.map(t => <TaskCard key={t.id} task={t} />)}
+                        </div>
+                    )}
+
+                    {myWaiting.length > 0 && (
+                        <div className="mb-4 block">
+                            <h3 className="font-bold text-sm uppercase tracking-widest text-orange-500 flex items-center gap-2 mb-4">
+                                <AlertCircle size={16} /> Requer Atenção
+                            </h3>
+                            {myWaiting.map(t => <TaskCard key={t.id} task={t} />)}
+                        </div>
+                    )}
+
+                    {myTasks.length === 0 && (
+                        <div className="h-64 border-2 border-dashed border-border rounded-[2rem] flex flex-col items-center justify-center text-muted-foreground opacity-50 p-6 text-center">
+                            <CheckCircle2 size={48} className="mb-4" />
+                            <p className="text-sm font-bold uppercase">Nenhuma tarefa atribuída</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+               )}
+            />
+        );
     }
 
     const handleStartTask = async (taskId: string) => {
@@ -167,6 +293,18 @@ export default function MaintenancePage() {
                                         </div>
                                         <h4 className="font-bold text-lg text-foreground leading-tight mt-1">{task.title}</h4>
                                         <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{task.description}</p>
+                                        {task.imageUrl && (
+                                            <button 
+                                                className="relative mt-2 h-20 w-full rounded-lg overflow-hidden border border-border cursor-pointer group block text-left"
+                                                onClick={(e) => { e.stopPropagation(); setEnlargedImage(task.imageUrl!); }}
+                                                title="Clique para ampliar"
+                                            >
+                                                <Image src={task.imageUrl} alt="Evidência do Problema" fill className="object-cover group-hover:scale-105 transition-transform" />
+                                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                                    <span className="text-white text-[10px] uppercase font-bold tracking-widest px-2 py-1 border border-white/20 rounded bg-black/40 backdrop-blur-sm">Ampliar</span>
+                                                </div>
+                                            </button>
+                                        )}
                                         {task.cabinId && <p className="text-xs font-bold text-primary mt-2">📍 {cabins[task.cabinId]?.name || "Cabana Desconhecida"}</p>}
                                         {task.structureId && <p className="text-xs font-bold text-primary mt-2">📍 {structures[task.structureId]?.name || "Estrutura"} {task.unitId && (structures[task.structureId]?.units?.find(u => u.id === task.unitId)?.name ? ` (${structures[task.structureId]?.units?.find(u => u.id === task.unitId)?.name})` : '')}</p>}
                                     </div>
@@ -342,6 +480,18 @@ export default function MaintenancePage() {
                         <footer className="p-6 border-t border-border shrink-0 text-center">
                             <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Aura Engine • Auditoria</p>
                         </footer>
+                    </div>
+                </div>
+            )}
+            
+            {/* ENLARGED IMAGE MODAL */}
+            {enlargedImage && (
+                <div className="fixed inset-0 z-[200] bg-black/90 flex flex-col items-center justify-center p-4" onClick={() => setEnlargedImage(null)}>
+                    <button onClick={() => setEnlargedImage(null)} className="absolute top-4 right-4 text-white bg-black/50 p-2 rounded-full backdrop-blur-md z-10 hover:bg-black/80 transition-colors pointer-events-auto">
+                        <X size={24} />
+                    </button>
+                    <div className="relative w-full h-full max-h-[90vh]">
+                        <Image src={enlargedImage} alt="Fullscreen image" fill className="object-contain" />
                     </div>
                 </div>
             )}

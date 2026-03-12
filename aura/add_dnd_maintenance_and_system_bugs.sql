@@ -1,9 +1,10 @@
 -- Phase 1: DND pause support for maintenance_tasks + system_bugs table
 
--- 1. Add DND pause columns to maintenance_tasks
+-- 1. Add DND pause and image columns to maintenance_tasks
 ALTER TABLE public.maintenance_tasks
   ADD COLUMN IF NOT EXISTS "pausedUntil" TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS "previousStatus" TEXT;
+  ADD COLUMN IF NOT EXISTS "previousStatus" TEXT,
+  ADD COLUMN IF NOT EXISTS "imageUrl" TEXT;
 
 -- 2. Issue tracker for IT/app bugs (separate from physical maintenance)
 CREATE TABLE IF NOT EXISTS public.system_bugs (
@@ -12,6 +13,7 @@ CREATE TABLE IF NOT EXISTS public.system_bugs (
   "propertyId" UUID NOT NULL REFERENCES properties(id),
   description TEXT NOT NULL,
   browser_info TEXT,
+  "imageUrl" TEXT,
   status TEXT NOT NULL DEFAULT 'open',
   "createdAt" TIMESTAMPTZ DEFAULT NOW()
 );

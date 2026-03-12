@@ -308,6 +308,8 @@ export interface MaintenanceTask {
 
   assignedTo: string[]; // General assignees for the card
 
+  imageUrl?: string; // Image attached when reporting the issue
+
   isRecurring: boolean;
   recurrenceRule?: string; // E.g., 'daily', 'weekly', 'monthly'
   lastRecurrenceCreated?: Timestamp; // Helps Cron avoid duplicates
@@ -730,6 +732,7 @@ export interface SystemBug {
   propertyId: string;
   description: string;
   browser_info?: string;
+  imageUrl?: string;
   status: 'open' | 'in_progress' | 'resolved';
   createdAt: Timestamp;
 }

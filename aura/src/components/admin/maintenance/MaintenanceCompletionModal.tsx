@@ -97,9 +97,19 @@ export function MaintenanceCompletionModal({ isOpen, onClose, propertyId, task, 
                 </div>
 
                 <div className="p-6 space-y-6">
-                    {/* FOTO COMPROBATÓRIA */}
+                    {/* FOTO REPORTADA (CRIADA NO APP BUG / HÓSPEDE / MANUTENÇÃO) */}
+                    {task.imageUrl && (
+                        <div>
+                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest block mb-2">Foto / Evidência Original</label>
+                            <div className="relative h-40 w-full rounded-2xl overflow-hidden border border-border">
+                                <Image src={task.imageUrl} alt="Evidência do Problema" fill className="object-cover" />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* FOTO COMPROBATÓRIA DA RESOLUÇÃO */}
                     <div>
-                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest block mb-2">Foto / Comprovante (Opcional)</label>
+                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest block mb-2">{task.imageUrl ? "Foto da Resolução (Opcional)" : "Foto / Comprovante (Opcional)"}</label>
                         <input
                             type="file"
                             accept="image/*"

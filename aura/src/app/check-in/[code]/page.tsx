@@ -12,6 +12,7 @@ import { toggleGuestDND } from "@/app/actions/dnd-actions";
 import { reportCabinIssue, reportStructureIssue, reportAppBug } from "@/app/actions/issue-actions";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { ImageUpload } from "@/components/admin/ImageUpload";
 
 // --- HELPERS DE TEMA ---
 function hexToHSL(hex: string): string {
@@ -266,6 +267,7 @@ function GuestHubContent() {
     const [reportDescription, setReportDescription] = useState('');
     const [canEnterNow, setCanEnterNow] = useState(false);
     const [reportStructureId, setReportStructureId] = useState('');
+    const [reportImageUrl, setReportImageUrl] = useState<string>('');
     const [structures, setStructures] = useState<Structure[]>([]);
     const [reportLoading, setReportLoading] = useState(false);
 
@@ -737,7 +739,7 @@ function GuestHubContent() {
 
                         {/* Report Problem (Full Width) */}
                         <button
-                            onClick={() => { setReportStep('type'); setReportDescription(''); setCanEnterNow(false); setReportStructureId(''); setIsReportOpen(true); }}
+                            onClick={() => { setReportStep('type'); setReportDescription(''); setCanEnterNow(false); setReportStructureId(''); setReportImageUrl(''); setIsReportOpen(true); }}
                             className="col-span-2 bg-card border border-border p-5 rounded-[2rem] shadow-sm hover:shadow-md hover:border-red-400/50 transition-all flex items-center gap-4 group"
                         >
                             <div className="w-10 h-10 bg-secondary rounded-2xl flex items-center justify-center text-foreground group-hover:bg-red-500 group-hover:text-white transition-colors shrink-0">
@@ -900,12 +902,23 @@ function GuestHubContent() {
                                                 <span className="text-sm font-semibold text-yellow-700">{t.canEnterNow}</span>
                                             </label>
                                         )}
+                                        <div className="h-40 border border-border bg-secondary rounded-2xl overflow-hidden overflow-hidden relative">
+                                            <ImageUpload
+                                                value={reportImageUrl}
+                                                onUploadSuccess={(url) => setReportImageUrl(url)}
+                                            />
+                                            {!reportImageUrl && (
+                                                <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center opacity-50">
+                                                    <span className="text-[10px] font-bold uppercase mt-2">Clique para anexar foto (opcional)</span>
+                                                </div>
+                                            )}
+                                        </div>
                                         <button
                                             onClick={async () => {
                                                 if (!reportDescription.trim()) return;
                                                 setReportLoading(true);
                                                 try {
-                                                    const result = await reportCabinIssue(stay.id, stay.accessCode, reportDescription, canEnterNow);
+                                                    const result = await reportCabinIssue(stay.id, stay.accessCode, reportDescription, canEnterNow, reportImageUrl);
                                                     if (result.success) {
                                                         toast.success(t.reportSent);
                                                         setIsReportOpen(false);
@@ -947,12 +960,23 @@ function GuestHubContent() {
                                             rows={4}
                                             className="w-full bg-secondary border border-border rounded-2xl p-4 text-sm resize-none focus:outline-none focus:border-primary/50"
                                         />
+                                        <div className="h-40 border border-border bg-secondary rounded-2xl overflow-hidden overflow-hidden relative">
+                                            <ImageUpload
+                                                value={reportImageUrl}
+                                                onUploadSuccess={(url) => setReportImageUrl(url)}
+                                            />
+                                            {!reportImageUrl && (
+                                                <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center opacity-50">
+                                                    <span className="text-[10px] font-bold uppercase mt-2">Clique para anexar foto (opcional)</span>
+                                                </div>
+                                            )}
+                                        </div>
                                         <button
                                             onClick={async () => {
                                                 if (!reportDescription.trim() || !reportStructureId) return;
                                                 setReportLoading(true);
                                                 try {
-                                                    const result = await reportStructureIssue(stay.id, stay.accessCode, reportStructureId, reportDescription);
+                                                    const result = await reportStructureIssue(stay.id, stay.accessCode, reportStructureId, reportDescription, reportImageUrl);
                                                     if (result.success) {
                                                         toast.success(t.reportSent);
                                                         setIsReportOpen(false);
@@ -980,13 +1004,24 @@ function GuestHubContent() {
                                             rows={4}
                                             className="w-full bg-secondary border border-border rounded-2xl p-4 text-sm resize-none focus:outline-none focus:border-primary/50"
                                         />
+                                        <div className="h-40 border border-border bg-secondary rounded-2xl overflow-hidden overflow-hidden relative">
+                                            <ImageUpload
+                                                value={reportImageUrl}
+                                                onUploadSuccess={(url) => setReportImageUrl(url)}
+                                            />
+                                            {!reportImageUrl && (
+                                                <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center opacity-50">
+                                                    <span className="text-[10px] font-bold uppercase mt-2">Screenshot do problema (opcional)</span>
+                                                </div>
+                                            )}
+                                        </div>
                                         <button
                                             onClick={async () => {
                                                 if (!reportDescription.trim()) return;
                                                 setReportLoading(true);
                                                 try {
                                                     const browserInfo = navigator.userAgent;
-                                                    const result = await reportAppBug(stay.id, stay.accessCode, reportDescription, browserInfo);
+                                                    const result = await reportAppBug(stay.id, stay.accessCode, reportDescription, browserInfo, reportImageUrl);
                                                     if (result.success) {
                                                         toast.success(t.reportSent);
                                                         setIsReportOpen(false);

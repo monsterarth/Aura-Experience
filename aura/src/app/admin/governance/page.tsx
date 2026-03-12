@@ -14,6 +14,7 @@ import { HousekeepingTaskManagerModal } from "@/components/admin/HousekeepingTas
 import { ChecklistSettingsModal } from "@/components/admin/ChecklistSettingsModal";
 import { MinibarModal } from "@/components/admin/MinibarModal";
 import { MaidMobileApp } from "@/components/admin/MaidMobileApp";
+import { StaffMobileHub } from "@/components/admin/StaffMobileHub";
 import {
   Sparkles, Clock, CheckCircle2, AlertCircle,
   Coffee, ArrowRight, ClipboardCheck, Plus, UserPlus, Settings2, Edit3, MessageSquare, Archive, Calendar as CalendarIcon, X, Moon
@@ -89,12 +90,20 @@ export default function GovernancePage() {
   }
 
   if (userData?.role === 'maid') {
-    return <MaidMobileApp
-      propertyId={property.id}
-      userData={userData}
-      tasks={tasks}
-      cabins={cabins}
-    />;
+    return (
+      <StaffMobileHub 
+        propertyId={property.id} 
+        userData={userData} 
+        renderTasks={() => (
+           <MaidMobileApp
+             propertyId={property.id}
+             userData={userData}
+             tasks={tasks}
+             cabins={cabins}
+           />
+        )}
+      />
+    );
   }
 
   const handleAssignTask = async (taskId: string, maidId: string) => {

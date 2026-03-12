@@ -67,10 +67,14 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins }: MaidMobil
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col max-w-md mx-auto shadow-2xl border-x border-border">
+    <div className="bg-background text-foreground flex flex-col mx-auto">
 
-      <header className="bg-primary text-primary-foreground p-6 rounded-b-[2rem] shadow-md shrink-0">
-        <div className="flex justify-between items-start mb-4">
+      <header className="bg-primary text-primary-foreground p-6 shadow-md shrink-0 relative overflow-hidden pb-10">
+        {/* Background Decal */}
+        <div className="absolute -right-4 -top-8 text-white/10 rotate-12 pointer-events-none">
+            <Sparkles size={120} />
+        </div>
+        <div className="flex justify-between items-start mb-4 relative z-10">
           <div>
             <h1 className="text-2xl font-black tracking-tight">Olá, {userData?.fullName?.split(' ')[0]}!</h1>
             <p className="text-primary-foreground/80 text-sm font-medium">Você tem {pendingTasks.length + activeTasks.length} cabanas para hoje.</p>
@@ -81,7 +85,7 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins }: MaidMobil
         </div>
       </header>
 
-      <main className="flex-1 p-4 space-y-6 overflow-y-auto custom-scrollbar pb-24">
+      <main className="p-4 space-y-6 pb-24 -mt-6 relative z-20">
 
         {globalPendingTurnovers.length > 0 && (
           <div className="space-y-3">
@@ -210,12 +214,6 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins }: MaidMobil
           </div>
         )}
       </main>
-
-      <footer className="p-4 border-t border-border bg-card shrink-0 flex justify-center">
-        <button onClick={handleLogout} className="text-xs font-bold uppercase text-muted-foreground hover:text-destructive transition-colors">
-          Sair do Sistema
-        </button>
-      </footer>
 
       <HousekeepingChecklistModal isOpen={isChecklistOpen} onClose={() => setIsChecklistOpen(false)} task={selectedTask} cabinName={selectedTask ? (cabins[selectedTask.cabinId || '']?.name || "") : ""} onComplete={() => { }} />
       <MinibarModal isOpen={isMinibarOpen} onClose={() => setIsMinibarOpen(false)} task={selectedTask} cabinName={selectedTask ? (cabins[selectedTask.cabinId || '']?.name || "") : ""} />

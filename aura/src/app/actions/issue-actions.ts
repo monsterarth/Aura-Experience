@@ -40,6 +40,7 @@ export async function reportCabinIssue(
       assignedTo: [],
       isRecurring: false,
       completion: imageUrl ? { resolved: false, needsCleaning: false, photoUrl: imageUrl } : null,
+      imageUrl: imageUrl || null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
@@ -93,6 +94,7 @@ export async function reportStructureIssue(
       assignedTo: [],
       isRecurring: false,
       completion: imageUrl ? { resolved: false, needsCleaning: false, photoUrl: imageUrl } : null,
+      imageUrl: imageUrl || null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
@@ -112,7 +114,8 @@ export async function reportAppBug(
   stayId: string,
   accessCode: string,
   description: string,
-  browserInfo?: string
+  browserInfo?: string,
+  imageUrl?: string
 ): Promise<{ success: boolean; error?: string }> {
   const { data: stay, error: stayError } = await supabaseAdmin
     .from('stays')
@@ -133,6 +136,7 @@ export async function reportAppBug(
       propertyId: stay.propertyId,
       description,
       browser_info: browserInfo,
+      imageUrl: imageUrl || null,
       status: 'open',
       createdAt: new Date().toISOString(),
     });
