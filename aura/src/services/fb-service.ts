@@ -226,7 +226,60 @@ export const fbService = {
     },
 
     // --- ORDERS ---
+    async getOrderForStayDate(stayId: string, deliveryDate: string, type: FBOrder['type']): Promise<FBOrder | null> {
+        const { data, error } = await supabase
+            .from('fb_orders')
+            .select('*')
+            .eq('stay_id', stayId)
+            .eq('delivery_date', deliveryDate)
+            .eq('type', type)
+            .neq('status', 'cancelled')
+            .maybeSingle();
+        if (error) throw error;
+        return data ? mapOrder(data) : null;
+    },
+
+    async updateOrder(id: string, patch: { items: FBOrder['items'], totalPrice?: number, deliveryTime?: string }): Promise<FBOrder> {
+        const { data, error } = await supabase
+            .from('fb_orders')
+            .update({
+                items: patch.items,
+                total_price: patch.totalPrice,
+                delivery_time: patch.deliveryTime,
+                updated_at: new Date().toISOString(),
+            })
+            .eq('id', id)
+            .select()
+            .single();
+        if (error) throw error;
+        return mapOrder(data);
+    },
+
     async createOrder(order: Omit<FBOrder, 'id' | 'createdAt' | 'updatedAt'>): Promise<FBOrder> {
+        // Enforce order time window for breakfast deliveries
+        if (order.type === 'breakfast' && order.propertyId) {
+            const { data: prop } = await supabase
+                .from('properties')
+                .select('settings')
+                .eq('id', order.propertyId)
+                .single();
+
+            const delivery = prop?.settings?.fbSettings?.breakfast?.delivery;
+            if (delivery?.orderWindowStart && delivery?.orderWindowEnd) {
+                const now = new Date();
+                const hhmm = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+                if (hhmm < delivery.orderWindowStart || hhmm > delivery.orderWindowEnd) {
+                    throw new Error(`ORDER_WINDOW_CLOSED:${delivery.orderWindowStart}:${delivery.orderWindowEnd}`);
+                }
+            }
+        }
+
+        // Prevent duplicate orders for the same stay+date+type
+        if (order.stayId && order.deliveryDate) {
+            const existing = await this.getOrderForStayDate(order.stayId, order.deliveryDate, order.type);
+            if (existing) throw new Error(`ORDER_EXISTS:${existing.id}`);
+        }
+
         const { data, error } = await supabase
             .from('fb_orders')
             .insert([

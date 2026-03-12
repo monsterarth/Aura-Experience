@@ -27,7 +27,26 @@ export const MaintenanceService = {
         return () => supabase.removeChannel(channel);
     },
 
-    async createTask(propertyId: string, data: Partial<MaintenanceTask>, actorId: string, actorName: string) {
+    async checkCabinMaintenanceConflict(cabinId: string, expectedStart: string, expectedEnd: string): Promise<void> {
+        const { data } = await supabase
+            .from('stays')
+            .select('id')
+            .eq('cabinId', cabinId)
+            .in('status', ['pending', 'pre_checkin_done', 'active'])
+            .lt('checkIn', expectedEnd)
+            .gt('checkOut', expectedStart)
+            .limit(1);
+
+        if (data && data.length > 0) {
+            throw new Error(`MAINTENANCE_STAY_CONFLICT:${cabinId}`);
+        }
+    },
+
+    async createTask(propertyId: string, data: Partial<MaintenanceTask>, actorId: string, actorName: string, skipConflictCheck = false) {
+        if (!skipConflictCheck && data.blocksCabin && data.cabinId && data.expectedStart && data.expectedEnd) {
+            await this.checkCabinMaintenanceConflict(data.cabinId, data.expectedStart, data.expectedEnd);
+        }
+
         const taskId = uuidv4();
 
         await supabase.from('maintenance_tasks').insert({
@@ -81,7 +100,7 @@ export const MaintenanceService = {
         if (!task) return;
 
         const currentAssignees = task.assignedTo || [];
-        const newAssignees = currentAssignees.includes(techId) ? currentAssignees : [...currentAssignees, techId];
+        const newAssignees = Array.from(new Set([...currentAssignees, techId]));
 
         await supabase.from('maintenance_tasks')
             .update({

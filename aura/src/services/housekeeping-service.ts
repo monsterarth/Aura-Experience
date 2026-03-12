@@ -117,7 +117,7 @@ export const HousekeepingService = {
     if (!task) return;
 
     const currentAssignees = task.assignedTo || [];
-    const newAssignees = currentAssignees.includes(assignedToId) ? currentAssignees : [...currentAssignees, assignedToId];
+    const newAssignees = Array.from(new Set([...currentAssignees, assignedToId]));
 
     await supabase.from('housekeeping_tasks')
       .update({
@@ -137,6 +137,11 @@ export const HousekeepingService = {
   async finishTask(propertyId: string, taskId: string, checklist: any[], observations: string, actorId: string, actorName: string) {
     const { data: task } = await supabase.from('housekeeping_tasks').select('*').eq('id', taskId).single();
     if (!task) throw new Error("Tarefa não encontrada.");
+
+    // Require at least one checked item when the checklist has items
+    if (checklist.length > 0 && !checklist.some((item: any) => item.checked)) {
+      throw new Error('CHECKLIST_INCOMPLETE');
+    }
 
     // Atualiza status da tarefa para waiting_conference se for Turnover, se não, pula para Completed (Diária/Custom)
     const newStatus = task.type === 'turnover' ? 'waiting_conference' : 'completed';

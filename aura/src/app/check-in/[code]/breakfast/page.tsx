@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { StayService } from "@/services/stay-service";
 import { PropertyService } from "@/services/property-service";
 import { fbService } from "@/services/fb-service";
-import { Stay, Property, FBCategory, FBMenuItem } from "@/types/aura";
+import { Stay, Property, FBCategory, FBMenuItem, FBOrder } from "@/types/aura";
 import { Loader2, ArrowLeft, Coffee, Plus, Minus, Info, CheckCircle2, ChevronRight, Utensils, AlertCircle, X, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -168,6 +168,10 @@ function BreakfastWizard() {
     const [lang, setLang] = useState<'pt' | 'en' | 'es'>('pt');
     const t = breakfastTranslations[lang];
 
+    const [existingOrder, setExistingOrder] = useState<FBOrder | null>(null);
+    const [windowOpen, setWindowOpen] = useState(true);
+    const [windowConfig, setWindowConfig] = useState<{ start: string; end: string } | null>(null);
+
     const locName = (item: { name: string; name_en?: string; name_es?: string }) =>
         (lang === 'en' && item.name_en) ? item.name_en : (lang === 'es' && item.name_es) ? item.name_es : item.name;
     const locDesc = (item: { description?: string; description_en?: string; description_es?: string }) =>
@@ -247,6 +251,23 @@ function BreakfastWizard() {
                 const times = prop.settings?.fbSettings?.breakfast?.delivery?.deliveryTimes;
                 if (times && times.length > 0) {
                     setDeliveryTime(times[0]);
+                }
+
+                // Verificar se já existe pedido para amanhã
+                const tomorrowISO = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+                const existing = await fbService.getOrderForStayDate(s.id, tomorrowISO, 'breakfast');
+                if (existing) {
+                    setExistingOrder(existing);
+                    if (existing.deliveryTime) setDeliveryTime(existing.deliveryTime);
+                }
+
+                // Verificar janela de horário para pedidos
+                const delivery = prop.settings?.fbSettings?.breakfast?.delivery;
+                if (delivery?.orderWindowStart && delivery?.orderWindowEnd) {
+                    const now = new Date();
+                    const hhmm = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+                    setWindowOpen(hhmm >= delivery.orderWindowStart && hhmm <= delivery.orderWindowEnd);
+                    setWindowConfig({ start: delivery.orderWindowStart, end: delivery.orderWindowEnd });
                 }
 
                 setLoading(false);
@@ -384,22 +405,33 @@ function BreakfastWizard() {
             tomorrowData.setDate(tomorrowData.getDate() + 1);
             const isoDate = tomorrowData.toISOString().split('T')[0];
 
-            await fbService.createOrder({
-                propertyId: stay.propertyId,
-                stayId: stay.id,
-                type: 'breakfast',
-                modality: 'delivery',
-                status: 'pending',
-                items: orderItems,
-                totalPrice,
-                deliveryTime,
-                deliveryDate: isoDate
-            });
+            if (existingOrder) {
+                await fbService.updateOrder(existingOrder.id, { items: orderItems, totalPrice, deliveryTime });
+            } else {
+                await fbService.createOrder({
+                    propertyId: stay.propertyId,
+                    stayId: stay.id,
+                    type: 'breakfast',
+                    modality: 'delivery',
+                    status: 'pending',
+                    items: orderItems,
+                    totalPrice,
+                    deliveryTime,
+                    deliveryDate: isoDate
+                });
+            }
 
             setSuccess(true);
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            toast.error("Erro ao enviar pedido.");
+            if (error?.message?.startsWith('ORDER_WINDOW_CLOSED')) {
+                const parts = error.message.split(':');
+                toast.error(`Pedidos de café só são aceitos entre ${parts[1]} e ${parts[2]}.`);
+            } else if (error?.message?.startsWith('ORDER_EXISTS')) {
+                toast.error("Você já tem um pedido para amanhã. Recarregue a página para editar.");
+            } else {
+                toast.error("Erro ao enviar pedido.");
+            }
         } finally {
             setSaving(false);
         }
@@ -456,6 +488,31 @@ function BreakfastWizard() {
         )
     }
 
+    // Janela de pedido fechada e sem pedido existente para editar
+    if (!windowOpen && !existingOrder && !success) {
+        const windowMsg = windowConfig
+            ? (lang === 'en'
+                ? `Breakfast orders are accepted between ${windowConfig.start} and ${windowConfig.end}.`
+                : lang === 'es'
+                ? `Los pedidos de desayuno se aceptan entre las ${windowConfig.start} y las ${windowConfig.end}.`
+                : `Os pedidos de café da manhã são aceitos entre ${windowConfig.start} e ${windowConfig.end}.`)
+            : (lang === 'en' ? 'Orders are currently closed.' : lang === 'es' ? 'Los pedidos están cerrados.' : 'Os pedidos estão encerrados no momento.');
+        return (
+            <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6 text-center" style={themeStyles}>
+                <div className="w-24 h-24 bg-secondary rounded-full flex items-center justify-center mb-6">
+                    <Coffee size={40} className="text-muted-foreground opacity-50" />
+                </div>
+                <h1 className="text-2xl font-black uppercase tracking-tighter">
+                    {lang === 'en' ? 'Orders Closed' : lang === 'es' ? 'Pedidos Cerrados' : 'Pedidos Encerrados'}
+                </h1>
+                <p className="text-muted-foreground mt-3 max-w-sm">{windowMsg}</p>
+                <button onClick={() => router.push(`/check-in/${code}`)} className="mt-8 px-6 py-3 bg-secondary rounded-xl font-bold uppercase text-xs tracking-widest">
+                    {t.back}
+                </button>
+            </div>
+        );
+    }
+
     // Modalidade: Delivery (Fluxo de Sucesso)
     if (success) {
         return (
@@ -505,6 +562,20 @@ function BreakfastWizard() {
                 {/* STEP 0: Horário e Preparação */}
                 {step === 0 && (
                     <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
+                        {existingOrder && (
+                            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-start gap-3">
+                                <AlertCircle size={20} className="text-amber-500 shrink-0 mt-0.5" />
+                                <div>
+                                    <p className="font-bold text-sm text-foreground">
+                                        {lang === 'en' ? 'You already have an order for tomorrow' : lang === 'es' ? 'Ya tienes un pedido para mañana' : 'Você já tem um pedido para amanhã'}
+                                        {existingOrder.deliveryTime ? ` (${existingOrder.deliveryTime})` : ''}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        {lang === 'en' ? 'Continue to update your order.' : lang === 'es' ? 'Continúe para actualizar su pedido.' : 'Continue para atualizar seu pedido.'}
+                                    </p>
+                                </div>
+                            </div>
+                        )}
                         <div className="bg-primary text-primary-foreground rounded-3xl p-6 shadow-xl shadow-primary/10 overflow-hidden relative">
                             <div className="absolute right-0 top-0 w-32 h-32 bg-white/10 rounded-bl-full translate-x-1/4 -translate-y-1/4 blur-xl"></div>
                             <Coffee size={32} className="mb-4 opacity-80" />

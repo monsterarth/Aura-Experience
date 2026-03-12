@@ -31,7 +31,20 @@ export async function submitConciergeRequest(
     return { success: false, dndActive: true };
   }
 
-  // 3. Insert request
+  // 3. Check for existing pending request for the same item (idempotency guard)
+  const { data: existingRequest } = await supabaseAdmin
+    .from('concierge_requests')
+    .select('id')
+    .eq('stayId', stayId)
+    .eq('itemId', itemId)
+    .eq('status', 'pending')
+    .maybeSingle();
+
+  if (existingRequest) {
+    return { success: true };
+  }
+
+  // 4. Insert request
   const now = new Date().toISOString();
   const { error: insertError } = await supabaseAdmin
     .from('concierge_requests')

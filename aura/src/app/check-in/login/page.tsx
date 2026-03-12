@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { StayService } from "@/services/stay-service";
+import { validateAccessCode } from "@/app/actions/checkin-actions";
 import { Loader2, ArrowRight, Key } from "lucide-react";
 import { toast } from "sonner";
 
@@ -26,24 +26,18 @@ function GuestLoginContent() {
 
     setLoading(true);
     try {
-      const stays = await StayService.getStaysByAccessCode(code);
-
-      if (!stays || stays.length === 0) {
-        toast.error("Código não encontrado ou estadia inválida.");
-        setLoading(false);
-        setAutoLoading(false);
-        return;
-      }
-
+      const stays = await validateAccessCode(code);
       const stay = stays[0];
-
       toast.success(`Bem-vindo, ${stay.guestId ? "Hóspede" : "Visitante"}!`);
-      // Sempre levar para o terminal central do hóspede
       router.push(`/check-in/${stay.accessCode}`);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Erro ao acessar sistema.");
+      if (error?.message === 'RATE_LIMITED') {
+        toast.error("Muitas tentativas incorretas. Aguarde 15 minutos e tente novamente.");
+      } else {
+        toast.error("Código não encontrado ou estadia inválida.");
+      }
       setLoading(false);
       setAutoLoading(false);
     }
@@ -103,9 +97,9 @@ function GuestLoginContent() {
                 autoFocus
                 value={accessCode}
                 onChange={(e) => setAccessCode(e.target.value.toUpperCase())}
-                placeholder="Ex: X9Y2Z"
+                placeholder="Ex: A3KN7PQ2"
                 className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-700 rounded-2xl p-5 text-center text-3xl font-black tracking-[0.4em] uppercase outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all placeholder:tracking-normal placeholder:normal-case placeholder:text-base placeholder:font-medium placeholder:text-slate-400 dark:placeholder:text-zinc-600 text-slate-900 dark:text-white"
-                maxLength={5}
+                maxLength={8}
               />
             </div>
 

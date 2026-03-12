@@ -63,7 +63,7 @@ export const StayService = {
     let isUnique = false;
 
     while (!isUnique) {
-      code = Array.from({ length: 5 }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
+      code = Array.from({ length: 8 }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
 
       const { data } = await supabase
         .from('stays')
@@ -91,6 +91,21 @@ export const StayService = {
     }
   },
 
+  async checkCabinAvailability(cabinId: string, checkIn: string, checkOut: string): Promise<void> {
+    const { data } = await supabase
+      .from('stays')
+      .select('id')
+      .eq('cabinId', cabinId)
+      .in('status', ['pending', 'pre_checkin_done', 'active'])
+      .lt('checkIn', checkOut)
+      .gt('checkOut', checkIn)
+      .limit(1);
+
+    if (data && data.length > 0) {
+      throw new Error(`CABIN_OVERLAP:${cabinId}`);
+    }
+  },
+
   async createStayRecord(params: {
     propertyId: string;
     guestId: string;
@@ -101,6 +116,17 @@ export const StayService = {
     actorId: string;
     actorName: string;
   }) {
+    // Verify no overlapping stays before creating
+    await Promise.all(
+      params.cabinConfigs.map(config =>
+        this.checkCabinAvailability(
+          config.cabinId,
+          params.checkIn.toISOString(),
+          params.checkOut.toISOString()
+        )
+      )
+    );
+
     const accessCode = await this.generateUniqueAccessCode(params.propertyId);
     const groupId = params.cabinConfigs.length > 1 ? `GRP-${uuidv4().slice(0, 8).toUpperCase()}` : null;
 

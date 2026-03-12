@@ -58,6 +58,18 @@ export async function GET(request: Request) {
                 }
 
                 if (shouldCreate) {
+                    const todayDate = today.toISOString().split('T')[0];
+
+                    // Guard against double-trigger: check if a clone was already created today
+                    const { data: existingClone } = await supabaseAdmin
+                        .from('maintenance_tasks')
+                        .select('id')
+                        .eq('recurrenceSourceId', parentTask.id)
+                        .eq('recurrenceDate', todayDate)
+                        .maybeSingle();
+
+                    if (existingClone) continue;
+
                     const newTaskId = uuidv4();
                     const isoToday = new Date().toISOString();
                     const clone = {
@@ -70,10 +82,12 @@ export async function GET(request: Request) {
                         finishedAt: null,
                         completion: null,
                         isRecurring: false,
+                        recurrenceSourceId: parentTask.id,
+                        recurrenceDate: todayDate,
                         title: `${parentTask.title} (Gerada ${today.toLocaleDateString('pt-BR')})`
                     };
 
-                    await supabaseAdmin.from('maintenance_tasks').insert(clone);
+                    await supabaseAdmin.from('maintenance_tasks').insert(clone as any);
 
                     await supabaseAdmin.from('maintenance_tasks').update({
                         lastRecurrenceCreated: isoToday

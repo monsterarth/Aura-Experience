@@ -198,9 +198,16 @@ function NewStayPageContent() {
       });
 
       setCreatedInfo({ code: result.accessCode });
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Erro interno ao processar hospedagem.", { id: toastId });
+      if (error?.message?.startsWith('CABIN_OVERLAP:')) {
+        const conflictingCabinId = error.message.split(':')[1];
+        const sel = cabinSelections.find(s => s.cabinId === conflictingCabinId);
+        const cabinName = sel?.name || conflictingCabinId;
+        toast.error(`Conflito de datas: ${cabinName} já possui uma reserva neste período.`, { id: toastId, duration: 6000 });
+      } else {
+        toast.error("Erro interno ao processar hospedagem.", { id: toastId });
+      }
     } finally {
       setLoading(false);
     }

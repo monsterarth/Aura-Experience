@@ -108,9 +108,13 @@ export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task,
                 toast.success("Nova tarefa criada com sucesso!");
             }
             onClose();
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            toast.error("Erro ao salvar tarefa.");
+            if (error?.message?.startsWith('MAINTENANCE_STAY_CONFLICT')) {
+                toast.error("Conflito: esta cabana possui uma hospedagem ativa no período informado. Verifique as datas antes de bloquear.", { duration: 6000 });
+            } else {
+                toast.error("Erro ao salvar tarefa.");
+            }
         } finally {
             setLoading(false);
         }
