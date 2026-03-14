@@ -553,7 +553,7 @@ export default function StayDetailPage() {
                         {cabins.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </FS>
                     : <span className="text-base font-black text-foreground">{stay.cabinName || selectedCabin?.name || "—"}</span>,
-                  sub: selectedCabin?.roomType || "",
+                  sub: "",
                   icon: BedDouble,
                 },
               ].map(({ label, value, sub, icon: Icon }) => (
