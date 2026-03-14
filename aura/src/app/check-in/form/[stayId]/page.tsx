@@ -110,7 +110,16 @@ const translations = {
     readAgree: "Li e Concordo",
     errorTitle: "Erro ao carregar",
     errorDesc: "Não foi possível encontrar os dados desta reserva. Verifique se o link está correto ou entre em contato com a recepção.",
-    loadingLoc: "Endereço localizado!"
+    loadingLoc: "Endereço localizado!",
+    next: "Avançar",
+    change: "Alterar",
+    defaultLabel: "Padrão",
+    saving: "Salvando...",
+    stepOf: "Etapa %s de 4",
+    step1Title: "Seus Dados",
+    step2Title: "Acompanhantes",
+    step3Title: "Residência",
+    step4Title: "Viagem"
   },
   en: {
     titleHolder: "Reservation Holder",
@@ -194,7 +203,16 @@ const translations = {
     readAgree: "I Read and Agree",
     errorTitle: "Error loading",
     errorDesc: "Could not find data for this reservation. Please check the link or contact reception.",
-    loadingLoc: "Address located!"
+    loadingLoc: "Address located!",
+    next: "Next",
+    change: "Change",
+    defaultLabel: "Standard",
+    saving: "Saving...",
+    stepOf: "Step %s of 4",
+    step1Title: "Your Details",
+    step2Title: "Companions",
+    step3Title: "Residence",
+    step4Title: "Trip"
   },
   es: {
     titleHolder: "Titular de la Reserva",
@@ -278,7 +296,16 @@ const translations = {
     readAgree: "He Leído y Acepto",
     errorTitle: "Error al cargar",
     errorDesc: "No se pudieron encontrar los datos de esta reserva. Verifique el enlace o contacte a recepción.",
-    loadingLoc: "¡Dirección localizada!"
+    loadingLoc: "¡Dirección localizada!",
+    next: "Siguiente",
+    change: "Cambiar",
+    defaultLabel: "Estándar",
+    saving: "Guardando...",
+    stepOf: "Paso %s de 4",
+    step1Title: "Sus Datos",
+    step2Title: "Acompañantes",
+    step3Title: "Residencia",
+    step4Title: "Viaje"
   }
 };
 
@@ -317,6 +344,9 @@ export default function UnifiedPreCheckin() {
   const [isSaving, setIsSaving] = useState(false);
   const [loadingCep, setLoadingCep] = useState(false);
   const [timeWarning, setTimeWarning] = useState<{ type: 'early' | 'late', message: string } | null>(null);
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [expandedArea, setExpandedArea] = useState<string | null>(null);
 
   const [newAccessCode, setNewAccessCode] = useState<string | null>(null);
 
@@ -408,7 +438,7 @@ export default function UnifiedPreCheckin() {
             }
           }
 
-          const isAlreadyFilled = !!data.stay.expectedArrivalTime && !!data.guest?.document?.number;
+          const isAlreadyFilled = data.stay.status === 'pre_checkin_done';
 
           if (isAlreadyFilled) {
             setStep('already_done');
@@ -491,6 +521,69 @@ export default function UnifiedPreCheckin() {
     return errors;
   };
 
+  const validateStep = (step: 1 | 2 | 3): string[] => {
+    const errors: string[] = [];
+    if (step === 1) {
+      if (!guest.fullName) errors.push(t.fullName);
+      if (!guest.document?.number) errors.push(t.doc);
+      else if (guest.document?.type === "CPF" && !validateCPF(guest.document.number)) errors.push("CPF Inválido");
+      if (!guest.birthDate) errors.push(t.birth);
+      if (!guest.occupation) errors.push(t.occupation);
+    }
+    if (step === 3) {
+      if (!guest.address?.zipCode) errors.push(t.zip);
+      if (!guest.address?.street) errors.push(t.street);
+      if (!guest.address?.number) errors.push(t.number);
+      if (!guest.address?.neighborhood) errors.push(t.neighborhood);
+      if (!guest.address?.city) errors.push(t.city);
+      if (!guest.address?.state) errors.push(t.state);
+    }
+    return errors;
+  };
+
+  const getDraftPayload = (step: 1 | 2 | 3) => {
+    if (step === 1) return {
+      guestData: {
+        fullName: guest.fullName,
+        document: { ...guest.document, number: sanitizeDocumentForFnrh(guest.document?.number) },
+        birthDate: guest.birthDate,
+        gender: guest.gender,
+        raca: guest.raca,
+        occupation: guest.occupation,
+        nationality: guest.nationality,
+        preferredLanguage: lang
+      },
+      stayData: {} as Record<string, any>
+    };
+    if (step === 2) return {
+      stayData: { additionalGuests: stay.additionalGuests, counts: stay.counts, areaConfigs: stay.areaConfigs },
+      guestData: {} as Record<string, any>
+    };
+    return {
+      guestData: { address: guest.address },
+      stayData: {} as Record<string, any>
+    };
+  };
+
+  const handleNextStep = async (currentStep: 1 | 2 | 3) => {
+    const errors = validateStep(currentStep);
+    if (errors.length > 0) {
+      toast.error(`${lang === 'en' ? 'Required' : lang === 'es' ? 'Obligatorios' : 'Obrigatórios'}: ${errors.join(', ')}`);
+      return;
+    }
+    setIsSavingDraft(true);
+    try {
+      const { stayData, guestData } = getDraftPayload(currentStep);
+      await StayService.savePreCheckinDraft(stay.propertyId, stayId as string, stayData, guestData);
+      setWizardStep((currentStep + 1) as 2 | 3 | 4);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch {
+      toast.error(lang === 'en' ? 'Error saving. Try again.' : lang === 'es' ? 'Error al guardar.' : 'Erro ao salvar. Tente novamente.');
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
   const executeSave = async () => {
     setIsSaving(true);
     try {
@@ -524,6 +617,10 @@ export default function UnifiedPreCheckin() {
 
   const handleSaveIntercept = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (wizardStep !== 4) {
+      await handleNextStep(wizardStep as 1 | 2 | 3);
+      return;
+    }
     const emptyErrors = validateForm();
     if (emptyErrors.length > 0) {
       alert(`Faltam os seguintes campos ou termos:\n\n- ${emptyErrors.join("\n- ")}`);
@@ -765,17 +862,51 @@ export default function UnifiedPreCheckin() {
     );
   }
 
+  const stepTitles = [t.step1Title, t.step2Title, t.step3Title, t.step4Title];
+
   return (
     <main className="min-h-screen bg-background text-foreground p-6 pb-24 font-sans relative" style={getThemeStyles()}>
 
       <PropertyHeader />
 
-      <form onSubmit={handleSaveIntercept} className="max-w-2xl mx-auto space-y-12 animate-in fade-in duration-700">
+      <form onSubmit={handleSaveIntercept} className="max-w-2xl mx-auto animate-in fade-in duration-700">
 
-        {/* 1. Identidade Titular */}
+        {/* Progress bar */}
+        <div className="flex items-center gap-2 mb-6">
+          {[1, 2, 3, 4].map(s => (
+            <React.Fragment key={s}>
+              <button
+                type="button"
+                onClick={() => { if (wizardStep > s) setWizardStep(s as 1 | 2 | 3 | 4); }}
+                className={cn(
+                  "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all shrink-0",
+                  s === wizardStep ? "bg-primary text-primary-foreground shadow-md scale-110"
+                    : s < wizardStep ? "bg-primary/30 text-primary cursor-pointer hover:bg-primary/50"
+                    : "bg-secondary text-muted-foreground cursor-default"
+                )}
+              >
+                {s < wizardStep ? <CheckCircle size={16} /> : s}
+              </button>
+              {s < 4 && <div className={cn("flex-1 h-0.5 transition-colors", s < wizardStep ? "bg-primary/40" : "bg-border")} />}
+            </React.Fragment>
+          ))}
+        </div>
+
+        {/* Step label */}
+        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">
+          {t.stepOf.replace('%s', String(wizardStep))}
+        </p>
+        <h2 className="text-2xl font-black uppercase tracking-tighter text-foreground mb-8">
+          {stepTitles[wizardStep - 1]}
+        </h2>
+
+        <div className="space-y-8">
+
+        {/* STEP 1 — Identidade Titular */}
+        {wizardStep === 1 && (
         <section className="space-y-6">
           <h3 className="text-xl font-black border-l-4 border-primary pl-4 uppercase tracking-tighter flex items-center gap-2">
-            <User size={20} className="text-primary" /> 1. {t.titleHolder}
+            <User size={20} className="text-primary" /> {t.titleHolder}
           </h3>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -888,12 +1019,15 @@ export default function UnifiedPreCheckin() {
             />
           </div>
         </section>
+        )}
 
-        {/* 2. Acompanhantes */}
+        {/* STEP 2 — Acompanhantes + Montagem */}
+        {wizardStep === 2 && (
+        <div className="space-y-8">
         <section className="space-y-6">
           <div className="flex justify-between items-center border-b border-border pb-4">
             <h3 className="text-xl font-black border-l-4 border-primary pl-4 uppercase tracking-tighter flex items-center gap-2">
-              <Users size={20} className="text-primary" /> 2. {t.companions}
+              <Users size={20} className="text-primary" /> {t.companions}
             </h3>
             {cabin?.capacity && (
               <span className="text-[10px] font-bold uppercase text-muted-foreground bg-secondary px-3 py-1.5 rounded-lg border border-border">
@@ -977,7 +1111,7 @@ export default function UnifiedPreCheckin() {
           </div>
         </section>
 
-        {/* 2.5 — Distribuição de Acomodação */}
+        {/* Layout/Montagem — dentro do step 2 */}
         {cabin?.layout && cabin.layout.length > 0 && (
           <section className="space-y-4">
             <h3 className="text-xl font-black border-l-4 border-primary pl-4 uppercase tracking-tighter flex items-center gap-2">
@@ -1024,24 +1158,26 @@ export default function UnifiedPreCheckin() {
                           </span>
                         )}
                       </div>
-                    ) : (
-                      /* Múltiplas variantes — hóspede escolhe */
+                    ) : expandedArea === area.id ? (
+                      /* Múltiplas variantes — expandido: mostra radio buttons */
                       <div className="px-4 pb-4 flex flex-col gap-2">
                         {configs.map((cfg: any[], idx: number) => {
                           const label = cfg.length > 0 ? cfg.map(bedLabel).join(' + ') : `Opção ${String.fromCharCode(65 + idx)}`;
-                          const hasGovernance = cfg.some((b: any) => b.type === 'extra' || b.type === 'sofa_bed');
                           const isSelected = selectedConfigIdx === idx;
                           return (
                             <button
                               key={idx}
                               type="button"
-                              onClick={() => setStay((s: any) => ({
-                                ...s,
-                                areaConfigs: [
-                                  ...(s.areaConfigs || []).filter((ac: any) => ac.areaId !== area.id),
-                                  { areaId: area.id, configIndex: idx }
-                                ]
-                              }))}
+                              onClick={() => {
+                                setStay((s: any) => ({
+                                  ...s,
+                                  areaConfigs: [
+                                    ...(s.areaConfigs || []).filter((ac: any) => ac.areaId !== area.id),
+                                    { areaId: area.id, configIndex: idx }
+                                  ]
+                                }));
+                                setExpandedArea(null);
+                              }}
                               className={cn(
                                 "w-full p-4 rounded-2xl border text-left font-bold transition-all active:scale-[0.98] flex items-center gap-3",
                                 isSelected
@@ -1049,7 +1185,6 @@ export default function UnifiedPreCheckin() {
                                   : "bg-background border-border text-muted-foreground"
                               )}
                             >
-                              {/* Indicador de seleção */}
                               <span className={cn(
                                 "w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-all",
                                 isSelected ? "border-background bg-background/30" : "border-border"
@@ -1057,17 +1192,32 @@ export default function UnifiedPreCheckin() {
                                 {isSelected && <span className="w-2.5 h-2.5 rounded-full bg-background" />}
                               </span>
                               <span className="flex-1 text-sm">{label}</span>
-                              {hasGovernance && (
-                                <span className={cn(
-                                  "text-[9px] font-bold uppercase px-2 py-0.5 rounded-lg shrink-0",
-                                  isSelected ? "bg-yellow-500/20 text-yellow-300 border border-yellow-400/30" : "bg-yellow-500/10 text-yellow-700 border border-yellow-500/20"
-                                )}>
-                                  {t.governanceNote}
-                                </span>
-                              )}
                             </button>
                           );
                         })}
+                      </div>
+                    ) : (
+                      /* Múltiplas variantes — colapsado: mostra opção selecionada + botão Alterar */
+                      <div className="px-5 pb-4 flex items-center justify-between gap-3">
+                        <div className="flex flex-wrap gap-2">
+                          {(configs[selectedConfigIdx] || configs[0] || []).map((bed: any) => (
+                            <span key={bed.id} className="flex items-center gap-1.5 bg-background border border-border px-3 py-2 rounded-xl text-sm font-semibold text-foreground">
+                              <span className="text-primary text-base">🛏</span> {bedLabel(bed)}
+                            </span>
+                          ))}
+                          {(configs[selectedConfigIdx] || configs[0] || []).length === 0 && (
+                            <span className="text-xs text-muted-foreground italic">
+                              {lang === 'en' ? 'No beds configured' : lang === 'es' ? 'Sin camas configuradas' : 'Sem leitos configurados'}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedArea(area.id)}
+                          className="shrink-0 px-3 py-2 bg-secondary border border-border rounded-xl text-xs font-bold uppercase text-primary hover:bg-accent transition-colors"
+                        >
+                          {t.change}
+                        </button>
                       </div>
                     )}
                   </div>
@@ -1076,11 +1226,14 @@ export default function UnifiedPreCheckin() {
             </div>
           </section>
         )}
+        </div>
+        )}
 
-        {/* 3. Residência */}
+        {/* STEP 3 — Residência */}
+        {wizardStep === 3 && (
         <section className="space-y-6">
           <h3 className="text-xl font-black border-l-4 border-primary pl-4 uppercase tracking-tighter flex items-center gap-2">
-            <MapPin size={20} className="text-primary" /> 3. {t.residence}
+            <MapPin size={20} className="text-primary" /> {t.residence}
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -1152,12 +1305,15 @@ export default function UnifiedPreCheckin() {
             </div>
           </div>
         </section>
+        )}
 
-        {/* 4. Viagem & Logística */}
+        {/* STEP 4 — Viagem + Pets + Termos */}
+        {wizardStep === 4 && (
+        <div className="space-y-8">
         <section className="bg-secondary/30 border border-border p-8 rounded-[40px] space-y-8">
           <div className="space-y-6">
             <h3 className="text-xl font-black border-l-4 border-primary pl-4 uppercase tracking-tighter flex items-center gap-2 text-foreground">
-              <Plane size={20} className="text-primary" /> 4. {t.travel}
+              <Plane size={20} className="text-primary" /> {t.travel}
             </h3>
 
             <div className="space-y-1">
@@ -1412,14 +1568,32 @@ export default function UnifiedPreCheckin() {
           <AlertCircle size={16} className="shrink-0" />
           <p>{t.mandatoryWarn}</p>
         </div>
+        </div>
+        )}
 
-        <button
-          type="submit"
-          disabled={isSaving}
-          className="w-full py-8 bg-primary text-primary-foreground font-black text-2xl uppercase tracking-widest rounded-[32px] hover:opacity-90 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 shadow-xl shadow-primary/20"
-        >
-          {isSaving ? <Loader2 className="animate-spin" /> : t.submit}
-        </button>
+        </div>{/* end space-y-8 */}
+
+        {/* Nav button */}
+        <div className="mt-8">
+          {wizardStep < 4 ? (
+            <button
+              type="button"
+              disabled={isSavingDraft}
+              onClick={() => handleNextStep(wizardStep as 1 | 2 | 3)}
+              className="w-full py-6 bg-primary text-primary-foreground font-black text-xl uppercase tracking-widest rounded-[32px] hover:opacity-90 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 shadow-xl shadow-primary/20"
+            >
+              {isSavingDraft ? <><Loader2 className="animate-spin" size={20} /> {t.saving}</> : <>{t.next} <ArrowRight size={20} /></>}
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="w-full py-8 bg-primary text-primary-foreground font-black text-2xl uppercase tracking-widest rounded-[32px] hover:opacity-90 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 shadow-xl shadow-primary/20"
+            >
+              {isSaving ? <Loader2 className="animate-spin" /> : t.submit}
+            </button>
+          )}
+        </div>
 
       </form>
 

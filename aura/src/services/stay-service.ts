@@ -177,6 +177,34 @@ export const StayService = {
     return { stay: stay as Stay, guest: guest as Guest | null };
   },
 
+  async savePreCheckinDraft(
+    propertyId: string,
+    stayId: string,
+    stayData: Record<string, any>,
+    guestData: Record<string, any>
+  ): Promise<void> {
+    const { data: stay } = await supabase
+      .from('stays')
+      .select('guestId')
+      .eq('id', stayId)
+      .single();
+
+    if (!stay) return;
+
+    await Promise.all([
+      Object.keys(stayData).length > 0
+        ? supabase.from('stays')
+            .update({ ...stayData, updatedAt: new Date().toISOString() })
+            .eq('id', stayId)
+        : Promise.resolve(),
+      Object.keys(guestData).length > 0
+        ? supabase.from('guests')
+            .update({ ...guestData, updatedAt: new Date().toISOString() })
+            .eq('id', stay.guestId)
+        : Promise.resolve()
+    ]);
+  },
+
   async completePreCheckin(propertyId: string, stayId: string, stayUpdate: Partial<Stay>, guestUpdate: Partial<Guest>): Promise<string> {
     // Busca id do guest e dados de grupo
     const { data: stay } = await supabase.from('stays').select('guestId, groupId, accessCode').eq('id', stayId).single();
