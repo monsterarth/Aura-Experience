@@ -944,7 +944,7 @@ function NewGuestPanel({
 // MAIN PAGE
 // ==========================================
 
-export default function GuestsPage() {
+function GuestsPageInner() {
   const { userData } = useAuth();
   const { currentProperty: contextProperty } = useProperty();
   const searchParams = useSearchParams();
@@ -1150,5 +1150,13 @@ export default function GuestsPage() {
 
       </div>
     </RoleGuard>
+  );
+}
+
+export default function GuestsPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <GuestsPageInner />
+    </React.Suspense>
   );
 }
