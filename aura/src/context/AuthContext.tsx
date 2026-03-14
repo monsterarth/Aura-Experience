@@ -31,6 +31,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const userRef = useRef<SupabaseUser | null>(null);
   const userDataRef = useRef<Staff | null>(null);
   const isLoggingOut = useRef(false);
+  // Guard contra double-mount do React Strict Mode (dev)
+  const initStarted = useRef(false);
 
   const supabase = createClientBrowser();
 
@@ -81,8 +83,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
 
       return validatedUser;
-    } catch (err) {
-      console.error("[Auth] Erro ao renovar sessão:", err);
+    } catch (err: any) {
+      // AbortError é esperado no React Strict Mode (dev): o double-mount faz a segunda
+      // instância roubar o navigator lock da primeira via 'steal'. Silenciar.
+      if (err?.name !== 'AbortError') {
+        console.error("[Auth] Erro ao renovar sessão:", err);
+      }
       return null;
     }
   }, [supabase]);
@@ -96,6 +102,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
      * Se falhar, simplesmente fica sem auth e a UI mostra o estado adequado.
      */
     async function initializeAuth() {
+      // React Strict Mode monta/desmonta/remonta em dev — pula se já iniciou.
+      if (initStarted.current) return;
+      initStarted.current = true;
       try {
         const currentUser = await refreshSession();
 

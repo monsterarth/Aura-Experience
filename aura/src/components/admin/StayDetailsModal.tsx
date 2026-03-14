@@ -7,7 +7,7 @@ import {
   MapPin, Phone, Mail, Car, FileText,
   Users, CheckCircle, Clock, Plane,
   Briefcase, PawPrint, Trash2, Plus,
-  LogOut, RotateCcw, Sparkles, Receipt, RefreshCw, ShoppingCart, Coffee
+  LogOut, RotateCcw, Sparkles, Receipt, RefreshCw, ShoppingCart, Coffee, BedDouble
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -30,7 +30,6 @@ interface StayDetailsModalProps {
   onUpdate?: () => void;
 }
 
-type TabType = 'reserva' | 'hospede' | 'fnrh' | 'acompanhantes_pet' | 'conta';
 
 const formatDateForInput = (timestamp: any) => {
   if (!timestamp) return "";
@@ -78,7 +77,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabType>('reserva');
+  const [expandedArea, setExpandedArea] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<Partial<Stay>>({});
   const [guestData, setGuestData] = useState<Partial<Guest>>({});
@@ -142,7 +141,8 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
         petDetails: stay.petDetails || { name: "", species: "Cachorro", weight: 0, breed: "" },
         additionalGuests: stay.additionalGuests || [],
         housekeepingItems: stay.housekeepingItems || [],
-        cestaBreakfastEnabled: stay.cestaBreakfastEnabled || false
+        cestaBreakfastEnabled: stay.cestaBreakfastEnabled || false,
+        areaConfigs: stay.areaConfigs || []
       });
 
       setGuestData({
@@ -448,14 +448,6 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     setFormData({ ...formData, housekeepingItems: newItems });
   };
 
-  const currentAdults = 1 + (formData.additionalGuests?.filter(g => g.type === 'adult').length || 0);
-  const bookedAdults = formData.counts?.adults || 1;
-  const isAdultsMismatch = currentAdults !== bookedAdults;
-
-  const currentChildren = formData.additionalGuests?.filter(g => g.type === 'child').length || 0;
-  const bookedChildren = formData.counts?.children || 0;
-  const isChildrenMismatch = currentChildren !== bookedChildren;
-
   const statusMap: any = {
     pending: { label: 'Pendente', class: 'text-yellow-600 border-yellow-600/30' },
     pre_checkin_done: { label: 'Pré Check-in OK', class: 'text-blue-600 border-blue-600/30' },
@@ -468,7 +460,62 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const totalFolio = folioItems.reduce((acc, item) => acc + item.totalPrice, 0);
 
   const selectedCabin = cabins.find(c => c.id === (formData.cabinId || stay.cabinId));
-  const allowedSetups = selectedCabin?.allowedSetups?.length ? selectedCabin.allowedSetups : ["double", "twin", "triple", "other"];
+
+  const AreaSection = () => {
+    if (!selectedCabin?.layout?.length) return null;
+    const bedLabel = (b: any) => ({ single: "Solteiro", double: "Casal", sofa_bed: "Sofá-Cama" }[b.type as string] ?? b.label ?? "Extra") as string;
+    return (
+      <div className="space-y-2 pt-1">
+        {selectedCabin.layout.map((area: any) => {
+          const configs: any[][] = area.configs ?? (area.beds ? [area.beds] : [[]]);
+          const fixed = configs.length <= 1;
+          const selIdx = (formData.areaConfigs || []).find((ac: any) => ac.areaId === area.id)?.configIndex ?? 0;
+          return (
+            <div key={area.id} className="border border-border rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-3 py-2 bg-secondary/50">
+                <span className="text-[10px] font-black uppercase tracking-widest text-primary">{area.name || area.type}</span>
+                {fixed && <span className="text-[9px] font-bold uppercase bg-primary/10 text-primary px-2 py-0.5 rounded">Padrão</span>}
+              </div>
+              {fixed ? (
+                <div className="px-3 py-2.5 flex flex-wrap gap-1.5">
+                  {(configs[0] || []).map((b: any) => (
+                    <span key={b.id} className="flex items-center gap-1 bg-background border border-border px-2.5 py-1 rounded-lg text-xs font-semibold">🛏 {bedLabel(b)}</span>
+                  ))}
+                </div>
+              ) : expandedArea === area.id ? (
+                <div className="p-2 flex flex-col gap-1.5">
+                  {configs.map((cfg, idx) => {
+                    const lbl = cfg.length ? cfg.map(bedLabel).join(" + ") : `Opção ${String.fromCharCode(65 + idx)}`;
+                    const sel = selIdx === idx;
+                    return (
+                      <button key={idx} type="button"
+                        onClick={() => { setFormData((p: any) => ({ ...p, areaConfigs: [...(p.areaConfigs || []).filter((ac: any) => ac.areaId !== area.id), { areaId: area.id, configIndex: idx }] })); setExpandedArea(null); }}
+                        className={cn("w-full px-3 py-2 rounded-lg border text-left text-xs font-bold transition-all flex items-center gap-2",
+                          sel ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border text-muted-foreground hover:border-primary/50")}>
+                        <span className={cn("w-3.5 h-3.5 rounded-full border-2 shrink-0 flex items-center justify-center", sel ? "border-primary-foreground" : "border-border")}>
+                          {sel && <span className="w-1.5 h-1.5 rounded-full bg-primary-foreground" />}
+                        </span>
+                        🛏 {lbl}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="px-3 py-2.5 flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    {(configs[selIdx] || configs[0] || []).map((b: any) => (
+                      <span key={b.id} className="flex items-center gap-1 bg-background border border-border px-2.5 py-1 rounded-lg text-xs font-semibold">🛏 {bedLabel(b)}</span>
+                    ))}
+                  </div>
+                  {isEditing && <button type="button" onClick={() => setExpandedArea(area.id)} className="shrink-0 px-2.5 py-1 bg-secondary border border-border rounded-lg text-xs font-bold uppercase text-primary hover:bg-accent transition-colors">Alterar</button>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -518,170 +565,38 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                 </button>
               </>
             )}
+            <button
+              type="button"
+              onClick={() => window.open(`/admin/stays/${stay.id}`, '_blank')}
+              className="px-4 py-2 bg-secondary hover:bg-accent rounded-xl text-xs font-bold uppercase flex items-center gap-2 text-foreground transition-all"
+            >
+              <FileText size={16} /> Ficha Completa
+            </button>
             <button onClick={onClose} className="p-3 hover:bg-destructive/10 hover:text-destructive text-muted-foreground rounded-xl transition-all"><X size={20} /></button>
           </div>
         </header>
 
-        <div className="flex border-b border-border px-6 gap-6 overflow-x-auto bg-card shrink-0">
-          {[
-            { id: 'reserva', label: 'Logística', icon: Calendar },
-            { id: 'hospede', label: 'Titular', icon: User },
-            { id: 'acompanhantes_pet', label: 'Hóspedes Extras & Pet', icon: Users },
-            { id: 'fnrh', label: 'Viagem & Carro', icon: Plane },
-            { id: 'conta', label: 'Conta & Consumo', icon: Receipt },
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as TabType)}
-              className={cn(
-                "py-4 text-xs font-bold uppercase tracking-widest flex items-center gap-2 border-b-2 transition-all whitespace-nowrap",
-                activeTab === tab.id ? "text-primary border-primary" : "text-muted-foreground border-transparent hover:text-foreground"
-              )}
-            >
-              <tab.icon size={14} /> {tab.label}
-            </button>
-          ))}
-        </div>
+        <div className="flex-1 overflow-y-auto custom-scrollbar bg-background">
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-background">
+          {/* Top row: 2-col grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
 
-          {/* TAB: CONTA E CONSUMO (FOLIO) */}
-          {activeTab === 'conta' && (
-            <div className="flex flex-col h-full space-y-6 animate-in slide-in-from-right-4 duration-300">
-
-              <div className="flex items-center justify-between border-b border-border pb-4">
-                <div>
-                  <h3 className="text-xl font-black text-foreground flex items-center gap-2">Extrato de Consumo</h3>
-                  <p className="text-sm text-muted-foreground">Itens do frigobar e vendas balcão.</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Total Extra</p>
-                    <p className="text-2xl font-black text-primary">R$ {totalFolio.toFixed(2)}</p>
-                  </div>
-                  <button
-                    onClick={loadFolio}
-                    disabled={loadingFolio}
-                    className="p-3 bg-secondary text-foreground rounded-xl hover:bg-accent transition-all disabled:opacity-50"
-                    title="Sincronizar Lançamentos"
-                  >
-                    <RefreshCw size={20} className={loadingFolio ? "animate-spin" : ""} />
-                  </button>
-                </div>
+            {/* Left card: Datas & Acomodação */}
+            <div className="bg-card border border-border rounded-2xl overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-secondary/40">
+                <Calendar size={13} className="text-primary" />
+                <span className="text-[11px] font-black uppercase tracking-widest text-foreground">Datas & Acomodação</span>
               </div>
-
-              <div className="flex gap-8 items-start">
-                <div className="flex-1 bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-                  <table className="w-full text-left">
-                    <thead className="bg-muted/50 border-b border-border">
-                      <tr>
-                        <th className="p-4 text-[10px] font-bold uppercase text-muted-foreground tracking-wider">Item / Descrição</th>
-                        <th className="p-4 text-[10px] font-bold uppercase text-muted-foreground tracking-wider text-center">Qtd</th>
-                        <th className="p-4 text-[10px] font-bold uppercase text-muted-foreground tracking-wider text-right">Valor Unit.</th>
-                        <th className="p-4 text-[10px] font-bold uppercase text-muted-foreground tracking-wider text-right">Subtotal</th>
-                        {!isGovOnly && <th className="p-4 w-12"></th>}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border text-sm">
-                      {folioItems.length === 0 ? (
-                        <tr><td colSpan={5} className="p-8 text-center text-muted-foreground font-medium">Nenhum consumo registrado nesta estadia.</td></tr>
-                      ) : (
-                        folioItems.map((item) => (
-                          <tr key={item.id} className={cn("hover:bg-muted/20 transition-colors", item.status === 'paid' && "opacity-50")}>
-                            <td className="p-4 font-bold text-foreground flex items-center gap-3">
-                              {!isGovOnly && (
-                                <button
-                                  onClick={() => handleToggleFolioStatus(item.id, item.status || 'pending')}
-                                  className={cn(
-                                    "w-5 h-5 rounded flex items-center justify-center border transition-all shrink-0",
-                                    item.status === 'paid' ? "bg-green-500 border-green-500 text-white" : "bg-background border-border text-transparent hover:border-primary"
-                                  )}
-                                  title={item.status === 'paid' ? "Reabrir item" : "Marcar como Pago/Lançado no PDV"}
-                                >
-                                  <CheckCircle size={14} strokeWidth={3} />
-                                </button>
-                              )}
-                              <div>
-                                <span className={item.status === 'paid' ? "line-through" : ""}>{item.description}</span>
-                                <div className="text-[10px] font-bold text-muted-foreground flex items-center gap-1 uppercase tracking-widest mt-0.5">
-                                  <Clock size={10} /> {item.createdAt ? format(new Date(item.createdAt), "dd/MM HH:mm") : 'Agora'}
-                                </div>
-                              </div>
-                            </td>
-                            <td className="p-4 text-center font-bold text-muted-foreground">{item.quantity}x</td>
-                            <td className="p-4 text-right text-muted-foreground">R$ {item.unitPrice.toFixed(2)}</td>
-                            <td className="p-4 text-right font-black text-foreground">R$ {item.totalPrice.toFixed(2)}</td>
-                            {!isGovOnly && (
-                              <td className="p-4 text-right">
-                                <button onClick={() => handleDeleteFolioItem(item.id, item.description)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors" title="Estornar Lançamento">
-                                  <Trash2 size={16} />
-                                </button>
-                              </td>
-                            )}
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {!isGovOnly && (
-                  <form onSubmit={handleAddFolioItem} className="w-72 bg-secondary/50 border border-border p-5 rounded-2xl space-y-4 shrink-0">
-                    <h4 className="font-bold flex items-center gap-2 text-sm uppercase tracking-widest text-primary"><ShoppingCart size={16} /> Lançamento Avulso</h4>
-
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold uppercase text-muted-foreground">Produto / Serviço</label>
-                      <input
-                        required
-                        value={newFolioItem.description}
-                        onChange={e => setNewFolioItem({ ...newFolioItem, description: e.target.value })}
-                        placeholder="Ex: Lenha Extra"
-                        className="w-full bg-background border border-border p-3 rounded-xl text-xs outline-none focus:border-primary text-foreground"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold uppercase text-muted-foreground">Qtd</label>
-                        <input
-                          type="number" min="1" required
-                          value={newFolioItem.quantity}
-                          onChange={e => setNewFolioItem({ ...newFolioItem, quantity: Number(e.target.value) })}
-                          className="w-full bg-background border border-border p-3 rounded-xl text-xs outline-none focus:border-primary text-foreground"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold uppercase text-muted-foreground">R$ Unitário</label>
-                        <input
-                          type="number" step="0.01" min="0" required
-                          value={newFolioItem.unitPrice || ""}
-                          onChange={e => setNewFolioItem({ ...newFolioItem, unitPrice: Number(e.target.value) })}
-                          className="w-full bg-background border border-border p-3 rounded-xl text-xs outline-none focus:border-primary text-foreground"
-                        />
-                      </div>
-                    </div>
-
-                    <button type="submit" disabled={loadingFolio} className="w-full py-3 bg-primary text-primary-foreground font-black text-[10px] uppercase tracking-widest rounded-xl hover:opacity-90 transition-all disabled:opacity-50">
-                      Adicionar à Conta
-                    </button>
-                  </form>
-                )}
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'reserva' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in slide-in-from-right-4 duration-300">
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-foreground border-b border-border pb-2">Datas & Horários</h3>
-                <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 space-y-3">
+                {/* 3-col mini: Check-in | Check-out | Chegada Prevista */}
+                <div className="grid grid-cols-3 gap-2">
                   <div>
                     <Label icon={Clock}>Check-in</Label>
                     {isEditing ? (
                       <Input disabled={isCoreFieldLocked} type="date" value={checkInStr} onChange={e => setCheckInStr(e.target.value)} />
                     ) : (
-                      <div className="text-foreground font-mono bg-secondary p-3 rounded-xl text-sm border border-border">
-                        {stay.checkIn ? format(new Date(stay.checkIn), "dd/MM/yyyy") : "Data inválida"}
+                      <div className="text-foreground font-mono bg-secondary p-2 rounded-xl text-xs border border-border">
+                        {stay.checkIn ? format(new Date(stay.checkIn), "dd/MM/yy") : "—"}
                       </div>
                     )}
                   </div>
@@ -690,343 +605,161 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                     {isEditing ? (
                       <Input disabled={isCoreFieldLocked} type="date" value={checkOutStr} onChange={e => setCheckOutStr(e.target.value)} />
                     ) : (
-                      <div className="text-foreground font-mono bg-secondary p-3 rounded-xl text-sm border border-border">
-                        {stay.checkOut ? format(new Date(stay.checkOut), "dd/MM/yyyy") : "Data inválida"}
+                      <div className="text-foreground font-mono bg-secondary p-2 rounded-xl text-xs border border-border">
+                        {stay.checkOut ? format(new Date(stay.checkOut), "dd/MM/yy") : "—"}
                       </div>
                     )}
                   </div>
-                  <div className="col-span-2">
-                    <Label icon={Clock}>Previsão de Chegada</Label>
+                  <div>
+                    <Label icon={Clock}>Chegada</Label>
                     <Input disabled={isCoreFieldLocked} type="time" value={formData.expectedArrivalTime} onChange={e => setFormData({ ...formData, expectedArrivalTime: e.target.value })} />
                   </div>
                 </div>
-              </div>
 
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-foreground border-b border-border pb-2">Configuração do Quarto</h3>
+                {/* Acomodação */}
                 <div>
-                  <Label icon={CheckCircle}>Acomodação</Label>
+                  <Label icon={BedDouble}>Acomodação</Label>
                   {isEditing ? (
                     <Select disabled={isCoreFieldLocked} value={formData.cabinId} onChange={e => setFormData({ ...formData, cabinId: e.target.value })}>
                       {cabins.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </Select>
                   ) : (
-                    <div className="text-foreground font-bold text-lg p-2 bg-secondary rounded-lg border border-border">{stay.cabinName}</div>
+                    <div className="text-foreground font-bold p-2 bg-secondary rounded-xl border border-border text-sm">{stay.cabinName}</div>
                   )}
                 </div>
-                <div>
-                  <Label icon={CheckCircle}>Montagem das Camas</Label>
-                  <Select disabled={!isEditing} value={formData.roomSetup} onChange={e => setFormData({ ...formData, roomSetup: e.target.value as any })}>
-                    {allowedSetups.map(setup => (
-                      <option key={setup} value={setup}>
-                        {setup === 'double' ? 'Casal (Double)' :
-                          setup === 'twin' ? 'Solteiro (Twin)' :
-                            setup === 'triple' ? 'Triplo' :
-                              setup === 'other' ? 'Outro' : setup}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <div>
-                  <Label icon={FileText}>Notas de Montagem</Label>
-                  <Input disabled={!isEditing} value={formData.roomSetupNotes} onChange={e => setFormData({ ...formData, roomSetupNotes: e.target.value })} placeholder="Ex: Berço extra, travesseiro pena..." />
-                </div>
-              </div>
 
-              <div className="space-y-4 col-span-1 md:col-span-2 border-t border-border pt-6">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                    <Sparkles size={16} className={isGovOnly ? "text-primary" : "text-blue-500"} />
-                    Pedidos Especiais (Governança)
-                  </h3>
-                  {isEditing && (
-                    <button type="button" onClick={addStayHousekeepingItem} className="text-[10px] font-black uppercase bg-primary/10 text-primary px-3 py-1.5 rounded-lg hover:bg-primary/20 transition-all">+ Adicionar Pedido</button>
+                {/* AreaSection */}
+                <AreaSection />
+              </div>
+            </div>
+
+            {/* Right card: Titular */}
+            <div className="bg-card border border-border rounded-2xl overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-secondary/40">
+                <User size={13} className="text-primary" />
+                <span className="text-[11px] font-black uppercase tracking-widest text-foreground">Titular</span>
+              </div>
+              <div className="p-4 space-y-3">
+                <div>
+                  <p className="font-bold text-foreground text-sm">{guestData.fullName || "—"}</p>
+                </div>
+                <div>
+                  <Label icon={Phone}>WhatsApp</Label>
+                  {isEditing ? (
+                    <Input disabled={isCoreFieldLocked} value={guestData.phone} onChange={e => setGuestData({ ...guestData, phone: e.target.value })} />
+                  ) : (
+                    <p className="text-sm text-foreground">{guestData.phone || "—"}</p>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground -mt-2">Tarefas que aparecerão no checklist da camareira exclusivamente para a limpeza e manutenção desta hospedagem.</p>
-
-                {formData.housekeepingItems?.length === 0 && !isEditing ? (
-                  <div className="text-xs text-muted-foreground p-4 bg-secondary rounded-xl border border-dashed border-border text-center">Nenhum pedido especial para esta estadia.</div>
-                ) : (
-                  <div className="space-y-2 mt-2">
-                    {formData.housekeepingItems?.map((item) => (
-                      <div key={item.id} className="flex items-center gap-2">
-                        <Input
-                          disabled={!isEditing}
-                          value={item.label}
-                          onChange={e => updateStayHousekeepingItem(item.id, e.target.value)}
-                          placeholder="Ex: Hóspede alérgico a pó, atenção redobrada."
-                        />
-                        {isEditing && (
-                          <button type="button" onClick={() => removeStayHousekeepingItem(item.id)} className="p-2.5 text-red-500 hover:bg-red-500/10 rounded-xl transition-all shrink-0"><Trash2 size={16} /></button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Café da Manhã — Cesta Especial */}
-              <div className="space-y-4 col-span-1 md:col-span-2 border-t border-border pt-6">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                    <Coffee size={16} className="text-amber-500" />
-                    Café da Manhã — Cesta Especial
-                  </h3>
-                </div>
-                <p className="text-xs text-muted-foreground -mt-2">
-                  Quando ativado, este hóspede poderá montar e enviar um pedido de cesta de café da manhã,
-                  mesmo que a propriedade opere no modo buffet.
-                </p>
-                <div className={cn(
-                  "flex items-center justify-between p-4 rounded-xl border transition-all",
-                  formData.cestaBreakfastEnabled
-                    ? "bg-amber-500/10 border-amber-500/30"
-                    : "bg-secondary border-border"
-                )}>
-                  <div>
-                    <p className="text-sm font-bold text-foreground">Cesta habilitada para este hóspede</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {formData.cestaBreakfastEnabled
-                        ? "Hóspede pode solicitar a cesta via portal."
-                        : "Seguindo configuração padrão da propriedade."}
-                    </p>
-                  </div>
+                {guest?.id && (
                   <button
                     type="button"
-                    disabled={!isEditing || isGovOnly}
-                    onClick={() => setFormData({ ...formData, cestaBreakfastEnabled: !formData.cestaBreakfastEnabled })}
-                    className={cn(
-                      "relative w-12 h-6 rounded-full transition-all shrink-0",
-                      "disabled:opacity-50 disabled:cursor-not-allowed",
-                      formData.cestaBreakfastEnabled ? "bg-amber-500" : "bg-border"
-                    )}
+                    onClick={() => window.open(`/admin/guests/${guest.id}`, '_blank')}
+                    className="inline-flex items-center gap-1.5 text-[11px] font-bold text-primary hover:underline"
                   >
-                    <span className={cn(
-                      "absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform",
-                      formData.cestaBreakfastEnabled && "translate-x-6"
-                    )} />
+                    Ver Hóspede →
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Full-width: Conta & Consumo */}
+          <div className="px-4 pb-4">
+            <div className="bg-card border border-border rounded-2xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-secondary/40">
+                <div className="flex items-center gap-2">
+                  <Receipt size={13} className="text-primary" />
+                  <span className="text-[11px] font-black uppercase tracking-widest text-foreground">Conta & Consumo</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <p className="text-[9px] font-bold uppercase text-muted-foreground">Total</p>
+                    <p className="text-base font-black text-primary leading-none">R$ {totalFolio.toFixed(2)}</p>
+                  </div>
+                  <button onClick={loadFolio} disabled={loadingFolio} className="p-1.5 rounded-lg bg-secondary hover:bg-accent transition-all disabled:opacity-50">
+                    <RefreshCw size={13} className={loadingFolio ? "animate-spin" : ""} />
                   </button>
                 </div>
               </div>
-
-            </div>
-          )}
-
-          {activeTab === 'hospede' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in slide-in-from-right-4 duration-300">
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-foreground border-b border-border pb-2">Dados Pessoais</h3>
-                <div>
-                  <Label icon={User}>Nome Completo</Label>
-                  <Input disabled={isCoreFieldLocked} value={guestData.fullName} onChange={e => setGuestData({ ...guestData, fullName: e.target.value })} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label icon={FileText}>Nascimento</Label>
-                    <Input disabled={isCoreFieldLocked} type="date" value={guestData.birthDate} onChange={e => setGuestData({ ...guestData, birthDate: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label icon={User}>Gênero</Label>
-                    <Select disabled={isCoreFieldLocked} value={guestData.gender} onChange={e => setGuestData({ ...guestData, gender: e.target.value as any })}>
-                      <option value="" disabled>Selecione...</option>
-                      {fnrhDomains?.generos.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
-                    </Select>
-                  </div>
-                  <div>
-                    <Label icon={User}>Raça / Cor</Label>
-                    <Select disabled={isCoreFieldLocked} value={guestData.raca} onChange={e => setGuestData({ ...guestData, raca: e.target.value as any })}>
-                      <option value="" disabled>Selecione...</option>
-                      {fnrhDomains?.racas.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label icon={FileText}>Documento</Label>
-                    <div className="flex gap-2">
-                      <Select
-                        className="w-1/3 text-[10px]"
-                        disabled={isCoreFieldLocked}
-                        value={guestData.document?.type}
-                        onChange={e => setGuestData({ ...guestData, document: { ...guestData.document!, type: e.target.value } })}
-                      >
-                        {fnrhDomains?.tiposDocumento.map(d => <option key={d.id} value={d.id}>{d.id}</option>)}
-                      </Select>
-                      <Input disabled={isCoreFieldLocked} value={guestData.document?.number} onBlur={() => { if (guestData.document?.type === "CPF" && guestData.document?.number && !validateCPF(guestData.document.number)) toast.error("CPF do Titular Inválido") }} onChange={e => setGuestData({ ...guestData, document: { ...guestData.document!, number: e.target.value } })} />
-                    </div>
-                  </div>
-                  <div>
-                    <Label icon={Briefcase}>Profissão</Label>
-                    <Input disabled={isCoreFieldLocked} value={guestData.occupation} onChange={e => setGuestData({ ...guestData, occupation: e.target.value })} />
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-foreground border-b border-border pb-2">Contato & Endereço</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label icon={Phone}>Telefone</Label>
-                    <Input disabled={isCoreFieldLocked} value={guestData.phone} onChange={e => setGuestData({ ...guestData, phone: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label icon={Mail}>Email</Label>
-                    <Input disabled={isCoreFieldLocked} value={guestData.email} onChange={e => setGuestData({ ...guestData, email: e.target.value })} />
-                  </div>
-                </div>
-                <div className="space-y-2 p-4 bg-secondary/50 rounded-2xl border border-border">
-                  <Label icon={MapPin}>Endereço Completo</Label>
-                  <Input disabled={isCoreFieldLocked} placeholder="CEP" value={guestData.address?.zipCode} onChange={e => setGuestData({ ...guestData, address: { ...guestData.address!, zipCode: e.target.value } })} onBlur={e => fetchAddressByCep(e.target.value)} />
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="col-span-2"><Input disabled={isCoreFieldLocked} placeholder="Rua" value={guestData.address?.street} onChange={e => setGuestData({ ...guestData, address: { ...guestData.address!, street: e.target.value } })} /></div>
-                    <div><Input disabled={isCoreFieldLocked} placeholder="Nº" value={guestData.address?.number} onChange={e => setGuestData({ ...guestData, address: { ...guestData.address!, number: e.target.value } })} /></div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <Input disabled={isCoreFieldLocked} placeholder="Bairro" value={guestData.address?.neighborhood} onChange={e => setGuestData({ ...guestData, address: { ...guestData.address!, neighborhood: e.target.value } })} />
-                    <Input disabled={isCoreFieldLocked} placeholder="Cidade" value={guestData.address?.city} onChange={e => setGuestData({ ...guestData, address: { ...guestData.address!, city: e.target.value } })} />
-                    <Input disabled={isCoreFieldLocked} placeholder="UF" value={guestData.address?.state} onChange={e => setGuestData({ ...guestData, address: { ...guestData.address!, state: e.target.value } })} />
-                  </div>
-                  <Input disabled={isCoreFieldLocked} placeholder="Cód. IBGE (Localidade FNRH)" value={guestData.address?.ibgeCityId || ""} onChange={e => setGuestData({ ...guestData, address: { ...guestData.address!, ibgeCityId: e.target.value } })} />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'acompanhantes_pet' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in slide-in-from-right-4 duration-300">
-              <div className="space-y-6">
-                <h3 className="text-sm font-bold text-foreground border-b border-border pb-2">Composição da Ocupação</h3>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <div className={cn("p-3 rounded-xl border flex flex-col items-center justify-center transition-colors", isAdultsMismatch ? "bg-orange-500/10 border-orange-500/50 text-orange-600" : "bg-secondary border-border text-foreground")}>
-                    <p className="text-[10px] font-bold uppercase text-center">Adultos<br /><span className="font-normal opacity-70">(Lista/Reserva)</span></p>
-                    <p className="text-xl font-black mt-1">{currentAdults} / {bookedAdults}</p>
-                    {isAdultsMismatch && isEditing && !isGovOnly && (
-                      <button onClick={() => setFormData(prev => ({ ...prev, counts: { ...prev.counts!, adults: currentAdults } }))} className="mt-2 px-2 py-1 bg-orange-500 text-white text-[9px] font-bold uppercase rounded hover:bg-orange-600">Ajustar Reserva</button>
-                    )}
-                  </div>
-                  <div className={cn("p-3 rounded-xl border flex flex-col items-center justify-center transition-colors", isChildrenMismatch ? "bg-orange-500/10 border-orange-500/50 text-orange-600" : "bg-secondary border-border text-foreground")}>
-                    <p className="text-[10px] font-bold uppercase text-center">Crianças<br /><span className="font-normal opacity-70">(Lista/Reserva)</span></p>
-                    <p className="text-xl font-black mt-1">{currentChildren} / {bookedChildren}</p>
-                    {isChildrenMismatch && isEditing && !isGovOnly && (
-                      <button onClick={() => setFormData(prev => ({ ...prev, counts: { ...prev.counts!, children: currentChildren } }))} className="mt-2 px-2 py-1 bg-orange-500 text-white text-[9px] font-bold uppercase rounded hover:bg-orange-600">Ajustar Reserva</button>
-                    )}
-                  </div>
-                  <div className="p-3 rounded-xl border bg-secondary border-border text-foreground flex flex-col items-center justify-center">
-                    <p className="text-[10px] font-bold uppercase">Bebês (Free)</p>
-                    <p className="text-xl font-black mt-1">{formData.additionalGuests?.filter(g => g.type === 'free').length}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <Label icon={Users}>Lista de Acompanhantes</Label>
+              <div className="p-4">
+                <div className="flex gap-4 items-start flex-col xl:flex-row">
+                  <div className="flex-1 min-w-0 border border-border rounded-xl overflow-hidden">
+                    <table className="w-full text-left">
+                      <thead className="bg-secondary/50 border-b border-border">
+                        <tr>
+                          <th className="px-4 py-2.5 text-[10px] font-bold uppercase text-muted-foreground">Item / Descrição</th>
+                          <th className="px-3 py-2.5 text-[10px] font-bold uppercase text-muted-foreground text-center w-14">Qtd</th>
+                          <th className="px-3 py-2.5 text-[10px] font-bold uppercase text-muted-foreground text-right w-20">Unit.</th>
+                          <th className="px-3 py-2.5 text-[10px] font-bold uppercase text-muted-foreground text-right w-24">Total</th>
+                          {!isGovOnly && <th className="w-10" />}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {folioItems.length === 0 ? (
+                          <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground text-sm">Nenhum consumo registrado nesta estadia.</td></tr>
+                        ) : folioItems.map(item => (
+                          <tr key={item.id} className={cn("hover:bg-muted/20 transition-colors text-sm", item.status === "paid" && "opacity-50")}>
+                            <td className="px-4 py-3 font-semibold text-foreground">
+                              <div className="flex items-center gap-2.5">
+                                {!isGovOnly && (
+                                  <button onClick={() => handleToggleFolioStatus(item.id, item.status || "pending")}
+                                    className={cn("w-4 h-4 rounded flex items-center justify-center border transition-all shrink-0",
+                                      item.status === "paid" ? "bg-green-500 border-green-500 text-white" : "border-border hover:border-primary")}>
+                                    {item.status === "paid" && <CheckCircle size={12} strokeWidth={3} />}
+                                  </button>
+                                )}
+                                <div>
+                                  <span className={item.status === "paid" ? "line-through text-muted-foreground" : ""}>{item.description}</span>
+                                  <p className="text-[10px] text-muted-foreground font-normal mt-0.5 flex items-center gap-1">
+                                    <Clock size={9} /> {item.createdAt ? format(new Date(item.createdAt), "dd/MM HH:mm") : "—"}
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-3 py-3 text-center text-muted-foreground font-medium">{item.quantity}×</td>
+                            <td className="px-3 py-3 text-right text-muted-foreground">R$ {item.unitPrice.toFixed(2)}</td>
+                            <td className="px-3 py-3 text-right font-black">R$ {item.totalPrice.toFixed(2)}</td>
+                            {!isGovOnly && (
+                              <td className="pr-3 py-3 text-right">
+                                <button onClick={() => handleDeleteFolioItem(item.id, item.description)} className="p-1.5 text-destructive/60 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"><Trash2 size={13} /></button>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
 
-                  {formData.additionalGuests?.length === 0 ? (
-                    <div className="p-6 text-center border border-dashed border-border rounded-xl text-muted-foreground text-xs uppercase font-bold">
-                      Sem acompanhantes registrados
-                    </div>
-                  ) : (
-                    formData.additionalGuests?.map((g, idx) => (
-                      <div key={idx} className="bg-secondary/50 border border-border p-3 rounded-xl flex items-center gap-3">
-                        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2">
-                          <Input disabled={isCoreFieldLocked} value={g.fullName} onChange={e => updateAdditionalGuest(idx, 'fullName', e.target.value)} placeholder="Nome Completo" />
-                          <Input disabled={isCoreFieldLocked} value={g.document} onBlur={() => { if (g.document && g.document.replace(/\D/g, '').length === 11 && !validateCPF(g.document)) toast.error("CPF de Hóspede Extra Inválido"); }} onChange={e => updateAdditionalGuest(idx, 'document', e.target.value)} placeholder="Documento" />
-                        </div>
-                        <div className="w-20 text-center shrink-0">
-                          <span className="text-[9px] font-bold uppercase bg-background border border-border px-2 py-1 rounded text-muted-foreground">
-                            {g.type === 'adult' ? 'Adulto' : g.type === 'child' ? 'Criança' : 'Bebê'}
-                          </span>
-                        </div>
-                        {isEditing && !isGovOnly && (
-                          <button onClick={() => removeAdditionalGuest(idx)} className="p-2 text-destructive hover:bg-destructive/10 rounded-lg transition-colors shrink-0">
-                            <Trash2 size={16} />
-                          </button>
-                        )}
+                  {!isGovOnly && (
+                    <form onSubmit={handleAddFolioItem} className="xl:w-60 w-full bg-secondary/50 border border-border p-4 rounded-xl space-y-3 shrink-0">
+                      <h4 className="font-bold flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-primary"><ShoppingCart size={13} /> Lançamento</h4>
+                      <div>
+                        <label className="text-[9px] font-bold uppercase text-muted-foreground">Produto / Serviço</label>
+                        <input required value={newFolioItem.description} onChange={e => setNewFolioItem({ ...newFolioItem, description: e.target.value })}
+                          placeholder="Ex: Lenha extra" className="mt-0.5 w-full bg-background border border-border px-3 py-2 rounded-xl text-xs outline-none focus:border-primary text-foreground" />
                       </div>
-                    ))
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[9px] font-bold uppercase text-muted-foreground">Qtd</label>
+                          <input type="number" min="1" required value={newFolioItem.quantity} onChange={e => setNewFolioItem({ ...newFolioItem, quantity: Number(e.target.value) })}
+                            className="mt-0.5 w-full bg-background border border-border px-3 py-2 rounded-xl text-xs outline-none focus:border-primary text-foreground" />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-bold uppercase text-muted-foreground">R$ Unit.</label>
+                          <input type="number" step="0.01" min="0" required value={newFolioItem.unitPrice || ""} onChange={e => setNewFolioItem({ ...newFolioItem, unitPrice: Number(e.target.value) })}
+                            className="mt-0.5 w-full bg-background border border-border px-3 py-2 rounded-xl text-xs outline-none focus:border-primary text-foreground" />
+                        </div>
+                      </div>
+                      <button type="submit" disabled={loadingFolio} className="w-full py-2 bg-primary text-primary-foreground font-black text-[10px] uppercase tracking-widest rounded-xl hover:opacity-90 disabled:opacity-50">
+                        Adicionar à Conta
+                      </button>
+                    </form>
                   )}
-
-                  {isEditing && !isGovOnly && (
-                    <div className="flex gap-2 pt-2">
-                      <button onClick={() => addAdditionalGuest('adult')} className="flex-1 py-2 bg-secondary border border-border text-foreground text-[10px] font-bold uppercase rounded-lg hover:border-primary transition-colors flex justify-center items-center gap-1"><Plus size={12} /> Adulto</button>
-                      <button onClick={() => addAdditionalGuest('child')} className="flex-1 py-2 bg-secondary border border-border text-foreground text-[10px] font-bold uppercase rounded-lg hover:border-primary transition-colors flex justify-center items-center gap-1"><Plus size={12} /> Criança</button>
-                      <button onClick={() => addAdditionalGuest('free')} className="flex-1 py-2 bg-secondary border border-border text-foreground text-[10px] font-bold uppercase rounded-lg hover:border-primary transition-colors flex justify-center items-center gap-1"><Plus size={12} /> Bebê</button>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-foreground border-b border-border pb-2 flex items-center justify-between">
-                  <span className="flex items-center gap-2"><PawPrint size={14} className="text-primary" /> Pet Friendly</span>
-                  <input type="checkbox" disabled={isCoreFieldLocked} checked={formData.hasPet} onChange={e => setFormData({ ...formData, hasPet: e.target.checked })} className="accent-primary w-4 h-4 cursor-pointer disabled:opacity-50" />
-                </h3>
-
-                {formData.hasPet ? (
-                  <div className="p-4 bg-secondary/50 rounded-2xl border border-border space-y-3">
-                    <Input disabled={isCoreFieldLocked} placeholder="Nome do Pet" value={formData.petDetails?.name} onChange={e => setFormData({ ...formData, petDetails: { ...formData.petDetails!, name: e.target.value } as any })} />
-                    <div className="grid grid-cols-2 gap-3">
-                      <Select disabled={isCoreFieldLocked} value={formData.petDetails?.species} onChange={e => setFormData({ ...formData, petDetails: { ...formData.petDetails!, species: e.target.value } as any })}>
-                        <option value="Cachorro">Cachorro</option>
-                        <option value="Gato">Gato</option>
-                        <option value="Outro">Outro</option>
-                      </Select>
-                      <Input disabled={isCoreFieldLocked} type="number" placeholder="Peso (kg)" value={formData.petDetails?.weight || ""} onChange={e => setFormData({ ...formData, petDetails: { ...formData.petDetails!, weight: Number(e.target.value) } as any })} />
-                    </div>
-                    <Input disabled={isCoreFieldLocked} placeholder="Raça (Opcional)" value={formData.petDetails?.breed} onChange={e => setFormData({ ...formData, petDetails: { ...formData.petDetails!, breed: e.target.value } as any })} />
-                  </div>
-                ) : (
-                  <div className="p-8 text-center border border-dashed border-border rounded-xl text-muted-foreground text-xs uppercase font-bold flex flex-col items-center gap-2">
-                    <PawPrint size={24} className="opacity-20" />
-                    Sem Pet Registrado
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'fnrh' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in slide-in-from-right-4 duration-300">
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-foreground border-b border-border pb-2">Dados da Viagem</h3>
-                <div>
-                  <Label icon={Plane}>Motivo da Viagem</Label>
-                  <Select disabled={isCoreFieldLocked} value={formData.travelReason} onChange={e => setFormData({ ...formData, travelReason: e.target.value as any })}>
-                    <option value="" disabled>Selecione...</option>
-                    {fnrhDomains?.motivos.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
-                  </Select>
-                </div>
-                <div>
-                  <Label icon={Car}>Meio de Transporte</Label>
-                  <Select disabled={isCoreFieldLocked} value={formData.transportation} onChange={e => setFormData({ ...formData, transportation: e.target.value as any })}>
-                    <option value="" disabled>Selecione...</option>
-                    {fnrhDomains?.transportes.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-                  </Select>
-                </div>
-                {['CARRO', 'MOTO'].includes(formData.transportation || '') && (
-                  <div>
-                    <Label icon={Car}>Placa do Veículo (Opcional)</Label>
-                    <Input disabled={isCoreFieldLocked} value={formData.vehiclePlate} onChange={e => setFormData({ ...formData, vehiclePlate: e.target.value })} placeholder="XXX-0000" />
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-foreground border-b border-border pb-2">Itinerário</h3>
-                <div>
-                  <Label icon={MapPin}>Cidade de Origem (Última procedência)</Label>
-                  <Input disabled={isCoreFieldLocked} value={formData.lastCity} onChange={e => setFormData({ ...formData, lastCity: e.target.value })} placeholder="Cidade/UF" />
-                </div>
-                <div>
-                  <Label icon={MapPin}>Próximo Destino</Label>
-                  <Input disabled={isCoreFieldLocked} value={formData.nextCity} onChange={e => setFormData({ ...formData, nextCity: e.target.value })} placeholder="Cidade/UF" />
                 </div>
               </div>
             </div>
-          )}
+          </div>
 
         </div>
       </div>

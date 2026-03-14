@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   UserSearch, Search, MapPin, Phone, Mail, FileText,
   Edit2, Save, X, Plus, Loader2, ChevronLeft,
@@ -294,6 +294,7 @@ function GuestDetailPanel({
     tiposDocumento: FnrhDomain[];
     generos: FnrhDomain[];
     nacionalidades: FnrhDomain[];
+    racas: FnrhDomain[];
   } | null>(null);
 
   // Load FNRH domains once
@@ -302,8 +303,9 @@ function GuestDetailPanel({
       FnrhService.getTiposDocumento(),
       FnrhService.getGeneros(),
       FnrhService.getNacionalidades(),
-    ]).then(([tiposDocumento, generos, nacionalidades]) => {
-      setFnrhDomains({ tiposDocumento, generos, nacionalidades });
+      FnrhService.getRacas(),
+    ]).then(([tiposDocumento, generos, nacionalidades, racas]) => {
+      setFnrhDomains({ tiposDocumento, generos, nacionalidades, racas });
     });
   }, []);
 
@@ -493,6 +495,23 @@ function GuestDetailPanel({
                     {fnrhDomains?.generos.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
                   </select>
                 </div>
+                {/* Raça/Cor */}
+                <div>
+                  <FieldLabel>Raça / Cor</FieldLabel>
+                  <select
+                    value={formData.raca ?? "NAO_DECLARADO"}
+                    onChange={e => set("raca", e.target.value)}
+                    disabled={disabled}
+                    className={cn("w-full bg-secondary border border-border rounded-xl px-3 py-2 text-sm text-foreground outline-none transition-all", disabled ? "opacity-60 cursor-default" : "focus:border-primary/50")}
+                  >
+                    {fnrhDomains?.racas.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+                  </select>
+                </div>
+                {/* Profissão */}
+                <div>
+                  <FieldLabel>Profissão</FieldLabel>
+                  <FieldInput value={formData.occupation ?? ""} onChange={v => set("occupation", v)} disabled={disabled} />
+                </div>
                 <div>
                   <FieldLabel>Nacionalidade</FieldLabel>
                   <select
@@ -573,6 +592,10 @@ function GuestDetailPanel({
                   <FieldLabel>País</FieldLabel>
                   <FieldInput value={formData.address?.country} onChange={v => setAddress("country", v)} disabled={disabled} />
                 </div>
+                <div>
+                  <FieldLabel>Cód. IBGE (FNRH)</FieldLabel>
+                  <FieldInput value={formData.address?.ibgeCityId ?? ""} onChange={v => setAddress("ibgeCityId", v)} disabled={disabled} />
+                </div>
               </div>
             </section>
 
@@ -647,6 +670,13 @@ function GuestDetailPanel({
                     <span className={cn("text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider", STATUS_COLORS[s.status])}>
                       {STATUS_LABELS[s.status] ?? s.status}
                     </span>
+                    <button
+                      onClick={() => router.push(`/admin/stays/${s.id}`)}
+                      className="p-2 hover:bg-white/10 text-foreground/30 hover:text-foreground rounded-xl transition-all"
+                      title="Ver Ficha da Estadia"
+                    >
+                      <FileText size={13} />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -917,6 +947,8 @@ function NewGuestPanel({
 export default function GuestsPage() {
   const { userData } = useAuth();
   const { currentProperty: contextProperty } = useProperty();
+  const searchParams = useSearchParams();
+  const preSelectId = searchParams.get("id");
 
   const [search, setSearch] = useState("");
   const [guests, setGuests] = useState<Guest[]>([]);
@@ -933,10 +965,14 @@ export default function GuestsPage() {
     try {
       const data = await GuestService.listGuests(contextProperty.id, term);
       setGuests(data);
+      if (preSelectId) {
+        const found = data.find((g: any) => g.id === preSelectId);
+        if (found) { setSelected(found); setShowPanel(true); }
+      }
     } finally {
       setLoading(false);
     }
-  }, [contextProperty?.id]);
+  }, [contextProperty?.id, preSelectId]);
 
   // Debounced search
   useEffect(() => {
