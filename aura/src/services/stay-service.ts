@@ -485,7 +485,12 @@ export const StayService = {
   },
 
   async updateStayData(propertyId: string, stayId: string, data: Partial<Stay>, actorId: string, actorName: string) {
-    await supabase.from('stays').update({ ...data, updatedAt: new Date().toISOString() }).eq('id', stayId);
+    const { error } = await supabase.from('stays').update({ ...data, updatedAt: new Date().toISOString() }).eq('id', stayId);
+
+    if (error) {
+      console.error('[StayService] updateStayData error:', error.code, error.message, error.details);
+      throw new Error(`Falha ao atualizar estadia: ${error.message}`);
+    }
 
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
