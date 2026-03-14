@@ -5,10 +5,10 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { CabinService } from "@/services/cabin-service";
-import { Cabin } from "@/types/aura";
+import { Cabin, CabinArea, CabinBed } from "@/types/aura";
 import {
   Home, Plus, Wifi, Trash2, Edit3, Users, X, Hammer, Hash, Layers,
-  Building2, PlusCircle, BedDouble, Sparkles
+  Building2, PlusCircle, BedDouble, Sparkles, Copy, Loader2
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -25,7 +25,17 @@ export default function CabinsPage() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCabin, setEditingCabin] = useState<Partial<Cabin> | null>(null);
-  const [newSetup, setNewSetup] = useState("");
+  const [isBatchMode, setIsBatchMode] = useState(false);
+  const [batchNumbers, setBatchNumbers] = useState("");
+
+  // Normaliza layout legado (area.beds → area.configs) para compatibilidade com dados antigos
+  const normalizeLayout = (layout?: any[]): any[] | undefined => {
+    if (!layout) return layout;
+    return layout.map(area => ({
+      ...area,
+      configs: area.configs ?? (area.beds ? [area.beds] : [[]])
+    }));
+  };
 
   const loadCabins = useCallback(async () => {
     if (!property?.id) return;
@@ -49,9 +59,35 @@ export default function CabinsPage() {
     }
   }, [property, loadCabins]);
 
-  const handleOpenModal = (cabin?: Cabin) => {
-    setEditingCabin(cabin || {
-      number: "",
+  const handleOpenModal = (cabin?: Cabin, isClone = false) => {
+    if (isClone && cabin) {
+      const { id, createdAt, updatedAt, number, ...rest } = cabin;
+      setEditingCabin({
+        ...rest,
+        layout: normalizeLayout(rest.layout),
+        number: "",
+        status: "available"
+      });
+      setIsBatchMode(false);
+    } else {
+      setEditingCabin(cabin ? { ...cabin, layout: normalizeLayout(cabin.layout) } : {
+        number: "",
+        category: "",
+        capacity: 2,
+        status: "available",
+        allowedSetups: [],
+        wifi: { ssid: "", password: "" },
+        equipment: [],
+        housekeepingItems: []
+      });
+      setIsBatchMode(false);
+    }
+    setBatchNumbers("");
+    setIsModalOpen(true);
+  };
+
+  const handleOpenBatchModal = () => {
+    setEditingCabin({
       category: "",
       capacity: 2,
       status: "available",
@@ -60,24 +96,50 @@ export default function CabinsPage() {
       equipment: [],
       housekeepingItems: []
     });
+    setIsBatchMode(true);
+    setBatchNumbers("");
     setIsModalOpen(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!property?.id || !editingCabin?.number || !editingCabin?.category) {
+    if (!property?.id || !editingCabin?.category) {
       return toast.error("Preencha todos os campos obrigatórios.");
+    }
+
+    if (!isBatchMode && !editingCabin?.number) {
+      return toast.error("Informe o número da unidade.");
+    }
+
+    if (isBatchMode && !batchNumbers) {
+      return toast.error("Informe os números para criação em lote.");
     }
 
     const cleanHousekeeping = editingCabin.housekeepingItems?.filter(i => i.label.trim() !== "") || [];
 
     try {
-      await CabinService.saveCabin(property.id, { ...editingCabin, housekeepingItems: cleanHousekeeping });
-      toast.success("Unidade configurada com sucesso!");
+      if (isBatchMode) {
+        // Processar números em lote (ex: 101,102,105 ou 101-105)
+        const numbers = batchNumbers.split(',').flatMap(part => {
+          if (part.includes('-')) {
+            const [start, end] = part.split('-').map(Number);
+            if (!isNaN(start) && !isNaN(end)) {
+              return Array.from({ length: end - start + 1 }, (_, i) => String(start + i));
+            }
+          }
+          return part.trim();
+        }).filter(n => n !== "");
+
+        await CabinService.saveCabinsBatch(property.id, { ...editingCabin, housekeepingItems: cleanHousekeeping }, numbers);
+        toast.success(`${numbers.length} unidades criadas com sucesso!`);
+      } else {
+        await CabinService.saveCabin(property.id, { ...editingCabin, housekeepingItems: cleanHousekeeping });
+        toast.success("Unidade configurada com sucesso!");
+      }
       setIsModalOpen(false);
       loadCabins();
     } catch (error) {
-      toast.error("Erro ao salvar cabana.");
+      toast.error("Erro ao salvar.");
     }
   };
 
@@ -92,17 +154,61 @@ export default function CabinsPage() {
     }
   };
 
-  const addSetup = () => {
-    if (!newSetup) return;
-    const currentSetups = editingCabin?.allowedSetups || [];
-    setEditingCabin({ ...editingCabin, allowedSetups: [...currentSetups, newSetup] });
-    setNewSetup("");
-  };
+  const addArea = () => setEditingCabin(c => ({
+    ...c,
+    layout: [...(c?.layout || []), { id: crypto.randomUUID(), name: '', type: 'room', configs: [[]] }]
+  }));
 
-  const removeSetup = (index: number) => {
-    const filtered = (editingCabin?.allowedSetups || []).filter((_, i) => i !== index);
-    setEditingCabin({ ...editingCabin, allowedSetups: filtered });
-  };
+  const removeArea = (areaId: string) => setEditingCabin(c => ({
+    ...c,
+    layout: c?.layout?.filter(a => a.id !== areaId)
+  }));
+
+  const updateArea = (areaId: string, patch: Partial<CabinArea>) => setEditingCabin(c => ({
+    ...c,
+    layout: c?.layout?.map(a => a.id === areaId ? { ...a, ...patch } : a)
+  }));
+
+  const addConfig = (areaId: string) => setEditingCabin(c => ({
+    ...c,
+    layout: c?.layout?.map(a => a.id === areaId
+      ? { ...a, configs: [...(a.configs || []), []] }
+      : a)
+  }));
+
+  const removeConfig = (areaId: string, configIdx: number) => setEditingCabin(c => ({
+    ...c,
+    layout: c?.layout?.map(a => a.id === areaId
+      ? { ...a, configs: a.configs.filter((_, i) => i !== configIdx) }
+      : a)
+  }));
+
+  const addBed = (areaId: string, configIdx: number) => setEditingCabin(c => ({
+    ...c,
+    layout: c?.layout?.map(a => a.id === areaId
+      ? { ...a, configs: a.configs.map((cfg, i) => i === configIdx
+          ? [...cfg, { id: crypto.randomUUID(), type: 'double' as const, label: '' }]
+          : cfg) }
+      : a)
+  }));
+
+  const removeBed = (areaId: string, configIdx: number, bedId: string) => setEditingCabin(c => ({
+    ...c,
+    layout: c?.layout?.map(a => a.id === areaId
+      ? { ...a, configs: a.configs.map((cfg, i) => i === configIdx
+          ? cfg.filter(b => b.id !== bedId)
+          : cfg) }
+      : a)
+  }));
+
+  const updateBed = (areaId: string, configIdx: number, bedId: string, patch: Partial<CabinBed>) => setEditingCabin(c => ({
+    ...c,
+    layout: c?.layout?.map(a => a.id === areaId
+      ? { ...a, configs: a.configs.map((cfg, i) => i === configIdx
+          ? cfg.map(b => b.id === bedId ? { ...b, ...patch } : b)
+          : cfg) }
+      : a)
+  }));
 
   const addEquipment = () => {
     const currentEq = editingCabin?.equipment || [];
@@ -152,12 +258,20 @@ export default function CabinsPage() {
         </div>
         {/* Governanta não pode criar novas cabanas do zero */}
         {!isGovOnly && (
-          <button
-            onClick={() => handleOpenModal()}
-            className="bg-primary text-primary-foreground font-black px-8 py-4 rounded-2xl flex items-center gap-2 hover:shadow-[0_0_20px_rgba(var(--primary),0.4)] transition-all active:scale-95"
-          >
-            Nova Cabana <Plus size={20} />
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => handleOpenBatchModal()}
+              className="bg-secondary text-foreground font-black px-6 py-4 rounded-2xl flex items-center gap-2 hover:bg-accent transition-all active:scale-95"
+            >
+              Criar em Lote <Layers size={20} />
+            </button>
+            <button
+              onClick={() => handleOpenModal()}
+              className="bg-primary text-primary-foreground font-black px-8 py-4 rounded-2xl flex items-center gap-2 hover:shadow-[0_0_20px_rgba(var(--primary),0.4)] transition-all active:scale-95"
+            >
+              Nova Unidade <Plus size={20} />
+            </button>
+          </div>
         )}
       </header>
 
@@ -175,10 +289,13 @@ export default function CabinsPage() {
                   {cabin.status}
                 </div>
                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                  <button onClick={() => handleOpenModal(cabin)} className="p-2 bg-secondary text-muted-foreground rounded-xl hover:text-primary transition-colors"><Edit3 size={16} /></button>
+                  {!isGovOnly && (
+                    <button onClick={() => handleOpenModal(cabin, true)} title="Clonar" className="p-2 bg-secondary text-muted-foreground rounded-xl hover:text-primary transition-colors"><Copy size={16} /></button>
+                  )}
+                  <button onClick={() => handleOpenModal(cabin)} title="Editar" className="p-2 bg-secondary text-muted-foreground rounded-xl hover:text-primary transition-colors"><Edit3 size={16} /></button>
                   {/* Governanta não pode apagar cabanas */}
                   {!isGovOnly && (
-                    <button onClick={() => handleDelete(cabin.id)} className="p-2 bg-secondary text-muted-foreground rounded-xl hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
+                    <button onClick={() => handleDelete(cabin.id)} title="Excluir" className="p-2 bg-secondary text-muted-foreground rounded-xl hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
                   )}
                 </div>
               </div>
@@ -193,7 +310,12 @@ export default function CabinsPage() {
                   <Users size={14} className="text-primary" /> {cabin.capacity} Pessoas
                 </div>
                 <div className="flex flex-wrap gap-1">
-                  {cabin.allowedSetups?.map(s => (
+                  {cabin.layout?.map(a => (
+                    <span key={a.id} className="bg-secondary border border-border px-2 py-1 rounded-md text-[8px] font-bold text-muted-foreground uppercase">
+                      {a.name || a.type}{a.configs?.length > 1 ? ` (${a.configs.length} opções)` : a.configs?.[0]?.length ? ` (${a.configs[0].length} leitos)` : ''}
+                    </span>
+                  ))}
+                  {(!cabin.layout || cabin.layout.length === 0) && cabin.allowedSetups?.map(s => (
                     <span key={s} className="bg-secondary border border-border px-2 py-1 rounded-md text-[8px] font-bold text-muted-foreground uppercase">{s}</span>
                   ))}
                 </div>
@@ -228,18 +350,32 @@ export default function CabinsPage() {
             <div className="p-10 space-y-12 overflow-y-auto custom-scrollbar flex-1">
 
               <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
-                    <Hash size={12} /> Número
-                  </label>
-                  <input
-                    disabled={isGovOnly} // Bloqueado para Governanta
-                    value={editingCabin?.number}
-                    onChange={e => setEditingCabin({ ...editingCabin!, number: e.target.value })}
-                    placeholder="Ex: 01"
-                    className="w-full bg-background border border-border p-4 rounded-2xl outline-none focus:border-primary text-xl font-bold text-foreground disabled:opacity-50"
-                  />
-                </div>
+                {isBatchMode ? (
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
+                      <Hash size={12} /> Números (ex: 101, 102, 105 ou 101-105)
+                    </label>
+                    <input
+                      value={batchNumbers}
+                      onChange={e => setBatchNumbers(e.target.value)}
+                      placeholder="Ex: 101, 102, 105-110"
+                      className="w-full bg-background border border-border p-4 rounded-2xl outline-none focus:border-primary text-xl font-bold text-foreground"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
+                      <Hash size={12} /> Número
+                    </label>
+                    <input
+                      disabled={isGovOnly && !editingCabin?.id} // Bloqueado p/ gov só se estiver criando, mas gov não cria. 
+                      value={editingCabin?.number}
+                      onChange={e => setEditingCabin({ ...editingCabin!, number: e.target.value })}
+                      placeholder="Ex: 01"
+                      className="w-full bg-background border border-border p-4 rounded-2xl outline-none focus:border-primary text-xl font-bold text-foreground disabled:opacity-50"
+                    />
+                  </div>
+                )}
                 <div className="space-y-2 md:col-span-1">
                   <label className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
                     <Layers size={12} /> Categoria
@@ -252,41 +388,138 @@ export default function CabinsPage() {
                     className="w-full bg-background border border-border p-4 rounded-2xl outline-none focus:border-primary text-xl font-bold text-foreground disabled:opacity-50"
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
-                    <Users size={12} /> Capacidade
-                  </label>
-                  <input
-                    disabled={isGovOnly}
-                    type="number"
-                    value={editingCabin?.capacity}
-                    onChange={e => setEditingCabin({ ...editingCabin!, capacity: Number(e.target.value) })}
-                    className="w-full bg-background border border-border p-4 rounded-2xl outline-none focus:border-primary text-xl font-bold text-foreground disabled:opacity-50"
-                  />
-                </div>
+                {!isBatchMode && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
+                      <Users size={12} /> Capacidade
+                    </label>
+                    <input
+                      disabled={isGovOnly}
+                      type="number"
+                      value={editingCabin?.capacity}
+                      onChange={e => setEditingCabin({ ...editingCabin!, capacity: Number(e.target.value) })}
+                      className="w-full bg-background border border-border p-4 rounded-2xl outline-none focus:border-primary text-xl font-bold text-foreground disabled:opacity-50"
+                    />
+                  </div>
+                )}
+                {isBatchMode && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
+                      <Users size={12} /> Capacidade (Base)
+                    </label>
+                    <input
+                      disabled={isGovOnly}
+                      type="number"
+                      value={editingCabin?.capacity}
+                      onChange={e => setEditingCabin({ ...editingCabin!, capacity: Number(e.target.value) })}
+                      className="w-full bg-background border border-border p-4 rounded-2xl outline-none focus:border-primary text-xl font-bold text-foreground disabled:opacity-50"
+                    />
+                  </div>
+                )}
               </section>
 
               <section className="space-y-4">
-                <h4 className="text-[10px] font-black uppercase text-muted-foreground tracking-[0.2em] flex items-center gap-2">
-                  <BedDouble size={14} /> Montagens de Quarto Permitidas
-                </h4>
-                <div className="flex gap-2">
-                  <input
-                    disabled={isGovOnly}
-                    value={newSetup}
-                    onChange={e => setNewSetup(e.target.value)}
-                    placeholder="Ex: Cama Casal + Berço"
-                    className="flex-1 bg-background border border-border p-4 rounded-2xl outline-none focus:border-primary text-sm text-foreground disabled:opacity-50"
-                  />
-                  <button type="button" disabled={isGovOnly} onClick={addSetup} className="p-4 bg-primary text-primary-foreground rounded-2xl font-black disabled:opacity-50">
-                    <PlusCircle size={20} />
-                  </button>
+                <div className="flex justify-between items-center">
+                  <h4 className="text-[10px] font-black uppercase text-muted-foreground tracking-[0.2em] flex items-center gap-2">
+                    <BedDouble size={14} /> Layout da Cabana
+                  </h4>
+                  {!isGovOnly && (
+                    <button type="button" onClick={addArea} className="text-[10px] font-black uppercase bg-primary/10 text-primary px-4 py-2 rounded-xl hover:bg-primary/20 transition-all">
+                      + Área
+                    </button>
+                  )}
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {editingCabin?.allowedSetups?.map((setup, idx) => (
-                    <div key={idx} className="bg-secondary border border-border px-4 py-2 rounded-xl flex items-center gap-3 text-xs font-bold text-foreground">
-                      {setup}
-                      {!isGovOnly && <button type="button" onClick={() => removeSetup(idx)} className="text-red-500 hover:text-red-600"><X size={14} /></button>}
+
+                {(!editingCabin?.layout || editingCabin.layout.length === 0) && (
+                  <div className="text-xs text-muted-foreground p-4 bg-secondary rounded-xl border border-dashed border-border text-center">
+                    Nenhuma área configurada. Clique em "+ Área" para adicionar quartos, suítes ou sala.
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  {editingCabin?.layout?.map((area) => (
+                    <div key={area.id} className="bg-secondary border border-border p-5 rounded-[24px] space-y-4 animate-in slide-in-from-top-2">
+                      <div className="flex gap-3 items-center">
+                        <input
+                          disabled={isGovOnly}
+                          value={area.name}
+                          onChange={e => updateArea(area.id, { name: e.target.value })}
+                          placeholder="Nome da área (ex: Quarto Principal)"
+                          className="flex-1 bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-primary text-foreground disabled:opacity-50"
+                        />
+                        <select
+                          disabled={isGovOnly}
+                          value={area.type}
+                          onChange={e => updateArea(area.id, { type: e.target.value as CabinArea['type'] })}
+                          className="bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-primary text-foreground disabled:opacity-50"
+                        >
+                          <option value="room">Quarto</option>
+                          <option value="suite">Suíte</option>
+                          <option value="living_room">Sala</option>
+                        </select>
+                        {!isGovOnly && (
+                          <button type="button" onClick={() => removeArea(area.id)} className="p-3 text-red-500 hover:bg-red-500/10 rounded-xl transition-all">
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="space-y-3 pl-1">
+                        {(area.configs || [[]]).map((config, configIdx) => (
+                          <div key={configIdx} className="bg-background border border-border rounded-2xl p-4 space-y-2 animate-in slide-in-from-top-1">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[9px] font-black uppercase tracking-widest text-primary/60">
+                                {area.configs.length > 1 ? `Opção ${String.fromCharCode(65 + configIdx)}` : 'Leitos desta área'}
+                              </span>
+                              {!isGovOnly && area.configs.length > 1 && (
+                                <button type="button" onClick={() => removeConfig(area.id, configIdx)} className="text-[9px] font-black uppercase text-red-500/60 hover:text-red-500 transition-colors">
+                                  Remover variante
+                                </button>
+                              )}
+                            </div>
+
+                            {config.map(bed => (
+                              <div key={bed.id} className="flex gap-2 items-center">
+                                <select
+                                  disabled={isGovOnly}
+                                  value={bed.type}
+                                  onChange={e => updateBed(area.id, configIdx, bed.id, { type: e.target.value as CabinBed['type'] })}
+                                  className="bg-secondary border border-border p-2 rounded-xl text-xs outline-none focus:border-primary text-foreground disabled:opacity-50"
+                                >
+                                  <option value="single">Solteiro</option>
+                                  <option value="double">Casal</option>
+                                  <option value="extra">Extra</option>
+                                  <option value="sofa_bed">Sofá-Cama</option>
+                                </select>
+                                <input
+                                  disabled={isGovOnly}
+                                  value={bed.label}
+                                  onChange={e => updateBed(area.id, configIdx, bed.id, { label: e.target.value })}
+                                  placeholder="Rótulo (ex: Cama 1)"
+                                  className="flex-1 bg-secondary border border-border p-2 rounded-xl text-xs outline-none focus:border-primary text-foreground disabled:opacity-50"
+                                />
+                                {!isGovOnly && (
+                                  <button type="button" onClick={() => removeBed(area.id, configIdx, bed.id)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-xl transition-all">
+                                    <X size={14} />
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+
+                            {!isGovOnly && (
+                              <button type="button" onClick={() => addBed(area.id, configIdx)} className="text-[10px] font-black uppercase text-primary/60 hover:text-primary flex items-center gap-1 mt-1 transition-colors">
+                                <PlusCircle size={12} /> Leito
+                              </button>
+                            )}
+                          </div>
+                        ))}
+
+                        {!isGovOnly && (
+                          <button type="button" onClick={() => addConfig(area.id)} className="text-[10px] font-black uppercase text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors border border-dashed border-border rounded-xl px-3 py-2 w-full justify-center">
+                            <PlusCircle size={12} /> Adicionar variante de montagem
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -422,6 +655,3 @@ export default function CabinsPage() {
   );
 }
 
-const Loader2 = ({ className, size }: { className?: string, size?: number }) => (
-  <svg width={size || 24} height={size || 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>
-);

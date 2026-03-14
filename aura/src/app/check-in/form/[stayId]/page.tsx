@@ -70,6 +70,10 @@ const translations = {
     transportOther: "Outro",
     carPlate: "Placa do Veículo",
     roomSetup: "Montagem da Unidade",
+    accomodationDistrib: "Distribuição de Acomodação",
+    assignBed: "Atribuir hóspede",
+    governanceNote: "Esta montagem será solicitada à governança",
+    unassigned: "Não alocado",
     petTitle: "Viajando com Pet?",
     petDesc: "Consulte nossa política",
     petName: "Nome do Pet",
@@ -150,6 +154,10 @@ const translations = {
     transportOther: "Other",
     carPlate: "License Plate",
     roomSetup: "Room Setup",
+    accomodationDistrib: "Room Allocation",
+    assignBed: "Assign guest",
+    governanceNote: "This setup will be requested to housekeeping",
+    unassigned: "Unassigned",
     petTitle: "Traveling with a Pet?",
     petDesc: "Check our policy",
     petName: "Pet Name",
@@ -230,6 +238,10 @@ const translations = {
     transportOther: "Otro",
     carPlate: "Matrícula del Vehículo",
     roomSetup: "Configuración de la Habitación",
+    accomodationDistrib: "Distribución de Alojamiento",
+    assignBed: "Asignar huésped",
+    governanceNote: "Esta configuración será solicitada a housekeeping",
+    unassigned: "Sin asignar",
     petTitle: "¿Viaja con Mascota?",
     petDesc: "Consulte nuestra política",
     petName: "Nombre de la Mascota",
@@ -334,7 +346,8 @@ export default function UnifiedPreCheckin() {
     travelReason: 'TURISMO',
     petDetails: { species: 'Cachorro', weight: 5, name: "", breed: "" },
     lastCity: "", nextCity: "", vehiclePlate: "", expectedArrivalTime: "",
-    additionalGuests: [], counts: { adults: 1, children: 0, babies: 0 }
+    additionalGuests: [], counts: { adults: 1, children: 0, babies: 0 },
+    areaConfigs: [], bedAssignments: []
   });
 
   const [cabin, setCabin] = useState<any>(null);
@@ -379,7 +392,7 @@ export default function UnifiedPreCheckin() {
           setFnrhDomains({ generos, racas, transportes, motivos, tiposDocumento });
 
           setGuest((prev: any) => ({ ...prev, ...data.guest, address: { ...prev.address, ...(data.guest?.address || {}) }, document: { ...prev.document, ...(data.guest?.document || {}) } }));
-          setStay((prev: any) => ({ ...prev, ...data.stay, propertyId: targetPropertyId, petDetails: { ...prev.petDetails, ...(data.stay?.petDetails || {}) }, additionalGuests: data.stay.additionalGuests || [], counts: data.stay.counts || { adults: 1, children: 0, babies: 0 } }));
+          setStay((prev: any) => ({ ...prev, ...data.stay, propertyId: targetPropertyId, petDetails: { ...prev.petDetails, ...(data.stay?.petDetails || {}) }, additionalGuests: data.stay.additionalGuests || [], counts: data.stay.counts || { adults: 1, children: 0, babies: 0 }, areaConfigs: data.stay.areaConfigs || [], bedAssignments: data.stay.bedAssignments || [] }));
           setCabin(data.cabin);
 
           if (data.stay.groupId) {
@@ -964,6 +977,106 @@ export default function UnifiedPreCheckin() {
           </div>
         </section>
 
+        {/* 2.5 — Distribuição de Acomodação */}
+        {cabin?.layout && cabin.layout.length > 0 && (
+          <section className="space-y-4">
+            <h3 className="text-xl font-black border-l-4 border-primary pl-4 uppercase tracking-tighter flex items-center gap-2">
+              <Users size={20} className="text-primary" /> {t.accomodationDistrib}
+            </h3>
+
+            <div className="space-y-3">
+              {cabin.layout.map((area: any) => {
+                const configs: any[][] = area.configs ?? (area.beds ? [area.beds] : [[]]);
+                const isFixed = configs.length <= 1;
+                const selectedConfigIdx = stay.areaConfigs?.find((ac: any) => ac.areaId === area.id)?.configIndex ?? 0;
+
+                const bedLabel = (b: any) => {
+                  const typeLabel = b.type === 'single' ? (lang === 'en' ? 'Single' : lang === 'es' ? 'Individual' : 'Solteiro')
+                    : b.type === 'double' ? (lang === 'en' ? 'Double' : lang === 'es' ? 'Doble' : 'Casal')
+                    : b.type === 'sofa_bed' ? (lang === 'en' ? 'Sofa Bed' : lang === 'es' ? 'Sofá-Cama' : 'Sofá-Cama')
+                    : (lang === 'en' ? 'Extra' : 'Extra');
+                  return b.label || typeLabel;
+                };
+
+                return (
+                  <div key={area.id} className="bg-secondary/60 border border-border rounded-3xl overflow-hidden">
+                    {/* Cabeçalho da área */}
+                    <div className="px-5 pt-4 pb-3 flex items-center justify-between">
+                      <p className="text-xs font-black uppercase tracking-widest text-primary">{area.name || area.type}</p>
+                      {isFixed && (
+                        <span className="text-[9px] font-bold uppercase bg-primary/10 text-primary px-2 py-0.5 rounded-lg">
+                          {lang === 'en' ? 'Standard' : lang === 'es' ? 'Estándar' : 'Padrão'}
+                        </span>
+                      )}
+                    </div>
+
+                    {isFixed ? (
+                      /* Montagem única — apenas exibe os leitos */
+                      <div className="px-5 pb-4 flex flex-wrap gap-2">
+                        {(configs[0] || []).map((bed: any) => (
+                          <span key={bed.id} className="flex items-center gap-1.5 bg-background border border-border px-3 py-2 rounded-xl text-sm font-semibold text-foreground">
+                            <span className="text-primary text-base">🛏</span> {bedLabel(bed)}
+                          </span>
+                        ))}
+                        {(configs[0] || []).length === 0 && (
+                          <span className="text-xs text-muted-foreground italic">
+                            {lang === 'en' ? 'No beds configured' : lang === 'es' ? 'Sin camas configuradas' : 'Sem leitos configurados'}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      /* Múltiplas variantes — hóspede escolhe */
+                      <div className="px-4 pb-4 flex flex-col gap-2">
+                        {configs.map((cfg: any[], idx: number) => {
+                          const label = cfg.length > 0 ? cfg.map(bedLabel).join(' + ') : `Opção ${String.fromCharCode(65 + idx)}`;
+                          const hasGovernance = cfg.some((b: any) => b.type === 'extra' || b.type === 'sofa_bed');
+                          const isSelected = selectedConfigIdx === idx;
+                          return (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setStay((s: any) => ({
+                                ...s,
+                                areaConfigs: [
+                                  ...(s.areaConfigs || []).filter((ac: any) => ac.areaId !== area.id),
+                                  { areaId: area.id, configIndex: idx }
+                                ]
+                              }))}
+                              className={cn(
+                                "w-full p-4 rounded-2xl border text-left font-bold transition-all active:scale-[0.98] flex items-center gap-3",
+                                isSelected
+                                  ? "bg-foreground text-background border-foreground shadow-md"
+                                  : "bg-background border-border text-muted-foreground"
+                              )}
+                            >
+                              {/* Indicador de seleção */}
+                              <span className={cn(
+                                "w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-all",
+                                isSelected ? "border-background bg-background/30" : "border-border"
+                              )}>
+                                {isSelected && <span className="w-2.5 h-2.5 rounded-full bg-background" />}
+                              </span>
+                              <span className="flex-1 text-sm">{label}</span>
+                              {hasGovernance && (
+                                <span className={cn(
+                                  "text-[9px] font-bold uppercase px-2 py-0.5 rounded-lg shrink-0",
+                                  isSelected ? "bg-yellow-500/20 text-yellow-300 border border-yellow-400/30" : "bg-yellow-500/10 text-yellow-700 border border-yellow-500/20"
+                                )}>
+                                  {t.governanceNote}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
         {/* 3. Residência */}
         <section className="space-y-6">
           <h3 className="text-xl font-black border-l-4 border-primary pl-4 uppercase tracking-tighter flex items-center gap-2">
@@ -1121,20 +1234,6 @@ export default function UnifiedPreCheckin() {
             </div>
           )}
 
-          <div className="space-y-4">
-            <p className="text-xs font-black uppercase tracking-widest text-muted-foreground">{t.roomSetup}: {cabin?.name}</p>
-            <div className="grid grid-cols-1 gap-3">
-              {(cabin?.allowedSetups || ["Casal Padrão"]).map((setup: string) => (
-                <button
-                  key={setup} type="button"
-                  onClick={() => setStay({ ...stay, roomSetupNotes: setup })}
-                  className={cn("p-4 rounded-2xl border text-left text-sm font-bold transition-all", stay.roomSetupNotes === setup ? "bg-foreground text-background border-foreground shadow-md" : "bg-background border-border text-muted-foreground hover:bg-accent")}
-                >
-                  {setup}
-                </button>
-              ))}
-            </div>
-          </div>
         </section>
 
         {/* 5. Pets */}

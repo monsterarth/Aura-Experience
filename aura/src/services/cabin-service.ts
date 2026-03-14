@@ -72,5 +72,32 @@ export const CabinService = {
       console.error("Error deleting cabin from Supabase:", error);
       throw error;
     }
+  },
+
+  async saveCabinsBatch(propertyId: string, baseCabin: Partial<Cabin>, numbers: string[]) {
+    const payloads = numbers.map(num => {
+      const id = crypto.randomUUID();
+      const finalName = `${num} - ${baseCabin.category}`;
+      return {
+        ...baseCabin,
+        id,
+        number: num,
+        name: finalName,
+        propertyId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+    });
+
+    const { error } = await supabase
+      .from('cabins')
+      .insert(payloads);
+
+    if (error) {
+      console.error("Error saving cabins batch to Supabase:", error);
+      throw error;
+    }
+
+    return payloads.map(p => p.id);
   }
 };

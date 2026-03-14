@@ -107,6 +107,22 @@ export interface Guest {
   updatedAt: Timestamp;
 }
 
+// --- LAYOUT DE LEITOS ---
+export type BedType = 'single' | 'double' | 'extra' | 'sofa_bed';
+
+export interface CabinBed {
+  id: string;
+  type: BedType;
+  label: string;
+}
+
+export interface CabinArea {
+  id: string;
+  name: string;
+  type: 'room' | 'suite' | 'living_room';
+  configs: CabinBed[][]; // Cada array interno é uma variante de montagem alternativa
+}
+
 // --- ENTIDADE CABANA ---
 export interface Cabin {
   id: string;
@@ -116,7 +132,8 @@ export interface Cabin {
   name: string;       // Gerado: "01 - Praia 2 dormitórios"
   capacity: number;
   status: 'available' | 'occupied' | 'maintenance' | 'cleaning';
-  allowedSetups: string[];
+  allowedSetups?: string[];
+  layout?: CabinArea[];
   currentStayId?: string;
   wifi?: {
     ssid: string;
@@ -129,6 +146,8 @@ export interface Cabin {
     manualUrl?: string;
   }[];
   housekeepingItems?: { id: string; label: string }[];
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 export type StructureVisibility = 'admin_only' | 'guest_request' | 'guest_auto_approve';
@@ -407,6 +426,8 @@ export interface Stay {
   vehiclePlate?: string;
   roomSetup: 'double' | 'twin' | 'triple' | 'other';
   roomSetupNotes?: string;
+  areaConfigs?: { areaId: string; configIndex: number }[];
+  bedAssignments?: { bedId: string; areaId: string; guestId: string }[];
 
   // Composição
   counts: {
