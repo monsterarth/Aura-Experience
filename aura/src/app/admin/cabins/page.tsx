@@ -432,7 +432,7 @@ export default function CabinsPage() {
 
                 {(!editingCabin?.layout || editingCabin.layout.length === 0) && (
                   <div className="text-xs text-muted-foreground p-4 bg-secondary rounded-xl border border-dashed border-border text-center">
-                    Nenhuma área configurada. Clique em "+ Área" para adicionar quartos, suítes ou sala.
+                    Nenhuma área configurada. Clique em &quot;+ Área&quot; para adicionar quartos, suítes ou sala.
                   </div>
                 )}
 
