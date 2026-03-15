@@ -179,7 +179,7 @@ export default function ReservationMapPage() {
 
                     const { data, error } = await supabase
                         .from('stays')
-                        .select('*, guests!stays_guestId_fkey(fullName)')
+                        .select('*')
                         .eq('propertyId', contextProperty.id)
                         .in('status', ['pending', 'pre_checkin_done', 'active', 'finished'])
                         .lte('checkIn', windowEnd)
@@ -192,9 +192,22 @@ export default function ReservationMapPage() {
                         return allStays as StayWithGuest[];
                     }
 
-                    return (data || []).map((s: any) => ({
+                    const stays = data || [];
+                    const guestIds = [...new Set(stays.map((s: any) => s.guestId).filter(Boolean))];
+                    let guestMap: Record<string, string> = {};
+                    if (guestIds.length > 0) {
+                        const { data: guestsData } = await supabase
+                            .from('guests')
+                            .select('id, fullName')
+                            .in('id', guestIds);
+                        if (guestsData) {
+                            guestMap = Object.fromEntries(guestsData.map((g: any) => [g.id, g.fullName]));
+                        }
+                    }
+
+                    return stays.map((s: any) => ({
                         ...s,
-                        guestName: s.guests?.fullName || "Hóspede"
+                        guestName: guestMap[s.guestId] || "Hóspede"
                     })) as StayWithGuest[];
                 })(),
                 // Maintenance tasks for cabins
