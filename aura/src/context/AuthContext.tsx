@@ -31,8 +31,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const userRef = useRef<SupabaseUser | null>(null);
   const userDataRef = useRef<Staff | null>(null);
   const isLoggingOut = useRef(false);
-  // Guard contra double-mount do React Strict Mode (dev)
-  const initStarted = useRef(false);
 
   const supabase = createClientBrowser();
 
@@ -100,11 +98,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
      * Inicialização: Usa refreshSession() que faz getSession() + getUser().
      * NÃO redireciona para login — o middleware já protege as rotas.
      * Se falhar, simplesmente fica sem auth e a UI mostra o estado adequado.
+     * Nota: Não usa guard de ref para Strict Mode — depende de `mounted` para
+     * ignorar o resultado do mount que foi desmontado.
      */
     async function initializeAuth() {
-      // React Strict Mode monta/desmonta/remonta em dev — pula se já iniciou.
-      if (initStarted.current) return;
-      initStarted.current = true;
       try {
         const currentUser = await refreshSession();
 

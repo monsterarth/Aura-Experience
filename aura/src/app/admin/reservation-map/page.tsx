@@ -167,7 +167,10 @@ export default function ReservationMapPage() {
     // ==========================================
 
     const loadData = useCallback(async () => {
-        if (!contextProperty?.id) return;
+        if (!contextProperty?.id) {
+            setLoading(false);
+            return;
+        }
         setLoading(true);
         try {
             const [cabinsData, staysData, maintenanceData, hkData, staffData] = await Promise.all([
