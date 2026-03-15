@@ -356,10 +356,9 @@ export default function ReservationMapPage() {
                         userData?.id || "admin",
                         userData?.fullName || "Admin"
                     );
-                } else {
-                    // Just free the cabin if no task was found
-                    await supabase.from('cabins').update({ status: 'available' }).eq('id', actionCabin.id);
                 }
+                // Sempre libera a cabana — finishTask só faz isso se type !== 'turnover'
+                await supabase.from('cabins').update({ status: 'available' }).eq('id', actionCabin.id);
                 toast.success("Acomodação marcada como limpa.");
                 loadData();
             } catch (err) {

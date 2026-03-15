@@ -56,5 +56,11 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.redirect(url)
     }
 
+    // Prevent 304 caching for admin pages — garante que cookies de auth
+    // renovados pelo middleware sempre cheguem ao browser (não ficam presos em 304)
+    if (request.nextUrl.pathname.startsWith('/admin')) {
+        supabaseResponse.headers.set('Cache-Control', 'private, no-store')
+    }
+
     return supabaseResponse
 }
