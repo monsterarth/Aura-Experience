@@ -209,24 +209,36 @@ function StructuresWizard() {
 
         setSaving(true);
         try {
-            const guestName = stay.guestId ? "Hóspede" : "Acomodação"; // Podíamos puxar do GuestContext. Mas aqui é genérico.
-
             const bookingStatus = selectedStructure.visibility === 'guest_auto_approve' ? 'approved' : 'pending';
 
-            await StructureService.createBooking(property.id, {
-                structureId: selectedStructure.id,
-                propertyId: property.id,
-                stayId: stay.id,
-                guestId: stay.guestId,
-                guestName: guestName,
-                date: selectedDate,
-                startTime: selectedSlot.startTime,
-                endTime: selectedSlot.endTime,
-                status: bookingStatus,
-                source: 'guest',
-                type: 'booking',
-                notes: notes
-            }, stay.guestId, "Guest App");
+            const res = await fetch('/api/guest/structure-bookings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    propertyId: property.id,
+                    stayId: stay.id,
+                    guestId: stay.guestId,
+                    booking: {
+                        structureId: selectedStructure.id,
+                        propertyId: property.id,
+                        stayId: stay.id,
+                        guestId: stay.guestId,
+                        guestName: "Hóspede",
+                        date: selectedDate,
+                        startTime: selectedSlot.startTime,
+                        endTime: selectedSlot.endTime,
+                        status: bookingStatus,
+                        source: 'guest',
+                        type: 'booking',
+                        notes: notes,
+                    },
+                }),
+            });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || `HTTP ${res.status}`);
+            }
 
             setSuccess(true);
         } catch (error) {
