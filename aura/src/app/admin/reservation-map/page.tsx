@@ -111,11 +111,8 @@ export default function ReservationMapPage() {
     const [holidays, setHolidays] = useState<Date[]>([]);
     const [loading, setLoading] = useState(true);
 
-    // Timeline State
-    const [startDate, setStartDate] = useState(() => {
-        const today = startOfDay(new Date());
-        return addDays(today, -3); // Show 3 days before today
-    });
+    // Timeline State — inicializado em useEffect para evitar hydration mismatch (server=UTC vs client=UTC-3)
+    const [startDate, setStartDate] = useState<Date | null>(null);
 
     // Selection State (drag-to-create / action)
     const [dragState, setDragState] = useState<{
@@ -145,12 +142,20 @@ export default function ReservationMapPage() {
     const [selectedHkCabinId, setSelectedHkCabinId] = useState<string | null>(null);
     const [isHousekeepingModalOpen, setIsHousekeepingModalOpen] = useState(false);
 
+    const [today, setToday] = useState<Date | null>(null);
+
+    // Inicializa datas somente no cliente para evitar hydration mismatch
+    useEffect(() => {
+        const t = startOfDay(new Date());
+        setToday(t);
+        setStartDate(addDays(t, -3));
+    }, []);
+
     // Derived
     const days = useMemo(() => {
+        if (!startDate) return [];
         return Array.from({ length: VISIBLE_DAYS }, (_, i) => addDays(startDate, i));
     }, [startDate]);
-
-    const today = useMemo(() => startOfDay(new Date()), []);
 
     const cabinsMap = useMemo(() => {
         const m: Record<string, Cabin> = {};
@@ -167,7 +172,7 @@ export default function ReservationMapPage() {
     // ==========================================
 
     const loadData = useCallback(async () => {
-        if (!contextProperty?.id) {
+        if (!contextProperty?.id || !startDate) {
             setLoading(false);
             return;
         }
@@ -253,6 +258,7 @@ export default function ReservationMapPage() {
     }, [loadData]);
 
     useEffect(() => {
+        if (!today) return;
         const year = today.getFullYear();
         fetch(`https://brasilapi.com.br/api/feriados/v1/${year}`)
             .then(res => res.json())
@@ -298,7 +304,7 @@ export default function ReservationMapPage() {
     // ==========================================
 
     useEffect(() => {
-        if (scrollRef.current && !loading) {
+        if (scrollRef.current && !loading && today && startDate) {
             const todayIndex = differenceInCalendarDays(today, startDate);
             if (todayIndex >= 0 && todayIndex < VISIBLE_DAYS) {
                 scrollRef.current.scrollLeft = Math.max(0, todayIndex * DAY_WIDTH - 120);
@@ -388,7 +394,7 @@ export default function ReservationMapPage() {
             const minDay = Math.min(dragState.startDay, dragState.endDay);
             const maxDay = Math.max(dragState.startDay, dragState.endDay);
 
-            if (maxDay - minDay >= 1) { // At least 2 days selection
+            if (maxDay - minDay >= 1 && startDate) { // At least 2 days selection
                 const checkInDate = addDays(startDate, minDay);
                 const checkOutDate = addDays(startDate, maxDay + 1);
 
@@ -517,6 +523,7 @@ export default function ReservationMapPage() {
     // ==========================================
 
     const getBarPosition = (itemCheckIn: string, itemCheckOut: string) => {
+        if (!startDate) return null;
         const checkInDate = startOfDay(new Date(itemCheckIn));
         const checkOutDate = startOfDay(new Date(itemCheckOut));
         const windowStart = startDate;
@@ -578,8 +585,8 @@ export default function ReservationMapPage() {
     // NAVIGATION
     // ==========================================
 
-    const goToPreviousWeek = () => setStartDate(prev => addDays(prev, -7));
-    const goToNextWeek = () => setStartDate(prev => addDays(prev, 7));
+    const goToPreviousWeek = () => setStartDate(prev => prev ? addDays(prev, -7) : prev);
+    const goToNextWeek = () => setStartDate(prev => prev ? addDays(prev, 7) : prev);
     const goToToday = () => setStartDate(addDays(startOfDay(new Date()), -3));
 
     // ==========================================
@@ -625,7 +632,7 @@ export default function ReservationMapPage() {
                             <ChevronRight size={18} />
                         </button>
                         <div className="hidden md:block px-3 text-xs font-bold text-foreground/40 uppercase tracking-widest">
-                            {format(startDate, "dd MMM", { locale: ptBR })} — {format(addDays(startDate, VISIBLE_DAYS - 1), "dd MMM yyyy", { locale: ptBR })}
+                            {startDate ? `${format(startDate, "dd MMM", { locale: ptBR })} — ${format(addDays(startDate, VISIBLE_DAYS - 1), "dd MMM yyyy", { locale: ptBR })}` : ""}
                         </div>
                     </div>
                 </header>
@@ -694,7 +701,7 @@ export default function ReservationMapPage() {
                                     {/* Day Headers */}
                                     <div className="flex border-b border-border bg-secondary/50" style={{ height: ROW_HEIGHT }}>
                                         {days.map((day, i) => {
-                                            const isToday = isSameDay(day, today);
+                                            const isToday = today ? isSameDay(day, today) : false;
                                             const isWeekend = day.getDay() === 0 || day.getDay() === 6;
                                             const isHoliday = holidays.some(h => isSameDay(h, day));
                                             const isSpecialDay = isWeekend || isHoliday;
@@ -747,7 +754,7 @@ export default function ReservationMapPage() {
                                             >
                                                 {/* Day cell backgrounds (for drag & today highlight & visual borders) */}
                                                 {days.map((day, i) => {
-                                                    const isToday = isSameDay(day, today);
+                                                    const isToday = today ? isSameDay(day, today) : false;
                                                     const isWeekend = day.getDay() === 0 || day.getDay() === 6;
                                                     const isHoliday = holidays.some(h => isSameDay(h, day));
                                                     const isSpecialDay = isWeekend || isHoliday;
