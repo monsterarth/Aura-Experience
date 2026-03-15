@@ -193,7 +193,7 @@ export default function ReservationMapPage() {
                     }
 
                     const stays = data || [];
-                    const guestIds = [...new Set(stays.map((s: any) => s.guestId).filter(Boolean))];
+                    const guestIds = Array.from(new Set(stays.map((s: any) => s.guestId).filter(Boolean))) as string[];
                     let guestMap: Record<string, string> = {};
                     if (guestIds.length > 0) {
                         const { data: guestsData } = await supabase
