@@ -282,6 +282,8 @@ function NewStayPageContent() {
                   {/* O onChange abaixo blinda qualquer caractere que não seja número */}
                   <input
                     required
+                    type="tel"
+                    autoComplete="tel"
                     value={guestData.phone}
                     onChange={e => setGuestData({ ...guestData, phone: e.target.value.replace(/\D/g, '') })}
                     placeholder="Ex: 5548999999999"
