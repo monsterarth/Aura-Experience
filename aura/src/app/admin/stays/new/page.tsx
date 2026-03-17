@@ -167,8 +167,8 @@ function NewStayPageContent() {
 
       toast.success("WhatsApp Validado! Criando registros...", { id: toastId });
 
-      // Usa o número oficial devolvido pela Meta (já validado com/sem o 9º dígito real da operadora)
-      const validMetaNumber = whatsData.validNumber;
+      // Usa o número digitado pelo usuário (já validado pela Meta)
+      const finalPhone = guestData.phone;
 
       // 2. CRIA O HÓSPEDE FÍSICO
       const cleanDoc = docNumber.replace(/\D/g, '');
@@ -179,7 +179,7 @@ function NewStayPageContent() {
         propertyId: contextProperty.id,
         fullName: guestData.fullName,
         email: guestData.email,
-        phone: validMetaNumber, // <-- Aqui garantimos o número limpo e 100% válido
+        phone: finalPhone, // <-- Aqui garantimos o número limpo e 100% válido
         nationality: 'Brasil',
         document: { type: 'CPF', number: docNumber || 'N/A' },
         birthDate: "", gender: "Outro", occupation: "", allergies: [],
@@ -190,7 +190,7 @@ function NewStayPageContent() {
       await ContactService.upsertContact(
         contextProperty.id,
         guestData.fullName,
-        validMetaNumber,
+        finalPhone,
         true, // isGuest
         savedGuestId
       );

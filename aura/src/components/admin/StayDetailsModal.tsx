@@ -654,7 +654,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                 {guest?.id && (
                   <button
                     type="button"
-                    onClick={() => window.open(`/admin/guests/${guest.id}`, '_blank')}
+                    onClick={() => window.open(`/admin/guests?id=${guest.id}`, '_blank')}
                     className="inline-flex items-center gap-1.5 text-[11px] font-bold text-primary hover:underline"
                   >
                     Ver Hóspede →
