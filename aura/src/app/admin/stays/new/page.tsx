@@ -142,7 +142,14 @@ function NewStayPageContent() {
       return toast.error("Nome, Cabanas e Período completo são obrigatórios.");
     }
 
-    if (guestData.phone.length < 10) {
+    let cleanedPhone = guestData.phone.replace(/\D/g, '');
+    
+    // Auto-insere o código do Brasil (55) se o usuário digitou apenas o DDD + Número (10 ou 11 dígitos)
+    if ((cleanedPhone.length === 10 || cleanedPhone.length === 11) && !cleanedPhone.startsWith('55')) {
+      cleanedPhone = '55' + cleanedPhone;
+    }
+
+    if (cleanedPhone.length < 10) {
       return toast.error("O número de WhatsApp digitado é muito curto.");
     }
 
@@ -154,7 +161,7 @@ function NewStayPageContent() {
       const whatsRes = await fetch('/api/whatsapp/check-number', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ number: guestData.phone })
+        body: JSON.stringify({ number: cleanedPhone })
       });
 
       const whatsData = await whatsRes.json();
@@ -167,8 +174,8 @@ function NewStayPageContent() {
 
       toast.success("WhatsApp Validado! Criando registros...", { id: toastId });
 
-      // Usa o número digitado pelo usuário (já validado pela Meta)
-      const finalPhone = guestData.phone;
+      // Usa o número devolvido pela Meta, garantindo a formatação correta (incluindo tratamento de 9º dígito)
+      const finalPhone = whatsData.validNumber || cleanedPhone;
 
       // 2. CRIA O HÓSPEDE FÍSICO
       const cleanDoc = docNumber.replace(/\D/g, '');
@@ -278,16 +285,14 @@ function NewStayPageContent() {
                   <input required value={guestData.fullName} onChange={e => setGuestData({ ...guestData, fullName: e.target.value })} className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase text-muted-foreground">WhatsApp (Apenas Números) *</label>
-                  {/* O onChange abaixo blinda qualquer caractere que não seja número */}
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground">WhatsApp *</label>
                   <input
                     required
                     type="tel"
                     autoComplete="tel"
                     value={guestData.phone}
-                    onChange={e => setGuestData({ ...guestData, phone: e.target.value.replace(/\D/g, '') })}
-                    placeholder="Ex: 5548999999999"
-                    maxLength={15}
+                    onChange={e => setGuestData({ ...guestData, phone: e.target.value })}
+                    placeholder="Ex: +55 53 98116-9216"
                     className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground font-mono outline-none focus:border-primary/50 transition-colors"
                   />
                 </div>
