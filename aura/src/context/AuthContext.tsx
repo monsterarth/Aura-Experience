@@ -31,6 +31,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const userRef = useRef<SupabaseUser | null>(null);
   const userDataRef = useRef<Staff | null>(null);
   const isLoggingOut = useRef(false);
+  const initialSessionReceived = useRef(false);
 
   const supabase = createClientBrowser();
 
@@ -54,84 +55,31 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }, [supabase]);
 
-  /**
-   * Tenta renovar a sessão de forma segura.
-   * 1. getSession() — lê os cookies e usa o refresh token para trocar por novo access token
-   * 2. getUser() — valida o token com o servidor Supabase Auth
-   * 
-   * Se o access token expirou, getSession() faz o refresh automaticamente via o refresh_token
-   * armazenado nos cookies pelo @supabase/ssr.
-   */
-  const refreshSession = useCallback(async (): Promise<SupabaseUser | null> => {
-    try {
-      // Passo 1: Força o client a tentar refresh do token via cookies
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-      if (sessionError || !session) {
-        console.warn("[Auth] Sessão não encontrada ou expirada:", sessionError?.message);
-        return null;
-      }
-
-      // Passo 2: Valida o user com o servidor (garante que o token é válido)
-      const { data: { user: validatedUser }, error: userError } = await supabase.auth.getUser();
-
-      if (userError || !validatedUser) {
-        console.warn("[Auth] Usuário não validado:", userError?.message);
-        return null;
-      }
-
-      return validatedUser;
-    } catch (err: any) {
-      // AbortError é esperado no React Strict Mode (dev): o double-mount faz a segunda
-      // instância roubar o navigator lock da primeira via 'steal'. Silenciar.
-      if (err?.name !== 'AbortError') {
-        console.error("[Auth] Erro ao renovar sessão:", err);
-      }
-      return null;
-    }
-  }, [supabase]);
-
   useEffect(() => {
     let mounted = true;
 
     /**
-     * Inicialização: Usa refreshSession() que faz getSession() + getUser().
-     * NÃO redireciona para login — o middleware já protege as rotas.
-     * Se falhar, simplesmente fica sem auth e a UI mostra o estado adequado.
-     * Nota: Não usa guard de ref para Strict Mode — depende de `mounted` para
-     * ignorar o resultado do mount que foi desmontado.
+     * Safety timeout: se INITIAL_SESSION não disparar em 8s (ex: lock travado),
+     * desbloqueia o loading para não ficar em tela de carregamento eterna.
      */
-    async function initializeAuth() {
-      try {
-        const currentUser = await refreshSession();
-
-        if (!mounted) return;
-
-        if (!currentUser) {
-          setUser(null);
-          setUserData(null);
-          setLoading(false);
-          return;
-        }
-
-        setUser(currentUser);
-        const staff = await fetchStaffData(currentUser.id);
-        if (mounted && staff) {
-          setUserData(staff);
-        }
-      } catch (err) {
-        console.error("[Auth] Erro na inicialização:", err);
-      } finally {
+    const safetyTimeout = setTimeout(() => {
+      if (mounted && !initialSessionReceived.current) {
+        console.warn("[Auth] Timeout aguardando INITIAL_SESSION — desbloqueando loading.");
+        initialSessionReceived.current = true;
         if (mounted) setLoading(false);
       }
-    }
-
-    initializeAuth();
+    }, 8000);
 
     /**
-     * Listener de mudança de estado de auth.
-     * IMPORTANTE: Só faz logout no evento SIGNED_OUT explícito.
-     * Eventos transitórios com session=null (durante refresh) são ignorados.
+     * onAuthStateChange é a fonte principal de verdade.
+     *
+     * NÃO usamos getSession()/getUser() manuais na inicialização, pois ambos
+     * competem pelo mesmo navigator lock que o initialize() interno do cliente
+     * já está segurando. Isso causava o travamento de 5s e, em condições de
+     * corrida (React Strict Mode, múltiplas abas), o loading ficava eterno.
+     *
+     * O evento INITIAL_SESSION dispara APÓS o initialize() interno completar —
+     * sem competição de lock. É o padrão recomendado pelo Supabase para React.
      */
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event: AuthChangeEvent, session: Session | null) => {
@@ -139,11 +87,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         const currentUser = session?.user || null;
 
+        if (event === 'INITIAL_SESSION') {
+          initialSessionReceived.current = true;
+          clearTimeout(safetyTimeout);
+
+          if (currentUser) {
+            setUser(currentUser);
+            const staff = await fetchStaffData(currentUser.id);
+            if (mounted && staff) setUserData(staff);
+          } else {
+            setUser(null);
+            setUserData(null);
+          }
+
+          if (mounted) setLoading(false);
+          return;
+        }
+
         if (event === 'SIGNED_OUT') {
           setUser(null);
           setUserData(null);
 
-          // Só redireciona se não estiver já na página de login
           if (typeof window !== 'undefined' &&
             !window.location.pathname.includes('/admin/login') &&
             !isLoggingOut.current) {
@@ -156,18 +120,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
           if (currentUser) {
             setUser(currentUser);
-            // Só busca staff se mudou o user ou se não temos dados ainda
             if (currentUser.id !== userRef.current?.id || !userDataRef.current) {
               const staff = await fetchStaffData(currentUser.id);
-              if (mounted && staff) {
-                setUserData(staff);
-              }
+              if (mounted && staff) setUserData(staff);
             }
           }
+          return;
         }
 
-        // Para outros eventos (INITIAL_SESSION, USER_UPDATED, etc.)
-        if (currentUser && event !== 'TOKEN_REFRESHED' && event !== 'SIGNED_IN') {
+        // USER_UPDATED e outros eventos
+        if (currentUser) {
           setUser(currentUser);
         }
       }
@@ -175,38 +137,29 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     /**
      * Listener de visibilidade da aba.
-     * Quando o usuário volta para a aba após idle, re-valida a sessão
-     * via refreshSession() (getSession + getUser) para renovar os tokens.
-     * 
-     * Usa refs para comparar com o estado atual (evita closure stale).
-     * NÃO zera userData em caso de falha — mantém cache, o middleware cuida da proteção.
+     * Quando o usuário volta para a aba após idle, re-valida a sessão com getUser()
+     * (chamada ao servidor Supabase Auth — não compete com o lock de inicialização).
      */
     const handleVisibilityChange = async () => {
       if (document.visibilityState !== 'visible' || !mounted) return;
 
       try {
-        const refreshedUser = await refreshSession();
+        const { data: { user: refreshedUser }, error } = await supabase.auth.getUser();
 
         if (!mounted) return;
 
-        if (!refreshedUser) {
-          // Erro transitório ou sessão realmente morta.
-          // NÃO zeramos userData — mantemos o cache.
-          // O middleware vai redirecionar se a sessão está realmente morta
-          // na próxima navegação.
-          console.warn("[Auth] Falha ao renovar sessão no visibility change — mantendo cache.");
+        if (error || !refreshedUser) {
+          console.warn("[Auth] Sessão não encontrada no visibility change — mantendo cache.");
           return;
         }
 
         setUser(refreshedUser);
 
-        // Só refaz fetch do staff se o user mudou ou não temos dados
         if (refreshedUser.id !== userRef.current?.id || !userDataRef.current) {
           const staff = await fetchStaffData(refreshedUser.id);
           if (mounted && staff) setUserData(staff);
         }
       } catch {
-        // Erro de rede transitório — não fazer nada, manter cache
         console.warn("[Auth] Erro de rede no visibility change — mantendo cache.");
       }
     };
@@ -215,6 +168,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     return () => {
       mounted = false;
+      clearTimeout(safetyTimeout);
       authListener.subscription.unsubscribe();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
