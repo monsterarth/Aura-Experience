@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { PropertyService } from "@/services/property-service";
@@ -21,7 +21,6 @@ import { createClientBrowser } from "@/lib/supabase-browser";
 import Image from "next/image";
 
 export const Sidebar = () => {
-  const router = useRouter();
   const { userData, isSuperAdmin } = useAuth();
   const { currentProperty: property, setProperty } = useProperty();
   const pathname = usePathname();
@@ -70,28 +69,46 @@ export const Sidebar = () => {
   }
 
   // ==========================================
-  // BLOCO 1: OPERAÇÃO DIÁRIA
+  // BLOCO 1: PAINÉIS (dashboards por papel)
   // ==========================================
-  const operacaoItems = [
+  const paineisItems = [
     { title: "Painel Aura", icon: LayoutDashboard, href: "/admin/core/dashboard", roles: ["super_admin"] },
     { title: "Recepção", icon: BellRing, href: "/admin/reception", roles: ["super_admin", "admin", "reception"] },
+  ];
+
+  // ==========================================
+  // BLOCO 2: HOSPEDAGEM (ciclo de vida do hóspede)
+  // ==========================================
+  const hospedagemItems = [
     { title: "Estadias", icon: Home, href: "/admin/stays", roles: ["super_admin", "admin", "reception", "governance"] },
-    { title: "Hóspedes", icon: UserSearch, href: "/admin/guests", roles: ["super_admin", "admin", "reception"] },
     { title: "Mapa de Reservas", icon: Calendar, href: "/admin/reservation-map", roles: ["super_admin", "admin", "reception"] },
+    { title: "Hóspedes", icon: UserSearch, href: "/admin/guests", roles: ["super_admin", "admin", "reception"] },
+    { title: "Governança", icon: Sparkles, href: "/admin/governance", roles: ["super_admin", "admin", "governance"] },
+  ];
+
+  // ==========================================
+  // BLOCO 3: AGENDA (o que acontece na propriedade)
+  // ==========================================
+  const agendaItems = [
     { title: "Calendário", icon: CalendarDays, href: "/admin/calendario", roles: ["super_admin", "admin", "reception"] },
     { title: "Eventos", icon: Ticket, href: "/admin/eventos", roles: ["super_admin", "admin", "reception"] },
-    { title: "Comunicação", icon: MessageSquare, href: "/admin/comunicacao", roles: ["super_admin", "admin", "reception"] },
-    { title: "Governança", icon: Sparkles, href: "/admin/governance", roles: ["super_admin", "admin", "governance"] },
     { title: "Agenda Estrut.", icon: Calendar, href: "/admin/core/structures/bookings", roles: ["super_admin", "admin", "reception"] },
     { title: "Manutenção", icon: Wrench, href: "/admin/maintenance", roles: ["super_admin", "admin", "maintenance"] },
-    { title: "Café Salão", icon: Coffee, href: "/admin/cafe-salao", roles: ["super_admin", "admin", "reception", "kitchen", "waiter"] },
-    { title: "Gastronomia", icon: Coffee, href: "/admin/food-and-beverage/menu", roles: ["super_admin", "admin", "reception", "kitchen", "waiter"] },
+  ];
+
+  // ==========================================
+  // BLOCO 4: SERVIÇOS (experiência e consumo)
+  // ==========================================
+  const servicosItems = [
     { title: "Concierge", icon: ShoppingBag, href: "/admin/concierge", roles: ["super_admin", "admin", "reception"] },
+    { title: "Gastronomia", icon: Coffee, href: "/admin/food-and-beverage/menu", roles: ["super_admin", "admin", "reception", "kitchen", "waiter"] },
+    { title: "Café Salão", icon: Coffee, href: "/admin/cafe-salao", roles: ["super_admin", "admin", "reception", "kitchen", "waiter"] },
+    { title: "Comunicação", icon: MessageSquare, href: "/admin/comunicacao", roles: ["super_admin", "admin", "reception"] },
     { title: "Avaliações", icon: Star, href: "/admin/surveys/responses", roles: ["super_admin", "admin", "reception"] },
   ];
 
   // ==========================================
-  // BLOCO 2: SETUP & CONFIGURAÇÕES
+  // BLOCO 5: SETUP & CONFIGURAÇÕES
   // ==========================================
   const setupItems = [
     {
@@ -118,8 +135,43 @@ export const Sidebar = () => {
     return item.roles.includes(userData.role);
   });
 
-  const filteredOperacao = filterItems(operacaoItems);
+  const filteredPaineis = filterItems(paineisItems);
+  const filteredHospedagem = filterItems(hospedagemItems);
+  const filteredAgenda = filterItems(agendaItems);
+  const filteredServicos = filterItems(servicosItems);
   const filteredSetup = filterItems(setupItems);
+
+  const navLinkClass = (href: string, exact = false) => cn(
+    "flex items-center gap-3 rounded-xl text-xs font-bold transition-all uppercase tracking-wide",
+    isCollapsed ? "justify-center p-3.5" : "px-4 py-3.5",
+    (exact ? pathname === href : (pathname === href || pathname.startsWith(href)))
+      ? "bg-primary text-black shadow-[0_0_20px_rgba(var(--primary),0.3)]"
+      : "text-foreground/40 hover:text-foreground hover:bg-white/5"
+  );
+
+  const NavSection = ({ label, items, exactRoutes = [] }: { label: string; items: any[]; exactRoutes?: string[] }) => {
+    if (items.length === 0) return null;
+    return (
+      <div className="space-y-1 mb-6">
+        {isCollapsed ? (
+          <div className="w-full h-px bg-white/5 my-4" />
+        ) : (
+          <p className="px-4 text-[10px] font-black text-foreground/40 uppercase tracking-widest mb-2">{label}</p>
+        )}
+        {items.map((item) => (
+          <Link
+            key={item.href}
+            href={item.href}
+            title={isCollapsed ? item.title : undefined}
+            className={navLinkClass(item.href, exactRoutes.includes(item.href))}
+          >
+            <item.icon size={18} className="shrink-0" />
+            {!isCollapsed && <span className="truncate">{item.title}</span>}
+          </Link>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -212,61 +264,11 @@ export const Sidebar = () => {
         )}
 
         <div className="flex-1 overflow-y-auto custom-scrollbar -mx-2 px-2">
-          {/* BLOCO: OPERAÇÃO */}
-          {filteredOperacao.length > 0 && (
-            <div className="space-y-1 mb-8">
-              {isCollapsed ? (
-                <div className="w-full h-px bg-white/5 my-4" />
-              ) : (
-                <p className="px-4 text-[10px] font-black text-foreground/40 uppercase tracking-widest mb-2">Operação</p>
-              )}
-              {filteredOperacao.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  title={isCollapsed ? item.title : undefined}
-                  className={cn(
-                    "flex items-center gap-3 rounded-xl text-xs font-bold transition-all uppercase tracking-wide",
-                    isCollapsed ? "justify-center p-3.5" : "px-4 py-3.5",
-                    pathname === item.href || (pathname.startsWith(item.href) && item.href !== "/admin/core/dashboard")
-                      ? "bg-primary text-black shadow-[0_0_20px_rgba(var(--primary),0.3)]"
-                      : "text-foreground/40 hover:text-foreground hover:bg-white/5"
-                  )}
-                >
-                  <item.icon size={18} className="shrink-0" />
-                  {!isCollapsed && <span className="truncate">{item.title}</span>}
-                </Link>
-              ))}
-            </div>
-          )}
-
-          {/* BLOCO: SETUP */}
-          {filteredSetup.length > 0 && (
-            <div className="space-y-1 pb-4">
-              {isCollapsed ? (
-                <div className="w-full h-px bg-white/5 my-4" />
-              ) : (
-                <p className="px-4 text-[10px] font-black text-foreground/40 uppercase tracking-widest mb-2">Setup</p>
-              )}
-              {filteredSetup.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  title={isCollapsed ? item.title : undefined}
-                  className={cn(
-                    "flex items-center gap-3 rounded-xl text-xs font-bold transition-all uppercase tracking-wide",
-                    isCollapsed ? "justify-center p-3.5" : "px-4 py-3.5",
-                    pathname === item.href || (pathname.startsWith(item.href) && item.href !== "/admin/core/properties")
-                      ? "bg-primary text-black shadow-[0_0_20px_rgba(var(--primary),0.3)]"
-                      : "text-foreground/40 hover:text-foreground hover:bg-white/5"
-                  )}
-                >
-                  <item.icon size={18} className="shrink-0" />
-                  {!isCollapsed && <span className="truncate">{item.title}</span>}
-                </Link>
-              ))}
-            </div>
-          )}
+          <NavSection label="Painéis" items={filteredPaineis} exactRoutes={["/admin/core/dashboard", "/admin/reception"]} />
+          <NavSection label="Hospedagem" items={filteredHospedagem} />
+          <NavSection label="Agenda" items={filteredAgenda} />
+          <NavSection label="Serviços" items={filteredServicos} />
+          <NavSection label="Setup" items={filteredSetup} exactRoutes={["/admin/core/properties"]} />
         </div>
 
         {/* FOOTER */}
