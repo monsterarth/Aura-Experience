@@ -432,8 +432,8 @@ function StructuresWizard() {
 
         if (!slot.available) {
             const booking = slot.bookingId ? dayBookings.find(b => b.id === slot.bookingId) : null;
-            if (booking?.stayId === stay?.id && (booking.status === 'pending' || booking.status === 'approved')) return 'own_active';
-            if (booking?.stayId === stay?.id && booking.status === 'completed') return 'own_done';
+            if (booking && booking.stayId === stay?.id && (booking.status === 'pending' || booking.status === 'approved')) return 'own_active';
+            if (booking && booking.stayId === stay?.id && booking.status === 'completed') return 'own_done';
             if (booking?.type === 'maintenance_block') return 'maintenance';
             return 'occupied';
         }
