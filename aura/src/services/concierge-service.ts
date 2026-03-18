@@ -95,8 +95,8 @@ export const ConciergeService = {
   async _enrichRequests(requests: any[]): Promise<ConciergeRequest[]> {
     if (!requests.length) return [];
 
-    const itemIds = [...new Set(requests.map((r) => r.itemId).filter(Boolean))];
-    const cabinIds = [...new Set(requests.map((r) => r.cabinId).filter(Boolean))];
+    const itemIds = Array.from(new Set(requests.map((r) => r.itemId).filter(Boolean)));
+    const cabinIds = Array.from(new Set(requests.map((r) => r.cabinId).filter(Boolean)));
 
     const [itemsRes, cabinsRes] = await Promise.all([
       supabase.from('concierge_items').select('*').in('id', itemIds),
