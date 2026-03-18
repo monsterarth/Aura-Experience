@@ -221,8 +221,7 @@ function StructuresWizard() {
         const channel = guestRealtimeClient
             .channel(`guest-structures-${property.id}-s${step}`)
             .on(
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                'postgres_changes' as any,
+                'postgres_changes' as any, // supabase-js typing workaround
                 {
                     event: '*',
                     schema: 'public',
