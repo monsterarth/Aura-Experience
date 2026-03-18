@@ -146,8 +146,8 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Impede reserva duplicada: o hóspede não pode ter 2 reservas ativas
-        // na mesma estrutura no mesmo dia (independente de unidade)
+        // Política: cada estadia pode utilizar cada estrutura no máximo 1x por dia,
+        // independente de unidade e independente de já ter finalizado o uso.
         if (stayId && booking.structureId && booking.date) {
             const { data: duplicate } = await supabaseAdmin
                 .from('structure_bookings')
@@ -155,13 +155,13 @@ export async function POST(request: NextRequest) {
                 .eq('stayId', stayId)
                 .eq('structureId', booking.structureId)
                 .eq('date', booking.date)
-                .in('status', ['pending', 'approved'])
+                .in('status', ['pending', 'approved', 'completed'])
                 .limit(1)
                 .single();
 
             if (duplicate) {
                 return NextResponse.json(
-                    { error: "Você já tem uma reserva ativa nesta estrutura para hoje." },
+                    { error: "Esta estrutura já foi utilizada hoje. Cada acomodação pode utilizar cada área 1x por dia." },
                     { status: 409 }
                 );
             }

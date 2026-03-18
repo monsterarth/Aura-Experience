@@ -1,12 +1,23 @@
 "use client";
 
-import React, { useState, useEffect, useRef, Suspense } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { createClient } from "@supabase/supabase-js";
 import { StayService } from "@/services/stay-service";
 import { PropertyService } from "@/services/property-service";
 import { StructureService } from "@/services/structure-service";
 import { Stay, Property, Structure, TimeSlot, StructureBooking } from "@/types/aura";
-import { Loader2, ArrowLeft, Calendar, Info, CheckCircle2, ChevronRight, MapPin, Clock, X, Check, Plus } from "lucide-react";
+import { Loader2, ArrowLeft, Calendar, Info, CheckCircle2, ChevronRight, MapPin, Clock, X, Check } from "lucide-react";
+
+// Supabase client dedicado ao portal do hóspede — sem sessão para não competir
+// pelo Web Lock do admin quando ambos estão abertos no mesmo browser.
+const guestRealtimeClient = (() => {
+    if (typeof window === 'undefined') return null;
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) return null;
+    return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+})();
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -86,6 +97,7 @@ const structuresTranslations = {
         confirmChange: 'Confirmar Alteração',
         statusPending: 'Aguardando',
         statusApproved: 'Confirmado',
+        scheduleAnother: 'Agendar outra experiência',
     },
     en: {
         pageTitle: 'Reservations', noSpaces: 'No Spaces',
@@ -117,6 +129,7 @@ const structuresTranslations = {
         confirmChange: 'Confirm Change',
         statusPending: 'Pending',
         statusApproved: 'Confirmed',
+        scheduleAnother: 'Book another experience',
     },
     es: {
         pageTitle: 'Reservas', noSpaces: 'Sin Espacios',
@@ -148,6 +161,7 @@ const structuresTranslations = {
         confirmChange: 'Confirmar Cambio',
         statusPending: 'Pendiente',
         statusApproved: 'Confirmado',
+        scheduleAnother: 'Reservar otra experiencia',
     },
 };
 
@@ -187,8 +201,6 @@ function StructuresWizard() {
     // Pending slot change: guest clicked an available slot but already has a booking
     const [pendingChange, setPendingChange] = useState<{ from: StructureBooking; to: TimeSlot } | null>(null);
 
-    const structuresRef = useRef<HTMLDivElement>(null);
-
     const [notes, setNotes] = useState("");
     const [lang, setLang] = useState<'pt' | 'en' | 'es'>('pt');
     const t = structuresTranslations[lang];
@@ -200,6 +212,33 @@ function StructuresWizard() {
             setGuestTodayBookings(Array.isArray(data) ? data : []);
         } catch { /* silently ignore */ }
     };
+
+    // Realtime: qualquer mudança em structure_bookings para esta property
+    // atualiza a grade de slots e a lista de reservas do hóspede em tempo real.
+    useEffect(() => {
+        if (!guestRealtimeClient || !property || !stay || !selectedDate) return;
+
+        const channel = guestRealtimeClient
+            .channel(`guest-structures-${property.id}-s${step}`)
+            .on(
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                'postgres_changes' as any,
+                {
+                    event: '*',
+                    schema: 'public',
+                    table: 'structure_bookings',
+                    filter: `propertyId=eq.${property.id}`,
+                },
+                () => {
+                    loadGuestTodayBookings(stay.id, property.id, selectedDate);
+                    if (step === 1) reloadSlots();
+                }
+            )
+            .subscribe();
+
+        return () => { guestRealtimeClient.removeChannel(channel); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [property?.id, stay?.id, selectedDate, step, selectedStructure?.id]);
 
     useEffect(() => {
         async function init() {
@@ -503,17 +542,25 @@ function StructuresWizard() {
     // Compute time context for slot state (runs on every render → always current)
     const now = new Date();
     const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
+    // Booking active (pending/approved) — can be changed to another slot
     const guestActiveBookingInCurrentStructure = dayBookings.find(b =>
-        b.stayId === stay?.id && (b.status === 'pending' || b.status === 'approved')
+        b.stayId === stay?.id && ['pending', 'approved'].includes(b.status)
     ) ?? null;
+
+    // Política: 1x por estrutura por estadia por dia (inclui completed).
+    // Se já usou, os slots livres aparecem como indisponíveis (sem motivo exibido).
+    const guestAlreadyUsedStructureToday = dayBookings.some(b =>
+        b.stayId === stay?.id && b.status === 'completed'
+    );
 
     // Slot states:
     // own_active  — guest's own pending/approved booking
     // own_done    — guest's own completed booking
-    // unavailable — occupied by anyone else or maintenance (guest doesn't need to know why)
+    // unavailable — occupied/maintenance or guest already used structure today
     // bookable    — available and selectable
     // past        — slot expired (< 30 min to end)
-    // blocked     — guest already has a booking; visually available but click prompts change
+    // blocked     — guest has active booking; visually available but click prompts change
     type SlotState = 'own_active' | 'own_done' | 'unavailable' | 'bookable' | 'past' | 'blocked';
 
     function getSlotState(slot: TimeSlot): SlotState {
@@ -523,13 +570,13 @@ function StructuresWizard() {
 
         if (!slot.available) {
             const booking = slot.bookingId ? dayBookings.find(b => b.id === slot.bookingId) : null;
-            if (booking && booking.stayId === stay?.id && (booking.status === 'pending' || booking.status === 'approved')) return 'own_active';
+            if (booking && booking.stayId === stay?.id && ['pending', 'approved'].includes(booking.status)) return 'own_active';
             if (booking && booking.stayId === stay?.id && booking.status === 'completed') return 'own_done';
-            // occupied or maintenance — guest just sees "unavailable"
             return 'unavailable';
         }
         if (isExpired) return 'past';
-        if (guestActiveBookingInCurrentStructure) return 'blocked';
+        if (guestActiveBookingInCurrentStructure) return 'blocked';  // can change
+        if (guestAlreadyUsedStructureToday) return 'unavailable';   // used up, no more
         return 'bookable';
     }
 
@@ -619,14 +666,7 @@ function StructuresWizard() {
                                     })}
                                 </div>
 
-                                <button
-                                    onClick={() => structuresRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                                    className="w-full py-3 rounded-2xl bg-white/15 border border-white/20 font-bold text-sm flex items-center justify-center gap-2 hover:bg-white/20 transition-colors"
-                                >
-                                    <Plus size={16} />
-                                    {t.newBooking}
-                                </button>
-                            </div>
+                                            </div>
                         ) : (
                             <div className="bg-primary text-primary-foreground rounded-3xl p-6 shadow-xl shadow-primary/10 overflow-hidden relative">
                                 <div className="absolute right-0 top-0 w-32 h-32 bg-white/10 rounded-bl-full translate-x-1/4 -translate-y-1/4 blur-xl"></div>
@@ -636,7 +676,13 @@ function StructuresWizard() {
                             </div>
                         )}
 
-                        <div ref={structuresRef} className="grid gap-4">
+                        {guestTodayBookings.length > 0 && (
+                            <div className="border-b border-border pb-3">
+                                <h2 className="text-xl font-black uppercase tracking-tighter">{t.scheduleAnother}</h2>
+                            </div>
+                        )}
+
+                        <div className="grid gap-4">
                             {structures.map(s => (
                                 <button
                                     key={s.id}
