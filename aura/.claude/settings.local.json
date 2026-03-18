@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(git push:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(ls -la /c/Aura-Experience/aura/src/app/check-in/[code]/structures/)"
     ]
   }
 }

@@ -96,7 +96,7 @@ export const ConciergeService = {
   ): Promise<ConciergeRequest[]> {
     const { data } = await supabase
       .from('concierge_requests')
-      .select('*, item:concierge_items(*)')
+      .select('*, item:concierge_items!itemId(*)')
       .eq('propertyId', propertyId)
       .eq('stayId', stayId)
       .order('createdAt', { ascending: false });
@@ -106,7 +106,7 @@ export const ConciergeService = {
   async getPendingRequests(propertyId: string): Promise<ConciergeRequest[]> {
     const { data } = await supabase
       .from('concierge_requests')
-      .select('*, item:concierge_items(*), cabin:cabins(name)')
+      .select('*, item:concierge_items!itemId(*), cabin:cabins!cabinId(name)')
       .eq('propertyId', propertyId)
       .eq('status', 'pending')
       .order('createdAt', { ascending: true });
@@ -124,7 +124,7 @@ export const ConciergeService = {
 
     const { data } = await supabase
       .from('concierge_requests')
-      .select('*, item:concierge_items(*), cabin:cabins(name)')
+      .select('*, item:concierge_items!itemId(*), cabin:cabins!cabinId(name)')
       .eq('propertyId', propertyId)
       .neq('status', 'pending')
       .gte('createdAt', todayStart.toISOString())
@@ -210,7 +210,7 @@ export const ConciergeService = {
     // 1. Fetch request + item
     const { data: req, error: reqErr } = await supabase
       .from('concierge_requests')
-      .select('*, item:concierge_items(*)')
+      .select('*, item:concierge_items!itemId(*)')
       .eq('id', requestId)
       .single();
     if (reqErr || !req) throw new Error('Request not found');
@@ -287,7 +287,7 @@ export const ConciergeService = {
     // 1. Fetch request + item
     const { data: req, error: reqErr } = await supabase
       .from('concierge_requests')
-      .select('*, item:concierge_items(*)')
+      .select('*, item:concierge_items!itemId(*)')
       .eq('id', requestId)
       .single();
     if (reqErr || !req) throw new Error('Request not found');
