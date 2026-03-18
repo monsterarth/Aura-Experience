@@ -6,7 +6,7 @@ import { StayService } from "@/services/stay-service";
 import { PropertyService } from "@/services/property-service";
 import { StructureService } from "@/services/structure-service";
 import { Stay, Property, Structure, TimeSlot, StructureBooking } from "@/types/aura";
-import { Loader2, ArrowLeft, Calendar, Info, CheckCircle2, ChevronRight, MapPin, Clock } from "lucide-react";
+import { Loader2, ArrowLeft, Calendar, Info, CheckCircle2, ChevronRight, MapPin, Clock, X, Check } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -65,18 +65,19 @@ const structuresTranslations = {
         requestedDesc: 'Aguarde a confirmação da nossa equipe na recepção via WhatsApp.',
         heroTitle: 'Reserve o seu momento',
         heroDesc: 'Escolha uma de nossas áreas para agendar o seu uso exclusivo.',
-        selectDate: 'Data do Agendamento', availableSlots: 'Horários Disponíveis',
-        noSlots: 'Nenhum horário disponível para hoje.',
+        selectDate: 'Data do Agendamento', slotsLabel: 'Agenda do Dia',
+        noSlots: 'Nenhum horário configurado para hoje.',
         summaryTitle: 'Resumo da Reserva', space: 'Espaço', date: 'Data', time: 'Horário',
         approvalNotice: 'Este agendamento requer aprovação da recepção. Você será notificado sobre o status.',
         notes: 'Observações', notesPlaceholder: 'Alguma observação especial para a equipe?',
         proceed: 'Prosseguir', confirmBooking: 'Confirmar Reserva', sendRequest: 'Enviar Solicitação',
         selectSlot: 'Selecione o horário desejado para hoje.',
         selectUnit: 'Escolha a unidade', unit: 'Unidade', today: 'Hoje',
-        alreadyBooked: 'Você já tem uma reserva ativa',
-        alreadyBookedDesc: 'Para reservar outro horário, cancele a reserva atual primeiro.',
-        cancelBooking: 'Cancelar esta reserva', cancelError: 'Erro ao cancelar. Tente novamente.',
-        bookedAt: 'Agendado para',
+        yourBooking: 'Sua Reserva', finishUse: 'Finalizar Uso', cancel: 'Cancelar',
+        finishSuccess: 'Uso finalizado com sucesso!',
+        cancelError: 'Erro ao cancelar. Tente novamente.',
+        actionError: 'Erro ao atualizar reserva.',
+        slotOccupied: 'Ocupado', slotMaint: 'Manutenção', slotPast: 'Encerrado',
     },
     en: {
         pageTitle: 'Reservations', noSpaces: 'No Spaces',
@@ -87,18 +88,19 @@ const structuresTranslations = {
         requestedDesc: 'Please wait for confirmation from our front desk via WhatsApp.',
         heroTitle: 'Book your moment',
         heroDesc: 'Choose one of our areas to book your exclusive use.',
-        selectDate: 'Booking Date', availableSlots: 'Available Times',
-        noSlots: 'No time slots available for today.',
+        selectDate: 'Booking Date', slotsLabel: "Today's Schedule",
+        noSlots: 'No time slots configured for today.',
         summaryTitle: 'Booking Summary', space: 'Space', date: 'Date', time: 'Time',
         approvalNotice: 'This booking requires front desk approval. You will be notified of the status.',
         notes: 'Notes', notesPlaceholder: 'Any special requests for the team?',
         proceed: 'Continue', confirmBooking: 'Confirm Booking', sendRequest: 'Send Request',
         selectSlot: 'Select the time you prefer for today.',
         selectUnit: 'Choose the unit', unit: 'Unit', today: 'Today',
-        alreadyBooked: 'You already have an active booking',
-        alreadyBookedDesc: 'To book a different time, cancel your current booking first.',
-        cancelBooking: 'Cancel this booking', cancelError: 'Error cancelling. Please try again.',
-        bookedAt: 'Booked for',
+        yourBooking: 'Your Booking', finishUse: 'Finish Use', cancel: 'Cancel',
+        finishSuccess: 'Use marked as finished!',
+        cancelError: 'Error cancelling. Please try again.',
+        actionError: 'Error updating booking.',
+        slotOccupied: 'Occupied', slotMaint: 'Maintenance', slotPast: 'Closed',
     },
     es: {
         pageTitle: 'Reservas', noSpaces: 'Sin Espacios',
@@ -109,18 +111,19 @@ const structuresTranslations = {
         requestedDesc: 'Espera la confirmación de nuestra recepción vía WhatsApp.',
         heroTitle: 'Reserva tu momento',
         heroDesc: 'Elige una de nuestras áreas para reservar su uso exclusivo.',
-        selectDate: 'Fecha de la Reserva', availableSlots: 'Horarios Disponibles',
-        noSlots: 'No hay horarios disponibles para hoy.',
+        selectDate: 'Fecha de la Reserva', slotsLabel: 'Agenda del Día',
+        noSlots: 'No hay horarios configurados para hoy.',
         summaryTitle: 'Resumen de la Reserva', space: 'Espacio', date: 'Fecha', time: 'Horario',
         approvalNotice: 'Esta reserva requiere aprobación de recepción. Será notificado del estado.',
         notes: 'Observaciones', notesPlaceholder: '¿Alguna observación especial para el equipo?',
         proceed: 'Continuar', confirmBooking: 'Confirmar Reserva', sendRequest: 'Enviar Solicitud',
         selectSlot: 'Selecciona el horario deseado para hoy.',
         selectUnit: 'Elige la unidad', unit: 'Unidad', today: 'Hoy',
-        alreadyBooked: 'Ya tienes una reserva activa',
-        alreadyBookedDesc: 'Para reservar otro horario, cancela tu reserva actual primero.',
-        cancelBooking: 'Cancelar esta reserva', cancelError: 'Error al cancelar. Inténtalo de nuevo.',
-        bookedAt: 'Reservado para',
+        yourBooking: 'Tu Reserva', finishUse: 'Finalizar Uso', cancel: 'Cancelar',
+        finishSuccess: '¡Uso finalizado con éxito!',
+        cancelError: 'Error al cancelar. Inténtalo de nuevo.',
+        actionError: 'Error al actualizar reserva.',
+        slotOccupied: 'Ocupado', slotMaint: 'Mantenimiento', slotPast: 'Cerrado',
     },
 };
 
@@ -138,20 +141,21 @@ function StructuresWizard() {
 
     // Wizard State
     const [step, setStep] = useState<0 | 1 | 2>(0);
-    // 0 = Select Structure (+ unit picker sub-view)
-    // 1 = Select Time
-    // 2 = Confirm
 
     const [selectedStructure, setSelectedStructure] = useState<Structure | null>(null);
     const [selectedUnit, setSelectedUnit] = useState<{ id: string; name: string; imageUrl?: string } | null>(null);
     const [showUnitPicker, setShowUnitPicker] = useState(false);
 
     const [selectedDate, setSelectedDate] = useState<string>("");
-    const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([]);
+    // ALL slots for the day (occupied + available)
+    const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([]);
+    // Raw bookings for the day (to look up booking details per slot)
+    const [dayBookings, setDayBookings] = useState<StructureBooking[]>([]);
     const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
+    // Guest's own booking that is "focused" (tapped) for inline actions
+    const [focusedBooking, setFocusedBooking] = useState<StructureBooking | null>(null);
+    const [actionLoading, setActionLoading] = useState(false);
 
-    const [existingBooking, setExistingBooking] = useState<StructureBooking | null>(null);
-    const [cancelling, setCancelling] = useState(false);
     const [notes, setNotes] = useState("");
     const [lang, setLang] = useState<'pt' | 'en' | 'es'>('pt');
     const t = structuresTranslations[lang];
@@ -181,7 +185,6 @@ function StructuresWizard() {
                 if (!prop) return;
                 setProperty(prop as Property);
 
-                // Usar API route server-side para não inicializar sessão auth no browser do hóspede
                 const res = await fetch(`/api/guest/structures?propertyId=${prop.id}`);
                 const allStructures: Structure[] = await res.json();
 
@@ -199,7 +202,7 @@ function StructuresWizard() {
         init();
     }, [code]);
 
-    // Fetch slots when structure/unit changes (date is always today)
+    // Fetch ALL slots for the day (no time filter — shown with color states)
     useEffect(() => {
         async function fetchSlots() {
             if (!property || !selectedStructure || !selectedDate) return;
@@ -208,25 +211,14 @@ function StructuresWizard() {
                     `/api/guest/structure-slots?propertyId=${property.id}&structureId=${selectedStructure.id}&date=${selectedDate}`
                 );
                 const bookings: StructureBooking[] = await res.json();
-
-                // Verifica se o hóspede já tem reserva ativa nesta estrutura hoje
-                const activeBooking = stay ? bookings.find(b =>
-                    b.stayId === stay.id &&
-                    (b.status === 'pending' || b.status === 'approved')
-                ) : null;
-                setExistingBooking(activeBooking || null);
+                setDayBookings(bookings);
 
                 const allSlots = StructureService.generateTimeSlots(selectedStructure, bookings, selectedUnit?.id);
+                setTimeSlots(allSlots);
 
-                // Filtrar slots com menos de 30 minutos restantes até o fim
-                const now = new Date();
-                const nowMinutes = now.getHours() * 60 + now.getMinutes();
-                const filteredSlots = allSlots.filter(slot => {
-                    const [endH, endM] = slot.endTime.split(':').map(Number);
-                    return (endH * 60 + endM - nowMinutes) >= 30;
-                });
-
-                setAvailableSlots(filteredSlots);
+                // Clear selections when reloading
+                setSelectedSlot(null);
+                setFocusedBooking(null);
             } catch (e) {
                 console.error(e);
             }
@@ -236,33 +228,56 @@ function StructuresWizard() {
         }
     }, [selectedDate, selectedStructure, selectedUnit, property, step]);
 
-    const cancelExistingBooking = async () => {
-        if (!existingBooking || !stay || !property) return;
-        setCancelling(true);
+    const reloadSlots = async () => {
+        if (!property || !selectedStructure || !selectedDate) return;
+        const res = await fetch(
+            `/api/guest/structure-slots?propertyId=${property.id}&structureId=${selectedStructure.id}&date=${selectedDate}`
+        );
+        const bookings: StructureBooking[] = await res.json();
+        setDayBookings(bookings);
+        const allSlots = StructureService.generateTimeSlots(selectedStructure, bookings, selectedUnit?.id);
+        setTimeSlots(allSlots);
+        setSelectedSlot(null);
+        setFocusedBooking(null);
+    };
+
+    const cancelFocused = async () => {
+        if (!focusedBooking || !stay || !property) return;
+        setActionLoading(true);
         try {
             const res = await fetch(
-                `/api/guest/structure-bookings?bookingId=${existingBooking.id}&stayId=${stay.id}&propertyId=${property.id}`,
+                `/api/guest/structure-bookings?bookingId=${focusedBooking.id}&stayId=${stay.id}&propertyId=${property.id}`,
                 { method: 'DELETE' }
             );
             if (!res.ok) throw new Error();
-            setExistingBooking(null);
-            setSelectedSlot(null);
-            // Recarrega slots após cancelamento
-            const slotsRes = await fetch(
-                `/api/guest/structure-slots?propertyId=${property.id}&structureId=${selectedStructure!.id}&date=${selectedDate}`
-            );
-            const bookings: StructureBooking[] = await slotsRes.json();
-            const allSlots = StructureService.generateTimeSlots(selectedStructure!, bookings, selectedUnit?.id);
-            const now = new Date();
-            const nowMinutes = now.getHours() * 60 + now.getMinutes();
-            setAvailableSlots(allSlots.filter(slot => {
-                const [h, m] = slot.endTime.split(':').map(Number);
-                return (h * 60 + m - nowMinutes) >= 30;
-            }));
+            await reloadSlots();
         } catch {
             toast.error(t.cancelError);
         } finally {
-            setCancelling(false);
+            setActionLoading(false);
+        }
+    };
+
+    const markFocusedDone = async () => {
+        if (!focusedBooking || !stay || !property) return;
+        setActionLoading(true);
+        try {
+            const res = await fetch('/api/guest/structure-bookings', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    bookingId: focusedBooking.id,
+                    stayId: stay.id,
+                    propertyId: property.id,
+                }),
+            });
+            if (!res.ok) throw new Error();
+            toast.success(t.finishSuccess);
+            await reloadSlots();
+        } catch {
+            toast.error(t.actionError);
+        } finally {
+            setActionLoading(false);
         }
     };
 
@@ -270,7 +285,7 @@ function StructuresWizard() {
         setSelectedStructure(s);
         setSelectedUnit(null);
         setSelectedSlot(null);
-        setExistingBooking(null);
+        setFocusedBooking(null);
         if (s.units && s.units.length > 0) {
             setShowUnitPicker(true);
         } else {
@@ -315,6 +330,8 @@ function StructuresWizard() {
                     propertyId: property.id,
                     stayId: stay.id,
                     guestId: stay.guestId,
+                    // Offset em minutos (positivo = oeste de UTC). Brasil = 180 (UTC-3)
+                    timezoneOffset: new Date().getTimezoneOffset(),
                     booking: {
                         structureId: selectedStructure.id,
                         propertyId: property.id,
@@ -339,9 +356,9 @@ function StructuresWizard() {
             }
 
             setSuccess(true);
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            toast.error("Erro ao solicitar agendamento. Pode estar ocupado.");
+            toast.error(error?.message || "Erro ao solicitar agendamento. Pode estar ocupado.");
         } finally {
             setSaving(false);
         }
@@ -401,6 +418,30 @@ function StructuresWizard() {
         );
     }
 
+    // Compute time context for slot state (runs on every render → always current)
+    const now = new Date();
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const hasGuestActiveBooking = dayBookings.some(b =>
+        b.stayId === stay?.id && (b.status === 'pending' || b.status === 'approved')
+    );
+
+    function getSlotState(slot: TimeSlot) {
+        const [endH, endM] = slot.endTime.split(':').map(Number);
+        const endMinutes = endH * 60 + endM;
+        const isExpired = (endMinutes - nowMinutes) < 30;
+
+        if (!slot.available) {
+            const booking = slot.bookingId ? dayBookings.find(b => b.id === slot.bookingId) : null;
+            if (booking?.stayId === stay?.id && (booking.status === 'pending' || booking.status === 'approved')) return 'own_active';
+            if (booking?.stayId === stay?.id && booking.status === 'completed') return 'own_done';
+            if (booking?.type === 'maintenance_block') return 'maintenance';
+            return 'occupied';
+        }
+        if (isExpired) return 'past';
+        if (hasGuestActiveBooking) return 'blocked';
+        return 'bookable';
+    }
+
     return (
         <div className="min-h-[100dvh] bg-background text-foreground flex flex-col font-sans relative" style={themeStyles}>
             <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-border p-4 flex items-center gap-4">
@@ -409,7 +450,6 @@ function StructuresWizard() {
                 </button>
                 <div className="flex-1">
                     <h1 className="text-lg font-black uppercase tracking-tighter">{t.pageTitle}</h1>
-                    {/* Stepper Dots */}
                     <div className="flex items-center gap-1 mt-1">
                         {[0, 1, 2].map(i => (
                             <div key={i} className={cn("h-1 rounded-full transition-all", step >= i ? "w-8 bg-primary" : "w-2 bg-secondary")} />
@@ -501,9 +541,9 @@ function StructuresWizard() {
                     </div>
                 )}
 
-                {/* STEP 1: Select Time (data sempre = hoje) */}
+                {/* STEP 1: Agenda do Dia */}
                 {step === 1 && selectedStructure && (
-                    <div className="space-y-6 animate-in slide-in-from-right-4 duration-500 relative">
+                    <div className="space-y-5 animate-in slide-in-from-right-4 duration-500">
                         <div className="border-b border-border pb-4">
                             <h2 className="text-xl font-black uppercase tracking-tighter">{selectedStructure.name}</h2>
                             {selectedUnit && (
@@ -523,61 +563,120 @@ function StructuresWizard() {
                             </div>
                         </div>
 
-                        {existingBooking ? (
-                            /* Hóspede já tem reserva ativa — bloqueia nova reserva */
-                            <div className="bg-amber-500/10 border border-amber-500/30 rounded-3xl p-6 space-y-4">
-                                <div className="flex items-start gap-3">
-                                    <CheckCircle2 size={24} className="text-amber-500 shrink-0 mt-0.5" />
-                                    <div>
-                                        <p className="font-black text-foreground">{t.alreadyBooked}</p>
-                                        <p className="text-xs text-muted-foreground mt-1">{t.alreadyBookedDesc}</p>
-                                    </div>
-                                </div>
-                                <div className="bg-background/60 rounded-2xl p-4 space-y-1 border border-border">
-                                    <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">{t.bookedAt}</p>
-                                    <p className="font-black text-primary text-lg">{existingBooking.startTime} — {existingBooking.endTime}</p>
-                                    {existingBooking.unitId && selectedStructure.units && (
-                                        <p className="text-xs text-muted-foreground">
-                                            {t.unit}: {selectedStructure.units.find(u => u.id === existingBooking.unitId)?.name || existingBooking.unitId}
-                                        </p>
-                                    )}
-                                </div>
-                                <button
-                                    onClick={cancelExistingBooking}
-                                    disabled={cancelling}
-                                    className="w-full py-3 rounded-2xl border border-destructive/40 text-destructive font-bold text-sm hover:bg-destructive/10 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-                                >
-                                    {cancelling ? <Loader2 size={16} className="animate-spin" /> : null}
-                                    {t.cancelBooking}
-                                </button>
-                            </div>
-                        ) : (
-                            <div className="space-y-3">
-                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">{t.availableSlots} ({selectedStructure.operatingHours?.slotDurationMinutes}m)</label>
+                        {/* Grade de slots — TODOS os horários do dia */}
+                        <div className="space-y-3">
+                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">{t.slotsLabel} ({selectedStructure.operatingHours?.slotDurationMinutes}min)</label>
 
-                                {availableSlots.length > 0 ? (
-                                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                                        {availableSlots.map(slot => (
+                            {timeSlots.length > 0 ? (
+                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                    {timeSlots.map(slot => {
+                                        const state = getSlotState(slot);
+                                        const slotBooking = slot.bookingId ? dayBookings.find(b => b.id === slot.bookingId) : null;
+                                        const isFocused = focusedBooking?.id === slotBooking?.id;
+
+                                        const baseClass = "py-3 rounded-xl font-bold text-sm transition-all flex flex-col items-center gap-1 border-2";
+                                        const stateClass = {
+                                            own_active: isFocused
+                                                ? "border-green-500 bg-green-500 text-white cursor-pointer"
+                                                : "border-green-500 bg-green-500/15 text-green-700 dark:text-green-400 cursor-pointer",
+                                            own_done: "border-green-500/30 bg-green-500/8 text-green-600/60 opacity-60 cursor-default",
+                                            maintenance: "border-red-500/40 bg-red-500/10 text-red-500 cursor-not-allowed",
+                                            occupied: "border-amber-500/40 bg-amber-500/10 text-amber-600 cursor-not-allowed",
+                                            bookable: selectedSlot?.startTime === slot.startTime
+                                                ? "border-primary bg-primary/10 text-primary cursor-pointer"
+                                                : "border-transparent bg-secondary text-foreground cursor-pointer hover:bg-secondary/70",
+                                            past: "border-transparent bg-secondary text-muted-foreground opacity-30 cursor-not-allowed",
+                                            blocked: "border-transparent bg-secondary text-muted-foreground opacity-40 cursor-not-allowed",
+                                        }[state];
+
+                                        const slotLabel = {
+                                            own_active: slot.startTime,
+                                            own_done: slot.startTime,
+                                            maintenance: slot.startTime,
+                                            occupied: slot.startTime,
+                                            bookable: slot.startTime,
+                                            past: slot.startTime,
+                                            blocked: slot.startTime,
+                                        }[state];
+
+                                        const subLabel = {
+                                            own_active: isFocused ? '▼' : '✓',
+                                            own_done: '✓',
+                                            maintenance: t.slotMaint,
+                                            occupied: t.slotOccupied,
+                                            bookable: null,
+                                            past: t.slotPast,
+                                            blocked: null,
+                                        }[state];
+
+                                        const handleSlotClick = () => {
+                                            if (state === 'own_active') {
+                                                setFocusedBooking(isFocused ? null : (slotBooking || null));
+                                                setSelectedSlot(null);
+                                            } else if (state === 'bookable') {
+                                                setSelectedSlot(slot);
+                                                setFocusedBooking(null);
+                                            }
+                                        };
+
+                                        return (
                                             <button
                                                 key={slot.startTime}
-                                                disabled={!slot.available}
-                                                onClick={() => setSelectedSlot(slot)}
-                                                className={cn(
-                                                    "py-3 rounded-xl font-bold text-sm transition-all border-2 flex flex-col items-center gap-1",
-                                                    !slot.available ? "opacity-30 bg-secondary border-transparent cursor-not-allowed" :
-                                                        selectedSlot?.startTime === slot.startTime ? "border-primary bg-primary/10 text-primary" : "border-transparent bg-secondary text-foreground hover:bg-secondary/80"
-                                                )}
+                                                onClick={handleSlotClick}
+                                                disabled={!['own_active', 'bookable'].includes(state)}
+                                                className={cn(baseClass, stateClass)}
                                             >
-                                                <Clock size={16} className={!slot.available ? "opacity-50" : selectedSlot?.startTime === slot.startTime ? "text-primary" : "text-muted-foreground"} />
-                                                <span>{slot.startTime}</span>
+                                                <Clock size={14} />
+                                                <span className="font-mono text-xs">{slotLabel}</span>
+                                                {subLabel && (
+                                                    <span className="text-[9px] font-black uppercase tracking-widest leading-none">{subLabel}</span>
+                                                )}
                                             </button>
-                                        ))}
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <div className="bg-secondary/50 border border-border p-6 rounded-2xl text-center">
+                                    <p className="text-sm font-bold text-muted-foreground">{t.noSlots}</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Painel de ações — reserva do hóspede focada */}
+                        {focusedBooking && (
+                            <div className="bg-green-500/10 border border-green-500/30 rounded-2xl p-4 space-y-3 animate-in slide-in-from-bottom-2 duration-200">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase text-green-600 tracking-widest">{t.yourBooking}</p>
+                                        <p className="font-black text-lg text-foreground">{focusedBooking.startTime} — {focusedBooking.endTime}</p>
+                                        {focusedBooking.unitId && selectedStructure.units && (
+                                            <p className="text-xs text-muted-foreground">
+                                                {t.unit}: {selectedStructure.units.find(u => u.id === focusedBooking.unitId)?.name}
+                                            </p>
+                                        )}
                                     </div>
-                                ) : (
-                                    <div className="bg-secondary/50 border border-border p-6 rounded-2xl text-center">
-                                        <p className="text-sm font-bold text-muted-foreground">{t.noSlots}</p>
-                                    </div>
-                                )}
+                                    <button onClick={() => setFocusedBooking(null)} className="p-1.5 rounded-full hover:bg-border transition-colors text-muted-foreground">
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        onClick={markFocusedDone}
+                                        disabled={actionLoading}
+                                        className="py-3 rounded-xl border border-green-500/50 text-green-700 dark:text-green-400 font-bold text-xs hover:bg-green-500/10 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                                    >
+                                        {actionLoading ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                                        {t.finishUse}
+                                    </button>
+                                    <button
+                                        onClick={cancelFocused}
+                                        disabled={actionLoading}
+                                        className="py-3 rounded-xl border border-red-500/40 text-red-600 font-bold text-xs hover:bg-red-500/10 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+                                    >
+                                        {actionLoading ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
+                                        {t.cancel}
+                                    </button>
+                                </div>
                             </div>
                         )}
 
@@ -618,7 +717,6 @@ function StructuresWizard() {
                             </div>
                         </div>
 
-                        {/* Observações — apenas para pedidos que requerem aprovação */}
                         {selectedStructure.visibility === 'guest_request' && (
                             <div className="space-y-2">
                                 <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest ml-2">{t.notes}</label>
@@ -635,14 +733,13 @@ function StructuresWizard() {
             </main>
 
             {/* Bottom Floating Bar */}
-            {(step === 1 || step === 2) && (
+            {((step === 1 && selectedSlot) || step === 2) && (
                 <div className="fixed bottom-0 left-0 w-full bg-background/90 backdrop-blur-xl border-t border-border p-4 z-50 animate-in slide-in-from-bottom-12">
                     <div className="max-w-2xl mx-auto">
-                        {step === 1 && !existingBooking && (
+                        {step === 1 && selectedSlot && (
                             <button
                                 onClick={() => setStep(2)}
-                                disabled={!selectedSlot}
-                                className="w-full py-4 bg-primary text-primary-foreground rounded-2xl font-black uppercase tracking-widest flex items-center justify-between px-6 shadow-xl shadow-primary/20 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:shadow-none"
+                                className="w-full py-4 bg-primary text-primary-foreground rounded-2xl font-black uppercase tracking-widest flex items-center justify-between px-6 shadow-xl shadow-primary/20 hover:opacity-90 transition-opacity"
                             >
                                 <span>{t.proceed}</span>
                                 <ChevronRight size={20} />

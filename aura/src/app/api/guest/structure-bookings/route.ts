@@ -53,13 +53,79 @@ export async function DELETE(request: NextRequest) {
     }
 }
 
+export async function PATCH(request: NextRequest) {
+    try {
+        const body = await request.json();
+        const { bookingId, stayId, propertyId } = body;
+
+        if (!bookingId || !stayId || !propertyId) {
+            return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+        }
+
+        if (!supabaseAdmin) {
+            return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+        }
+
+        // Valida que a reserva pertence à estadia do hóspede (segurança)
+        const { data: existing, error: fetchError } = await supabaseAdmin
+            .from('structure_bookings')
+            .select('id, status')
+            .eq('id', bookingId)
+            .eq('stayId', stayId)
+            .eq('propertyId', propertyId)
+            .single();
+
+        if (fetchError || !existing) {
+            return NextResponse.json({ error: "Reserva não encontrada" }, { status: 404 });
+        }
+
+        if (!['pending', 'approved'].includes(existing.status)) {
+            return NextResponse.json({ error: "Esta reserva não pode ser finalizada" }, { status: 400 });
+        }
+
+        const { error } = await supabaseAdmin
+            .from('structure_bookings')
+            .update({ status: 'completed' })
+            .eq('id', bookingId);
+
+        if (error) {
+            return NextResponse.json({ error: error.message }, { status: 500 });
+        }
+
+        return NextResponse.json({ success: true });
+    } catch (err) {
+        console.error("[guest/structure-bookings PATCH] Unexpected error:", err);
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+}
+
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { propertyId, booking, stayId, guestId } = body;
+        const { propertyId, booking, stayId, guestId, timezoneOffset } = body;
 
         if (!propertyId || !booking) {
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+        }
+
+        // Valida que o horário não expirou (menos de 30 min até o fim do slot)
+        if (booking.endTime) {
+            const offsetMinutes = typeof timezoneOffset === 'number' ? timezoneOffset : 0;
+            const nowUtcMs = Date.now();
+            const nowLocalMs = nowUtcMs - offsetMinutes * 60 * 1000;
+            const nowLocal = new Date(nowLocalMs);
+            const nowMinutes = nowLocal.getUTCHours() * 60 + nowLocal.getUTCMinutes();
+
+            const [endH, endM] = (booking.endTime as string).split(':').map(Number);
+            const endMinutes = endH * 60 + endM;
+            const remaining = endMinutes - nowMinutes;
+
+            if (remaining < 30) {
+                return NextResponse.json(
+                    { error: "Este horário já não está disponível (menos de 30 minutos restantes)." },
+                    { status: 400 }
+                );
+            }
         }
 
         if (!supabaseAdmin) {
