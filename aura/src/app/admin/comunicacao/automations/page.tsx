@@ -7,21 +7,28 @@ import { WhatsAppMessage } from "@/types/aura";
 import { AutomationService } from "@/services/automation-service";
 import { Button } from "@/components/ui/button";
 import {
-  Bot, CheckCircle2, Clock, AlertCircle, RefreshCw, MessageSquareWarning, Loader2, CalendarClock
+  Bot, CheckCircle2, Clock, AlertCircle, RefreshCw, MessageSquareWarning, Loader2, CalendarClock, Edit2, XCircle, Trash2, Ban
 } from "lucide-react";
 
 export default function AutomationsQueuePage() {
   const { currentProperty: property } = useProperty();
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'pending' | 'sent' | 'failed'>('pending');
+  const [activeTab, setActiveTab] = useState<'pending' | 'sent' | 'failed' | 'cancelled'>('pending');
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editPhone, setEditPhone] = useState("");
+  const [isCancelling, setIsCancelling] = useState<string | null>(null);
 
   useEffect(() => {
     if (!property?.id) return;
 
     const fetchMessages = async () => {
-      const { data, error } = await supabase
+      // 4 days ago threshold for sent/delivered ones
+      const archiveThreshold = new Date();
+      archiveThreshold.setDate(archiveThreshold.getDate() - 4);
+
+      let query = supabase
         .from('messages')
         .select('*')
         .eq('propertyId', property.id)
@@ -29,8 +36,18 @@ export default function AutomationsQueuePage() {
         .order('createdAt', { ascending: false })
         .limit(200);
 
+      const { data, error } = await query;
+
       if (data) {
-        setMessages(data as any[]);
+        // Filter out old sent/delivered messages in memory, to keep the view clean
+        const filteredData = data.filter((m: any) => {
+          if (['sent', 'delivered', 'read'].includes(m.status)) {
+            const msgDate = new Date(m.createdAt);
+            if (msgDate < archiveThreshold) return false;
+          }
+          return true;
+        });
+        setMessages(filteredData as any[]);
       }
       setLoading(false);
     };
@@ -68,13 +85,46 @@ export default function AutomationsQueuePage() {
     setRetryingId(null);
   };
 
+  const handleEditAndRetry = async (messageId: string) => {
+    if (!property?.id || !editPhone) return;
+    setRetryingId(messageId);
+    
+    let cleanedPhone = editPhone.replace(/\D/g, '');
+    if ((cleanedPhone.length === 10 || cleanedPhone.length === 11) && !cleanedPhone.startsWith('55')) {
+      cleanedPhone = '55' + cleanedPhone;
+    }
+
+    const success = await AutomationService.editAndRetryMessage(property.id, messageId, cleanedPhone);
+    if (success) {
+      setEditingId(null);
+      setEditPhone("");
+    } else {
+      alert("Não foi possível editar e reenviar a mensagem.");
+    }
+    setRetryingId(null);
+  };
+
+  const handleCancel = async (messageId: string) => {
+    if (!property?.id) return;
+    if (!confirm("Tem certeza que deseja cancelar esta mensagem? Ela não será enviada ao hóspede.")) return;
+    
+    setIsCancelling(messageId);
+    const success = await AutomationService.cancelMessage(property.id, messageId);
+    if (!success) {
+      alert("Falha ao cancelar mensagem.");
+    }
+    setIsCancelling(null);
+  };
+
   const pendingMessages = messages.filter(m => m.status === 'pending' || m.status === 'processing');
   const sentMessages = messages.filter(m => m.status === 'sent' || m.status === 'delivered' || m.status === 'read');
   const failedMessages = messages.filter(m => m.status === 'failed');
+  const cancelledMessages = messages.filter(m => m.status === 'cancelled');
 
   const getFilteredMessages = () => {
     if (activeTab === 'pending') return pendingMessages;
     if (activeTab === 'sent') return sentMessages;
+    if (activeTab === 'cancelled') return cancelledMessages;
     return failedMessages;
   };
 
@@ -110,10 +160,11 @@ export default function AutomationsQueuePage() {
       </header>
 
       <main className="flex-1 p-6 max-w-6xl mx-auto w-full">
-        <div className="flex space-x-1 bg-muted/50 p-1 rounded-xl mb-6 w-full max-w-md">
-          <button onClick={() => setActiveTab('pending')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg transition-all ${activeTab === 'pending' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}><Clock className="w-4 h-4" /> Agendadas ({pendingMessages.length})</button>
-          <button onClick={() => setActiveTab('sent')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg transition-all ${activeTab === 'sent' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}><CheckCircle2 className="w-4 h-4" /> Enviadas ({sentMessages.length})</button>
-          <button onClick={() => setActiveTab('failed')} className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg transition-all ${activeTab === 'failed' ? 'bg-background shadow-sm text-destructive' : 'text-muted-foreground hover:text-destructive'}`}><AlertCircle className="w-4 h-4" /> Falhas ({failedMessages.length})</button>
+        <div className="flex space-x-1 bg-muted/50 p-1 rounded-xl mb-6 w-full max-w-2xl overflow-x-auto">
+          <button onClick={() => setActiveTab('pending')} className={`flex-1 min-w-[130px] flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg transition-all ${activeTab === 'pending' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}><Clock className="w-4 h-4" /> Agendadas ({pendingMessages.length})</button>
+          <button onClick={() => setActiveTab('sent')} className={`flex-1 min-w-[130px] flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg transition-all ${activeTab === 'sent' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}><CheckCircle2 className="w-4 h-4" /> Enviadas ({sentMessages.length})</button>
+          <button onClick={() => setActiveTab('failed')} className={`flex-1 min-w-[130px] flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg transition-all ${activeTab === 'failed' ? 'bg-background shadow-sm text-destructive' : 'text-muted-foreground hover:text-destructive'}`}><AlertCircle className="w-4 h-4" /> Falhas ({failedMessages.length})</button>
+          <button onClick={() => setActiveTab('cancelled')} className={`flex-1 min-w-[130px] flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg transition-all ${activeTab === 'cancelled' ? 'bg-background shadow-sm text-muted-foreground' : 'text-muted-foreground/50 hover:text-muted-foreground'}`}><Ban className="w-4 h-4" /> Canceladas ({cancelledMessages.length})</button>
         </div>
 
         {loading ? (
@@ -134,12 +185,36 @@ export default function AutomationsQueuePage() {
                   <div className="flex flex-col items-end gap-2 md:pl-6 md:border-l border-destructive/20 min-w-[200px]">
                     <div className="flex items-center gap-1.5 text-sm font-semibold text-destructive"><MessageSquareWarning className="w-4 h-4" /> Erro no Envio</div>
                     {msg.errorMessage && <p className="text-xs text-destructive/80 text-right line-clamp-2" title={msg.errorMessage}>{msg.errorMessage}</p>}
-                    <Button variant="outline" size="sm" className="mt-2 w-full border-destructive/30 hover:bg-destructive hover:text-destructive-foreground" onClick={() => handleRetry(msg.id)} disabled={retryingId === msg.id}>{retryingId === msg.id ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> A reprocessar...</> : <><RefreshCw className="w-4 h-4 mr-2" /> Tentar Novamente</>}</Button>
+                    
+                    {editingId === msg.id ? (
+                      <div className="flex flex-col gap-2 w-full mt-2 bg-background border border-border p-2 rounded-lg">
+                        <label className="text-[10px] font-bold uppercase text-muted-foreground">Corrigir WhatsApp</label>
+                        <input type="tel" value={editPhone} onChange={e => setEditPhone(e.target.value)} placeholder="Ex: 5553981169216" className="w-full text-xs p-1.5 border rounded-md outline-none focus:border-primary" />
+                        <div className="flex gap-2">
+                          <Button variant="ghost" size="sm" className="flex-1 h-7 text-xs" onClick={() => setEditingId(null)}>Cancelar</Button>
+                          <Button size="sm" className="flex-1 h-7 text-xs" onClick={() => handleEditAndRetry(msg.id)} disabled={retryingId === msg.id || !editPhone}>Salvar e Enviar</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col w-full gap-2 mt-2">
+                        <Button variant="outline" size="sm" className="w-full border-destructive/30 hover:bg-destructive hover:text-destructive-foreground" onClick={() => handleRetry(msg.id)} disabled={retryingId === msg.id}>{retryingId === msg.id ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> A reprocessar...</> : <><RefreshCw className="w-4 h-4 mr-2" /> Tentar Novamente</>}</Button>
+                        <Button variant="ghost" size="sm" className="w-full text-xs hover:bg-muted" onClick={() => { setEditingId(msg.id); setEditPhone(msg.to || ""); }}><Edit2 className="w-3.5 h-3.5 mr-1.5"/> Editar Número</Button>
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {msg.status === 'pending' && <div className="flex items-center gap-2 text-amber-600 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200"><Clock className="w-4 h-4" /> <span className="text-sm font-medium">A aguardar envio</span></div>}
-                {(msg.status === 'sent' || msg.status === 'delivered' || msg.status === 'read') && <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200"><CheckCircle2 className="w-4 h-4" /> <span className="text-sm font-medium">Entregue</span></div>}
+                {msg.status === 'pending' && (
+                  <div className="flex flex-col items-end gap-2 md:pl-6 md:border-l border-border min-w-[150px]">
+                    <div className="flex items-center gap-2 text-amber-600 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200"><Clock className="w-4 h-4" /> <span className="text-sm font-medium">A aguardar envio</span></div>
+                    <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10" disabled={isCancelling === msg.id} onClick={() => handleCancel(msg.id)}>
+                      {isCancelling === msg.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <><XCircle className="w-3.5 h-3.5 mr-1" /> Cancelar Envio</>}
+                    </Button>
+                  </div>
+                )}
+
+                {(msg.status === 'sent' || msg.status === 'delivered' || msg.status === 'read') && <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 h-fit"><CheckCircle2 className="w-4 h-4" /> <span className="text-sm font-medium">Entregue</span></div>}
+                {msg.status === 'cancelled' && <div className="flex items-center gap-2 text-muted-foreground bg-muted/50 px-3 py-1.5 rounded-lg border border-border h-fit"><Ban className="w-4 h-4" /> <span className="text-sm font-medium">Cancelada</span></div>}
               </div>
             ))}
           </div>

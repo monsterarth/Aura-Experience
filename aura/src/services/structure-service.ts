@@ -192,7 +192,7 @@ export const StructureService = {
             .eq('propertyId', propertyId)
             .eq('date', date);
 
-        if (error) return [];
+        if (error) { console.error("getAllBookingsByDate error:", error); return []; }
         return data as StructureBooking[];
     },
 

@@ -542,7 +542,7 @@ export interface WhatsAppMessage {
   triggerEvent?: AutomationTriggerEvent;
   scheduledFor?: Timestamp;
 
-  status: 'pending' | 'processing' | 'sent' | 'delivered' | 'read' | 'failed';
+  status: 'pending' | 'processing' | 'sent' | 'delivered' | 'read' | 'failed' | 'cancelled';
   attempts: number;
   lastAttemptAt?: Timestamp;
   errorMessage?: string;

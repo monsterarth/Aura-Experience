@@ -170,6 +170,42 @@ export class AutomationService {
     }
   }
 
+  static async editAndRetryMessage(propertyId: string, messageId: string, newPhone: string): Promise<boolean> {
+    try {
+      const cleanPhone = newPhone.replace(/\D/g, '');
+      const pastTime = new Date();
+      pastTime.setMinutes(pastTime.getMinutes() - 1);
+
+      const { error } = await supabase.from('messages').update({
+        to: cleanPhone,
+        status: 'pending',
+        attempts: 0,
+        scheduledFor: pastTime.toISOString(),
+        errorMessage: null,
+      }).eq('id', messageId).eq('propertyId', propertyId);
+
+      return !error;
+    } catch (error) {
+      console.error("Erro ao tentar editar e reenviar mensagem:", error);
+      return false;
+    }
+  }
+
+  static async cancelMessage(propertyId: string, messageId: string): Promise<boolean> {
+    try {
+      const { error } = await supabase.from('messages')
+        .update({ status: 'cancelled' })
+        .eq('id', messageId)
+        .eq('propertyId', propertyId)
+        .eq('status', 'pending'); // Only cancel if it's still pending
+
+      return !error;
+    } catch (error) {
+      console.error("Erro ao cancelar mensagem:", error);
+      return false;
+    }
+  }
+
   static async getTemplates(propertyId: string): Promise<MessageTemplate[]> {
     try {
       const { data } = await supabase.from('message_templates').select('*').eq('propertyId', propertyId);
