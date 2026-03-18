@@ -66,12 +66,13 @@ const structuresTranslations = {
         heroTitle: 'Reserve o seu momento',
         heroDesc: 'Escolha uma de nossas áreas para agendar o seu uso exclusivo.',
         selectDate: 'Data do Agendamento', availableSlots: 'Horários Disponíveis',
-        noSlots: 'Nenhum horário gerado para este dia.',
+        noSlots: 'Nenhum horário disponível para hoje.',
         summaryTitle: 'Resumo da Reserva', space: 'Espaço', date: 'Data', time: 'Horário',
         approvalNotice: 'Este agendamento requer aprovação da recepção. Você será notificado sobre o status.',
-        notes: 'Observações (Opcional)', notesPlaceholder: 'Alguma observação especial?',
+        notes: 'Observações', notesPlaceholder: 'Alguma observação especial para a equipe?',
         proceed: 'Prosseguir', confirmBooking: 'Confirmar Reserva', sendRequest: 'Enviar Solicitação',
-        selectSlot: 'Selecione o dia e o horário desejado.',
+        selectSlot: 'Selecione o horário desejado para hoje.',
+        selectUnit: 'Escolha a unidade', unit: 'Unidade', today: 'Hoje',
     },
     en: {
         pageTitle: 'Reservations', noSpaces: 'No Spaces',
@@ -83,12 +84,13 @@ const structuresTranslations = {
         heroTitle: 'Book your moment',
         heroDesc: 'Choose one of our areas to book your exclusive use.',
         selectDate: 'Booking Date', availableSlots: 'Available Times',
-        noSlots: 'No time slots generated for this day.',
+        noSlots: 'No time slots available for today.',
         summaryTitle: 'Booking Summary', space: 'Space', date: 'Date', time: 'Time',
         approvalNotice: 'This booking requires front desk approval. You will be notified of the status.',
-        notes: 'Notes (Optional)', notesPlaceholder: 'Any special requests?',
+        notes: 'Notes', notesPlaceholder: 'Any special requests for the team?',
         proceed: 'Continue', confirmBooking: 'Confirm Booking', sendRequest: 'Send Request',
-        selectSlot: 'Select the day and time you prefer.',
+        selectSlot: 'Select the time you prefer for today.',
+        selectUnit: 'Choose the unit', unit: 'Unit', today: 'Today',
     },
     es: {
         pageTitle: 'Reservas', noSpaces: 'Sin Espacios',
@@ -100,12 +102,13 @@ const structuresTranslations = {
         heroTitle: 'Reserva tu momento',
         heroDesc: 'Elige una de nuestras áreas para reservar su uso exclusivo.',
         selectDate: 'Fecha de la Reserva', availableSlots: 'Horarios Disponibles',
-        noSlots: 'No hay horarios generados para este día.',
+        noSlots: 'No hay horarios disponibles para hoy.',
         summaryTitle: 'Resumen de la Reserva', space: 'Espacio', date: 'Fecha', time: 'Horario',
         approvalNotice: 'Esta reserva requiere aprobación de recepción. Será notificado del estado.',
-        notes: 'Observaciones (Opcional)', notesPlaceholder: '¿Alguna observación especial?',
+        notes: 'Observaciones', notesPlaceholder: '¿Alguna observación especial para el equipo?',
         proceed: 'Continuar', confirmBooking: 'Confirmar Reserva', sendRequest: 'Enviar Solicitud',
-        selectSlot: 'Selecciona el día y el horario deseado.',
+        selectSlot: 'Selecciona el horario deseado para hoy.',
+        selectUnit: 'Elige la unidad', unit: 'Unidad', today: 'Hoy',
     },
 };
 
@@ -123,11 +126,14 @@ function StructuresWizard() {
 
     // Wizard State
     const [step, setStep] = useState<0 | 1 | 2>(0);
-    // 0 = Select Structure
-    // 1 = Select Date and Time
+    // 0 = Select Structure (+ unit picker sub-view)
+    // 1 = Select Time
     // 2 = Confirm
 
     const [selectedStructure, setSelectedStructure] = useState<Structure | null>(null);
+    const [selectedUnit, setSelectedUnit] = useState<{ id: string; name: string; imageUrl?: string } | null>(null);
+    const [showUnitPicker, setShowUnitPicker] = useState(false);
+
     const [selectedDate, setSelectedDate] = useState<string>("");
     const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([]);
     const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
@@ -146,7 +152,6 @@ function StructuresWizard() {
                 const s = stays[0] as Stay;
                 setStay(s);
 
-                // Ler idioma preferido do hóspede
                 try {
                     const stayData = await StayService.getStayWithGuestAndCabin(s.propertyId, s.id);
                     if (stayData?.guest?.preferredLanguage) {
@@ -162,15 +167,14 @@ function StructuresWizard() {
                 if (!prop) return;
                 setProperty(prop as Property);
 
-                const allStructures = await StructureService.getStructures(prop.id);
-                // Apenas estruturas que Hóspedes podem ver/pedir
-                const guestStructures = allStructures.filter(st => st.visibility === 'guest_auto_approve' || st.visibility === 'guest_request');
+                // Usar API route server-side para não inicializar sessão auth no browser do hóspede
+                const res = await fetch(`/api/guest/structures?propertyId=${prop.id}`);
+                const allStructures: Structure[] = await res.json();
 
-                // Set default date to today
                 const today = new Date();
                 setSelectedDate(today.toISOString().split('T')[0]);
 
-                setStructures(guestStructures);
+                setStructures(allStructures);
                 setLoading(false);
             } catch (error) {
                 console.error(error);
@@ -181,14 +185,26 @@ function StructuresWizard() {
         init();
     }, [code]);
 
-    // Fetch slots when date or structure changes
+    // Fetch slots when structure/unit changes (date is always today)
     useEffect(() => {
         async function fetchSlots() {
             if (!property || !selectedStructure || !selectedDate) return;
             try {
-                const bookings = await StructureService.getBookingsByDate(property.id, selectedStructure.id, selectedDate);
-                const slots = StructureService.generateTimeSlots(selectedStructure, bookings);
-                setAvailableSlots(slots);
+                const res = await fetch(
+                    `/api/guest/structure-slots?propertyId=${property.id}&structureId=${selectedStructure.id}&date=${selectedDate}`
+                );
+                const bookings: StructureBooking[] = await res.json();
+                const allSlots = StructureService.generateTimeSlots(selectedStructure, bookings, selectedUnit?.id);
+
+                // Filtrar slots com menos de 30 minutos restantes até o fim
+                const now = new Date();
+                const nowMinutes = now.getHours() * 60 + now.getMinutes();
+                const filteredSlots = allSlots.filter(slot => {
+                    const [endH, endM] = slot.endTime.split(':').map(Number);
+                    return (endH * 60 + endM - nowMinutes) >= 30;
+                });
+
+                setAvailableSlots(filteredSlots);
             } catch (e) {
                 console.error(e);
             }
@@ -196,12 +212,40 @@ function StructuresWizard() {
         if (step === 1) {
             fetchSlots();
         }
-    }, [selectedDate, selectedStructure, property, step]);
+    }, [selectedDate, selectedStructure, selectedUnit, property, step]);
 
     const handleSelectStructure = (s: Structure) => {
         setSelectedStructure(s);
+        setSelectedUnit(null);
         setSelectedSlot(null);
+        if (s.units && s.units.length > 0) {
+            setShowUnitPicker(true);
+        } else {
+            setShowUnitPicker(false);
+            setStep(1);
+        }
+    };
+
+    const handleSelectUnit = (unit: { id: string; name: string; imageUrl?: string }) => {
+        setSelectedUnit(unit);
+        setShowUnitPicker(false);
         setStep(1);
+    };
+
+    const handleBack = () => {
+        if (step === 2) {
+            setStep(1);
+        } else if (step === 1) {
+            if (selectedStructure?.units && selectedStructure.units.length > 0) {
+                setShowUnitPicker(true);
+            }
+            setStep(0);
+        } else if (showUnitPicker) {
+            setShowUnitPicker(false);
+            setSelectedStructure(null);
+        } else {
+            router.push(`/check-in/${code}`);
+        }
     };
 
     const submitBooking = async () => {
@@ -230,7 +274,8 @@ function StructuresWizard() {
                         status: bookingStatus,
                         source: 'guest',
                         type: 'booking',
-                        notes: notes,
+                        unitId: selectedUnit?.id,
+                        notes: selectedStructure.visibility === 'guest_request' ? notes : '',
                     },
                 }),
             });
@@ -290,7 +335,9 @@ function StructuresWizard() {
                     <p className="text-muted-foreground">
                         {selectedStructure?.visibility === 'guest_auto_approve' ? t.confirmedDesc : t.requestedDesc}
                         <br /><br />
-                        <strong className="text-foreground">{selectedStructure?.name}</strong><br />
+                        <strong className="text-foreground">{selectedStructure?.name}</strong>
+                        {selectedUnit && <><br /><span className="text-sm">{t.unit}: {selectedUnit.name}</span></>}
+                        <br />
                         <strong className="text-foreground">{selectedDate.split('-').reverse().join('/')}</strong> das <strong className="text-foreground">{selectedSlot?.startTime} às {selectedSlot?.endTime}</strong>
                     </p>
                 </div>
@@ -304,10 +351,7 @@ function StructuresWizard() {
     return (
         <div className="min-h-[100dvh] bg-background text-foreground flex flex-col font-sans relative" style={themeStyles}>
             <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-border p-4 flex items-center gap-4">
-                <button
-                    onClick={() => step > 0 ? setStep((step - 1) as any) : router.push(`/check-in/${code}`)}
-                    className="p-2 hover:bg-secondary rounded-full transition-colors"
-                >
+                <button onClick={handleBack} className="p-2 hover:bg-secondary rounded-full transition-colors">
                     <ArrowLeft size={24} />
                 </button>
                 <div className="flex-1">
@@ -324,7 +368,7 @@ function StructuresWizard() {
             <main className="flex-1 p-4 pb-48 w-full max-w-2xl mx-auto space-y-6">
 
                 {/* STEP 0: Select Structure */}
-                {step === 0 && (
+                {step === 0 && !showUnitPicker && (
                     <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
                         <div className="bg-primary text-primary-foreground rounded-3xl p-6 shadow-xl shadow-primary/10 overflow-hidden relative">
                             <div className="absolute right-0 top-0 w-32 h-32 bg-white/10 rounded-bl-full translate-x-1/4 -translate-y-1/4 blur-xl"></div>
@@ -356,6 +400,11 @@ function StructuresWizard() {
                                             <span className="text-[10px] bg-secondary px-2 py-0.5 rounded font-bold uppercase tracking-widest text-muted-foreground">
                                                 {s.operatingHours?.slotDurationMinutes} min
                                             </span>
+                                            {s.units && s.units.length > 0 && (
+                                                <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded font-bold uppercase tracking-widest">
+                                                    {s.units.length}x
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                     <ChevronRight size={20} className="text-muted-foreground group-hover:text-primary transition-colors" />
@@ -365,23 +414,60 @@ function StructuresWizard() {
                     </div>
                 )}
 
-                {/* STEP 1: Select Date and Time */}
+                {/* STEP 0 — Sub-etapa: Seleção de Unidade */}
+                {step === 0 && showUnitPicker && selectedStructure && (
+                    <div className="space-y-6 animate-in slide-in-from-right-4 duration-500">
+                        <div className="border-b border-border pb-4">
+                            <h2 className="text-xl font-black uppercase tracking-tighter">{selectedStructure.name}</h2>
+                            <p className="text-xs text-muted-foreground mt-1">{t.selectUnit}</p>
+                        </div>
+
+                        <div className="grid gap-4">
+                            {selectedStructure.units!.map(unit => (
+                                <button
+                                    key={unit.id}
+                                    onClick={() => handleSelectUnit(unit)}
+                                    className="bg-card border border-border p-5 rounded-3xl flex items-center gap-4 text-left hover:border-primary/50 hover:shadow-md transition-all group"
+                                >
+                                    {unit.imageUrl ? (
+                                        <div className="w-16 h-16 rounded-2xl overflow-hidden shrink-0 bg-secondary">
+                                            <img src={unit.imageUrl} alt={unit.name} className="w-full h-full object-cover" />
+                                        </div>
+                                    ) : (
+                                        <div className="w-12 h-12 bg-secondary rounded-2xl flex items-center justify-center shrink-0">
+                                            <MapPin size={24} className="text-muted-foreground group-hover:text-primary transition-colors" />
+                                        </div>
+                                    )}
+                                    <div className="flex-1">
+                                        <h3 className="font-black text-lg">{unit.name}</h3>
+                                    </div>
+                                    <ChevronRight size={20} className="text-muted-foreground group-hover:text-primary transition-colors" />
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* STEP 1: Select Time (data sempre = hoje) */}
                 {step === 1 && selectedStructure && (
                     <div className="space-y-6 animate-in slide-in-from-right-4 duration-500 relative">
                         <div className="border-b border-border pb-4">
                             <h2 className="text-xl font-black uppercase tracking-tighter">{selectedStructure.name}</h2>
+                            {selectedUnit && (
+                                <p className="text-xs font-bold text-primary mt-0.5">{t.unit}: {selectedUnit.name}</p>
+                            )}
                             <p className="text-xs text-muted-foreground mt-1">{t.selectSlot}</p>
                         </div>
 
-                        <div className="space-y-3">
-                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">{t.selectDate}</label>
-                            <input
-                                type="date"
-                                min={new Date().toISOString().split('T')[0]}
-                                value={selectedDate}
-                                onChange={(e) => { setSelectedDate(e.target.value); setSelectedSlot(null); }}
-                                className="w-full bg-card border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-bold"
-                            />
+                        {/* Data fixa — hoje */}
+                        <div className="flex items-center gap-3 bg-secondary/50 border border-border rounded-2xl px-4 py-3">
+                            <Calendar size={18} className="text-primary shrink-0" />
+                            <div>
+                                <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">{t.selectDate}</p>
+                                <p className="font-black text-sm text-foreground">
+                                    {t.today} — {selectedDate.split('-').reverse().join('/')}
+                                </p>
+                            </div>
                         </div>
 
                         <div className="space-y-3">
@@ -412,10 +498,9 @@ function StructuresWizard() {
                             )}
                         </div>
 
-                        <div className="h-20"></div> {/* Spacing for sticky bottom bar */}
+                        <div className="h-20"></div>
                     </div>
                 )}
-
 
                 {/* STEP 2: Confirm */}
                 {step === 2 && selectedStructure && selectedSlot && (
@@ -427,6 +512,9 @@ function StructuresWizard() {
                                 <div>
                                     <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{t.space}</p>
                                     <p className="font-black text-lg">{selectedStructure.name}</p>
+                                    {selectedUnit && (
+                                        <p className="text-sm font-bold text-primary">{t.unit}: {selectedUnit.name}</p>
+                                    )}
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
@@ -447,16 +535,18 @@ function StructuresWizard() {
                             </div>
                         </div>
 
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest ml-2">{t.notes}</label>
-                            <textarea
-                                value={notes}
-                                onChange={(e) => setNotes(e.target.value)}
-                                className="w-full bg-card border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm resize-none h-24"
-                                placeholder={t.notesPlaceholder}
-                            />
-                        </div>
-
+                        {/* Observações — apenas para pedidos que requerem aprovação */}
+                        {selectedStructure.visibility === 'guest_request' && (
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest ml-2">{t.notes}</label>
+                                <textarea
+                                    value={notes}
+                                    onChange={(e) => setNotes(e.target.value)}
+                                    className="w-full bg-card border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm resize-none h-24"
+                                    placeholder={t.notesPlaceholder}
+                                />
+                            </div>
+                        )}
                     </div>
                 )}
             </main>
