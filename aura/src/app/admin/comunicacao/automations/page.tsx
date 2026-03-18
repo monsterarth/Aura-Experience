@@ -199,6 +199,9 @@ export default function AutomationsQueuePage() {
                       <div className="flex flex-col w-full gap-2 mt-2">
                         <Button variant="outline" size="sm" className="w-full border-destructive/30 hover:bg-destructive hover:text-destructive-foreground" onClick={() => handleRetry(msg.id)} disabled={retryingId === msg.id}>{retryingId === msg.id ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> A reprocessar...</> : <><RefreshCw className="w-4 h-4 mr-2" /> Tentar Novamente</>}</Button>
                         <Button variant="ghost" size="sm" className="w-full text-xs hover:bg-muted" onClick={() => { setEditingId(msg.id); setEditPhone(msg.to || ""); }}><Edit2 className="w-3.5 h-3.5 mr-1.5"/> Editar Número</Button>
+                        <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10" disabled={isCancelling === msg.id} onClick={() => handleCancel(msg.id)}>
+                          {isCancelling === msg.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <><XCircle className="w-3.5 h-3.5 mr-1" /> Cancelar sem Enviar</>}
+                        </Button>
                       </div>
                     )}
                   </div>

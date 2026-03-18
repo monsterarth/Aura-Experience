@@ -197,7 +197,7 @@ export class AutomationService {
         .update({ status: 'cancelled' })
         .eq('id', messageId)
         .eq('propertyId', propertyId)
-        .eq('status', 'pending'); // Only cancel if it's still pending
+        .in('status', ['pending', 'failed']); // Cancel pending or failed messages
 
       return !error;
     } catch (error) {
