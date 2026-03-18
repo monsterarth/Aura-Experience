@@ -90,32 +90,52 @@ export const ConciergeService = {
   // REQUESTS
   // ==========================================
 
+  // Helper: enrich raw requests with item and cabin data via separate queries
+  // (avoids PostgREST embedded join issues with camelCase FK columns)
+  async _enrichRequests(requests: any[]): Promise<ConciergeRequest[]> {
+    if (!requests.length) return [];
+
+    const itemIds = [...new Set(requests.map((r) => r.itemId).filter(Boolean))];
+    const cabinIds = [...new Set(requests.map((r) => r.cabinId).filter(Boolean))];
+
+    const [itemsRes, cabinsRes] = await Promise.all([
+      supabase.from('concierge_items').select('*').in('id', itemIds),
+      cabinIds.length
+        ? supabase.from('cabins').select('id, name').in('id', cabinIds)
+        : Promise.resolve({ data: [] as any[] }),
+    ]);
+
+    const itemMap = Object.fromEntries((itemsRes.data || []).map((i: any) => [i.id, i]));
+    const cabinMap = Object.fromEntries((cabinsRes.data || []).map((c: any) => [c.id, c.name]));
+
+    return requests.map((r) => ({
+      ...r,
+      item: itemMap[r.itemId] ?? null,
+      cabinName: cabinMap[r.cabinId] ?? null,
+    })) as ConciergeRequest[];
+  },
+
   async getConciergeRequestsForStay(
     propertyId: string,
     stayId: string
   ): Promise<ConciergeRequest[]> {
     const { data } = await supabase
       .from('concierge_requests')
-      .select('*, item:concierge_items!itemId(*)')
+      .select('*')
       .eq('propertyId', propertyId)
       .eq('stayId', stayId)
       .order('createdAt', { ascending: false });
-    return (data || []) as unknown as ConciergeRequest[];
+    return this._enrichRequests(data || []);
   },
 
   async getPendingRequests(propertyId: string): Promise<ConciergeRequest[]> {
     const { data } = await supabase
       .from('concierge_requests')
-      .select('*, item:concierge_items!itemId(*), cabin:cabins!cabinId(name)')
+      .select('*')
       .eq('propertyId', propertyId)
       .eq('status', 'pending')
       .order('createdAt', { ascending: true });
-
-    return ((data || []) as any[]).map((r) => ({
-      ...r,
-      cabinName: r.cabin?.name,
-      cabin: undefined,
-    })) as ConciergeRequest[];
+    return this._enrichRequests(data || []);
   },
 
   async getTodayRequests(propertyId: string): Promise<ConciergeRequest[]> {
@@ -124,17 +144,12 @@ export const ConciergeService = {
 
     const { data } = await supabase
       .from('concierge_requests')
-      .select('*, item:concierge_items!itemId(*), cabin:cabins!cabinId(name)')
+      .select('*')
       .eq('propertyId', propertyId)
       .neq('status', 'pending')
       .gte('createdAt', todayStart.toISOString())
       .order('createdAt', { ascending: false });
-
-    return ((data || []) as any[]).map((r) => ({
-      ...r,
-      cabinName: r.cabin?.name,
-      cabin: undefined,
-    })) as ConciergeRequest[];
+    return this._enrichRequests(data || []);
   },
 
   // ==========================================
@@ -210,12 +225,17 @@ export const ConciergeService = {
     // 1. Fetch request + item
     const { data: req, error: reqErr } = await supabase
       .from('concierge_requests')
-      .select('*, item:concierge_items!itemId(*)')
+      .select('*')
       .eq('id', requestId)
       .single();
     if (reqErr || !req) throw new Error('Request not found');
 
-    const item = req.item as ConciergeItem;
+    const { data: itemData } = await supabase
+      .from('concierge_items')
+      .select('*')
+      .eq('id', req.itemId)
+      .single();
+    const item = itemData as ConciergeItem;
     let totalPrice = 0;
 
     // 2. Calculate total_price
@@ -287,12 +307,17 @@ export const ConciergeService = {
     // 1. Fetch request + item
     const { data: req, error: reqErr } = await supabase
       .from('concierge_requests')
-      .select('*, item:concierge_items!itemId(*)')
+      .select('*')
       .eq('id', requestId)
       .single();
     if (reqErr || !req) throw new Error('Request not found');
 
-    const item = req.item as ConciergeItem;
+    const { data: itemData } = await supabase
+      .from('concierge_items')
+      .select('*')
+      .eq('id', req.itemId)
+      .single();
+    const item = itemData as ConciergeItem;
 
     // 2. Update status
     const { error: updErr } = await supabase
