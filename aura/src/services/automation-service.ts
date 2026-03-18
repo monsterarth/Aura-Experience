@@ -197,11 +197,26 @@ export class AutomationService {
         .update({ status: 'cancelled' })
         .eq('id', messageId)
         .eq('propertyId', propertyId)
-        .in('status', ['pending', 'failed']); // Cancel pending or failed messages
+        .in('status', ['pending', 'failed']);
 
       return !error;
     } catch (error) {
       console.error("Erro ao cancelar mensagem:", error);
+      return false;
+    }
+  }
+
+  static async cancelMessagesBatch(propertyId: string, messageIds: string[]): Promise<boolean> {
+    try {
+      const { error } = await supabase.from('messages')
+        .update({ status: 'cancelled' })
+        .in('id', messageIds)
+        .eq('propertyId', propertyId)
+        .in('status', ['pending', 'failed']);
+
+      return !error;
+    } catch (error) {
+      console.error("Erro ao cancelar mensagens em lote:", error);
       return false;
     }
   }

@@ -7,7 +7,7 @@ import { WhatsAppMessage } from "@/types/aura";
 import { AutomationService } from "@/services/automation-service";
 import { Button } from "@/components/ui/button";
 import {
-  Bot, CheckCircle2, Clock, AlertCircle, RefreshCw, MessageSquareWarning, Loader2, CalendarClock, Edit2, XCircle, Trash2, Ban
+  Bot, CheckCircle2, Clock, AlertCircle, RefreshCw, MessageSquareWarning, Loader2, CalendarClock, Edit2, XCircle, Trash2, Ban, CheckSquare, Square
 } from "lucide-react";
 
 export default function AutomationsQueuePage() {
@@ -19,16 +19,17 @@ export default function AutomationsQueuePage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editPhone, setEditPhone] = useState("");
   const [isCancelling, setIsCancelling] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBatchCancelling, setIsBatchCancelling] = useState(false);
 
   useEffect(() => {
     if (!property?.id) return;
 
     const fetchMessages = async () => {
-      // 4 days ago threshold for sent/delivered ones
       const archiveThreshold = new Date();
       archiveThreshold.setDate(archiveThreshold.getDate() - 4);
 
-      let query = supabase
+      const { data } = await supabase
         .from('messages')
         .select('*')
         .eq('propertyId', property.id)
@@ -36,14 +37,10 @@ export default function AutomationsQueuePage() {
         .order('createdAt', { ascending: false })
         .limit(200);
 
-      const { data, error } = await query;
-
       if (data) {
-        // Filter out old sent/delivered messages in memory, to keep the view clean
         const filteredData = data.filter((m: any) => {
           if (['sent', 'delivered', 'read'].includes(m.status)) {
-            const msgDate = new Date(m.createdAt);
-            if (msgDate < archiveThreshold) return false;
+            if (new Date(m.createdAt) < archiveThreshold) return false;
           }
           return true;
         });
@@ -54,66 +51,71 @@ export default function AutomationsQueuePage() {
 
     fetchMessages();
 
-    // Listen for real-time changes
     const channel = supabase.channel('automations_queue')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'messages',
-          filter: `propertyId=eq.${property.id}`
-        },
-        () => {
-          fetchMessages();
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `propertyId=eq.${property.id}` }, () => { fetchMessages(); })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, [property?.id]);
 
+  // Clear selection when switching tabs
+  useEffect(() => { setSelectedIds(new Set()); }, [activeTab]);
+
   const handleRetry = async (messageId: string) => {
     if (!property?.id) return;
     setRetryingId(messageId);
-
     const success = await AutomationService.retryFailedMessage(property.id, messageId);
-    if (!success) {
-      alert("Não foi possível reenviar a mensagem. Verifique a conexão.");
-    }
-
+    if (!success) alert("Não foi possível reenviar a mensagem. Verifique a conexão.");
     setRetryingId(null);
   };
 
   const handleEditAndRetry = async (messageId: string) => {
     if (!property?.id || !editPhone) return;
     setRetryingId(messageId);
-    
     let cleanedPhone = editPhone.replace(/\D/g, '');
     if ((cleanedPhone.length === 10 || cleanedPhone.length === 11) && !cleanedPhone.startsWith('55')) {
       cleanedPhone = '55' + cleanedPhone;
     }
-
     const success = await AutomationService.editAndRetryMessage(property.id, messageId, cleanedPhone);
-    if (success) {
-      setEditingId(null);
-      setEditPhone("");
-    } else {
-      alert("Não foi possível editar e reenviar a mensagem.");
-    }
+    if (success) { setEditingId(null); setEditPhone(""); }
+    else alert("Não foi possível editar e reenviar a mensagem.");
     setRetryingId(null);
   };
 
   const handleCancel = async (messageId: string) => {
     if (!property?.id) return;
     if (!confirm("Tem certeza que deseja cancelar esta mensagem? Ela não será enviada ao hóspede.")) return;
-    
     setIsCancelling(messageId);
     const success = await AutomationService.cancelMessage(property.id, messageId);
-    if (!success) {
-      alert("Falha ao cancelar mensagem.");
-    }
+    if (!success) alert("Falha ao cancelar mensagem.");
     setIsCancelling(null);
+  };
+
+  const handleBatchCancel = async () => {
+    if (!property?.id || selectedIds.size === 0) return;
+    if (!confirm(`Cancelar ${selectedIds.size} mensagem(ns) selecionada(s)? Elas não serão enviadas aos hóspedes.`)) return;
+    setIsBatchCancelling(true);
+    const success = await AutomationService.cancelMessagesBatch(property.id, Array.from(selectedIds));
+    if (!success) alert("Falha ao cancelar mensagens em lote.");
+    setSelectedIds(new Set());
+    setIsBatchCancelling(false);
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    const visible = getFilteredMessages();
+    if (selectedIds.size === visible.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(visible.map(m => m.id)));
+    }
   };
 
   const pendingMessages = messages.filter(m => m.status === 'pending' || m.status === 'processing');
@@ -128,11 +130,13 @@ export default function AutomationsQueuePage() {
     return failedMessages;
   };
 
+  const isCancellableTab = activeTab === 'pending' || activeTab === 'failed';
+  const visibleMessages = getFilteredMessages();
+  const allSelected = visibleMessages.length > 0 && selectedIds.size === visibleMessages.length;
+
   const formatDate = (timestamp: any) => {
     if (!timestamp) return "Data indefinida";
-    return new Date(timestamp).toLocaleString('pt-BR', {
-      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-    });
+    return new Date(timestamp).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   };
 
   const translateTrigger = (trigger?: string) => {
@@ -169,57 +173,97 @@ export default function AutomationsQueuePage() {
 
         {loading ? (
           <div className="flex flex-col items-center justify-center h-64 text-muted-foreground"><Loader2 className="w-8 h-8 animate-spin text-primary mb-4" /><p>A carregar a fila de automação...</p></div>
-        ) : getFilteredMessages().length === 0 ? (
+        ) : visibleMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-80 bg-background border border-dashed rounded-2xl shadow-sm text-center p-6 animate-in fade-in"><div className="w-16 h-16 bg-muted text-muted-foreground rounded-full flex items-center justify-center mb-4"><Bot className="w-8 h-8 opacity-50" /></div><h2 className="text-xl font-bold text-foreground mb-2">Fila Vazia</h2><p className="text-muted-foreground max-w-md">Não há mensagens nesta categoria no histórico recente.</p></div>
         ) : (
-          <div className="grid gap-4 animate-in fade-in slide-in-from-bottom-4">
-            {getFilteredMessages().map((msg) => (
-              <div key={msg.id} className={`bg-background border rounded-xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all ${msg.status === 'failed' ? 'border-destructive/50 bg-destructive/5' : ''}`}>
-                <div className="flex flex-col gap-2 flex-1">
-                  <div className="flex items-center gap-3"><span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-primary/10 text-primary">{translateTrigger(msg.triggerEvent)}</span><span className="text-sm font-medium text-foreground">Destino: {msg.to}</span></div>
-                  <p className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-lg line-clamp-2 border border-dashed">{msg.body}</p>
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1"><span className="flex items-center gap-1"><CalendarClock className="w-3.5 h-3.5" /> Agendado para: {formatDate(msg.scheduledFor || msg.createdAt)}</span>{msg.attempts > 0 && <span className="flex items-center gap-1"><RefreshCw className="w-3.5 h-3.5" /> Tentativas: {msg.attempts}/3</span>}</div>
-                </div>
+          <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4">
 
-                {msg.status === 'failed' && (
-                  <div className="flex flex-col items-end gap-2 md:pl-6 md:border-l border-destructive/20 min-w-[200px]">
-                    <div className="flex items-center gap-1.5 text-sm font-semibold text-destructive"><MessageSquareWarning className="w-4 h-4" /> Erro no Envio</div>
-                    {msg.errorMessage && <p className="text-xs text-destructive/80 text-right line-clamp-2" title={msg.errorMessage}>{msg.errorMessage}</p>}
-                    
-                    {editingId === msg.id ? (
-                      <div className="flex flex-col gap-2 w-full mt-2 bg-background border border-border p-2 rounded-lg">
-                        <label className="text-[10px] font-bold uppercase text-muted-foreground">Corrigir WhatsApp</label>
-                        <input type="tel" value={editPhone} onChange={e => setEditPhone(e.target.value)} placeholder="Ex: 5553981169216" className="w-full text-xs p-1.5 border rounded-md outline-none focus:border-primary" />
-                        <div className="flex gap-2">
-                          <Button variant="ghost" size="sm" className="flex-1 h-7 text-xs" onClick={() => setEditingId(null)}>Cancelar</Button>
-                          <Button size="sm" className="flex-1 h-7 text-xs" onClick={() => handleEditAndRetry(msg.id)} disabled={retryingId === msg.id || !editPhone}>Salvar e Enviar</Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col w-full gap-2 mt-2">
-                        <Button variant="outline" size="sm" className="w-full border-destructive/30 hover:bg-destructive hover:text-destructive-foreground" onClick={() => handleRetry(msg.id)} disabled={retryingId === msg.id}>{retryingId === msg.id ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> A reprocessar...</> : <><RefreshCw className="w-4 h-4 mr-2" /> Tentar Novamente</>}</Button>
-                        <Button variant="ghost" size="sm" className="w-full text-xs hover:bg-muted" onClick={() => { setEditingId(msg.id); setEditPhone(msg.to || ""); }}><Edit2 className="w-3.5 h-3.5 mr-1.5"/> Editar Número</Button>
-                        <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10" disabled={isCancelling === msg.id} onClick={() => handleCancel(msg.id)}>
-                          {isCancelling === msg.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <><XCircle className="w-3.5 h-3.5 mr-1" /> Cancelar sem Enviar</>}
-                        </Button>
-                      </div>
-                    )}
-                  </div>
+            {/* Barra de seleção em lote — só nas abas canceláveis */}
+            {isCancellableTab && (
+              <div className="flex items-center justify-between bg-background border rounded-xl px-4 py-3 shadow-sm">
+                <button onClick={toggleSelectAll} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  {allSelected ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4" />}
+                  {allSelected ? 'Desmarcar tudo' : 'Selecionar tudo'}
+                </button>
+                {selectedIds.size > 0 && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="gap-2"
+                    onClick={handleBatchCancel}
+                    disabled={isBatchCancelling}
+                  >
+                    {isBatchCancelling
+                      ? <><Loader2 className="w-4 h-4 animate-spin" /> Cancelando...</>
+                      : <><XCircle className="w-4 h-4" /> Cancelar marcadas ({selectedIds.size})</>
+                    }
+                  </Button>
                 )}
-
-                {msg.status === 'pending' && (
-                  <div className="flex flex-col items-end gap-2 md:pl-6 md:border-l border-border min-w-[150px]">
-                    <div className="flex items-center gap-2 text-amber-600 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200"><Clock className="w-4 h-4" /> <span className="text-sm font-medium">A aguardar envio</span></div>
-                    <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10" disabled={isCancelling === msg.id} onClick={() => handleCancel(msg.id)}>
-                      {isCancelling === msg.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <><XCircle className="w-3.5 h-3.5 mr-1" /> Cancelar Envio</>}
-                    </Button>
-                  </div>
-                )}
-
-                {(msg.status === 'sent' || msg.status === 'delivered' || msg.status === 'read') && <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 h-fit"><CheckCircle2 className="w-4 h-4" /> <span className="text-sm font-medium">Entregue</span></div>}
-                {msg.status === 'cancelled' && <div className="flex items-center gap-2 text-muted-foreground bg-muted/50 px-3 py-1.5 rounded-lg border border-border h-fit"><Ban className="w-4 h-4" /> <span className="text-sm font-medium">Cancelada</span></div>}
               </div>
-            ))}
+            )}
+
+            {visibleMessages.map((msg) => {
+              const isSelected = selectedIds.has(msg.id);
+              return (
+                <div
+                  key={msg.id}
+                  className={`bg-background border rounded-xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all ${msg.status === 'failed' ? 'border-destructive/50 bg-destructive/5' : ''} ${isSelected ? 'ring-2 ring-primary/40' : ''}`}
+                >
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    {/* Checkbox de seleção — só nas abas canceláveis */}
+                    {isCancellableTab && (
+                      <button onClick={() => toggleSelect(msg.id)} className="mt-0.5 shrink-0 text-muted-foreground hover:text-primary transition-colors">
+                        {isSelected ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4" />}
+                      </button>
+                    )}
+
+                    <div className="flex flex-col gap-2 flex-1 min-w-0">
+                      <div className="flex items-center gap-3"><span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-primary/10 text-primary">{translateTrigger(msg.triggerEvent)}</span><span className="text-sm font-medium text-foreground">Destino: {msg.to}</span></div>
+                      <p className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-lg line-clamp-2 border border-dashed">{msg.body}</p>
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1"><span className="flex items-center gap-1"><CalendarClock className="w-3.5 h-3.5" /> Agendado para: {formatDate(msg.scheduledFor || msg.createdAt)}</span>{msg.attempts > 0 && <span className="flex items-center gap-1"><RefreshCw className="w-3.5 h-3.5" /> Tentativas: {msg.attempts}/3</span>}</div>
+                    </div>
+                  </div>
+
+                  {msg.status === 'failed' && (
+                    <div className="flex flex-col items-end gap-2 md:pl-6 md:border-l border-destructive/20 min-w-[200px]">
+                      <div className="flex items-center gap-1.5 text-sm font-semibold text-destructive"><MessageSquareWarning className="w-4 h-4" /> Erro no Envio</div>
+                      {msg.errorMessage && <p className="text-xs text-destructive/80 text-right line-clamp-2" title={msg.errorMessage}>{msg.errorMessage}</p>}
+
+                      {editingId === msg.id ? (
+                        <div className="flex flex-col gap-2 w-full mt-2 bg-background border border-border p-2 rounded-lg">
+                          <label className="text-[10px] font-bold uppercase text-muted-foreground">Corrigir WhatsApp</label>
+                          <input type="tel" value={editPhone} onChange={e => setEditPhone(e.target.value)} placeholder="Ex: 5553981169216" className="w-full text-xs p-1.5 border rounded-md outline-none focus:border-primary" />
+                          <div className="flex gap-2">
+                            <Button variant="ghost" size="sm" className="flex-1 h-7 text-xs" onClick={() => setEditingId(null)}>Cancelar</Button>
+                            <Button size="sm" className="flex-1 h-7 text-xs" onClick={() => handleEditAndRetry(msg.id)} disabled={retryingId === msg.id || !editPhone}>Salvar e Enviar</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col w-full gap-2 mt-2">
+                          <Button variant="outline" size="sm" className="w-full border-destructive/30 hover:bg-destructive hover:text-destructive-foreground" onClick={() => handleRetry(msg.id)} disabled={retryingId === msg.id}>{retryingId === msg.id ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> A reprocessar...</> : <><RefreshCw className="w-4 h-4 mr-2" /> Tentar Novamente</>}</Button>
+                          <Button variant="ghost" size="sm" className="w-full text-xs hover:bg-muted" onClick={() => { setEditingId(msg.id); setEditPhone(msg.to || ""); }}><Edit2 className="w-3.5 h-3.5 mr-1.5"/> Editar Número</Button>
+                          <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10" disabled={isCancelling === msg.id} onClick={() => handleCancel(msg.id)}>
+                            {isCancelling === msg.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <><XCircle className="w-3.5 h-3.5 mr-1" /> Cancelar sem Enviar</>}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {msg.status === 'pending' && (
+                    <div className="flex flex-col items-end gap-2 md:pl-6 md:border-l border-border min-w-[150px]">
+                      <div className="flex items-center gap-2 text-amber-600 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200"><Clock className="w-4 h-4" /> <span className="text-sm font-medium">A aguardar envio</span></div>
+                      <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10" disabled={isCancelling === msg.id} onClick={() => handleCancel(msg.id)}>
+                        {isCancelling === msg.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <><XCircle className="w-3.5 h-3.5 mr-1" /> Cancelar Envio</>}
+                      </Button>
+                    </div>
+                  )}
+
+                  {(msg.status === 'sent' || msg.status === 'delivered' || msg.status === 'read') && <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 h-fit"><CheckCircle2 className="w-4 h-4" /> <span className="text-sm font-medium">Entregue</span></div>}
+                  {msg.status === 'cancelled' && <div className="flex items-center gap-2 text-muted-foreground bg-muted/50 px-3 py-1.5 rounded-lg border border-border h-fit"><Ban className="w-4 h-4" /> <span className="text-sm font-medium">Cancelada</span></div>}
+                </div>
+              );
+            })}
           </div>
         )}
       </main>
