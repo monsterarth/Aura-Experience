@@ -73,6 +73,10 @@ const structuresTranslations = {
         proceed: 'Prosseguir', confirmBooking: 'Confirmar Reserva', sendRequest: 'Enviar Solicitação',
         selectSlot: 'Selecione o horário desejado para hoje.',
         selectUnit: 'Escolha a unidade', unit: 'Unidade', today: 'Hoje',
+        alreadyBooked: 'Você já tem uma reserva ativa',
+        alreadyBookedDesc: 'Para reservar outro horário, cancele a reserva atual primeiro.',
+        cancelBooking: 'Cancelar esta reserva', cancelError: 'Erro ao cancelar. Tente novamente.',
+        bookedAt: 'Agendado para',
     },
     en: {
         pageTitle: 'Reservations', noSpaces: 'No Spaces',
@@ -91,6 +95,10 @@ const structuresTranslations = {
         proceed: 'Continue', confirmBooking: 'Confirm Booking', sendRequest: 'Send Request',
         selectSlot: 'Select the time you prefer for today.',
         selectUnit: 'Choose the unit', unit: 'Unit', today: 'Today',
+        alreadyBooked: 'You already have an active booking',
+        alreadyBookedDesc: 'To book a different time, cancel your current booking first.',
+        cancelBooking: 'Cancel this booking', cancelError: 'Error cancelling. Please try again.',
+        bookedAt: 'Booked for',
     },
     es: {
         pageTitle: 'Reservas', noSpaces: 'Sin Espacios',
@@ -109,6 +117,10 @@ const structuresTranslations = {
         proceed: 'Continuar', confirmBooking: 'Confirmar Reserva', sendRequest: 'Enviar Solicitud',
         selectSlot: 'Selecciona el horario deseado para hoy.',
         selectUnit: 'Elige la unidad', unit: 'Unidad', today: 'Hoy',
+        alreadyBooked: 'Ya tienes una reserva activa',
+        alreadyBookedDesc: 'Para reservar otro horario, cancela tu reserva actual primero.',
+        cancelBooking: 'Cancelar esta reserva', cancelError: 'Error al cancelar. Inténtalo de nuevo.',
+        bookedAt: 'Reservado para',
     },
 };
 
@@ -138,6 +150,8 @@ function StructuresWizard() {
     const [availableSlots, setAvailableSlots] = useState<TimeSlot[]>([]);
     const [selectedSlot, setSelectedSlot] = useState<TimeSlot | null>(null);
 
+    const [existingBooking, setExistingBooking] = useState<StructureBooking | null>(null);
+    const [cancelling, setCancelling] = useState(false);
     const [notes, setNotes] = useState("");
     const [lang, setLang] = useState<'pt' | 'en' | 'es'>('pt');
     const t = structuresTranslations[lang];
@@ -194,6 +208,14 @@ function StructuresWizard() {
                     `/api/guest/structure-slots?propertyId=${property.id}&structureId=${selectedStructure.id}&date=${selectedDate}`
                 );
                 const bookings: StructureBooking[] = await res.json();
+
+                // Verifica se o hóspede já tem reserva ativa nesta estrutura hoje
+                const activeBooking = stay ? bookings.find(b =>
+                    b.stayId === stay.id &&
+                    (b.status === 'pending' || b.status === 'approved')
+                ) : null;
+                setExistingBooking(activeBooking || null);
+
                 const allSlots = StructureService.generateTimeSlots(selectedStructure, bookings, selectedUnit?.id);
 
                 // Filtrar slots com menos de 30 minutos restantes até o fim
@@ -214,10 +236,41 @@ function StructuresWizard() {
         }
     }, [selectedDate, selectedStructure, selectedUnit, property, step]);
 
+    const cancelExistingBooking = async () => {
+        if (!existingBooking || !stay || !property) return;
+        setCancelling(true);
+        try {
+            const res = await fetch(
+                `/api/guest/structure-bookings?bookingId=${existingBooking.id}&stayId=${stay.id}&propertyId=${property.id}`,
+                { method: 'DELETE' }
+            );
+            if (!res.ok) throw new Error();
+            setExistingBooking(null);
+            setSelectedSlot(null);
+            // Recarrega slots após cancelamento
+            const slotsRes = await fetch(
+                `/api/guest/structure-slots?propertyId=${property.id}&structureId=${selectedStructure!.id}&date=${selectedDate}`
+            );
+            const bookings: StructureBooking[] = await slotsRes.json();
+            const allSlots = StructureService.generateTimeSlots(selectedStructure!, bookings, selectedUnit?.id);
+            const now = new Date();
+            const nowMinutes = now.getHours() * 60 + now.getMinutes();
+            setAvailableSlots(allSlots.filter(slot => {
+                const [h, m] = slot.endTime.split(':').map(Number);
+                return (h * 60 + m - nowMinutes) >= 30;
+            }));
+        } catch {
+            toast.error(t.cancelError);
+        } finally {
+            setCancelling(false);
+        }
+    };
+
     const handleSelectStructure = (s: Structure) => {
         setSelectedStructure(s);
         setSelectedUnit(null);
         setSelectedSlot(null);
+        setExistingBooking(null);
         if (s.units && s.units.length > 0) {
             setShowUnitPicker(true);
         } else {
@@ -470,33 +523,63 @@ function StructuresWizard() {
                             </div>
                         </div>
 
-                        <div className="space-y-3">
-                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">{t.availableSlots} ({selectedStructure.operatingHours?.slotDurationMinutes}m)</label>
+                        {existingBooking ? (
+                            /* Hóspede já tem reserva ativa — bloqueia nova reserva */
+                            <div className="bg-amber-500/10 border border-amber-500/30 rounded-3xl p-6 space-y-4">
+                                <div className="flex items-start gap-3">
+                                    <CheckCircle2 size={24} className="text-amber-500 shrink-0 mt-0.5" />
+                                    <div>
+                                        <p className="font-black text-foreground">{t.alreadyBooked}</p>
+                                        <p className="text-xs text-muted-foreground mt-1">{t.alreadyBookedDesc}</p>
+                                    </div>
+                                </div>
+                                <div className="bg-background/60 rounded-2xl p-4 space-y-1 border border-border">
+                                    <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">{t.bookedAt}</p>
+                                    <p className="font-black text-primary text-lg">{existingBooking.startTime} — {existingBooking.endTime}</p>
+                                    {existingBooking.unitId && selectedStructure.units && (
+                                        <p className="text-xs text-muted-foreground">
+                                            {t.unit}: {selectedStructure.units.find(u => u.id === existingBooking.unitId)?.name || existingBooking.unitId}
+                                        </p>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={cancelExistingBooking}
+                                    disabled={cancelling}
+                                    className="w-full py-3 rounded-2xl border border-destructive/40 text-destructive font-bold text-sm hover:bg-destructive/10 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {cancelling ? <Loader2 size={16} className="animate-spin" /> : null}
+                                    {t.cancelBooking}
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">{t.availableSlots} ({selectedStructure.operatingHours?.slotDurationMinutes}m)</label>
 
-                            {availableSlots.length > 0 ? (
-                                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                                    {availableSlots.map(slot => (
-                                        <button
-                                            key={slot.startTime}
-                                            disabled={!slot.available}
-                                            onClick={() => setSelectedSlot(slot)}
-                                            className={cn(
-                                                "py-3 rounded-xl font-bold text-sm transition-all border-2 flex flex-col items-center gap-1",
-                                                !slot.available ? "opacity-30 bg-secondary border-transparent cursor-not-allowed" :
-                                                    selectedSlot?.startTime === slot.startTime ? "border-primary bg-primary/10 text-primary" : "border-transparent bg-secondary text-foreground hover:bg-secondary/80"
-                                            )}
-                                        >
-                                            <Clock size={16} className={!slot.available ? "opacity-50" : selectedSlot?.startTime === slot.startTime ? "text-primary" : "text-muted-foreground"} />
-                                            <span>{slot.startTime}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="bg-secondary/50 border border-border p-6 rounded-2xl text-center">
-                                    <p className="text-sm font-bold text-muted-foreground">{t.noSlots}</p>
-                                </div>
-                            )}
-                        </div>
+                                {availableSlots.length > 0 ? (
+                                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                                        {availableSlots.map(slot => (
+                                            <button
+                                                key={slot.startTime}
+                                                disabled={!slot.available}
+                                                onClick={() => setSelectedSlot(slot)}
+                                                className={cn(
+                                                    "py-3 rounded-xl font-bold text-sm transition-all border-2 flex flex-col items-center gap-1",
+                                                    !slot.available ? "opacity-30 bg-secondary border-transparent cursor-not-allowed" :
+                                                        selectedSlot?.startTime === slot.startTime ? "border-primary bg-primary/10 text-primary" : "border-transparent bg-secondary text-foreground hover:bg-secondary/80"
+                                                )}
+                                            >
+                                                <Clock size={16} className={!slot.available ? "opacity-50" : selectedSlot?.startTime === slot.startTime ? "text-primary" : "text-muted-foreground"} />
+                                                <span>{slot.startTime}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="bg-secondary/50 border border-border p-6 rounded-2xl text-center">
+                                        <p className="text-sm font-bold text-muted-foreground">{t.noSlots}</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         <div className="h-20"></div>
                     </div>
@@ -555,7 +638,7 @@ function StructuresWizard() {
             {(step === 1 || step === 2) && (
                 <div className="fixed bottom-0 left-0 w-full bg-background/90 backdrop-blur-xl border-t border-border p-4 z-50 animate-in slide-in-from-bottom-12">
                     <div className="max-w-2xl mx-auto">
-                        {step === 1 && (
+                        {step === 1 && !existingBooking && (
                             <button
                                 onClick={() => setStep(2)}
                                 disabled={!selectedSlot}

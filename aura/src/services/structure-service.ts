@@ -130,7 +130,9 @@ export const StructureService = {
 
             const conflictingBooking = existingBookings.find(b => {
                 if (b.status === 'cancelled' || b.status === 'rejected') return false;
-                if (unitId && b.unitId !== unitId) return false;
+                // Bookings sem unitId bloqueiam todas as unidades (retrocompatibilidade).
+                // Bookings com unitId diferente do filtro não geram conflito.
+                if (unitId && b.unitId && b.unitId !== unitId) return false;
 
                 const bStart = timeToMinutes(b.startTime);
                 const bEnd = timeToMinutes(b.endTime);
