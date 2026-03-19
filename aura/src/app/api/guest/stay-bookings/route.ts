@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     if (bookings.length === 0) return NextResponse.json([]);
 
     // Fetch structure names manually (avoids dependency on FK constraints)
-    const structureIds = [...new Set(bookings.map((b: any) => b.structureId).filter(Boolean))];
+    const structureIds = Array.from(new Set(bookings.map((b: any) => b.structureId).filter(Boolean)));
     const { data: structuresData } = await supabaseAdmin
         .from("structures")
         .select("id, name, units")
