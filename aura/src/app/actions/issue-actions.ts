@@ -29,6 +29,7 @@ export async function reportCabinIssue(
   const { error: insertError } = await supabaseAdmin
     .from('maintenance_tasks')
     .insert({
+      id: crypto.randomUUID(),
       propertyId: stay.propertyId,
       cabinId: stay.cabinId,
       stayId: stay.id,
@@ -84,6 +85,7 @@ export async function reportStructureIssue(
   const { error: insertError } = await supabaseAdmin
     .from('maintenance_tasks')
     .insert({
+      id: crypto.randomUUID(),
       propertyId: stay.propertyId,
       structureId,
       stayId: stay.id,
@@ -134,6 +136,7 @@ export async function reportAppBug(
   const { error: insertError } = await supabaseAdmin
     .from('system_bugs')
     .insert({
+      id: crypto.randomUUID(),
       stayId: stay.id,
       propertyId: stay.propertyId,
       description,

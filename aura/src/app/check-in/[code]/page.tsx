@@ -929,9 +929,9 @@ function GuestHubContent() {
                                                             setDndUntil(null);
                                                         }
                                                     } else {
-                                                        toast.error('Erro ao enviar relatório.');
+                                                        toast.error(result.error || 'Erro ao enviar relatório.');
                                                     }
-                                                } catch { toast.error('Erro ao enviar relatório.'); }
+                                                } catch (e: any) { toast.error(e.message || 'Erro ao enviar relatório.'); }
                                                 finally { setReportLoading(false); }
                                             }}
                                             disabled={reportLoading || !reportDescription.trim()}
@@ -985,9 +985,9 @@ function GuestHubContent() {
                                                         toast.success(t.reportSent);
                                                         setIsReportOpen(false);
                                                     } else {
-                                                        toast.error('Erro ao enviar relatório.');
+                                                        toast.error(result.error || 'Erro ao enviar relatório.');
                                                     }
-                                                } catch { toast.error('Erro ao enviar relatório.'); }
+                                                } catch (e: any) { toast.error(e.message || 'Erro ao enviar relatório.'); }
                                                 finally { setReportLoading(false); }
                                             }}
                                             disabled={reportLoading || !reportDescription.trim() || !reportStructureId}
@@ -1032,9 +1032,9 @@ function GuestHubContent() {
                                                         toast.success(t.reportSent);
                                                         setIsReportOpen(false);
                                                     } else {
-                                                        toast.error('Erro ao enviar relatório.');
+                                                        toast.error(result.error || 'Erro ao enviar relatório.');
                                                     }
-                                                } catch { toast.error('Erro ao enviar relatório.'); }
+                                                } catch (e: any) { toast.error(e.message || 'Erro ao enviar relatório.'); }
                                                 finally { setReportLoading(false); }
                                             }}
                                             disabled={reportLoading || !reportDescription.trim()}
