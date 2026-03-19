@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { AuditService } from '@/services/audit-service';
+import { requireAuth, isAuthError } from '@/lib/api-auth';
 
 export async function POST(
     request: Request,
     { params }: { params: { id: string } }
 ) {
+    // Auth: apenas super_admin — extraído da sessão, não do body
+    const auth = await requireAuth(['super_admin']);
+    if (isAuthError(auth)) return auth;
+
     try {
         const propertyId = params.id;
         if (!propertyId) {
@@ -13,21 +18,17 @@ export async function POST(
         }
 
         const {
-            actorId,
-            actorName,
             action, // 'purge', 'reset_defaults', 'delete_property'
             targets // Array of strings like ['stays', 'guests', 'messages']
         } = await request.json();
 
-        if (!actorId || !action) {
+        if (!action) {
             return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
         }
 
-        // Verify Super Admin status (Extra Security Layer)
-        const { data: staffData } = await supabaseAdmin.from('staff').select('role').eq('id', actorId).single();
-        if (staffData?.role !== 'super_admin') {
-            return NextResponse.json({ error: 'Unauthorized. Super Admin only.' }, { status: 403 });
-        }
+        // actorId/actorName agora vêm da sessão autenticada
+        const actorId = auth.staff.id;
+        const actorName = auth.staff.fullName;
 
         if (action === 'delete_property') {
             // DELETE EVERYTHING

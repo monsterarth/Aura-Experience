@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 
+const WHATSAPP_API_KEY = process.env.WHATSAPP_API_KEY;
+
 export async function POST(req: Request) {
+  // Verificar API key do serviço WhatsApp
+  const apiKey = req.headers.get('x-api-key');
+  if (!WHATSAPP_API_KEY || apiKey !== WHATSAPP_API_KEY) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const body = await req.json();
     const { propertyId, messageId, type, ack, reaction } = body;

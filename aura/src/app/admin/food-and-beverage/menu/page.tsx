@@ -149,7 +149,7 @@ export default function FBMenuPage() {
     async function deleteCategory(id: string) {
         if (!confirm("Tem certeza? Esta ação removerá a categoria e todos itens vinculados!")) return;
         try {
-            await fbService.deleteCategory(id);
+            await fbService.deleteCategory(currentProperty!.id, id);
             toast.success("Categoria removida.");
             loadData();
         } catch (error) {
@@ -282,7 +282,7 @@ export default function FBMenuPage() {
     async function deleteItem(id: string) {
         if (!confirm("Tem certeza? Esta ação é irreversível.")) return;
         try {
-            await fbService.deleteMenuItem(id);
+            await fbService.deleteMenuItem(currentProperty!.id, id);
             toast.success("Item removido.");
             loadData();
         } catch (error) {

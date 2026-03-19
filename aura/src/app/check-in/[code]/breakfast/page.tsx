@@ -4,9 +4,7 @@ import React, { useState, useEffect, Suspense, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { StayService } from "@/services/stay-service";
 import { PropertyService } from "@/services/property-service";
-import { fbService } from "@/services/fb-service";
 import { BreakfastSalonService } from "@/services/breakfast-salon-service";
-import { supabase } from "@/lib/supabase";
 import { Stay, Property, FBCategory, FBMenuItem, FBOrder, BreakfastAttendance } from "@/types/aura";
 import { Loader2, ArrowLeft, Coffee, Plus, Minus, Info, CheckCircle2, ChevronRight, Utensils, AlertCircle, X, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
@@ -238,10 +236,11 @@ function BreakfastWizard() {
                 if (!prop) return;
                 setProperty(prop as Property);
 
-                const [cats, itms] = await Promise.all([
-                    fbService.getCategories(prop.id),
-                    fbService.getMenuItems(prop.id)
-                ]);
+                const menuRes = await fetch(`/api/guest/breakfast-menu?propertyId=${prop.id}`);
+                if (!menuRes.ok) throw new Error("Falha ao carregar cardápio");
+                const menuData = await menuRes.json();
+                const cats: FBCategory[] = menuData.categories;
+                const itms: FBMenuItem[] = menuData.menuItems;
 
                 // Filtrar apenas categorias de café da manhã ativas com itens
                 const bCats = cats.filter(c => c.type === 'both' || c.type === 'breakfast');
@@ -267,7 +266,8 @@ function BreakfastWizard() {
 
                 // Verificar se já existe pedido para amanhã (delivery)
                 const tomorrowISO = new Date(Date.now() + 86400000).toISOString().split('T')[0];
-                const existing = await fbService.getOrderForStayDate(s.id, tomorrowISO, 'breakfast');
+                const existingRes = await fetch(`/api/guest/breakfast-orders?stayId=${s.id}&propertyId=${s.propertyId}&deliveryDate=${tomorrowISO}&type=breakfast`);
+                const existing: FBOrder | null = existingRes.ok ? (await existingRes.json()).order : null;
                 if (existing) {
                     setExistingOrder(existing);
                     if (existing.deliveryTime) setDeliveryTime(existing.deliveryTime);
@@ -279,7 +279,8 @@ function BreakfastWizard() {
 
                 // Verificar se já fez pedido buffet hoje
                 const todayISO = new Date().toISOString().split('T')[0];
-                const existingBuffet = await fbService.getOrderForStayDate(s.id, todayISO, 'breakfast');
+                const buffetRes = await fetch(`/api/guest/breakfast-orders?stayId=${s.id}&propertyId=${s.propertyId}&deliveryDate=${todayISO}&type=breakfast`);
+                const existingBuffet: FBOrder | null = buffetRes.ok ? (await buffetRes.json()).order : null;
                 if (existingBuffet?.modality === 'buffet') {
                     setBuffetExistingOrder(existingBuffet);
                 }
@@ -429,19 +430,25 @@ function BreakfastWizard() {
             const isoDate = tomorrowData.toISOString().split('T')[0];
 
             if (existingOrder) {
-                await fbService.updateOrder(existingOrder.id, { items: orderItems, totalPrice, deliveryTime });
-            } else {
-                await fbService.createOrder({
-                    propertyId: stay.propertyId,
-                    stayId: stay.id,
-                    type: 'breakfast',
-                    modality: 'delivery',
-                    status: 'pending',
-                    items: orderItems,
-                    totalPrice,
-                    deliveryTime,
-                    deliveryDate: isoDate
+                const patchRes = await fetch('/api/guest/breakfast-orders', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ orderId: existingOrder.id, stayId: stay.id, propertyId: stay.propertyId, items: orderItems, totalPrice, deliveryTime }),
                 });
+                if (!patchRes.ok) {
+                    const err = await patchRes.json();
+                    throw new Error(err.error || 'Erro ao atualizar pedido');
+                }
+            } else {
+                const postRes = await fetch('/api/guest/breakfast-orders', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ propertyId: stay.propertyId, stayId: stay.id, modality: 'delivery', items: orderItems, totalPrice, deliveryTime, deliveryDate: isoDate }),
+                });
+                if (!postRes.ok) {
+                    const err = await postRes.json();
+                    throw new Error(err.error || 'Erro ao criar pedido');
+                }
             }
 
             setSuccess(true);
@@ -582,24 +589,21 @@ function BreakfastWizard() {
             if (!selectedItems.length) return toast.error(lang === 'en' ? 'Select at least 1 item.' : lang === 'es' ? 'Seleccione al menos 1 ítem.' : 'Selecione ao menos 1 item.');
             setBuffetSubmitting(true);
             try {
-                const now = new Date().toISOString();
-                const id = crypto.randomUUID();
-                await supabase.from('fb_orders').insert({
-                    id,
-                    propertyId: stay.propertyId,
-                    stayId: stay.id,
-                    type: 'breakfast',
-                    modality: 'buffet',
-                    status: 'pending',
-                    items: selectedItems,
-                    totalPrice: selectedItems.reduce((s, i) => s + i.unitPrice, 0),
-                    tableId: buffetAttendance.tableId,
-                    attendanceId: buffetAttendance.id,
-                    requestedBy: 'guest',
-                    deliveryDate: new Date().toISOString().split('T')[0],
-                    createdAt: now,
-                    updatedAt: now,
+                const postRes = await fetch('/api/guest/breakfast-orders', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        propertyId: stay.propertyId,
+                        stayId: stay.id,
+                        modality: 'buffet',
+                        items: selectedItems,
+                        totalPrice: selectedItems.reduce((s, i) => s + i.unitPrice, 0),
+                        deliveryDate: new Date().toISOString().split('T')[0],
+                        tableId: buffetAttendance.tableId,
+                        attendanceId: buffetAttendance.id,
+                    }),
                 });
+                if (!postRes.ok) throw new Error('Erro ao enviar pedido');
                 setBuffetSuccess(true);
             } catch {
                 toast.error(lang === 'en' ? 'Error submitting order.' : lang === 'es' ? 'Error al enviar el pedido.' : 'Erro ao enviar pedido.');

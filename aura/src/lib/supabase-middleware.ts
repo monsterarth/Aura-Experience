@@ -39,18 +39,23 @@ export async function updateSession(request: NextRequest) {
     // https://supabase.com/docs/guides/auth/server-side/nextjs
     const { data: { user } } = await supabase.auth.getUser()
 
-    const isAuthRoute = request.nextUrl.pathname.startsWith('/admin') && !request.nextUrl.pathname.includes('/login');
+    const pathname = request.nextUrl.pathname;
+    const isAdminPage = pathname.startsWith('/admin') && !pathname.includes('/login');
+    const isAdminApi = pathname.startsWith('/api/admin');
 
-    // Protect routes based on explicit user existence
-    // Exclui a própria rota de login pra evitar loops infinitos
-    if (isAuthRoute && !user) {
+    // Proteger páginas admin e API routes admin — redireciona/bloqueia se não autenticado
+    if ((isAdminPage || isAdminApi) && !user) {
+        if (isAdminApi) {
+            // API routes retornam 401 em vez de redirect
+            return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
+        }
         const url = request.nextUrl.clone()
         url.pathname = '/admin/login'
         return NextResponse.redirect(url)
     }
 
     // Redirect to dashboard if logged in and on login page
-    if (request.nextUrl.pathname.includes('/admin/login') && user) {
+    if (pathname.includes('/admin/login') && user) {
         const url = request.nextUrl.clone()
         url.pathname = '/admin/stays'
         return NextResponse.redirect(url)

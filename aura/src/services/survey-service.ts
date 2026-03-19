@@ -103,7 +103,7 @@ export class SurveyService {
   }
 
   static async deleteCategory(propertyId: string, categoryId: string): Promise<boolean> {
-    const { error } = await supabase.from('survey_categories').delete().eq('id', categoryId);
+    const { error } = await supabase.from('survey_categories').delete().eq('id', categoryId).eq('propertyId', propertyId);
     return !error;
   }
 
@@ -158,7 +158,7 @@ export class SurveyService {
   }
 
   static async deleteTemplate(propertyId: string, templateId: string): Promise<boolean> {
-    const { error } = await supabase.from('survey_templates').delete().eq('id', templateId);
+    const { error } = await supabase.from('survey_templates').delete().eq('id', templateId).eq('propertyId', propertyId);
     return !error;
   }
 

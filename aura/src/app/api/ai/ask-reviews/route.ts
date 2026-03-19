@@ -1,8 +1,11 @@
 // src/app/api/ai/ask-reviews/route.ts
 import { NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { requireAuth, isAuthError } from '@/lib/api-auth';
 
 export async function POST(req: Request) {
+  const auth = await requireAuth();
+  if (isAuthError(auth)) return auth;
   try {
     const { question, comments } = await req.json();
 

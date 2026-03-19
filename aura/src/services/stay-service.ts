@@ -443,6 +443,7 @@ export const StayService = {
         observations: 'Check-out desfeito pela Recepção. Tarefa cancelada.',
         updatedAt: new Date().toISOString()
       })
+      .eq('propertyId', propertyId)
       .eq('stayId', stayId)
       .eq('type', 'turnover')
       .in('status', ['pending', 'in_progress', 'waiting_conference']);
@@ -609,7 +610,7 @@ export const StayService = {
   },
 
   async deleteFolioItem(propertyId: string, stayId: string, itemId: string, itemDescription: string, actorId: string, actorName: string) {
-    await supabase.from('folio_items').delete().eq('id', itemId);
+    await supabase.from('folio_items').delete().eq('id', itemId).eq('propertyId', propertyId);
 
     const { count } = await supabase.from('folio_items').select('*', { count: 'exact', head: true }).eq('stayId', stayId).eq('status', 'pending');
     await supabase.from('stays').update({ hasOpenFolio: (count || 0) > 0 }).eq('id', stayId);

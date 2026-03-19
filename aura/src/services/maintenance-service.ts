@@ -76,7 +76,7 @@ export const MaintenanceService = {
     },
 
     async deleteTask(propertyId: string, taskId: string, actorId: string, actorName: string) {
-        await supabase.from('maintenance_tasks').delete().eq('id', taskId);
+        await supabase.from('maintenance_tasks').delete().eq('id', taskId).eq('propertyId', propertyId);
 
         await AuditService.log({
             propertyId, userId: actorId, userName: actorName, action: "DELETE", entity: "MAINTENANCE", entityId: taskId,

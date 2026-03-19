@@ -2,8 +2,13 @@
 
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { requireAuth, isAuthError } from "@/lib/api-auth";
 
 export async function POST(req: Request) {
+  // Auth: qualquer staff autenticado pode enviar mensagens
+  const auth = await requireAuth();
+  if (isAuthError(auth)) return auth;
+
   let requestBody;
 
   try {
@@ -12,6 +17,11 @@ export async function POST(req: Request) {
 
     if (!propertyId || !messageId || !number || !message) {
       return NextResponse.json({ error: "Parâmetros incompletos" }, { status: 400 });
+    }
+
+    // Verificar que staff tem acesso a esta property
+    if (auth.staff.role !== 'super_admin' && auth.staff.propertyId !== propertyId) {
+      return NextResponse.json({ error: "Sem permissão para esta propriedade." }, { status: 403 });
     }
 
     const dockerUrl = process.env.WHATSAPP_DOCKER_URL || process.env.WHATSAPP_API_URL;

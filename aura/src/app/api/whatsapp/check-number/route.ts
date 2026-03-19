@@ -1,10 +1,13 @@
 // src/app/api/whatsapp/check-number/route.ts
 import { NextResponse } from 'next/server';
+import { requireAuth, isAuthError } from '@/lib/api-auth';
 
 const WHATSAPP_API_URL = process.env.WHATSAPP_API_URL;
 const WHATSAPP_API_KEY = process.env.WHATSAPP_API_KEY;
 
 export async function POST(req: Request) {
+  const auth = await requireAuth();
+  if (isAuthError(auth)) return auth;
   try {
     const { number } = await req.json();
 

@@ -150,11 +150,12 @@ export const fbService = {
         return mapCategory(data);
     },
 
-    async deleteCategory(id: string): Promise<void> {
+    async deleteCategory(propertyId: string, id: string): Promise<void> {
         const { error } = await supabase
             .from('fb_categories')
             .delete()
-            .eq('id', id);
+            .eq('id', id)
+            .eq('property_id', propertyId);
         if (error) throw error;
     },
 
@@ -231,11 +232,12 @@ export const fbService = {
         return mapMenuItem(data);
     },
 
-    async deleteMenuItem(id: string): Promise<void> {
+    async deleteMenuItem(propertyId: string, id: string): Promise<void> {
         const { error } = await supabase
             .from('fb_menu_items')
             .delete()
-            .eq('id', id);
+            .eq('id', id)
+            .eq('property_id', propertyId);
         if (error) throw error;
     },
 

@@ -60,11 +60,12 @@ export const EventService = {
     return data as Event[];
   },
 
-  async getEventById(id: string): Promise<Event | null> {
+  async getEventById(propertyId: string, id: string): Promise<Event | null> {
     const { data, error } = await supabase
       .from('events')
       .select('*')
       .eq('id', id)
+      .eq('propertyId', propertyId)
       .single();
 
     if (error || !data) return null;
