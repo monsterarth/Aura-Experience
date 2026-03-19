@@ -46,6 +46,7 @@ export async function reportCabinIssue(
     });
 
   if (insertError) {
+    console.error('[reportCabinIssue] Insert error:', insertError);
     return { success: false, error: insertError.message };
   }
 
@@ -100,6 +101,7 @@ export async function reportStructureIssue(
     });
 
   if (insertError) {
+    console.error('[reportStructureIssue] Insert error:', insertError);
     return { success: false, error: insertError.message };
   }
 
