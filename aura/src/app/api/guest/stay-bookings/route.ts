@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabaseAdmin
         .from("structure_bookings")
-        .select("*")
+        .select(`*, structures(name, units(id, name))`)
         .eq("stayId", stayId)
         .eq("propertyId", propertyId)
         .eq("date", date)
@@ -31,5 +31,17 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(data || []);
+    // Flatten structure/unit names into the booking object so the guest portal
+    // can display them even for reception-only (hidden) structures.
+    const bookings = (data || []).map((b: any) => {
+        const structureName: string | null = b.structures?.name ?? null;
+        const unitName: string | null =
+            b.unitId && b.structures?.units
+                ? (b.structures.units.find((u: any) => u.id === b.unitId)?.name ?? null)
+                : null;
+        const { structures: _s, ...rest } = b;
+        return { ...rest, structureName, unitName };
+    });
+
+    return NextResponse.json(bookings);
 }

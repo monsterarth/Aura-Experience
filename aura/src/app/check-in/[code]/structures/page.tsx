@@ -614,6 +614,9 @@ function StructuresWizard() {
                                     {guestTodayBookings.map(b => {
                                         const structure = structures.find(s => s.id === b.structureId);
                                         const unit = structure?.units?.find(u => u.id === b.unitId);
+                                        // Prefer names joined server-side (works for hidden/reception-only structures)
+                                        const displayName = (b as any).structureName ?? structure?.name ?? null;
+                                        const displayUnit = (b as any).unitName ?? unit?.name ?? null;
                                         const isExpanded = heroFocusedId === b.id;
 
                                         return (
@@ -626,7 +629,7 @@ function StructuresWizard() {
                                                         <div className="flex-1 min-w-0">
                                                             <p className="font-black text-sm font-mono">{b.startTime} – {b.endTime}</p>
                                                             <p className="text-xs opacity-90 truncate">
-                                                                {structure?.name ?? '—'}{unit ? ` (${unit.name})` : ''}
+                                                                {displayName ?? '—'}{displayUnit ? ` (${displayUnit})` : ''}
                                                             </p>
                                                         </div>
                                                         <span className={cn(
