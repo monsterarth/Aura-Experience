@@ -42,8 +42,16 @@ export async function POST(
                 await supabaseAdmin.from(table).delete().eq('propertyId', propertyId);
             }
 
-            // Delete staff links
-            await supabaseAdmin.from('staff').update({ propertyId: null, active: false }).eq('propertyId', propertyId);
+            // Delete staff users from Supabase Auth
+            const { data: staffToDelete } = await supabaseAdmin.from('staff').select('id').eq('propertyId', propertyId);
+            if (staffToDelete && staffToDelete.length > 0) {
+                for (const staff of staffToDelete) {
+                    await supabaseAdmin.auth.admin.deleteUser(staff.id);
+                }
+            }
+
+            // Delete staff records
+            await supabaseAdmin.from('staff').delete().eq('propertyId', propertyId);
 
             // Delete property
             const { error: deleteError } = await supabaseAdmin.from('properties').delete().eq('id', propertyId);

@@ -59,16 +59,39 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     let mounted = true;
 
     /**
-     * Safety timeout: se INITIAL_SESSION não disparar em 8s (ex: lock travado),
-     * desbloqueia o loading para não ficar em tela de carregamento eterna.
+     * Safety timeout: se INITIAL_SESSION demorar (ex: lock preso pela aba anterior em um F5),
+     * tenta forçar a leitura da sessão com getUser(). Como getUser() também aguarda a
+     * liberação do lock, isso previne que o usuário seja deslogado precocemente antes
+     * do lock ser solto pelo navegador (o que pode levar até 10s).
      */
-    const safetyTimeout = setTimeout(() => {
+    const safetyTimeout = setTimeout(async () => {
       if (mounted && !initialSessionReceived.current) {
-        console.warn("[Auth] Timeout aguardando INITIAL_SESSION — desbloqueando loading.");
+        console.warn("[Auth] Timeout aguardando INITIAL_SESSION — acionando fallback getUser().");
         initialSessionReceived.current = true;
-        if (mounted) setLoading(false);
+
+        try {
+          const { data: { user: fallbackUser }, error } = await supabase.auth.getUser();
+          
+          if (!mounted) return;
+
+          if (error) {
+            console.warn("[Auth] Erro no getUser fallback:", error.message);
+            // Non-blocking fallback
+          } else if (fallbackUser) {
+            setUser(fallbackUser);
+            const staff = await fetchStaffData(fallbackUser.id);
+            if (mounted && staff) setUserData(staff);
+          } else {
+            setUser(null);
+            setUserData(null);
+          }
+        } catch (err) {
+          console.warn("[Auth] Exception no getUser fallback:", err);
+        } finally {
+          if (mounted) setLoading(false);
+        }
       }
-    }, 8000);
+    }, 5000);
 
     /**
      * onAuthStateChange é a fonte principal de verdade.

@@ -53,7 +53,7 @@ export default function StaffManagementPage() {
 
   const loadStaff = useCallback(async () => {
     try {
-      const pId = userData?.propertyId || property?.id;
+      const pId = property?.id || userData?.propertyId;
       if (!pId) return;
       const data = await StaffService.getStaffByProperty(pId);
       setStaffList(data);
