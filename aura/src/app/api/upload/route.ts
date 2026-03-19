@@ -8,13 +8,33 @@ const ALLOWED_MIME_TYPES = [
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 export async function POST(request: Request): Promise<NextResponse> {
-    // Auth: qualquer staff autenticado pode fazer upload
-    const auth = await requireAuth();
-    if (isAuthError(auth)) return auth;
-
     try {
         const formData = await request.formData();
         const file = formData.get('file') as File;
+        const stayId = formData.get('stayId') as string;
+        const accessCode = formData.get('accessCode') as string;
+
+        // Auth authorization
+        let isAuthorized = false;
+        const auth = await requireAuth();
+        
+        if (!isAuthError(auth)) {
+            isAuthorized = true; // Equipe autenticada
+        } else if (stayId && accessCode) {
+            // Verifica se o hóspede tem uma hospedagem válida para autorizar o upload de fotos do relato
+            const { data: stayCheck } = await supabaseAdmin
+                .from('stays')
+                .select('id')
+                .eq('id', stayId)
+                .eq('accessCode', accessCode)
+                .single();
+
+            if (stayCheck) isAuthorized = true;
+        }
+
+        if (!isAuthorized) {
+            return NextResponse.json({ error: 'Não autorizado. Acesso negado para upload.' }, { status: 401 });
+        }
 
         if (!file) {
             return NextResponse.json({ error: 'Nenhum arquivo enviado.' }, { status: 400 });

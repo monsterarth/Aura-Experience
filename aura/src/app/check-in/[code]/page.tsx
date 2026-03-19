@@ -906,6 +906,8 @@ function GuestHubContent() {
                                             <ImageUpload
                                                 value={reportImageUrl}
                                                 onUploadSuccess={(url) => setReportImageUrl(url)}
+                                                stayId={stay.id}
+                                                accessCode={stay.accessCode}
                                             />
                                             {!reportImageUrl && (
                                                 <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center opacity-50">
@@ -964,6 +966,8 @@ function GuestHubContent() {
                                             <ImageUpload
                                                 value={reportImageUrl}
                                                 onUploadSuccess={(url) => setReportImageUrl(url)}
+                                                stayId={stay.id}
+                                                accessCode={stay.accessCode}
                                             />
                                             {!reportImageUrl && (
                                                 <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center opacity-50">
@@ -1008,6 +1012,8 @@ function GuestHubContent() {
                                             <ImageUpload
                                                 value={reportImageUrl}
                                                 onUploadSuccess={(url) => setReportImageUrl(url)}
+                                                stayId={stay.id}
+                                                accessCode={stay.accessCode}
                                             />
                                             {!reportImageUrl && (
                                                 <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center opacity-50">
