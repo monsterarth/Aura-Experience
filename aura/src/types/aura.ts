@@ -63,7 +63,8 @@ export interface Property {
     whatsappNumber?: string;
     whatsappConfig?: {
       apiUrl: string;
-      token: string;
+      apiKey: string;
+      token?: string;
     };
     petPolicyText?: Record<string, string>;
     generalPolicyText?: Record<string, string>;

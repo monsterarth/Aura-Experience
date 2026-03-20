@@ -3,7 +3,7 @@
 import { useProperty } from "@/context/PropertyContext";
 import { CommunicationCenter } from "@/components/admin/CommunicationCenter";
 import { Button } from "@/components/ui/button";
-import { Bot } from "lucide-react";
+import { Bot, MessageSquareOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function ComunicacaoPage() {
@@ -27,6 +27,21 @@ export default function ComunicacaoPage() {
         <h2 className="text-xl font-semibold mb-2 text-foreground">Acesso Restrito</h2>
         <p className="text-sm text-muted-foreground text-center max-w-md">
           Nenhuma propriedade selecionada no momento. Por favor, utilize o menu lateral (Sidebar) para selecionar o foco da instância.
+        </p>
+      </div>
+    );
+  }
+
+  const whatsappConfigured = property.settings?.whatsappConfig?.apiUrl && property.settings?.whatsappConfig?.apiKey;
+
+  if (!whatsappConfigured) {
+    return (
+      <div className="flex h-[80vh] flex-col items-center justify-center w-full bg-muted/20 rounded-xl border border-dashed">
+        <MessageSquareOff className="w-12 h-12 text-muted-foreground mb-4" />
+        <h2 className="text-xl font-semibold mb-2 text-foreground">Módulo de Mensagens não configurado</h2>
+        <p className="text-sm text-muted-foreground text-center max-w-md">
+          O WhatsApp ainda não foi configurado para <strong className="text-foreground">{property.name}</strong>.
+          Entre em contato com o administrador para ativar a integração de mensagens desta propriedade.
         </p>
       </div>
     );

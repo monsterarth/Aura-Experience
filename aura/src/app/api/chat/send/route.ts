@@ -24,8 +24,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Sem permissão para esta propriedade." }, { status: 403 });
     }
 
-    const dockerUrl = process.env.WHATSAPP_DOCKER_URL || process.env.WHATSAPP_API_URL;
-    const apiKey = process.env.WHATSAPP_API_KEY;
+    // Buscar URL do WhatsApp da propriedade
+    const { data: property } = await supabaseAdmin
+      .from("properties")
+      .select("settings")
+      .eq("id", propertyId)
+      .single();
+
+    const dockerUrl = property?.settings?.whatsappConfig?.apiUrl
+      || process.env.WHATSAPP_DOCKER_URL
+      || process.env.WHATSAPP_API_URL;
+    const apiKey = property?.settings?.whatsappConfig?.apiKey
+      || process.env.WHATSAPP_API_KEY;
 
     if (!dockerUrl || !apiKey) {
       return NextResponse.json({ error: "Configuração do WhatsApp ausente no servidor." }, { status: 500 });
