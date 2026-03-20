@@ -191,7 +191,7 @@ client.on('disconnected', (reason) => {
 });
 
 const authenticateToken = (req, res, next) => {
-    const clientApiKey = req.headers['x-api-key'];
+    const clientApiKey = req.headers['x-api-key'] || req.query.key;
     if (!clientApiKey || clientApiKey !== API_KEY) {
         return res.status(401).json({ error: 'Unauthorized: Invalid API Key' });
     }
