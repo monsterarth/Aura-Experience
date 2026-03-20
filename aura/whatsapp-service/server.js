@@ -2,6 +2,7 @@
 const express = require('express');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
+const QRCode = require('qrcode');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
@@ -60,8 +61,10 @@ const client = new Client({
 });
 
 let isClientReady = false;
+let currentQR = null;
 
 client.on('qr', (qr) => {
+    currentQR = qr;
     console.log('\n=========================================');
     console.log('📱 NOVO QR CODE GERADO. ESCANEIE AGORA:');
     console.log('=========================================\n');
@@ -71,6 +74,7 @@ client.on('qr', (qr) => {
 client.on('ready', () => {
     console.log('\n✅ Cliente WhatsApp conectado e pronto para disparar mensagens!\n');
     isClientReady = true;
+    currentQR = null;
 });
 
 const processedMessages = new Set();
@@ -196,6 +200,25 @@ const authenticateToken = (req, res, next) => {
 
 app.get('/api/status', authenticateToken, (req, res) => {
     res.json({ ready: isClientReady });
+});
+
+// ==========================================
+// 📱 ENDPOINT: QR CODE VIA NAVEGADOR
+// ==========================================
+app.get('/api/qr', authenticateToken, async (req, res) => {
+    if (isClientReady) {
+        return res.status(200).json({ status: 'connected', message: 'WhatsApp já está conectado.' });
+    }
+    if (!currentQR) {
+        return res.status(202).json({ status: 'waiting', message: 'QR Code ainda não foi gerado. Aguarde alguns segundos.' });
+    }
+    try {
+        const qrImage = await QRCode.toBuffer(currentQR, { type: 'png', width: 300, margin: 2 });
+        res.setHeader('Content-Type', 'image/png');
+        res.send(qrImage);
+    } catch (err) {
+        res.status(500).json({ error: 'Erro ao gerar imagem do QR Code', details: err.message });
+    }
 });
 
 function formatBrazilianNumber(number) {
