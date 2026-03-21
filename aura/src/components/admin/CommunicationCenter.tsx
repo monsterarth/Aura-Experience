@@ -17,6 +17,14 @@ import {
 import { format } from "date-fns";
 import { toast } from "sonner";
 
+const EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
+  { label: "Frequentes", emojis: ["😊","😄","😂","🤣","😍","🥰","😎","🤩","😘","😉","😀","😁","🙂","😌","🥳","🤗","👍","👏","🙏","❤️","🔥","✨","🎉","💯","👋","🤝"] },
+  { label: "Casa", emojis: ["🏠","🏡","🛏️","🛁","🚿","🪑","🛋️","🪟","🚪","🔑","🔒","🌡️","🏊","🌊","⛺","🏕️","🌲","🌳","🌴","🌿","☀️","🌙","⭐","🌈","❄️","🌺"] },
+  { label: "Comida", emojis: ["🍕","🍔","🌮","🍣","🍜","🥗","🍰","🎂","☕","🍺","🍷","🥂","🍾","🥤","🧃","🍎","🍓","🫐","🥑","🌽"] },
+  { label: "Viagem", emojis: ["✈️","🚗","🚢","🗺️","📍","🧳","🎒","📸","🌍","🗽","🏖️","🏔️","🗻","🌅","🌄","🏄","🤿","⛷️","🎡"] },
+  { label: "Símbolos", emojis: ["✅","❌","⚠️","ℹ️","💬","📞","📱","📧","📅","⏰","💰","💳","🎁","🎯","📋","✍️","📝","🔔","⭐","💡"] },
+];
+
 interface CommunicationCenterProps {
   propertyId: string;
 }
@@ -98,6 +106,8 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
   const [mentionMenu, setMentionMenu] = useState<MentionMenuState>({
     open: false, query: '', items: [], activeIndex: 0
   });
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [emojiTab, setEmojiTab] = useState(0);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -202,7 +212,7 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
       .select('accessCode, cabins(wifi)')
       .eq('id', contactContext.stayId)
       .single()
-      .then(({ data }) => {
+      .then(({ data }: { data: any }) => {
         if (data) {
           const cabin = Array.isArray((data as any).cabins) ? (data as any).cabins[0] : (data as any).cabins;
           setStayDetails({
@@ -416,6 +426,7 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
       }
 
       setInputText("");
+      setTimeout(() => inputRef.current?.focus(), 0);
     } catch (error) {
       toast.error("Erro ao enviar mensagem.");
     } finally {
@@ -896,6 +907,53 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
                   </div>
                 )}
 
+                {/* Emoji Picker flutuante */}
+                {showEmojiPicker && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowEmojiPicker(false)} />
+                    <div className="absolute bottom-full right-0 mb-2 z-50 w-72 bg-background border rounded-xl shadow-2xl overflow-hidden">
+                      {/* Abas de categorias */}
+                      <div className="flex border-b overflow-x-auto">
+                        {EMOJI_GROUPS.map((g, i) => (
+                          <button
+                            key={g.label}
+                            type="button"
+                            onMouseDown={(e) => { e.preventDefault(); setEmojiTab(i); }}
+                            className={`flex-shrink-0 px-3 py-2 text-[11px] font-semibold transition-colors ${emojiTab === i ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                          >
+                            {g.label}
+                          </button>
+                        ))}
+                      </div>
+                      {/* Grid de emojis */}
+                      <div className="p-2 grid grid-cols-8 gap-0.5 max-h-48 overflow-y-auto">
+                        {EMOJI_GROUPS[emojiTab].emojis.map((emoji) => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              const pos = inputRef.current?.selectionStart ?? inputText.length;
+                              const next = inputText.slice(0, pos) + emoji + inputText.slice(pos);
+                              setInputText(next);
+                              setShowEmojiPicker(false);
+                              setTimeout(() => {
+                                const newPos = pos + emoji.length;
+                                inputRef.current?.focus();
+                                inputRef.current?.setSelectionRange(newPos, newPos);
+                              }, 0);
+                            }}
+                            className="w-8 h-8 flex items-center justify-center text-xl rounded hover:bg-muted/60 transition-colors"
+                            title={emoji}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+
                 <form onSubmit={handleSendMessage} className="flex gap-2 items-end">
                   <textarea
                     ref={inputRef}
@@ -909,6 +967,15 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
                     disabled={sending}
                     style={{ fieldSizing: 'content' } as React.CSSProperties}
                   />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setShowEmojiPicker(p => !p)}
+                    className="h-12 w-10 rounded-xl shrink-0 p-0 self-end text-muted-foreground hover:text-foreground"
+                    title="Emojis"
+                  >
+                    😊
+                  </Button>
                   <Button type="submit" disabled={sending || !inputText.trim()} className="h-12 w-12 rounded-xl shrink-0 p-0 self-end">
                     {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                   </Button>
