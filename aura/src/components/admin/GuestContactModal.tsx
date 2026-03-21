@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Guest, Stay } from "@/types/aura";
+import { ContactService } from "@/services/contact-service";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -41,7 +42,12 @@ export function GuestContactModal({ propertyId, guest, stay, onClose }: GuestCon
     setSending(true);
 
     try {
+      // Garante que o contato existe com nome e vínculo de guest corretos
+      await ContactService.upsertContact(propertyId, guest.fullName, cleanPhone, true, guest.id);
+
       const messageId = crypto.randomUUID();
+
+      const isoNow = new Date().toISOString();
 
       await supabase.from("messages").insert({
         id: messageId,
@@ -53,8 +59,17 @@ export function GuestContactModal({ propertyId, guest, stay, onClose }: GuestCon
         isAutomated: false,
         status: 'pending',
         direction: 'outbound',
-        createdAt: new Date().toISOString(),
+        createdAt: isoNow,
       });
+
+      // Garante que aparece na sidebar da Central de Comunicação
+      await supabase.from('communications').upsert({
+        id: cleanPhone,
+        propertyId,
+        lastMessage: message.trim(),
+        updatedAt: isoNow,
+        archived: false
+      }, { onConflict: 'id' });
 
       const response = await fetch('/api/chat/send', {
         method: 'POST',

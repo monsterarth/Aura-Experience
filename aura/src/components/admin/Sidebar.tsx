@@ -15,7 +15,7 @@ import {
   MessageSquare, Settings, Globe, Menu, X,
   Star, ClipboardList, Calendar, Bot, FileText,
   Loader2, ChevronLeft, ChevronRight, BellRing, Coffee,
-  Ticket, CalendarDays, ShoppingBag, Package, UserSearch
+  Ticket, CalendarDays, ShoppingBag, Package, UserSearch, ContactRound
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import Image from "next/image";
@@ -104,6 +104,7 @@ export const Sidebar = () => {
     { title: "Gastronomia", icon: Coffee, href: "/admin/food-and-beverage/menu", roles: ["super_admin", "admin", "reception", "kitchen", "waiter"] },
     { title: "Café Salão", icon: Coffee, href: "/admin/cafe-salao", roles: ["super_admin", "admin", "reception", "kitchen", "waiter"] },
     { title: "Comunicação", icon: MessageSquare, href: "/admin/comunicacao", roles: ["super_admin", "admin", "reception"] },
+    { title: "Contatos", icon: ContactRound, href: "/admin/contacts", roles: ["super_admin", "admin", "reception"] },
     { title: "Avaliações", icon: Star, href: "/admin/surveys/responses", roles: ["super_admin", "admin", "reception"] },
   ];
 

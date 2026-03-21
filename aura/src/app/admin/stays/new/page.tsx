@@ -174,8 +174,8 @@ function NewStayPageContent() {
 
       toast.success("WhatsApp Validado! Criando registros...", { id: toastId });
 
-      // Usa o número devolvido pela Meta, garantindo a formatação correta (incluindo tratamento de 9º dígito)
-      const finalPhone = whatsData.validNumber || cleanedPhone;
+      // Usa sempre o número já limpo pelo frontend (o validNumber da API não é confiável)
+      const finalPhone = cleanedPhone;
 
       // 2. CRIA O HÓSPEDE FÍSICO
       const cleanDoc = docNumber.replace(/\D/g, '');

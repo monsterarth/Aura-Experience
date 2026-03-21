@@ -18,37 +18,100 @@ export class ContactService {
       const phoneId = this.formatPhoneId(phone);
       if (!phoneId) return null;
 
-      const { data: existingContact } = await supabase
+      const now = new Date().toISOString();
+
+      // Tenta atualizar se já existe
+      const { data: existing } = await supabase
         .from('contacts')
-        .select('*')
+        .select('id')
         .eq('id', phoneId)
         .eq('propertyId', propertyId)
         .maybeSingle();
 
-      const payload: Partial<Contact> = {
-        name,
-        phone: phoneId,
-        updatedAt: new Date().toISOString()
-      };
+      if (existing) {
+        // Atualiza: nome, isGuest
+        const updatePayload: any = { name, isGuest, updatedAt: now };
+        if (guestId) updatePayload.guestId = guestId;
 
-      if (isGuest) {
-        payload.isGuest = true;
-        if (guestId) payload.guestId = guestId;
+        const { error } = await supabase
+          .from('contacts')
+          .update(updatePayload)
+          .eq('id', phoneId)
+          .eq('propertyId', propertyId);
+
+        if (error) {
+          // Se falhou por causa de guestId, tenta sem ele
+          if (error.code === 'PGRST204' && guestId) {
+            delete updatePayload.guestId;
+            await supabase.from('contacts').update(updatePayload).eq('id', phoneId).eq('propertyId', propertyId);
+          } else {
+            console.error("[ContactService] Erro ao atualizar contato:", JSON.stringify(error));
+          }
+        }
+      } else {
+        // Cria novo — primeiro sem guestId para garantir criação
+        const insertPayload: any = {
+          id: phoneId,
+          propertyId,
+          name,
+          phone: phoneId,
+          isGuest,
+          createdAt: now,
+          updatedAt: now,
+        };
+        if (guestId) insertPayload.guestId = guestId;
+
+        const { error } = await supabase.from('contacts').insert(insertPayload);
+
+        if (error) {
+          // Se falhou por causa de guestId, tenta sem ele
+          if (error.code === 'PGRST204' && guestId) {
+            delete insertPayload.guestId;
+            const { error: retryError } = await supabase.from('contacts').insert(insertPayload);
+            if (retryError) console.error("[ContactService] Erro ao inserir contato (retry):", JSON.stringify(retryError));
+          } else {
+            console.error("[ContactService] Erro ao inserir contato:", JSON.stringify(error));
+          }
+        }
       }
 
-      if (!existingContact) {
-        payload.id = phoneId;
-        payload.propertyId = propertyId;
-        payload.createdAt = new Date().toISOString();
-        if (!isGuest) payload.isGuest = false;
-      }
-
-      await supabase.from('contacts').upsert({ ...(existingContact || {}), ...payload });
       return phoneId;
     } catch (error) {
-      console.error("Erro ao sincronizar contato na agenda:", error);
+      console.error("[ContactService] Erro ao sincronizar contato:", error);
       return null;
     }
+  }
+
+  static async updateContact(propertyId: string, phoneId: string, data: { name?: string; phone?: string; tags?: string[] }): Promise<boolean> {
+    try {
+      const { error } = await supabase.from('contacts')
+        .update({ ...data, updatedAt: new Date().toISOString() })
+        .eq('id', phoneId)
+        .eq('propertyId', propertyId);
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
+  static async deleteContact(propertyId: string, phoneId: string): Promise<boolean> {
+    try {
+      const { error } = await supabase.from('contacts')
+        .delete()
+        .eq('id', phoneId)
+        .eq('propertyId', propertyId);
+      return !error;
+    } catch {
+      return false;
+    }
+  }
+
+  static async listContacts(propertyId: string): Promise<Contact[]> {
+    const { data } = await supabase.from('contacts')
+      .select('*')
+      .eq('propertyId', propertyId)
+      .order('updatedAt', { ascending: false });
+    return (data as Contact[]) || [];
   }
 
   static async resolveContactContext(propertyId: string, phoneId: string): Promise<ContactContext> {

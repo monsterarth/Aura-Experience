@@ -93,12 +93,12 @@ export async function POST(req: Request) {
       ...(direction === "inbound" && { archived: false })
     }, { onConflict: 'id' });
 
-    // 3. Garantir que existe na Agenda
+    // 3. Garantir que existe na Agenda (nunca sobrescreve contato existente)
     const { data: contact } = await supabaseAdmin.from("contacts")
       .select("id")
       .eq("id", cleanContactNumber)
       .eq("propertyId", propertyId)
-      .single();
+      .maybeSingle();
 
     if (!contact) {
       await supabaseAdmin.from("contacts").insert({
