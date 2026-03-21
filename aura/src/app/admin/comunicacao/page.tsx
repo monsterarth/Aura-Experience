@@ -1,14 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { CommunicationCenter } from "@/components/admin/CommunicationCenter";
+import { ContactsPanel } from "@/components/admin/ContactsPanel";
 import { Button } from "@/components/ui/button";
-import { Bot, MessageSquareOff } from "lucide-react";
+import { Bot, MessageSquareOff, MessageSquare, ContactRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function ComunicacaoPage() {
   const router = useRouter();
   const { currentProperty: property, loading: isLoading } = useProperty();
+  const [activeTab, setActiveTab] = useState<'chat' | 'contacts'>('chat');
 
   if (isLoading) {
     return (
@@ -49,6 +52,7 @@ export default function ComunicacaoPage() {
 
   return (
     <div className="h-full flex flex-col space-y-4 px-2 md:px-0">
+      {/* Header */}
       <div className="flex items-center justify-between mt-2 md:mt-0">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Central de Comunicação</h1>
@@ -56,8 +60,6 @@ export default function ComunicacaoPage() {
             Gestão omnichannel e WhatsApp para <strong className="text-foreground">{property.name}</strong>
           </p>
         </div>
-
-        {/* BOTÃO DA FILA DE AUTOMAÇÕES */}
         <Button
           variant="outline"
           onClick={() => router.push('/admin/comunicacao/automations')}
@@ -68,8 +70,35 @@ export default function ComunicacaoPage() {
         </Button>
       </div>
 
+      {/* Tabs */}
+      <div className="flex bg-muted/50 p-1 rounded-xl w-fit">
+        <button
+          onClick={() => setActiveTab('chat')}
+          className={`flex items-center gap-2 text-xs font-bold py-2 px-4 rounded-lg transition-all ${
+            activeTab === 'chat' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <MessageSquare className="w-3.5 h-3.5" />
+          Chat
+        </button>
+        <button
+          onClick={() => setActiveTab('contacts')}
+          className={`flex items-center gap-2 text-xs font-bold py-2 px-4 rounded-lg transition-all ${
+            activeTab === 'contacts' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <ContactRound className="w-3.5 h-3.5" />
+          Contatos
+        </button>
+      </div>
+
+      {/* Content */}
       <div className="flex-1 w-full pb-4">
-        <CommunicationCenter propertyId={property.id} />
+        {activeTab === 'chat' ? (
+          <CommunicationCenter propertyId={property.id} />
+        ) : (
+          <ContactsPanel propertyId={property.id} />
+        )}
       </div>
     </div>
   );

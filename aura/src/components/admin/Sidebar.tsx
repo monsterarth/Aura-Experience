@@ -30,6 +30,11 @@ export const Sidebar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+
+  const toggleSection = (label: string) => {
+    setCollapsedSections(prev => ({ ...prev, [label]: !prev[label] }));
+  };
 
   // Variáveis da Vercel para o rodapé de versão
   const commitHash = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || "dev";
@@ -83,7 +88,7 @@ export const Sidebar = () => {
     { title: "Estadias", icon: Home, href: "/admin/stays", roles: ["super_admin", "admin", "reception", "governance"] },
     { title: "Mapa de Reservas", icon: Calendar, href: "/admin/reservation-map", roles: ["super_admin", "admin", "reception"] },
     { title: "Hóspedes", icon: UserSearch, href: "/admin/guests", roles: ["super_admin", "admin", "reception"] },
-    { title: "Governança", icon: Sparkles, href: "/admin/governance", roles: ["super_admin", "admin", "governance"] },
+    { title: "Comunicação", icon: MessageSquare, href: "/admin/comunicacao", roles: ["super_admin", "admin", "reception"] },
   ];
 
   // ==========================================
@@ -93,6 +98,7 @@ export const Sidebar = () => {
     { title: "Calendário", icon: CalendarDays, href: "/admin/calendario", roles: ["super_admin", "admin", "reception"] },
     { title: "Eventos", icon: Ticket, href: "/admin/eventos", roles: ["super_admin", "admin", "reception"] },
     { title: "Agenda Estrut.", icon: Calendar, href: "/admin/core/structures/bookings", roles: ["super_admin", "admin", "reception"] },
+    { title: "Governança", icon: Sparkles, href: "/admin/governance", roles: ["super_admin", "admin", "governance"] },
     { title: "Manutenção", icon: Wrench, href: "/admin/maintenance", roles: ["super_admin", "admin", "maintenance"] },
   ];
 
@@ -103,8 +109,6 @@ export const Sidebar = () => {
     { title: "Concierge", icon: ShoppingBag, href: "/admin/concierge", roles: ["super_admin", "admin", "reception"] },
     { title: "Gastronomia", icon: Coffee, href: "/admin/food-and-beverage/menu", roles: ["super_admin", "admin", "reception", "kitchen", "waiter"] },
     { title: "Café Salão", icon: Coffee, href: "/admin/cafe-salao", roles: ["super_admin", "admin", "reception", "kitchen", "waiter"] },
-    { title: "Comunicação", icon: MessageSquare, href: "/admin/comunicacao", roles: ["super_admin", "admin", "reception"] },
-    { title: "Contatos", icon: ContactRound, href: "/admin/contacts", roles: ["super_admin", "admin", "reception"] },
     { title: "Avaliações", icon: Star, href: "/admin/surveys/responses", roles: ["super_admin", "admin", "reception"] },
   ];
 
@@ -152,14 +156,29 @@ export const Sidebar = () => {
 
   const NavSection = ({ label, items, exactRoutes = [] }: { label: string; items: any[]; exactRoutes?: string[] }) => {
     if (items.length === 0) return null;
+    const sectionCollapsed = !isCollapsed && !!collapsedSections[label];
+    const hasActiveItem = items.some(item =>
+      exactRoutes.includes(item.href) ? pathname === item.href : (pathname === item.href || pathname.startsWith(item.href))
+    );
     return (
-      <div className="space-y-1 mb-6">
+      <div className="space-y-1 mb-4">
         {isCollapsed ? (
           <div className="w-full h-px bg-white/5 my-4" />
         ) : (
-          <p className="px-4 text-[10px] font-black text-foreground/40 uppercase tracking-widest mb-2">{label}</p>
+          <button
+            onClick={() => toggleSection(label)}
+            className="w-full flex items-center justify-between px-4 py-1 group"
+          >
+            <span className={`text-[10px] font-black uppercase tracking-widest transition-colors ${hasActiveItem ? 'text-primary/80' : 'text-foreground/40 group-hover:text-foreground/60'}`}>
+              {label}
+            </span>
+            <ChevronDown
+              size={12}
+              className={`transition-transform text-foreground/30 group-hover:text-foreground/50 ${sectionCollapsed ? '-rotate-90' : ''}`}
+            />
+          </button>
         )}
-        {items.map((item) => (
+        {!sectionCollapsed && items.map((item) => (
           <Link
             key={item.href}
             href={item.href}
