@@ -79,14 +79,12 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
 
         setLoading(true);
         try {
-            const formData = new FormData();
-            formData.append('filename', file.name);
+            const uploadData = new FormData();
+            uploadData.append('file', file);
 
-            // Note: Since Vercel Blob doesn't accept multipart/form-data directly in the standard put() via this route, 
-            // It's better to send the file as the body and pass filename in query
-            const response = await fetch(`/api/upload?filename=${encodeURIComponent(file.name)}`, {
+            const response = await fetch('/api/upload', {
                 method: 'POST',
-                body: file,
+                body: uploadData,
             });
 
             if (!response.ok) {
