@@ -49,14 +49,14 @@ export async function GET(request: Request) {
           throw new Error("WhatsApp não configurado ou desligado na propriedade.");
         }
 
-        const { apiUrl, token } = propertySettings.whatsappConfig;
+        const { apiUrl, apiKey } = propertySettings.whatsappConfig;
         const baseUrl = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
 
         const response = await fetch(`${baseUrl}/api/send`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-api-key': token
+            'x-api-key': apiKey
           },
           body: JSON.stringify({
             number: msg.to,
