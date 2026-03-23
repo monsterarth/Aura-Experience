@@ -272,8 +272,8 @@ export class AutomationService {
         'pre_checkout', 'checkout_thanks', 'nps_survey', 'structure_booking_confirmed'
       ];
 
-      const existingTriggers = (data || []).map((r: any) => r.triggerEvent || r.id);
-      const missingTriggers = allTriggers.filter((t: any) => !existingTriggers.includes(t));
+      const existingIds = new Set((data || []).map((r: any) => r.id));
+      const missingTriggers = allTriggers.filter((t: any) => !existingIds.has(t));
 
       if (missingTriggers.length > 0) {
         const newRules = missingTriggers.map((trigger: any) => ({
@@ -286,7 +286,7 @@ export class AutomationService {
           updatedAt: new Date().toISOString()
         }));
 
-        await supabase.from('automation_rules').insert(newRules);
+        await supabase.from('automation_rules').upsert(newRules, { onConflict: 'id' });
         return [...(data || []), ...newRules] as unknown as AutomationRule[];
       }
 
@@ -298,13 +298,36 @@ export class AutomationService {
 
   static async updateRule(propertyId: string, ruleId: string, data: Partial<AutomationRule>): Promise<boolean> {
     try {
-      const { error } = await supabase.from('automation_rules')
+      const { error, count } = await supabase.from('automation_rules')
         .update({ ...data, updatedAt: new Date().toISOString() })
         .eq('id', ruleId)
-        .eq('propertyId', propertyId);
+        .eq('propertyId', propertyId)
+        .select('id', { count: 'exact', head: true });
 
-      return !error;
+      if (error) {
+        console.error("updateRule error:", error);
+        return false;
+      }
+
+      // Se nenhuma linha foi afetada, tenta upsert
+      if (count === 0) {
+        const { error: upsertError } = await supabase.from('automation_rules').upsert({
+          id: ruleId,
+          triggerEvent: ruleId,
+          propertyId,
+          ...data,
+          updatedAt: new Date().toISOString()
+        }, { onConflict: 'id' });
+
+        if (upsertError) {
+          console.error("updateRule upsert fallback error:", upsertError);
+          return false;
+        }
+      }
+
+      return true;
     } catch (error) {
+      console.error("updateRule exception:", error);
       return false;
     }
   }
