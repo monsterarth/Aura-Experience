@@ -615,6 +615,8 @@ export interface Staff {
   birthDate?: string;
   phone?: string;
   bio?: string;
+  messengerName?: string;
+  messengerColor?: string;
   createdAt: Timestamp;
 }
 

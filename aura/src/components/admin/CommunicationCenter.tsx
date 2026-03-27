@@ -27,7 +27,27 @@ const EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
 
 interface CommunicationCenterProps {
   propertyId: string;
+  messengerName?: string;
+  messengerColor?: string;
 }
+
+const COLOR_THEME_MAP: Record<string, { outboundBubble: string; sendButton: string; activeConvBorder: string; activeConvBg: string }> = {
+  yellow: { outboundBubble: 'bg-amber-500 text-white',   sendButton: '!bg-amber-500 hover:!bg-amber-600 border-0', activeConvBorder: 'border-l-amber-500',   activeConvBg: 'bg-amber-50 dark:bg-amber-950/30' },
+  blue:   { outboundBubble: 'bg-blue-500 text-white',    sendButton: '!bg-blue-500 hover:!bg-blue-600 border-0',   activeConvBorder: 'border-l-blue-500',     activeConvBg: 'bg-blue-50 dark:bg-blue-950/30' },
+  green:  { outboundBubble: 'bg-emerald-500 text-white', sendButton: '!bg-emerald-500 hover:!bg-emerald-600 border-0', activeConvBorder: 'border-l-emerald-500', activeConvBg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+  purple: { outboundBubble: 'bg-violet-500 text-white',  sendButton: '!bg-violet-500 hover:!bg-violet-600 border-0', activeConvBorder: 'border-l-violet-500',  activeConvBg: 'bg-violet-50 dark:bg-violet-950/30' },
+  rose:   { outboundBubble: 'bg-rose-500 text-white',    sendButton: '!bg-rose-500 hover:!bg-rose-600 border-0',   activeConvBorder: 'border-l-rose-500',     activeConvBg: 'bg-rose-50 dark:bg-rose-950/30' },
+  orange: { outboundBubble: 'bg-orange-500 text-white',  sendButton: '!bg-orange-500 hover:!bg-orange-600 border-0', activeConvBorder: 'border-l-orange-500', activeConvBg: 'bg-orange-50 dark:bg-orange-950/30' },
+  teal:   { outboundBubble: 'bg-teal-500 text-white',    sendButton: '!bg-teal-500 hover:!bg-teal-600 border-0',   activeConvBorder: 'border-l-teal-500',     activeConvBg: 'bg-teal-50 dark:bg-teal-950/30' },
+  slate:  { outboundBubble: 'bg-slate-600 text-white',   sendButton: '!bg-slate-600 hover:!bg-slate-700 border-0', activeConvBorder: 'border-l-slate-500',    activeConvBg: 'bg-slate-100 dark:bg-slate-800/30' },
+};
+
+const DEFAULT_THEME = {
+  outboundBubble: 'bg-primary text-primary-foreground',
+  sendButton: '',
+  activeConvBorder: 'border-l-primary',
+  activeConvBg: 'bg-primary/5',
+};
 
 // Interface que espelha a subcoleção mais leve "communications"
 interface Communication {
@@ -71,7 +91,8 @@ const VARIABLE_CATALOG: { label: string; searchKey: string; placeholder: string 
   { label: "Link da Pesquisa", searchKey: "pesquisa",  placeholder: "{{survey_link}}" },
 ];
 
-export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
+export function CommunicationCenter({ propertyId, messengerName, messengerColor }: CommunicationCenterProps) {
+  const theme = (messengerColor && COLOR_THEME_MAP[messengerColor]) ? COLOR_THEME_MAP[messengerColor] : DEFAULT_THEME;
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlPhone = searchParams.get('phone');
@@ -379,12 +400,16 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
       const messageId = crypto.randomUUID();
       const contactId = selectedPhone;
 
+      const prefixedBody = messengerName?.trim()
+        ? `*${messengerName.trim()}:* ${inputText.trim()}`
+        : inputText.trim();
+
       const messageData = {
         propertyId,
         contactId,
         stayId: contactContext?.stayId || null,
         to: contactId,
-        body: inputText.trim(),
+        body: prefixedBody,
         isAutomated: false,
         status: 'pending',
         direction: 'outbound' as const,
@@ -396,7 +421,7 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
       await supabase.from('communications').upsert({
         id: contactId,
         propertyId,
-        lastMessage: inputText.trim(),
+        lastMessage: prefixedBody,
         updatedAt: new Date().toISOString(),
         archived: false
       }, { onConflict: 'id' });
@@ -408,7 +433,7 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
           propertyId,
           messageId,
           number: contactId,
-          message: inputText.trim()
+          message: prefixedBody
         })
       });
 
@@ -504,6 +529,38 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
 
   const toggleOriginal = (msgId: string) => {
     setShowOriginal(prev => ({ ...prev, [msgId]: !prev[msgId] }));
+  };
+
+  const renderWhatsAppText = (text: string) => {
+    // Split by newlines first, then parse each line for inline formatting
+    return text.split('\n').map((line, lineIdx) => {
+      // Parse inline tokens: bold (*), italic (_), strikethrough (~), monospace (`)
+      const tokens: React.ReactNode[] = [];
+      const regex = /(\*[^*]+\*|_[^_]+_|~[^~]+~|`[^`]+`)/g;
+      let lastIndex = 0;
+      let match: RegExpExecArray | null;
+
+      while ((match = regex.exec(line)) !== null) {
+        if (match.index > lastIndex) {
+          tokens.push(line.slice(lastIndex, match.index));
+        }
+        const raw = match[0];
+        const inner = raw.slice(1, -1);
+        if (raw.startsWith('*')) tokens.push(<strong key={match.index}>{inner}</strong>);
+        else if (raw.startsWith('_')) tokens.push(<em key={match.index}>{inner}</em>);
+        else if (raw.startsWith('~')) tokens.push(<s key={match.index}>{inner}</s>);
+        else if (raw.startsWith('`')) tokens.push(<code key={match.index} className="font-mono text-[0.85em] bg-black/10 dark:bg-white/10 px-1 rounded">{inner}</code>);
+        lastIndex = match.index + raw.length;
+      }
+      if (lastIndex < line.length) tokens.push(line.slice(lastIndex));
+
+      return (
+        <span key={lineIdx}>
+          {lineIdx > 0 && <br />}
+          {tokens}
+        </span>
+      );
+    });
   };
 
   const renderMedia = (msg: WhatsAppMessage) => {
@@ -678,7 +735,7 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
           {displayList.map((item) => {
             const isSelected = selectedPhone === item.phone;
             return (
-              <div key={item.phone} onClick={() => setSelectedPhone(item.phone)} className={`p-4 border-b cursor-pointer transition-colors flex items-start gap-3 ${isSelected ? 'bg-primary/5 border-l-4 border-l-primary' : 'hover:bg-muted/30 border-l-4 border-l-transparent'}`}>
+              <div key={item.phone} onClick={() => setSelectedPhone(item.phone)} className={`p-4 border-b cursor-pointer transition-colors flex items-start gap-3 ${isSelected ? `${theme.activeConvBg} border-l-4 ${theme.activeConvBorder}` : 'hover:bg-muted/30 border-l-4 border-l-transparent'}`}>
                 <div className="relative flex-shrink-0">
                   <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
                     item.isGuest
@@ -822,7 +879,7 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
 
                 return (
                   <div key={msg.id || i} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                    <div className={`relative max-w-[85%] md:max-w-[65%] rounded-2xl px-4 py-3 shadow-sm ${isMe ? 'bg-primary text-primary-foreground rounded-tr-sm' : 'bg-card border rounded-tl-sm text-foreground'}`}>
+                    <div className={`relative max-w-[85%] md:max-w-[65%] rounded-2xl px-4 py-3 shadow-sm ${isMe ? `${theme.outboundBubble} rounded-tr-sm` : 'bg-card border rounded-tl-sm text-foreground'}`}>
                       {msg.isAutomated && msg.status === 'pending' ? (
                         <div className="flex items-center gap-1 text-[10px] uppercase font-bold mb-1 text-yellow-600 dark:text-yellow-500">
                           <Clock className="w-3 h-3" /> Agendada para: {safeFormatDate(msg.scheduledFor, "dd/MM HH:mm") || 'Em breve'}
@@ -832,7 +889,7 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
                           <Bot className="w-3 h-3" /> Robô Automação
                         </div>
                       ) : null}
-                      <p className="text-sm whitespace-pre-wrap">{msg.body}</p>
+                      <p className="text-sm">{renderWhatsAppText(msg.body ?? '')}</p>
 
                       {renderMedia(msg)}
 
@@ -976,7 +1033,7 @@ export function CommunicationCenter({ propertyId }: CommunicationCenterProps) {
                   >
                     😊
                   </Button>
-                  <Button type="submit" disabled={sending || !inputText.trim()} className="h-12 w-12 rounded-xl shrink-0 p-0 self-end">
+                  <Button type="submit" disabled={sending || !inputText.trim()} className={`h-12 w-12 rounded-xl shrink-0 p-0 self-end ${theme.sendButton}`}>
                     {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                   </Button>
                 </form>

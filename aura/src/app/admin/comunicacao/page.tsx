@@ -2,16 +2,26 @@
 
 import { useState } from "react";
 import { useProperty } from "@/context/PropertyContext";
+import { useAuth } from "@/context/AuthContext";
 import { CommunicationCenter } from "@/components/admin/CommunicationCenter";
 import { ContactsPanel } from "@/components/admin/ContactsPanel";
+import { MessengerMaskModal } from "@/components/admin/MessengerMaskModal";
+import { BroadcastPanel } from "@/components/admin/BroadcastPanel";
 import { Button } from "@/components/ui/button";
-import { Bot, MessageSquareOff, MessageSquare, ContactRound } from "lucide-react";
+import { Bot, MessageSquareOff, MessageSquare, ContactRound, Palette, Megaphone } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function ComunicacaoPage() {
   const router = useRouter();
   const { currentProperty: property, loading: isLoading } = useProperty();
-  const [activeTab, setActiveTab] = useState<'chat' | 'contacts'>('chat');
+  const { userData } = useAuth();
+  const [activeTab, setActiveTab] = useState<'chat' | 'contacts' | 'broadcast'>('chat');
+  const [showMaskModal, setShowMaskModal] = useState(false);
+  const [localMaskName, setLocalMaskName] = useState<string | undefined>(undefined);
+  const [localMaskColor, setLocalMaskColor] = useState<string | undefined>(undefined);
+
+  const effectiveName = localMaskName ?? userData?.messengerName;
+  const effectiveColor = localMaskColor ?? userData?.messengerColor;
 
   if (isLoading) {
     return (
@@ -60,14 +70,27 @@ export default function ComunicacaoPage() {
             Gestão omnichannel e WhatsApp para <strong className="text-foreground">{property.name}</strong>
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={() => router.push('/admin/comunicacao/automations')}
-          className="gap-2 shadow-sm border-primary/20 hover:bg-primary/5 text-primary"
-        >
-          <Bot className="w-4 h-4" />
-          <span className="hidden sm:inline">Fila de Automações</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setShowMaskModal(true)}
+            className="gap-2 shadow-sm border-border/50 hover:bg-muted/50 relative"
+          >
+            <Palette className="w-4 h-4" />
+            <span className="hidden sm:inline">Minha Máscara</span>
+            {!effectiveName && (
+              <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-400 rounded-full border-2 border-background" />
+            )}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => router.push('/admin/comunicacao/automations')}
+            className="gap-2 shadow-sm border-primary/20 hover:bg-primary/5 text-primary"
+          >
+            <Bot className="w-4 h-4" />
+            <span className="hidden sm:inline">Fila de Automações</span>
+          </Button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -90,16 +113,45 @@ export default function ComunicacaoPage() {
           <ContactRound className="w-3.5 h-3.5" />
           Contatos
         </button>
+        <button
+          onClick={() => setActiveTab('broadcast')}
+          className={`flex items-center gap-2 text-xs font-bold py-2 px-4 rounded-lg transition-all ${
+            activeTab === 'broadcast' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Megaphone className="w-3.5 h-3.5" />
+          Comunicado
+        </button>
       </div>
 
       {/* Content */}
       <div className="flex-1 w-full pb-4">
         {activeTab === 'chat' ? (
-          <CommunicationCenter propertyId={property.id} />
-        ) : (
+          <CommunicationCenter
+            propertyId={property.id}
+            messengerName={effectiveName}
+            messengerColor={effectiveColor}
+          />
+        ) : activeTab === 'contacts' ? (
           <ContactsPanel propertyId={property.id} />
+        ) : (
+          <BroadcastPanel
+            propertyId={property.id}
+            messengerName={effectiveName}
+            messengerColor={effectiveColor}
+          />
         )}
       </div>
+
+      {showMaskModal && (
+        <MessengerMaskModal
+          onClose={() => setShowMaskModal(false)}
+          onSave={(name, color) => {
+            setLocalMaskName(name);
+            setLocalMaskColor(color);
+          }}
+        />
+      )}
     </div>
   );
 }
