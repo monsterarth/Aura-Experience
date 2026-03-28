@@ -44,8 +44,8 @@ export async function POST(request: Request) {
     }
 
     // 2. Fetch all unique guests and cabins in parallel
-    const guestIds = [...new Set(stays.map((s: any) => s.guestId))];
-    const cabinIds = [...new Set(stays.map((s: any) => s.cabinId).filter(Boolean))];
+    const guestIds = Array.from(new Set(stays.map((s: any) => s.guestId)));
+    const cabinIds = Array.from(new Set(stays.map((s: any) => s.cabinId).filter(Boolean)));
 
     const [{ data: guests }, { data: cabins }] = await Promise.all([
       supabaseAdmin.from('guests').select('*').in('id', guestIds),

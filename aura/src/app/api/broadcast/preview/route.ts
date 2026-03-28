@@ -45,7 +45,7 @@ export async function GET(request: Request) {
   }
 
   // Fetch guest names + phones to count valid recipients
-  const guestIds = [...new Set(stays.map((s: any) => s.guestId))];
+  const guestIds = Array.from(new Set(stays.map((s: any) => s.guestId)));
   const { data: guests } = await supabaseAdmin
     .from('guests')
     .select('id, fullName, phone')
