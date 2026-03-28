@@ -8,6 +8,7 @@ import { GuestService } from "@/services/guest-service";
 import { StayService } from "@/services/stay-service";
 import { CabinService } from "@/services/cabin-service";
 import { ContactService } from "@/services/contact-service"; // NOVO: Para já inserir na agenda
+import { validateCPF } from "@/lib/utils-checkin";
 import { Cabin } from "@/types/aura";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import {
@@ -59,11 +60,13 @@ function NewStayPageContent() {
   const [searchingGuest, setSearchingGuest] = useState(false);
   const [availableCabins, setAvailableCabins] = useState<Cabin[]>([]);
 
+  const [docType, setDocType] = useState("CPF");
   const [docNumber, setDocNumber] = useState("");
   const [guestData, setGuestData] = useState({
     fullName: "",
     email: "",
-    phone: ""
+    phone: "",
+    preferredLanguage: "pt" as "pt" | "en" | "es"
   });
 
   const [cabinSelections, setCabinSelections] = useState<CabinSelection[]>([]);
@@ -99,7 +102,7 @@ function NewStayPageContent() {
       GuestService.findByDocument(contextProperty.id, prefilledGuestId).then(guest => {
         if (guest) {
           setDocNumber(guest.id);
-          setGuestData({ fullName: guest.fullName, email: guest.email || "", phone: guest.phone });
+          setGuestData({ fullName: guest.fullName, email: guest.email || "", phone: guest.phone, preferredLanguage: (guest.preferredLanguage as "pt" | "en" | "es") || "pt" });
         }
       });
     }
@@ -112,7 +115,7 @@ function NewStayPageContent() {
     try {
       const guest = await GuestService.findByDocument(contextProperty.id, docNumber);
       if (guest) {
-        setGuestData({ fullName: guest.fullName, email: guest.email || "", phone: guest.phone });
+        setGuestData({ fullName: guest.fullName, email: guest.email || "", phone: guest.phone, preferredLanguage: (guest.preferredLanguage as "pt" | "en" | "es") || "pt" });
         toast.info("Hóspede encontrado!");
       } else {
         toast.info("Hóspede novo. Preencha os dados.");
@@ -140,6 +143,10 @@ function NewStayPageContent() {
 
     if (!guestData.fullName || cabinSelections.length === 0 || !dateRange?.from || !dateRange?.to) {
       return toast.error("Nome, Cabanas e Período completo são obrigatórios.");
+    }
+
+    if (docType === "CPF" && docNumber && !validateCPF(docNumber)) {
+      return toast.error("CPF inválido. Verifique o número digitado.");
     }
 
     // Exige que o número comece com + para garantir que o DDI foi informado
@@ -185,9 +192,10 @@ function NewStayPageContent() {
         propertyId: contextProperty.id,
         fullName: guestData.fullName,
         email: guestData.email,
-        phone: finalPhone, // <-- Aqui garantimos o número limpo e 100% válido
+        phone: finalPhone,
         nationality: 'Brasil',
-        document: { type: 'CPF', number: docNumber || 'N/A' },
+        document: { type: docType, number: docNumber || 'N/A' },
+        preferredLanguage: guestData.preferredLanguage,
         birthDate: "", gender: "Outro", occupation: "", allergies: [],
         address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", country: "Brasil" }
       });
@@ -265,14 +273,25 @@ function NewStayPageContent() {
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase text-muted-foreground">CPF/Passaporte (Opcional)</label>
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground">Documento (Opcional)</label>
                   <div className="flex gap-2">
+                    <select
+                      value={docType}
+                      onChange={e => setDocType(e.target.value)}
+                      className="p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors text-sm"
+                    >
+                      <option value="CPF">CPF</option>
+                      <option value="PASSAPORTE">Passaporte</option>
+                      <option value="RG">RG</option>
+                      <option value="CNH">CNH</option>
+                      <option value="OUTRO">Outro</option>
+                    </select>
                     <input
                       value={docNumber}
                       onChange={e => setDocNumber(e.target.value)}
                       onBlur={handleSearchGuest}
                       className="flex-1 p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors"
-                      placeholder="Digite para buscar..."
+                      placeholder="Nº do documento..."
                     />
                     <button type="button" onClick={handleSearchGuest} className="p-3 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-colors">
                       {searchingGuest ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
@@ -298,6 +317,18 @@ function NewStayPageContent() {
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase text-muted-foreground">E-mail (Opcional)</label>
                   <input type="email" value={guestData.email} onChange={e => setGuestData({ ...guestData, email: e.target.value })} className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground">Idioma de Comunicação</label>
+                  <select
+                    value={guestData.preferredLanguage}
+                    onChange={e => setGuestData({ ...guestData, preferredLanguage: e.target.value as "pt" | "en" | "es" })}
+                    className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors"
+                  >
+                    <option value="pt">🇧🇷 Português</option>
+                    <option value="en">🇺🇸 English</option>
+                    <option value="es">🇦🇷 Español</option>
+                  </select>
                 </div>
               </div>
             </div>

@@ -16,7 +16,7 @@ import { StayService } from "@/services/stay-service";
 import { GuestService } from "@/services/guest-service";
 import { CabinService } from "@/services/cabin-service";
 import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
-import { sanitizeDocumentForFnrh, validateCPF } from "@/lib/utils-checkin";
+import { sanitizeDocumentForFnrh } from "@/lib/utils-checkin";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { Stay, Guest, Cabin, FolioItem } from "@/types/aura";
@@ -306,18 +306,6 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   };
 
   const handleSave = async () => {
-    if (guestData.document?.type === "CPF" && guestData.document.number) {
-      if (!validateCPF(guestData.document.number)) {
-        toast.error("CPF do Titular Inválido.");
-        return;
-      }
-    }
-
-    if (formData.additionalGuests?.some(ag => ag.document && sanitizeDocumentForFnrh(ag.document).length === 11 && !validateCPF(ag.document))) {
-      toast.error("CPF de um dos hóspedes extras é inválido.");
-      return;
-    }
-
     // Detect cabin change before saving
     const cabinChanged = formData.cabinId && formData.cabinId !== stay.cabinId;
     if (cabinChanged && stay.status === 'active') {
