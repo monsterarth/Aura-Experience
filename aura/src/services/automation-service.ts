@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { Stay, MessageTemplate, WhatsAppMessage, AutomationTriggerEvent, Guest, Cabin, AutomationRule } from "@/types/aura";
+import { Stay, MessageTemplate, WhatsAppMessage, AutomationTriggerEvent, Guest, Cabin, AutomationRule, Property } from "@/types/aura";
 
 export class AutomationService {
   static async triggerStructureBookingAutomation(propertyId: string, stayId: string, structureName: string, date: string, startTime: string, templateId: string, cancellationReason?: string) {
@@ -50,7 +50,8 @@ export class AutomationService {
     templateBody: string,
     guest: Guest,
     cabin?: Cabin,
-    stay?: Stay
+    stay?: Stay,
+    property?: Property
   ): string {
     let parsedText = templateBody;
 
@@ -71,11 +72,14 @@ export class AutomationService {
       parsedText = parsedText.replace(/{{checkin_date}}/g, checkInDate);
       parsedText = parsedText.replace(/{{checkout_date}}/g, checkOutDate);
 
-      const portalLink = `https://aaura.app/check-in`;
+      const baseUrl = property?.settings?.customDomain
+        ? `https://${property.settings.customDomain}`
+        : `https://aaura.app`;
+      const portalLink = `${baseUrl}/check-in`;
       parsedText = parsedText.replace(/{{portal_link}}/g, portalLink);
       parsedText = parsedText.replace(/{{access_code}}/g, stay.accessCode);
 
-      const surveyLink = `https://aaura.app/feedback/${stay.id}`;
+      const surveyLink = `${baseUrl}/feedback/${stay.id}`;
       parsedText = parsedText.replace(/{{survey_link}}/g, surveyLink);
     }
 
@@ -97,11 +101,12 @@ export class AutomationService {
     guest: Guest,
     cabin?: Cabin,
     stay?: Stay,
-    delayMinutes: number = 0
+    delayMinutes: number = 0,
+    property?: Property
   ): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
       const body = this.getBodyForLanguage(template, guest.preferredLanguage);
-      const finalMessageBody = this.parseVariables(body, guest, cabin, stay);
+      const finalMessageBody = this.parseVariables(body, guest, cabin, stay, property);
 
       const now = new Date();
       if (delayMinutes > 0) {

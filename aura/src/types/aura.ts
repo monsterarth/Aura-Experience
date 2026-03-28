@@ -72,6 +72,9 @@ export interface Property {
 
     // NOVO: Configurações do Módulo de F&B
     fbSettings?: FBSettings;
+
+    // Domínio personalizado para o portal do hóspede (ex: aura.fazendadorosa.com.br)
+    customDomain?: string;
   };
   createdAt: Timestamp;
 }

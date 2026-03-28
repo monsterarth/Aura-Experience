@@ -1,5 +1,11 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+const supabaseAdmin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 export async function updateSession(request: NextRequest) {
     let supabaseResponse = NextResponse.next({
@@ -65,6 +71,27 @@ export async function updateSession(request: NextRequest) {
     // renovados pelo middleware sempre cheguem ao browser (não ficam presos em 304)
     if (request.nextUrl.pathname.startsWith('/admin')) {
         supabaseResponse.headers.set('Cache-Control', 'private, no-store')
+    }
+
+    // Domínio customizado: injeta x-property-id para rotas públicas do hóspede
+    const pathname = request.nextUrl.pathname;
+    const isPublicGuestRoute = pathname.startsWith('/check-in') || pathname.startsWith('/feedback');
+    if (isPublicGuestRoute) {
+        const host = request.headers.get('host') ?? '';
+        const knownHosts = ['aaura.app', 'localhost', '127.0.0.1'];
+        const isCustomDomain = !knownHosts.some(h => host.includes(h));
+
+        if (isCustomDomain) {
+            const { data } = await supabaseAdmin
+                .from('properties')
+                .select('id')
+                .eq('settings->>customDomain', host)
+                .maybeSingle();
+
+            if (data?.id) {
+                supabaseResponse.headers.set('x-property-id', data.id);
+            }
+        }
     }
 
     return supabaseResponse

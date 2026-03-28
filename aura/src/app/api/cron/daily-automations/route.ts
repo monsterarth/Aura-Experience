@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { Stay, Guest, Cabin, AutomationRule, MessageTemplate } from "@/types/aura";
+import { Stay, Guest, Cabin, AutomationRule, MessageTemplate, Property } from "@/types/aura";
 import { AutomationService } from "@/services/automation-service";
 
 export const dynamic = 'force-dynamic';
@@ -16,13 +16,14 @@ export async function GET(request: Request) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const { data: propertiesSnap } = await supabaseAdmin.from("properties").select("id");
+    const { data: propertiesSnap } = await supabaseAdmin.from("properties").select("*");
     let queuedCount = 0;
 
     if (!propertiesSnap) return NextResponse.json({ success: true, queuedCount: 0 });
 
     for (const propertyDoc of propertiesSnap) {
       const propertyId = propertyDoc.id;
+      const property = propertyDoc as any as Property;
 
       const { data: rulesSnap } = await supabaseAdmin.from("automation_rules").select("*").eq("propertyId", propertyId);
       if (!rulesSnap) continue;
@@ -119,7 +120,7 @@ export async function GET(request: Request) {
             }
 
             await AutomationService.queueMessage(
-              propertyId, stay.id, guest.phone, template, triggerToFire as any, guest, cabin, stay, delayToApply
+              propertyId, stay.id, guest.phone, template, triggerToFire as any, guest, cabin, stay, delayToApply, property
             );
             queuedCount++;
 
