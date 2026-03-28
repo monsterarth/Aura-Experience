@@ -272,13 +272,13 @@ function NewStayPageContent() {
                 <UserSearch size={18} className="text-primary" /> Identificação
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
+                <div className="space-y-1 md:col-span-2">
                   <label className="text-[10px] font-bold uppercase text-muted-foreground">Documento (Opcional)</label>
                   <div className="flex gap-2">
                     <select
                       value={docType}
                       onChange={e => setDocType(e.target.value)}
-                      className="p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors text-sm"
+                      className="p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors text-sm w-32 shrink-0"
                     >
                       <option value="CPF">CPF</option>
                       <option value="PASSAPORTE">Passaporte</option>
@@ -293,7 +293,7 @@ function NewStayPageContent() {
                       className="flex-1 p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors"
                       placeholder="Nº do documento..."
                     />
-                    <button type="button" onClick={handleSearchGuest} className="p-3 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-colors">
+                    <button type="button" onClick={handleSearchGuest} className="p-3 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-colors shrink-0">
                       {searchingGuest ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
                     </button>
                   </div>
