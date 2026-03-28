@@ -74,7 +74,7 @@ export class AutomationService {
 
       const baseUrl = property?.settings?.customDomain
         ? `https://${property.settings.customDomain}`
-        : `https://aaura.app`;
+        : `https://aaura.app.br`;
       const portalLink = `${baseUrl}/check-in`;
       parsedText = parsedText.replace(/{{portal_link}}/g, portalLink);
       parsedText = parsedText.replace(/{{access_code}}/g, stay.accessCode);

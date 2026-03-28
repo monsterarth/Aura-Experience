@@ -264,9 +264,9 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
       ? (contactContext.checkOut instanceof Date ? contactContext.checkOut : new Date(contactContext.checkOut as any)).toLocaleDateString('pt-BR')
       : '';
 
-    const portalLink = `https://aaura.app/check-in`;
+    const portalLink = `https://aaura.app.br/check-in`;
     const surveyLink = contactContext?.stayId
-      ? `https://aaura.app/feedback/${contactContext.stayId}`
+      ? `https://aaura.app.br/feedback/${contactContext.stayId}`
       : '';
 
     return text

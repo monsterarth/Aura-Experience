@@ -77,7 +77,7 @@ export async function updateSession(request: NextRequest) {
     const isPublicGuestRoute = pathname.startsWith('/check-in') || pathname.startsWith('/feedback');
     if (isPublicGuestRoute) {
         const host = request.headers.get('host') ?? '';
-        const knownHosts = ['aaura.app', 'localhost', '127.0.0.1'];
+        const knownHosts = ['aaura.app.br', 'localhost', '127.0.0.1'];
         const isCustomDomain = !knownHosts.some(h => host.includes(h));
 
         if (isCustomDomain) {
