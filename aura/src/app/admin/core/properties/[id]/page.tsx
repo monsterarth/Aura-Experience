@@ -79,6 +79,7 @@ export default function PropertySettingsPage() {
     // Configurações Operacionais & Políticas (Agora preparadas para Multi-idioma)
     const [settings, setSettings] = useState({
         whatsappNumber: "",
+        customDomain: "",
         checkInTime: "14:00",
         checkOutTime: "12:00",
         receptionStartTime: "08:00",
@@ -525,6 +526,16 @@ export default function PropertySettingsPage() {
                                         className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
                                     />
                                     <p className="text-xs text-muted-foreground">Usado para direcionar o hóspede após o check-in.</p>
+                                </div>
+                                <div className="space-y-2 pt-4 border-t border-border">
+                                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest flex items-center gap-1.5"><Globe size={12} /> Domínio Personalizado do Portal</label>
+                                    <input
+                                        value={settings.customDomain}
+                                        onChange={e => setSettings({ ...settings, customDomain: e.target.value })}
+                                        placeholder="aura.suapousada.com.br"
+                                        className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
+                                    />
+                                    <p className="text-xs text-muted-foreground">Deixe vazio para usar o domínio padrão <span className="font-mono">aaura.app.br</span>. Os links enviados aos hóspedes usarão este endereço.</p>
                                 </div>
                             </section>
 
