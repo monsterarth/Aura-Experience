@@ -33,7 +33,7 @@ export async function POST(
         if (action === 'delete_property') {
             // DELETE EVERYTHING
             const allTables = [
-                'messages', 'stays', 'guests', 'cabins', 'structures',
+                'messages', 'stays', 'guests', 'contacts', 'cabins', 'structures',
                 'structure_bookings', 'housekeeping_tasks', 'maintenance_tasks',
                 'survey_responses', 'automation_rules', 'message_templates', 'checklists'
             ];
@@ -71,6 +71,11 @@ export async function POST(
                 if (allowedTargets.includes(target)) {
                     const { error } = await supabaseAdmin.from(target).delete().eq('propertyId', propertyId);
                     if (error) console.error(`Error purging ${target}:`, error);
+
+                    // Contatos de hóspedes são derivados de guests — remove junto
+                    if (target === 'guests') {
+                        await supabaseAdmin.from('contacts').delete().eq('propertyId', propertyId).eq('isGuest', true);
+                    }
                 }
             }
 
