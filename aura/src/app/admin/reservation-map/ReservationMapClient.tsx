@@ -17,7 +17,8 @@ import { Cabin, Stay, MaintenanceTask, HousekeepingTask, Guest, Staff, Structure
 import { cn } from "@/lib/utils";
 import {
     ChevronLeft, ChevronRight, CalendarDays, Loader2,
-    MapPin, Building2, Circle, Wrench, Sparkles, Home, BedDouble
+    MapPin, Building2, Circle, Wrench, Sparkles, Home, BedDouble,
+    PlusCircle, Lock, AlignJustify, LayoutList
 } from "lucide-react";
 import { format, addDays, differenceInCalendarDays, startOfDay, isSameDay, isWithinInterval, isBefore, isAfter } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -39,7 +40,8 @@ interface StayWithGuest extends Stay {
 // ==========================================
 const DAY_WIDTH = 64;
 const CABIN_COL_WIDTH = 180;
-const ROW_HEIGHT = 42;
+const ROW_HEIGHT_NORMAL = 42;
+const ROW_HEIGHT_COMPACT = 28;
 const VISIBLE_DAYS = 21; // 3 weeks view
 
 // ==========================================
@@ -143,6 +145,10 @@ export default function ReservationMapClient() {
     const [isHousekeepingModalOpen, setIsHousekeepingModalOpen] = useState(false);
 
     const [today, setToday] = useState<Date | null>(null);
+
+    // UI State
+    const [selectionMode, setSelectionMode] = useState<'reservation' | 'maintenance' | null>(null);
+    const [compact, setCompact] = useState(false);
 
     // Inicializa datas somente no cliente para evitar hydration mismatch
     useEffect(() => {
@@ -380,6 +386,7 @@ export default function ReservationMapClient() {
     // ==========================================
 
     const handleMouseDown = (cabinId: string, dayIndex: number) => {
+        if (!selectionMode) return; // só arrasta em modo de seleção explícito
         setDragState({ cabinId, startDay: dayIndex, endDay: dayIndex, active: true });
     };
 
@@ -394,15 +401,29 @@ export default function ReservationMapClient() {
             const minDay = Math.min(dragState.startDay, dragState.endDay);
             const maxDay = Math.max(dragState.startDay, dragState.endDay);
 
-            if (maxDay - minDay >= 1 && startDate) { // At least 2 days selection
+            if (maxDay - minDay >= 1 && startDate) {
                 const checkInDate = addDays(startDate, minDay);
                 const checkOutDate = addDays(startDate, maxDay + 1);
+                const captured = { cabinId: dragState.cabinId, checkIn: checkInDate, checkOut: checkOutDate };
 
-                setSelectionData({ cabinId: dragState.cabinId, checkIn: checkInDate, checkOut: checkOutDate });
-                setIsSelectionActionModalOpen(true);
+                setDragState(null);
+                setSelectionMode(null);
+
+                if (selectionMode === 'reservation') {
+                    const params = new URLSearchParams({
+                        cabinId: captured.cabinId,
+                        checkIn: format(captured.checkIn, "yyyy-MM-dd"),
+                        checkOut: format(captured.checkOut, "yyyy-MM-dd"),
+                    });
+                    router.push(`/admin/stays/new?${params.toString()}`);
+                } else if (selectionMode === 'maintenance') {
+                    setSelectionData(captured);
+                    setSelectedMaintenance(null);
+                    setIsMaintenanceModalOpen(true);
+                }
+            } else {
+                setDragState(null);
             }
-
-            setDragState(null);
         }
     };
 
@@ -418,9 +439,8 @@ export default function ReservationMapClient() {
             });
             router.push(`/admin/stays/new?${params.toString()}`);
         } else if (action === 'maintenance') {
-            setSelectedMaintenance(null); // Force new block
+            setSelectedMaintenance(null);
             setIsMaintenanceModalOpen(true);
-            // the modal component must accept the cabin via context/props which we'll handle shortly
         }
     };
 
@@ -593,6 +613,8 @@ export default function ReservationMapClient() {
     // RENDER
     // ==========================================
 
+    const ROW_HEIGHT = compact ? ROW_HEIGHT_COMPACT : ROW_HEIGHT_NORMAL;
+
     return (
         <RoleGuard allowedRoles={["super_admin", "admin", "reception"]}>
             <div className="p-6 max-w-[100vw] space-y-6 animate-in fade-in duration-500">
@@ -611,28 +633,67 @@ export default function ReservationMapClient() {
                         </div>
                     </div>
 
-                    {/* Timeline Navigation */}
-                    <div className="flex items-center gap-2 bg-card border border-white/5 p-1.5 rounded-2xl">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {/* Action Mode Buttons */}
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setSelectionMode(prev => prev === 'reservation' ? null : 'reservation')}
+                                className={cn(
+                                    "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border",
+                                    selectionMode === 'reservation'
+                                        ? "bg-primary text-primary-foreground border-primary shadow-[0_0_16px_rgba(var(--primary),0.4)] animate-pulse"
+                                        : "bg-card border-white/10 text-foreground/60 hover:text-foreground hover:border-primary/40"
+                                )}
+                            >
+                                <PlusCircle size={14} />
+                                {selectionMode === 'reservation' ? "Arraste para reservar..." : "Criar Reserva"}
+                            </button>
+                            <button
+                                onClick={() => setSelectionMode(prev => prev === 'maintenance' ? null : 'maintenance')}
+                                className={cn(
+                                    "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border",
+                                    selectionMode === 'maintenance'
+                                        ? "bg-neutral-700 text-white border-neutral-500 shadow-[0_0_16px_rgba(100,100,100,0.4)] animate-pulse"
+                                        : "bg-card border-white/10 text-foreground/60 hover:text-foreground hover:border-neutral-400/40"
+                                )}
+                            >
+                                <Lock size={14} />
+                                {selectionMode === 'maintenance' ? "Arraste para bloquear..." : "Bloquear"}
+                            </button>
+                        </div>
+
+                        {/* Density Toggle */}
                         <button
-                            onClick={goToPreviousWeek}
-                            className="p-2.5 hover:bg-white/5 rounded-xl transition-colors text-foreground/60 hover:text-foreground"
+                            onClick={() => setCompact(prev => !prev)}
+                            title={compact ? "Visualização normal" : "Visualização compacta"}
+                            className="p-2.5 bg-card border border-white/5 rounded-xl hover:bg-white/5 transition-colors text-foreground/40 hover:text-foreground"
                         >
-                            <ChevronLeft size={18} />
+                            {compact ? <AlignJustify size={16} /> : <LayoutList size={16} />}
                         </button>
-                        <button
-                            onClick={goToToday}
-                            className="px-5 py-2 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-primary/20 transition-colors"
-                        >
-                            Hoje
-                        </button>
-                        <button
-                            onClick={goToNextWeek}
-                            className="p-2.5 hover:bg-white/5 rounded-xl transition-colors text-foreground/60 hover:text-foreground"
-                        >
-                            <ChevronRight size={18} />
-                        </button>
-                        <div className="hidden md:block px-3 text-xs font-bold text-foreground/40 uppercase tracking-widest">
-                            {startDate ? `${format(startDate, "dd MMM", { locale: ptBR })} — ${format(addDays(startDate, VISIBLE_DAYS - 1), "dd MMM yyyy", { locale: ptBR })}` : ""}
+
+                        {/* Timeline Navigation */}
+                        <div className="flex items-center gap-2 bg-card border border-white/5 p-1.5 rounded-2xl">
+                            <button
+                                onClick={goToPreviousWeek}
+                                className="p-2.5 hover:bg-white/5 rounded-xl transition-colors text-foreground/60 hover:text-foreground"
+                            >
+                                <ChevronLeft size={18} />
+                            </button>
+                            <button
+                                onClick={goToToday}
+                                className="px-5 py-2 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-primary/20 transition-colors"
+                            >
+                                Hoje
+                            </button>
+                            <button
+                                onClick={goToNextWeek}
+                                className="p-2.5 hover:bg-white/5 rounded-xl transition-colors text-foreground/60 hover:text-foreground"
+                            >
+                                <ChevronRight size={18} />
+                            </button>
+                            <div className="hidden md:block px-3 text-xs font-bold text-foreground/40 uppercase tracking-widest">
+                                {startDate ? `${format(startDate, "dd MMM", { locale: ptBR })} — ${format(addDays(startDate, VISIBLE_DAYS - 1), "dd MMM yyyy", { locale: ptBR })}` : ""}
+                            </div>
                         </div>
                     </div>
                 </header>
@@ -764,8 +825,9 @@ export default function ReservationMapClient() {
                                                         <div
                                                             key={i}
                                                             className={cn(
-                                                                "shrink-0 border-r border-border transition-colors cursor-crosshair z-0",
-                                                                isToday ? "bg-primary/[0.04]" : (isSpecialDay ? "bg-destructive/[0.02]" : "hover:bg-foreground/[0.01]"),
+                                                                "shrink-0 border-r border-border transition-colors z-0",
+                                                                selectionMode ? "cursor-crosshair" : "cursor-default",
+                                                                isToday ? "bg-primary/[0.04]" : (isSpecialDay ? "bg-destructive/[0.02]" : (selectionMode ? "hover:bg-foreground/[0.02]" : "")),
                                                                 isSelected && "bg-primary/20"
                                                             )}
                                                             style={{ width: DAY_WIDTH }}
@@ -868,7 +930,10 @@ export default function ReservationMapClient() {
 
                 {/* Drag instruction hint */}
                 <p className="text-center text-[10px] font-bold text-foreground/20 uppercase tracking-[0.2em]">
-                    Arraste sobre o mapa para criar uma nova reserva • Clique nas barras para ver detalhes
+                    {selectionMode
+                        ? `Modo ${selectionMode === 'reservation' ? 'Reserva' : 'Bloqueio'} ativo — arraste sobre as células e solte para confirmar • Pressione o botão novamente para cancelar`
+                        : "Clique nas barras para ver detalhes • Use os botões acima para criar reservas ou bloqueios"
+                    }
                 </p>
 
                 {/* ==================== MODALS ==================== */}
