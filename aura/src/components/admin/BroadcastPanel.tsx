@@ -29,8 +29,8 @@ const PREVIEW_REPLACEMENTS: Record<string, string> = {
   "{{access_code}}": "ABC12XYZ",
   "{{wifi_ssid}}": "FazendaDoRosa",
   "{{wifi_password}}": "minhasenha",
-  "{{portal_link}}": "https://app.fazendadorosa.com.br/check-in/login",
-  "{{survey_link}}": "https://app.fazendadorosa.com.br/feedback/exemplo",
+  "{{portal_link}}": "https://aaura.app/check-in/login",
+  "{{survey_link}}": "https://aaura.app/feedback/exemplo",
 };
 
 function resolvePreview(text: string): string {

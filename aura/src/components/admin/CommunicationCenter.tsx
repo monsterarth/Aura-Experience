@@ -264,9 +264,9 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
       ? (contactContext.checkOut instanceof Date ? contactContext.checkOut : new Date(contactContext.checkOut as any)).toLocaleDateString('pt-BR')
       : '';
 
-    const portalLink = `https://app.fazendadorosa.com.br/check-in`;
+    const portalLink = `https://aaura.app/check-in`;
     const surveyLink = contactContext?.stayId
-      ? `https://app.fazendadorosa.com.br/feedback/${contactContext.stayId}`
+      ? `https://aaura.app/feedback/${contactContext.stayId}`
       : '';
 
     return text

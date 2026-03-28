@@ -71,11 +71,11 @@ export class AutomationService {
       parsedText = parsedText.replace(/{{checkin_date}}/g, checkInDate);
       parsedText = parsedText.replace(/{{checkout_date}}/g, checkOutDate);
 
-      const portalLink = `https://app.fazendadorosa.com.br/check-in/login`;
+      const portalLink = `https://aaura.app/check-in`;
       parsedText = parsedText.replace(/{{portal_link}}/g, portalLink);
       parsedText = parsedText.replace(/{{access_code}}/g, stay.accessCode);
 
-      const surveyLink = `https://app.fazendadorosa.com.br/feedback/${stay.id}`;
+      const surveyLink = `https://aaura.app/feedback/${stay.id}`;
       parsedText = parsedText.replace(/{{survey_link}}/g, surveyLink);
     }
 
