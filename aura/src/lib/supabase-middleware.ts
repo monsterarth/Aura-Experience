@@ -74,7 +74,6 @@ export async function updateSession(request: NextRequest) {
     }
 
     // Domínio customizado: injeta x-property-id para rotas públicas do hóspede
-    const pathname = request.nextUrl.pathname;
     const isPublicGuestRoute = pathname.startsWith('/check-in') || pathname.startsWith('/feedback');
     if (isPublicGuestRoute) {
         const host = request.headers.get('host') ?? '';
