@@ -122,6 +122,7 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [stayDetails, setStayDetails] = useState<StayDetails | null>(null);
+  const [customDomain, setCustomDomain] = useState<string | null>(null);
 
   // Menu de menção (%)
   const [mentionMenu, setMentionMenu] = useState<MentionMenuState>({
@@ -150,6 +151,9 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
     const fetchGlobal = async () => {
       const { data: cData } = await supabase.from('contacts').select('*').eq('propertyId', propertyId);
       setContacts(cData || []);
+
+      const { data: propData } = await supabase.from('properties').select('settings').eq('id', propertyId).single();
+      setCustomDomain((propData as any)?.settings?.customDomain || null);
 
       const { data: commData } = await supabase.from('communications')
         .select('*')
@@ -264,9 +268,10 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
       ? (contactContext.checkOut instanceof Date ? contactContext.checkOut : new Date(contactContext.checkOut as any)).toLocaleDateString('pt-BR')
       : '';
 
-    const portalLink = `https://aaura.app.br/check-in`;
+    const baseUrl = customDomain ? `https://${customDomain}` : `https://aaura.app.br`;
+    const portalLink = `${baseUrl}/check-in`;
     const surveyLink = contactContext?.stayId
-      ? `https://aaura.app.br/feedback/${contactContext.stayId}`
+      ? `${baseUrl}/feedback/${contactContext.stayId}`
       : '';
 
     return text
@@ -282,7 +287,7 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
       .replace(/{{wifi_password}}/g, (overrideDetails ?? stayDetails)?.wifiPassword ?? '')
       .replace(/{{portal_link}}/g, portalLink)
       .replace(/{{survey_link}}/g, surveyLink);
-  }, [contacts, selectedPhone, contactContext, stayDetails]);
+  }, [contacts, selectedPhone, contactContext, stayDetails, customDomain]);
 
   // Constrói os itens do menu %
   const buildMentionItems = useCallback((query: string): MentionItem[] => {
