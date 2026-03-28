@@ -22,7 +22,8 @@ import {
   Trash2,
   Key,
   ArrowLeft,
-  Calendar as CalendarIcon
+  Calendar as CalendarIcon,
+  Map
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -489,12 +490,20 @@ function NewStayPageContent() {
                 </div>
               </div>
 
-              <button
-                onClick={() => router.push("/admin/stays")}
-                className="w-full py-4 bg-foreground text-background font-black uppercase tracking-widest rounded-2xl hover:opacity-90 transition-colors"
-              >
-                Voltar ao Painel
-              </button>
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => router.push("/admin/stays")}
+                  className="flex-1 py-4 bg-foreground text-background font-black uppercase tracking-widest rounded-2xl hover:opacity-90 transition-colors text-sm"
+                >
+                  Estadias
+                </button>
+                <button
+                  onClick={() => router.push("/admin/reservation-map")}
+                  className="flex-1 py-4 bg-primary text-primary-foreground font-black uppercase tracking-widest rounded-2xl hover:opacity-90 transition-colors text-sm flex items-center justify-center gap-2"
+                >
+                  <Map size={18} /> Mapa
+                </button>
+              </div>
             </div>
           </div>
         )}

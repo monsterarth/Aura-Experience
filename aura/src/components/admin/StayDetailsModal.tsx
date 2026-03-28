@@ -7,7 +7,7 @@ import {
   MapPin, Phone, Mail, Car, FileText,
   Users, CheckCircle, Clock, Plane,
   Briefcase, PawPrint, Trash2, Plus,
-  LogOut, RotateCcw, Sparkles, Receipt, RefreshCw, ShoppingCart, Coffee, BedDouble, ArrowRight
+  LogIn, LogOut, RotateCcw, Sparkles, Receipt, RefreshCw, ShoppingCart, Coffee, BedDouble, ArrowRight
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -380,6 +380,21 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     }
   };
 
+  const handleCheckIn = async () => {
+    if (!window.confirm("Confirma o Check-in deste hóspede?")) return;
+    setLoading(true);
+    try {
+      await StayService.performCheckIn(stay.propertyId, stay.id, userData?.id || "ADMIN", userData?.fullName || "Recepção");
+      toast.success("Check-in realizado com sucesso!");
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao realizar check-in.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleToggleCheckOut = async () => {
     const isFinishing = stay.status === 'active';
     const actionText = isFinishing ? "encerrar esta estadia (Check-out) e enviar a cabana para limpeza" : "reativar esta estadia e colocar a cabana como ocupada";
@@ -529,6 +544,12 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
           <div className="flex items-center gap-2">
             {!isEditing ? (
               <>
+                {['pending', 'pre_checkin_done'].includes(stay.status) && (
+                  <button onClick={handleCheckIn} disabled={loading} className="px-4 py-2 bg-green-500/10 text-green-600 hover:bg-green-500 hover:text-white rounded-xl text-xs font-bold uppercase transition-all flex items-center gap-2">
+                    <LogIn size={16} /> Check-in
+                  </button>
+                )}
+
                 {stay.status === 'active' && (
                   <button onClick={handleToggleCheckOut} disabled={loading} className="px-4 py-2 bg-orange-500/10 text-orange-600 hover:bg-orange-500 hover:text-white rounded-xl text-xs font-bold uppercase transition-all flex items-center gap-2">
                     <LogOut size={16} /> Check-out
