@@ -142,12 +142,12 @@ function NewStayPageContent() {
       return toast.error("Nome, Cabanas e Período completo são obrigatórios.");
     }
 
-    let cleanedPhone = guestData.phone.replace(/\D/g, '');
-    
-    // Auto-insere o código do Brasil (55) se o usuário digitou apenas o DDD + Número (10 ou 11 dígitos)
-    if ((cleanedPhone.length === 10 || cleanedPhone.length === 11) && !cleanedPhone.startsWith('55')) {
-      cleanedPhone = '55' + cleanedPhone;
+    // Exige que o número comece com + para garantir que o DDI foi informado
+    if (!guestData.phone.trim().startsWith('+')) {
+      return toast.error("Informe o número com DDI internacional. Ex: +55 53 98116-9216");
     }
+
+    const cleanedPhone = guestData.phone.replace(/\D/g, '');
 
     if (cleanedPhone.length < 10) {
       return toast.error("O número de WhatsApp digitado é muito curto.");
