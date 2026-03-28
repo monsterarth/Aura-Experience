@@ -55,9 +55,10 @@ export class AutomationService {
   ): string {
     let parsedText = templateBody;
 
-    const firstName = guest.fullName.split(" ")[0];
+    const toTitleCase = (s: string) => s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+    const firstName = toTitleCase(guest.fullName.split(" ")[0]);
     parsedText = parsedText.replace(/{{guest_name}}/g, firstName);
-    parsedText = parsedText.replace(/{{guest_full_name}}/g, guest.fullName);
+    parsedText = parsedText.replace(/{{guest_full_name}}/g, toTitleCase(guest.fullName));
 
     if (cabin) {
       parsedText = parsedText.replace(/{{cabin_name}}/g, cabin.name);
