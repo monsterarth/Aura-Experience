@@ -224,32 +224,28 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
   }, [propertyId]);
 
   // 5. STAY DETAILS: Carrega wi-fi e código de acesso da estadia ativa
+  const fetchStayDetails = useCallback(async (stayId: string): Promise<StayDetails | null> => {
+    const { data } = await supabase.from('stays').select('accessCode, cabins(wifi)').eq('id', stayId).single();
+    if (!data) return null;
+    const cabin = Array.isArray((data as any).cabins) ? (data as any).cabins[0] : (data as any).cabins;
+    return {
+      accessCode: (data as any).accessCode,
+      wifiSsid: cabin?.wifi?.ssid ?? undefined,
+      wifiPassword: cabin?.wifi?.password ?? undefined,
+    };
+  }, []);
+
   useEffect(() => {
-    if (!contactContext?.stayId) {
-      setStayDetails(null);
-      return;
-    }
-    supabase.from('stays')
-      .select('accessCode, cabins(wifi)')
-      .eq('id', contactContext.stayId)
-      .single()
-      .then(({ data }: { data: any }) => {
-        if (data) {
-          const cabin = Array.isArray((data as any).cabins) ? (data as any).cabins[0] : (data as any).cabins;
-          setStayDetails({
-            accessCode: (data as any).accessCode,
-            wifiSsid: cabin?.wifi?.ssid ?? undefined,
-            wifiPassword: cabin?.wifi?.password ?? undefined,
-          });
-        }
-      });
-  }, [contactContext?.stayId]);
+    if (!contactContext?.stayId) { setStayDetails(null); return; }
+    fetchStayDetails(contactContext.stayId).then(d => { if (d) setStayDetails(d); });
+  }, [contactContext?.stayId, fetchStayDetails]);
 
   // Resolve variáveis com dados reais do hóspede selecionado
-  const resolveVariables = useCallback((text: string): string => {
+  const resolveVariables = useCallback((text: string, overrideDetails?: StayDetails | null): string => {
     const contact = contacts.find(c => c.id === selectedPhone);
-    const firstName = contact?.name?.split(' ')[0] ?? '';
-    const fullName = contact?.name ?? '';
+    const toTitleCase = (str: string) => str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+    const firstName = toTitleCase(contact?.name?.split(' ')[0] ?? '');
+    const fullName = toTitleCase(contact?.name ?? '');
     const cabinName = contactContext?.cabinName ?? '';
 
     const checkInFormatted = contactContext?.checkIn
@@ -259,7 +255,7 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
       ? (contactContext.checkOut instanceof Date ? contactContext.checkOut : new Date(contactContext.checkOut as any)).toLocaleDateString('pt-BR')
       : '';
 
-    const portalLink = `https://app.fazendadorosa.com.br/check-in/login`;
+    const portalLink = `https://app.fazendadorosa.com.br/check-in`;
     const surveyLink = contactContext?.stayId
       ? `https://app.fazendadorosa.com.br/feedback/${contactContext.stayId}`
       : '';
@@ -272,9 +268,9 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
       .replace(/{{checkout_date}}/g, checkOutFormatted)
       .replace(/{{check_in}}/g, checkInFormatted)
       .replace(/{{check_out}}/g, checkOutFormatted)
-      .replace(/{{access_code}}/g, stayDetails?.accessCode ?? '')
-      .replace(/{{wifi_ssid}}/g, stayDetails?.wifiSsid ?? '')
-      .replace(/{{wifi_password}}/g, stayDetails?.wifiPassword ?? '')
+      .replace(/{{access_code}}/g, (overrideDetails ?? stayDetails)?.accessCode ?? '')
+      .replace(/{{wifi_ssid}}/g, (overrideDetails ?? stayDetails)?.wifiSsid ?? '')
+      .replace(/{{wifi_password}}/g, (overrideDetails ?? stayDetails)?.wifiPassword ?? '')
       .replace(/{{portal_link}}/g, portalLink)
       .replace(/{{survey_link}}/g, surveyLink);
   }, [contacts, selectedPhone, contactContext, stayDetails]);
@@ -673,8 +669,15 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
                 <button
                   key={template.id}
                   type="button"
-                  onClick={() => {
-                    const resolved = resolveVariables(template.body);
+                  onClick={async () => {
+                    let details = stayDetails;
+                    // Se stayDetails ainda não carregou, busca agora antes de resolver
+                    if (!details && contactContext?.stayId) {
+                      details = await fetchStayDetails(contactContext.stayId);
+                      if (details) setStayDetails(details);
+                    }
+                    // Passa details frescos para evitar race condition com o closure
+                    const resolved = resolveVariables(template.body, details);
                     setInputText(resolved);
                     setTimeout(() => inputRef.current?.focus(), 0);
                   }}
