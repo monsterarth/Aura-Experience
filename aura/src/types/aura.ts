@@ -412,6 +412,7 @@ export interface Stay {
   groupId?: string | null;
   guestId: string;
   cabinId: string;
+  cabinHistory?: { cabinId: string; from: string; to: string }[];
   accessCode: string;
 
   cabinConfigs?: {

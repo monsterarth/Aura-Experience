@@ -508,7 +508,7 @@ export const StayService = {
     actorName: string
   ) {
     const { data: stay } = await supabase
-      .from('stays').select('cabinId, status').eq('id', stayId).single();
+      .from('stays').select('cabinId, status, checkIn, cabinHistory').eq('id', stayId).single();
     if (!stay) throw new Error('STAY_NOT_FOUND');
 
     const oldCabinId = stay.cabinId;
@@ -529,9 +529,19 @@ export const StayService = {
       }
     }
 
+    // Build cabin history for active stays
+    const today = new Date().toISOString().split('T')[0];
+    const existingHistory: { cabinId: string; from: string; to: string }[] = stay.cabinHistory || [];
+    const fromDate = existingHistory.length > 0
+      ? existingHistory[existingHistory.length - 1].to
+      : stay.checkIn?.split?.('T')?.[0] || stay.checkIn;
+    const updatedHistory = isActive
+      ? [...existingHistory, { cabinId: oldCabinId, from: fromDate, to: today }]
+      : existingHistory;
+
     // Update stay
     await supabase.from('stays')
-      .update({ cabinId: newCabinId, updatedAt: new Date().toISOString() })
+      .update({ cabinId: newCabinId, cabinHistory: updatedHistory, updatedAt: new Date().toISOString() })
       .eq('id', stayId).eq('propertyId', propertyId);
 
     if (isActive) {

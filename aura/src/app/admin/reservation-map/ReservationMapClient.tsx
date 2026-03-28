@@ -35,6 +35,14 @@ interface StayWithGuest extends Stay {
     guest?: Guest;
 }
 
+interface CabinStaySegment {
+    stay: StayWithGuest;
+    cabinId: string;
+    effectiveCheckIn: string;
+    effectiveCheckOut: string;
+    isHistorical: boolean;
+}
+
 // ==========================================
 // CONSTANTS
 // ==========================================
@@ -571,8 +579,37 @@ export default function ReservationMapClient() {
     // GET ITEMS FOR A SPECIFIC CABIN
     // ==========================================
 
-    const getStaysForCabin = (cabinId: string) => {
-        return stays.filter(s => s.cabinId === cabinId);
+    const getSegmentsForCabin = (cabinId: string): CabinStaySegment[] => {
+        const segments: CabinStaySegment[] = [];
+        for (const stay of stays) {
+            const history = stay.cabinHistory || [];
+
+            // Historical segments: past cabin assignments that match this cabin
+            for (const entry of history) {
+                if (entry.cabinId === cabinId) {
+                    segments.push({
+                        stay,
+                        cabinId,
+                        effectiveCheckIn: entry.from,
+                        effectiveCheckOut: entry.to,
+                        isHistorical: true,
+                    });
+                }
+            }
+
+            // Current segment: if the stay is currently assigned to this cabin
+            if (stay.cabinId === cabinId) {
+                const fromDate = history.length > 0 ? history[history.length - 1].to : stay.checkIn;
+                segments.push({
+                    stay,
+                    cabinId,
+                    effectiveCheckIn: fromDate,
+                    effectiveCheckOut: stay.checkOut,
+                    isHistorical: false,
+                });
+            }
+        }
+        return segments;
     };
 
     const getMaintenanceForCabin = (cabinId: string) => {
@@ -802,7 +839,7 @@ export default function ReservationMapClient() {
 
                                     {/* Cabin Rows with Stay Bars */}
                                     {cabins.map((cabin) => {
-                                        const cabinStays = getStaysForCabin(cabin.id);
+                                        const cabinSegments = getSegmentsForCabin(cabin.id);
                                         const cabinMaintenance = getMaintenanceForCabin(cabin.id);
 
                                         return (
@@ -838,23 +875,28 @@ export default function ReservationMapClient() {
                                                 })}
 
                                                 {/* Stay Bars (absolute positioned) */}
-                                                {cabinStays.map((stay) => {
-                                                    const pos = getBarPosition(stay.checkIn, stay.checkOut);
+                                                {cabinSegments.map((seg, segIdx) => {
+                                                    const pos = getBarPosition(seg.effectiveCheckIn, seg.effectiveCheckOut);
                                                     if (!pos) return null;
 
-                                                    const guestName = stay.guestName || "Hóspede";
+                                                    const guestName = seg.stay.guestName || "Hóspede";
                                                     const shortName = guestName.split(" ")[0] + (guestName.split(" ").length > 1 ? ` ${guestName.split(" ").slice(-1)}` : "");
 
                                                     return (
                                                         <button
-                                                            key={stay.id}
-                                                            draggable={['active', 'pending', 'pre_checkin_done'].includes(stay.status)}
-                                                            onDragStart={(e) => handleDragStart(e, stay)}
-                                                            onClick={() => handleStayClick(stay)}
+                                                            key={`${seg.stay.id}-${segIdx}`}
+                                                            draggable={!seg.isHistorical && ['active', 'pending', 'pre_checkin_done'].includes(seg.stay.status)}
+                                                            onDragStart={(e) => !seg.isHistorical && handleDragStart(e, seg.stay)}
+                                                            onClick={() => handleStayClick(seg.stay)}
                                                             className={cn(
-                                                                "absolute top-1.5 h-[calc(100%-12px)] flex items-center px-3 rounded-lg text-[10px] font-bold transition-all hover:brightness-110 hover:scale-[1.02] z-10 truncate",
-                                                                ['active', 'pending', 'pre_checkin_done'].includes(stay.status) ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
-                                                                getStayBarColor(stay.status),
+                                                                "absolute top-1.5 h-[calc(100%-12px)] flex items-center px-3 rounded-lg text-[10px] font-bold transition-all z-10 truncate",
+                                                                seg.isHistorical
+                                                                    ? "opacity-50 border border-dashed border-white/30 cursor-pointer bg-gradient-to-r from-neutral-500 to-neutral-600 text-white/80"
+                                                                    : cn(
+                                                                        "hover:brightness-110 hover:scale-[1.02]",
+                                                                        ['active', 'pending', 'pre_checkin_done'].includes(seg.stay.status) ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
+                                                                        getStayBarColor(seg.stay.status)
+                                                                    ),
                                                                 pos.clippedLeft && "rounded-l-none border-l-2 border-dashed border-white/30",
                                                                 pos.clippedRight && "rounded-r-none border-r-2 border-dashed border-white/30"
                                                             )}
@@ -862,9 +904,12 @@ export default function ReservationMapClient() {
                                                                 left: pos.left + 2,
                                                                 width: pos.width - 4,
                                                             }}
-                                                            title={`${guestName} — ${format(new Date(stay.checkIn), "dd/MM")} a ${format(new Date(stay.checkOut), "dd/MM")}`}
+                                                            title={seg.isHistorical
+                                                                ? `${guestName} (anterior) — ${format(new Date(seg.effectiveCheckIn), "dd/MM")} a ${format(new Date(seg.effectiveCheckOut), "dd/MM")}`
+                                                                : `${guestName} — ${format(new Date(seg.effectiveCheckIn), "dd/MM")} a ${format(new Date(seg.effectiveCheckOut), "dd/MM")}`
+                                                            }
                                                         >
-                                                            <span className="truncate">{shortName}</span>
+                                                            <span className="truncate">{seg.isHistorical ? `${shortName} ↗` : shortName}</span>
                                                         </button>
                                                     );
                                                 })}
@@ -923,6 +968,10 @@ export default function ReservationMapClient() {
                             <div className="flex items-center gap-2">
                                 <div className="w-4 h-3 rounded-sm bg-gradient-to-r from-neutral-800 to-neutral-900 border border-neutral-600/50" />
                                 <span className="text-[10px] font-bold text-foreground/40 uppercase tracking-widest">Manutenção</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-4 h-3 rounded-sm bg-gradient-to-r from-neutral-500 to-neutral-600 opacity-50 border border-dashed border-white/30" />
+                                <span className="text-[10px] font-bold text-foreground/40 uppercase tracking-widest">Transferida</span>
                             </div>
                         </div>
                     </div>

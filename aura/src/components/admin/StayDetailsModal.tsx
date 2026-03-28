@@ -7,7 +7,7 @@ import {
   MapPin, Phone, Mail, Car, FileText,
   Users, CheckCircle, Clock, Plane,
   Briefcase, PawPrint, Trash2, Plus,
-  LogOut, RotateCcw, Sparkles, Receipt, RefreshCw, ShoppingCart, Coffee, BedDouble
+  LogOut, RotateCcw, Sparkles, Receipt, RefreshCw, ShoppingCart, Coffee, BedDouble, ArrowRight
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -615,6 +615,33 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                     <div className="text-foreground font-bold p-2 bg-secondary rounded-xl border border-border text-sm">{stay.cabinName}</div>
                   )}
                 </div>
+
+                {/* Cabin History */}
+                {stay.cabinHistory && stay.cabinHistory.length > 0 && (
+                  <div className="mt-2 p-3 bg-secondary/50 rounded-xl border border-border space-y-1.5">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-foreground/40 mb-1">Histórico de Acomodações</p>
+                    {stay.cabinHistory.map((entry, idx) => {
+                      const cabinName = cabins.find(c => c.id === entry.cabinId)?.name || "Cabana";
+                      return (
+                        <div key={idx} className="flex items-center gap-2 text-xs text-foreground/60">
+                          <BedDouble size={12} className="shrink-0 text-foreground/30" />
+                          <span className="font-semibold">{cabinName}</span>
+                          <span className="text-foreground/30">
+                            {format(new Date(entry.from), "dd/MM")} — {format(new Date(entry.to), "dd/MM")}
+                          </span>
+                          <ArrowRight size={10} className="text-foreground/20" />
+                        </div>
+                      );
+                    })}
+                    <div className="flex items-center gap-2 text-xs text-foreground">
+                      <BedDouble size={12} className="shrink-0 text-primary" />
+                      <span className="font-bold">{stay.cabinName || cabins.find(c => c.id === stay.cabinId)?.name || "Atual"}</span>
+                      <span className="text-foreground/50">
+                        {format(new Date(stay.cabinHistory[stay.cabinHistory.length - 1].to), "dd/MM")} — atual
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {/* AreaSection */}
                 <AreaSection />
