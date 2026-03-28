@@ -167,12 +167,11 @@ function NewStayPageContent() {
       const whatsData = await whatsRes.json();
 
       if (!whatsRes.ok || !whatsData.exists) {
-        toast.error("Número bloqueado! Este telefone não possui uma conta de WhatsApp ativa.", { id: toastId });
-        setLoading(false);
-        return; // ABORTA A CRIAÇÃO
+        // Avisa mas não bloqueia — falsos negativos ocorrem com DDIs internacionais (ex: Uruguai +598)
+        toast.warning("WhatsApp não confirmado pela API, mas prosseguindo com a reserva.", { id: toastId });
+      } else {
+        toast.success("WhatsApp Validado! Criando registros...", { id: toastId });
       }
-
-      toast.success("WhatsApp Validado! Criando registros...", { id: toastId });
 
       // Usa sempre o número já limpo pelo frontend (o validNumber da API não é confiável)
       const finalPhone = cleanedPhone;
