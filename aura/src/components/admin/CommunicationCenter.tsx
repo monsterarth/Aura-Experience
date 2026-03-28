@@ -225,13 +225,22 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
 
   // 5. STAY DETAILS: Carrega wi-fi e código de acesso da estadia ativa
   const fetchStayDetails = useCallback(async (stayId: string): Promise<StayDetails | null> => {
-    const { data } = await supabase.from('stays').select('accessCode, cabins(wifi)').eq('id', stayId).single();
-    if (!data) return null;
-    const cabin = Array.isArray((data as any).cabins) ? (data as any).cabins[0] : (data as any).cabins;
+    const { data: stay } = await supabase.from('stays').select('accessCode, cabinConfigs').eq('id', stayId).single();
+    if (!stay) return null;
+
+    let wifiSsid: string | undefined;
+    let wifiPassword: string | undefined;
+    const firstCabinId = (stay as any).cabinConfigs?.[0]?.cabinId;
+    if (firstCabinId) {
+      const { data: cabin } = await supabase.from('cabins').select('wifi').eq('id', firstCabinId).single();
+      wifiSsid = (cabin as any)?.wifi?.ssid ?? undefined;
+      wifiPassword = (cabin as any)?.wifi?.password ?? undefined;
+    }
+
     return {
-      accessCode: (data as any).accessCode,
-      wifiSsid: cabin?.wifi?.ssid ?? undefined,
-      wifiPassword: cabin?.wifi?.password ?? undefined,
+      accessCode: (stay as any).accessCode,
+      wifiSsid,
+      wifiPassword,
     };
   }, []);
 
