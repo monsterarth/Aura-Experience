@@ -24,31 +24,29 @@ export async function POST(req: Request) {
     if (direction === "outbound") {
       const { data: recentMessages } = await supabaseAdmin
         .from("messages")
-        .select("*")
+        .select("id, body, createdAt, status, isAutomated")
         .eq("propertyId", propertyId)
         .eq("contactId", cleanContactNumber)
         .eq("direction", "outbound")
         .order("createdAt", { ascending: false })
-        .limit(1);
+        .limit(3);
 
       if (recentMessages && recentMessages.length > 0) {
-        const lastMsg = recentMessages[0];
+        // Procura mensagem com mesmo body nos últimos 120 segundos (automação + eco)
+        const match = recentMessages.find(m => {
+          if (m.body !== text) return false;
+          if (!m.createdAt) return true;
+          const diffSeconds = (Date.now() - new Date(m.createdAt).getTime()) / 1000;
+          return diffSeconds < 120;
+        });
 
-        // Compara com 'body'
-        if (lastMsg.body === text) {
-          let isRecent = false;
-          if (lastMsg.createdAt) {
-            const msgTime = new Date(lastMsg.createdAt);
-            const diffSeconds = (Date.now() - msgTime.getTime()) / 1000;
-            if (diffSeconds < 30) isRecent = true;
-          } else {
-            isRecent = true;
+        if (match) {
+          // Se a mensagem já existe, apenas atualizar status para 'sent' (caso ainda esteja processing/pending)
+          if (match.status !== 'sent' && match.status !== 'delivered' && match.status !== 'read') {
+            await supabaseAdmin.from("messages").update({ status: 'sent' }).eq('id', match.id);
           }
-
-          if (isRecent) {
-            console.log(`♻️ [WEBHOOK] Eco de API identificado e bloqueado para ${cleanContactNumber}.`);
-            return NextResponse.json({ success: true, message: "Eco do sistema ignorado com sucesso." });
-          }
+          console.log(`♻️ [WEBHOOK] Eco de API identificado e bloqueado para ${cleanContactNumber}. (msg: ${match.id})`);
+          return NextResponse.json({ success: true, message: "Eco do sistema ignorado com sucesso." });
         }
       }
     }

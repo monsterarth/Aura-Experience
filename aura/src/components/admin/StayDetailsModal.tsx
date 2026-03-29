@@ -15,6 +15,7 @@ import { useAuth } from "@/context/AuthContext";
 import { StayService } from "@/services/stay-service";
 import { GuestService } from "@/services/guest-service";
 import { CabinService } from "@/services/cabin-service";
+import { ContactService } from "@/services/contact-service";
 import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import { sanitizeDocumentForFnrh } from "@/lib/utils-checkin";
 import { cn } from "@/lib/utils";
@@ -362,6 +363,13 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
       }
 
       await Promise.all(ops);
+
+      // Migrate contact/messages if phone number changed
+      const oldPhone = guest.phone || "";
+      const newPhone = guestData.phone || "";
+      if (oldPhone && newPhone && ContactService.formatPhoneId(oldPhone) !== ContactService.formatPhoneId(newPhone)) {
+        await ContactService.migrateContactPhone(stay.propertyId, oldPhone, newPhone, guestData.fullName || guest.fullName || "", guest.id);
+      }
 
       toast.success("Ficha da hospedagem atualizada!");
       setIsEditing(false);

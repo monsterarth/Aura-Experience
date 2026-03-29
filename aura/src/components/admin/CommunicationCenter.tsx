@@ -10,7 +10,7 @@ import { ContactService } from "@/services/contact-service";
 import { AutomationService } from "@/services/automation-service";
 import { Button } from "@/components/ui/button";
 import {
-  Search, Send, Clock, CheckCircle2,
+  Search, Send, Clock, CheckCircle2, AlertCircle,
   MapPin, Loader2, ArrowLeft, Plus, X, Bot, MessageCircle, Languages, Archive, Inbox,
   ChevronRight, ChevronLeft, FileText, Wifi, Key, User, CalendarRange, PanelRightClose, PanelRightOpen
 } from "lucide-react";
@@ -933,13 +933,23 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
 
                     <div className="flex items-center gap-1 mt-1 px-1">
                       <span className="text-[10px] text-muted-foreground">{safeFormatDate(msg.createdAt, "HH:mm")}</span>
-                      {isMe && msg.statusApi !== undefined && (
+                      {isMe && msg.status === 'failed' ? (
+                        <span className="text-[10px] font-bold text-red-500 flex items-center gap-0.5" title={msg.errorMessage || 'Falha no envio'}>
+                          <AlertCircle className="w-3 h-3" /> Falhou
+                        </span>
+                      ) : isMe && msg.status === 'pending' ? (
+                        <span className="text-[10px] text-muted-foreground/50 flex items-center gap-0.5">
+                          <Clock className="w-3 h-3" />
+                        </span>
+                      ) : isMe && msg.statusApi !== undefined ? (
                         <span className="text-[12px] font-bold flex items-center tracking-tighter">
                           {msg.statusApi === 1 && <span className="text-muted-foreground opacity-60">✓</span>}
                           {msg.statusApi === 2 && <span className="text-muted-foreground opacity-60">✓✓</span>}
                           {(msg.statusApi === 3 || msg.statusApi === 4) && <span className="text-blue-500">✓✓</span>}
                         </span>
-                      )}
+                      ) : isMe ? (
+                        <span className="text-muted-foreground/40 text-[12px]">✓</span>
+                      ) : null}
                     </div>
                   </div>
                 );

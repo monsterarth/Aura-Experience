@@ -82,6 +82,62 @@ export class ContactService {
     }
   }
 
+  /**
+   * Migrates all messages and communications from an old phone to a new phone.
+   * Called when a guest's phone number is corrected.
+   */
+  static async migrateContactPhone(propertyId: string, oldPhone: string, newPhone: string, name: string, guestId?: string): Promise<boolean> {
+    try {
+      const oldId = this.formatPhoneId(oldPhone);
+      const newId = this.formatPhoneId(newPhone);
+      if (!oldId || !newId || oldId === newId) return false;
+
+      // 1. Update all messages from old contactId to new
+      await supabase.from('messages')
+        .update({ contactId: newId, to: newId })
+        .eq('contactId', oldId)
+        .eq('propertyId', propertyId)
+        .eq('direction', 'outbound');
+
+      await supabase.from('messages')
+        .update({ contactId: newId })
+        .eq('contactId', oldId)
+        .eq('propertyId', propertyId)
+        .eq('direction', 'inbound');
+
+      // 2. Check if new communication record already exists
+      const { data: newComm } = await supabase.from('communications')
+        .select('id').eq('id', newId).eq('propertyId', propertyId).maybeSingle();
+
+      if (!newComm) {
+        // Move old communication record: delete old, insert new
+        const { data: oldComm } = await supabase.from('communications')
+          .select('*').eq('id', oldId).eq('propertyId', propertyId).maybeSingle();
+
+        if (oldComm) {
+          await supabase.from('communications').insert({
+            ...oldComm,
+            id: newId,
+            updatedAt: new Date().toISOString()
+          });
+          await supabase.from('communications').delete().eq('id', oldId).eq('propertyId', propertyId);
+        }
+      } else {
+        // New already exists, just delete old
+        await supabase.from('communications').delete().eq('id', oldId).eq('propertyId', propertyId);
+      }
+
+      // 3. Create new contact, remove old
+      await this.upsertContact(propertyId, name, newPhone, true, guestId);
+      await supabase.from('contacts').delete().eq('id', oldId).eq('propertyId', propertyId);
+
+      return true;
+    } catch (error) {
+      console.error("[ContactService] Erro ao migrar telefone:", error);
+      return false;
+    }
+  }
+
   static async updateContact(propertyId: string, phoneId: string, data: { name?: string; phone?: string; tags?: string[] }): Promise<boolean> {
     try {
       const { error } = await supabase.from('contacts')
