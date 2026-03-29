@@ -597,8 +597,9 @@ export default function UnifiedPreCheckin() {
         }
       };
 
+      const { areaConfigs, bedAssignments, ...stayRest } = stay;
       const fnrhStayPayload = {
-        ...stay,
+        ...stayRest,
         additionalGuests: stay.additionalGuests.map((ag: any) => ({
           ...ag,
           document: ag.document ? sanitizeDocumentForFnrh(ag.document) : ""
