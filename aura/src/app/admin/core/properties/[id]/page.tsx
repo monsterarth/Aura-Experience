@@ -79,6 +79,8 @@ export default function PropertySettingsPage() {
     // Configurações Operacionais & Políticas (Agora preparadas para Multi-idioma)
     const [settings, setSettings] = useState({
         whatsappNumber: "",
+        whatsappEnabled: false,
+        whatsappConfig: { apiUrl: "", apiKey: "", token: "" },
         customDomain: "",
         checkInTime: "14:00",
         checkOutTime: "12:00",
@@ -196,6 +198,8 @@ export default function PropertySettingsPage() {
                     petPolicyText: parseMultiLang(s.petPolicyText, prev.petPolicyText),
                     privacyPolicyText: parseMultiLang(s.privacyPolicyText, prev.privacyPolicyText),
                     generalPolicyText: parseMultiLang(s.generalPolicyText, prev.generalPolicyText),
+                    whatsappEnabled: s.whatsappEnabled ?? prev.whatsappEnabled,
+                    whatsappConfig: { ...prev.whatsappConfig, ...(s.whatsappConfig || {}) },
                     acceptsPets: s.acceptsPets !== undefined ? s.acceptsPets : prev.acceptsPets,
                     petMinWeight: s.petMinWeight !== undefined ? s.petMinWeight : prev.petMinWeight,
                     petMaxWeight: s.petMaxWeight !== undefined ? s.petMaxWeight : prev.petMaxWeight,
@@ -537,6 +541,62 @@ export default function PropertySettingsPage() {
                                     />
                                     <p className="text-xs text-muted-foreground">Deixe vazio para usar o domínio padrão <span className="font-mono">aaura.app.br</span>. Os links enviados aos hóspedes usarão este endereço.</p>
                                 </div>
+                            </section>
+
+                            {/* Integração WhatsApp API */}
+                            <section className="bg-card border border-border p-8 rounded-[32px] space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="font-bold text-lg flex items-center gap-2 text-primary">
+                                        <MessageSquare size={20} /> Integração WhatsApp (Automações)
+                                    </h3>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSettings({ ...settings, whatsappEnabled: !settings.whatsappEnabled })}
+                                        className={cn(
+                                            "relative w-14 h-7 rounded-full transition-colors duration-200",
+                                            settings.whatsappEnabled ? "bg-green-500" : "bg-secondary border border-border"
+                                        )}
+                                    >
+                                        <span className={cn(
+                                            "absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200",
+                                            settings.whatsappEnabled && "translate-x-7"
+                                        )} />
+                                    </button>
+                                </div>
+                                <p className="text-xs text-muted-foreground">Configuração da API de envio de mensagens automáticas (pré check-in, boas-vindas, NPS, etc).</p>
+
+                                <div className={cn("space-y-4 transition-opacity", !settings.whatsappEnabled && "opacity-40 pointer-events-none")}>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">URL da API (Evolution / WPPConnect)</label>
+                                        <input
+                                            value={settings.whatsappConfig.apiUrl}
+                                            onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, apiUrl: e.target.value } })}
+                                            placeholder="https://api.seudominio.com"
+                                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">API Key (Chave de Autenticação)</label>
+                                        <input
+                                            type="password"
+                                            value={settings.whatsappConfig.apiKey}
+                                            onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, apiKey: e.target.value } })}
+                                            placeholder="••••••••••••••••"
+                                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
+                                        />
+                                    </div>
+                                </div>
+
+                                {settings.whatsappEnabled && settings.whatsappConfig.apiUrl && settings.whatsappConfig.apiKey && (
+                                    <div className="flex items-center gap-2 text-green-600 text-xs font-bold bg-green-500/10 p-3 rounded-xl">
+                                        <CheckCircle2 size={14} /> Integração configurada — automações de mensagem habilitadas.
+                                    </div>
+                                )}
+                                {settings.whatsappEnabled && (!settings.whatsappConfig.apiUrl || !settings.whatsappConfig.apiKey) && (
+                                    <div className="flex items-center gap-2 text-amber-600 text-xs font-bold bg-amber-500/10 p-3 rounded-xl">
+                                        <AlertTriangle size={14} /> Preencha URL e API Key para ativar o envio de mensagens.
+                                    </div>
+                                )}
                             </section>
 
                             {/* Horários: Hospedagem */}
