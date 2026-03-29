@@ -20,21 +20,31 @@ export class AutomationService {
         if (c) cabin = c;
       }
 
-      // Pre-compile structure variables
-      let customBody = template.body
-        .replace(/{{structure_name}}/g, structureName)
-        .replace(/{{booking_date}}/g, new Date(date + "T00:00:00").toLocaleDateString('pt-BR', { timeZone: 'UTC' }))
-        .replace(/{{booking_time}}/g, startTime);
+      // Pre-compile structure variables in all language variants
+      const formattedDate = new Date(date + "T00:00:00").toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+      const resolveStructureVars = (text: string) => {
+        let result = text
+          .replace(/{{structure_name}}/g, structureName)
+          .replace(/{{booking_date}}/g, formattedDate)
+          .replace(/{{booking_time}}/g, startTime);
+        if (cancellationReason) {
+          result = result.replace(/{{cancellation_reason}}/g, cancellationReason);
+        }
+        return result;
+      };
 
-      if (cancellationReason) {
-        customBody = customBody.replace(/{{cancellation_reason}}/g, cancellationReason);
-      }
+      const customTemplate = {
+        ...template,
+        body: resolveStructureVars(template.body),
+        body_en: template.body_en ? resolveStructureVars(template.body_en) : undefined,
+        body_es: template.body_es ? resolveStructureVars(template.body_es) : undefined,
+      };
 
       await this.queueMessage(
         propertyId,
         stayId,
         guest.phone,
-        { ...template, body: customBody } as any,
+        customTemplate as any,
         'structure_booking_confirmed',
         guest as any,
         cabin as any,
