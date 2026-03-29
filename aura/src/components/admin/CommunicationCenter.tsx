@@ -123,6 +123,7 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
   const [templateLoading, setTemplateLoading] = useState(false);
   const [stayDetails, setStayDetails] = useState<StayDetails | null>(null);
   const [customDomain, setCustomDomain] = useState<string | null>(null);
+  const [guestLang, setGuestLang] = useState<'pt' | 'en' | 'es'>('pt');
 
   // Menu de menção (%)
   const [mentionMenu, setMentionMenu] = useState<MentionMenuState>({
@@ -253,6 +254,15 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
     fetchStayDetails(contactContext.stayId).then(d => { if (d) setStayDetails(d); });
   }, [contactContext?.stayId, fetchStayDetails]);
 
+  // Load guest preferred language when contact changes
+  useEffect(() => {
+    if (!selectedPhone) { setGuestLang('pt'); return; }
+    const contact = contacts.find(c => c.id === selectedPhone);
+    if (!contact?.guestId) { setGuestLang('pt'); return; }
+    supabase.from('guests').select('preferredLanguage').eq('id', contact.guestId).maybeSingle()
+      .then(({ data }: { data: any }) => setGuestLang((data?.preferredLanguage as 'pt' | 'en' | 'es') || 'pt'));
+  }, [selectedPhone, contacts]);
+
   // Resolve variáveis com dados reais do hóspede selecionado
   const resolveVariables = useCallback((text: string, overrideDetails?: StayDetails | null): string => {
     const contact = contacts.find(c => c.id === selectedPhone);
@@ -308,17 +318,21 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
 
     templates.forEach(t => {
       if (!q || t.name.toLowerCase().includes(q)) {
+        // Pick template body based on guest preferred language
+        const langBody = guestLang === 'en' && t.body_en ? t.body_en
+          : guestLang === 'es' && t.body_es ? t.body_es
+          : t.body;
         items.push({
           type: 'template',
           label: t.name,
           searchKey: t.name.toLowerCase(),
-          value: resolveVariables(t.body),
+          value: resolveVariables(langBody),
         });
       }
     });
 
     return items.slice(0, 12);
-  }, [templates, resolveVariables]);
+  }, [templates, resolveVariables, guestLang]);
 
   // Insere item do menu % no textarea
   const insertMentionItem = useCallback((item: MentionItem | undefined) => {
