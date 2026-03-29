@@ -22,30 +22,62 @@ export async function POST(req: Request) {
     // 🛡️ BARREIRA ANTI-ECO (DESDUPLICAÇÃO)
     // ==========================================
     if (direction === "outbound") {
+      // 1. Check by messageId first (most reliable)
+      if (messageId) {
+        const { data: byApiId } = await supabaseAdmin
+          .from("messages")
+          .select("id")
+          .eq("propertyId", propertyId)
+          .eq("messageIdApi", messageId)
+          .maybeSingle();
+
+        if (byApiId) {
+          console.log(`♻️ [WEBHOOK] Eco por messageIdApi para ${cleanContactNumber}. (msg: ${byApiId.id})`);
+          return NextResponse.json({ success: true, message: "Eco do sistema ignorado com sucesso." });
+        }
+      }
+
+      // 2. Check by body/originalBody similarity (handles translation + prefix differences)
       const { data: recentMessages } = await supabaseAdmin
         .from("messages")
-        .select("id, body, createdAt, status, isAutomated")
+        .select("id, body, originalBody, createdAt, status")
         .eq("propertyId", propertyId)
         .eq("contactId", cleanContactNumber)
         .eq("direction", "outbound")
         .order("createdAt", { ascending: false })
-        .limit(3);
+        .limit(5);
 
       if (recentMessages && recentMessages.length > 0) {
-        // Procura mensagem com mesmo body nos últimos 120 segundos (automação + eco)
+        const incomingClean = text.replace(/\*/g, '').trim();
+        const incomingOrigClean = originalText ? originalText.replace(/\*/g, '').trim() : '';
+
         const match = recentMessages.find(m => {
-          if (m.body !== text) return false;
-          if (!m.createdAt) return true;
+          if (!m.createdAt) return false;
           const diffSeconds = (Date.now() - new Date(m.createdAt).getTime()) / 1000;
-          return diffSeconds < 120;
+          if (diffSeconds > 120) return false;
+
+          const bodyClean = (m.body || '').replace(/\*/g, '').trim();
+          const origClean = (m.originalBody || '').replace(/\*/g, '').trim();
+
+          // Compare all combinations: incoming text/originalText vs DB body/originalBody
+          const candidates = [incomingClean, incomingOrigClean].filter(Boolean);
+          const dbTexts = [bodyClean, origClean].filter(Boolean);
+
+          for (const candidate of candidates) {
+            for (const dbText of dbTexts) {
+              if (candidate === dbText) return true;
+              if (candidate.length > 10 && dbText.includes(candidate)) return true;
+              if (dbText.length > 10 && candidate.includes(dbText)) return true;
+            }
+          }
+          return false;
         });
 
         if (match) {
-          // Se a mensagem já existe, apenas atualizar status para 'sent' (caso ainda esteja processing/pending)
           if (match.status !== 'sent' && match.status !== 'delivered' && match.status !== 'read') {
             await supabaseAdmin.from("messages").update({ status: 'sent' }).eq('id', match.id);
           }
-          console.log(`♻️ [WEBHOOK] Eco de API identificado e bloqueado para ${cleanContactNumber}. (msg: ${match.id})`);
+          console.log(`♻️ [WEBHOOK] Eco por body match para ${cleanContactNumber}. (msg: ${match.id})`);
           return NextResponse.json({ success: true, message: "Eco do sistema ignorado com sucesso." });
         }
       }
