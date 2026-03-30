@@ -52,5 +52,34 @@ export const StaffService = {
       console.error("Error updating staff:", error);
       throw new Error("Erro ao atualizar perfil do funcionário.");
     }
-  }
+  },
+
+  async changeEmail(staffId: string, newEmail: string): Promise<{ message: string }> {
+    const response = await fetch("/api/admin/staff", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ staffId, action: "changeEmail", newEmail }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Erro ao alterar e-mail.");
+    return data;
+  },
+
+  async changePassword(staffId: string, newPassword: string, currentPassword?: string): Promise<void> {
+    const response = await fetch("/api/admin/staff", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ staffId, action: "changePassword", newPassword, currentPassword }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Erro ao alterar senha.");
+  },
+
+  async deleteStaff(staffId: string): Promise<void> {
+    const response = await fetch(`/api/admin/staff?staffId=${staffId}`, {
+      method: "DELETE",
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Erro ao excluir utilizador.");
+  },
 };
