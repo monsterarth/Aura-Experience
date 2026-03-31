@@ -4,7 +4,10 @@
       "Bash(git push:*)",
       "Bash(git add:*)",
       "Bash(ls -la /c/Aura-Experience/aura/src/app/check-in/[code]/structures/)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(grep -l \"messages\\\\|whatsapp\\\\|contacts\" c:/Aura-Experience/aura/*.sql)",
+      "Bash(npx tsc --noEmit --pretty)",
+      "Bash(grep -l \"messages\" /c/Aura-Experience/aura/*.sql)"
     ]
   }
 }

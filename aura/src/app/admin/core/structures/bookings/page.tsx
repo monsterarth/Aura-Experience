@@ -314,13 +314,16 @@ export default function StructureBookingsPage() {
                                                             }
 
                                                             if (booking) {
+                                                                const bStay = booking.stayId ? activeStays.find(s => s.id === booking.stayId) : null;
+                                                                const bFirstName = (bStay?.guestName || booking.guestName || "Ocupado").split(" ")[0];
+                                                                const slotLabel = booking.type === 'maintenance_block' ? null : bStay?.cabinName ? `${bStay.cabinName.match(/\d+/)?.[0] ?? bStay.cabinName} - ${bFirstName}` : (booking.guestName || "Ocupado");
                                                                 return (
                                                                     <div key={sIdx} className={cn("p-3 border rounded-xl flex flex-col items-center justify-center gap-1 relative group cursor-default", booking.type === 'maintenance_block' ? "bg-red-500/10 text-red-600 border-red-500/30" : (statusColors[booking.status] || "bg-secondary text-foreground border-border"))}>
                                                                         <div className="font-mono text-xs font-bold">{booking.startTime}</div>
                                                                         {booking.type === 'maintenance_block' ? (
                                                                             <div className="text-[10px] font-black w-full text-center flex items-center justify-center gap-1"><Wrench size={10} /> Bloqueio</div>
                                                                         ) : (
-                                                                            <div className="text-[10px] font-black truncate w-full text-center" title={booking.guestName}>{booking.guestName || "Ocupado"}</div>
+                                                                            <div className="text-[10px] font-black truncate w-full text-center" title={slotLabel!}>{slotLabel}</div>
                                                                         )}
 
                                                                         {/* Hover actions */}
@@ -353,7 +356,13 @@ export default function StructureBookingsPage() {
                                                     <div className="mt-6 pt-6 border-t border-border">
                                                         <h3 className="text-xs font-black uppercase text-foreground/50 tracking-widest mb-4">Agenda do Dia ({itemBookings.length})</h3>
                                                         <div className="space-y-2">
-                                                            {itemBookings.map(b => (
+                                                            {itemBookings.map(b => {
+                                                                const bStay = b.stayId ? activeStays.find(s => s.id === b.stayId) : null;
+                                                                const bFirstName = (bStay?.guestName || b.guestName || "Hóspede").split(" ")[0];
+                                                                const displayName = b.type === 'maintenance_block'
+                                                                    ? (b.guestName || "Manutenção/Bloqueio")
+                                                                    : bStay?.cabinName ? `${bStay.cabinName.match(/\d+/)?.[0] ?? bStay.cabinName} - ${bFirstName}` : (b.guestName || "Hóspede");
+                                                                return (
                                                                 <div key={b.id} className={cn("flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-xl gap-4", b.type === 'maintenance_block' ? "bg-red-500/5 border-red-500/30" : "bg-secondary/30 border-border")}>
                                                                     <div className="flex items-center gap-4 flex-wrap">
                                                                         <div className={cn("px-2.5 py-1 text-[10px] uppercase font-black tracking-widest rounded-lg border", b.type === 'maintenance_block' ? "bg-red-500 text-white border-transparent" : statusColors[b.status])}>
@@ -364,7 +373,7 @@ export default function StructureBookingsPage() {
                                                                         </div>
                                                                         <div className="text-sm font-medium text-foreground flex items-center gap-2">
                                                                             {b.type === 'maintenance_block' ? <Wrench size={14} className="text-red-500" /> : <User size={14} className="text-muted-foreground" />}
-                                                                            {b.guestName || "Manutenção/Bloqueio"}
+                                                                            {displayName}
                                                                         </div>
                                                                         {b.notes && (
                                                                             <div className="text-xs text-muted-foreground flex items-center gap-1 ml-4 border-l border-border pl-4">
@@ -381,7 +390,8 @@ export default function StructureBookingsPage() {
                                                                         )}
                                                                     </div>
                                                                 </div>
-                                                            ))}
+                                                            );
+                                                            })}
                                                         </div>
                                                     </div>
                                                 )}
