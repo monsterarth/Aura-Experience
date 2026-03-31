@@ -12,6 +12,7 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   isSuperAdmin: boolean;
+  initialProperty: any | null;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -20,12 +21,14 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   isAdmin: false,
   isSuperAdmin: false,
+  initialProperty: null,
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [userData, setUserData] = useState<Staff | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialProperty, setInitialProperty] = useState<any | null>(null);
 
   // Refs para evitar closures stale no visibility handler e onAuthStateChange
   const userRef = useRef<SupabaseUser | null>(null);
@@ -66,9 +69,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
      */
     fetch('/api/admin/auth/me')
       .then(res => { if (!res.ok) throw new Error('auth-api'); return res.json(); })
-      .then(staff => {
-        if (mounted && staff && !userDataRef.current) {
-          setUserData(staff);
+      .then(data => {
+        if (mounted && data?.staff && !userDataRef.current) {
+          setUserData(data.staff);
+          if (data.property) setInitialProperty(data.property);
           setLoading(false);
         }
       })
@@ -217,6 +221,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     loading,
     isAdmin: userData?.role === 'admin' || userData?.role === 'super_admin',
     isSuperAdmin: userData?.role === 'super_admin',
+    initialProperty,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

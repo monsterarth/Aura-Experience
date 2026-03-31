@@ -33,7 +33,20 @@ export async function GET() {
 
         if (!staff) return NextResponse.json(null, { status: 404 });
 
-        return NextResponse.json(staff);
+        // Inclui property para o PropertyContext não precisar do browser client
+        let property = null;
+        const propertyId = staff.propertyId
+            || (typeof staff.propertyId === 'undefined' ? null : staff.propertyId);
+        if (propertyId) {
+            const { data } = await supabaseAdmin
+                .from('properties')
+                .select('*')
+                .eq('id', propertyId)
+                .single();
+            property = data;
+        }
+
+        return NextResponse.json({ staff, property });
     } catch {
         return NextResponse.json(null, { status: 500 });
     }

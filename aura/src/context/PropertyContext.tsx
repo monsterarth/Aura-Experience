@@ -40,7 +40,7 @@ function hexToHSL(hex: string): string {
 }
 
 export const PropertyProvider = ({ children, initialSlug }: { children: ReactNode; initialSlug?: string; }) => {
-  const { userData, isSuperAdmin, loading: authLoading } = useAuth();
+  const { userData, isSuperAdmin, loading: authLoading, initialProperty } = useAuth();
   const [property, setProperty] = useState<Property | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -164,6 +164,13 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
   useEffect(() => {
     if (authLoading) return;
 
+    // Fast-path: se o AuthContext já trouxe a property do server, usa direto
+    if (initialProperty && !property) {
+      handleSetProperty(initialProperty);
+      setLoading(false);
+      return;
+    }
+
     if (initialSlug) {
       fetchPropertyBySlug(initialSlug);
     } else if (!isSuperAdmin) {
@@ -186,7 +193,7 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
     } else {
       setLoading(false);
     }
-  }, [initialSlug, userData, isSuperAdmin, authLoading, fetchPropertyBySlug, fetchPropertyById, property?.id]);
+  }, [initialSlug, userData, isSuperAdmin, authLoading, initialProperty, fetchPropertyBySlug, fetchPropertyById, handleSetProperty, property?.id]);
 
   return (
     <PropertyContext.Provider value={{ currentProperty: property, setProperty: handleSetProperty, loading, error, refreshProperty: fetchPropertyBySlug }}>
