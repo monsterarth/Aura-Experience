@@ -59,42 +59,44 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     let mounted = true;
 
     /**
-     * Safety timeout: se INITIAL_SESSION demorar (ex: lock preso pela aba anterior em um F5),
-     * tenta forçar a leitura da sessão com getUser(). Como getUser() também aguarda a
-     * liberação do lock, isso previne que o usuário seja deslogado precocemente antes
-     * do lock ser solto pelo navegador (o que pode levar até 10s).
+     * ═══ Fast-path: API call server-side (bypassa browser lock) ═══════════
+     * No F5/reload, o browser lock do Supabase pode travar o onAuthStateChange
+     * por até 10s. Esta chamada lê a sessão diretamente dos cookies no server,
+     * sem nenhuma dependência do lock. Resultado: página renderiza em <500ms.
+     */
+    fetch('/api/admin/auth/me')
+      .then(res => { if (!res.ok) throw new Error('auth-api'); return res.json(); })
+      .then(staff => {
+        if (mounted && staff && !userDataRef.current) {
+          setUserData(staff);
+          setLoading(false);
+        }
+      })
+      .catch(() => {}); // Silent — onAuthStateChange + safety timeout tratam o fallback
+
+    /**
+     * Safety timeout: se INITIAL_SESSION e o fast-path falharem, tenta getUser().
      */
     const safetyTimeout = setTimeout(async () => {
-      if (mounted && !initialSessionReceived.current) {
-        console.warn("[Auth] Timeout aguardando INITIAL_SESSION — acionando fallback getUser().");
+      if (mounted && !initialSessionReceived.current && !userDataRef.current) {
+        console.warn("[Auth] Timeout — acionando fallback getUser().");
         initialSessionReceived.current = true;
 
         try {
           const { data: { user: fallbackUser }, error } = await supabase.auth.getUser();
-          
-          if (!mounted) return;
+          if (!mounted || userDataRef.current) return;
 
           if (error) {
-            console.warn("[Auth] Erro no getUser fallback — retrying:", error.message);
-            // Retry once: browser lock may have just released
             const retry = await supabase.auth.getUser();
-            if (!mounted) return;
+            if (!mounted || userDataRef.current) return;
             if (!retry.error && retry.data.user) {
               setUser(retry.data.user);
-              let staff = await fetchStaffData(retry.data.user.id);
-              if (!staff) {
-                await new Promise(r => setTimeout(r, 1000));
-                staff = await fetchStaffData(retry.data.user.id);
-              }
+              const staff = await fetchStaffData(retry.data.user.id);
               if (mounted && staff) setUserData(staff);
             }
           } else if (fallbackUser) {
             setUser(fallbackUser);
-            let staff = await fetchStaffData(fallbackUser.id);
-            if (!staff) {
-              await new Promise(r => setTimeout(r, 1000));
-              staff = await fetchStaffData(fallbackUser.id);
-            }
+            const staff = await fetchStaffData(fallbackUser.id);
             if (mounted && staff) setUserData(staff);
           } else {
             setUser(null);
@@ -109,15 +111,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }, 5000);
 
     /**
-     * onAuthStateChange é a fonte principal de verdade.
-     *
-     * NÃO usamos getSession()/getUser() manuais na inicialização, pois ambos
-     * competem pelo mesmo navigator lock que o initialize() interno do cliente
-     * já está segurando. Isso causava o travamento de 5s e, em condições de
-     * corrida (React Strict Mode, múltiplas abas), o loading ficava eterno.
-     *
-     * O evento INITIAL_SESSION dispara APÓS o initialize() interno completar —
-     * sem competição de lock. É o padrão recomendado pelo Supabase para React.
+     * onAuthStateChange: fonte de verdade para eventos contínuos.
+     * O fast-path acima cuida da sessão inicial; este listener cuida
+     * de SIGNED_OUT, TOKEN_REFRESHED, SIGNED_IN e atualizações.
      */
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event: AuthChangeEvent, session: Session | null) => {
@@ -131,13 +127,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
           if (currentUser) {
             setUser(currentUser);
-            let staff = await fetchStaffData(currentUser.id);
-            if (!staff) {
-              await new Promise(r => setTimeout(r, 1000));
-              staff = await fetchStaffData(currentUser.id);
+            // Só busca staff se o fast-path ainda não resolveu
+            if (!userDataRef.current) {
+              const staff = await fetchStaffData(currentUser.id);
+              if (mounted && staff) setUserData(staff);
             }
-            if (mounted && staff) setUserData(staff);
-          } else {
+          } else if (!userDataRef.current) {
             setUser(null);
             setUserData(null);
           }
