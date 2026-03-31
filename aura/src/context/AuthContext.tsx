@@ -79,7 +79,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             // Non-blocking fallback
           } else if (fallbackUser) {
             setUser(fallbackUser);
-            const staff = await fetchStaffData(fallbackUser.id);
+            let staff = await fetchStaffData(fallbackUser.id);
+            if (!staff) {
+              await new Promise(r => setTimeout(r, 1000));
+              staff = await fetchStaffData(fallbackUser.id);
+            }
             if (mounted && staff) setUserData(staff);
           } else {
             setUser(null);
@@ -116,7 +120,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
           if (currentUser) {
             setUser(currentUser);
-            const staff = await fetchStaffData(currentUser.id);
+            let staff = await fetchStaffData(currentUser.id);
+            if (!staff) {
+              await new Promise(r => setTimeout(r, 1000));
+              staff = await fetchStaffData(currentUser.id);
+            }
             if (mounted && staff) setUserData(staff);
           } else {
             setUser(null);

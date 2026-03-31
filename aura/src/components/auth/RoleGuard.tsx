@@ -4,7 +4,6 @@
 import { useAuth } from "@/context/AuthContext";
 import { UserRole } from "@/types/aura";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 import { Loader2, ShieldAlert } from "lucide-react";
 
 interface RoleGuardProps {
@@ -16,22 +15,10 @@ export const RoleGuard = ({ children, allowedRoles }: RoleGuardProps) => {
   const { userData, loading } = useAuth();
   const router = useRouter();
 
-  useEffect(() => {
-    if (!loading) {
-      // Se não tem usuário (Visitante), manda pro login imediatamente
-      if (!userData) {
-        router.push("/admin/login");
-        return;
-      }
-      
-      // Se tem usuário mas não tem permissão, apenas loga o aviso (o componente visual vai tratar)
-      if (!allowedRoles.includes(userData.role)) {
-        console.warn("[Aura Security] Acesso negado para o cargo:", userData.role);
-      }
-    }
-  }, [userData, loading, allowedRoles, router]);
-
-  if (loading) {
+  // Enquanto auth resolve (loading ou userData ainda não carregou), mostra spinner.
+  // Não redirecionamos aqui — o middleware já protege rotas admin server-side,
+  // e o SIGNED_OUT handler no AuthContext redireciona quando a sessão expira client-side.
+  if (loading || !userData) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-[#0a0a0a]">
         <div className="flex flex-col items-center gap-4">
@@ -41,10 +28,6 @@ export const RoleGuard = ({ children, allowedRoles }: RoleGuardProps) => {
       </div>
     );
   }
-
-  // Se não tem userData, o useEffect acima já disparou o redirect, 
-  // mas retornamos null para não piscar a tela de erro
-  if (!userData) return null; 
 
   // Se tem usuário mas cargo errado -> Mostra tela de bloqueio
   if (!allowedRoles.includes(userData.role)) {
