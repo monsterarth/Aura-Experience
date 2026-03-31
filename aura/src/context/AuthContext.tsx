@@ -75,8 +75,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           if (!mounted) return;
 
           if (error) {
-            console.warn("[Auth] Erro no getUser fallback:", error.message);
-            // Non-blocking fallback
+            console.warn("[Auth] Erro no getUser fallback — retrying:", error.message);
+            // Retry once: browser lock may have just released
+            const retry = await supabase.auth.getUser();
+            if (!mounted) return;
+            if (!retry.error && retry.data.user) {
+              setUser(retry.data.user);
+              let staff = await fetchStaffData(retry.data.user.id);
+              if (!staff) {
+                await new Promise(r => setTimeout(r, 1000));
+                staff = await fetchStaffData(retry.data.user.id);
+              }
+              if (mounted && staff) setUserData(staff);
+            }
           } else if (fallbackUser) {
             setUser(fallbackUser);
             let staff = await fetchStaffData(fallbackUser.id);
