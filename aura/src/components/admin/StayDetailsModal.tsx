@@ -1,13 +1,13 @@
 // src/components/admin/StayDetailsModal.tsx
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   X, Edit2, Save, Calendar, User,
   MapPin, Phone, Mail, Car, FileText,
   Users, CheckCircle, Clock, Plane,
   Briefcase, PawPrint, Trash2, Plus,
-  LogIn, LogOut, RotateCcw, Sparkles, Receipt, RefreshCw, ShoppingCart, Coffee, BedDouble, ArrowRight
+  LogIn, LogOut, RotateCcw, Sparkles, Receipt, RefreshCw, ShoppingCart, Coffee, BedDouble, ArrowRight, Search, UserRoundPen
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -86,6 +86,11 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [pendingTransferCabinId, setPendingTransferCabinId] = useState<string | null>(null);
+
+  const [showReassign, setShowReassign] = useState(false);
+  const [reassignSearch, setReassignSearch] = useState("");
+  const [reassignResults, setReassignResults] = useState<Guest[]>([]);
+  const [reassignLoading, setReassignLoading] = useState(false);
 
   const [fnrhDomains, setFnrhDomains] = useState<{
     generos: FnrhDomain[];
@@ -299,11 +304,32 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     }
   };
 
+  const reassignDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!stay?.propertyId || !guest?.id) return;
+    if (reassignDebounceRef.current) clearTimeout(reassignDebounceRef.current);
+    if (reassignSearch.trim().length < 2) { setReassignResults([]); return; }
+    reassignDebounceRef.current = setTimeout(async () => {
+      setReassignLoading(true);
+      try {
+        const results = await GuestService.listGuests(stay.propertyId, reassignSearch.trim());
+        setReassignResults(results.filter(g => g.id !== guest.id));
+      } catch (err) {
+        console.error('[ReassignSearch]', err);
+        setReassignResults([]);
+      } finally { setReassignLoading(false); }
+    }, 300);
+  }, [reassignSearch, stay?.propertyId, guest?.id]);
+
   if (!isOpen || !stay) return null;
 
   const handleCancel = () => {
     initData();
     setIsEditing(false);
+    setShowReassign(false);
+    setReassignSearch("");
+    setReassignResults([]);
   };
 
   const handleSave = async () => {
@@ -457,6 +483,22 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const removeStayHousekeepingItem = (id: string) => {
     const newItems = (formData.housekeepingItems || []).filter(i => i.id !== id);
     setFormData({ ...formData, housekeepingItems: newItems });
+  };
+
+  const handleReassignGuest = async (newGuest: Guest) => {
+    if (!window.confirm(`Alterar o titular desta reserva para ${newGuest.fullName}?`)) return;
+    setLoading(true);
+    try {
+      await StayService.reassignGuest(stay.propertyId, stay.id, newGuest.id, userData?.id || "ADMIN", userData?.fullName || "Recepção");
+      toast.success(`Titular alterado para ${newGuest.fullName}`);
+      setShowReassign(false);
+      setReassignSearch("");
+      setReassignResults([]);
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao alterar titular.");
+    } finally { setLoading(false); }
   };
 
   const statusMap: any = {
@@ -679,30 +721,90 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
             {/* Right card: Titular */}
             <div className="bg-card border border-border rounded-2xl overflow-hidden">
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-secondary/40">
-                <User size={13} className="text-primary" />
-                <span className="text-[11px] font-black uppercase tracking-widest text-foreground">Titular</span>
-              </div>
-              <div className="p-4 space-y-3">
-                <div>
-                  <p className="font-bold text-foreground text-sm">{guestData.fullName || "—"}</p>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-secondary/40">
+                <div className="flex items-center gap-2">
+                  <User size={13} className="text-primary" />
+                  <span className="text-[11px] font-black uppercase tracking-widest text-foreground">Titular</span>
                 </div>
-                <div>
-                  <Label icon={Phone}>WhatsApp</Label>
-                  {isEditing ? (
-                    <Input disabled={isCoreFieldLocked} value={guestData.phone} onChange={e => setGuestData({ ...guestData, phone: e.target.value })} />
-                  ) : (
-                    <p className="text-sm text-foreground">{guestData.phone || "—"}</p>
-                  )}
-                </div>
-                {guest?.id && (
+                {isEditing && !isGovOnly && (
                   <button
                     type="button"
-                    onClick={() => window.open(`/admin/guests?id=${guest.id}`, '_blank')}
-                    className="inline-flex items-center gap-1.5 text-[11px] font-bold text-primary hover:underline"
+                    onClick={() => setShowReassign(!showReassign)}
+                    className={cn(
+                      "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase transition-all",
+                      showReassign
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-primary/10 text-primary hover:bg-primary/20"
+                    )}
                   >
-                    Ver Hóspede →
+                    <UserRoundPen size={12} /> Alterar Titular
                   </button>
+                )}
+              </div>
+              <div className="p-4 space-y-3">
+                {showReassign ? (
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        autoFocus
+                        value={reassignSearch}
+                        onChange={e => setReassignSearch(e.target.value)}
+                        placeholder="Buscar por nome, documento, email..."
+                        className="w-full bg-background border border-border rounded-xl pl-9 pr-3 py-2.5 text-xs outline-none focus:border-primary/50 transition-colors"
+                      />
+                    </div>
+                    {reassignLoading && <p className="text-[11px] text-muted-foreground text-center py-2">Buscando...</p>}
+                    {!reassignLoading && reassignSearch.trim().length >= 2 && reassignResults.length === 0 && (
+                      <p className="text-[11px] text-muted-foreground text-center py-2">Nenhum hóspede encontrado.</p>
+                    )}
+                    {reassignResults.length > 0 && (
+                      <div className="max-h-40 overflow-y-auto space-y-1 custom-scrollbar">
+                        {reassignResults.slice(0, 8).map(g => (
+                          <button
+                            key={g.id}
+                            type="button"
+                            onClick={() => handleReassignGuest(g)}
+                            className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-primary/5 border border-transparent hover:border-primary/20 transition-all text-left"
+                          >
+                            <div className="h-8 w-8 rounded-full bg-secondary flex items-center justify-center text-xs font-bold text-foreground/60 shrink-0">
+                              {g.fullName?.charAt(0) || "?"}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-foreground truncate">{g.fullName}</p>
+                              <p className="text-[10px] text-muted-foreground truncate">{g.document?.type}: {g.document?.number}{g.phone ? ` · ${g.phone}` : ""}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
+                      Selecione um hóspede já cadastrado para substituir o titular desta reserva. As demais reservas do grupo não serão afetadas.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <p className="font-bold text-foreground text-sm">{guestData.fullName || "—"}</p>
+                    </div>
+                    <div>
+                      <Label icon={Phone}>WhatsApp</Label>
+                      {isEditing ? (
+                        <Input disabled={isCoreFieldLocked} value={guestData.phone} onChange={e => setGuestData({ ...guestData, phone: e.target.value })} />
+                      ) : (
+                        <p className="text-sm text-foreground">{guestData.phone || "—"}</p>
+                      )}
+                    </div>
+                    {guest?.id && (
+                      <button
+                        type="button"
+                        onClick={() => window.open(`/admin/guests?id=${guest.id}`, '_blank')}
+                        className="inline-flex items-center gap-1.5 text-[11px] font-bold text-primary hover:underline"
+                      >
+                        Ver Hóspede →
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             </div>

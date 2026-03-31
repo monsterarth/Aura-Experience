@@ -499,6 +499,21 @@ export const StayService = {
     });
   },
 
+  async reassignGuest(propertyId: string, stayId: string, newGuestId: string, actorId: string, actorName: string) {
+    const { error } = await supabase.from('stays')
+      .update({ guestId: newGuestId, updatedAt: new Date().toISOString() })
+      .eq('id', stayId)
+      .eq('propertyId', propertyId);
+
+    if (error) throw error;
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName,
+      action: "REASSIGN_GUEST", entity: "STAY", entityId: stayId,
+      details: `Titular alterado para ${newGuestId}`
+    });
+  },
+
   async transferCabin(
     propertyId: string,
     stayId: string,

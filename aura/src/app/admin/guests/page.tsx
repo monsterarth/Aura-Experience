@@ -789,7 +789,8 @@ function NewGuestPanel({
     if (!formData.document.number.trim()) return toast.error("Número do documento é obrigatório.");
     setSaving(true);
     try {
-      const id = await GuestService.upsertGuest(propertyId, formData as any);
+      const guestPayload = { ...formData, id: GuestService.normalizeDocument(formData.document.number) };
+      const id = await GuestService.upsertGuest(propertyId, guestPayload as any);
       const created = { ...formData, id, updatedAt: new Date().toISOString() } as Guest;
       toast.success("Hóspede criado com sucesso.");
       onCreated(created);
