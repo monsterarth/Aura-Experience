@@ -58,8 +58,14 @@ export default function StaysPage() {
       if (activeTab === 'ativas') statusFilter = ['active'];
       if (activeTab === 'encerradas') statusFilter = ['finished', 'cancelled'];
 
-      const data = await StayService.getStaysByStatus(contextProperty.id, statusFilter);
-      setStays(data);
+      const params = new URLSearchParams({
+        propertyId: contextProperty.id,
+        status: statusFilter.join(','),
+      });
+      const res = await fetch(`/api/admin/stays?${params}`);
+      if (!res.ok) throw new Error('fetch-error');
+      const data = await res.json();
+      setStays(data ?? []);
     } catch (error) {
       toast.error("Erro ao carregar estadias.");
     } finally {
