@@ -71,6 +71,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       .then(res => { if (!res.ok) throw new Error('auth-api'); return res.json(); })
       .then(data => {
         if (mounted && data?.staff && !userDataRef.current) {
+          userDataRef.current = data.staff; // Guard ref immediately — prevents INITIAL_SESSION race
           setUserData(data.staff);
           if (data.property) setInitialProperty(data.property);
           setLoading(false);
