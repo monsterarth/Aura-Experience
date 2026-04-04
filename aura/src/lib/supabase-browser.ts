@@ -65,5 +65,12 @@ export function createClientBrowser() {
         }
     )
 
+    // Pre-aquece o cache de sessão assim que o singleton é criado.
+    // No F5, o lock da aba anterior pode bloquear getSession() por até 3s.
+    // Iniciando uma chamada aqui, o lock é resolvido (ou roubado) antes que
+    // qualquer página monte e dispare queries paralelas — que do contrário
+    // competiriam pelo mesmo lock ao mesmo tempo.
+    browserClient.auth.getSession().catch(() => {})
+
     return browserClient
 }
