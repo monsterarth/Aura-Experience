@@ -1,7 +1,7 @@
 // src/context/PropertyContext.tsx
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
+import React, { createContext, useContext, useEffect, useState, useRef, ReactNode, useCallback } from "react";
 import { Property, PropertyTheme } from "@/types/aura";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "./AuthContext";
@@ -44,6 +44,7 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
   const [property, setProperty] = useState<Property | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loadedPropertyIdRef = useRef<string | null>(null);
 
   // Aplica o tema visualmente no CSS do navegador
   const updateTheme = useCallback((data: Property) => {
@@ -105,10 +106,12 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
   const handleSetProperty = useCallback((data: Property | null) => {
     if (data) {
       updateTheme(data);
+      loadedPropertyIdRef.current = data.id;
       if (typeof window !== 'undefined') {
         localStorage.setItem('aura-active-property', data.id);
       }
     } else {
+      loadedPropertyIdRef.current = null;
       if (typeof window !== 'undefined') {
         localStorage.removeItem('aura-active-property');
       }
@@ -165,8 +168,14 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
     if (authLoading) return;
 
     // Fast-path: se o AuthContext já trouxe a property do server, usa direto
-    if (initialProperty && !property) {
+    if (initialProperty && !loadedPropertyIdRef.current) {
       handleSetProperty(initialProperty);
+      setLoading(false);
+      return;
+    }
+
+    // Se a property já foi carregada com sucesso, não re-buscar
+    if (loadedPropertyIdRef.current) {
       setLoading(false);
       return;
     }
@@ -178,14 +187,14 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
       const savedId = typeof window !== 'undefined' ? localStorage.getItem('aura-active-property') : null;
       const targetId = userData?.propertyId || savedId;
 
-      if (targetId && property?.id !== targetId) {
+      if (targetId) {
         fetchPropertyById(targetId);
       } else {
         setLoading(false);
       }
     } else if (isSuperAdmin) {
       const savedId = typeof window !== 'undefined' ? localStorage.getItem('aura-active-property') : null;
-      if (savedId && property?.id !== savedId) {
+      if (savedId) {
         fetchPropertyById(savedId);
       } else {
         setLoading(false);
@@ -193,7 +202,7 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
     } else {
       setLoading(false);
     }
-  }, [initialSlug, userData, isSuperAdmin, authLoading, initialProperty, fetchPropertyBySlug, fetchPropertyById, handleSetProperty, property?.id]);
+  }, [initialSlug, userData, isSuperAdmin, authLoading, initialProperty, fetchPropertyBySlug, fetchPropertyById, handleSetProperty]);
 
   return (
     <PropertyContext.Provider value={{ currentProperty: property, setProperty: handleSetProperty, loading, error, refreshProperty: fetchPropertyBySlug }}>

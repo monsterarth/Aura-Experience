@@ -63,6 +63,9 @@ export async function GET(req: Request) {
         let taskStatus = 'pending';
         let pausedUntil: string | null = null;
 
+        let skippedAt: string | null = null;
+        let guestName: string | null = null;
+
         if (isDndActive) {
           const govEndTime = await getGovEndTime(propertyId);
           const [endH, endM] = govEndTime.split(':').map(Number);
@@ -72,6 +75,15 @@ export async function GET(req: Request) {
           const dndUntil = new Date(stay.dnd_until);
           if (dndUntil >= todayGovEnd) {
             taskStatus = 'skipped';
+            skippedAt = new Date().toISOString();
+            if (stay.guestId) {
+              const { data: guest } = await supabaseAdmin
+                .from('guests')
+                .select('fullName')
+                .eq('id', stay.guestId)
+                .single();
+              guestName = guest?.fullName ?? null;
+            }
           } else {
             taskStatus = 'paused';
             pausedUntil = stay.dnd_until;
@@ -87,6 +99,8 @@ export async function GET(req: Request) {
           type: 'daily',
           status: taskStatus,
           paused_until: pausedUntil,
+          ...(skippedAt ? { skippedAt } : {}),
+          ...(guestName ? { guestName } : {}),
           checklist: [],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()

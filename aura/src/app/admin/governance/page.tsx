@@ -126,6 +126,15 @@ export default function GovernancePage() {
     }
   };
 
+  const handleArchiveSkipped = async (taskId: string) => {
+    try {
+      await HousekeepingService.updateTask(property!.id, taskId, { status: 'cancelled' }, userData?.id || "unknown", userData?.fullName || "Admin");
+      toast.success("Tarefa arquivada.");
+    } catch (e) {
+      toast.error("Erro ao arquivar tarefa.");
+    }
+  };
+
   const handleConferTask = async (taskId: string, cabinId: string, approved: boolean) => {
     try {
       const actorId = userData?.id || "unknown";
@@ -349,18 +358,35 @@ export default function GovernancePage() {
             <Moon size={14} /> Não Realizadas — Recusadas pelo Hóspede ({skippedTasks.length})
           </h3>
           <div className="flex flex-wrap gap-3">
-            {skippedTasks.map(task => (
-              <div key={task.id} className="bg-card border border-border rounded-xl p-3 flex items-center gap-3 opacity-60 min-w-[220px]">
-                {task.type === 'turnover' ? <AlertCircle size={14} className="text-orange-500 shrink-0" /> : <Coffee size={14} className="text-blue-500 shrink-0" />}
-                <div>
-                  <p className="text-xs font-bold text-foreground">{cabins[task.cabinId!]?.name || 'Cabana'}</p>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest">
-                    {task.type === 'turnover' ? 'Faxina de Troca' : 'Arrumação Diária'}
-                  </p>
+            {skippedTasks.map(task => {
+              const cabin = cabins[task.cabinId!];
+              const skippedDate = task.skippedAt || task.updatedAt || task.createdAt;
+              const dateLabel = skippedDate
+                ? new Date(skippedDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+                : null;
+              const guestFirstName = task.guestName?.split(' ')[0];
+              const typeLabel = task.type === 'turnover' ? 'Faxina de troca' : 'Arrumação diária';
+
+              return (
+                <div key={task.id} className="bg-card border border-border rounded-xl p-3 flex items-center gap-3 min-w-[260px]">
+                  {task.type === 'turnover' ? <AlertCircle size={14} className="text-orange-500 shrink-0" /> : <Coffee size={14} className="text-blue-500 shrink-0" />}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-black text-foreground leading-tight">
+                      {cabin ? `${cabin.number} — ${guestFirstName || task.guestName || cabin.name}` : (guestFirstName || task.guestName || 'Cabana')}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-0.5">
+                      {typeLabel}{dateLabel ? ` pulada (${dateLabel})` : ' pulada'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleArchiveSkipped(task.id)}
+                    className="shrink-0 text-[9px] bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400 px-2 py-1 rounded font-bold uppercase transition-colors"
+                  >
+                    Arquivar
+                  </button>
                 </div>
-                <span className="ml-auto text-[9px] bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 px-2 py-0.5 rounded font-bold uppercase shrink-0">Pulada</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

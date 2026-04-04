@@ -53,16 +53,18 @@ export const PropertyService = {
   },
 
   async getAllProperties(): Promise<Property[]> {
-    const { data, error } = await supabase
-      .from('properties')
-      .select('*')
-      .order('createdAt', { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from('properties')
+        .select('*')
+        .order('createdAt', { ascending: false });
 
-    if (error) {
-      console.error("Erro listando properties:", error);
+      if (error) throw error;
+      return data as Property[];
+    } catch (error) {
+      console.error("[PropertyService] Erro listando properties:", error);
       return [];
     }
-    return data as Property[];
   },
 
   async updateProperty(propertyId: string, updates: Partial<Property>) {

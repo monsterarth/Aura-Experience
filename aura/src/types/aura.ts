@@ -238,6 +238,8 @@ export interface HousekeepingTask {
   type: 'turnover' | 'daily' | 'custom'; // Turnover = Faxina de Troca | Daily = Arrumação | Custom = Personalizada
   status: 'pending' | 'in_progress' | 'waiting_conference' | 'completed' | 'cancelled' | 'paused' | 'skipped';
   paused_until?: string; // ISO timestamp — DND
+  skippedAt?: string;   // ISO timestamp — when it was skipped (DND)
+  guestName?: string;   // Denormalized guest name at time of skip
 
   // Controle de Pessoal
   assignedTo?: string[]; // Múltiplas camareiras

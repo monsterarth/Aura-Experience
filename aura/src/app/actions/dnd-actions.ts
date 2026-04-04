@@ -17,7 +17,7 @@ export async function toggleGuestDND(
   // 1. Fetch stay and validate ownership via accessCode
   const { data: stay, error: stayError } = await supabaseAdmin
     .from('stays')
-    .select('id, propertyId, cabinId, accessCode, checkOut, dnd_enabled, dnd_until')
+    .select('id, propertyId, cabinId, accessCode, checkOut, dnd_enabled, dnd_until, guestId')
     .eq('id', stayId)
     .eq('accessCode', accessCode)
     .eq('status', 'active')
@@ -70,6 +70,17 @@ export async function toggleGuestDND(
   }
 
   // 3. ENABLE DND
+  // Fetch guest name for denormalization
+  let guestFullName: string | undefined;
+  if (stay.guestId) {
+    const { data: guest } = await supabaseAdmin
+      .from('guests')
+      .select('fullName')
+      .eq('id', stay.guestId)
+      .single();
+    guestFullName = guest?.fullName ?? undefined;
+  }
+
   const now = new Date();
   const resumeAt = new Date(now.getTime() + durationHours * 60 * 60 * 1000);
 
@@ -108,13 +119,18 @@ export async function toggleGuestDND(
     .in('status', ['pending', 'in_progress']);
 
   if (todayTasks && todayTasks.length > 0) {
+    const updatePayload: Record<string, unknown> = {
+      status: taskStatus,
+      paused_until: taskStatus === 'paused' ? resumeAt.toISOString() : null,
+      updatedAt: new Date().toISOString(),
+    };
+    if (taskStatus === 'skipped') {
+      updatePayload.skippedAt = now.toISOString();
+      if (guestFullName) updatePayload.guestName = guestFullName;
+    }
     await supabaseAdmin
       .from('housekeeping_tasks')
-      .update({
-        status: taskStatus,
-        paused_until: taskStatus === 'paused' ? resumeAt.toISOString() : null,
-        updatedAt: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .in('id', todayTasks.map(t => t.id));
   }
 
