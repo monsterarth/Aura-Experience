@@ -56,8 +56,7 @@ export const Sidebar = () => {
     setIsLoggingOut(true);
     try {
       const supabase = createClientBrowser();
-      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 3000));
-      await Promise.race([supabase.auth.signOut(), timeout]);
+      await supabase.auth.signOut();
     } catch (error) {
       console.error("Erro ao sair", error);
     } finally {
