@@ -1,6 +1,11 @@
+import type { Metadata } from "next";
 import React from 'react';
 import { ArrowRight, MonitorSmartphone, Cpu, Activity, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
+
+export const metadata: Metadata = {
+  title: "Aura — Gestão Inteligente para Pousadas",
+};
 
 export default function AuraLandingPage() {
   return (
@@ -14,8 +19,6 @@ export default function AuraLandingPage() {
         </div>
         <div className="hidden md:flex gap-8 text-sm font-light text-gray-300">
           <Link href="#features" className="hover:text-[#E0FFFF] transition-colors">Funcionalidades</Link>
-          <Link href="#cases" className="hover:text-[#E0FFFF] transition-colors">Casos de Uso</Link>
-          <Link href="#tech" className="hover:text-[#E0FFFF] transition-colors">Tecnologia</Link>
         </div>
         <Link
           href="/admin/login"
@@ -47,13 +50,13 @@ export default function AuraLandingPage() {
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
-          <button className="flex items-center justify-center gap-2 px-8 py-4 rounded-lg bg-[#00BFFF] hover:bg-[#009acd] text-white font-medium transition-all shadow-[0_0_20px_rgba(0,191,255,0.3)]">
+          <a
+            href="mailto:contato@aura.software"
+            className="flex items-center justify-center gap-2 px-8 py-4 rounded-lg bg-[#00BFFF] hover:bg-[#009acd] text-white font-medium transition-all shadow-[0_0_20px_rgba(0,191,255,0.3)]"
+          >
             Agendar Demonstração
             <ArrowRight size={18} />
-          </button>
-          <button className="flex items-center justify-center gap-2 px-8 py-4 rounded-lg bg-transparent border border-white/20 hover:border-white/50 text-white font-medium transition-all">
-            Ver Documentação
-          </button>
+          </a>
         </div>
       </section>
 
