@@ -4,8 +4,9 @@
 import React, { useState, useEffect } from "react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 
-import { Loader2, ShieldCheck, Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { Loader2, Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Staff } from "@/types/aura";
 
@@ -102,68 +103,68 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <main className="min-h-[100dvh] w-full flex flex-col items-center justify-center bg-slate-50 dark:bg-zinc-950 p-4 md:p-6 relative overflow-hidden font-sans text-slate-900 dark:text-slate-50">
+    <main className="min-[100dvh] w-full flex flex-col items-center justify-center bg-[#141414] p-4 md:p-6 relative overflow-hidden font-sans text-white">
 
-      {/* Background Effects Suaves */}
-      <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-primary/10 via-transparent to-transparent opacity-100 z-0 pointer-events-none"></div>
+      {/* Iridescent Background Effect */}
+      <div className="absolute top-0 right-0 w-[600px] h-[300px] bg-gradient-to-bl from-[#E6E6FA] via-[#B0E0E6]/20 to-transparent opacity-10 pointer-events-none rounded-full blur-[100px]" />
 
       <div className="w-full max-w-md z-10 animate-in fade-in slide-in-from-bottom-4 duration-700 ease-out">
 
         {/* Card Principal */}
-        <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-3xl shadow-xl dark:shadow-2xl p-8 md:p-10 space-y-8 relative overflow-hidden">
+        <div className="bg-[#1c1c1c] border border-white/5 rounded-[32px] shadow-[0_10px_40px_rgba(0,0,0,0.5)] p-8 md:p-10 space-y-8 relative overflow-hidden">
 
           {/* Linha de Destaque no Topo do Card */}
-          <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-primary to-blue-500"></div>
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#B0E0E6] via-[#E6E6FA] to-[#E0FFFF]"></div>
 
-          <div className="text-center space-y-3">
-            <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto border border-primary/20 shadow-inner mb-6">
-              <ShieldCheck className="text-primary w-8 h-8" strokeWidth={1.5} />
+          <div className="text-center space-y-3 pb-2">
+            <div className="w-32 h-32 mx-auto relative drop-shadow-[0_0_15px_rgba(224,255,255,0.15)] mb-2">
+              <Image src="/logo_transp.PNG" alt="Aura Chameleon Logo" fill className="object-contain" priority />
             </div>
-            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">Aura Engine</h1>
-            <p className="text-slate-500 dark:text-slate-400 text-sm md:text-base font-medium">Portal de Gestão e Operações</p>
+            <h1 className="text-3xl md:text-4xl font-black tracking-widest text-[#E0FFFF] uppercase drop-shadow-md">AURA</h1>
+            <p className="text-[#E6E6FA]/60 text-[10px] tracking-[0.2em] font-bold uppercase mt-1">Portal de Gestão e Operações</p>
           </div>
 
           {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 p-4 rounded-xl flex items-start gap-3 text-red-600 dark:text-red-400 text-sm animate-in zoom-in duration-200">
+            <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-xl flex items-start gap-3 text-red-400 text-sm animate-in zoom-in duration-200">
               <AlertCircle size={18} className="shrink-0 mt-0.5" />
-              <p className="font-medium">{error}</p>
+              <p className="font-bold uppercase tracking-wide text-xs">{error}</p>
             </div>
           )}
 
           <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">E-mail Corporativo</label>
+              <label className="text-[10px] font-black uppercase tracking-[0.15em] text-white/40 ml-1">E-mail Corporativo</label>
               <div className="relative group">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 group-focus-within:text-primary transition-colors" size={20} />
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30 group-focus-within:text-[#E0FFFF] transition-colors" size={18} />
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="admin@aura.com"
-                  className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-700 p-4 pl-12 rounded-2xl text-slate-900 dark:text-white outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-600 font-medium"
+                  className="w-full bg-[#111] border border-white/10 p-4 pl-12 rounded-2xl text-white outline-none focus:ring-2 focus:ring-[#E0FFFF]/30 focus:border-[#E0FFFF]/50 transition-all placeholder:text-white/20 font-bold text-sm"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Senha</label>
+              <label className="text-[10px] font-black uppercase tracking-[0.15em] text-white/40 ml-1">Senha</label>
               <div className="relative group">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 group-focus-within:text-primary transition-colors" size={20} />
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30 group-focus-within:text-[#E0FFFF] transition-colors" size={18} />
                 <input
                   type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full bg-slate-50 dark:bg-zinc-950 border border-slate-300 dark:border-zinc-700 p-4 pl-12 pr-12 rounded-2xl text-slate-900 dark:text-white outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-600 font-medium"
+                  className="w-full bg-[#111] border border-white/10 p-4 pl-12 pr-12 rounded-2xl text-white outline-none focus:ring-2 focus:ring-[#E0FFFF]/30 focus:border-[#E0FFFF]/50 transition-all placeholder:text-white/20 font-bold text-sm"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-zinc-300 transition-colors"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-white/30 hover:text-[#E0FFFF] transition-colors"
                 >
-                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </div>
@@ -171,16 +172,16 @@ export default function AdminLoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-4 bg-primary text-white dark:text-zinc-950 font-bold uppercase tracking-wide rounded-2xl hover:bg-primary/90 hover:shadow-lg hover:shadow-primary/25 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+              className="w-full py-4 mt-6 bg-gradient-to-r from-[#00BFFF]/20 to-[#E0FFFF]/10 border border-[#00BFFF]/30 text-[#E0FFFF] font-black uppercase tracking-[0.2em] text-[11px] rounded-2xl hover:bg-[#00BFFF]/30 hover:shadow-[0_0_20px_rgba(0,191,255,0.3)] active:scale-[0.98] transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? <><Loader2 className="w-5 h-5 animate-spin" /> Acessando...</> : "Entrar no Sistema"}
+              {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> Acessando The Engine...</> : "Entrar no Sistema"}
             </button>
           </form>
         </div>
 
         {/* Rodapé Atualizado */}
-        <div className="mt-8 text-center opacity-60 hover:opacity-100 transition-opacity">
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-widest font-bold">
+        <div className="mt-8 text-center opacity-40 hover:opacity-100 transition-opacity">
+          <p className="text-[9px] text-[#E0FFFF] uppercase tracking-[0.3em] font-black">
             Powered by Aura Experience
           </p>
         </div>

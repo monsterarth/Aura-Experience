@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import React from 'react';
 import { ArrowRight, MonitorSmartphone, Cpu, Activity, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export const metadata: Metadata = {
   title: "Aura — Gestão Inteligente para Pousadas",
@@ -9,13 +10,18 @@ export const metadata: Metadata = {
 
 export default function AuraLandingPage() {
   return (
-    <div className="min-h-screen bg-[#222222] text-white font-sans selection:bg-[#00BFFF]/30">
+    <div className="min-h-screen bg-[#141414] text-white font-sans selection:bg-[#00BFFF]/30">
 
       {/* Navbar Minimalista */}
       <nav className="flex items-center justify-between px-8 py-6 max-w-7xl mx-auto">
-        <div className="flex flex-col items-start leading-none tracking-tight">
-          <span className="text-2xl font-bold uppercase tracking-widest text-white">Aura</span>
-          <span className="text-xs font-light text-gray-400 uppercase tracking-[0.3em] border-t border-white/20 pt-1 mt-1">Software</span>
+        <div className="flex items-center gap-4">
+          <div className="relative w-16 h-16 md:w-20 md:h-20 drop-shadow-[0_0_20px_rgba(224,255,255,0.25)]">
+            <Image src="/logo_transp.PNG" alt="Aura Logo" fill className="object-contain" priority />
+          </div>
+          <div className="flex flex-col items-start leading-none tracking-tight pt-1">
+            <span className="text-3xl font-black uppercase tracking-widest text-[#E0FFFF] drop-shadow-md">Aura</span>
+            <span className="text-[10px] font-bold text-[#E6E6FA]/60 uppercase tracking-[0.3em] border-t border-white/10 pt-1 mt-1 font-mono">Software</span>
+          </div>
         </div>
         <div className="hidden md:flex gap-8 text-sm font-light text-gray-300">
           <Link href="#features" className="hover:text-[#E0FFFF] transition-colors">Funcionalidades</Link>
