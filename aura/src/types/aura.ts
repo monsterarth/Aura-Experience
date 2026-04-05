@@ -604,10 +604,13 @@ export type ContactContextStatus = 'active' | 'pending' | 'past' | 'none';
 export interface ContactContext {
   status: ContactContextStatus;
   stayId?: string;
+  guestName?: string;
   cabinName?: string;
   checkIn?: Date;
   checkOut?: Date;
   message: string; // Ex: "Hospedado na Cabana 01 (Check-out amanhã)"
+  /** Populated when multiple guests share the same phone number */
+  allContexts?: ContactContext[];
 }
 
 // --- STAFF ---

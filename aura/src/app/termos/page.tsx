@@ -40,11 +40,11 @@ export default function TermosPage() {
         <div className="relative z-10 space-y-8 text-base md:text-lg leading-relaxed text-gray-300">
           
           <p>
-            Estes Termos e Condições de Uso ("Termos") regulam a relação comercial e o licenciamento de uso entre a empresa <strong className="text-white">PETRY TECH</strong>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 42.007.398/0001-38, doravante denominada "<strong className="text-white">AURA</strong>" ou "<strong className="text-white">FORNECEDORA</strong>", e a pessoa física ou jurídica que adquire a assinatura, doravante denominada "<strong className="text-white">CLIENTE</strong>" ou "<strong className="text-white">ASSINANTE</strong>".
+            Estes Termos e Condições de Uso (&ldquo;Termos&rdquo;) regulam a relação comercial e o licenciamento de uso entre a empresa <strong className="text-white">PETRY TECH</strong>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 42.007.398/0001-38, doravante denominada &ldquo;<strong className="text-white">AURA</strong>&rdquo; ou &ldquo;<strong className="text-white">FORNECEDORA</strong>&rdquo;, e a pessoa física ou jurídica que adquire a assinatura, doravante denominada &ldquo;<strong className="text-white">CLIENTE</strong>&rdquo; ou &ldquo;<strong className="text-white">ASSINANTE</strong>&rdquo;.
           </p>
           
           <p>
-            O objeto deste instrumento é o regramento da utilização do software de gestão de hospedagem e experiência do hóspede denominado "<strong className="text-white">AURA SOFTWARE</strong>", fornecido na modalidade SaaS (Software como Serviço), acessado integralmente via navegador de internet, sem necessidade de instalação pelo Cliente.
+            O objeto deste instrumento é o regramento da utilização do software de gestão de hospedagem e experiência do hóspede denominado &ldquo;<strong className="text-white">AURA SOFTWARE</strong>&rdquo;, fornecido na modalidade SaaS (Software como Serviço), acessado integralmente via navegador de internet, sem necessidade de instalação pelo Cliente.
           </p>
           
           <div className="bg-[#00BFFF]/10 border-l-4 border-[#00BFFF] p-6 rounded-r-xl my-10 shadow-inner">

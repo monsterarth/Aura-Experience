@@ -184,7 +184,23 @@ function NewStayPageContent() {
       // Usa sempre o número já limpo pelo frontend (o validNumber da API não é confiável)
       const finalPhone = cleanedPhone;
 
-      // 2. CRIA O HÓSPEDE FÍSICO
+      // 2. VERIFICA SE O NÚMERO JÁ PERTENCE A OUTRO HÓSPEDE
+      const existingContact = await ContactService.findByPhone(contextProperty.id, finalPhone);
+      if (existingContact?.isGuest && existingContact.guestId) {
+        const cleanDoc = docNumber.replace(/\D/g, '');
+        const isConflict = cleanDoc
+          ? existingContact.guestId !== cleanDoc
+          : existingContact.name.toLowerCase() !== guestData.fullName.toLowerCase();
+
+        if (isConflict) {
+          toast.warning(
+            `Atenção: este número já está cadastrado para "${existingContact.name}". Prosseguindo com a reserva.`,
+            { duration: 6000 }
+          );
+        }
+      }
+
+      // 3. CRIA O HÓSPEDE FÍSICO
       const cleanDoc = docNumber.replace(/\D/g, '');
       const initialGuestId = cleanDoc.length > 0 ? cleanDoc : `GUEST-${Date.now()}`;
 
@@ -201,7 +217,7 @@ function NewStayPageContent() {
         address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", country: "Brasil" }
       });
 
-      // 3. INJETA NA AGENDA IMEDIATAMENTE (Para a Central de Comunicação)
+      // 4. INJETA NA AGENDA IMEDIATAMENTE (Para a Central de Comunicação)
       await ContactService.upsertContact(
         contextProperty.id,
         guestData.fullName,
@@ -210,7 +226,7 @@ function NewStayPageContent() {
         savedGuestId
       );
 
-      // 4. FINALMENTE, CRIA A ESTADIA
+      // 5. FINALMENTE, CRIA A ESTADIA
       const result = await StayService.createStayRecord({
         propertyId: contextProperty.id,
         guestId: savedGuestId,

@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { GuestService } from "@/services/guest-service";
+import { ContactService } from "@/services/contact-service";
 import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { Guest } from "@/types/aura";
@@ -337,7 +338,29 @@ function GuestDetailPanel({
   const handleSave = async () => {
     setSaving(true);
     try {
+      const oldPhone = guest.phone;
+      const newPhone = formData.phone;
+      const phoneChanged =
+        oldPhone &&
+        newPhone &&
+        ContactService.formatPhoneId(newPhone) !== ContactService.formatPhoneId(oldPhone);
+
       await GuestService.upsertGuest(propertyId, formData as any);
+
+      if (phoneChanged) {
+        const existingContact = await ContactService.findByPhone(propertyId, newPhone);
+        if (existingContact?.isGuest && existingContact.guestId && existingContact.guestId !== guest.id) {
+          toast.warning(`Este número já está cadastrado para "${existingContact.name}". Ambos os hóspedes ficarão vinculados a este número.`, { duration: 6000 });
+        }
+        await ContactService.migrateContactPhone(
+          propertyId,
+          oldPhone,
+          newPhone,
+          formData.fullName,
+          guest.id
+        );
+      }
+
       setIsEditing(false);
       onUpdated(formData);
       toast.success("Dados do hóspede atualizados.");

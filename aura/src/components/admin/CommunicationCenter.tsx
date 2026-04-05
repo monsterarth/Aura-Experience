@@ -112,6 +112,7 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
   const [inputText, setInputText] = useState("");
   const [sending, setSending] = useState(false);
   const [contactContext, setContactContext] = useState<ContactContext | null>(null);
+  const [activeContext, setActiveContext] = useState<ContactContext | null>(null);
   const [isNewContactOpen, setIsNewContactOpen] = useState(false);
   const [newContactData, setNewContactData] = useState({ name: "", phone: "" });
   const [savingContact, setSavingContact] = useState(false);
@@ -211,8 +212,10 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
       if (selectedPhone && propertyId) {
         const ctx = await ContactService.resolveContactContext(propertyId, selectedPhone);
         setContactContext(ctx);
+        setActiveContext(ctx); // reset active to primary on phone change
       } else {
         setContactContext(null);
+        setActiveContext(null);
       }
     }
     loadContext();
@@ -250,38 +253,50 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
   }, []);
 
   useEffect(() => {
-    if (!contactContext?.stayId) { setStayDetails(null); return; }
-    fetchStayDetails(contactContext.stayId).then(d => { if (d) setStayDetails(d); });
-  }, [contactContext?.stayId, fetchStayDetails]);
+    if (!activeContext?.stayId) { setStayDetails(null); return; }
+    fetchStayDetails(activeContext.stayId).then(d => { if (d) setStayDetails(d); });
+  }, [activeContext?.stayId, fetchStayDetails]);
 
-  // Load guest preferred language when contact changes
+  // Load guest preferred language when active context changes
   useEffect(() => {
     if (!selectedPhone) { setGuestLang('pt'); return; }
+    // If we have an active context with a known guest, look up that guest's language
+    if (activeContext?.guestName) {
+      const contact = contacts.find(c => c.id === selectedPhone);
+      const guestId = contact?.guestId;
+      if (guestId) {
+        supabase.from('guests').select('preferredLanguage').eq('id', guestId).maybeSingle()
+          .then(({ data }: { data: any }) => setGuestLang((data?.preferredLanguage as 'pt' | 'en' | 'es') || 'pt'));
+        return;
+      }
+    }
     const contact = contacts.find(c => c.id === selectedPhone);
     if (!contact?.guestId) { setGuestLang('pt'); return; }
     supabase.from('guests').select('preferredLanguage').eq('id', contact.guestId).maybeSingle()
       .then(({ data }: { data: any }) => setGuestLang((data?.preferredLanguage as 'pt' | 'en' | 'es') || 'pt'));
-  }, [selectedPhone, contacts]);
+  }, [selectedPhone, contacts, activeContext?.guestName]);
 
   // Resolve variáveis com dados reais do hóspede selecionado
   const resolveVariables = useCallback((text: string, overrideDetails?: StayDetails | null): string => {
     const contact = contacts.find(c => c.id === selectedPhone);
     const toTitleCase = (str: string) => str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
-    const firstName = toTitleCase(contact?.name?.split(' ')[0] ?? '');
-    const fullName = toTitleCase(contact?.name ?? '');
-    const cabinName = contactContext?.cabinName ?? '';
+    // Use activeContext guest name when available (for shared-phone scenarios)
+    const displayName = activeContext?.guestName ?? contact?.name ?? '';
+    const firstName = toTitleCase(displayName.split(' ')[0] ?? '');
+    const fullName = toTitleCase(displayName);
+    const cabinName = activeContext?.cabinName ?? '';
 
-    const checkInFormatted = contactContext?.checkIn
-      ? (contactContext.checkIn instanceof Date ? contactContext.checkIn : new Date(contactContext.checkIn as any)).toLocaleDateString('pt-BR')
+    const checkInFormatted = activeContext?.checkIn
+      ? (activeContext.checkIn instanceof Date ? activeContext.checkIn : new Date(activeContext.checkIn as any)).toLocaleDateString('pt-BR')
       : '';
-    const checkOutFormatted = contactContext?.checkOut
-      ? (contactContext.checkOut instanceof Date ? contactContext.checkOut : new Date(contactContext.checkOut as any)).toLocaleDateString('pt-BR')
+    const checkOutFormatted = activeContext?.checkOut
+      ? (activeContext.checkOut instanceof Date ? activeContext.checkOut : new Date(activeContext.checkOut as any)).toLocaleDateString('pt-BR')
       : '';
 
     const baseUrl = customDomain ? `https://${customDomain}` : `https://aaura.app.br`;
     const portalLink = `${baseUrl}/check-in`;
-    const surveyLink = contactContext?.stayId
-      ? `${baseUrl}/feedback/${contactContext.stayId}`
+    const surveyLink = activeContext?.stayId
+      ? `${baseUrl}/feedback/${activeContext.stayId}`
       : '';
 
     return text
@@ -297,7 +312,7 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
       .replace(/{{wifi_password}}/g, (overrideDetails ?? stayDetails)?.wifiPassword ?? '')
       .replace(/{{portal_link}}/g, portalLink)
       .replace(/{{survey_link}}/g, surveyLink);
-  }, [contacts, selectedPhone, contactContext, stayDetails, customDomain]);
+  }, [contacts, selectedPhone, activeContext, stayDetails, customDomain]);
 
   // Constrói os itens do menu %
   const buildMentionItems = useCallback((query: string): MentionItem[] => {
@@ -431,7 +446,7 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
       const messageData = {
         propertyId,
         contactId,
-        stayId: contactContext?.stayId || null,
+        stayId: activeContext?.stayId || null,
         to: contactId,
         body: prefixedBody,
         isAutomated: false,
@@ -627,34 +642,69 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
 
   // Conteúdo do painel lateral (reutilizado em desktop e mobile)
   const renderPanelContent = () => {
-    const contact = contacts.find(c => c.id === selectedPhone);
+    const multiCtx = contactContext?.allContexts && contactContext.allContexts.length > 1;
+    const ctx = activeContext;
     return (
       <div className="flex-1 overflow-y-auto">
+
+        {/* Seletor de hóspede — aparece apenas quando o número é compartilhado */}
+        {multiCtx && (
+          <div className="p-4 border-b space-y-2">
+            <h4 className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-2">
+              Hóspedes neste número ({contactContext!.allContexts!.length})
+            </h4>
+            <div className="space-y-1.5">
+              {contactContext!.allContexts!.map((c, i) => {
+                const isActive = activeContext?.stayId === c.stayId;
+                const statusDot = c.status === 'active' ? 'bg-green-500' : c.status === 'pending' ? 'bg-yellow-400' : 'bg-foreground/20';
+                const fmtDate = (d?: Date) => d ? (d instanceof Date ? d : new Date(d as any)).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
+                return (
+                  <button
+                    key={c.stayId ?? i}
+                    onClick={() => setActiveContext(c)}
+                    className={`w-full text-left px-3 py-2.5 rounded-xl border transition-all ${isActive ? 'bg-primary/10 border-primary/30 text-foreground' : 'bg-background border-border hover:bg-muted/50 text-muted-foreground'}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot}`} />
+                      <span className={`text-xs font-bold truncate flex-1 ${isActive ? 'text-foreground' : ''}`}>{c.guestName ?? '—'}</span>
+                    </div>
+                    {c.cabinName && (
+                      <p className="text-[11px] text-muted-foreground mt-0.5 pl-3.5">
+                        {c.cabinName}{c.checkIn ? ` · ${fmtDate(c.checkIn)}${c.checkOut ? ` → ${fmtDate(c.checkOut)}` : ''}` : ''}
+                      </p>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Dados do Hóspede */}
-        {contactContext && contactContext.status !== 'none' && (
+        {ctx && ctx.status !== 'none' && (
           <div className="p-4 border-b space-y-2">
             <h4 className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-3">
               Dados do Hóspede
             </h4>
             <div className="space-y-2">
-              {contact?.name && (
+              {(ctx.guestName || !multiCtx) && (
                 <div className="flex items-center gap-2 text-xs">
                   <User className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                  <span className="text-foreground font-medium truncate">{contact.name}</span>
+                  <span className="text-foreground font-medium truncate">{ctx.guestName ?? contacts.find(c => c.id === selectedPhone)?.name}</span>
                 </div>
               )}
-              {contactContext.cabinName && (
+              {ctx.cabinName && (
                 <div className="flex items-center gap-2 text-xs">
                   <MapPin className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                  <span className="text-foreground">{contactContext.cabinName}</span>
+                  <span className="text-foreground">{ctx.cabinName}</span>
                 </div>
               )}
-              {(contactContext.checkIn || contactContext.checkOut) && (
+              {(ctx.checkIn || ctx.checkOut) && (
                 <div className="flex items-center gap-2 text-xs">
                   <CalendarRange className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
                   <span className="text-foreground">
-                    {contactContext.checkIn && (contactContext.checkIn instanceof Date ? contactContext.checkIn : new Date(contactContext.checkIn as any)).toLocaleDateString('pt-BR')}
-                    {contactContext.checkOut && ` → ${(contactContext.checkOut instanceof Date ? contactContext.checkOut : new Date(contactContext.checkOut as any)).toLocaleDateString('pt-BR')}`}
+                    {ctx.checkIn && (ctx.checkIn instanceof Date ? ctx.checkIn : new Date(ctx.checkIn as any)).toLocaleDateString('pt-BR')}
+                    {ctx.checkOut && ` → ${(ctx.checkOut instanceof Date ? ctx.checkOut : new Date(ctx.checkOut as any)).toLocaleDateString('pt-BR')}`}
                   </span>
                 </div>
               )}
@@ -700,8 +750,8 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
                   onClick={async () => {
                     let details = stayDetails;
                     // Se stayDetails ainda não carregou, busca agora antes de resolver
-                    if (!details && contactContext?.stayId) {
-                      details = await fetchStayDetails(contactContext.stayId);
+                    if (!details && activeContext?.stayId) {
+                      details = await fetchStayDetails(activeContext.stayId);
                       if (details) setStayDetails(details);
                     }
                     // Passa details frescos para evitar race condition com o closure
