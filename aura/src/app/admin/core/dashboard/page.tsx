@@ -47,6 +47,48 @@ const StatCard = ({ title, value, trend, icon: Icon, color }: any) => (
   </div>
 );
 
+// --- ACTION LABEL MAP ---
+const ACTION_LABELS: Record<string, string> = {
+  CREATE: "Criado",
+  UPDATE: "Atualizado",
+  DELETE: "Excluído",
+  MESSAGE_SENT: "Mensagem enviada",
+  MESSAGE_FAILED: "Mensagem falhou",
+  MESSAGE_RESENT: "Mensagem reenviada",
+  CHECKIN: "Check-in",
+  CHECKOUT: "Check-out",
+  USER_CREATE: "Usuário criado",
+  USER_UPDATE: "Usuário atualizado",
+  CREATE_STAY: "Estadia criada",
+  COMPLETE_STAY: "Estadia concluída",
+  STAY_GROUP_CREATE: "Grupo de estadias criado",
+  STRUCTURE_CREATED: "Estrutura criada",
+  STRUCTURE_UPDATED: "Estrutura atualizada",
+  STRUCTURE_DELETED: "Estrutura excluída",
+  STRUCTURE_BOOKING_CREATED: "Agendamento criado",
+  STRUCTURE_BOOKING_STATUS_CHANGED: "Agendamento atualizado",
+  EVENT_CREATED: "Evento criado",
+  EVENT_UPDATED: "Evento atualizado",
+  EVENT_DELETED: "Evento excluído",
+  EVENT_PUBLISHED: "Evento publicado",
+  CONCIERGE_REQUESTED: "Pedido de concierge",
+  CONCIERGE_DELIVERED: "Concierge entregue",
+  CONCIERGE_RETURNED: "Concierge devolvido",
+  CONCIERGE_LOST: "Concierge extraviado",
+  FB_ORDER_CREATED: "Pedido F&B criado",
+  FB_ORDER_STATUS_CHANGED: "Pedido F&B atualizado",
+  REASSIGN_GUEST: "Hóspede reatribuído",
+};
+
+function actionBadgeClass(action: string): string {
+  if (action.includes('DELETE') || action.includes('LOST')) return "bg-red-500/10 text-red-500";
+  if (action.includes('UPDATE') || action.includes('STATUS_CHANGED') || action.includes('RETURNED')) return "bg-blue-500/10 text-blue-500";
+  if (action.includes('MESSAGE')) return "bg-orange-500/10 text-orange-500";
+  if (action.includes('BOOKING') || action === 'CHECKIN' || action === 'CHECKOUT') return "bg-purple-500/10 text-purple-500";
+  if (action.includes('CONCIERGE')) return "bg-orange-500/10 text-orange-500";
+  return "bg-green-500/10 text-green-500";
+}
+
 // --- PÁGINA PRINCIPAL ---
 
 export default function SuperAdminDashboard() {
@@ -238,17 +280,16 @@ export default function SuperAdminDashboard() {
                         <td className="p-4">
                           <span className={cn(
                             "px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-tighter",
-                            log.action.includes('CREATE') && "bg-green-500/10 text-green-500",
-                            log.action.includes('UPDATE') && "bg-blue-500/10 text-blue-500",
-                            log.action.includes('DELETE') && "bg-red-500/10 text-red-500",
-                            log.action.includes('MESSAGE') && "bg-orange-500/10 text-orange-500",
+                            actionBadgeClass(log.action)
                           )}>
-                            {log.action.replace('_', ' ')}
+                            {ACTION_LABELS[log.action] || log.action.replace(/_/g, ' ')}
                           </span>
                         </td>
                         <td className="p-4">
                           <span className="text-xs font-medium bg-muted px-2 py-1 rounded-lg">
-                            {log.propertyId === 'SYSTEM' ? '⚙️ AURA CORE' : log.propertyId}
+                            {log.propertyId === 'SYSTEM'
+                              ? '⚙️ Aura Core'
+                              : (properties.find(p => p.id === log.propertyId)?.name || log.propertyId)}
                           </span>
                         </td>
                         <td className="p-4 max-w-xs">
