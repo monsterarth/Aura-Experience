@@ -329,14 +329,14 @@ export const StayService = {
   },
 
   async performCheckIn(propertyId: string, stayId: string, actorId: string, actorName: string) {
-    // 1. Buscar dados da estadia
+    // 1. Buscar dados da estadia (incluindo guestId para enriquecer o log)
     const { data: stay } = await supabase
-      .from('stays').select('cabinId, checkIn').eq('id', stayId).single();
+      .from('stays').select('cabinId, checkIn, guestId').eq('id', stayId).single();
     if (!stay) throw new Error('STAY_NOT_FOUND');
 
     // 2. Validar status da acomodação
     const { data: cabin } = await supabase
-      .from('cabins').select('status').eq('id', stay.cabinId).single();
+      .from('cabins').select('status, number').eq('id', stay.cabinId).single();
     if (!cabin || cabin.status !== 'available') {
       throw new Error(`CABIN_NOT_AVAILABLE:${cabin?.status ?? 'unknown'}`);
     }
@@ -358,6 +358,17 @@ export const StayService = {
       supabase.from('cabins').update({ status: 'occupied', currentStayId: stayId }).eq('id', stay.cabinId),
     ]);
 
+    // Build human-readable audit details
+    let guestFirstName = '';
+    try {
+      const { data: guest } = await supabase.from('guests').select('fullName').eq('id', stay.guestId).single();
+      if (guest?.fullName) guestFirstName = guest.fullName.split(' ')[0];
+    } catch { /* silent */ }
+    const cabinLabel = cabin.number && guestFirstName
+      ? `cabana ${cabin.number} - ${guestFirstName}`
+      : `cabana ${cabin.number || stayId}`;
+    const dateNote = updates.checkIn ? ' (data prevista substituída pelo horário real)' : '';
+
     await AuditService.log({
       propertyId,
       userId: actorId,
@@ -365,16 +376,14 @@ export const StayService = {
       action: "CHECKIN",
       entity: "STAY",
       entityId: stayId,
-      details: updates.checkIn
-        ? `Check-in físico realizado. Data prevista substituída pelo check-in real.`
-        : "Check-in físico realizado pela recepção."
+      details: `Check-in da ${cabinLabel} realizado pela recepção.${dateNote}`
     });
 
     await this.triggerAutomation(propertyId, stayId, 'welcome_checkin');
   },
 
   async performCheckOut(propertyId: string, stayId: string, actorId: string, actorName: string) {
-    const { data: stay } = await supabase.from('stays').select('cabinId').eq('id', stayId).single();
+    const { data: stay } = await supabase.from('stays').select('cabinId, guestId').eq('id', stayId).single();
     const cabinId = stay?.cabinId;
     if (!cabinId) throw new Error("Acomodação não encontrada na reserva.");
 
@@ -420,6 +429,18 @@ export const StayService = {
       checklist: []
     });
 
+    // Build human-readable checkout details
+    let checkoutCabinLabel = cabinId;
+    try {
+      const [{ data: cabinData }, { data: guestData }] = await Promise.all([
+        supabase.from('cabins').select('number').eq('id', cabinId).single(),
+        stay.guestId ? supabase.from('guests').select('fullName').eq('id', stay.guestId).single() : Promise.resolve({ data: null }),
+      ]);
+      const cabinNum = cabinData?.number || cabinId;
+      const firstName = guestData?.fullName?.split(' ')[0] || '';
+      checkoutCabinLabel = firstName ? `cabana ${cabinNum} - ${firstName}` : `cabana ${cabinNum}`;
+    } catch { /* silent */ }
+
     await AuditService.log({
       propertyId,
       userId: actorId,
@@ -427,7 +448,7 @@ export const StayService = {
       action: "CHECKOUT",
       entity: "STAY",
       entityId: stayId,
-      details: `Check-out realizado. Tarefa de Faxina de Troca gerada para a unidade ${cabinId}.`
+      details: `Check-out da ${checkoutCabinLabel} realizado. Faxina de Troca gerada.`
     });
 
     await this.triggerAutomation(propertyId, stayId, 'checkout_thanks');
@@ -493,9 +514,25 @@ export const StayService = {
       throw new Error(`Falha ao atualizar estadia: ${error.message}`);
     }
 
+    // Enrich with cabin + guest identity
+    let stayLabel = stayId;
+    try {
+      const { data: stay } = await supabase.from('stays').select('cabinId, guestId').eq('id', stayId).single();
+      if (stay) {
+        const [{ data: cabinData }, { data: guestData }] = await Promise.all([
+          supabase.from('cabins').select('number').eq('id', stay.cabinId).single(),
+          supabase.from('guests').select('fullName').eq('id', stay.guestId).single(),
+        ]);
+        const cabinNum = cabinData?.number || '';
+        const firstName = guestData?.fullName?.split(' ')[0] || '';
+        if (cabinNum && firstName) stayLabel = `cabana ${cabinNum} - ${firstName}`;
+        else if (cabinNum) stayLabel = `cabana ${cabinNum}`;
+      }
+    } catch { /* silent */ }
+
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
-      details: "Ficha de hospedagem editada pela recepção.", newData: data
+      details: `Ficha de hospedagem da ${stayLabel} editada pela recepção.`, newData: data
     });
   },
 

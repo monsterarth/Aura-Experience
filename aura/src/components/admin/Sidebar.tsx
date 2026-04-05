@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import Image from "next/image";
+import { NotificationCenter } from "@/components/admin/NotificationCenter";
 
 export const Sidebar = () => {
   const { userData, isSuperAdmin } = useAuth();
@@ -122,6 +123,7 @@ export const Sidebar = () => {
       roles: ["super_admin", "admin"],
       requireProperty: true
     },
+    { title: "Logs de Auditoria", icon: FileText, href: "/admin/logs", roles: ["super_admin", "admin"] },
     { title: "Pesquisas (NPS)", icon: ClipboardList, href: "/admin/surveys", roles: ["super_admin", "admin"] },
     { title: "Automações", icon: Bot, href: "/admin/comunicacao/automations/settings", roles: ["super_admin", "admin"] },
     { title: "Templates Aura", icon: FileText, href: "/admin/core/templates", roles: ["super_admin"] },
@@ -254,10 +256,15 @@ export const Sidebar = () => {
               </div>
             )}
           </div>
-          {/* BOTÃO FECHAR NO MOBILE */}
-          <button onClick={() => setIsOpen(false)} className="lg:hidden p-2 text-muted-foreground hover:bg-secondary rounded-xl flex-shrink-0">
-            <X size={20} />
-          </button>
+          {/* Notificações + Fechar Mobile */}
+          {!isCollapsed && (
+            <div className="flex items-center gap-1 shrink-0">
+              <NotificationCenter />
+              <button onClick={() => setIsOpen(false)} className="lg:hidden p-2 text-muted-foreground hover:bg-secondary rounded-xl">
+                <X size={20} />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* SELETOR GLOBAL - Apenas para Super Admin */}

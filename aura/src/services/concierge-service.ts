@@ -207,10 +207,35 @@ export const ConciergeService = {
       .single();
     if (error) throw error;
 
+    // Enrich audit log with item name and guest identity
+    let auditUserName = actorName;
+    let auditDetails = `Pedido de concierge: qty=${data.quantity}`;
+    try {
+      const [{ data: itemData }, cabinRes, stayRes] = await Promise.all([
+        supabase.from('concierge_items').select('name').eq('id', data.itemId).single(),
+        data.cabinId
+          ? supabase.from('cabins').select('number').eq('id', data.cabinId).single()
+          : Promise.resolve({ data: null }),
+        data.stayId
+          ? supabase.from('stays').select('guestId').eq('id', data.stayId).single()
+          : Promise.resolve({ data: null }),
+      ]);
+      const itemName = itemData?.name || data.itemId;
+      auditDetails = `Pedido de concierge: ${data.quantity}x ${itemName}`;
+      if (cabinRes.data && stayRes.data) {
+        const { data: guestData } = await supabase
+          .from('guests').select('fullName').eq('id', stayRes.data.guestId).single();
+        if (guestData) {
+          const firstName = guestData.fullName.split(' ')[0];
+          auditUserName = `${cabinRes.data.number} - ${firstName}`;
+        }
+      }
+    } catch { /* enrich fails silently */ }
+
     await AuditService.log({
-      propertyId: data.propertyId, userId: actorId, userName: actorName,
+      propertyId: data.propertyId, userId: actorId, userName: auditUserName,
       action: 'CONCIERGE_REQUESTED', entity: 'CONCIERGE', entityId: created.id,
-      details: `Pedido de concierge criado: itemId=${data.itemId}, qty=${data.quantity}`,
+      details: auditDetails,
     });
 
     return created as ConciergeRequest;

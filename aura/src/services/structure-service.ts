@@ -231,14 +231,54 @@ export const StructureService = {
             } catch (e) { console.error("Falha ao disparar automação de estrutura", e) }
         }
 
+        // Enrich audit log with human-readable structure name, unit, and guest identity
+        let auditUserName = actorName;
+        let auditDetails = `Ocupação registrada.`;
+        try {
+            const { data: structData } = await supabase.from('structures').select('name, units').eq('id', booking.structureId).single();
+            const structureName = structData?.name || booking.structureId;
+
+            // Resolve unit name if booking has a specific unit
+            let unitLabel = '';
+            if (booking.unitId && structData?.units?.length) {
+                const unit = (structData.units as { id: string; name: string }[]).find(u => u.id === booking.unitId);
+                if (unit) unitLabel = ` (${unit.name})`;
+            }
+
+            // Resolve guest/cabin identity
+            let guestLabel = '';
+            if (booking.stayId) {
+                const { data: stayData } = await supabase
+                    .from('stays').select('guestId, cabinId').eq('id', booking.stayId).single();
+                if (stayData) {
+                    const [{ data: cabinData }, { data: guestData }] = await Promise.all([
+                        supabase.from('cabins').select('number').eq('id', stayData.cabinId).single(),
+                        supabase.from('guests').select('fullName').eq('id', stayData.guestId).single(),
+                    ]);
+                    if (cabinData && guestData) {
+                        const firstName = guestData.fullName.split(' ')[0];
+                        const cabinLabel = `${cabinData.number} - ${firstName}`;
+                        // Autor = hóspede apenas quando ele mesmo fez a reserva pelo app
+                        if (booking.source === 'guest') auditUserName = cabinLabel;
+                        guestLabel = ` para cabana ${cabinLabel}`;
+                    }
+                }
+            } else if (booking.guestName) {
+                guestLabel = ` para ${booking.guestName}`;
+            }
+
+            const bookingTypeLabel = booking.type === 'maintenance_block' ? 'Bloqueio' : 'Reserva';
+            auditDetails = `${bookingTypeLabel} em ${structureName}${unitLabel}${guestLabel}: ${booking.startTime}–${booking.endTime}`;
+        } catch { /* enrich fails silently */ }
+
         await AuditService.log({
             propertyId,
             userId: actorId,
-            userName: actorName,
+            userName: auditUserName,
             action: "STRUCTURE_BOOKING_CREATED",
             entity: "STRUCTURE_BOOKING",
             entityId: id,
-            details: `Ocupação na estrutura ${booking.structureId} registrada.`
+            details: auditDetails
         });
 
         return id;
@@ -253,6 +293,48 @@ export const StructureService = {
 
         if (error) throw error;
 
+        // Enrich audit details with structure name and guest identity
+        let auditDetails = `Agendamento atualizado. Status: ${updates.status || 'sem mudança'}`;
+        try {
+            const { data: booking } = await supabase
+                .from('structure_bookings')
+                .select('structureId, startTime, endTime, stayId, guestName, unitId, type')
+                .eq('id', bookingId)
+                .single();
+            if (booking) {
+                const { data: st } = await supabase.from('structures').select('name, units').eq('id', booking.structureId).single();
+                const structureName = st?.name || booking.structureId;
+
+                // Resolve unit name
+                let unitLabel = '';
+                if (booking.unitId && st?.units?.length) {
+                    const unit = (st.units as { id: string; name: string }[]).find((u: { id: string; name: string }) => u.id === booking.unitId);
+                    if (unit) unitLabel = ` (${unit.name})`;
+                }
+
+                // Resolve guest/cabin label
+                let guestLabel = booking.guestName || '';
+                if (!guestLabel && booking.stayId) {
+                    const { data: stay } = await supabase.from('stays').select('guestId, cabinId').eq('id', booking.stayId).single();
+                    if (stay) {
+                        const [{ data: cabinData }, { data: guestData }] = await Promise.all([
+                            supabase.from('cabins').select('number').eq('id', stay.cabinId).single(),
+                            supabase.from('guests').select('fullName').eq('id', stay.guestId).single(),
+                        ]);
+                        if (cabinData && guestData) {
+                            guestLabel = `cabana ${cabinData.number} - ${guestData.fullName.split(' ')[0]}`;
+                        }
+                    }
+                }
+
+                const statusLabel = updates.status || 'atualizado';
+                const bookingTypeLabel = booking.type === 'maintenance_block' ? 'Bloqueio' : 'Reserva';
+                auditDetails = guestLabel
+                    ? `${bookingTypeLabel} em ${structureName}${unitLabel} para ${guestLabel}: ${booking.startTime}–${booking.endTime} → ${statusLabel}`
+                    : `${bookingTypeLabel} em ${structureName}${unitLabel}: ${booking.startTime}–${booking.endTime} → ${statusLabel}`;
+            }
+        } catch { /* enrich fails silently */ }
+
         await AuditService.log({
             propertyId,
             userId: actorId,
@@ -260,7 +342,7 @@ export const StructureService = {
             action: "STRUCTURE_BOOKING_STATUS_CHANGED",
             entity: "STRUCTURE_BOOKING",
             entityId: bookingId,
-            details: `Reserva ${bookingId} atualizada. Status resultante: ${updates.status || 'sem mudança de status'}`
+            details: auditDetails
         });
     },
 
