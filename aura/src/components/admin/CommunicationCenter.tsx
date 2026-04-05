@@ -32,14 +32,14 @@ interface CommunicationCenterProps {
 }
 
 const COLOR_THEME_MAP: Record<string, { outboundBubble: string; sendButton: string; activeConvBorder: string; activeConvBg: string }> = {
-  yellow: { outboundBubble: 'bg-amber-500 text-white',   sendButton: '!bg-amber-500 hover:!bg-amber-600 border-0', activeConvBorder: 'border-l-amber-500',   activeConvBg: 'bg-amber-50 dark:bg-amber-950/30' },
-  blue:   { outboundBubble: 'bg-blue-500 text-white',    sendButton: '!bg-blue-500 hover:!bg-blue-600 border-0',   activeConvBorder: 'border-l-blue-500',     activeConvBg: 'bg-blue-50 dark:bg-blue-950/30' },
-  green:  { outboundBubble: 'bg-emerald-500 text-white', sendButton: '!bg-emerald-500 hover:!bg-emerald-600 border-0', activeConvBorder: 'border-l-emerald-500', activeConvBg: 'bg-emerald-50 dark:bg-emerald-950/30' },
-  purple: { outboundBubble: 'bg-violet-500 text-white',  sendButton: '!bg-violet-500 hover:!bg-violet-600 border-0', activeConvBorder: 'border-l-violet-500',  activeConvBg: 'bg-violet-50 dark:bg-violet-950/30' },
-  rose:   { outboundBubble: 'bg-rose-500 text-white',    sendButton: '!bg-rose-500 hover:!bg-rose-600 border-0',   activeConvBorder: 'border-l-rose-500',     activeConvBg: 'bg-rose-50 dark:bg-rose-950/30' },
-  orange: { outboundBubble: 'bg-orange-500 text-white',  sendButton: '!bg-orange-500 hover:!bg-orange-600 border-0', activeConvBorder: 'border-l-orange-500', activeConvBg: 'bg-orange-50 dark:bg-orange-950/30' },
-  teal:   { outboundBubble: 'bg-teal-500 text-white',    sendButton: '!bg-teal-500 hover:!bg-teal-600 border-0',   activeConvBorder: 'border-l-teal-500',     activeConvBg: 'bg-teal-50 dark:bg-teal-950/30' },
-  slate:  { outboundBubble: 'bg-slate-600 text-white',   sendButton: '!bg-slate-600 hover:!bg-slate-700 border-0', activeConvBorder: 'border-l-slate-500',    activeConvBg: 'bg-slate-100 dark:bg-slate-800/30' },
+  yellow: { outboundBubble: 'bg-amber-500 text-white',   sendButton: '!bg-amber-500 hover:!bg-amber-600 border-0', activeConvBorder: 'border-l-amber-500',   activeConvBg: 'bg-amber-500/10' },
+  blue:   { outboundBubble: 'bg-blue-500 text-white',    sendButton: '!bg-blue-500 hover:!bg-blue-600 border-0',   activeConvBorder: 'border-l-blue-500',     activeConvBg: 'bg-blue-500/10' },
+  green:  { outboundBubble: 'bg-emerald-500 text-white', sendButton: '!bg-emerald-500 hover:!bg-emerald-600 border-0', activeConvBorder: 'border-l-emerald-500', activeConvBg: 'bg-emerald-500/10' },
+  purple: { outboundBubble: 'bg-violet-500 text-white',  sendButton: '!bg-violet-500 hover:!bg-violet-600 border-0', activeConvBorder: 'border-l-violet-500',  activeConvBg: 'bg-violet-500/10' },
+  rose:   { outboundBubble: 'bg-rose-500 text-white',    sendButton: '!bg-rose-500 hover:!bg-rose-600 border-0',   activeConvBorder: 'border-l-rose-500',     activeConvBg: 'bg-rose-500/10' },
+  orange: { outboundBubble: 'bg-orange-500 text-white',  sendButton: '!bg-orange-500 hover:!bg-orange-600 border-0', activeConvBorder: 'border-l-orange-500', activeConvBg: 'bg-orange-500/10' },
+  teal:   { outboundBubble: 'bg-teal-500 text-white',    sendButton: '!bg-teal-500 hover:!bg-teal-600 border-0',   activeConvBorder: 'border-l-teal-500',     activeConvBg: 'bg-teal-500/10' },
+  slate:  { outboundBubble: 'bg-slate-600 text-white',   sendButton: '!bg-slate-600 hover:!bg-slate-700 border-0', activeConvBorder: 'border-l-slate-500',    activeConvBg: 'bg-slate-500/10' },
 };
 
 const DEFAULT_THEME = {
@@ -588,7 +588,7 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
         if (raw.startsWith('*')) tokens.push(<strong key={match.index}>{inner}</strong>);
         else if (raw.startsWith('_')) tokens.push(<em key={match.index}>{inner}</em>);
         else if (raw.startsWith('~')) tokens.push(<s key={match.index}>{inner}</s>);
-        else if (raw.startsWith('`')) tokens.push(<code key={match.index} className="font-mono text-[0.85em] bg-black/10 dark:bg-white/10 px-1 rounded">{inner}</code>);
+        else if (raw.startsWith('`')) tokens.push(<code key={match.index} className="font-mono text-[0.85em] bg-foreground/10 px-1 rounded">{inner}</code>);
         lastIndex = match.index + raw.length;
       }
       if (lastIndex < line.length) tokens.push(line.slice(lastIndex));
@@ -859,7 +859,7 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
       </div>
 
       {/* CHAT + PAINEL DIREITO (compartilham header) */}
-      <div className={`flex-1 flex flex-col bg-[#FDFDFD] dark:bg-background relative min-w-0 ${!selectedPhone ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`flex-1 flex flex-col bg-background relative min-w-0 ${!selectedPhone ? 'hidden md:flex' : 'flex'}`}>
         {!selectedPhone ? (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
             <MessageCircle className="w-16 h-16 opacity-20 mb-4" />
@@ -953,7 +953,7 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
               <div className="flex-1 flex flex-col min-w-0">
 
             {/* Mensagens */}
-            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-amber-50/30 dark:bg-transparent">
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
               {messages.map((msg, i) => {
                 const isMe = msg.direction === 'outbound';
                 const hasTranslation = msg.originalBody && msg.originalBody !== msg.body;
@@ -962,7 +962,7 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
                   <div key={msg.id || i} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                     <div className={`relative max-w-[85%] md:max-w-[65%] rounded-2xl px-4 py-3 shadow-sm ${isMe ? `${theme.outboundBubble} rounded-tr-sm` : 'bg-card border rounded-tl-sm text-foreground'}`}>
                       {msg.isAutomated && msg.status === 'pending' ? (
-                        <div className="flex items-center gap-1 text-[10px] uppercase font-bold mb-1 text-yellow-600 dark:text-yellow-500">
+                        <div className="flex items-center gap-1 text-[10px] uppercase font-bold mb-1 text-yellow-500">
                           <Clock className="w-3 h-3" /> Agendada para: {safeFormatDate(msg.scheduledFor, "dd/MM HH:mm") || 'Em breve'}
                         </div>
                       ) : msg.isAutomated ? (
