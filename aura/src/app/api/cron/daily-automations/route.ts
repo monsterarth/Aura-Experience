@@ -86,6 +86,17 @@ export async function GET(request: Request) {
         }
 
         if (triggerToFire) {
+          if (triggerToFire === 'pre_checkout') {
+            const { data: existing } = await supabaseAdmin
+              .from('messages')
+              .select('id')
+              .eq('stayId', stay.id)
+              .eq('triggerEvent', 'pre_checkout')
+              .in('status', ['pending', 'processing'])
+              .maybeSingle();
+            if (existing) continue;
+          }
+
           const rule = activeRules[triggerToFire];
           const template = templates[rule.templateId];
 

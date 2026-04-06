@@ -5,6 +5,10 @@
       "schedule": "0 11 * * *"
     },
     {
+      "path": "/api/cron/evening-revalidation",
+      "schedule": "30 20 * * *"
+    },
+    {
       "path": "/api/cron/daily-housekeeping",
       "schedule": "0 8 * * *"
     },
