@@ -293,11 +293,17 @@ export interface SurveyQuestion {
   id: string; // ID único para controle no React (Frontend)
   position: number;
   text: string;
+  text_en?: string;
+  text_es?: string;
   description: string;
+  description_en?: string;
+  description_es?: string;
   type: SurveyQuestionType;
   categoryId: string;
   categoryName: string;
   options?: string[];
+  options_en?: string[];
+  options_es?: string[];
 }
 
 
@@ -358,6 +364,8 @@ export interface SurveyReward {
   hasReward: boolean;
   type: 'discount' | 'freebie' | 'points' | 'other' | '';
   description: string;
+  description_en?: string;
+  description_es?: string;
 }
 
 // --- TEMPLATE DA PESQUISA ---
@@ -366,6 +374,8 @@ export interface SurveyTemplate {
   id: string;
   propertyId: string;
   title: string;
+  title_en?: string;
+  title_es?: string;
   isDefault: boolean; // Indica se esta é a pesquisa enviada no check-out
   questions: SurveyQuestion[];
   reward: SurveyReward;

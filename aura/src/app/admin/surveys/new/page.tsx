@@ -6,19 +6,8 @@ import { useProperty } from "@/context/PropertyContext";
 import { SurveyService } from "@/services/survey-service";
 import { SurveyQuestion, SurveyQuestionType, SurveyReward, SurveyCategoryItem } from "@/types/aura";
 import { Button } from "@/components/ui/button";
-import { 
-  Plus, 
-  Trash2, 
-  Save, 
-  ArrowLeft, 
-  ArrowUp, 
-  ArrowDown, 
-  Gift, 
-  Settings, 
-  ListOrdered,
-  X,
-  CircleDot,
-  CheckSquare
+import {
+  Plus, Trash2, Save, ArrowLeft, ArrowUp, ArrowDown, Gift, Settings, ListOrdered, X, CircleDot, CheckSquare, Globe
 } from "lucide-react";
 
 export default function CreateSurveyTemplatePage() {
@@ -27,17 +16,16 @@ export default function CreateSurveyTemplatePage() {
 
   const [loading, setLoading] = useState(false);
   const [title, setTitle] = useState("Pesquisa Pós-Estadia");
+  const [titleEn, setTitleEn] = useState("");
+  const [titleEs, setTitleEs] = useState("");
   const [isDefault, setIsDefault] = useState(true);
-  
+
   const [categories, setCategories] = useState<SurveyCategoryItem[]>([]);
   const [isQuickCreateModalOpen, setIsQuickCreateModalOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [pendingQuestionIndex, setPendingQuestionIndex] = useState<number | null>(null);
 
-  const [reward, setReward] = useState<SurveyReward>({
-    hasReward: false, type: "", description: ""
-  });
-
+  const [reward, setReward] = useState<SurveyReward>({ hasReward: false, type: "", description: "" });
   const [questions, setQuestions] = useState<SurveyQuestion[]>([]);
 
   useEffect(() => {
@@ -45,17 +33,16 @@ export default function CreateSurveyTemplatePage() {
       if (!property?.id) return;
       const fetchedCats = await SurveyService.getCategories(property.id);
       setCategories(fetchedCats);
-      
       const defaultCat = fetchedCats.length > 0 ? fetchedCats[0] : { id: "general", name: "Geral" };
-      
       setQuestions([{
-        id: crypto.randomUUID(),
-        position: 0,
+        id: crypto.randomUUID(), position: 0,
         text: "Em uma escala de 0 a 10, o quanto você recomendaria nossa pousada?",
+        text_en: "On a scale of 0 to 10, how likely are you to recommend our inn?",
+        text_es: "En una escala de 0 a 10, ¿qué tan probable es que recomiende nuestro alojamiento?",
         description: "Sua opinião é muito importante para nós.",
-        type: "nps",
-        categoryId: defaultCat.id,
-        categoryName: defaultCat.name
+        description_en: "Your feedback means a lot to us.",
+        description_es: "Tu opinión es muy importante para nosotros.",
+        type: "nps", categoryId: defaultCat.id, categoryName: defaultCat.name
       }]);
     }
     fetchCategories();
@@ -64,34 +51,34 @@ export default function CreateSurveyTemplatePage() {
   const addQuestion = () => {
     const defaultCat = categories.length > 0 ? categories[0] : { id: "general", name: "Geral" };
     setQuestions([...questions, {
-      id: crypto.randomUUID(),
-      position: questions.length,
-      text: "",
-      description: "",
-      type: "rating",
-      categoryId: defaultCat.id,
-      categoryName: defaultCat.name
+      id: crypto.randomUUID(), position: questions.length,
+      text: "", text_en: "", text_es: "",
+      description: "", description_en: "", description_es: "",
+      type: "rating", categoryId: defaultCat.id, categoryName: defaultCat.name
     }]);
   };
 
   const updateQuestion = (index: number, field: keyof SurveyQuestion, value: any) => {
     const newQuestions = [...questions];
     newQuestions[index] = { ...newQuestions[index], [field]: value };
-    
-    // Se mudou o tipo para múltipla escolha e não tem opções, injeta um padrão
     if (field === 'type' && (value === 'single_choice' || value === 'multiple_choice')) {
       if (!newQuestions[index].options || newQuestions[index].options?.length === 0) {
         newQuestions[index].options = ["Opção 1", "Opção 2"];
+        newQuestions[index].options_en = ["", ""];
+        newQuestions[index].options_es = ["", ""];
       }
     }
     setQuestions(newQuestions);
   };
 
-  // --- Manipulação de Opções (Múltipla Escolha) ---
   const addOption = (qIndex: number) => {
     const newQuestions = [...questions];
     if (!newQuestions[qIndex].options) newQuestions[qIndex].options = [];
     newQuestions[qIndex].options!.push("");
+    if (!newQuestions[qIndex].options_en) newQuestions[qIndex].options_en = [];
+    newQuestions[qIndex].options_en!.push("");
+    if (!newQuestions[qIndex].options_es) newQuestions[qIndex].options_es = [];
+    newQuestions[qIndex].options_es!.push("");
     setQuestions(newQuestions);
   };
 
@@ -101,16 +88,27 @@ export default function CreateSurveyTemplatePage() {
     setQuestions(newQuestions);
   };
 
+  const updateOptionLang = (qIndex: number, optIndex: number, lang: 'en' | 'es', value: string) => {
+    const newQuestions = [...questions];
+    const field = lang === 'en' ? 'options_en' : 'options_es';
+    const arr = [...(newQuestions[qIndex][field] || [])];
+    while (arr.length <= optIndex) arr.push("");
+    arr[optIndex] = value;
+    newQuestions[qIndex] = { ...newQuestions[qIndex], [field]: arr };
+    setQuestions(newQuestions);
+  };
+
   const removeOption = (qIndex: number, optIndex: number) => {
     const newQuestions = [...questions];
     newQuestions[qIndex].options!.splice(optIndex, 1);
+    if (newQuestions[qIndex].options_en) newQuestions[qIndex].options_en!.splice(optIndex, 1);
+    if (newQuestions[qIndex].options_es) newQuestions[qIndex].options_es!.splice(optIndex, 1);
     setQuestions(newQuestions);
   };
 
   const handleCategorySelectChange = (index: number, value: string) => {
     if (value === "NEW_CATEGORY") {
-      setPendingQuestionIndex(index);
-      setIsQuickCreateModalOpen(true);
+      setPendingQuestionIndex(index); setIsQuickCreateModalOpen(true);
     } else {
       const selectedCat = categories.find(c => c.id === value);
       if (selectedCat) {
@@ -133,15 +131,10 @@ export default function CreateSurveyTemplatePage() {
       newQuestions[pendingQuestionIndex].categoryName = newCat.name;
       setQuestions(newQuestions);
     }
-    setIsQuickCreateModalOpen(false);
-    setNewCategoryName("");
-    setPendingQuestionIndex(null);
+    setIsQuickCreateModalOpen(false); setNewCategoryName(""); setPendingQuestionIndex(null);
   };
 
-  const removeQuestion = (index: number) => {
-    const newQuestions = questions.filter((_, i) => i !== index);
-    setQuestions(newQuestions.map((q, i) => ({ ...q, position: i })));
-  };
+  const removeQuestion = (index: number) => setQuestions(questions.filter((_, i) => i !== index).map((q, i) => ({ ...q, position: i })));
 
   const moveQuestion = (index: number, direction: 'up' | 'down') => {
     if (direction === 'up' && index === 0) return;
@@ -158,13 +151,12 @@ export default function CreateSurveyTemplatePage() {
     if (!property?.id) return;
     if (!title.trim()) { alert("O título é obrigatório."); return; }
     if (questions.length === 0) { alert("Adicione pelo menos uma pergunta."); return; }
-
     setLoading(true);
     const result = await SurveyService.createTemplate(property.id, {
-      title, isDefault, questions, reward
+      title, title_en: titleEn || undefined, title_es: titleEs || undefined,
+      isDefault, questions, reward
     });
-
-    if (result.success) router.push("/admin/surveys"); 
+    if (result.success) router.push("/admin/surveys");
     else { alert(result.error); setLoading(false); }
   };
 
@@ -172,9 +164,7 @@ export default function CreateSurveyTemplatePage() {
     <div className="flex flex-col h-full bg-muted/20 pb-20 relative">
       <header className="flex items-center justify-between px-6 py-4 bg-background border-b sticky top-0 z-10 shadow-sm">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.back()}>
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
+          <Button variant="ghost" size="icon" onClick={() => router.back()}><ArrowLeft className="w-5 h-5" /></Button>
           <div>
             <h1 className="text-xl font-bold tracking-tight text-foreground">Nova Pesquisa</h1>
             <p className="text-sm text-muted-foreground">Crie um modelo de formulário</p>
@@ -187,45 +177,27 @@ export default function CreateSurveyTemplatePage() {
 
       <main className="flex-1 p-6 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <ListOrdered className="w-5 h-5 text-primary" /> Perguntas
-            </h2>
-          </div>
+          <h2 className="text-lg font-semibold flex items-center gap-2"><ListOrdered className="w-5 h-5 text-primary" /> Perguntas</h2>
 
           <div className="space-y-4">
             {questions.map((q, index) => (
               <div key={q.id} className="bg-background border rounded-xl p-5 shadow-sm relative group animate-in fade-in">
                 <div className="absolute top-4 right-4 flex items-center gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => moveQuestion(index, 'up')} disabled={index === 0}>
-                    <ArrowUp className="w-4 h-4" />
-                  </Button>
-                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => moveQuestion(index, 'down')} disabled={index === questions.length - 1}>
-                    <ArrowDown className="w-4 h-4" />
-                  </Button>
-                  <Button variant="destructive" size="icon" className="h-8 w-8 ml-2" onClick={() => removeQuestion(index)}>
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => moveQuestion(index, 'up')} disabled={index === 0}><ArrowUp className="w-4 h-4" /></Button>
+                  <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => moveQuestion(index, 'down')} disabled={index === questions.length - 1}><ArrowDown className="w-4 h-4" /></Button>
+                  <Button variant="destructive" size="icon" className="h-8 w-8 ml-2" onClick={() => removeQuestion(index)}><Trash2 className="w-4 h-4" /></Button>
                 </div>
 
                 <div className="pr-32 grid gap-4">
+                  {/* PT fields */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="md:col-span-2 space-y-1.5">
-                      <label className="text-sm font-medium">Pergunta {index + 1}</label>
-                      <input 
-                        type="text" 
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                        value={q.text}
-                        onChange={(e) => updateQuestion(index, 'text', e.target.value)}
-                      />
+                      <label className="text-sm font-medium">Pergunta {index + 1} <span className="text-muted-foreground font-normal">(PT)</span></label>
+                      <input type="text" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={q.text} onChange={(e) => updateQuestion(index, 'text', e.target.value)} />
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium">Tipo de Resposta</label>
-                      <select 
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                        value={q.type}
-                        onChange={(e) => updateQuestion(index, 'type', e.target.value as SurveyQuestionType)}
-                      >
+                      <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={q.type} onChange={(e) => updateQuestion(index, 'type', e.target.value as SurveyQuestionType)}>
                         <option value="nps">NPS (0 a 10)</option>
                         <option value="rating">Estrelas (1 a 5)</option>
                         <option value="single_choice">Escolha Única (Radio)</option>
@@ -235,24 +207,14 @@ export default function CreateSurveyTemplatePage() {
                       </select>
                     </div>
                   </div>
-
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="md:col-span-2 space-y-1.5">
-                      <label className="text-sm font-medium text-muted-foreground">Descrição / Dica (Opcional)</label>
-                      <input 
-                        type="text" 
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground"
-                        value={q.description || ""}
-                        onChange={(e) => updateQuestion(index, 'description', e.target.value)}
-                      />
+                      <label className="text-sm font-medium text-muted-foreground">Descrição / Dica <span className="font-normal">(PT)</span></label>
+                      <input type="text" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground" value={q.description || ""} onChange={(e) => updateQuestion(index, 'description', e.target.value)} />
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium text-muted-foreground">Categoria (BI)</label>
-                      <select 
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                        value={q.categoryId || ""}
-                        onChange={(e) => handleCategorySelectChange(index, e.target.value)}
-                      >
+                      <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={q.categoryId || ""} onChange={(e) => handleCategorySelectChange(index, e.target.value)}>
                         <option value="" disabled>Selecione...</option>
                         {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                         <option value="NEW_CATEGORY" className="font-semibold text-primary">+ Criar nova...</option>
@@ -260,31 +222,55 @@ export default function CreateSurveyTemplatePage() {
                     </div>
                   </div>
 
-                  {/* Gerenciador de Opções se for Múltipla Escolha */}
+                  {/* Translations section */}
+                  <div className="bg-muted/20 border rounded-lg p-4 space-y-3">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                      <Globe className="w-3.5 h-3.5" /> Traduções
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground">🇬🇧 Pergunta (EN)</label>
+                        <input type="text" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={q.text_en || ""} onChange={(e) => updateQuestion(index, 'text_en', e.target.value)} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground">🇪🇸 Pergunta (ES)</label>
+                        <input type="text" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={q.text_es || ""} onChange={(e) => updateQuestion(index, 'text_es', e.target.value)} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground">🇬🇧 Descrição (EN)</label>
+                        <input type="text" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={q.description_en || ""} onChange={(e) => updateQuestion(index, 'description_en', e.target.value)} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-muted-foreground">🇪🇸 Descrição (ES)</label>
+                        <input type="text" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={q.description_es || ""} onChange={(e) => updateQuestion(index, 'description_es', e.target.value)} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Choice options */}
                   {(q.type === 'single_choice' || q.type === 'multiple_choice') && (
-                    <div className="col-span-1 md:col-span-3 bg-muted/30 p-4 rounded-lg border border-dashed mt-2 animate-in fade-in zoom-in duration-300">
-                      <label className="text-sm font-medium mb-3 block flex items-center gap-2">
-                        {q.type === 'single_choice' ? <CircleDot className="w-4 h-4 text-primary"/> : <CheckSquare className="w-4 h-4 text-primary"/>}
+                    <div className="bg-muted/30 p-4 rounded-lg border border-dashed space-y-3 animate-in fade-in zoom-in duration-300">
+                      <label className="text-sm font-medium flex items-center gap-2">
+                        {q.type === 'single_choice' ? <CircleDot className="w-4 h-4 text-primary" /> : <CheckSquare className="w-4 h-4 text-primary" />}
                         Alternativas de Resposta
                       </label>
+                      {/* Header row */}
+                      <div className="grid grid-cols-[1fr_1fr_1fr_2rem] gap-2">
+                        <span className="text-xs font-medium text-muted-foreground px-1">PT</span>
+                        <span className="text-xs font-medium text-muted-foreground px-1">🇬🇧 EN</span>
+                        <span className="text-xs font-medium text-muted-foreground px-1">🇪🇸 ES</span>
+                        <span />
+                      </div>
                       <div className="space-y-2">
                         {(q.options || []).map((opt, optIndex) => (
-                          <div key={optIndex} className="flex items-center gap-2">
-                            <input
-                              type="text"
-                              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
-                              value={opt}
-                              onChange={(e) => updateOption(index, optIndex, e.target.value)}
-                              placeholder={`Opção ${optIndex + 1}`}
-                            />
-                            <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive" onClick={() => removeOption(index, optIndex)}>
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                          <div key={optIndex} className="grid grid-cols-[1fr_1fr_1fr_2rem] gap-2 items-center">
+                            <input type="text" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={opt} onChange={(e) => updateOption(index, optIndex, e.target.value)} placeholder={`Opção ${optIndex + 1}`} />
+                            <input type="text" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={(q.options_en || [])[optIndex] || ""} onChange={(e) => updateOptionLang(index, optIndex, 'en', e.target.value)} placeholder="EN" />
+                            <input type="text" className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" value={(q.options_es || [])[optIndex] || ""} onChange={(e) => updateOptionLang(index, optIndex, 'es', e.target.value)} placeholder="ES" />
+                            <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive" onClick={() => removeOption(index, optIndex)}><Trash2 className="w-4 h-4" /></Button>
                           </div>
                         ))}
-                        <Button variant="outline" size="sm" className="mt-2 text-xs h-8" onClick={() => addOption(index)}>
-                          <Plus className="w-3 h-3 mr-1" /> Adicionar Opção
-                        </Button>
+                        <Button variant="outline" size="sm" className="mt-2 text-xs h-8" onClick={() => addOption(index)}><Plus className="w-3 h-3 mr-1" /> Adicionar Opção</Button>
                       </div>
                     </div>
                   )}
@@ -292,33 +278,36 @@ export default function CreateSurveyTemplatePage() {
               </div>
             ))}
           </div>
-          <Button variant="outline" className="w-full border-dashed h-12 gap-2" onClick={addQuestion}>
-            <Plus className="w-4 h-4" /> Adicionar Pergunta
-          </Button>
+          <Button variant="outline" className="w-full border-dashed h-12 gap-2" onClick={addQuestion}><Plus className="w-4 h-4" /> Adicionar Pergunta</Button>
         </div>
 
         <div className="space-y-6">
-          {/* Configurações e Recompensa... (Mantido inalterado para brevidade) */}
+          {/* Settings */}
           <div className="bg-background border rounded-xl p-5 shadow-sm space-y-5">
-            <h2 className="text-lg font-semibold flex items-center gap-2 border-b pb-3">
-              <Settings className="w-5 h-5 text-primary" /> Configurações
-            </h2>
+            <h2 className="text-lg font-semibold flex items-center gap-2 border-b pb-3"><Settings className="w-5 h-5 text-primary" /> Configurações</h2>
             <div className="space-y-2">
-              <label className="text-sm font-medium">Título da Pesquisa</label>
+              <label className="text-sm font-medium">Título <span className="text-muted-foreground font-normal">(PT)</span></label>
               <input type="text" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={title} onChange={(e) => setTitle(e.target.value)} />
             </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">🇬🇧 Título (EN)</label>
+              <input type="text" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={titleEn} onChange={(e) => setTitleEn(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-muted-foreground">🇪🇸 Título (ES)</label>
+              <input type="text" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={titleEs} onChange={(e) => setTitleEs(e.target.value)} />
+            </div>
             <div className="flex items-center justify-between p-3 border rounded-lg bg-muted/30">
-              <div className="space-y-0.5"><label className="text-sm font-medium">Pesquisa Padrão</label></div>
+              <label className="text-sm font-medium">Pesquisa Padrão</label>
               <input type="checkbox" className="w-5 h-5 accent-primary" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
             </div>
           </div>
 
+          {/* Reward */}
           <div className="bg-background border rounded-xl p-5 shadow-sm space-y-5">
-            <h2 className="text-lg font-semibold flex items-center gap-2 border-b pb-3">
-              <Gift className="w-5 h-5 text-emerald-500" /> Recompensa
-            </h2>
+            <h2 className="text-lg font-semibold flex items-center gap-2 border-b pb-3"><Gift className="w-5 h-5 text-emerald-500" /> Recompensa</h2>
             <div className="flex items-center justify-between p-3 border border-emerald-100 rounded-lg bg-emerald-50/50">
-              <div className="space-y-0.5"><label className="text-sm font-medium text-emerald-900">Oferecer Recompensa</label></div>
+              <label className="text-sm font-medium text-emerald-900">Oferecer Recompensa</label>
               <input type="checkbox" className="w-5 h-5 accent-emerald-500" checked={reward.hasReward} onChange={(e) => setReward({ ...reward, hasReward: e.target.checked })} />
             </div>
             {reward.hasReward && (
@@ -329,14 +318,24 @@ export default function CreateSurveyTemplatePage() {
                   <option value="freebie">Brinde na Próxima Estadia</option>
                   <option value="points">Pontos</option>
                 </select>
-                <textarea className="flex min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none" value={reward.description} onChange={(e) => setReward({ ...reward, description: e.target.value })} placeholder="Mensagem do prêmio..." />
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Mensagem (PT)</label>
+                  <textarea className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none" value={reward.description} onChange={(e) => setReward({ ...reward, description: e.target.value })} placeholder="Mensagem do prêmio..." />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">🇬🇧 Mensagem (EN)</label>
+                  <textarea className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none" value={reward.description_en || ""} onChange={(e) => setReward({ ...reward, description_en: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">🇪🇸 Mensagem (ES)</label>
+                  <textarea className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none" value={reward.description_es || ""} onChange={(e) => setReward({ ...reward, description_es: e.target.value })} />
+                </div>
               </div>
             )}
           </div>
         </div>
       </main>
 
-      {/* Modal de Categoria Rápida */}
       {isQuickCreateModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div className="bg-background rounded-xl p-6 w-full max-w-sm">
