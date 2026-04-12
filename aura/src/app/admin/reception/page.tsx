@@ -261,12 +261,17 @@ export default function ReceptionDashboard() {
     });
 
     const alertItems = [
-        ...detractors.map(r => ({
-            type: 'review' as const,
-            title: 'Avaliação Negativa (Detrator)',
-            desc: `${r.cabinName} avaliou com nota ${r.metrics?.npsScore ?? r.metrics?.averageRating ?? '—'}/10.`,
-            time: formatTimeAgo(r.createdAt),
-        })),
+        ...detractors.map(r => {
+            const parts: string[] = [];
+            if (r.metrics?.npsScore != null) parts.push(`NPS: ${r.metrics.npsScore}/10`);
+            if (r.metrics?.averageRating != null) parts.push(`Avaliação: ${r.metrics.averageRating}/5 estrelas`);
+            return {
+                type: 'review' as const,
+                title: 'Avaliação Negativa (Detrator)',
+                desc: `${r.cabinName} — ${parts.length ? parts.join(' · ') : 'sem nota registrada'}.`,
+                time: formatTimeAgo(r.createdAt),
+            };
+        }),
         ...msgFailures.map(m => ({
             type: 'message_error' as const,
             title: 'Falha: Mensagem Automática',
