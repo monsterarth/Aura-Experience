@@ -346,25 +346,25 @@ export function NotificationCenter() {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  // ─── Mark WhatsApp as read when panel opens ─────────────────────────────────
+  // ─── Mark all WhatsApp messages as read ────────────────────────────────────
 
-  const markWhatsappRead = useCallback(async (ids: string[]) => {
-    if (!ids.length) return;
+  const markAllRead = useCallback(async () => {
+    if (!propertyId) return;
     try {
       await fetch('/api/admin/notifications/mark-read', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messageIds: ids }),
+        body: JSON.stringify({ markAll: true, propertyId }),
       });
       setWhatsapp([]);
     } catch { /* silent */ }
-  }, []);
+  }, [propertyId]);
 
   const handleOpen = () => {
     setOpen(prev => {
       const next = !prev;
       if (next && whatsapp.length > 0) {
-        markWhatsappRead(whatsapp.map(m => m.id));
+        markAllRead();
       }
       return next;
     });
@@ -418,9 +418,19 @@ export function NotificationCenter() {
           {/* Panel header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <span className="text-sm font-black tracking-tight">Notificações</span>
-            <button onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground transition-colors">
-              <X size={16} />
-            </button>
+            <div className="flex items-center gap-2">
+              {whatsapp.length > 0 && (
+                <button
+                  onClick={markAllRead}
+                  className="text-[10px] font-bold text-muted-foreground hover:text-foreground transition-colors uppercase tracking-wide"
+                >
+                  Limpar mensagens
+                </button>
+              )}
+              <button onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground transition-colors">
+                <X size={16} />
+              </button>
+            </div>
           </div>
 
           <div className="max-h-[480px] overflow-y-auto">

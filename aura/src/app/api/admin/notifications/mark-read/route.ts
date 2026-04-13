@@ -11,25 +11,29 @@ export async function PATCH(request: NextRequest) {
     if (!supabaseAdmin) return NextResponse.json({ error: 'Server error' }, { status: 500 });
 
     const body = await request.json();
-    const { messageIds } = body as { messageIds: string[] };
+    const { messageIds, markAll, propertyId: bodyPropertyId } = body as {
+        messageIds?: string[];
+        markAll?: boolean;
+        propertyId?: string;
+    };
 
-    if (!Array.isArray(messageIds) || messageIds.length === 0) {
-        return NextResponse.json({ error: 'messageIds array required' }, { status: 400 });
-    }
-
-    const propertyId = auth.staff.propertyId;
-    if (!propertyId && auth.staff.role !== 'super_admin') {
+    const propertyId = auth.staff.propertyId || (auth.staff.role === 'super_admin' ? bodyPropertyId : null);
+    if (!propertyId) {
         return NextResponse.json({ error: 'Sem propriedade associada' }, { status: 403 });
     }
 
     let query = supabaseAdmin
         .from('messages')
         .update({ isReadByAdmin: true })
-        .in('id', messageIds);
+        .eq('propertyId', propertyId)
+        .eq('direction', 'inbound')
+        .eq('isReadByAdmin', false);
 
-    // Non-super_admin can only mark messages from their own property
-    if (propertyId) {
-        query = query.eq('propertyId', propertyId);
+    if (!markAll) {
+        if (!Array.isArray(messageIds) || messageIds.length === 0) {
+            return NextResponse.json({ error: 'messageIds array required' }, { status: 400 });
+        }
+        query = query.in('id', messageIds);
     }
 
     const { error } = await query;
