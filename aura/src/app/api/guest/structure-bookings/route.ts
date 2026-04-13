@@ -209,14 +209,49 @@ export async function POST(request: NextRequest) {
             }
         }
 
+        // Enrich audit log — same pattern as structure-service.ts
+        let auditUserName = "Guest App";
+        let auditDetails = `Reserva de hóspede na estrutura ${booking.structureId}.`;
+        try {
+            const { data: structData } = await supabaseAdmin
+                .from('structures').select('name, units').eq('id', booking.structureId).single();
+            const structureName = structData?.name || booking.structureId;
+
+            let unitLabel = '';
+            if (booking.unitId && structData?.units?.length) {
+                const unit = (structData.units as { id: string; name: string }[]).find(u => u.id === booking.unitId);
+                if (unit) unitLabel = ` (${unit.name})`;
+            }
+
+            let guestLabel = '';
+            if (stayId) {
+                const { data: stayData } = await supabaseAdmin
+                    .from('stays').select('guestId, cabinId').eq('id', stayId).single();
+                if (stayData) {
+                    const [{ data: cabinData }, { data: guestData }] = await Promise.all([
+                        supabaseAdmin.from('cabins').select('number').eq('id', stayData.cabinId).single(),
+                        supabaseAdmin.from('guests').select('fullName').eq('id', stayData.guestId).single(),
+                    ]);
+                    if (cabinData && guestData) {
+                        const firstName = (guestData.fullName as string).split(' ')[0];
+                        const cabinLabel = `${cabinData.number} - ${firstName}`;
+                        auditUserName = cabinLabel;
+                        guestLabel = ` para cabana ${cabinLabel}`;
+                    }
+                }
+            }
+
+            auditDetails = `Reserva em ${structureName}${unitLabel}${guestLabel}: ${booking.startTime}–${booking.endTime}`;
+        } catch { /* enrich fails silently */ }
+
         await AuditService.log({
             propertyId,
             userId: guestId || 'guest',
-            userName: "Guest App",
+            userName: auditUserName,
             action: "STRUCTURE_BOOKING_CREATED",
             entity: "STRUCTURE_BOOKING",
             entityId: id,
-            details: `Reserva de hóspede na estrutura ${booking.structureId}.`
+            details: auditDetails
         });
 
         return NextResponse.json({ id }, { status: 201 });

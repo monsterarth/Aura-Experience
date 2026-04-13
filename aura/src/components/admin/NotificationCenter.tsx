@@ -8,6 +8,7 @@ import { useProperty } from "@/context/PropertyContext";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -48,6 +49,37 @@ function timeAgo(ts: string) {
   }
 }
 
+function formatDate(dateStr: string) {
+  try {
+    return format(new Date(dateStr + 'T12:00:00'), "d/M", { locale: ptBR });
+  } catch {
+    return dateStr;
+  }
+}
+
+// ─── Browser notification helper ─────────────────────────────────────────────
+
+async function requestBrowserPermission(): Promise<boolean> {
+  if (typeof window === 'undefined' || !('Notification' in window)) return false;
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission === 'denied') return false;
+  const result = await Notification.requestPermission();
+  return result === 'granted';
+}
+
+function fireBrowserNotification(title: string, body: string, onClick?: () => void) {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+  try {
+    const n = new Notification(title, {
+      body,
+      icon: '/logo_flat.png',
+      tag: 'aura-message',
+    });
+    if (onClick) n.onclick = () => { window.focus(); onClick(); n.close(); };
+  } catch { /* ignore */ }
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function NotificationCenter() {
@@ -55,13 +87,33 @@ export function NotificationCenter() {
   const router = useRouter();
   const supabase = createClientBrowser();
   const panelRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const [open, setOpen] = useState(false);
   const [whatsapp, setWhatsapp] = useState<WhatsAppNotif[]>([]);
   const [concierge, setConcierge] = useState<ConciergeNotif[]>([]);
   const [bookings, setBookings] = useState<BookingNotif[]>([]);
 
+  // Track previous counts to detect new arrivals
+  const prevWhatsappIds = useRef<Set<string>>(new Set());
+  const prevConciergeCount = useRef(0);
+  const prevBookingsCount = useRef(0);
+  const initialized = useRef(false);
+
   const propertyId = property?.id;
+
+  // ─── Audio ──────────────────────────────────────────────────────────────────
+
+  const playSound = useCallback(() => {
+    try {
+      if (!audioRef.current) {
+        audioRef.current = new Audio('/notification.mp3');
+        audioRef.current.volume = 0.5;
+      }
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(() => { /* autoplay blocked */ });
+    } catch { /* ignore */ }
+  }, []);
 
   // ─── Fetch functions ────────────────────────────────────────────────────────
 
@@ -97,13 +149,43 @@ export function NotificationCenter() {
       }
     }
 
-    setWhatsapp(data.map((m: any) => ({
+    const enriched: WhatsAppNotif[] = data.map((m: any) => ({
       id: m.id,
       body: m.body,
       createdAt: m.createdAt,
       cabinName: stayMap[m.stayId] || undefined,
-    })));
-  }, [propertyId, supabase]);
+    }));
+
+    // Detect genuinely new messages (not present before)
+    if (initialized.current) {
+      const newMessages = enriched.filter(m => !prevWhatsappIds.current.has(m.id));
+      if (newMessages.length > 0) {
+        playSound();
+        newMessages.forEach(m => {
+          const sender = m.cabinName || 'Hóspede';
+          const preview = m.body.length > 80 ? m.body.slice(0, 80) + '…' : m.body;
+
+          // In-app toast
+          toast.message(`💬 ${sender}`, {
+            description: preview,
+            duration: 8000,
+            action: {
+              label: 'Ver',
+              onClick: () => router.push('/admin/comunicacao'),
+            },
+          });
+
+          // Browser notification (when tab is not focused)
+          if (document.visibilityState !== 'visible') {
+            fireBrowserNotification(`💬 ${sender}`, preview, () => router.push('/admin/comunicacao'));
+          }
+        });
+      }
+    }
+
+    prevWhatsappIds.current = new Set(enriched.map(m => m.id));
+    setWhatsapp(enriched);
+  }, [propertyId, supabase, playSound, router]);
 
   const fetchConcierge = useCallback(async () => {
     if (!propertyId) return;
@@ -128,14 +210,27 @@ export function NotificationCenter() {
     const itemMap: Record<string, string> = Object.fromEntries((itemsRes.data || []).map((i: any) => [i.id, i.name]));
     const cabinMap: Record<string, string> = Object.fromEntries((cabinsRes.data || []).map((c: any) => [c.id, c.name]));
 
-    setConcierge(data.map((r: any) => ({
+    const enriched = data.map((r: any) => ({
       id: r.id,
       itemName: itemMap[r.itemId] || 'Item',
       quantity: r.quantity,
       cabinName: cabinMap[r.cabinId] || undefined,
       createdAt: r.createdAt,
-    })));
-  }, [propertyId, supabase]);
+    }));
+
+    if (initialized.current && enriched.length > prevConciergeCount.current) {
+      playSound();
+      const newest = enriched[enriched.length - 1];
+      toast.message(`🛎️ Novo pedido de concierge`, {
+        description: `${newest.quantity}x ${newest.itemName}${newest.cabinName ? ` — ${newest.cabinName}` : ''}`,
+        duration: 8000,
+        action: { label: 'Ver', onClick: () => router.push('/admin/concierge') },
+      });
+    }
+
+    prevConciergeCount.current = enriched.length;
+    setConcierge(enriched);
+  }, [propertyId, supabase, playSound, router]);
 
   const fetchBookings = useCallback(async () => {
     if (!propertyId) return;
@@ -160,7 +255,6 @@ export function NotificationCenter() {
       structureMap = Object.fromEntries((structures || []).map((s: any) => [s.id, s.name]));
     }
 
-    // Resolve guestName for bookings that have stayId but no guestName
     const stayIds = Array.from(new Set(data.filter((b: any) => b.stayId && !b.guestName).map((b: any) => b.stayId)));
     let stayGuestMap: Record<string, string> = {};
     if (stayIds.length) {
@@ -173,7 +267,7 @@ export function NotificationCenter() {
       }
     }
 
-    setBookings(data.map((b: any) => ({
+    const enriched = data.map((b: any) => ({
       id: b.id,
       structureName: structureMap[b.structureId] || 'Estrutura',
       startTime: b.startTime,
@@ -181,17 +275,36 @@ export function NotificationCenter() {
       date: b.date,
       guestName: b.guestName || stayGuestMap[b.stayId] || undefined,
       createdAt: b.createdAt,
-    })));
-  }, [propertyId, supabase]);
+    }));
+
+    if (initialized.current && enriched.length > prevBookingsCount.current) {
+      playSound();
+      const newest = enriched[enriched.length - 1];
+      toast.message(`📅 Novo agendamento pendente`, {
+        description: `${newest.structureName}${newest.guestName ? ` — ${newest.guestName}` : ''}: ${newest.startTime}–${newest.endTime}`,
+        duration: 8000,
+        action: { label: 'Ver', onClick: () => router.push('/admin/core/structures/bookings') },
+      });
+    }
+
+    prevBookingsCount.current = enriched.length;
+    setBookings(enriched);
+  }, [propertyId, supabase, playSound, router]);
 
   // ─── Initial load ───────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!propertyId) return;
-    fetchWhatsapp();
-    fetchConcierge();
-    fetchBookings();
+    Promise.all([fetchWhatsapp(), fetchConcierge(), fetchBookings()]).then(() => {
+      initialized.current = true;
+    });
   }, [propertyId, fetchWhatsapp, fetchConcierge, fetchBookings]);
+
+  // ─── Request browser notification permission on mount ───────────────────────
+
+  useEffect(() => {
+    requestBrowserPermission();
+  }, []);
 
   // ─── Realtime subscriptions ─────────────────────────────────────────────────
 
@@ -285,11 +398,17 @@ export function NotificationCenter() {
         )}
         title="Notificações"
       >
-        <Bell size={18} />
+        <Bell size={18} className={cn(total > 0 && !open && "animate-[wiggle_1s_ease-in-out_infinite]")} />
         {total > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center leading-none">
-            {total > 99 ? '99+' : total}
-          </span>
+          <>
+            {/* Ping ring */}
+            <span className="absolute -top-1 -right-1 flex h-[18px] w-[18px]">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-60" />
+              <span className="relative inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-black rounded-full leading-none">
+                {total > 99 ? '99+' : total}
+              </span>
+            </span>
+          </>
         )}
       </button>
 
@@ -378,14 +497,6 @@ export function NotificationCenter() {
       )}
     </div>
   );
-}
-
-function formatDate(dateStr: string) {
-  try {
-    return format(new Date(dateStr + 'T12:00:00'), "d/M", { locale: ptBR });
-  } catch {
-    return dateStr;
-  }
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────

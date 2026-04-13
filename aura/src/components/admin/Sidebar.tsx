@@ -21,10 +21,12 @@ import { createClientBrowser } from "@/lib/supabase-browser";
 import Image from "next/image";
 import { NotificationCenter } from "@/components/admin/NotificationCenter";
 import { StaffEditModal } from "@/components/admin/StaffEditModal";
+import { useNotifications } from "@/context/NotificationContext";
 
 export const Sidebar = () => {
   const { userData, isSuperAdmin } = useAuth();
   const { currentProperty: property, setProperty } = useProperty();
+  const { counts: notifCounts } = useNotifications();
   const pathname = usePathname();
   const [allProperties, setAllProperties] = useState<Property[]>([]);
 
@@ -90,7 +92,7 @@ export const Sidebar = () => {
     { title: "Estadias", icon: Home, href: "/admin/stays", roles: ["super_admin", "admin", "reception", "governance"] },
     { title: "Mapa de Reservas", icon: Calendar, href: "/admin/reservation-map", roles: ["super_admin", "admin", "reception"] },
     { title: "Hóspedes", icon: UserSearch, href: "/admin/guests", roles: ["super_admin", "admin", "reception"] },
-    { title: "Comunicação", icon: MessageSquare, href: "/admin/comunicacao", roles: ["super_admin", "admin", "reception"] },
+    { title: "Comunicação", icon: MessageSquare, href: "/admin/comunicacao", roles: ["super_admin", "admin", "reception"], badge: notifCounts.messages },
   ];
 
   // ==========================================
@@ -199,7 +201,15 @@ export const Sidebar = () => {
                  </>
               )}
               <item.icon size={18} className={cn("shrink-0 relative z-10 transition-colors", isActive ? "text-[#E0FFFF] drop-shadow-[0_0_8px_rgba(224,255,255,0.8)]" : "")} />
-              {!isCollapsed && <span className="truncate relative z-10">{item.title}</span>}
+              {!isCollapsed && <span className="truncate relative z-10 flex-1">{item.title}</span>}
+              {!isCollapsed && item.badge > 0 && (
+                <span className="relative z-10 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center leading-none shrink-0">
+                  {item.badge > 99 ? '99+' : item.badge}
+                </span>
+              )}
+              {isCollapsed && item.badge > 0 && (
+                <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-red-500 rounded-full" />
+              )}
             </Link>
           );
         })}

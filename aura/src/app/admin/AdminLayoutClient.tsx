@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/admin/Sidebar";
 import { AuthProvider } from "@/context/AuthContext";
 import { PropertyProvider } from "@/context/PropertyContext";
 import { Toaster } from "sonner";
+import { NotificationProvider } from "@/context/NotificationContext";
 
 export default function AdminLayoutClient({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -13,6 +14,7 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
   return (
     <AuthProvider>
       <PropertyProvider>
+      <NotificationProvider>
         <div className="aura-admin-root flex min-[100dvh] w-full bg-[#141414] font-sans text-white overflow-hidden">
           <style>{`
             .aura-admin-root {
@@ -49,7 +51,8 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
             </div>
           </main>
         </div>
-        <Toaster position="bottom-right" richColors />
+        <Toaster position="top-right" richColors expand duration={7000} />
+      </NotificationProvider>
       </PropertyProvider>
     </AuthProvider>
   );
