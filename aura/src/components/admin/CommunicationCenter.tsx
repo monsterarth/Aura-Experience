@@ -202,6 +202,8 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
       .subscribe();
 
     supabase.from('communications').update({ unread: 0 }).eq('id', selectedPhone).eq('propertyId', propertyId).then();
+    // Mark all inbound messages from this contact as read so the sidebar badge clears
+    supabase.from('messages').update({ isReadByAdmin: true }).eq('contactId', selectedPhone).eq('propertyId', propertyId).eq('direction', 'inbound').eq('isReadByAdmin', false).then();
 
     return () => { supabase.removeChannel(msgChannel); };
   }, [propertyId, selectedPhone]);
