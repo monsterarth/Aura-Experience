@@ -104,7 +104,7 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
   const [loading, setLoading] = useState(true);
 
   // Controles de Interface
-  const [activeTab, setActiveTab] = useState<'inbox' | 'archived'>('inbox');
+  const [activeTab, setActiveTab] = useState<'inbox' | 'unread' | 'archived'>('inbox');
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedPhone, setSelectedPhone] = useState<string | null>(urlPhone);
 
@@ -628,7 +628,11 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
         .map(c => ({ phone: c.id, name: c.name, lastMsg: null, unread: 0, updatedAt: null, isGuest: c.isGuest ?? false }));
     }
 
-    const list = communications.filter(c => activeTab === 'archived' ? c.archived : !c.archived);
+    const list = communications.filter(c =>
+      activeTab === 'archived' ? c.archived :
+      activeTab === 'unread' ? !c.archived && (c.unread || 0) > 0 :
+      !c.archived
+    );
     return list.map(c => {
       const info = getContactInfo(c.id);
       return {
@@ -806,7 +810,15 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
         {!searchTerm && (
           <div className="flex bg-muted/50 p-1 mx-4 mt-3 rounded-lg">
             <button onClick={() => setActiveTab('inbox')} className={`flex-1 text-xs font-bold py-1.5 rounded-md transition-all ${activeTab === 'inbox' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}>
-              Caixa de Entrada
+              Todas
+            </button>
+            <button onClick={() => setActiveTab('unread')} className={`flex-1 text-xs font-bold py-1.5 rounded-md transition-all flex items-center justify-center gap-1.5 ${activeTab === 'unread' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}>
+              Não lidas
+              {communications.filter(c => !c.archived && (c.unread || 0) > 0).length > 0 && (
+                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none ${activeTab === 'unread' ? 'bg-red-500 text-white' : 'bg-red-500/20 text-red-400'}`}>
+                  {communications.filter(c => !c.archived && (c.unread || 0) > 0).length}
+                </span>
+              )}
             </button>
             <button onClick={() => setActiveTab('archived')} className={`flex-1 text-xs font-bold py-1.5 rounded-md transition-all ${activeTab === 'archived' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}>
               Arquivados
