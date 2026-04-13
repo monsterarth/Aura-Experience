@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Bell, MessageSquare, ShoppingBag, Calendar, X, ChevronRight } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import { useProperty } from "@/context/PropertyContext";
+import { useNotifications } from "@/context/NotificationContext";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -84,6 +85,7 @@ function fireBrowserNotification(title: string, body: string, onClick?: () => vo
 
 export function NotificationCenter() {
   const { currentProperty: property } = useProperty();
+  const { refetch: refetchNotifCounts } = useNotifications();
   const router = useRouter();
   const supabase = createClientBrowser();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -357,8 +359,9 @@ export function NotificationCenter() {
         body: JSON.stringify({ markAll: true, propertyId }),
       });
       setWhatsapp([]);
+      refetchNotifCounts();
     } catch { /* silent */ }
-  }, [propertyId]);
+  }, [propertyId, refetchNotifCounts]);
 
   const handleOpen = () => {
     setOpen(prev => {
