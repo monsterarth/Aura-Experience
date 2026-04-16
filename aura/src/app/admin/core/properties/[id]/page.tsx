@@ -80,7 +80,7 @@ export default function PropertySettingsPage() {
     const [settings, setSettings] = useState({
         whatsappNumber: "",
         whatsappEnabled: false,
-        whatsappConfig: { apiUrl: "", apiKey: "", token: "" },
+        whatsappConfig: { apiUrl: "", apiKey: "", instanceName: "", chatwootUrl: "", token: "" },
         customDomain: "",
         checkInTime: "14:00",
         checkOutTime: "12:00",
@@ -567,16 +567,16 @@ export default function PropertySettingsPage() {
 
                                 <div className={cn("space-y-4 transition-opacity", !settings.whatsappEnabled && "opacity-40 pointer-events-none")}>
                                     <div className="space-y-2">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">URL da API (Evolution / WPPConnect)</label>
+                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">URL da Evolution API</label>
                                         <input
                                             value={settings.whatsappConfig.apiUrl}
                                             onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, apiUrl: e.target.value } })}
-                                            placeholder="https://api.seudominio.com"
+                                            placeholder="https://evolution.seudominio.com"
                                             className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">API Key (Chave de Autenticação)</label>
+                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">API Key da Evolution</label>
                                         <input
                                             type="password"
                                             value={settings.whatsappConfig.apiKey}
@@ -585,16 +585,36 @@ export default function PropertySettingsPage() {
                                             className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
                                         />
                                     </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Nome da Instância Evolution</label>
+                                        <input
+                                            value={(settings.whatsappConfig as any).instanceName || ""}
+                                            onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, instanceName: e.target.value } })}
+                                            placeholder="ex: fazenda-rosa"
+                                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
+                                        />
+                                        <p className="text-xs text-muted-foreground">Nome exato da instância criada no painel da Evolution API.</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">URL do Chatwoot</label>
+                                        <input
+                                            value={(settings.whatsappConfig as any).chatwootUrl || ""}
+                                            onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, chatwootUrl: e.target.value } })}
+                                            placeholder="https://chatwoot.seudominio.com"
+                                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
+                                        />
+                                        <p className="text-xs text-muted-foreground">URL do seu Chatwoot para o inbox embutido na Central de Comunicação.</p>
+                                    </div>
                                 </div>
 
-                                {settings.whatsappEnabled && settings.whatsappConfig.apiUrl && settings.whatsappConfig.apiKey && (
+                                {settings.whatsappEnabled && settings.whatsappConfig.apiUrl && settings.whatsappConfig.apiKey && (settings.whatsappConfig as any).instanceName && (
                                     <div className="flex items-center gap-2 text-green-600 text-xs font-bold bg-green-500/10 p-3 rounded-xl">
                                         <CheckCircle2 size={14} /> Integração configurada — automações de mensagem habilitadas.
                                     </div>
                                 )}
-                                {settings.whatsappEnabled && (!settings.whatsappConfig.apiUrl || !settings.whatsappConfig.apiKey) && (
+                                {settings.whatsappEnabled && (!settings.whatsappConfig.apiUrl || !settings.whatsappConfig.apiKey || !(settings.whatsappConfig as any).instanceName) && (
                                     <div className="flex items-center gap-2 text-amber-600 text-xs font-bold bg-amber-500/10 p-3 rounded-xl">
-                                        <AlertTriangle size={14} /> Preencha URL e API Key para ativar o envio de mensagens.
+                                        <AlertTriangle size={14} /> Preencha URL, API Key e Nome da Instância para ativar o envio de mensagens.
                                     </div>
                                 )}
                             </section>

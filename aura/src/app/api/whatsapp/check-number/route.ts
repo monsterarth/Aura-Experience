@@ -1,57 +1,69 @@
 // src/app/api/whatsapp/check-number/route.ts
-import { NextResponse } from 'next/server';
-import { requireAuth, isAuthError } from '@/lib/api-auth';
-import { supabaseAdmin } from '@/lib/supabase';
+import { NextResponse } from "next/server";
+import { requireAuth, isAuthError } from "@/lib/api-auth";
+import { supabaseAdmin } from "@/lib/supabase";
 
 export async function POST(req: Request) {
   const auth = await requireAuth();
   if (isAuthError(auth)) return auth;
+
   try {
     const { number, propertyId } = await req.json();
 
     if (!number) {
-      return NextResponse.json({ error: 'O número é obrigatório' }, { status: 400 });
+      return NextResponse.json({ error: "O número é obrigatório" }, { status: 400 });
     }
 
-    // Buscar URL do WhatsApp da propriedade
-    let whatsappApiUrl = process.env.WHATSAPP_API_URL;
-    let whatsappApiKey = process.env.WHATSAPP_API_KEY;
+    let apiUrl = process.env.EVOLUTION_API_URL;
+    let apiKey = process.env.EVOLUTION_API_KEY;
+    let instanceName = process.env.EVOLUTION_INSTANCE;
 
     if (propertyId) {
       const { data: property } = await supabaseAdmin
-        .from('properties')
-        .select('settings')
-        .eq('id', propertyId)
+        .from("properties")
+        .select("settings")
+        .eq("id", propertyId)
         .single();
 
-      whatsappApiUrl = property?.settings?.whatsappConfig?.apiUrl || whatsappApiUrl;
-      whatsappApiKey = property?.settings?.whatsappConfig?.apiKey || whatsappApiKey;
+      const cfg = property?.settings?.whatsappConfig;
+      if (cfg) {
+        apiUrl = cfg.apiUrl || apiUrl;
+        apiKey = cfg.apiKey || apiKey;
+        instanceName =
+          cfg.instanceName ||
+          cfg.instances?.[0]?.instanceName ||
+          instanceName;
+      }
     }
 
-    if (!whatsappApiUrl || !whatsappApiKey) {
-      return NextResponse.json({ error: 'Configuração do WhatsApp ausente no servidor.' }, { status: 500 });
+    if (!apiUrl || !apiKey || !instanceName) {
+      return NextResponse.json({ error: "Configuração da Evolution API ausente no servidor." }, { status: 500 });
     }
 
-    const response = await fetch(`${whatsappApiUrl}/api/check-number`, {
-      method: 'POST',
+    const baseUrl = apiUrl.endsWith("/") ? apiUrl.slice(0, -1) : apiUrl;
+
+    const response = await fetch(`${baseUrl}/chat/whatsappNumbers/${instanceName}`, {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': whatsappApiKey,
+        "Content-Type": "application/json",
+        apikey: apiKey,
       },
-      body: JSON.stringify({ number }),
+      body: JSON.stringify({ numbers: [number] }),
     });
 
     if (!response.ok) {
-      throw new Error(`WhatsApp API respondeu com status: ${response.status}`);
+      throw new Error(`Evolution API respondeu com status: ${response.status}`);
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+    // Evolution returns an array: [{ exists: true, jid: "...", number: "..." }]
+    const result = Array.isArray(data) ? data[0] : data;
+    return NextResponse.json({ exists: result?.exists ?? false });
 
   } catch (error: any) {
-    console.error('[WhatsApp Check Number API] Error:', error);
+    console.error("[Check Number API] Error:", error);
     return NextResponse.json(
-      { error: 'Falha ao conectar com o serviço WhatsApp', details: error.message },
+      { error: "Falha ao conectar com a Evolution API", details: error.message },
       { status: 500 }
     );
   }

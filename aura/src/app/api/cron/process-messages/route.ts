@@ -2,28 +2,27 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { WhatsAppMessage } from "@/types/aura";
 
-export const dynamic = 'force-dynamic';
-export const maxDuration = 60; // Permite 60s de execução na Vercel
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
-// Função utilitária para fazer o código "dormir" (Delay)
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function GET(request: Request) {
-  const authHeader = request.headers.get('authorization');
-  if (process.env.NODE_ENV === 'production' && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const authHeader = request.headers.get("authorization");
+  if (process.env.NODE_ENV === "production" && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
     const now = new Date();
-    now.setMinutes(now.getMinutes() + 1); // Margem de segurança
+    now.setMinutes(now.getMinutes() + 1);
     const timeLimit = now.toISOString();
 
     const { data: snapshot, error: fetchError } = await supabaseAdmin
-      .from('messages')
-      .select('*')
-      .eq('status', 'pending')
-      .lte('scheduledFor', timeLimit)
+      .from("messages")
+      .select("*")
+      .eq("status", "pending")
+      .lte("scheduledFor", timeLimit)
       .limit(15);
 
     if (fetchError) throw fetchError;
@@ -38,10 +37,15 @@ export async function GET(request: Request) {
     for (const msgDoc of snapshot) {
       const msg = msgDoc as any as WhatsAppMessage;
 
-      await supabaseAdmin.from('messages').update({ status: 'processing' }).eq('id', msg.id);
+      await supabaseAdmin.from("messages").update({ status: "processing" }).eq("id", msg.id);
 
       try {
-        const { data: propertyDoc } = await supabaseAdmin.from('properties').select('settings').eq('id', msg.propertyId).single();
+        const { data: propertyDoc } = await supabaseAdmin
+          .from("properties")
+          .select("settings")
+          .eq("id", msg.propertyId)
+          .single();
+
         if (!propertyDoc) throw new Error("Propriedade não encontrada");
 
         const propertySettings = propertyDoc.settings as any;
@@ -49,63 +53,70 @@ export async function GET(request: Request) {
           throw new Error("WhatsApp não configurado ou desligado na propriedade.");
         }
 
-        const { apiUrl, apiKey } = propertySettings.whatsappConfig;
-        const baseUrl = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
+        const cfg = propertySettings.whatsappConfig;
+        const apiUrl: string = cfg.apiUrl;
+        const apiKey: string = cfg.apiKey;
+        const instanceName: string =
+          cfg.instanceName ||
+          cfg.instances?.[0]?.instanceName ||
+          process.env.EVOLUTION_INSTANCE ||
+          "";
 
-        const response = await fetch(`${baseUrl}/api/send`, {
-          method: 'POST',
+        if (!instanceName) throw new Error("Nome da instância Evolution não configurado.");
+
+        const baseUrl = apiUrl.endsWith("/") ? apiUrl.slice(0, -1) : apiUrl;
+
+        const response = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey
+            "Content-Type": "application/json",
+            apikey: apiKey,
           },
           body: JSON.stringify({
             number: msg.to,
-            message: msg.body
-          })
+            text: msg.body,
+          }),
         });
 
         if (!response.ok) {
           const errorText = await response.text();
-          let errorMessage = "Erro na API do WhatsApp Docker";
+          let errorMessage = "Erro na Evolution API";
           try {
             const errorJson = JSON.parse(errorText);
             errorMessage = errorJson.error || errorMessage;
-          } catch (e) {
+          } catch {
             errorMessage = errorText;
           }
           throw new Error(errorMessage);
         }
 
         const responseData = await response.json();
-        const metaMessageId = responseData.messageId;
+        // Evolution API returns: { key: { id: "..." }, status: "PENDING" }
+        const apiMessageId: string | null = responseData?.key?.id || null;
         const isoNow = new Date().toISOString();
 
-        if (metaMessageId) {
-          if (metaMessageId !== msg.id) {
-            await supabaseAdmin.from('messages').insert({
-              ...msg,
-              id: metaMessageId,
-              status: 'sent',
+        if (apiMessageId && apiMessageId !== msg.id) {
+          // Registar com o ID externo da Evolution como messageIdApi
+          await supabaseAdmin
+            .from("messages")
+            .update({
+              status: "sent",
+              messageIdApi: apiMessageId,
               attempts: (msg.attempts || 0) + 1,
               lastAttemptAt: isoNow,
-              errorMessage: null
-            });
-            await supabaseAdmin.from('messages').delete().eq('id', msg.id);
-          } else {
-            await supabaseAdmin.from('messages').update({
-              status: 'sent',
-              attempts: (msg.attempts || 0) + 1,
-              lastAttemptAt: isoNow,
-              errorMessage: null
-            }).eq('id', msg.id);
-          }
+              errorMessage: null,
+            })
+            .eq("id", msg.id);
         } else {
-          await supabaseAdmin.from('messages').update({
-            status: 'sent',
-            attempts: (msg.attempts || 0) + 1,
-            lastAttemptAt: isoNow,
-            errorMessage: null
-          }).eq('id', msg.id);
+          await supabaseAdmin
+            .from("messages")
+            .update({
+              status: "sent",
+              attempts: (msg.attempts || 0) + 1,
+              lastAttemptAt: isoNow,
+              errorMessage: null,
+            })
+            .eq("id", msg.id);
         }
 
         successCount++;
@@ -119,35 +130,45 @@ export async function GET(request: Request) {
         const isoNow = new Date().toISOString();
 
         if (nextAttempts >= 3) {
-          await supabaseAdmin.from('messages').update({
-            status: 'failed',
-            attempts: nextAttempts,
-            lastAttemptAt: isoNow,
-            errorMessage: error.message || "Erro desconhecido"
-          }).eq('id', msg.id);
+          await supabaseAdmin
+            .from("messages")
+            .update({
+              status: "failed",
+              attempts: nextAttempts,
+              lastAttemptAt: isoNow,
+              errorMessage: error.message || "Erro desconhecido",
+            })
+            .eq("id", msg.id);
         } else {
           const retryTime = new Date();
           retryTime.setMinutes(retryTime.getMinutes() + 5);
 
-          await supabaseAdmin.from('messages').update({
-            status: 'pending',
-            attempts: nextAttempts,
-            scheduledFor: retryTime.toISOString(),
-            lastAttemptAt: isoNow,
-            errorMessage: `Falha na tentativa ${nextAttempts}: ${error.message}`
-          }).eq('id', msg.id);
+          await supabaseAdmin
+            .from("messages")
+            .update({
+              status: "pending",
+              attempts: nextAttempts,
+              scheduledFor: retryTime.toISOString(),
+              lastAttemptAt: isoNow,
+              errorMessage: `Falha na tentativa ${nextAttempts}: ${error.message}`,
+            })
+            .eq("id", msg.id);
         }
         failCount++;
       }
     }
 
-    const { count } = await supabaseAdmin.from('messages').select('*', { count: 'exact', head: true }).eq('status', 'pending').lte('scheduledFor', timeLimit);
+    const { count } = await supabaseAdmin
+      .from("messages")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "pending")
+      .lte("scheduledFor", timeLimit);
 
     return NextResponse.json({
       success: true,
       processed: snapshot.length,
       leftInQueue: count || 0,
-      results: { sent: successCount, delayed_or_failed: failCount }
+      results: { sent: successCount, delayed_or_failed: failCount },
     });
 
   } catch (error: any) {
