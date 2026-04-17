@@ -17,7 +17,7 @@ import { MaidMobileApp } from "@/components/admin/MaidMobileApp";
 import { StaffMobileHub } from "@/components/admin/StaffMobileHub";
 import {
   Sparkles, Clock, CheckCircle2, AlertCircle,
-  Coffee, ArrowRight, ClipboardCheck, Plus, UserPlus, Settings2, Edit3, MessageSquare, Archive, Calendar as CalendarIcon, X, Moon, LayoutDashboard, Smartphone
+  Coffee, ArrowRight, ClipboardCheck, Plus, UserPlus, Settings2, Edit3, MessageSquare, Archive, Calendar as CalendarIcon, X, Moon, LayoutDashboard, Smartphone, CheckSquare, Square, CheckCheck, Trash2, Loader2
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -33,6 +33,8 @@ export default function GovernancePage() {
   const [loadingInitial, setLoadingInitial] = useState(true);
 
   const [govMode, setGovMode] = useState<'admin' | 'maid' | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchLoading, setBatchLoading] = useState(false);
   const [isChecklistOpen, setIsChecklistOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<HousekeepingTask | null>(null);
   const [isMinibarOpen, setIsMinibarOpen] = useState(false);
@@ -208,6 +210,57 @@ export default function GovernancePage() {
     }
   };
 
+  const toggleSelect = (taskId: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(taskId) ? next.delete(taskId) : next.add(taskId);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const handleBatchRelease = async () => {
+    if (selectedIds.size === 0) return;
+    setBatchLoading(true);
+    try {
+      const actorId = userData?.id || "unknown";
+      const actorName = userData?.fullName || "Admin";
+      await Promise.all(
+        Array.from(selectedIds).map(id =>
+          HousekeepingService.confirmTaskQuality(property.id, id, "Liberado em lote", actorId, actorName)
+        )
+      );
+      toast.success(`${selectedIds.size} cabana(s) liberada(s)!`);
+      clearSelection();
+    } catch {
+      toast.error("Erro ao liberar em lote.");
+    } finally {
+      setBatchLoading(false);
+    }
+  };
+
+  const handleBatchCancel = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Cancelar ${selectedIds.size} tarefa(s) selecionada(s)?`)) return;
+    setBatchLoading(true);
+    try {
+      const actorId = userData?.id || "unknown";
+      const actorName = userData?.fullName || "Admin";
+      await Promise.all(
+        Array.from(selectedIds).map(id =>
+          HousekeepingService.updateTask(property.id, id, { status: 'cancelled' }, actorId, actorName)
+        )
+      );
+      toast.success(`${selectedIds.size} tarefa(s) cancelada(s).`);
+      clearSelection();
+    } catch {
+      toast.error("Erro ao cancelar em lote.");
+    } finally {
+      setBatchLoading(false);
+    }
+  };
+
   const handleCreateMockTask = async () => {
     try {
       const cabinKeys = Object.keys(cabins);
@@ -274,15 +327,25 @@ export default function GovernancePage() {
               ? safeAssignedArray.map(id => maids.find(m => m.id === id)?.fullName.split(' ')[0]).filter(Boolean).join(', ')
               : "Ninguém";
 
-            return (
-              <div key={task.id} className="bg-card border border-border p-4 rounded-xl shadow-sm space-y-4 hover:border-primary/50 transition-colors group relative">
+            const isSelected = selectedIds.has(task.id);
 
-                <button
-                  onClick={() => { setSelectedTask(task); setIsManagerOpen(true); }}
-                  className="absolute top-4 right-4 p-2 bg-secondary text-muted-foreground hover:text-primary rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                >
-                  <Edit3 size={16} />
-                </button>
+            return (
+              <div key={task.id} className={cn("bg-card border p-4 rounded-xl shadow-sm space-y-4 transition-colors group relative", isSelected ? "border-primary ring-1 ring-primary/40" : "border-border hover:border-primary/50")}>
+
+                <div className="absolute top-4 right-4 flex items-center gap-1.5">
+                  <button
+                    onClick={() => { setSelectedTask(task); setIsManagerOpen(true); }}
+                    className="p-2 bg-secondary text-muted-foreground hover:text-primary rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                  >
+                    <Edit3 size={16} />
+                  </button>
+                  <button
+                    onClick={() => toggleSelect(task.id)}
+                    className={cn("p-1.5 rounded-lg transition-colors", isSelected ? "text-primary" : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-primary")}
+                  >
+                    {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
+                  </button>
+                </div>
 
                 <div className="flex justify-between items-start">
                   <div className="pr-10">
@@ -399,6 +462,36 @@ export default function GovernancePage() {
           </button>
         </div>
       </div>
+
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-primary/5 border border-primary/20 rounded-2xl animate-in slide-in-from-top-2 fade-in duration-200">
+          <button onClick={clearSelection} className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg transition-colors">
+            <X size={16} />
+          </button>
+          <span className="text-sm font-black text-primary flex items-center gap-2">
+            <CheckCheck size={16} /> {selectedIds.size} selecionada{selectedIds.size !== 1 ? 's' : ''}
+          </span>
+          <div className="flex-1" />
+          {batchLoading ? (
+            <Loader2 size={18} className="animate-spin text-muted-foreground" />
+          ) : (
+            <>
+              <button
+                onClick={handleBatchCancel}
+                className="px-4 py-2 bg-red-500/10 text-red-600 hover:bg-red-500 hover:text-white text-xs font-bold uppercase rounded-xl transition-all flex items-center gap-1.5"
+              >
+                <Trash2 size={14} /> Cancelar Faxinas
+              </button>
+              <button
+                onClick={handleBatchRelease}
+                className="px-4 py-2 bg-green-600 text-white hover:bg-green-700 text-xs font-bold uppercase rounded-xl transition-all flex items-center gap-1.5 shadow-sm"
+              >
+                <CheckCheck size={14} /> Liberar Cabanas
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="flex-1 overflow-x-auto">
         <div className="flex gap-6 h-full min-w-max pb-4">
