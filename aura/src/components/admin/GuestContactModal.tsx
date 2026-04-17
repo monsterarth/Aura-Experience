@@ -20,8 +20,6 @@ interface GuestContactModalProps {
   guest: Guest;
   stay: Stay;
   onClose: () => void;
-  whatsappApiUrl?: string;
-  whatsappToken?: string;
 }
 
 export function GuestContactModal({ propertyId, guest, stay, onClose }: GuestContactModalProps) {

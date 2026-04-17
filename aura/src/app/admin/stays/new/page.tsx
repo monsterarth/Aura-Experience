@@ -169,7 +169,7 @@ function NewStayPageContent() {
       const whatsRes = await fetch('/api/whatsapp/check-number', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ number: cleanedPhone })
+        body: JSON.stringify({ number: cleanedPhone, propertyId: contextProperty.id })
       });
 
       const whatsData = await whatsRes.json();

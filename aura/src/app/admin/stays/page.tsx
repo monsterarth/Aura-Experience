@@ -621,8 +621,6 @@ export default function StaysPage() {
             stay={selectedStay}
             guest={selectedGuest}
             onClose={() => setIsContactModalOpen(false)}
-            whatsappApiUrl={contextProperty.settings?.whatsappConfig?.apiUrl}
-            whatsappToken={contextProperty.settings?.whatsappConfig?.token}
           />
         )}
 

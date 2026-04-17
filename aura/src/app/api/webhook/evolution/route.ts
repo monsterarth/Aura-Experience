@@ -158,7 +158,7 @@ export async function POST(req: Request) {
         createdAt: isoNow,
         attempts: 0,
       },
-      { onConflict: "id" }
+      { onConflict: "id", ignoreDuplicates: true }
     );
 
     // 2. Atualizar sidebar (communications)
@@ -170,7 +170,7 @@ export async function POST(req: Request) {
       .single();
 
     const currentUnread = comms?.unread || 0;
-    const newUnread = direction === "inbound" ? currentUnread + 1 : 0;
+    const newUnread = direction === "inbound" ? currentUnread + 1 : currentUnread;
 
     await supabaseAdmin.from("communications").upsert(
       {
@@ -181,7 +181,7 @@ export async function POST(req: Request) {
         unread: newUnread,
         ...(direction === "inbound" && { archived: false }),
       },
-      { onConflict: "id" }
+      { onConflict: "id,propertyId" }
     );
 
     // 3. Garantir contato na agenda (não sobrescreve contato existente)
