@@ -44,21 +44,15 @@ export const GuestService = {
   },
 
   async listGuests(propertyId: string, search?: string): Promise<Guest[]> {
-    let query = supabase
-      .from('guests')
-      .select('*')
-      .eq('propertyId', propertyId)
-      .order('fullName', { ascending: true });
-
-    if (search?.trim()) {
-      const term = search.trim();
-      query = query.or(
-        `fullName.ilike.%${term}%,email.ilike.%${term}%,phone.ilike.%${term}%,id.ilike.%${term}%`
-      );
+    const params = new URLSearchParams({ propertyId });
+    if (search?.trim()) params.set('search', search.trim());
+    try {
+      const res = await fetch(`/api/admin/guests?${params}`);
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
     }
-
-    const { data } = await query.limit(100);
-    return (data || []) as Guest[];
   },
 
   async getGuestStays(propertyId: string, guestId: string): Promise<any[]> {

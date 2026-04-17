@@ -100,11 +100,13 @@ export default function StaysPage() {
     if (!contextProperty?.id) return;
     setLoading(true);
     try {
-      const data = await StayService.getStayWithGuestAndCabin(contextProperty.id, stay.id);
+      const data = await StayService.getStayWithGuestAndCabinAdmin(contextProperty.id, stay.id);
       if (data) {
         setSelectedStay({ ...data.stay, guestName: data.guest?.fullName, cabinName: data.cabin?.name });
         setSelectedGuest(data.guest);
         setIsDetailsModalOpen(true);
+      } else {
+        toast.error("Ficha não encontrada para esta reserva.");
       }
     } catch (error) {
       console.error(error);
@@ -119,7 +121,7 @@ export default function StaysPage() {
     if (!contextProperty?.id) return;
     setLoading(true);
     try {
-      const data = await StayService.getStayWithGuestAndCabin(contextProperty.id, stay.id);
+      const data = await StayService.getStayWithGuestAndCabinAdmin(contextProperty.id, stay.id);
       if (data && data.guest) {
         setSelectedStay(data.stay);
         setSelectedGuest(data.guest);

@@ -172,7 +172,7 @@ export const StayService = {
     const { data: stay } = await supabase.from('stays').select('*').eq('id', stayId).eq('propertyId', propertyId).single();
     if (!stay) return null;
 
-    const { data: guest } = await supabase.from('guests').select('*').eq('id', stay.guestId).eq('propertyId', propertyId).maybeSingle();
+    const { data: guest } = await supabase.from('guests').select('*').eq('id', stay.guestId).maybeSingle();
 
     return { stay: stay as Stay, guest: guest as Guest | null };
   },
@@ -286,7 +286,7 @@ export const StayService = {
     if (!stay) return null;
 
     const [gRes, cRes] = await Promise.all([
-      supabase.from('guests').select('*').eq('id', stay.guestId).eq('propertyId', propertyId).maybeSingle(),
+      supabase.from('guests').select('*').eq('id', stay.guestId).maybeSingle(),
       supabase.from('cabins').select('*').eq('id', stay.cabinId).eq('propertyId', propertyId).maybeSingle()
     ]);
 
@@ -295,6 +295,12 @@ export const StayService = {
       guest: gRes.data as Guest | null,
       cabin: cRes.data as Cabin | null
     };
+  },
+
+  async getStayWithGuestAndCabinAdmin(propertyId: string, stayId: string) {
+    const res = await fetch(`/api/admin/stays/${stayId}?propertyId=${encodeURIComponent(propertyId)}`);
+    if (!res.ok) return null;
+    return res.json() as Promise<{ stay: Stay; guest: Guest | null; cabin: Cabin | null }>;
   },
 
   async getStaysByStatus(propertyId: string, statusList: string[]) {
