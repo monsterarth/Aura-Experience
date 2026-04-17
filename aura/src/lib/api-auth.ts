@@ -2,7 +2,7 @@
 // Helper de autenticação server-side para API Routes.
 // Extrai sessão do cookie, valida role e retorna dados do staff.
 import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { UserRole } from '@/types/aura';
@@ -20,9 +20,21 @@ export interface AuthResult {
 
 /**
  * Extrai o user autenticado a partir dos cookies da request.
- * Retorna null se não houver sessão válida.
+ * Fast-path: lê x-user-id injetado pelo middleware (evita round-trip ao Supabase Auth).
+ * Fallback: chama getUser() diretamente (para casos sem middleware).
  */
 async function getAuthenticatedUser(): Promise<{ userId: string; email: string } | null> {
+    // Fast-path: middleware already validated the session and injected the userId.
+    // This eliminates the duplicate getUser() network call that caused intermittent 401s.
+    try {
+        const headerStore = headers();
+        const userId = headerStore.get('x-user-id');
+        if (userId) return { userId, email: '' };
+    } catch {
+        // headers() throws outside request context — fall through to cookie fallback
+    }
+
+    // Fallback: read session from cookies directly (e.g. when middleware didn't run)
     try {
         const cookieStore = cookies();
         const supabase = createServerClient(
@@ -30,12 +42,8 @@ async function getAuthenticatedUser(): Promise<{ userId: string; email: string }
             process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
             {
                 cookies: {
-                    getAll() {
-                        return cookieStore.getAll();
-                    },
-                    setAll() {
-                        // No-op in API routes (read-only)
-                    },
+                    getAll() { return cookieStore.getAll(); },
+                    setAll() {},
                 },
             }
         );

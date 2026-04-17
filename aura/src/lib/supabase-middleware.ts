@@ -45,6 +45,12 @@ export async function updateSession(request: NextRequest) {
     // https://supabase.com/docs/guides/auth/server-side/nextjs
     const { data: { user } } = await supabase.auth.getUser()
 
+    // Propagate validated userId to API routes so they skip a redundant getUser() call.
+    // API routes read x-user-id from headers() — eliminates double round-trip to Supabase Auth.
+    if (user) {
+        supabaseResponse.headers.set('x-user-id', user.id);
+    }
+
     const pathname = request.nextUrl.pathname;
     const isAdminPage = pathname.startsWith('/admin') && !pathname.includes('/login');
     const isAdminApi = pathname.startsWith('/api/admin');
