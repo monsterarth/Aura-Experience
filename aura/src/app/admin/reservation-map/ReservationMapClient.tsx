@@ -218,13 +218,14 @@ export default function ReservationMapClient() {
                     const guestIds = Array.from(new Set(stays.map((s: any) => s.guestId).filter(Boolean))) as string[];
                     let guestMap: Record<string, string> = {};
                     if (guestIds.length > 0) {
-                        const { data: guestsData } = await supabase
-                            .from('guests')
-                            .select('id, fullName')
-                            .in('id', guestIds);
-                        if (guestsData) {
-                            guestMap = Object.fromEntries(guestsData.map((g: any) => [g.id, g.fullName]));
-                        }
+                        try {
+                            const res = await fetch('/api/admin/guests/names', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ ids: guestIds }),
+                            });
+                            if (res.ok) guestMap = await res.json();
+                        } catch { /* silent — map stays empty, names show as "Hóspede" */ }
                     }
 
                     return stays.map((s: any) => ({
@@ -333,7 +334,7 @@ export default function ReservationMapClient() {
     const handleStayClick = async (stay: StayWithGuest) => {
         if (!contextProperty?.id) return;
         try {
-            const data = await StayService.getStayWithGuestAndCabin(contextProperty.id, stay.id);
+            const data = await StayService.getStayWithGuestAndCabinAdmin(contextProperty.id, stay.id);
             if (data) {
                 setSelectedStay({ ...data.stay, guestName: data.guest?.fullName, cabinName: data.cabin?.name });
                 setSelectedGuest(data.guest);

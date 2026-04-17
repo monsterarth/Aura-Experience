@@ -175,11 +175,13 @@ export class ContactService {
   }
 
   static async listContacts(propertyId: string): Promise<Contact[]> {
-    const { data } = await supabase.from('contacts')
-      .select('*')
-      .eq('propertyId', propertyId)
-      .order('updatedAt', { ascending: false });
-    return (data as Contact[]) || [];
+    try {
+      const res = await fetch(`/api/admin/contacts?propertyId=${encodeURIComponent(propertyId)}`);
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
+    }
   }
 
   static async resolveContactContext(propertyId: string, phoneId: string): Promise<ContactContext> {

@@ -191,7 +191,7 @@ export default function StayDetailPage() {
       setLoading(true);
       try {
         const [result, cabinsData, generos, racas, transportes, motivos, tiposDocumento] = await Promise.all([
-          StayService.getStayWithGuestAndCabin(propertyId, stayId as string),
+          StayService.getStayWithGuestAndCabinAdmin(propertyId, stayId as string),
           CabinService.getCabinsByProperty(propertyId),
           FnrhService.getGeneros(), FnrhService.getRacas(),
           FnrhService.getMeiosTransporte(), FnrhService.getMotivosViagem(), FnrhService.getTiposDocumento(),
@@ -259,7 +259,7 @@ export default function StayDetailPage() {
       await Promise.all(ops);
       toast.success("Ficha atualizada!");
       setIsEditing(false); setExpandedArea(null);
-      const upd = await StayService.getStayWithGuestAndCabin(propertyId!, stay.id);
+      const upd = await StayService.getStayWithGuestAndCabinAdmin(propertyId!, stay.id);
       if (upd) { setStay(upd.stay); setGuest(upd.guest); initData(upd.stay, upd.guest); }
     } catch (err: any) {
       const msg = err?.message ?? "";
@@ -283,7 +283,7 @@ export default function StayDetailPage() {
     try {
       if (fin) { await StayService.performCheckOut(propertyId!, stay.id, userData?.id || "ADMIN", userData?.fullName || "Recepção"); toast.success("Check-out realizado!"); }
       else      { await StayService.undoCheckOut(propertyId!, stay.id, stay.cabinId, userData?.id || "ADMIN", userData?.fullName || "Recepção"); toast.success("Estadia reativada!"); }
-      const upd = await StayService.getStayWithGuestAndCabin(propertyId!, stay.id);
+      const upd = await StayService.getStayWithGuestAndCabinAdmin(propertyId!, stay.id);
       if (upd) { setStay(upd.stay); setGuest(upd.guest); }
     } catch { toast.error("Erro na operação."); } finally { setIsSaving(false); }
   };
