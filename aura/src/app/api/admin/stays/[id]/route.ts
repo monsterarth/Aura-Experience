@@ -8,15 +8,10 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     if (isAuthError(auth)) return auth;
     if (!supabaseAdmin) return NextResponse.json(null, { status: 500 });
 
-    const { searchParams } = new URL(request.url);
-    const propertyId = searchParams.get('propertyId');
-    if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
-
     const { data: stay } = await supabaseAdmin
         .from('stays')
         .select('*')
         .eq('id', params.id)
-        .eq('propertyId', propertyId)
         .single();
 
     if (!stay) return NextResponse.json(null, { status: 404 });

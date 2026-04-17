@@ -297,8 +297,8 @@ export const StayService = {
     };
   },
 
-  async getStayWithGuestAndCabinAdmin(propertyId: string, stayId: string) {
-    const res = await fetch(`/api/admin/stays/${stayId}?propertyId=${encodeURIComponent(propertyId)}`);
+  async getStayWithGuestAndCabinAdmin(_propertyId: string, stayId: string) {
+    const res = await fetch(`/api/admin/stays/${stayId}`);
     if (!res.ok) return null;
     return res.json() as Promise<{ stay: Stay; guest: Guest | null; cabin: Cabin | null }>;
   },

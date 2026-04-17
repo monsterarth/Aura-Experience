@@ -186,25 +186,29 @@ export default function StayDetailPage() {
   }, []);
 
   useEffect(() => {
-    if (!propertyId || !stayId) return;
+    if (!stayId) return;
     (async () => {
       setLoading(true);
       try {
-        const [result, cabinsData, generos, racas, transportes, motivos, tiposDocumento] = await Promise.all([
-          StayService.getStayWithGuestAndCabinAdmin(propertyId, stayId as string),
-          CabinService.getCabinsByProperty(propertyId),
+        const [result, generos, racas, transportes, motivos, tiposDocumento] = await Promise.all([
+          StayService.getStayWithGuestAndCabinAdmin("", stayId as string),
           FnrhService.getGeneros(), FnrhService.getRacas(),
           FnrhService.getMeiosTransporte(), FnrhService.getMotivosViagem(), FnrhService.getTiposDocumento(),
         ]);
         if (!result) return;
         setStay(result.stay); setGuest(result.guest);
-        setCabins(cabinsData);
         setFnrhDomains({ generos, racas, transportes, motivos, tiposDocumento });
         initData(result.stay, result.guest);
-        loadFolio();
       } finally { setLoading(false); }
     })();
-  }, [propertyId, stayId, initData, loadFolio]);
+  }, [stayId, initData]);
+
+  // Carrega cabanas e folio assim que propertyId estiver disponível
+  useEffect(() => {
+    if (!propertyId) return;
+    CabinService.getCabinsByProperty(propertyId).then(setCabins);
+    loadFolio();
+  }, [propertyId, loadFolio]);
 
   useEffect(() => {
     if (!stayId) return;
@@ -395,7 +399,7 @@ export default function StayDetailPage() {
 
   // ── Early returns ─────────────────────────────────────────────────────────
 
-  if (!currentProperty || loading) return (
+  if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <Loader2 className="animate-spin text-primary" size={40} />
     </div>
