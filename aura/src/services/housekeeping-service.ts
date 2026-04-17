@@ -157,10 +157,12 @@ export const HousekeepingService = {
       })
       .eq('id', taskId);
 
-    // Se concluiu Diária ou Custom, o status do espaço fica Available
+    // Se concluiu Diária ou Custom, respeita hóspede in-house
     if (newStatus === 'completed') {
       if (task.cabinId) {
-        await supabase.from('cabins').update({ status: 'available' }).eq('id', task.cabinId);
+        const { data: cabin } = await supabase.from('cabins').select('currentStayId').eq('id', task.cabinId).single();
+        const cabinStatus = cabin?.currentStayId ? 'occupied' : 'available';
+        await supabase.from('cabins').update({ status: cabinStatus }).eq('id', task.cabinId);
       } else if (task.structureId) {
         await supabase.from('structures').update({ status: 'available' }).eq('id', task.structureId);
       }
@@ -186,7 +188,9 @@ export const HousekeepingService = {
       .eq('id', taskId);
 
     if (task.cabinId) {
-      await supabase.from('cabins').update({ status: 'available' }).eq('id', task.cabinId);
+      const { data: cabin } = await supabase.from('cabins').select('currentStayId').eq('id', task.cabinId).single();
+      const cabinStatus = cabin?.currentStayId ? 'occupied' : 'available';
+      await supabase.from('cabins').update({ status: cabinStatus }).eq('id', task.cabinId);
     } else if (task.structureId) {
       await supabase.from('structures').update({ status: 'available' }).eq('id', task.structureId);
     }
