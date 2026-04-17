@@ -44,17 +44,18 @@ export const HousekeepingService = {
 
     fetchInitial();
 
+    // Safety net: cobre DELETEs perdidos por RLS e reconexões de canal
+    const intervalId = setInterval(fetchInitial, 15_000);
+
     const channel = supabase.channel(`hk_tasks_${propertyId}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'housekeeping_tasks', filter: `propertyId=eq.${propertyId}` },
-        () => {
-          // Refetch na integridade ao invés de merge manual de diffs pra reduzir bugs em tasks aninhadas
-          fetchInitial();
-        }
+        () => { fetchInitial(); }
       )
       .subscribe();
 
     return () => {
+      clearInterval(intervalId);
       supabase.removeChannel(channel);
     };
   },
