@@ -202,7 +202,7 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
     } else {
       setLoading(false);
     }
-  }, [initialSlug, userData, isSuperAdmin, authLoading, initialProperty, fetchPropertyBySlug, fetchPropertyById, handleSetProperty, property?.id]);
+  }, [initialSlug, userData, isSuperAdmin, authLoading, initialProperty, fetchPropertyBySlug, fetchPropertyById, handleSetProperty]);
 
   return (
     <PropertyContext.Provider value={{ currentProperty: property, setProperty: handleSetProperty, loading, error, refreshProperty: fetchPropertyBySlug }}>
