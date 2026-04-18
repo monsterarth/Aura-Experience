@@ -222,6 +222,21 @@ export class AutomationService {
     }
   }
 
+  static async sendNow(propertyId: string, messageId: string): Promise<{ ok: boolean; error?: string }> {
+    try {
+      const response = await fetch('/api/admin/messages/send-now', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ propertyId, messageId }),
+      });
+      const data = await response.json();
+      if (!response.ok) return { ok: false, error: data.error || `HTTP ${response.status}` };
+      return { ok: true };
+    } catch (error: any) {
+      return { ok: false, error: error.message || "Erro de rede" };
+    }
+  }
+
   static async cancelMessagesBatch(propertyId: string, messageIds: string[]): Promise<boolean> {
     try {
       const { error } = await supabase.from('messages')

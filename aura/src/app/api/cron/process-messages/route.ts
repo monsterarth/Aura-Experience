@@ -49,24 +49,24 @@ export async function GET(request: Request) {
         if (!propertyDoc) throw new Error("Propriedade não encontrada");
 
         const propertySettings = propertyDoc.settings as any;
-        if (!propertySettings?.whatsappEnabled || !propertySettings?.whatsappConfig?.apiUrl) {
-          throw new Error("WhatsApp não configurado ou desligado na propriedade.");
+        if (!propertySettings?.whatsappEnabled) {
+          throw new Error("WhatsApp desligado na propriedade.");
         }
 
-        const cfg = propertySettings.whatsappConfig;
-        const apiUrl: string = cfg.apiUrl;
-        const apiKey: string = cfg.apiKey;
+        const cfg = propertySettings.whatsappConfig ?? {};
+        const apiUrl: string = cfg.apiUrl || process.env.EVOLUTION_API_URL || "";
+        const apiKey: string = cfg.apiKey || process.env.EVOLUTION_API_KEY || "";
         const instanceName: string =
           cfg.instanceName ||
           cfg.instances?.[0]?.instanceName ||
           process.env.EVOLUTION_INSTANCE ||
           "";
 
-        if (!instanceName) throw new Error("Nome da instância Evolution não configurado.");
+        if (!apiUrl || !apiKey || !instanceName) throw new Error("Configuração da Evolution API ausente.");
 
         const baseUrl = apiUrl.endsWith("/") ? apiUrl.slice(0, -1) : apiUrl;
 
-        const response = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
+        const response = await fetch(`${baseUrl}/message/sendText/${encodeURIComponent(instanceName)}`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

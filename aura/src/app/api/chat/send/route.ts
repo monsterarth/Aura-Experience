@@ -41,7 +41,7 @@ export async function POST(req: Request) {
 
     const baseUrl = apiUrl.endsWith("/") ? apiUrl.slice(0, -1) : apiUrl;
 
-    const response = await fetch(`${baseUrl}/message/sendText/${instanceName}`, {
+    const response = await fetch(`${baseUrl}/message/sendText/${encodeURIComponent(instanceName)}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

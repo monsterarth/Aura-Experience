@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { supabase } from "@/lib/supabase";
 import { WhatsAppMessage } from "@/types/aura";
 import { AutomationService } from "@/services/automation-service";
 import { Button } from "@/components/ui/button";
 import {
-  Bot, CheckCircle2, Clock, AlertCircle, RefreshCw, MessageSquareWarning, Loader2, CalendarClock, Edit2, XCircle, Trash2, Ban, CheckSquare, Square
+  Bot, CheckCircle2, Clock, AlertCircle, RefreshCw, MessageSquareWarning, Loader2, CalendarClock, Edit2, XCircle, Trash2, Ban, CheckSquare, Square, SendHorizonal
 } from "lucide-react";
 
 export default function AutomationsQueuePage() {
@@ -21,42 +21,59 @@ export default function AutomationsQueuePage() {
   const [isCancelling, setIsCancelling] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBatchCancelling, setIsBatchCancelling] = useState(false);
+  const [sendingNowId, setSendingNowId] = useState<string | null>(null);
+
+  const fetchMessages = useCallback(async () => {
+    if (!property?.id) return;
+    const archiveThreshold = new Date();
+    archiveThreshold.setDate(archiveThreshold.getDate() - 4);
+
+    const { data } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('propertyId', property.id)
+      .eq('isAutomated', true)
+      .order('createdAt', { ascending: false })
+      .limit(200);
+
+    if (data) {
+      const filteredData = data.filter((m: any) => {
+        if (['sent', 'delivered', 'read'].includes(m.status)) {
+          if (new Date(m.createdAt) < archiveThreshold) return false;
+        }
+        return true;
+      });
+      setMessages(filteredData as any[]);
+    }
+    setLoading(false);
+  }, [property?.id]);
 
   useEffect(() => {
     if (!property?.id) return;
 
-    const fetchMessages = async () => {
-      const archiveThreshold = new Date();
-      archiveThreshold.setDate(archiveThreshold.getDate() - 4);
-
-      const { data } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('propertyId', property.id)
-        .eq('isAutomated', true)
-        .order('createdAt', { ascending: false })
-        .limit(200);
-
-      if (data) {
-        const filteredData = data.filter((m: any) => {
-          if (['sent', 'delivered', 'read'].includes(m.status)) {
-            if (new Date(m.createdAt) < archiveThreshold) return false;
-          }
-          return true;
-        });
-        setMessages(filteredData as any[]);
-      }
-      setLoading(false);
-    };
-
     fetchMessages();
 
     const channel = supabase.channel('automations_queue')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `propertyId=eq.${property.id}` }, () => { fetchMessages(); })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `propertyId=eq.${property.id}` }, (payload: any) => {
+        const updated = payload.new as any;
+        const archiveThreshold = new Date();
+        archiveThreshold.setDate(archiveThreshold.getDate() - 4);
+        const keep = !(['sent', 'delivered', 'read'].includes(updated.status) && new Date(updated.createdAt) < archiveThreshold);
+        setMessages(prev => {
+          const exists = prev.some(m => m.id === updated.id);
+          if (!keep) return prev.filter(m => m.id !== updated.id);
+          if (exists) return prev.map(m => m.id === updated.id ? updated : m);
+          return [updated, ...prev];
+        });
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `propertyId=eq.${property.id}` }, (payload: any) => {
+        const inserted = payload.new as any;
+        if (inserted.isAutomated) setMessages(prev => [inserted, ...prev]);
+      })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [property?.id]);
+  }, [property?.id, fetchMessages]);
 
   // Clear selection when switching tabs
   useEffect(() => { setSelectedIds(new Set()); }, [activeTab]);
@@ -89,6 +106,15 @@ export default function AutomationsQueuePage() {
     const success = await AutomationService.cancelMessage(property.id, messageId);
     if (!success) alert("Falha ao cancelar mensagem.");
     setIsCancelling(null);
+  };
+
+  const handleSendNow = async (messageId: string) => {
+    if (!property?.id) return;
+    setSendingNowId(messageId);
+    const result = await AutomationService.sendNow(property.id, messageId);
+    if (!result.ok) alert(`Erro ao enviar: ${result.error}`);
+    await fetchMessages();
+    setSendingNowId(null);
   };
 
   const handleBatchCancel = async () => {
@@ -251,8 +277,11 @@ export default function AutomationsQueuePage() {
                   )}
 
                   {msg.status === 'pending' && (
-                    <div className="flex flex-col items-end gap-2 md:pl-6 md:border-l border-border min-w-[150px]">
+                    <div className="flex flex-col items-end gap-2 md:pl-6 md:border-l border-border min-w-[180px]">
                       <div className="flex items-center gap-2 text-amber-600 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200"><Clock className="w-4 h-4" /> <span className="text-sm font-medium">A aguardar envio</span></div>
+                      <Button size="sm" className="w-full gap-1.5" onClick={() => handleSendNow(msg.id)} disabled={sendingNowId === msg.id}>
+                        {sendingNowId === msg.id ? <><Loader2 className="w-4 h-4 animate-spin" /> Enviando...</> : <><SendHorizonal className="w-3.5 h-3.5" /> Enviar Agora</>}
+                      </Button>
                       <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10" disabled={isCancelling === msg.id} onClick={() => handleCancel(msg.id)}>
                         {isCancelling === msg.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <><XCircle className="w-3.5 h-3.5 mr-1" /> Cancelar Envio</>}
                       </Button>
