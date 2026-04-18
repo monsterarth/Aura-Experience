@@ -6,7 +6,7 @@ import { HousekeepingTask, Cabin } from "@/types/aura";
 import { HousekeepingChecklistModal } from "./HousekeepingChecklistModal";
 import { MinibarModal } from "./MinibarModal";
 import { HousekeepingService } from "@/services/housekeeping-service";
-import { Sparkles, ClipboardCheck, Coffee, ArrowRight, CheckCircle2 } from "lucide-react";
+import { Sparkles, ClipboardCheck, Coffee, ArrowRight, CheckCircle2, ChevronDown, ChevronUp, MessageSquare, ListChecks } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
@@ -24,6 +24,9 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins }: MaidMobil
   const [isChecklistOpen, setIsChecklistOpen] = useState(false);
   const [isMinibarOpen, setIsMinibarOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<HousekeepingTask | null>(null);
+  const [expandedGuide, setExpandedGuide] = useState<string | null>(null);
+
+  const toggleGuide = (taskId: string) => setExpandedGuide(prev => prev === taskId ? null : taskId);
 
   // A mágica: Verifica se o ID da camareira logada está DENTRO do array de atribuídos
   const myTasks = tasks.filter(t => t.assignedTo?.includes(userData?.id) && t.status !== 'completed');
@@ -126,66 +129,146 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins }: MaidMobil
             <h2 className="text-xs font-black uppercase tracking-widest text-muted-foreground flex items-center gap-2 mt-6">
               <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Em Limpeza
             </h2>
-            {activeTasks.map(task => (
-              <div key={task.id} className="bg-green-500/10 border-2 border-green-500/30 p-4 rounded-2xl space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="text-2xl font-black text-green-600 dark:text-green-400">
-                    {cabins[task.cabinId || '']?.name || `Cabana ${task.cabinId}`}
-                  </h3>
+            {activeTasks.map(task => {
+              const isGuideOpen = expandedGuide === task.id;
+              const hasGuide = task.checklist?.length > 0 || task.observations;
+              const locationName = task.customLocation || cabins[task.cabinId || '']?.name || `Cabana ${task.cabinId}`;
+              return (
+                <div key={task.id} className="bg-green-500/10 border-2 border-green-500/30 rounded-2xl overflow-hidden">
+                  <div className="p-4 space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="text-2xl font-black text-green-600 dark:text-green-400">{locationName}</h3>
+                        <p className="text-xs font-bold uppercase text-green-600/70 mt-0.5">
+                          {task.type === 'turnover' ? 'Faxina Completa (Troca)' : task.type === 'daily' ? 'Arrumação Diária' : 'Limpeza Personalizada'}
+                        </p>
+                      </div>
+                      {hasGuide && (
+                        <button
+                          onClick={() => toggleGuide(task.id)}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-green-600/10 text-green-700 dark:text-green-400 rounded-xl text-[10px] font-black uppercase transition-colors"
+                        >
+                          <ListChecks size={13} />
+                          Guia
+                          {isGuideOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                        </button>
+                      )}
+                    </div>
+
+                    {isGuideOpen && (
+                      <div className="space-y-3 pt-1">
+                        {task.observations && (
+                          <div className="flex items-start gap-2 bg-orange-500/10 text-orange-700 dark:text-orange-400 px-3 py-2.5 rounded-xl text-xs font-medium">
+                            <MessageSquare size={13} className="shrink-0 mt-0.5" />
+                            <span>{task.observations}</span>
+                          </div>
+                        )}
+                        {task.checklist?.length > 0 && (
+                          <div className="space-y-1.5">
+                            {task.checklist.map(item => (
+                              <div key={item.id} className="flex items-center gap-2.5 px-3 py-2 bg-background/60 rounded-xl">
+                                <div className="w-4 h-4 rounded-full border-2 border-green-500/40 shrink-0" />
+                                <span className="text-xs font-medium text-foreground">{item.label}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 pt-1">
+                      {task.type === 'turnover' && (
+                        <button
+                          onClick={() => { setSelectedTask(task); setIsMinibarOpen(true); }}
+                          className="flex-1 py-3 bg-background text-blue-600 font-black text-xs uppercase rounded-xl border border-blue-500/20 active:scale-95 transition-transform flex justify-center items-center gap-2"
+                        >
+                          <Coffee size={16} /> Frigobar
+                        </button>
+                      )}
+                      <button
+                        onClick={() => { setSelectedTask(task); setIsChecklistOpen(true); }}
+                        className="flex-1 py-3 bg-green-600 text-white font-black text-xs uppercase rounded-xl active:scale-95 transition-transform flex justify-center items-center gap-2 shadow-lg shadow-green-500/30"
+                      >
+                        Finalizar <ClipboardCheck size={16} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-xs font-bold uppercase text-green-600/70">
-                  {task.type === 'turnover' ? 'Faxina Completa (Troca)' : 'Arrumação Diária'}
-                </p>
-                <div className="flex gap-2 pt-2">
-                  {task.type === 'turnover' && (
-                    <button
-                      onClick={() => { setSelectedTask(task); setIsMinibarOpen(true); }}
-                      className="flex-1 py-3 bg-background text-blue-600 font-black text-xs uppercase rounded-xl border border-blue-500/20 active:scale-95 transition-transform flex justify-center items-center gap-2"
-                    >
-                      <Coffee size={16} /> Frigobar
-                    </button>
-                  )}
-                  <button
-                    onClick={() => { setSelectedTask(task); setIsChecklistOpen(true); }}
-                    className="flex-1 py-3 bg-green-600 text-white font-black text-xs uppercase rounded-xl active:scale-95 transition-transform flex justify-center items-center gap-2 shadow-lg shadow-green-500/30"
-                  >
-                    Finalizar <ClipboardCheck size={16} />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
         {pendingTasks.length > 0 && (
           <div className="space-y-3">
             <h2 className="text-xs font-black uppercase tracking-widest text-muted-foreground mt-6">Para Fazer (Minhas)</h2>
-            {pendingTasks.map(task => (
-              <div key={task.id} className="bg-card border border-border p-4 rounded-2xl shadow-sm space-y-4">
-                <h3 className="text-xl font-black text-foreground">
-                  {cabins[task.cabinId || '']?.name || `Cabana ${task.cabinId}`}
-                </h3>
-                <p className="text-xs font-bold uppercase text-muted-foreground">
-                  {task.type === 'turnover' ? 'Faxina Completa' : 'Arrumação Diária'}
-                </p>
-                <div className="flex gap-2">
-                  {task.type === 'turnover' && (
-                    <button
-                      onClick={() => { setSelectedTask(task); setIsMinibarOpen(true); }}
-                      className="flex-1 py-3 bg-secondary text-foreground font-black text-xs uppercase rounded-xl border border-border active:scale-95 transition-transform flex justify-center items-center gap-2"
-                    >
-                      <Coffee size={16} /> Frigobar
-                    </button>
-                  )}
-                  <button
-                    onClick={() => handleStart(task.id)}
-                    className="flex-1 py-3 bg-primary text-primary-foreground font-black text-sm uppercase rounded-xl active:scale-95 transition-transform flex justify-center items-center gap-2"
-                  >
-                    Iniciar <ArrowRight size={18} />
-                  </button>
+            {pendingTasks.map(task => {
+              const isGuideOpen = expandedGuide === task.id;
+              const hasGuide = task.checklist?.length > 0 || task.observations;
+              const locationName = task.customLocation || cabins[task.cabinId || '']?.name || `Cabana ${task.cabinId}`;
+              return (
+                <div key={task.id} className="bg-card border border-border rounded-2xl shadow-sm overflow-hidden">
+                  <div className="p-4 space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="text-xl font-black text-foreground">{locationName}</h3>
+                        <p className="text-xs font-bold uppercase text-muted-foreground mt-0.5">
+                          {task.type === 'turnover' ? 'Faxina Completa' : task.type === 'daily' ? 'Arrumação Diária' : 'Limpeza Personalizada'}
+                        </p>
+                      </div>
+                      {hasGuide && (
+                        <button
+                          onClick={() => toggleGuide(task.id)}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-secondary text-muted-foreground rounded-xl text-[10px] font-black uppercase transition-colors hover:text-foreground"
+                        >
+                          <ListChecks size={13} />
+                          Guia
+                          {isGuideOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                        </button>
+                      )}
+                    </div>
+
+                    {isGuideOpen && (
+                      <div className="space-y-3 pt-1">
+                        {task.observations && (
+                          <div className="flex items-start gap-2 bg-orange-500/10 text-orange-700 dark:text-orange-400 px-3 py-2.5 rounded-xl text-xs font-medium">
+                            <MessageSquare size={13} className="shrink-0 mt-0.5" />
+                            <span>{task.observations}</span>
+                          </div>
+                        )}
+                        {task.checklist?.length > 0 && (
+                          <div className="space-y-1.5">
+                            {task.checklist.map(item => (
+                              <div key={item.id} className="flex items-center gap-2.5 px-3 py-2 bg-secondary/50 rounded-xl">
+                                <div className="w-4 h-4 rounded-full border-2 border-border shrink-0" />
+                                <span className="text-xs font-medium text-foreground">{item.label}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 pt-1">
+                      {task.type === 'turnover' && (
+                        <button
+                          onClick={() => { setSelectedTask(task); setIsMinibarOpen(true); }}
+                          className="flex-1 py-3 bg-secondary text-foreground font-black text-xs uppercase rounded-xl border border-border active:scale-95 transition-transform flex justify-center items-center gap-2"
+                        >
+                          <Coffee size={16} /> Frigobar
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleStart(task.id)}
+                        className="flex-1 py-3 bg-primary text-primary-foreground font-black text-sm uppercase rounded-xl active:scale-95 transition-transform flex justify-center items-center gap-2"
+                      >
+                        Iniciar <ArrowRight size={18} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -215,8 +298,8 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins }: MaidMobil
         )}
       </main>
 
-      <HousekeepingChecklistModal isOpen={isChecklistOpen} onClose={() => setIsChecklistOpen(false)} task={selectedTask} cabinName={selectedTask ? (cabins[selectedTask.cabinId || '']?.name || "") : ""} onComplete={() => { }} />
-      <MinibarModal isOpen={isMinibarOpen} onClose={() => setIsMinibarOpen(false)} task={selectedTask} cabinName={selectedTask ? (cabins[selectedTask.cabinId || '']?.name || "") : ""} />
+      <HousekeepingChecklistModal isOpen={isChecklistOpen} onClose={() => setIsChecklistOpen(false)} task={selectedTask} cabinName={selectedTask ? (selectedTask.customLocation || cabins[selectedTask.cabinId || '']?.name || "") : ""} onComplete={() => { }} />
+      <MinibarModal isOpen={isMinibarOpen} onClose={() => setIsMinibarOpen(false)} task={selectedTask} cabinName={selectedTask ? (selectedTask.customLocation || cabins[selectedTask.cabinId || '']?.name || "") : ""} />
     </div>
   );
 }
