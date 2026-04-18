@@ -33,7 +33,10 @@ export const Sidebar = () => {
   // Estado para controle do menu no mobile
   const [isOpen, setIsOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('sidebar_collapsed') === 'true';
+  });
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
 
@@ -244,7 +247,7 @@ export const Sidebar = () => {
 
         {/* BOTÃO COLLAPSE NO DESKTOP */}
         <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
+          onClick={() => { const next = !isCollapsed; setIsCollapsed(next); localStorage.setItem('sidebar_collapsed', String(next)); }}
           className="hidden lg:flex items-center justify-center absolute -right-3.5 top-8 z-50 w-7 h-7 bg-[#1c1c1c] border border-white/10 text-white/40 hover:text-white rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)] transition-colors"
         >
           {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}

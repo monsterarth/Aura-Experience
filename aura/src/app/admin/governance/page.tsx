@@ -11,6 +11,7 @@ import { StaffService } from "@/services/staff-service";
 import { HousekeepingTask, Cabin, Staff, Structure } from "@/types/aura";
 import { HousekeepingChecklistModal } from "@/components/admin/HousekeepingChecklistModal";
 import { HousekeepingTaskManagerModal } from "@/components/admin/HousekeepingTaskManagerModal";
+import { HousekeepingRoutinesModal } from "@/components/admin/HousekeepingRoutinesModal";
 import { ChecklistSettingsModal } from "@/components/admin/ChecklistSettingsModal";
 import { MinibarModal } from "@/components/admin/MinibarModal";
 import { MaidMobileApp } from "@/components/admin/MaidMobileApp";
@@ -41,6 +42,8 @@ export default function GovernancePage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isManagerOpen, setIsManagerOpen] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const [isRoutinesOpen, setIsRoutinesOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'pending' | 'in_progress' | 'conference'>('pending');
 
   useEffect(() => {
     if (!property) return;
@@ -350,10 +353,10 @@ export default function GovernancePage() {
                 <div className="flex justify-between items-start">
                   <div className="pr-10">
                     <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">
-                      {task.structureId ? 'Limpeza de Estrutura' : task.type === 'turnover' ? 'Faxina de Troca' : 'Arrumação Diária'}
+                      {task.customLocation ? 'Local Específico' : task.structureId ? 'Limpeza de Estrutura' : task.type === 'turnover' ? 'Faxina de Troca' : 'Arrumação Diária'}
                     </p>
                     <h4 className="font-bold text-lg text-foreground leading-none">
-                      {task.structureId ? (structures[task.structureId]?.name || "Estrutura Excluída") : (cabins[task.cabinId!]?.name || "Cabana Excluída")}
+                      {task.customLocation || (task.structureId ? (structures[task.structureId]?.name || "Estrutura Excluída") : (cabins[task.cabinId!]?.name || "Cabana Excluída"))}
                     </h4>
                   </div>
                   {task.structureId ? <Sparkles size={16} className="text-purple-500 shrink-0" /> : task.type === 'turnover' ? <AlertCircle size={16} className="text-orange-500 shrink-0" /> : <Coffee size={16} className="text-blue-500 shrink-0" />}
@@ -445,12 +448,20 @@ export default function GovernancePage() {
         </div>
         <div className="flex gap-3">
           {(userData?.role === 'super_admin' || userData?.role === 'admin' || userData?.role === 'governance') && (
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              className="px-4 py-2 bg-secondary text-foreground rounded-xl text-xs font-bold uppercase hover:bg-accent transition-all border border-border flex items-center gap-2 shadow-sm"
-            >
-              <Settings2 size={14} /> Procedimentos
-            </button>
+            <>
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className="px-4 py-2 bg-secondary text-foreground rounded-xl text-xs font-bold uppercase hover:bg-accent transition-all border border-border flex items-center gap-2 shadow-sm"
+              >
+                <Settings2 size={14} /> Procedimentos
+              </button>
+              <button
+                onClick={() => setIsRoutinesOpen(true)}
+                className="px-4 py-2 bg-secondary text-foreground rounded-xl text-xs font-bold uppercase hover:bg-accent transition-all border border-border flex items-center gap-2 shadow-sm"
+              >
+                <CalendarIcon size={14} /> Rotinas
+              </button>
+            </>
           )}
 
           <button onClick={() => setIsArchiveOpen(true)} className="hidden md:flex flex-row px-4 py-2 bg-secondary text-foreground rounded-xl text-xs font-bold uppercase hover:bg-accent transition-all border border-border items-center gap-2 shadow-sm">
@@ -493,11 +504,133 @@ export default function GovernancePage() {
         </div>
       )}
 
-      <div className="flex-1 overflow-x-auto">
+      {/* Kanban — Desktop */}
+      <div className="hidden md:flex flex-1 overflow-x-auto">
         <div className="flex gap-6 h-full min-w-max pb-4">
           <KanbanColumn title="A Fazer" icon={ClipboardCheck} colorClass="text-zinc-500" items={pendingTasks} />
           <KanbanColumn title="Limpando" icon={Sparkles} colorClass="text-blue-500" items={inProgressTasks} />
           <KanbanColumn title="Conferência" icon={AlertCircle} colorClass="text-orange-500" items={waitingTasks} />
+        </div>
+      </div>
+
+      {/* Kanban — Mobile (abas) */}
+      <div className="md:hidden flex flex-col flex-1 min-h-0">
+        <div className="flex gap-1 bg-muted/30 p-1 rounded-2xl border border-border shrink-0">
+          {([
+            { key: 'pending', label: 'A Fazer', count: pendingTasks.length, color: 'text-zinc-500' },
+            { key: 'in_progress', label: 'Limpando', count: inProgressTasks.length, color: 'text-blue-500' },
+            { key: 'conference', label: 'Conferência', count: waitingTasks.length, color: 'text-orange-500' },
+          ] as const).map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={cn(
+                "flex-1 py-2 px-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors flex items-center justify-center gap-1.5",
+                activeTab === tab.key
+                  ? "bg-card shadow-sm text-foreground border border-border"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <span className={activeTab === tab.key ? tab.color : ''}>{tab.label}</span>
+              <span className={cn(
+                "px-1.5 py-0.5 rounded-full text-[9px] font-black",
+                activeTab === tab.key ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+              )}>{tab.count}</span>
+            </button>
+          ))}
+        </div>
+        <div className="flex-1 overflow-y-auto mt-4 space-y-4 custom-scrollbar pb-4">
+          {(activeTab === 'pending' ? pendingTasks : activeTab === 'in_progress' ? inProgressTasks : waitingTasks).length === 0 ? (
+            <div className="h-24 border-2 border-dashed border-border rounded-xl flex items-center justify-center text-xs font-bold text-muted-foreground uppercase opacity-50">Vazio</div>
+          ) : (
+            (activeTab === 'pending' ? pendingTasks : activeTab === 'in_progress' ? inProgressTasks : waitingTasks).map(task => {
+              const safeAssignedArray = Array.isArray(task.assignedTo)
+                ? task.assignedTo
+                : (typeof task.assignedTo === 'string' ? [task.assignedTo] : []);
+              const assignedNames = safeAssignedArray.length > 0
+                ? safeAssignedArray.map(id => maids.find(m => m.id === id)?.fullName.split(' ')[0]).filter(Boolean).join(', ')
+                : "Ninguém";
+              const isSelected = selectedIds.has(task.id);
+
+              return (
+                <div key={task.id} className={cn("bg-card border p-4 rounded-xl shadow-sm space-y-4 transition-colors group relative", isSelected ? "border-primary ring-1 ring-primary/40" : "border-border")}>
+                  <div className="absolute top-4 right-4 flex items-center gap-1.5">
+                    <button onClick={() => { setSelectedTask(task); setIsManagerOpen(true); }} className="p-2 bg-secondary text-muted-foreground hover:text-primary rounded-lg transition-colors">
+                      <Edit3 size={16} />
+                    </button>
+                    <button onClick={() => toggleSelect(task.id)} className={cn("p-1.5 rounded-lg transition-colors", isSelected ? "text-primary" : "text-muted-foreground hover:text-primary")}>
+                      {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
+                    </button>
+                  </div>
+                  <div className="flex justify-between items-start">
+                    <div className="pr-10">
+                      <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">
+                        {task.customLocation ? 'Local Específico' : task.structureId ? 'Limpeza de Estrutura' : task.type === 'turnover' ? 'Faxina de Troca' : 'Arrumação Diária'}
+                      </p>
+                      <h4 className="font-bold text-lg text-foreground leading-none">
+                        {task.customLocation || (task.structureId ? (structures[task.structureId]?.name || "Estrutura Excluída") : (cabins[task.cabinId!]?.name || "Cabana Excluída"))}
+                      </h4>
+                    </div>
+                    {task.structureId ? <Sparkles size={16} className="text-purple-500 shrink-0" /> : task.type === 'turnover' ? <AlertCircle size={16} className="text-orange-500 shrink-0" /> : <Coffee size={16} className="text-blue-500 shrink-0" />}
+                  </div>
+                  <div className="space-y-2">
+                    {(task.status === 'pending' || task.status === 'paused') ? (
+                      <div className="flex flex-col gap-3">
+                        {task.status === 'paused' && task.paused_until && (
+                          <div className="flex items-center gap-2 bg-yellow-500/10 text-yellow-700 px-3 py-2 rounded-lg text-[10px] font-bold uppercase">
+                            <Moon size={12} />
+                            Não Perturbe — retoma às {new Date(task.paused_until).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 bg-secondary/50 p-2 rounded-lg border border-border">
+                          <UserPlus size={14} className="text-muted-foreground shrink-0" />
+                          <select value={safeAssignedArray[0] || ""} onChange={(e) => handleAssignTask(task.id, e.target.value)} className="w-full bg-transparent text-xs font-bold uppercase outline-none cursor-pointer text-foreground">
+                            <option value="" disabled>Delegar para...</option>
+                            {maids.map(m => <option key={m.id} value={m.id}>{m.fullName}</option>)}
+                          </select>
+                        </div>
+                        <div className="flex gap-2">
+                          {task.type === 'turnover' && (
+                            <button onClick={() => { setSelectedTask(task); setIsMinibarOpen(true); }} className="flex-1 py-2 bg-blue-500/10 text-blue-600 hover:bg-blue-600 hover:text-white text-[10px] font-bold uppercase rounded-lg transition-all flex justify-center items-center gap-1">
+                              <Coffee size={12} /> Frigobar
+                            </button>
+                          )}
+                          <button onClick={() => handleStartTask(task.id)} disabled={task.status === 'paused' && !!task.paused_until && new Date(task.paused_until) > new Date()} className="flex-1 py-2 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground text-[10px] font-bold uppercase rounded-lg transition-all flex justify-center items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed">
+                            <ArrowRight size={12} /> Iniciar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button onClick={() => { setSelectedTask(task); setIsManagerOpen(true); }} className="w-full text-left text-[10px] text-muted-foreground flex items-center gap-1 bg-secondary/50 px-2 py-1.5 rounded-md hover:bg-secondary transition-colors">
+                        <CheckCircle2 size={12} className="shrink-0" />
+                        <span className="truncate">Resp: <strong className="text-foreground">{assignedNames}</strong></span>
+                      </button>
+                    )}
+                    {task.observations && (
+                      <div className="text-[10px] text-orange-600 bg-orange-500/10 px-2 py-1.5 rounded-md flex items-start gap-1 line-clamp-2">
+                        <MessageSquare size={12} className="shrink-0 mt-0.5" />
+                        <span>{task.observations}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="pt-3 border-t border-border flex gap-2">
+                    {task.status === 'in_progress' && (
+                      <>
+                        <button onClick={() => { setSelectedTask(task); setIsMinibarOpen(true); }} className="flex-1 py-2 bg-blue-500/10 text-blue-600 hover:bg-blue-600 hover:text-white text-[10px] font-bold uppercase rounded-lg transition-all flex justify-center items-center gap-1">Frigobar</button>
+                        <button onClick={() => { setSelectedTask(task); setIsChecklistOpen(true); }} className="flex-1 py-2 bg-green-600 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-green-700 transition-all flex justify-center items-center gap-1 shadow-sm">Finalizar <ClipboardCheck size={14} /></button>
+                      </>
+                    )}
+                    {task.status === 'waiting_conference' && (userData?.role === 'super_admin' || userData?.role === 'admin' || userData?.role === 'governance') && (
+                      <>
+                        <button onClick={() => handleConferTask(task.id, task.cabinId || task.structureId!, false)} className="flex-1 py-2 bg-red-500/10 text-red-600 text-[10px] font-bold uppercase rounded-lg hover:bg-red-500 hover:text-white transition-all">Reprovar</button>
+                        <button onClick={() => handleConferTask(task.id, task.cabinId || task.structureId!, true)} className="flex-1 py-2 bg-primary text-primary-foreground text-[10px] font-bold uppercase rounded-lg hover:opacity-90 transition-all shadow-sm">Liberar</button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 
@@ -542,6 +675,7 @@ export default function GovernancePage() {
       )}
 
       <ChecklistSettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} propertyId={property.id} />
+      <HousekeepingRoutinesModal isOpen={isRoutinesOpen} onClose={() => setIsRoutinesOpen(false)} propertyId={property.id} cabins={cabins} structures={structures} maids={maids} />
       <HousekeepingChecklistModal isOpen={isChecklistOpen} onClose={() => setIsChecklistOpen(false)} task={selectedTask} cabinName={selectedTask ? (selectedTask.structureId ? structures[selectedTask.structureId]?.name : cabins[selectedTask.cabinId || ""]?.name || "") : ""} onComplete={() => { }} />
       <MinibarModal isOpen={isMinibarOpen} onClose={() => setIsMinibarOpen(false)} task={selectedTask} cabinName={selectedTask ? (selectedTask.structureId ? structures[selectedTask.structureId]?.name : cabins[selectedTask.cabinId || ""]?.name || "") : ""} />
 
@@ -589,7 +723,7 @@ export default function GovernancePage() {
                         <div className="flex items-center gap-2 mb-1">
                           {task.structureId ? <Sparkles size={12} className="text-purple-500" /> : task.type === 'turnover' ? <AlertCircle size={12} className="text-orange-500" /> : <Coffee size={12} className="text-blue-500" />}
                           <p className="font-bold text-sm">
-                            {task.structureId ? (structures[task.structureId]?.name || "Estrutura") : (cabins[task.cabinId!]?.name || "Cabana")}
+                            {task.customLocation || (task.structureId ? (structures[task.structureId]?.name || "Estrutura") : (cabins[task.cabinId!]?.name || "Cabana"))}
                           </p>
                         </div>
                         <p className="text-xs text-muted-foreground uppercase tracking-widest font-bold">

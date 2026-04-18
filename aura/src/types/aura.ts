@@ -262,10 +262,32 @@ export interface HousekeepingTask {
     checked: boolean;
   }[];
 
+  routineId?: string; // ID da rotina que gerou esta tarefa (se aplicável)
+  customLocation?: string; // Local livre (ex: "Recepção", "Banheiro Social")
   observations?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
+
+// --- ROTINAS DE LIMPEZA ---
+// Tabela: housekeeping_routines
+export interface HousekeepingRoutine {
+  id: string;
+  propertyId: string;
+  cabinId?: string;
+  structureId?: string;
+  customLocation?: string; // Ex: "Recepção", "Banheiro Social"
+  type: 'daily' | 'custom';
+  intervalDays: number;
+  checklist: { id: string; label: string; checked: boolean }[];
+  assignedTo: string[];
+  observations?: string;
+  active: boolean;
+  lastTriggeredAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // --- TEMPLATES DE CHECKLIST ---
 // Coleção: properties/{propertyId}/checklists
 export interface ChecklistTemplate {

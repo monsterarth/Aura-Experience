@@ -13,16 +13,20 @@ interface TaskManagerModalProps {
   isOpen: boolean;
   onClose: () => void;
   propertyId: string;
-  task: HousekeepingTask | null; // Se null, é modo de Criação
+  task: HousekeepingTask | null;
   cabins: Record<string, Cabin>;
   structures: Record<string, Structure>;
   maids: Staff[];
 }
 
+type LocalType = 'cabin' | 'structure' | 'custom';
+
 export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task, cabins, structures, maids }: TaskManagerModalProps) {
   const { userData } = useAuth();
   const [loading, setLoading] = useState(false);
   const [customChecklist, setCustomChecklist] = useState<{ id: string; label: string; checked: boolean }[]>([]);
+  const [localType, setLocalType] = useState<LocalType>('cabin');
+  const [customLocationInput, setCustomLocationInput] = useState('');
 
   const [formData, setFormData] = useState<Partial<HousekeepingTask>>({
     type: 'turnover',
@@ -37,23 +41,30 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
   useEffect(() => {
     if (isOpen) {
       if (task) {
+        const lt: LocalType = task.customLocation ? 'custom' : task.structureId ? 'structure' : 'cabin';
+        setLocalType(lt);
+        setCustomLocationInput(task.customLocation || '');
         setFormData({
           type: task.type,
           status: task.status,
           cabinId: task.cabinId || '',
           structureId: task.structureId || '',
           unitId: task.unitId || '',
+          customLocation: task.customLocation || '',
           assignedTo: task.assignedTo || [],
           observations: task.observations || ''
         });
         setCustomChecklist(task.checklist || []);
       } else {
+        setLocalType('cabin');
+        setCustomLocationInput('');
         setFormData({
           type: 'turnover',
           status: 'pending',
-          cabinId: Object.keys(cabins)[0] || '', // Pre-seleciona a primeira cabana
+          cabinId: Object.keys(cabins)[0] || '',
           structureId: '',
           unitId: '',
+          customLocation: '',
           assignedTo: [],
           observations: ''
         });
@@ -64,37 +75,54 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
 
   if (!isOpen) return null;
 
+  const handleLocalTypeChange = (t: LocalType) => {
+    setLocalType(t);
+    if (t === 'cabin') {
+      setFormData(prev => ({ ...prev, cabinId: Object.keys(cabins)[0] || '', structureId: '', unitId: '', customLocation: '' }));
+    } else if (t === 'structure') {
+      setFormData(prev => ({ ...prev, structureId: Object.keys(structures)[0] || '', cabinId: '', unitId: '', customLocation: '' }));
+    } else {
+      setFormData(prev => ({ ...prev, cabinId: '', structureId: '', unitId: '', customLocation: '' }));
+      setCustomLocationInput('');
+    }
+  };
+
   const toggleMaid = (maidId: string) => {
     setFormData(prev => {
       const current = prev.assignedTo || [];
-      if (current.includes(maidId)) {
-        return { ...prev, assignedTo: current.filter(id => id !== maidId) };
-      } else {
-        return { ...prev, assignedTo: [...current, maidId] };
-      }
+      return {
+        ...prev,
+        assignedTo: current.includes(maidId)
+          ? current.filter(id => id !== maidId)
+          : [...current, maidId]
+      };
     });
   };
 
   const handleSave = async () => {
-    if (!formData.cabinId && !formData.structureId) return toast.error("Selecione uma acomodação ou estrutura.");
+    if (localType === 'cabin' && !formData.cabinId) return toast.error("Selecione uma acomodação.");
+    if (localType === 'structure' && !formData.structureId) return toast.error("Selecione uma estrutura.");
+    if (localType === 'custom' && !customLocationInput.trim()) return toast.error("Informe o nome do local.");
+
+    const payload: Partial<HousekeepingTask> = {
+      ...formData,
+      ...(localType === 'cabin' ? { structureId: undefined, customLocation: undefined } : {}),
+      ...(localType === 'structure' ? { cabinId: undefined, customLocation: undefined } : {}),
+      ...(localType === 'custom' ? { cabinId: undefined, structureId: undefined, customLocation: customLocationInput.trim() } : {}),
+      checklist: formData.type === 'custom' ? customChecklist : (task?.checklist || []),
+    };
 
     setLoading(true);
     try {
       if (task) {
-        // Modo Edição
-        await HousekeepingService.updateTask(
-          propertyId, task.id, { ...formData, checklist: formData.type === 'custom' ? customChecklist : task.checklist }, userData?.id || "admin", userData?.fullName || "Admin"
-        );
+        await HousekeepingService.updateTask(propertyId, task.id, payload, userData?.id || "admin", userData?.fullName || "Admin");
         toast.success("Tarefa atualizada com sucesso!");
       } else {
-        // Modo Criação
-        await HousekeepingService.createTask(
-          propertyId, { ...formData, checklist: formData.type === 'custom' ? customChecklist : [] }, userData?.id || "admin", userData?.fullName || "Admin"
-        );
+        await HousekeepingService.createTask(propertyId, { ...payload, checklist: formData.type === 'custom' ? customChecklist : [] }, userData?.id || "admin", userData?.fullName || "Admin");
         toast.success("Nova tarefa criada!");
       }
       onClose();
-    } catch (error) {
+    } catch {
       toast.error("Erro ao salvar tarefa.");
     } finally {
       setLoading(false);
@@ -108,7 +136,7 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
       await HousekeepingService.deleteTask(propertyId, task.id, userData?.id || "admin", userData?.fullName || "Admin");
       toast.success("Tarefa deletada.");
       onClose();
-    } catch (error) {
+    } catch {
       toast.error("Erro ao deletar.");
     } finally {
       setLoading(false);
@@ -136,32 +164,44 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
 
         <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1 bg-background">
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-4">
-              <div className="flex gap-4 mb-2">
-                <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground cursor-pointer hover:text-foreground">
-                  <input type="radio" checked={!!formData.cabinId} onChange={() => setFormData({ ...formData, cabinId: Object.keys(cabins)[0] || '', structureId: '', unitId: '' })} className="accent-primary" /> Cabanas
-                </label>
-                <label className="flex items-center gap-2 text-xs font-bold text-muted-foreground cursor-pointer hover:text-foreground">
-                  <input type="radio" checked={!!formData.structureId} onChange={() => setFormData({ ...formData, structureId: Object.keys(structures)[0] || '', cabinId: '', unitId: '' })} className="accent-primary" /> Estruturas Extras
-                </label>
+          {/* Seleção de local */}
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              {([
+                { key: 'cabin', label: 'Cabana' },
+                { key: 'structure', label: 'Estrutura' },
+                { key: 'custom', label: 'Outro Local' },
+              ] as { key: LocalType; label: string }[]).map(t => (
+                <button
+                  key={t.key}
+                  disabled={isEditing}
+                  onClick={() => handleLocalTypeChange(t.key)}
+                  className={cn(
+                    "px-4 py-1.5 rounded-lg text-xs font-bold uppercase transition-colors disabled:cursor-not-allowed",
+                    localType === t.key ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground hover:text-foreground disabled:opacity-50"
+                  )}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {localType === 'cabin' && (
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Acomodação</label>
+                <select
+                  disabled={isEditing}
+                  value={formData.cabinId}
+                  onChange={e => setFormData({ ...formData, cabinId: e.target.value })}
+                  className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none disabled:opacity-50"
+                >
+                  {Object.values(cabins).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
               </div>
+            )}
 
-              {!!formData.cabinId && (
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Acomodação</label>
-                  <select
-                    disabled={isEditing} // Não deixa mudar a cabana depois de criada
-                    value={formData.cabinId}
-                    onChange={e => setFormData({ ...formData, cabinId: e.target.value })}
-                    className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none disabled:opacity-50"
-                  >
-                    {Object.values(cabins).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-              )}
-
-              {!!formData.structureId && (
+            {localType === 'structure' && (
+              <>
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Estrutura</label>
                   <select
@@ -173,36 +213,50 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
                     {Object.values(structures).map(s => <option key={s.id} value={s.id}>{s.name} ({s.category})</option>)}
                   </select>
                 </div>
-              )}
+                {formData.structureId && structures[formData.structureId]?.units && structures[formData.structureId].units!.length > 0 && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Unidade (Opcional)</label>
+                    <select
+                      disabled={isEditing}
+                      value={formData.unitId || ''}
+                      onChange={e => setFormData({ ...formData, unitId: e.target.value })}
+                      className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none disabled:opacity-50"
+                    >
+                      <option value="">Toda a Estrutura (Geral)</option>
+                      {structures[formData.structureId].units!.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+                  </div>
+                )}
+              </>
+            )}
 
-              {!!formData.structureId && structures[formData.structureId]?.units && structures[formData.structureId].units!.length > 0 && (
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Unidade Específica (Opcional)</label>
-                  <select
-                    disabled={isEditing}
-                    value={formData.unitId || ''}
-                    onChange={e => setFormData({ ...formData, unitId: e.target.value })}
-                    className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none disabled:opacity-50"
-                  >
-                    <option value="">Toda a Estrutura (Geral)</option>
-                    {structures[formData.structureId].units!.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                </div>
-              )}
-            </div>
+            {localType === 'custom' && (
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Nome do Local</label>
+                <input
+                  type="text"
+                  disabled={isEditing}
+                  placeholder="Ex: Recepção, Banheiro Social, Área da Piscina..."
+                  value={customLocationInput}
+                  onChange={e => setCustomLocationInput(e.target.value)}
+                  className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none focus:border-primary/50 disabled:opacity-50"
+                />
+              </div>
+            )}
+          </div>
 
-            <div className="space-y-2">
-              <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Tipo de Limpeza</label>
-              <select
-                value={formData.type}
-                onChange={e => setFormData({ ...formData, type: e.target.value as any })}
-                className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none"
-              >
-                <option value="turnover">Faxina Completa (Troca)</option>
-                <option value="daily">Arrumação Diária</option>
-                <option value="custom">Limpeza Personalizada</option>
-              </select>
-            </div>
+          {/* Tipo de limpeza */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Tipo de Limpeza</label>
+            <select
+              value={formData.type}
+              onChange={e => setFormData({ ...formData, type: e.target.value as any })}
+              className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none"
+            >
+              <option value="turnover">Faxina Completa (Troca)</option>
+              <option value="daily">Arrumação Diária</option>
+              <option value="custom">Limpeza Personalizada</option>
+            </select>
           </div>
 
           {formData.type === 'custom' && (

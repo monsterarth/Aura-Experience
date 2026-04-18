@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { HousekeepingTask } from "@/types/aura";
+import { HousekeepingTask, HousekeepingRoutine } from "@/types/aura";
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
 
@@ -222,6 +222,57 @@ export const HousekeepingService = {
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "CABIN", entityId: taskId,
       details: `Governança REJEITOU a limpeza. Retornou para camareira. Motivo: ${reason}`
+    });
+  },
+
+  async getRoutines(propertyId: string): Promise<HousekeepingRoutine[]> {
+    const { data, error } = await supabase
+      .from('housekeeping_routines')
+      .select('*')
+      .eq('propertyId', propertyId)
+      .order('createdAt', { ascending: true });
+    if (error) throw error;
+    return (data || []) as HousekeepingRoutine[];
+  },
+
+  async saveRoutine(propertyId: string, data: Partial<HousekeepingRoutine>, actorId: string, actorName: string): Promise<HousekeepingRoutine> {
+    const isNew = !data.id;
+    const now = new Date().toISOString();
+    const payload = {
+      ...data,
+      propertyId,
+      id: data.id || uuidv4(),
+      updatedAt: now,
+      ...(isNew ? { createdAt: now, active: true } : {})
+    };
+
+    const { data: saved, error } = await supabase
+      .from('housekeeping_routines')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single();
+    if (error) throw error;
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName,
+      action: isNew ? "CREATE" : "UPDATE", entity: "CABIN", entityId: payload.id,
+      details: `Rotina de limpeza ${isNew ? 'criada' : 'editada'} (a cada ${data.intervalDays} dias).`
+    });
+
+    return saved as HousekeepingRoutine;
+  },
+
+  async deleteRoutine(propertyId: string, routineId: string, actorId: string, actorName: string) {
+    const { error } = await supabase
+      .from('housekeeping_routines')
+      .delete()
+      .eq('id', routineId)
+      .eq('propertyId', propertyId);
+    if (error) throw error;
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName, action: "DELETE", entity: "CABIN", entityId: routineId,
+      details: "Rotina de limpeza excluída."
     });
   }
 };
