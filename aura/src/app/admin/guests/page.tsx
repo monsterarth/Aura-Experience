@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { GuestService } from "@/services/guest-service";
 import { ContactService } from "@/services/contact-service";
+import { chatwootSyncOnStayCreated } from "@/app/actions/chatwoot-actions";
 import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { Guest } from "@/types/aura";
@@ -364,6 +365,7 @@ function GuestDetailPanel({
       setIsEditing(false);
       onUpdated(formData);
       toast.success("Dados do hóspede atualizados.");
+      chatwootSyncOnStayCreated(propertyId, formData.id).catch(() => {});
     } catch {
       toast.error("Erro ao salvar.");
     } finally {

@@ -8,6 +8,7 @@ import { GuestService } from "@/services/guest-service";
 import { StayService } from "@/services/stay-service";
 import { CabinService } from "@/services/cabin-service";
 import { ContactService } from "@/services/contact-service"; // NOVO: Para já inserir na agenda
+import { chatwootSyncOnStayCreated } from "@/app/actions/chatwoot-actions";
 import { validateCPF } from "@/lib/utils-checkin";
 import { Cabin } from "@/types/aura";
 import { RoleGuard } from "@/components/auth/RoleGuard";
@@ -237,6 +238,8 @@ function NewStayPageContent() {
         actorId: userData.id,
         actorName: userData.fullName
       });
+
+      chatwootSyncOnStayCreated(contextProperty.id, savedGuestId).catch(() => {});
 
       setCreatedInfo({ code: result.accessCode });
     } catch (error: any) {

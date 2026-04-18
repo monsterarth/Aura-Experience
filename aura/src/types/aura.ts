@@ -114,6 +114,7 @@ export interface Guest {
   };
   allergies: string[];
   preferredLanguage?: 'pt' | 'en' | 'es';
+  chatwootContactId?: string; // ID do contato no Chatwoot (cache para evitar search repetida)
   updatedAt: Timestamp;
 }
 
@@ -523,6 +524,9 @@ export interface Stay {
   // DND — Não Perturbe
   dnd_enabled?: boolean;
   dnd_until?: string; // ISO timestamp
+
+  // Integração Chatwoot
+  chatwootConvId?: number; // ID da conversa proativa no Chatwoot
 
   createdAt: Timestamp;
 }

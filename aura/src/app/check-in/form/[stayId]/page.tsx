@@ -5,6 +5,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { StayService } from "@/services/stay-service";
 import { PropertyService } from "@/services/property-service";
+import { chatwootSyncOnPreCheckinComplete } from "@/app/actions/chatwoot-actions";
 import {
   Loader2, CheckCircle2, User, MapPin,
   Dog, ArrowRight, Edit3, ChevronDown,
@@ -607,6 +608,7 @@ export default function UnifiedPreCheckin() {
       };
 
       const returnedCode = await StayService.completePreCheckin(stay.propertyId, stayId as string, fnrhStayPayload, fnrhGuestPayload);
+      chatwootSyncOnPreCheckinComplete(stayId as string).catch(() => {});
       setNewAccessCode(returnedCode);
       setStep('success');
     } catch (error: any) {
