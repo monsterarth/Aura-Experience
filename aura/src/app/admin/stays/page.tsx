@@ -6,6 +6,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { StayService } from "@/services/stay-service";
+import { chatwootSyncOnCheckIn, chatwootSyncOnCancelled } from "@/app/actions/chatwoot-actions";
 import { supabase } from "@/lib/supabase";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import {
@@ -150,6 +151,7 @@ export default function StaysPage() {
 
     try {
       await StayService.cancelStay(contextProperty.id, stayToCancel, userData.id, userData.fullName);
+      chatwootSyncOnCancelled(stayToCancel).catch(() => {});
       toast.success("Reserva cancelada com sucesso.");
       setStayToCancel(null);
       loadStays();
@@ -411,6 +413,7 @@ export default function StaysPage() {
                                 if (confirm(`Confirmar entrada de ${guestName}?`) && contextProperty?.id && userData?.id) {
                                   try {
                                     await StayService.performCheckIn(contextProperty.id, s.id, userData.id, userData.fullName);
+                                    chatwootSyncOnCheckIn(s.id).catch(() => {});
                                     loadStays();
                                     toast.success("Check-in realizado!");
                                   } catch (err: any) {

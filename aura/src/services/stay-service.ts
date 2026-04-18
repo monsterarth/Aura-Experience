@@ -566,14 +566,14 @@ export const StayService = {
     actorName: string
   ) {
     const { data: stay } = await supabase
-      .from('stays').select('cabinId, status, checkIn, cabinHistory').eq('id', stayId).single();
+      .from('stays').select('cabinId, status, checkIn, checkOut, cabinHistory').eq('id', stayId).single();
     if (!stay) throw new Error('STAY_NOT_FOUND');
 
     const oldCabinId = stay.cabinId;
     const isActive = stay.status === 'active';
 
-    // Validate new cabin availability (only matters for active stays occupying cabins)
     if (isActive) {
+      // Active stay: target cabin must be physically available right now
       const { data: newCabin } = await supabase
         .from('cabins').select('status').eq('id', newCabinId).single();
       if (!newCabin || newCabin.status !== 'available') {
@@ -585,6 +585,9 @@ export const StayService = {
         const label = statusMap[newCabin?.status ?? ''] ?? 'indisponível';
         throw new Error(`CABIN_NOT_AVAILABLE:${newCabin?.status ?? 'unknown'}:${label}`);
       }
+    } else {
+      // Pending/future stay: check for date overlap with existing stays in the target cabin
+      await this.checkCabinAvailability(newCabinId, stay.checkIn, stay.checkOut);
     }
 
     // Build cabin history for active stays
@@ -631,6 +634,7 @@ export const StayService = {
         ? `Transferência de cabana: ${oldCabinId} → ${newCabinId}. Cabana antiga: ${oldCabinDisposition === 'cleaning' ? 'enviada para limpeza' : 'liberada'}.`
         : `Cabana da reserva alterada: ${oldCabinId} → ${newCabinId}.`
     });
+
   },
 
   // ==========================================

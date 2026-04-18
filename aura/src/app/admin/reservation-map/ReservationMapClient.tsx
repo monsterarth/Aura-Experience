@@ -13,6 +13,7 @@ import { StayDetailsModal } from "@/components/admin/StayDetailsModal";
 import { MaintenanceTaskManagerModal } from "@/components/admin/maintenance/MaintenanceTaskManagerModal";
 import { HousekeepingTaskManagerModal } from "@/components/admin/HousekeepingTaskManagerModal";
 import { HousekeepingService } from "@/services/housekeeping-service";
+import { chatwootSyncOnCabinTransfer } from "@/app/actions/chatwoot-actions";
 import { Cabin, Stay, MaintenanceTask, HousekeepingTask, Guest, Staff, Structure } from "@/types/aura";
 import { cn } from "@/lib/utils";
 import {
@@ -503,6 +504,7 @@ export default function ReservationMapClient() {
                 userData?.id || "admin",
                 userData?.fullName || "Admin"
             );
+            chatwootSyncOnCabinTransfer(dndData.stayId, dndData.newCabinId).catch(() => {});
             toast.success(createTurnover ? "Estadia movida e faxina de troca gerada." : "Acomodação alterada com sucesso.");
             loadData();
         } catch (err: any) {
@@ -511,6 +513,8 @@ export default function ReservationMapClient() {
             if (msg.startsWith('CABIN_NOT_AVAILABLE')) {
                 const label = msg.split(':')[2] ?? 'indisponível';
                 toast.error(`Transferência bloqueada: acomodação ${label}.`);
+            } else if (msg.startsWith('CABIN_OVERLAP')) {
+                toast.error("Transferência bloqueada: já existe uma reserva nessa acomodação para esse período.");
             } else {
                 toast.error("Erro ao alterar acomodação.");
             }
@@ -532,6 +536,7 @@ export default function ReservationMapClient() {
                 userData?.id || "admin",
                 userData?.fullName || "Admin"
             );
+            chatwootSyncOnCabinTransfer(stayId, newCabinId).catch(() => {});
             toast.success("Acomodação alterada com sucesso.");
             loadData();
         } catch (err: any) {
@@ -540,6 +545,8 @@ export default function ReservationMapClient() {
             if (msg.startsWith('CABIN_NOT_AVAILABLE')) {
                 const label = msg.split(':')[2] ?? 'indisponível';
                 toast.error(`Transferência bloqueada: acomodação ${label}.`);
+            } else if (msg.startsWith('CABIN_OVERLAP')) {
+                toast.error("Transferência bloqueada: já existe uma reserva nessa acomodação para esse período.");
             } else {
                 toast.error("Erro ao alterar acomodação.");
             }

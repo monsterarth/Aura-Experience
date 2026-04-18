@@ -13,6 +13,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { StayService } from "@/services/stay-service";
+import { chatwootSyncOnCabinTransfer, chatwootSyncOnCheckIn, chatwootSyncOnCheckOut } from "@/app/actions/chatwoot-actions";
 import { GuestService } from "@/services/guest-service";
 import { CabinService } from "@/services/cabin-service";
 import { ContactService } from "@/services/contact-service";
@@ -390,6 +391,10 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
       await Promise.all(ops);
 
+      if (newCabinId) {
+        chatwootSyncOnCabinTransfer(stay.id, newCabinId).catch(() => {});
+      }
+
       // Migrate contact/messages if phone number changed
       const oldPhone = guest.phone || "";
       const newPhone = guestData.phone || "";
@@ -419,6 +424,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     setLoading(true);
     try {
       await StayService.performCheckIn(stay.propertyId, stay.id, userData?.id || "ADMIN", userData?.fullName || "Recepção");
+      chatwootSyncOnCheckIn(stay.id).catch(() => {});
       toast.success("Check-in realizado com sucesso!");
       if (onUpdate) onUpdate();
     } catch (error) {
@@ -442,6 +448,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
       if (isFinishing) {
         await StayService.performCheckOut(stay.propertyId, stay.id, actorId, actorName);
+        chatwootSyncOnCheckOut(stay.id).catch(() => {});
         toast.success("Check-out realizado com sucesso!");
       } else {
         await StayService.undoCheckOut(stay.propertyId, stay.id, stay.cabinId, actorId, actorName);

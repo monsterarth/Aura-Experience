@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { Stay, Guest, Cabin, AutomationRule, MessageTemplate, Property } from "@/types/aura";
 import { AutomationService } from "@/services/automation-service";
+import { ChatwootService } from "@/services/chatwoot-service";
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -134,6 +135,18 @@ export async function GET(request: Request) {
               propertyId, stay.id, guest.phone, template, triggerToFire as any, guest, cabin, stay, delayToApply, property
             );
             queuedCount++;
+
+            // Gatilho Chatwoot 2: abre conversa proativa com ACF da estadia
+            if (triggerToFire === 'pre_checkin_48h') {
+              console.log(`[Chatwoot] disparando 48h para stay=${stay.id} cabin=${cabin?.name ?? 'undefined'}`);
+              if (cabin) {
+                ChatwootService.syncOn48hTrigger(stay, guest, cabin).catch(e =>
+                  console.error('[Chatwoot] syncOn48hTrigger error:', e)
+                );
+              } else {
+                console.error(`[Chatwoot] 48h ignorado: cabin não encontrada para stay=${stay.id} cabinId=${stay.cabinId}`);
+              }
+            }
 
             if (flagToUpdate) {
               await supabaseAdmin.from("stays").update({
