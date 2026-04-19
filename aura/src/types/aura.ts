@@ -62,15 +62,19 @@ export interface Property {
     whatsappEnabled: boolean;
     whatsappNumber?: string;
     whatsappConfig?: {
-      apiUrl: string;       // Evolution API base URL (shared across all instances)
-      apiKey: string;       // Evolution global API key (header: apikey)
-      instanceName?: string; // Single-instance shorthand (most common case)
-      chatwootUrl?: string; // Chatwoot base URL for iframe embed
-      token?: string;       // Legacy — kept for compat
+      // Evolution API (WhatsApp automations)
+      apiUrl: string;
+      apiKey: string;
+      instanceName?: string;
       instances?: Array<{
-        instanceName: string; // e.g. "fazenda-concierge" | "fazenda-comercial"
-        label?: string;       // Display label e.g. "Concierge" | "Comercial"
+        instanceName: string;
+        label?: string;
       }>;
+      // Chatwoot (inbox embed + contact sync API)
+      chatwootUrl?: string;        // base URL — used for iframe and API calls
+      chatwootAccountId?: string;
+      chatwootApiToken?: string;
+      chatwootInboxId?: number;
     };
     petPolicyText?: Record<string, string>;
     generalPolicyText?: Record<string, string>;

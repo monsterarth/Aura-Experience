@@ -80,7 +80,7 @@ export default function PropertySettingsPage() {
     const [settings, setSettings] = useState({
         whatsappNumber: "",
         whatsappEnabled: false,
-        whatsappConfig: { apiUrl: "", apiKey: "", instanceName: "", chatwootUrl: "", token: "" },
+        whatsappConfig: { apiUrl: "", apiKey: "", instanceName: "", chatwootUrl: "", chatwootAccountId: "", chatwootApiToken: "", chatwootInboxId: 0 },
         customDomain: "",
         checkInTime: "14:00",
         checkOutTime: "12:00",
@@ -543,11 +543,11 @@ export default function PropertySettingsPage() {
                                 </div>
                             </section>
 
-                            {/* Integração WhatsApp API */}
+                            {/* Integração WhatsApp + Chatwoot */}
                             <section className="bg-card border border-border p-8 rounded-[32px] space-y-6">
                                 <div className="flex items-center justify-between">
                                     <h3 className="font-bold text-lg flex items-center gap-2 text-primary">
-                                        <MessageSquare size={20} /> Integração WhatsApp (Automações)
+                                        <MessageSquare size={20} /> WhatsApp & Chatwoot
                                     </h3>
                                     <button
                                         type="button"
@@ -563,58 +563,104 @@ export default function PropertySettingsPage() {
                                         )} />
                                     </button>
                                 </div>
-                                <p className="text-xs text-muted-foreground">Configuração da API de envio de mensagens automáticas (pré check-in, boas-vindas, NPS, etc).</p>
+                                <p className="text-xs text-muted-foreground">Configuração por propriedade da Evolution API (automações WhatsApp) e do Chatwoot (inbox + sincronização de contatos).</p>
 
-                                <div className={cn("space-y-4 transition-opacity", !settings.whatsappEnabled && "opacity-40 pointer-events-none")}>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">URL da Evolution API</label>
-                                        <input
-                                            value={settings.whatsappConfig.apiUrl}
-                                            onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, apiUrl: e.target.value } })}
-                                            placeholder="https://evolution.seudominio.com"
-                                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
-                                        />
+                                <div className="space-y-6">
+                                    {/* Evolution API */}
+                                    <div className={cn("space-y-4 transition-opacity", !settings.whatsappEnabled && "opacity-40 pointer-events-none")}>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Evolution API</p>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">URL da Evolution API</label>
+                                            <input
+                                                value={settings.whatsappConfig.apiUrl}
+                                                onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, apiUrl: e.target.value } })}
+                                                placeholder="https://evolution.seudominio.com"
+                                                className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">API Key da Evolution</label>
+                                            <input
+                                                type="password"
+                                                value={settings.whatsappConfig.apiKey}
+                                                onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, apiKey: e.target.value } })}
+                                                placeholder="••••••••••••••••"
+                                                className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Nome da Instância Evolution</label>
+                                            <input
+                                                value={(settings.whatsappConfig as any).instanceName || ""}
+                                                onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, instanceName: e.target.value } })}
+                                                placeholder="ex: fazenda-rosa"
+                                                className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
+                                            />
+                                        </div>
                                     </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">API Key da Evolution</label>
-                                        <input
-                                            type="password"
-                                            value={settings.whatsappConfig.apiKey}
-                                            onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, apiKey: e.target.value } })}
-                                            placeholder="••••••••••••••••"
-                                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Nome da Instância Evolution</label>
-                                        <input
-                                            value={(settings.whatsappConfig as any).instanceName || ""}
-                                            onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, instanceName: e.target.value } })}
-                                            placeholder="ex: fazenda-rosa"
-                                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
-                                        />
-                                        <p className="text-xs text-muted-foreground">Nome exato da instância criada no painel da Evolution API.</p>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">URL do Chatwoot</label>
-                                        <input
-                                            value={(settings.whatsappConfig as any).chatwootUrl || ""}
-                                            onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, chatwootUrl: e.target.value } })}
-                                            placeholder="https://chatwoot.seudominio.com"
-                                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
-                                        />
-                                        <p className="text-xs text-muted-foreground">URL do seu Chatwoot para o inbox embutido na Central de Comunicação.</p>
+
+                                    <div className="border-t border-border" />
+
+                                    {/* Chatwoot */}
+                                    <div className="space-y-4">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Chatwoot</p>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">URL do Chatwoot</label>
+                                            <input
+                                                value={(settings.whatsappConfig as any).chatwootUrl || ""}
+                                                onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, chatwootUrl: e.target.value } })}
+                                                placeholder="https://chatwoot.seudominio.com"
+                                                className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
+                                            />
+                                            <p className="text-xs text-muted-foreground">Usada tanto no iframe da Central de Comunicação quanto nas chamadas de API de sincronização.</p>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Account ID</label>
+                                                <input
+                                                    value={(settings.whatsappConfig as any).chatwootAccountId || ""}
+                                                    onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, chatwootAccountId: e.target.value } })}
+                                                    placeholder="1"
+                                                    className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Inbox ID</label>
+                                                <input
+                                                    type="number"
+                                                    value={(settings.whatsappConfig as any).chatwootInboxId || ""}
+                                                    onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, chatwootInboxId: parseInt(e.target.value) || 0 } })}
+                                                    placeholder="3"
+                                                    className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">API Token do Chatwoot</label>
+                                            <input
+                                                type="password"
+                                                value={(settings.whatsappConfig as any).chatwootApiToken || ""}
+                                                onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, chatwootApiToken: e.target.value } })}
+                                                placeholder="••••••••••••••••"
+                                                className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
 
                                 {settings.whatsappEnabled && settings.whatsappConfig.apiUrl && settings.whatsappConfig.apiKey && (settings.whatsappConfig as any).instanceName && (
                                     <div className="flex items-center gap-2 text-green-600 text-xs font-bold bg-green-500/10 p-3 rounded-xl">
-                                        <CheckCircle2 size={14} /> Integração configurada — automações de mensagem habilitadas.
+                                        <CheckCircle2 size={14} /> Evolution configurada — automações de mensagem habilitadas.
                                     </div>
                                 )}
                                 {settings.whatsappEnabled && (!settings.whatsappConfig.apiUrl || !settings.whatsappConfig.apiKey || !(settings.whatsappConfig as any).instanceName) && (
                                     <div className="flex items-center gap-2 text-amber-600 text-xs font-bold bg-amber-500/10 p-3 rounded-xl">
-                                        <AlertTriangle size={14} /> Preencha URL, API Key e Nome da Instância para ativar o envio de mensagens.
+                                        <AlertTriangle size={14} /> Preencha URL, API Key e Instância para ativar o envio de mensagens.
+                                    </div>
+                                )}
+                                {(settings.whatsappConfig as any).chatwootUrl && (settings.whatsappConfig as any).chatwootAccountId && (settings.whatsappConfig as any).chatwootApiToken && (settings.whatsappConfig as any).chatwootInboxId && (
+                                    <div className="flex items-center gap-2 text-green-600 text-xs font-bold bg-green-500/10 p-3 rounded-xl">
+                                        <CheckCircle2 size={14} /> Chatwoot configurado — sincronização de contatos e inbox habilitados.
                                     </div>
                                 )}
                             </section>

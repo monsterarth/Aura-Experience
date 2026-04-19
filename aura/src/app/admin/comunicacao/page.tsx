@@ -28,8 +28,7 @@ export default function ComunicacaoPage() {
     );
   }
 
-  const cfg = property.settings?.whatsappConfig;
-  const chatwootUrl = cfg?.chatwootUrl || process.env.NEXT_PUBLIC_CHATWOOT_URL || "";
+  const chatwootUrl = property.settings?.whatsappConfig?.chatwootUrl || "";
 
   if (!chatwootUrl) {
     return (

@@ -3,28 +3,30 @@
 // Todos os métodos públicos são fire-and-forget: falhas nunca bloqueiam o fluxo principal.
 
 import { supabaseAdmin } from "@/lib/supabase";
-import { Stay, Guest, Cabin } from "@/types/aura";
+import { Stay, Guest, Cabin, Property } from "@/types/aura";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-function getBase(): string | null {
-  const url = process.env.CHATWOOT_URL;
-  const accountId = process.env.CHATWOOT_ACCOUNT_ID;
-  if (!url || !accountId) return null;
-  return `${url}/api/v1/accounts/${accountId}`;
+interface ResolvedConfig {
+  base: string;
+  headers: Record<string, string>;
+  inboxId: number;
 }
 
-function getHeaders(): Record<string, string> | null {
-  const token = process.env.CHATWOOT_API_TOKEN;
-  if (!token) return null;
-  return {
-    "api_access_token": token,
-    "Content-Type": "application/json",
-  };
-}
-
-function isEnabled(): boolean {
-  return !!(process.env.CHATWOOT_URL && process.env.CHATWOOT_ACCOUNT_ID && process.env.CHATWOOT_API_TOKEN);
+/**
+ * Resolve a config do Chatwoot exclusivamente a partir de property.settings.whatsappConfig.
+ * Retorna null se qualquer campo estiver ausente — sem fallback para env vars.
+ */
+function resolveConfig(property?: Property): ResolvedConfig | null {
+  const wc = property?.settings?.whatsappConfig;
+  if (wc?.chatwootUrl && wc?.chatwootAccountId && wc?.chatwootApiToken && wc?.chatwootInboxId) {
+    return {
+      base: `${wc.chatwootUrl}/api/v1/accounts/${wc.chatwootAccountId}`,
+      headers: { "api_access_token": wc.chatwootApiToken, "Content-Type": "application/json" },
+      inboxId: wc.chatwootInboxId,
+    };
+  }
+  return null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -269,12 +271,12 @@ export class ChatwootService {
    * Faz upsert do contato no Chatwoot com nome, telefone, e-mail e documento.
    * Persiste o chatwootContactId no registro do hóspede para uso futuro.
    */
-  static async syncOnStayCreated(stay: Stay, guest: Guest): Promise<void> {
-    if (!isEnabled()) { console.log("[Chatwoot] disabled — env vars missing"); return; }
+  static async syncOnStayCreated(stay: Stay, guest: Guest, property?: Property): Promise<void> {
+    const cfg = resolveConfig(property);
+    if (!cfg) { console.log("[Chatwoot] disabled — config missing"); return; }
     if (!guest.phone) { console.log("[Chatwoot] syncOnStayCreated: guest has no phone, skipping"); return; }
 
-    const base = getBase()!;
-    const headers = getHeaders()!;
+    const { base, headers } = cfg;
     const phone = formatPhone(guest.phone);
     console.log(`[Chatwoot] syncOnStayCreated → guest=${guest.id} phone=${phone}`);
 
@@ -322,14 +324,13 @@ export class ChatwootService {
    * Envia mensagem inicial de pré check-in.
    * Persiste o chatwootConvId na estadia.
    */
-  static async syncOn48hTrigger(stay: Stay, guest: Guest, cabin: Cabin): Promise<void> {
-    if (!isEnabled() || !guest.phone) return;
+  static async syncOn48hTrigger(stay: Stay, guest: Guest, cabin: Cabin, property?: Property): Promise<void> {
+    const cfg = resolveConfig(property);
+    if (!cfg || !guest.phone) return;
     if (stay.chatwootConvId) { console.log(`[Chatwoot] 48h: conversa já existe (${stay.chatwootConvId}), pulando`); return; }
 
-    const base = getBase()!;
-    const headers = getHeaders()!;
-    const inboxId = parseInt(process.env.CHATWOOT_INBOX_ID ?? "0", 10);
-    if (!inboxId) { console.error("[Chatwoot] CHATWOOT_INBOX_ID não configurado"); return; }
+    const { base, headers, inboxId } = cfg;
+    if (!inboxId) { console.error("[Chatwoot] inboxId não configurado"); return; }
 
     const phone = formatPhone(guest.phone);
     console.log(`[Chatwoot] 48h → guest=${guest.id} phone=${phone} cabin=${cabin.name}`);
@@ -376,10 +377,10 @@ export class ChatwootService {
    * Gatilho 3 — Troca de cabana.
    * Atualiza o atributo "cabana" na conversa ativa do Chatwoot.
    */
-  static async syncOnCabinTransfer(stay: Stay, newCabin: Cabin): Promise<void> {
-    if (!isEnabled() || !stay.chatwootConvId) return;
-    const base = getBase()!;
-    const headers = getHeaders()!;
+  static async syncOnCabinTransfer(stay: Stay, newCabin: Cabin, property?: Property): Promise<void> {
+    const cfg = resolveConfig(property);
+    if (!cfg || !stay.chatwootConvId) return;
+    const { base, headers } = cfg;
     // Chatwoot v4 não persiste custom_attributes via PATCH /conversations/{id}.
     // Usamos nota privada para registrar a troca de cabana na timeline.
     await sendPrivateNote(base, headers, stay.chatwootConvId,
@@ -391,10 +392,10 @@ export class ChatwootService {
    * Gatilho 4 — Pré check-in concluído.
    * Atualiza os Contact Custom Attributes com os dados do formulário.
    */
-  static async syncOnPreCheckinComplete(guest: Guest, stay: Stay): Promise<void> {
-    if (!isEnabled() || !guest.phone) return;
-    const base = getBase()!;
-    const headers = getHeaders()!;
+  static async syncOnPreCheckinComplete(guest: Guest, stay: Stay, property?: Property): Promise<void> {
+    const cfg = resolveConfig(property);
+    if (!cfg || !guest.phone) return;
+    const { base, headers } = cfg;
     const phone = formatPhone(guest.phone);
 
     let contactId = guest.chatwootContactId ? parseInt(guest.chatwootContactId, 10) : null;
@@ -429,12 +430,12 @@ export class ChatwootService {
    * Remove "tem_reserva" do contato apenas se não houver outras reservas pendentes.
    * A verificação é feita pelo caller (server action) que passa hasOtherPending.
    */
-  static async syncOnCancelled(stay: Stay, guest: Guest, hasOtherPending: boolean): Promise<void> {
-    if (!isEnabled() || !guest.phone) return;
+  static async syncOnCancelled(stay: Stay, guest: Guest, hasOtherPending: boolean, property?: Property): Promise<void> {
+    const cfg = resolveConfig(property);
+    if (!cfg || !guest.phone) return;
     if (hasOtherPending) return; // mantém a tag se há outras reservas ativas
 
-    const base = getBase()!;
-    const headers = getHeaders()!;
+    const { base, headers } = cfg;
 
     let contactId = guest.chatwootContactId ? parseInt(guest.chatwootContactId, 10) : null;
     if (!contactId || isNaN(contactId)) {
@@ -451,10 +452,10 @@ export class ChatwootService {
    * Gatilho 6 — Check-in realizado.
    * Remove etiqueta "tem_reserva" e adiciona "hospede" no contato.
    */
-  static async syncOnCheckIn(stay: Stay, guest: Guest): Promise<void> {
-    if (!isEnabled() || !guest.phone) return;
-    const base = getBase()!;
-    const headers = getHeaders()!;
+  static async syncOnCheckIn(stay: Stay, guest: Guest, property?: Property): Promise<void> {
+    const cfg = resolveConfig(property);
+    if (!cfg || !guest.phone) return;
+    const { base, headers } = cfg;
 
     let contactId = guest.chatwootContactId ? parseInt(guest.chatwootContactId, 10) : null;
     if (!contactId || isNaN(contactId)) {
@@ -471,10 +472,10 @@ export class ChatwootService {
    * Gatilho 6 — Check-out realizado.
    * Remove etiqueta "hospede" do contato.
    */
-  static async syncOnCheckOut(stay: Stay, guest: Guest): Promise<void> {
-    if (!isEnabled() || !guest.phone) return;
-    const base = getBase()!;
-    const headers = getHeaders()!;
+  static async syncOnCheckOut(stay: Stay, guest: Guest, property?: Property): Promise<void> {
+    const cfg = resolveConfig(property);
+    if (!cfg || !guest.phone) return;
+    const { base, headers } = cfg;
 
     let contactId = guest.chatwootContactId ? parseInt(guest.chatwootContactId, 10) : null;
     if (!contactId || isNaN(contactId)) {

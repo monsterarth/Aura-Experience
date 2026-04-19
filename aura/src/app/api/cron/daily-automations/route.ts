@@ -140,7 +140,7 @@ export async function GET(request: Request) {
             if (triggerToFire === 'pre_checkin_48h') {
               console.log(`[Chatwoot] disparando 48h para stay=${stay.id} cabin=${cabin?.name ?? 'undefined'}`);
               if (cabin) {
-                ChatwootService.syncOn48hTrigger(stay, guest, cabin).catch(e =>
+                ChatwootService.syncOn48hTrigger(stay, guest, cabin, property).catch(e =>
                   console.error('[Chatwoot] syncOn48hTrigger error:', e)
                 );
               } else {
