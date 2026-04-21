@@ -19,6 +19,28 @@ export const ConciergeService = {
     return (data || []) as ConciergeItem[];
   },
 
+  async getConciergeItemsForGuest(propertyId: string): Promise<ConciergeItem[]> {
+    const { data } = await supabase
+      .from('concierge_items')
+      .select('*')
+      .eq('propertyId', propertyId)
+      .eq('active', true)
+      .eq('availableForGuest', true)
+      .order('order', { ascending: true });
+    return (data || []) as ConciergeItem[];
+  },
+
+  async getConciergeItemsForMaid(propertyId: string): Promise<ConciergeItem[]> {
+    const { data } = await supabase
+      .from('concierge_items')
+      .select('*')
+      .eq('propertyId', propertyId)
+      .eq('active', true)
+      .eq('availableForMaid', true)
+      .order('order', { ascending: true });
+    return (data || []) as ConciergeItem[];
+  },
+
   async createItem(
     propertyId: string,
     data: Omit<ConciergeItem, 'id' | 'propertyId' | 'createdAt' | 'updatedAt'>,
@@ -128,13 +150,15 @@ export const ConciergeService = {
     return this._enrichRequests(data || []);
   },
 
-  async getPendingRequests(propertyId: string): Promise<ConciergeRequest[]> {
-    const { data } = await supabase
+  async getPendingRequests(propertyId: string, requestedBy?: 'guest' | 'maid'): Promise<ConciergeRequest[]> {
+    let query = supabase
       .from('concierge_requests')
       .select('*')
       .eq('propertyId', propertyId)
-      .eq('status', 'pending')
+      .in('status', ['pending', 'in_progress'])
       .order('createdAt', { ascending: true });
+    if (requestedBy) query = query.eq('requestedBy', requestedBy);
+    const { data } = await query;
     return this._enrichRequests(data || []);
   },
 
@@ -187,6 +211,7 @@ export const ConciergeService = {
       itemId: string;
       quantity: number;
       notes?: string;
+      requestedBy?: 'guest' | 'maid';
     },
     actorId: string,
     actorName: string
@@ -196,6 +221,7 @@ export const ConciergeService = {
       ...data,
       id: crypto.randomUUID(),
       status: 'pending',
+      requestedBy: data.requestedBy ?? 'guest',
       createdAt: now,
       updatedAt: now,
     };
@@ -239,6 +265,20 @@ export const ConciergeService = {
     });
 
     return created as ConciergeRequest;
+  },
+
+  async assignRequest(
+    propertyId: string,
+    requestId: string,
+    actorId: string,
+    actorName: string
+  ): Promise<void> {
+    const { error } = await supabase
+      .from('concierge_requests')
+      .update({ status: 'in_progress', assignedTo: actorId, assignedName: actorName, updatedAt: new Date().toISOString() })
+      .eq('id', requestId)
+      .eq('propertyId', propertyId);
+    if (error) throw error;
   },
 
   async deliverRequest(
@@ -384,10 +424,11 @@ export const ConciergeService = {
 
   listenToPendingRequests(
     propertyId: string,
-    callback: (requests: ConciergeRequest[]) => void
+    callback: (requests: ConciergeRequest[]) => void,
+    requestedBy?: 'guest' | 'maid'
   ): () => void {
     const fetchPending = async () => {
-      const requests = await this.getPendingRequests(propertyId);
+      const requests = await this.getPendingRequests(propertyId, requestedBy);
       callback(requests);
     };
 

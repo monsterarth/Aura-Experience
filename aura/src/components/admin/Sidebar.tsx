@@ -75,7 +75,7 @@ export const Sidebar = () => {
   // ==========================================
   // BLINDAGEM MOBILE-FIRST (Impede o Sidebar de existir para a operação de campo)
   // ==========================================
-  const mobileOnlyRoles = ['maid', 'technician', 'waiter', 'porter'];
+  const mobileOnlyRoles = ['maid', 'technician', 'waiter', 'porter', 'houseman'];
   if (userData?.role && mobileOnlyRoles.includes(userData.role)) {
     return null; // Retorna vazio. A tela ocupará 100% do espaço sem menu lateral.
   }
@@ -106,6 +106,7 @@ export const Sidebar = () => {
     { title: "Eventos", icon: Ticket, href: "/admin/eventos", roles: ["super_admin", "admin", "reception"] },
     { title: "Agenda Estrut.", icon: Calendar, href: "/admin/core/structures/bookings", roles: ["super_admin", "admin", "reception"] },
     { title: "Governança", icon: Sparkles, href: "/admin/governance", roles: ["super_admin", "admin", "governance"] },
+    { title: "Kanban", icon: LayoutDashboard, href: "/admin/governance/kanban", roles: ["super_admin", "admin", "governance"] },
     { title: "Manutenção", icon: Wrench, href: "/admin/maintenance", roles: ["super_admin", "admin", "maintenance"] },
   ];
 
@@ -135,6 +136,7 @@ export const Sidebar = () => {
     { title: "Automações", icon: Bot, href: "/admin/comunicacao/automations/settings", roles: ["super_admin", "admin"] },
     { title: "Templates Aura", icon: FileText, href: "/admin/core/templates", roles: ["super_admin"] },
     { title: "Cabanas", icon: Building, href: "/admin/cabins", roles: ["super_admin", "admin", "governance"] },
+    { title: "Frigobar", icon: Coffee, href: "/admin/cabins/minibar", roles: ["super_admin", "admin"] },
     { title: "Estruturas", icon: Home, href: "/admin/core/structures", roles: ["super_admin", "admin"] },
     { title: "Catálogo Concierge", icon: Package, href: "/admin/core/concierge", roles: ["super_admin", "admin"] },
     { title: "Equipe", icon: Users, href: "/admin/staff", roles: ["super_admin", "admin"] },
@@ -331,7 +333,7 @@ export const Sidebar = () => {
         <div className="flex-1 overflow-y-auto custom-scrollbar -mx-2 px-2 pb-4">
           <NavSection label="Painéis" items={filteredPaineis} exactRoutes={["/admin/core/dashboard", "/admin/reception"]} />
           <NavSection label="Hospedagem" items={filteredHospedagem} />
-          <NavSection label="Agenda" items={filteredAgenda} />
+          <NavSection label="Agenda" items={filteredAgenda} exactRoutes={["/admin/governance"]} />
           <NavSection label="Serviços" items={filteredServicos} />
           <NavSection label="Setup" items={filteredSetup} exactRoutes={["/admin/core/properties"]} />
         </div>

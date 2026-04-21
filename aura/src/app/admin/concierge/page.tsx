@@ -41,7 +41,7 @@ export default function AdminConciergePage() {
 
     const unsub = ConciergeService.listenToPendingRequests(property.id, (reqs) => {
       setPending(reqs);
-    });
+    }, 'guest');
 
     return unsub;
   }, [property]);

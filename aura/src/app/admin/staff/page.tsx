@@ -32,6 +32,7 @@ const roleLabels: Record<string, string> = {
   kitchen: "Cozinha (Gestão)",
   waiter: "Garçom (Mobile)",
   porter: "Porteiro (Mobile)",
+  houseman: "Houseman (Mobile)",
   marketing: "Marketing"
 };
 
@@ -158,6 +159,7 @@ export default function StaffManagementPage() {
                   <optgroup label="Governança">
                     <option value="governance">Governanta (Gestão)</option>
                     <option value="maid">Camareira (Mobile)</option>
+                    <option value="houseman">Houseman (Mobile)</option>
                   </optgroup>
                   <optgroup label="Manutenção">
                     <option value="maintenance">Manutenção (Gestão)</option>

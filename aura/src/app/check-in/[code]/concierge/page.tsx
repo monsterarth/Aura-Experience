@@ -188,7 +188,7 @@ export default function ConciergePage() {
 
         const [propData, itemsData, reqData, stayFull] = await Promise.all([
           PropertyService.getPropertyById(stayData.propertyId),
-          ConciergeService.getConciergeItems(stayData.propertyId),
+          ConciergeService.getConciergeItemsForGuest(stayData.propertyId),
           ConciergeService.getConciergeRequestsForStay(stayData.propertyId, stayData.id),
           StayService.getStayWithGuestAndCabin(stayData.propertyId, stayData.id),
         ]);

@@ -10,7 +10,7 @@ import {
   Users, CheckCircle, Clock, Plane,
   Briefcase, PawPrint, Trash2, Plus,
   LogOut, RotateCcw, Sparkles, Receipt, RefreshCw, ShoppingCart, Coffee,
-  Loader2, Printer, ArrowLeft, BedDouble, ExternalLink,
+  Loader2, Printer, ArrowLeft, BedDouble, ExternalLink, KeyRound,
 } from "lucide-react";
 import { format, differenceInCalendarDays } from "date-fns";
 import { toast } from "sonner";
@@ -112,6 +112,8 @@ export default function StayDetailPage() {
   const [loading,    setLoading]    = useState(true);
   const [isSaving,   setIsSaving]   = useState(false);
   const [isEditing,  setIsEditing]  = useState(false);
+  const [checkOutModalOpen, setCheckOutModalOpen] = useState(false);
+  const [keyLocation, setKeyLocation] = useState<'reception' | 'cabin' | 'unknown' | null>(null);
   const [expandedArea, setExpandedArea] = useState<string | null>(null);
 
   const [stay,  setStay]  = useState<any>(null);
@@ -280,13 +282,33 @@ export default function StayDetailPage() {
     await doSave(cabinChanged ? formData.cabinId : null, null);
   };
 
-  const handleToggleCheckOut = async () => {
-    const fin = stay.status === "active";
-    if (!window.confirm(`Tem certeza que deseja ${fin ? "realizar Check-out" : "reativar esta estadia"}?`)) return;
+  const handleToggleCheckOut = () => {
+    if (stay.status === "active") {
+      setKeyLocation(null);
+      setCheckOutModalOpen(true);
+    } else {
+      handleUndoCheckOut();
+    }
+  };
+
+  const handleUndoCheckOut = async () => {
+    if (!window.confirm("Reativar esta estadia e colocar a cabana como ocupada?")) return;
     setIsSaving(true);
     try {
-      if (fin) { await StayService.performCheckOut(propertyId!, stay.id, userData?.id || "ADMIN", userData?.fullName || "Recepção"); toast.success("Check-out realizado!"); }
-      else      { await StayService.undoCheckOut(propertyId!, stay.id, stay.cabinId, userData?.id || "ADMIN", userData?.fullName || "Recepção"); toast.success("Estadia reativada!"); }
+      await StayService.undoCheckOut(propertyId!, stay.id, stay.cabinId, userData?.id || "ADMIN", userData?.fullName || "Recepção");
+      toast.success("Estadia reativada!");
+      const upd = await StayService.getStayWithGuestAndCabinAdmin(propertyId!, stay.id);
+      if (upd) { setStay(upd.stay); setGuest(upd.guest); }
+    } catch { toast.error("Erro na operação."); } finally { setIsSaving(false); }
+  };
+
+  const handleConfirmCheckOut = async () => {
+    if (!keyLocation) return;
+    setCheckOutModalOpen(false);
+    setIsSaving(true);
+    try {
+      await StayService.performCheckOut(propertyId!, stay.id, userData?.id || "ADMIN", userData?.fullName || "Recepção", keyLocation);
+      toast.success("Check-out realizado!");
       const upd = await StayService.getStayWithGuestAndCabinAdmin(propertyId!, stay.id);
       if (upd) { setStay(upd.stay); setGuest(upd.guest); }
     } catch { toast.error("Erro na operação."); } finally { setIsSaving(false); }
@@ -956,6 +978,62 @@ export default function StayDetailPage() {
               <button onClick={() => { setTransferDialogOpen(false); setPendingTransferCabinId(null); }}
                 className="w-full py-2.5 text-muted-foreground font-bold uppercase text-xs rounded-xl hover:bg-secondary/50 transition-all">
                 Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal de localização da chave no Check-out */}
+      {checkOutModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-primary/10 rounded-2xl flex items-center justify-center">
+                <KeyRound size={20} className="text-primary" />
+              </div>
+              <div>
+                <h2 className="text-base font-black text-foreground">Localização da Chave</h2>
+                <p className="text-xs text-muted-foreground">Onde está a chave da acomodação?</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {([
+                { value: 'reception', label: 'Na Recepção', desc: 'Hóspede devolveu a chave', color: 'border-green-500/40 bg-green-500/5 hover:bg-green-500/10', active: 'border-green-500 bg-green-500/15', dot: 'bg-green-500' },
+                { value: 'cabin', label: 'Na Acomodação', desc: 'Chave ficou no quarto', color: 'border-red-500/30 bg-red-500/5 hover:bg-red-500/10', active: 'border-red-500 bg-red-500/15', dot: 'bg-red-500' },
+                { value: 'unknown', label: 'Não sabemos', desc: 'Localização desconhecida', color: 'border-red-500/30 bg-red-500/5 hover:bg-red-500/10', active: 'border-red-500 bg-red-500/15', dot: 'bg-red-500' },
+              ] as const).map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setKeyLocation(opt.value)}
+                  className={cn(
+                    "w-full flex items-center gap-3 p-3 rounded-2xl border-2 transition-all text-left",
+                    keyLocation === opt.value ? opt.active : opt.color
+                  )}
+                >
+                  <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", opt.dot)} />
+                  <div>
+                    <p className="text-sm font-bold text-foreground">{opt.label}</p>
+                    <p className="text-xs text-muted-foreground">{opt.desc}</p>
+                  </div>
+                  {keyLocation === opt.value && <CheckCircle size={16} className="ml-auto text-foreground shrink-0" />}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setCheckOutModalOpen(false)}
+                className="flex-1 py-2.5 rounded-xl border border-border text-sm font-bold text-muted-foreground hover:bg-accent transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmCheckOut}
+                disabled={!keyLocation}
+                className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-black disabled:opacity-40 transition-all active:scale-95 flex items-center justify-center gap-2"
+              >
+                <LogOut size={15} /> Confirmar Check-out
               </button>
             </div>
           </div>

@@ -32,6 +32,8 @@ export default function AdminLoginPage() {
       case 'governance':
       case 'maid': // Camareira vai direto para o seu App Mobile de Governança
         return "/admin/governance";
+      case 'houseman':
+        return "/admin/houseman";
       case 'maintenance':
       case 'technician':
         return "/admin/maintenance";

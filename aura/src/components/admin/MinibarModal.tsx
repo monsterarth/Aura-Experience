@@ -2,11 +2,11 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, Save, Coffee, Plus, Minus, AlertCircle, ShoppingCart } from "lucide-react";
-import { HousekeepingTask } from "@/types/aura";
-import { HousekeepingService } from "@/services/housekeeping-service";
+import { X, Save, Coffee, Plus, Minus, AlertCircle, ShoppingCart, Loader2, Settings } from "lucide-react";
+import { HousekeepingTask, MinibarItem } from "@/types/aura";
 import { StayService } from "@/services/stay-service";
 import { useAuth } from "@/context/AuthContext";
+import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -17,63 +17,90 @@ interface MinibarModalProps {
   cabinName: string;
 }
 
-const MINIBAR_CATALOG = [
-  { id: 'agua_sem_gas', name: 'Água sem Gás (500ml)', price: 5.00 },
-  { id: 'agua_com_gas', name: 'Água com Gás (500ml)', price: 6.00 },
-  { id: 'refrigerante', name: 'Refrigerante Cola (Lata)', price: 8.00 },
-  { id: 'heineken', name: 'Cerveja Heineken (Long Neck)', price: 15.00 },
-  { id: 'suco_uva', name: 'Suco de Uva Integral', price: 12.00 },
-  { id: 'amendoim', name: 'Amendoim Japonês', price: 10.00 },
-  { id: 'chocolate', name: 'Barra de Chocolate', price: 14.00 },
-];
-
 export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalProps) {
   const { userData } = useAuth();
   const [loading, setLoading] = useState(false);
-
-  // Estado do carrinho: { 'id_do_produto': quantidade }
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [items, setItems] = useState<MinibarItem[]>([]);
   const [cart, setCart] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    if (isOpen) {
-      setCart({}); // Limpa o carrinho toda vez que abre o modal
+    if (isOpen && task?.cabinId) {
+      setCart({});
+      fetchItems(task.cabinId, task.propertyId);
     }
-  }, [isOpen]);
+  }, [isOpen, task?.cabinId]);
+
+  const fetchItems = async (cabinId: string, propertyId: string) => {
+    setLoadingItems(true);
+    try {
+      // 1. Load global catalog for this property
+      const { data: globals, error } = await supabase
+        .from('minibar_items')
+        .select('*')
+        .eq('propertyId', propertyId)
+        .is('cabinId', null)
+        .eq('active', true)
+        .order('order', { ascending: true });
+      if (error) throw error;
+
+      // 2. Load cabin-specific overrides
+      const { data: overrides } = await supabase
+        .from('minibar_cabin_overrides')
+        .select('*')
+        .eq('cabinId', cabinId);
+      const overrideMap: Record<string, { active: boolean; price: number | null }> = {};
+      for (const ov of (overrides || [])) {
+        overrideMap[ov.itemId] = { active: ov.active, price: ov.price };
+      }
+
+      // 3. Merge: filter by effective active, apply override price
+      const merged = (globals || [])
+        .map((item: MinibarItem) => {
+          const ov = overrideMap[item.id];
+          const active = ov ? ov.active : item.active;
+          const price = (ov && ov.price !== null) ? ov.price : item.price;
+          return { ...item, active, price };
+        })
+        .filter((item: MinibarItem) => item.active);
+
+      setItems(merged);
+    } catch {
+      toast.error('Erro ao carregar itens do frigobar.');
+      setItems([]);
+    } finally {
+      setLoadingItems(false);
+    }
+  };
 
   if (!isOpen || !task) return null;
 
-  // Lógica de + e -
-  const updateQuantity = (productId: string, delta: number) => {
+  const updateQuantity = (itemId: string, delta: number) => {
     setCart(prev => {
-      const current = prev[productId] || 0;
+      const current = prev[itemId] || 0;
       const next = current + delta;
-      if (next < 0) return prev; // Não permite negativo
-
+      if (next < 0) return prev;
       const newCart = { ...prev };
-      if (next === 0) {
-        delete newCart[productId]; // Limpa do objeto se for 0
-      } else {
-        newCart[productId] = next;
-      }
+      if (next === 0) delete newCart[itemId];
+      else newCart[itemId] = next;
       return newCart;
     });
   };
 
   const handleSave = async () => {
-    // Se não tiver stayId, é uma tarefa isolada sem hóspede (ex: tarefa manual de teste)
     if (!task.stayId) {
       toast.error("Esta tarefa não está vinculada a uma reserva. O consumo não tem onde ser lançado.");
       return;
     }
 
-    const itemsToSave = Object.keys(cart).map(productId => {
-      const product = MINIBAR_CATALOG.find(p => p.id === productId)!;
-      const quantity = cart[productId];
+    const itemsToSave = Object.keys(cart).map(itemId => {
+      const item = items.find(i => i.id === itemId)!;
+      const quantity = cart[itemId];
       return {
-        description: product.name,
-        quantity: quantity,
-        unitPrice: product.price,
-        totalPrice: product.price * quantity,
+        description: item.name,
+        quantity,
+        unitPrice: item.price,
+        totalPrice: item.price * quantity,
         category: 'minibar' as const,
         addedBy: userData?.id || "SYSTEM",
       };
@@ -87,13 +114,11 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
 
     setLoading(true);
     try {
-      // Salva todos os itens no Folio da Estadia
       await Promise.all(
         itemsToSave.map(item =>
           StayService.addFolioItemManual(task.propertyId, task.stayId!, item, userData?.id || "SYSTEM", userData?.fullName || "Camareira Aura")
         )
       );
-
       toast.success(`${itemsToSave.length} item(ns) lançados na conta da cabana!`);
       onClose();
     } catch (error) {
@@ -131,45 +156,61 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
           {!task.stayId && (
             <div className="mb-4 flex items-center gap-2 p-3 bg-red-500/10 text-red-600 rounded-xl text-xs font-bold leading-tight">
               <AlertCircle size={20} className="shrink-0" />
-              ATENÇÃO: Tarefa sem reserva vinculada. Use isto apenas para teste, os lançamentos não terão onde ser cobrados.
+              ATENÇÃO: Tarefa sem reserva vinculada. Os lançamentos não terão onde ser cobrados.
             </div>
           )}
 
-          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4">Selecione o que o hóspede consumiu:</p>
+          {loadingItems ? (
+            <div className="flex justify-center py-10">
+              <Loader2 className="animate-spin text-blue-500" size={24} />
+            </div>
+          ) : items.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-10 text-center text-muted-foreground">
+              <Settings size={28} className="opacity-40" />
+              <p className="text-sm font-medium">Nenhum item configurado</p>
+              <p className="text-xs opacity-70">Configure os itens desta cabana em<br />Acomodações → Frigobar.</p>
+            </div>
+          ) : (
+            <>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4">Selecione o que o hóspede consumiu:</p>
+              {items.map((item) => {
+                const quantity = cart[item.id] || 0;
+                return (
+                  <div key={item.id} className={cn(
+                    "flex items-center justify-between p-3 rounded-xl border transition-all",
+                    quantity > 0 ? "bg-blue-500/5 border-blue-500/30" : "bg-background border-border hover:border-foreground/20"
+                  )}>
+                    <div className="flex-1 min-w-0">
+                      <span className={cn(
+                        "text-sm font-medium block",
+                        quantity > 0 ? "text-foreground font-bold" : "text-muted-foreground"
+                      )}>
+                        {item.name}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">R$ {item.price.toFixed(2)}</span>
+                    </div>
 
-          {MINIBAR_CATALOG.map((product) => {
-            const quantity = cart[product.id] || 0;
-            return (
-              <div key={product.id} className={cn(
-                "flex items-center justify-between p-3 rounded-xl border transition-all",
-                quantity > 0 ? "bg-blue-500/5 border-blue-500/30" : "bg-background border-border hover:border-foreground/20"
-              )}>
-                <span className={cn(
-                  "text-sm font-medium",
-                  quantity > 0 ? "text-foreground font-bold" : "text-muted-foreground"
-                )}>
-                  {product.name}
-                </span>
-
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => updateQuantity(product.id, -1)}
-                    disabled={quantity === 0}
-                    className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-foreground disabled:opacity-30 disabled:cursor-not-allowed hover:bg-destructive hover:text-white transition-colors"
-                  >
-                    <Minus size={14} />
-                  </button>
-                  <span className="w-4 text-center font-black text-sm">{quantity}</span>
-                  <button
-                    onClick={() => updateQuantity(product.id, 1)}
-                    className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-foreground hover:bg-blue-500 hover:text-white transition-colors"
-                  >
-                    <Plus size={14} />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+                    <div className="flex items-center gap-3 shrink-0">
+                      <button
+                        onClick={() => updateQuantity(item.id, -1)}
+                        disabled={quantity === 0}
+                        className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-foreground disabled:opacity-30 disabled:cursor-not-allowed hover:bg-destructive hover:text-white transition-colors"
+                      >
+                        <Minus size={14} />
+                      </button>
+                      <span className="w-4 text-center font-black text-sm">{quantity}</span>
+                      <button
+                        onClick={() => updateQuantity(item.id, 1)}
+                        className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-foreground hover:bg-blue-500 hover:text-white transition-colors"
+                      >
+                        <Plus size={14} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
         </div>
 
         {/* FOOTER */}
@@ -185,10 +226,10 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
             </button>
             <button
               onClick={handleSave}
-              disabled={loading || (!task.stayId && totalItems > 0)}
+              disabled={loading || loadingItems || (!task.stayId && totalItems > 0)}
               className="px-6 py-3 bg-blue-600 text-white font-bold text-xs uppercase rounded-xl hover:bg-blue-700 transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
             >
-              {loading ? "Lançando..." : <><Save size={16} /> Lançar na Conta</>}
+              {loading ? <><Loader2 size={14} className="animate-spin" /> Lançando...</> : <><Save size={16} /> Lançar na Conta</>}
             </button>
           </div>
         </div>

@@ -289,6 +289,107 @@ export async function DELETE(request: Request) {
 }
 
 /**
+ * PUT /api/admin/staff
+ * Atualiza perfil (fullName, phone, birthDate, bio, profilePictureUrl, active, role).
+ * Regras de role:
+ *   - Qualquer staff autenticado pode editar o próprio perfil (sem alterar role).
+ *   - admin/super_admin podem editar outros da mesma property.
+ *   - Apenas super_admin pode atribuir/remover role super_admin.
+ *   - Ninguém pode alterar o próprio role.
+ */
+export async function PUT(request: Request) {
+  const auth = await requireAuth();
+  if (isAuthError(auth)) return auth;
+
+  try {
+    const body = await request.json();
+    const { staffId, updates } = body as { staffId: string; updates: Record<string, unknown> };
+
+    if (!staffId || !updates || typeof updates !== 'object') {
+      return NextResponse.json({ error: "Campos obrigatórios em falta." }, { status: 400 });
+    }
+
+    // Buscar o alvo
+    const { data: targetUser, error: fetchError } = await supabaseAdmin
+      .from('staff')
+      .select('id, propertyId, fullName, role')
+      .eq('id', staffId)
+      .single();
+
+    if (fetchError || !targetUser) {
+      return NextResponse.json({ error: "Utilizador não encontrado." }, { status: 404 });
+    }
+
+    const isSelf = auth.staff.id === staffId;
+    const isAdmin = auth.staff.role === 'admin' || auth.staff.role === 'super_admin';
+    const isSuperAdmin = auth.staff.role === 'super_admin';
+    const sameProperty = auth.staff.propertyId === targetUser.propertyId;
+
+    // Apenas pode editar a si próprio ou (admin/super_admin da mesma property)
+    if (!isSelf && !(isAdmin && sameProperty)) {
+      return NextResponse.json({ error: "Sem permissão para editar este utilizador." }, { status: 403 });
+    }
+
+    // Ninguém pode alterar o próprio role
+    if (isSelf && 'role' in updates) {
+      return NextResponse.json({ error: "Não pode alterar o seu próprio cargo." }, { status: 403 });
+    }
+
+    // Apenas super_admin pode atribuir/remover super_admin
+    if ('role' in updates) {
+      const newRole = updates['role'] as string;
+      if (newRole === 'super_admin' && !isSuperAdmin) {
+        return NextResponse.json({ error: "Apenas um Super Admin pode promover outro Super Admin." }, { status: 403 });
+      }
+      if (targetUser.role === 'super_admin' && !isSuperAdmin) {
+        return NextResponse.json({ error: "Apenas um Super Admin pode alterar o cargo de outro Super Admin." }, { status: 403 });
+      }
+      // admin não pode promover além de si (não pode criar admin ou super_admin)
+      if (auth.staff.role === 'admin' && (newRole === 'admin' || newRole === 'super_admin')) {
+        return NextResponse.json({ error: "Admins não podem atribuir cargos de Admin ou Super Admin." }, { status: 403 });
+      }
+    }
+
+    // Campos permitidos — role só chega aqui se passou nas guards acima
+    const allowedFields = ['fullName', 'phone', 'birthDate', 'bio', 'profilePictureUrl', 'active', 'role'];
+    const safeUpdates: Record<string, unknown> = {};
+    for (const key of allowedFields) {
+      if (key in updates) safeUpdates[key] = updates[key];
+    }
+
+    if (Object.keys(safeUpdates).length === 0) {
+      return NextResponse.json({ error: "Nenhum campo válido para atualizar." }, { status: 400 });
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from('staff')
+      .update(safeUpdates)
+      .eq('id', staffId);
+
+    if (updateError) throw updateError;
+
+    await supabaseAdmin.from('audit_logs').insert({
+      id: crypto.randomUUID(),
+      propertyId: targetUser.propertyId || 'SYSTEM',
+      userId: auth.staff.id,
+      userName: auth.staff.fullName,
+      action: 'USER_UPDATE',
+      entity: 'USER',
+      entityId: staffId,
+      newData: safeUpdates,
+      timestamp: new Date().toISOString(),
+      details: `Perfil de ${targetUser.fullName} atualizado.`,
+    });
+
+    return NextResponse.json({ success: true });
+
+  } catch (error: any) {
+    console.error("[Aura API Error] PUT staff:", error);
+    return NextResponse.json({ error: error.message || "Erro interno." }, { status: 500 });
+  }
+}
+
+/**
  * GET /api/admin/staff?propertyId=...
  * Lista o staff de uma propriedade.
  * Requer autenticação. Non-super_admin só vê staff da sua property.

@@ -28,6 +28,7 @@ const roleLabels: Record<string, string> = {
   kitchen: "Cozinha (Gestão)",
   waiter: "Garçom (Mobile)",
   porter: "Porteiro (Mobile)",
+  houseman: "Houseman (Mobile)",
   marketing: "Marketing"
 };
 
@@ -59,6 +60,15 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
   const canDelete =
     userData?.role === "super_admin" ||
     (userData?.role === "admin" && staff.role !== "super_admin");
+
+  // Quem pode alterar o cargo de outra pessoa?
+  // - super_admin pode tudo
+  // - admin pode alterar roles abaixo de admin (não pode promover a admin/super_admin)
+  // - ninguém pode alterar o próprio role
+  const canEditRole =
+    !isSelf &&
+    (userData?.role === "super_admin" ||
+      (userData?.role === "admin" && staff.role !== "super_admin"));
 
   useEffect(() => {
     setFormData({
@@ -255,31 +265,44 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
 
                   <div className="space-y-1">
                     <label className="text-xs font-bold uppercase text-muted-foreground">Cargo / Permissão</label>
-                    <select
-                      value={formData.role || ""}
-                      onChange={e => setFormData(prev => ({ ...prev, role: e.target.value as UserRole }))}
-                      className="w-full p-2.5 bg-background border rounded-lg outline-none focus:ring-2 focus:ring-primary/20"
-                    >
-                      <optgroup label="Administrativo e Recepção">
-                        <option value="super_admin">Super Admin</option>
-                        <option value="admin">Administrador</option>
-                        <option value="reception">Recepção</option>
-                        <option value="marketing">Marketing</option>
-                      </optgroup>
-                      <optgroup label="Governança">
-                        <option value="governance">Governanta (Gestão)</option>
-                        <option value="maid">Camareira (Mobile)</option>
-                      </optgroup>
-                      <optgroup label="Manutenção">
-                        <option value="maintenance">Manutenção (Gestão)</option>
-                        <option value="technician">Técnico (Mobile)</option>
-                      </optgroup>
-                      <optgroup label="A&B / Portaria">
-                        <option value="kitchen">Cozinha/Salão (Gestão)</option>
-                        <option value="waiter">Garçom (Mobile)</option>
-                        <option value="porter">Porteiro (Mobile)</option>
-                      </optgroup>
-                    </select>
+                    {canEditRole ? (
+                      <select
+                        value={formData.role || ""}
+                        onChange={e => setFormData(prev => ({ ...prev, role: e.target.value as UserRole }))}
+                        className="w-full p-2.5 bg-background border rounded-lg outline-none focus:ring-2 focus:ring-primary/20"
+                      >
+                        {userData?.role === "super_admin" && (
+                          <optgroup label="Administrativo e Recepção">
+                            <option value="super_admin">Super Admin</option>
+                            <option value="admin">Administrador</option>
+                          </optgroup>
+                        )}
+                        <optgroup label="Recepção e Marketing">
+                          <option value="reception">Recepção</option>
+                          <option value="marketing">Marketing</option>
+                        </optgroup>
+                        <optgroup label="Governança">
+                          <option value="governance">Governanta (Gestão)</option>
+                          <option value="maid">Camareira (Mobile)</option>
+                        </optgroup>
+                        <optgroup label="Manutenção">
+                          <option value="maintenance">Manutenção (Gestão)</option>
+                          <option value="technician">Técnico (Mobile)</option>
+                        </optgroup>
+                        <optgroup label="A&B / Portaria">
+                          <option value="kitchen">Cozinha/Salão (Gestão)</option>
+                          <option value="waiter">Garçom (Mobile)</option>
+                          <option value="porter">Porteiro (Mobile)</option>
+                        </optgroup>
+                      </select>
+                    ) : (
+                      <div className="w-full p-2.5 bg-muted border rounded-lg text-muted-foreground text-sm select-none">
+                        {roleLabels[formData.role || ""] || formData.role}
+                        {isSelf && (
+                          <span className="ml-2 text-xs opacity-60">(não pode alterar o próprio cargo)</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

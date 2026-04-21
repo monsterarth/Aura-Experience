@@ -12,7 +12,9 @@ export type UserRole =
   | 'technician' // Técnico (Operacional Mobile)
   | 'kitchen'    // Gestor de Cozinha
   | 'waiter'     // Garçom (Operacional Mobile)
-  | 'porter';    // Porteiro (Operacional Mobile)
+  | 'porter'     // Porteiro (Operacional Mobile)
+  | 'houseman'   // Houseman (Operacional Mobile)
+  | 'marketing'; // Marketing
 
 export interface PropertyTheme {
   colors: {
@@ -269,6 +271,7 @@ export interface HousekeepingTask {
 
   routineId?: string; // ID da rotina que gerou esta tarefa (se aplicável)
   customLocation?: string; // Local livre (ex: "Recepção", "Banheiro Social")
+  keyLocation?: 'reception' | 'cabin' | 'unknown'; // Localização da chave no checkout (apenas turnover)
   observations?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -531,6 +534,9 @@ export interface Stay {
 
   // Integração Chatwoot
   chatwootConvId?: number; // ID da conversa proativa no Chatwoot
+
+  // Chave da acomodação no momento do check-out
+  keyLocation?: 'reception' | 'cabin' | 'unknown';
 
   createdAt: Timestamp;
 }
@@ -884,7 +890,7 @@ export interface SystemBug {
 // ==========================================
 
 export type ConciergeCategory = 'consumption' | 'loan';
-export type ConciergeRequestStatus = 'pending' | 'delivered' | 'returned' | 'lost';
+export type ConciergeRequestStatus = 'pending' | 'in_progress' | 'delivered' | 'returned' | 'lost';
 
 export interface ConciergeItem {
   id: string;
@@ -901,8 +907,36 @@ export interface ConciergeItem {
   included_qty: number;
   image_url?: string;
   active: boolean;
+  availableForGuest: boolean;
+  availableForMaid: boolean;
   order?: number;
   createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+// Itens do minibar/frigobar — catálogo global (cabinId = null) + overrides por cabana
+export interface MinibarItem {
+  id: string;
+  cabinId: string | null; // null = item global da propriedade
+  propertyId: string;
+  name: string;       // PT
+  name_en?: string;
+  name_es?: string;
+  price: number;
+  stock: number;
+  active: boolean;
+  order?: number;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+// Ajuste por cabana: sobrescreve active e/ou preço de um item global
+export interface MinibarCabinOverride {
+  id: string;
+  itemId: string;
+  cabinId: string;
+  active: boolean;
+  price: number | null; // null = usa o preço global
   updatedAt: Timestamp;
 }
 
@@ -914,6 +948,9 @@ export interface ConciergeRequest {
   itemId: string;
   quantity: number;
   status: ConciergeRequestStatus;
+  requestedBy: 'guest' | 'maid';
+  assignedTo?: string;
+  assignedName?: string;
   total_price?: number;
   notes?: string;
   createdAt: Timestamp;

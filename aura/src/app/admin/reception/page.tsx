@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import {
-    Users, LogIn, LogOut, Clock, CalendarCheck, Calendar,
+    Users, LogIn, LogOut, Clock, Calendar,
     Coffee, MessageCircleWarning, AlertTriangle,
     Sparkles, CheckCircle2, Timer, BellRing,
     Home, Utensils, Info, Check, X, Megaphone, CheckCircle, Star
@@ -17,7 +17,8 @@ import { ConciergeService } from "@/services/concierge-service";
 import { StructureService } from "@/services/structure-service";
 import { fbService } from "@/services/fb-service";
 import { StayService } from "@/services/stay-service";
-import { HousekeepingTask, ConciergeRequest, FBOrder, StructureBooking, Structure, Cabin } from "@/types/aura";
+import { HousekeepingTask, ConciergeRequest, FBOrder, StructureBooking, Structure, Cabin, Staff } from "@/types/aura";
+import { StaffService } from "@/services/staff-service";
 import { toast } from "sonner";
 
 export default function ReceptionDashboard() {
@@ -29,7 +30,10 @@ export default function ReceptionDashboard() {
     const [loading, setLoading] = useState(true);
 
     // Stats
-    const [stats, setStats] = useState({ checkins: 0, checkouts: 0, preCheckins: 0, walkIns: 0 });
+    const [stats, setStats] = useState({ checkinsDone: 0, checkinsTotal: 0, checkoutsDone: 0, checkoutsTotal: 0, occupiedCabins: 0, totalCabins: 0, walkIns: 0 });
+
+    // Staff (para nomes na governança)
+    const [staffMap, setStaffMap] = useState<Record<string, string>>({});
 
     // Governança
     const [hkTasks, setHkTasks] = useState<HousekeepingTask[]>([]);
@@ -74,12 +78,6 @@ export default function ReceptionDashboard() {
         return `Há ${h} hora${h > 1 ? 's' : ''}`;
     }
 
-    function getTaskProgress(task: HousekeepingTask): number {
-        if (!task.checklist.length)
-            return task.status === 'in_progress' ? 30 : task.status === 'waiting_conference' ? 95 : 0;
-        return Math.round(task.checklist.filter(i => i.checked).length / task.checklist.length * 100);
-    }
-
     function getElapsed(task: HousekeepingTask): string {
         if (!task.startedAt) return 'Aguardando';
         const mins = Math.round((Date.now() - new Date(task.startedAt as string).getTime()) / 60000);
@@ -110,25 +108,48 @@ export default function ReceptionDashboard() {
     async function loadStats() {
         const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
         const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
-        const in48h = new Date(Date.now() + 48 * 60 * 60 * 1000);
 
-        const [a, b, c, d] = await Promise.all([
+        const [checkinsDone, checkinsTotal, checkoutsDone, checkoutsTotal, occupiedRes, totalCabinsRes, walkInsRes] = await Promise.all([
+            // Check-ins feitos hoje (active)
             supabase.from('stays').select('id', { count: 'exact', head: true })
                 .eq('propertyId', property!.id)
                 .gte('checkIn', todayStart.toISOString()).lte('checkIn', todayEnd.toISOString())
-                .in('status', ['pending', 'pre_checkin_done']),
+                .eq('status', 'active'),
+            // Check-ins esperados hoje (pending + pre_checkin_done + active)
+            supabase.from('stays').select('id', { count: 'exact', head: true })
+                .eq('propertyId', property!.id)
+                .gte('checkIn', todayStart.toISOString()).lte('checkIn', todayEnd.toISOString())
+                .in('status', ['pending', 'pre_checkin_done', 'active']),
+            // Check-outs feitos hoje (checked_out / finished)
             supabase.from('stays').select('id', { count: 'exact', head: true })
                 .eq('propertyId', property!.id)
                 .gte('checkOut', todayStart.toISOString()).lte('checkOut', todayEnd.toISOString())
-                .eq('status', 'active'),
+                .in('status', ['checked_out', 'finished', 'archived']),
+            // Check-outs esperados hoje (active + checked_out/finished)
             supabase.from('stays').select('id', { count: 'exact', head: true })
                 .eq('propertyId', property!.id)
-                .gte('checkIn', todayStart.toISOString()).lte('checkIn', in48h.toISOString())
-                .eq('status', 'pending'),
+                .gte('checkOut', todayStart.toISOString()).lte('checkOut', todayEnd.toISOString())
+                .in('status', ['active', 'checked_out', 'finished', 'archived']),
+            // Cabanas ocupadas (active stays)
+            supabase.from('stays').select('id', { count: 'exact', head: true })
+                .eq('propertyId', property!.id)
+                .eq('status', 'active'),
+            // Total de cabanas
+            supabase.from('cabins').select('id', { count: 'exact', head: true })
+                .eq('propertyId', property!.id),
+            // Disponíveis walk-in
             supabase.from('cabins').select('id', { count: 'exact', head: true })
                 .eq('propertyId', property!.id).eq('status', 'available'),
         ]);
-        setStats({ checkins: a.count || 0, checkouts: b.count || 0, preCheckins: c.count || 0, walkIns: d.count || 0 });
+        setStats({
+            checkinsDone: checkinsDone.count || 0,
+            checkinsTotal: checkinsTotal.count || 0,
+            checkoutsDone: checkoutsDone.count || 0,
+            checkoutsTotal: checkoutsTotal.count || 0,
+            occupiedCabins: occupiedRes.count || 0,
+            totalCabins: totalCabinsRes.count || 0,
+            walkIns: walkInsRes.count || 0,
+        });
     }
 
     async function loadStructures(cabinsData: Cabin[]) {
@@ -201,7 +222,10 @@ export default function ReceptionDashboard() {
         if (!property) return;
         setLoading(true);
         try {
-            const cabinsData = await loadCabins();
+            const [cabinsData, staffList] = await Promise.all([loadCabins(), StaffService.getStaffByProperty(property!.id)]);
+            const map: Record<string, string> = {};
+            staffList.forEach((s: Staff) => { map[s.id] = s.fullName; });
+            setStaffMap(map);
             await Promise.all([
                 loadStats(),
                 loadStructures(cabinsData),
@@ -306,10 +330,10 @@ export default function ReceptionDashboard() {
                         </span>
                         <span className="text-sm font-medium px-2 py-1 bg-white/5 border border-white/10 rounded-md text-muted-foreground flex items-center gap-2">
                             <span className="relative flex h-2 w-2">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: '#B0E0E6' }}></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2" style={{ backgroundColor: '#B0E0E6' }}></span>
                             </span>
-                            Operação Ao Vivo
+                            Funcional · Sistema ativo
                         </span>
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">
@@ -333,25 +357,28 @@ export default function ReceptionDashboard() {
             {/* TOP STATS GRID */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <StatCard
+                    icon={Users}
+                    label="Ocupação"
+                    value={`${stats.occupiedCabins}/${stats.totalCabins}`}
+                    sub={stats.totalCabins > 0 ? `${Math.round(stats.occupiedCabins / stats.totalCabins * 100)}%` : '—'}
+                    color="text-emerald-400"
+                    bg="bg-emerald-400/10"
+                />
+                <StatCard
                     icon={LogIn}
                     label="Check-ins Hoje"
-                    value={stats.checkins}
+                    value={`${stats.checkinsDone}/${stats.checkinsTotal}`}
+                    sub={stats.checkinsTotal > 0 && stats.checkinsDone === stats.checkinsTotal ? 'Concluídos' : undefined}
                     color="text-blue-400"
                     bg="bg-blue-400/10"
                 />
                 <StatCard
                     icon={LogOut}
                     label="Check-outs Hoje"
-                    value={stats.checkouts}
+                    value={`${stats.checkoutsDone}/${stats.checkoutsTotal}`}
+                    sub={stats.checkoutsTotal > 0 && stats.checkoutsDone === stats.checkoutsTotal ? 'Concluídos' : undefined}
                     color="text-orange-400"
                     bg="bg-orange-400/10"
-                />
-                <StatCard
-                    icon={CalendarCheck}
-                    label="Pré-check-ins (48h)"
-                    value={stats.preCheckins}
-                    color="text-emerald-400"
-                    bg="bg-emerald-400/10"
                 />
                 <StatCard
                     icon={Home}
@@ -381,23 +408,41 @@ export default function ReceptionDashboard() {
                             {activeTasks.length === 0 && (
                                 <p className="text-xs text-muted-foreground text-center py-4">Nenhuma tarefa ativa.</p>
                             )}
-                            {activeTasks.map(task => (
-                                <div key={task.id} className="bg-white/5 border border-white/10 rounded-2xl p-3 flex flex-col gap-2">
-                                    <div className="flex justify-between items-center">
-                                        <span className="font-bold text-sm">{getTaskLocationName(task)}</span>
-                                        <span className="text-[10px] uppercase font-bold text-primary tracking-wider bg-primary/10 px-2 py-0.5 rounded-full">
-                                            {task.type === 'turnover' ? 'Faxina' : task.type === 'daily' ? 'Diária' : 'Avulsa'}
-                                        </span>
+                            {activeTasks.map(task => {
+                                const assigneeNames = (task.assignedTo ?? [])
+                                    .map(id => staffMap[id] ?? '—')
+                                    .join(', ') || '—';
+                                const statusLabel =
+                                    task.status === 'pending' ? 'Aguardando' :
+                                    task.status === 'in_progress' ? 'Em andamento' :
+                                    task.status === 'waiting_conference' ? 'Aguardando conferência' : task.status;
+                                const statusColor =
+                                    task.status === 'in_progress' ? 'text-amber-400 bg-amber-400/10 border-amber-400/20' :
+                                    task.status === 'waiting_conference' ? 'text-blue-400 bg-blue-400/10 border-blue-400/20' :
+                                    'text-muted-foreground bg-white/5 border-white/10';
+                                return (
+                                    <div key={task.id} className="bg-white/5 border border-white/10 rounded-2xl p-3 flex flex-col gap-2">
+                                        <div className="flex justify-between items-center gap-2">
+                                            <span className="font-bold text-sm truncate">{getTaskLocationName(task)}</span>
+                                            <span className="text-[10px] uppercase font-bold text-primary tracking-wider bg-primary/10 px-2 py-0.5 rounded-full shrink-0">
+                                                {task.type === 'turnover' ? 'Faxina' : task.type === 'daily' ? 'Diária' : 'Avulsa'}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-xs gap-2">
+                                            <span className="text-muted-foreground truncate">{assigneeNames}</span>
+                                            <span className={cn("shrink-0 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wide", statusColor)}>
+                                                {statusLabel}
+                                            </span>
+                                        </div>
+                                        {task.startedAt && (
+                                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                                <Timer size={11} />
+                                                <span>{getElapsed(task)}</span>
+                                            </div>
+                                        )}
                                     </div>
-                                    <div className="w-full bg-black/40 rounded-full h-1.5 overflow-hidden">
-                                        <div className="bg-primary h-full rounded-full transition-all duration-1000" style={{ width: `${getTaskProgress(task)}%` }} />
-                                    </div>
-                                    <div className="flex justify-between items-center text-xs text-muted-foreground">
-                                        <span className="flex items-center gap-1"><Timer size={12} /> {getElapsed(task)} left</span>
-                                        <span>{getTaskProgress(task)}%</span>
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
 
                             {recentlyReleasedCabins.length > 0 && (
                                 <div className="pt-3 border-t border-white/10">
@@ -616,7 +661,7 @@ export default function ReceptionDashboard() {
     );
 }
 
-function StatCard({ icon: Icon, label, value, color, bg, highlight = false }: any) {
+function StatCard({ icon: Icon, label, value, sub, color, bg, highlight = false }: any) {
     return (
         <div className={cn(
             "bg-card border p-4 lg:p-5 rounded-3xl relative overflow-hidden group transition-all duration-300",
@@ -630,7 +675,10 @@ function StatCard({ icon: Icon, label, value, color, bg, highlight = false }: an
                 <Icon size={20} />
             </div>
             <div className="relative z-10">
-                <p className="text-2xl lg:text-3xl font-black mb-1">{value}</p>
+                <div className="flex items-baseline gap-2 mb-1">
+                    <p className="text-2xl lg:text-3xl font-black">{value}</p>
+                    {sub && <span className={cn("text-xs font-bold", color)}>{sub}</span>}
+                </div>
                 <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">{label}</p>
             </div>
         </div>

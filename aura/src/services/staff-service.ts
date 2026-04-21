@@ -43,15 +43,13 @@ export const StaffService = {
   },
 
   async updateStaff(staffId: string, updates: Partial<Staff>): Promise<void> {
-    const { error } = await supabase
-      .from('staff')
-      .update(updates)
-      .eq('id', staffId);
-
-    if (error) {
-      console.error("Error updating staff:", error);
-      throw new Error("Erro ao atualizar perfil do funcionário.");
-    }
+    const response = await fetch("/api/admin/staff", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ staffId, updates }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Erro ao atualizar perfil do funcionário.");
   },
 
   async changeEmail(staffId: string, newEmail: string): Promise<{ message: string }> {

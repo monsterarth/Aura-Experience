@@ -388,7 +388,13 @@ export const StayService = {
     await this.triggerAutomation(propertyId, stayId, 'welcome_checkin');
   },
 
-  async performCheckOut(propertyId: string, stayId: string, actorId: string, actorName: string) {
+  async performCheckOut(
+    propertyId: string,
+    stayId: string,
+    actorId: string,
+    actorName: string,
+    keyLocation: 'reception' | 'cabin' | 'unknown' = 'unknown'
+  ) {
     const { data: stay } = await supabase.from('stays').select('cabinId, guestId').eq('id', stayId).single();
     const cabinId = stay?.cabinId;
     if (!cabinId) throw new Error("Acomodação não encontrada na reserva.");
@@ -410,6 +416,7 @@ export const StayService = {
       .update({
         status: 'finished',
         checkOutActual: new Date().toISOString(),
+        keyLocation,
         updatedAt: new Date().toISOString()
       })
       .eq('id', stayId);
@@ -432,7 +439,8 @@ export const StayService = {
       type: 'turnover',
       status: 'pending',
       assignedTo: [],
-      checklist: []
+      checklist: [],
+      keyLocation,
     });
 
     // Build human-readable checkout details

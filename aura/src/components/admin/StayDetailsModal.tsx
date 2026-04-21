@@ -7,7 +7,8 @@ import {
   MapPin, Phone, Mail, Car, FileText,
   Users, CheckCircle, Clock, Plane,
   Briefcase, PawPrint, Trash2, Plus,
-  LogIn, LogOut, RotateCcw, Sparkles, Receipt, RefreshCw, ShoppingCart, Coffee, BedDouble, ArrowRight, Search, UserRoundPen
+  LogIn, LogOut, RotateCcw, Sparkles, Receipt, RefreshCw, ShoppingCart, Coffee, BedDouble, ArrowRight, Search, UserRoundPen,
+  KeyRound, AlertTriangle
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -79,6 +80,8 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [checkOutModalOpen, setCheckOutModalOpen] = useState(false);
+  const [keyLocation, setKeyLocation] = useState<'reception' | 'cabin' | 'unknown' | null>(null);
   const [expandedArea, setExpandedArea] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<Partial<Stay>>({});
@@ -435,30 +438,41 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     }
   };
 
-  const handleToggleCheckOut = async () => {
-    const isFinishing = stay.status === 'active';
-    const actionText = isFinishing ? "encerrar esta estadia (Check-out) e enviar a cabana para limpeza" : "reativar esta estadia e colocar a cabana como ocupada";
+  const handleToggleCheckOut = () => {
+    if (stay.status === 'active') {
+      setKeyLocation(null);
+      setCheckOutModalOpen(true);
+    } else {
+      handleUndoCheckOut();
+    }
+  };
 
-    if (!window.confirm(`Tem certeza que deseja ${actionText}?`)) return;
-
+  const handleUndoCheckOut = async () => {
+    if (!window.confirm("Reativar esta estadia e colocar a cabana como ocupada?")) return;
     setLoading(true);
     try {
-      const actorId = userData?.id || "ADMIN";
-      const actorName = userData?.fullName || "Recepção";
+      await StayService.undoCheckOut(stay.propertyId, stay.id, stay.cabinId, userData?.id || "ADMIN", userData?.fullName || "Recepção");
+      toast.success("Estadia reativada com sucesso!");
+      if (onUpdate) onUpdate();
+    } catch {
+      toast.error("Erro ao reativar estadia.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-      if (isFinishing) {
-        await StayService.performCheckOut(stay.propertyId, stay.id, actorId, actorName);
-        chatwootSyncOnCheckOut(stay.id).catch(() => {});
-        toast.success("Check-out realizado com sucesso!");
-      } else {
-        await StayService.undoCheckOut(stay.propertyId, stay.id, stay.cabinId, actorId, actorName);
-        toast.success("Estadia reativada com sucesso!");
-      }
-
+  const handleConfirmCheckOut = async () => {
+    if (!keyLocation) return;
+    setCheckOutModalOpen(false);
+    setLoading(true);
+    try {
+      await StayService.performCheckOut(stay.propertyId, stay.id, userData?.id || "ADMIN", userData?.fullName || "Recepção", keyLocation);
+      chatwootSyncOnCheckOut(stay.id).catch(() => {});
+      toast.success("Check-out realizado com sucesso!");
       if (onUpdate) onUpdate();
     } catch (error) {
       console.error(error);
-      toast.error(`Erro ao ${isFinishing ? 'realizar check-out' : 'reativar estadia'}.`);
+      toast.error("Erro ao realizar check-out.");
     } finally {
       setLoading(false);
     }
@@ -955,6 +969,63 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
               className="w-full py-3 px-4 text-muted-foreground font-bold uppercase tracking-wider text-xs rounded-xl hover:bg-secondary/50 transition-all mt-2"
             >
               Cancelar
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Modal de localização da chave no Check-out */}
+    {checkOutModalOpen && (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-5 animate-in zoom-in-95 duration-200">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-primary/10 rounded-2xl flex items-center justify-center">
+              <KeyRound size={20} className="text-primary" />
+            </div>
+            <div>
+              <h2 className="text-base font-black text-foreground">Localização da Chave</h2>
+              <p className="text-xs text-muted-foreground">Onde está a chave da acomodação?</p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {([
+              { value: 'reception', label: 'Na Recepção', desc: 'Hóspede devolveu a chave', color: 'border-green-500/40 bg-green-500/5 hover:bg-green-500/10', active: 'border-green-500 bg-green-500/15', dot: 'bg-green-500' },
+              { value: 'cabin', label: 'Na Acomodação', desc: 'Chave ficou no quarto', color: 'border-red-500/30 bg-red-500/5 hover:bg-red-500/10', active: 'border-red-500 bg-red-500/15', dot: 'bg-red-500' },
+              { value: 'unknown', label: 'Não sabemos', desc: 'Localização desconhecida', color: 'border-red-500/30 bg-red-500/5 hover:bg-red-500/10', active: 'border-red-500 bg-red-500/15', dot: 'bg-red-500' },
+            ] as const).map(opt => (
+              <button
+                key={opt.value}
+                onClick={() => setKeyLocation(opt.value)}
+                className={cn(
+                  "w-full flex items-center gap-3 p-3 rounded-2xl border-2 transition-all text-left",
+                  keyLocation === opt.value ? opt.active : opt.color
+                )}
+              >
+                <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", opt.dot)} />
+                <div>
+                  <p className="text-sm font-bold text-foreground">{opt.label}</p>
+                  <p className="text-xs text-muted-foreground">{opt.desc}</p>
+                </div>
+                {keyLocation === opt.value && <CheckCircle size={16} className="ml-auto text-foreground shrink-0" />}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={() => setCheckOutModalOpen(false)}
+              className="flex-1 py-2.5 rounded-xl border border-border text-sm font-bold text-muted-foreground hover:bg-accent transition-all"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleConfirmCheckOut}
+              disabled={!keyLocation}
+              className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-black disabled:opacity-40 transition-all active:scale-95 flex items-center justify-center gap-2"
+            >
+              <LogOut size={15} /> Confirmar Check-out
             </button>
           </div>
         </div>

@@ -9,7 +9,7 @@ import { ConciergeItem, ConciergeCategory } from "@/types/aura";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import {
   Package, Plus, Edit2, Loader2, ShoppingBag, Eye, EyeOff,
-  X, Save
+  X, Save, User, Wrench
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -28,6 +28,8 @@ interface ItemForm {
   included_qty: string;
   image_url: string;
   active: boolean;
+  availableForGuest: boolean;
+  availableForMaid: boolean;
   order: string;
 }
 
@@ -44,6 +46,8 @@ const defaultForm: ItemForm = {
   included_qty: '0',
   image_url: '',
   active: true,
+  availableForGuest: true,
+  availableForMaid: false,
   order: '0',
 };
 
@@ -98,6 +102,8 @@ export default function ConciergeConfigPage() {
       included_qty: String(item.included_qty),
       image_url: item.image_url || '',
       active: item.active,
+      availableForGuest: item.availableForGuest ?? true,
+      availableForMaid: item.availableForMaid ?? false,
       order: String(item.order ?? 0),
     });
     setEditingId(item.id);
@@ -123,6 +129,8 @@ export default function ConciergeConfigPage() {
         included_qty: parseInt(form.included_qty) || 0,
         image_url: form.image_url || undefined,
         active: form.active,
+        availableForGuest: form.availableForGuest,
+        availableForMaid: form.availableForMaid,
         order: parseInt(form.order) || 0,
       };
 
@@ -350,6 +358,54 @@ export default function ConciergeConfigPage() {
                 </div>
               </div>
 
+              {/* Disponibilidade */}
+              <div className="space-y-2">
+                <label className="field-label">Disponibilidade</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setForm(prev => ({ ...prev, availableForGuest: !prev.availableForGuest }))}
+                    className={cn(
+                      'flex items-center gap-2 p-3 rounded-xl border text-xs font-bold transition-all',
+                      form.availableForGuest
+                        ? 'bg-blue-500/10 border-blue-500/40 text-blue-600'
+                        : 'bg-secondary border-border text-muted-foreground'
+                    )}
+                  >
+                    <div className={cn(
+                      'w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors',
+                      form.availableForGuest ? 'bg-blue-500 border-blue-500' : 'border-muted-foreground/40'
+                    )}>
+                      {form.availableForGuest && <span className="text-white text-[10px] font-black">✓</span>}
+                    </div>
+                    <User size={13} />
+                    Hóspede
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm(prev => ({ ...prev, availableForMaid: !prev.availableForMaid }))}
+                    className={cn(
+                      'flex items-center gap-2 p-3 rounded-xl border text-xs font-bold transition-all',
+                      form.availableForMaid
+                        ? 'bg-orange-500/10 border-orange-500/40 text-orange-600'
+                        : 'bg-secondary border-border text-muted-foreground'
+                    )}
+                  >
+                    <div className={cn(
+                      'w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors',
+                      form.availableForMaid ? 'bg-orange-500 border-orange-500' : 'border-muted-foreground/40'
+                    )}>
+                      {form.availableForMaid && <span className="text-white text-[10px] font-black">✓</span>}
+                    </div>
+                    <Wrench size={13} />
+                    Camareira
+                  </button>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Se nenhum estiver ativo, o item fica desativado para solicitações.
+                </p>
+              </div>
+
               {/* Active toggle */}
               <div className="flex items-center gap-3">
                 <button
@@ -427,7 +483,7 @@ export default function ConciergeConfigPage() {
                 )}
 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
+                  <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                     <p className="text-sm font-bold text-foreground truncate">{item.name}</p>
                     <span className={cn(
                       'text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full border shrink-0',
@@ -443,6 +499,23 @@ export default function ConciergeConfigPage() {
                     {item.loss_price ? ` • Multa: R$ ${item.loss_price.toFixed(2)}` : ''}
                     {item.included_qty > 0 ? ` • ${item.included_qty} incluso(s)` : ''}
                   </p>
+                  <div className="flex items-center gap-1 mt-1.5">
+                    {item.availableForGuest ? (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-500 border border-blue-500/20 flex items-center gap-0.5">
+                        <User size={9} /> Hóspede
+                      </span>
+                    ) : null}
+                    {item.availableForMaid ? (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-500 border border-orange-500/20 flex items-center gap-0.5">
+                        <Wrench size={9} /> Camareira
+                      </span>
+                    ) : null}
+                    {!item.availableForGuest && !item.availableForMaid && (
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                        Sem solicitações
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">
