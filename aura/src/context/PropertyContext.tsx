@@ -197,7 +197,7 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
       const savedId = typeof window !== 'undefined' ? localStorage.getItem(PROPERTY_ID_KEY) : null;
       if (savedId) {
         supabase.from('properties').select('*').eq('id', savedId).single()
-          .then(({ data }) => { if (data) handleSetProperty(data as Property); })
+          .then((res: { data: Property | null }) => { if (res.data) handleSetProperty(res.data); })
           .catch(() => { /* silencioso — cache ainda válido */ });
       }
       return;
