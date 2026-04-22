@@ -101,18 +101,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             if (!retry.error && retry.data.user) {
               setUser(retry.data.user);
               const staff = await fetchStaffData(retry.data.user.id);
-              if (mounted && staff) { setUserData(staff); setUserDataReady(true); }
+              if (mounted) { setUserData(staff); setUserDataReady(true); }
+            } else {
+              if (mounted) { setUser(null); setUserData(null); setUserDataReady(true); }
             }
           } else if (fallbackUser) {
             setUser(fallbackUser);
             const staff = await fetchStaffData(fallbackUser.id);
-            if (mounted && staff) { setUserData(staff); setUserDataReady(true); }
+            if (mounted) { setUserData(staff); setUserDataReady(true); }
           } else {
-            setUser(null);
-            setUserData(null);
+            if (mounted) { setUser(null); setUserData(null); setUserDataReady(true); }
           }
         } catch (err) {
           console.warn("[Auth] Exception no getUser fallback:", err);
+          if (mounted) setUserDataReady(true); // Libera mesmo em erro — evita loading infinito
         } finally {
           if (mounted) setLoading(false);
         }

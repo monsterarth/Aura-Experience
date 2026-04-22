@@ -2,7 +2,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useRef, ReactNode, useCallback } from "react";
-import { Property, PropertyTheme } from "@/types/aura";
+import { Property } from "@/types/aura";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "./AuthContext";
 
@@ -16,6 +16,30 @@ interface PropertyContextType {
 
 const PropertyContext = createContext<PropertyContextType | undefined>(undefined);
 
+const CACHE_KEY = 'aura-property-cache';
+const PROPERTY_ID_KEY = 'aura-active-property';
+
+function readCachedProperty(): Property | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    return raw ? (JSON.parse(raw) as Property) : null;
+  } catch { return null; }
+}
+
+function writeCachedProperty(p: Property | null) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (p) {
+      localStorage.setItem(CACHE_KEY, JSON.stringify(p));
+      localStorage.setItem(PROPERTY_ID_KEY, p.id);
+    } else {
+      localStorage.removeItem(CACHE_KEY);
+      localStorage.removeItem(PROPERTY_ID_KEY);
+    }
+  } catch { /* quota exceeded — não crítico */ }
+}
+
 // --- UTILITÁRIO: Converter Hex para HSL ---
 function hexToHSL(hex: string): string {
   hex = hex.replace(/^#/, '');
@@ -23,11 +47,12 @@ function hexToHSL(hex: string): string {
   let g = parseInt(hex.substring(2, 4), 16);
   let b = parseInt(hex.substring(4, 6), 16);
   r /= 255; g /= 255; b /= 255;
-  let max = Math.max(r, g, b), min = Math.min(r, g, b);
-  let h = 0, s = 0, l = (max + min) / 2;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0;
+  const l = (max + min) / 2;
 
   if (max !== min) {
-    let d = max - min;
+    const d = max - min;
     s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
     switch (max) {
       case r: h = (g - b) / d + (g < b ? 6 : 0); break;
@@ -41,34 +66,30 @@ function hexToHSL(hex: string): string {
 
 export const PropertyProvider = ({ children, initialSlug }: { children: ReactNode; initialSlug?: string; }) => {
   const { userData, isSuperAdmin, loading: authLoading, initialProperty, userDataReady } = useAuth();
-  const [property, setProperty] = useState<Property | null>(null);
+
+  // Inicializa com o cache local — evita flash de loading no F5
+  const [property, setPropertyState] = useState<Property | null>(() => readCachedProperty());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const loadedPropertyIdRef = useRef<string | null>(null);
+
+  // Ref para evitar re-runs: property já carregada nesta sessão
+  const loadedRef = useRef(!!readCachedProperty());
+  // Refs para ler userData/isSuperAdmin sem adicionar como dependências do efeito
+  const userDataRef = useRef(userData);
+  const isSuperAdminRef = useRef(isSuperAdmin);
+  useEffect(() => { userDataRef.current = userData; }, [userData]);
+  useEffect(() => { isSuperAdminRef.current = isSuperAdmin; }, [isSuperAdmin]);
 
   // Aplica o tema visualmente no CSS do navegador
-  const updateTheme = useCallback((data: Property) => {
+  const applyTheme = useCallback((data: Property) => {
     if (!data.theme) return;
-
     const root = document.documentElement;
     const { colors, shape, typography } = data.theme;
-
-    // 1. Cores
-    if (colors.primary) {
-      root.style.setProperty('--primary', hexToHSL(colors.primary));
-    }
-    if (colors.onPrimary) {
-      root.style.setProperty('--primary-foreground', hexToHSL(colors.onPrimary));
-    }
-    if (colors.secondary) {
-      root.style.setProperty('--secondary', hexToHSL(colors.secondary));
-    }
-    if (colors.onSecondary) {
-      root.style.setProperty('--secondary-foreground', hexToHSL(colors.onSecondary));
-    }
-    if (colors.background) {
-      root.style.setProperty('--background', hexToHSL(colors.background));
-    }
+    if (colors.primary) root.style.setProperty('--primary', hexToHSL(colors.primary));
+    if (colors.onPrimary) root.style.setProperty('--primary-foreground', hexToHSL(colors.onPrimary));
+    if (colors.secondary) root.style.setProperty('--secondary', hexToHSL(colors.secondary));
+    if (colors.onSecondary) root.style.setProperty('--secondary-foreground', hexToHSL(colors.onSecondary));
+    if (colors.background) root.style.setProperty('--background', hexToHSL(colors.background));
     if (colors.surface) {
       root.style.setProperty('--card', hexToHSL(colors.surface));
       root.style.setProperty('--popover', hexToHSL(colors.surface));
@@ -77,138 +98,147 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
       root.style.setProperty('--foreground', hexToHSL(colors.textMain));
       root.style.setProperty('--card-foreground', hexToHSL(colors.textMain));
     }
-    if (colors.textMuted) {
-      root.style.setProperty('--muted-foreground', hexToHSL(colors.textMuted));
-    }
+    if (colors.textMuted) root.style.setProperty('--muted-foreground', hexToHSL(colors.textMuted));
     if (colors.accent) {
       root.style.setProperty('--accent', hexToHSL(colors.accent));
       root.style.setProperty('--border', hexToHSL(colors.accent));
       root.style.setProperty('--input', hexToHSL(colors.accent));
-      root.style.setProperty('--ring', hexToHSL(colors.primary));
     }
+    if (colors.primary) root.style.setProperty('--ring', hexToHSL(colors.primary));
     if (colors.error) {
       root.style.setProperty('--destructive', hexToHSL(colors.error));
-      root.style.setProperty('--destructive-foreground', "0 0% 98%");
+      root.style.setProperty('--destructive-foreground', '0 0% 98%');
     }
-
-    // 2. Formas
-    if (shape && shape.radius) {
-      root.style.setProperty('--radius', shape.radius);
-    }
-
-    // 3. Fontes
-    if (typography) {
-      if (typography.fontFamilyHeading) root.style.setProperty('--font-heading', typography.fontFamilyHeading);
-      if (typography.fontFamilyBody) root.style.setProperty('--font-body', typography.fontFamilyBody);
-    }
+    if (shape?.radius) root.style.setProperty('--radius', shape.radius);
+    if (typography?.fontFamilyHeading) root.style.setProperty('--font-heading', typography.fontFamilyHeading);
+    if (typography?.fontFamilyBody) root.style.setProperty('--font-body', typography.fontFamilyBody);
   }, []);
 
   const handleSetProperty = useCallback((data: Property | null) => {
     if (data) {
-      updateTheme(data);
-      loadedPropertyIdRef.current = data.id;
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('aura-active-property', data.id);
-      }
+      applyTheme(data);
+      loadedRef.current = true;
+      writeCachedProperty(data);
     } else {
-      loadedPropertyIdRef.current = null;
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('aura-active-property');
-      }
+      loadedRef.current = false;
+      writeCachedProperty(null);
     }
-    setProperty(data);
-  }, [updateTheme]);
+    setPropertyState(data);
+  }, [applyTheme]);
+
+  // Re-aplica tema ao montar se property veio do cache
+  useEffect(() => {
+    const cached = readCachedProperty();
+    if (cached) applyTheme(cached);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Busca por SLUG
   const fetchPropertyBySlug = useCallback(async (slug: string) => {
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
       const { data, error } = await supabase
         .from('properties')
         .select('*')
         .eq('slug', slug)
         .limit(1)
         .single();
-
-      if (error || !data) throw new Error("Propriedade não encontrada.");
-
+      if (error || !data) throw new Error('Propriedade não encontrada.');
       handleSetProperty(data as Property);
     } catch (err: any) {
-      console.error(err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
   }, [handleSetProperty]);
 
-  // Busca por ID
+  // Busca por ID — com fallback para cache se Supabase falhar
   const fetchPropertyById = useCallback(async (id: string) => {
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
       const { data, error } = await supabase
         .from('properties')
         .select('*')
         .eq('id', id)
         .single();
-
-      if (error || !data) throw new Error("Propriedade vinculada não encontrada.");
-
+      if (error || !data) throw new Error('Propriedade não encontrada.');
       handleSetProperty(data as Property);
     } catch (err: any) {
-      console.error(err);
-      setError(err.message);
+      // Fallback: se já temos cache com o mesmo ID, usa ele e não mostra erro
+      const cached = readCachedProperty();
+      if (cached && cached.id === id) {
+        handleSetProperty(cached);
+        setError(null);
+      } else {
+        setError(err.message);
+      }
     } finally {
       setLoading(false);
     }
   }, [handleSetProperty]);
 
   useEffect(() => {
+    // Aguarda auth resolver
     if (authLoading || !userDataReady) return;
 
-    // Fast-path: se o AuthContext já trouxe a property do server, usa direto
-    if (initialProperty && !loadedPropertyIdRef.current) {
-      handleSetProperty(initialProperty);
+    // Fast-path: AuthContext trouxe a property do servidor — usa direto
+    if (initialProperty && !loadedRef.current) {
+      handleSetProperty(initialProperty as Property);
       setLoading(false);
       return;
     }
 
-    // Se a property já foi carregada com sucesso, não re-buscar
-    if (loadedPropertyIdRef.current) {
+    // Property já carregada (cache ou busca anterior) — apenas libera loading
+    if (loadedRef.current) {
       setLoading(false);
+
+      // Atualiza em background (refresh silencioso) se temos um ID salvo
+      const savedId = typeof window !== 'undefined' ? localStorage.getItem(PROPERTY_ID_KEY) : null;
+      if (savedId) {
+        supabase.from('properties').select('*').eq('id', savedId).single()
+          .then(({ data }) => { if (data) handleSetProperty(data as Property); })
+          .catch(() => { /* silencioso — cache ainda válido */ });
+      }
       return;
     }
 
+    // Slug fixo (portais de hóspede)
     if (initialSlug) {
       fetchPropertyBySlug(initialSlug);
       return;
     }
 
-    const savedId = typeof window !== 'undefined' ? localStorage.getItem('aura-active-property') : null;
+    const ud = userDataRef.current;
+    const superAdmin = isSuperAdminRef.current;
+    const savedId = typeof window !== 'undefined' ? localStorage.getItem(PROPERTY_ID_KEY) : null;
+    const targetId = ud?.propertyId || savedId;
 
-    if (!isSuperAdmin) {
-      // Aguarda userData estar disponível antes de desistir
-      // Se authLoading=false mas userData=null, o INITIAL_SESSION ainda pode estar populando
-      const targetId = userData?.propertyId || savedId;
+    if (!superAdmin) {
       if (targetId) {
         fetchPropertyById(targetId);
       } else {
-        // userData chegou mas sem propertyId e sem localStorage — sem property
         setLoading(false);
       }
     } else {
-      // super_admin: usa localStorage ou espera seleção manual
       if (savedId) {
         fetchPropertyById(savedId);
       } else {
         setLoading(false);
       }
     }
-  }, [initialSlug, userData, isSuperAdmin, authLoading, initialProperty, userDataReady, fetchPropertyBySlug, fetchPropertyById, handleSetProperty]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, userDataReady, initialProperty, initialSlug]);
+  // userData e isSuperAdmin lidos via refs — não disparam re-run desnecessário
 
   return (
-    <PropertyContext.Provider value={{ currentProperty: property, setProperty: handleSetProperty, loading, error, refreshProperty: fetchPropertyBySlug }}>
+    <PropertyContext.Provider value={{
+      currentProperty: property,
+      setProperty: handleSetProperty,
+      loading,
+      error,
+      refreshProperty: fetchPropertyBySlug,
+    }}>
       {children}
     </PropertyContext.Provider>
   );
@@ -216,6 +246,6 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
 
 export const useProperty = () => {
   const context = useContext(PropertyContext);
-  if (!context) throw new Error("useProperty deve ser usado dentro de um PropertyProvider");
+  if (!context) throw new Error('useProperty deve ser usado dentro de um PropertyProvider');
   return context;
 };
