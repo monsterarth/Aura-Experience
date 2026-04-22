@@ -13,13 +13,20 @@ async function fetchProperty(propertyId: string): Promise<Property | undefined> 
 }
 
 /** Gatilho 1 — Upsert do contato após criação de estadia. */
-export async function chatwootSyncOnStayCreated(propertyId: string, guestId: string) {
+export async function chatwootSyncOnStayCreated(propertyId: string, guestId: string, stayId?: string) {
+  const stayQuery = stayId
+    ? supabaseAdmin.from("stays").select("*").eq("id", stayId).maybeSingle()
+    : supabaseAdmin.from("stays").select("*").eq("guestId", guestId).eq("propertyId", propertyId).order("createdAt", { ascending: false }).limit(1).maybeSingle();
+
   const [{ data: guest }, { data: stay }, property] = await Promise.all([
     supabaseAdmin.from("guests").select("*").eq("id", guestId).eq("propertyId", propertyId).maybeSingle(),
-    supabaseAdmin.from("stays").select("*").eq("guestId", guestId).eq("propertyId", propertyId).order("createdAt", { ascending: false }).limit(1).maybeSingle(),
+    stayQuery,
     fetchProperty(propertyId),
   ]);
-  if (!guest || !stay) return;
+  if (!guest || !stay) {
+    console.error(`[Chatwoot] syncOnStayCreated: guest=${!!guest} stay=${!!stay} (guestId=${guestId} stayId=${stayId ?? "latest"})`);
+    return;
+  }
   await ChatwootService.syncOnStayCreated(stay as Stay, guest as Guest, property).catch(e =>
     console.error("[Chatwoot] syncOnStayCreated error:", e)
   );

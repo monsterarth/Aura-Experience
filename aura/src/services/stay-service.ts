@@ -178,7 +178,7 @@ export const StayService = {
       details: `Reserva criada para ${params.cabinConfigs.length} cabana(s). Código: ${accessCode}`
     });
 
-    return { accessCode, groupId };
+    return { accessCode, groupId, stayId: payloads[0].id };
   },
 
   async getStayWithGuest(propertyId: string, stayId: string) {

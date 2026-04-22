@@ -239,7 +239,7 @@ function NewStayPageContent() {
         actorName: userData.fullName
       });
 
-      chatwootSyncOnStayCreated(contextProperty.id, savedGuestId).catch(() => {});
+      chatwootSyncOnStayCreated(contextProperty.id, savedGuestId, result.stayId).catch(() => {});
 
       setCreatedInfo({ code: result.accessCode });
     } catch (error: any) {
