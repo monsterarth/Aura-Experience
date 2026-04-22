@@ -615,15 +615,15 @@ function ProfileScreen({ userData, showToast, onLogout }: { userData: any; showT
 type Tab = "home" | "tasks" | "profile";
 
 export default function MaintenancePage() {
-  const { userData } = useAuth();
-  const { currentProperty: property } = useProperty();
+  const { userData, loading: authLoading, userDataReady } = useAuth();
+  const { currentProperty: property, loading: propertyLoading } = useProperty();
   const router = useRouter();
 
   const [tab, setTab] = useState<Tab>("home");
   const [tasks, setTasks] = useState<MaintenanceTask[]>([]);
   const [cabins, setCabins] = useState<Record<string, Cabin>>({});
   const [structures, setStructures] = useState<Record<string, Structure>>({});
-  const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
   const [toast, setToastState] = useState<{ msg: string; color: string } | null>(null);
   const [completionTask, setCompletionTask] = useState<MaintenanceTask | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -635,11 +635,16 @@ export default function MaintenancePage() {
   }, []);
 
   useEffect(() => {
+    if (authLoading || !userDataReady) return;
+    if (!userData) { router.replace("/admin/login"); }
+  }, [authLoading, userDataReady, userData, router]);
+
+  useEffect(() => {
     if (!property) return;
     let unsub: (() => void) | undefined;
 
     const init = async () => {
-      setLoading(true);
+      setDataLoading(true);
       try {
         const [cabinsData, structuresData] = await Promise.all([
           CabinService.getCabinsByProperty(property.id),
@@ -665,7 +670,7 @@ export default function MaintenancePage() {
           setTasks(visible);
         });
       } finally {
-        setLoading(false);
+        setDataLoading(false);
       }
     };
 
@@ -692,6 +697,8 @@ export default function MaintenancePage() {
     { id: "tasks", label: "Tarefas", icon: "wrench", badge: tasks.filter(t => t.status === "pending" || t.status === "in_progress").length },
     { id: "profile", label: "Perfil", icon: "user", badge: 0 },
   ];
+
+  const loading = authLoading || !userDataReady || propertyLoading || dataLoading;
 
   if (loading) {
     return (

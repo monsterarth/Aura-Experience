@@ -24,7 +24,7 @@ import { StaffEditModal } from "@/components/admin/StaffEditModal";
 import { useNotifications } from "@/context/NotificationContext";
 
 export const Sidebar = () => {
-  const { userData, isSuperAdmin } = useAuth();
+  const { userData, isSuperAdmin, loading: authLoading, userDataReady } = useAuth();
   const { currentProperty: property, setProperty } = useProperty();
   const { counts: notifCounts } = useNotifications();
   const pathname = usePathname();
@@ -72,6 +72,15 @@ export const Sidebar = () => {
       window.location.href = '/admin/login';
     }
   };
+
+  // ==========================================
+  // AUTH GUARD: redireciona para login se não autenticado
+  // ==========================================
+  const isLoginPage = pathname === '/admin/login';
+  if (!isLoginPage && !authLoading && userDataReady && !userData) {
+    router.replace('/admin/login');
+    return null;
+  }
 
   // ==========================================
   // BLINDAGEM MOBILE-FIRST (Impede o Sidebar de existir para a operação de campo)

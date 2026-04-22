@@ -429,8 +429,8 @@ function ProfileScreen({ userData, onLogout }: { userData: any; onLogout: () => 
 type Tab = "home" | "requests" | "profile";
 
 export default function HousemanPage() {
-  const { userData } = useAuth();
-  const { currentProperty: property } = useProperty();
+  const { userData, loading: authLoading, userDataReady } = useAuth();
+  const { currentProperty: property, loading: propertyLoading } = useProperty();
   const router = useRouter();
 
   const [tab, setTab] = useState<Tab>("home");
@@ -447,6 +447,11 @@ export default function HousemanPage() {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToastState(null), 2600);
   }, []);
+
+  useEffect(() => {
+    if (authLoading || !userDataReady) return;
+    if (!userData) { router.replace("/admin/login"); }
+  }, [authLoading, userDataReady, userData, router]);
 
   useEffect(() => {
     if (!property) return;
@@ -501,6 +506,16 @@ export default function HousemanPage() {
     { id: "requests", label: "Pedidos", icon: "pkg", badge: pendingCount },
     { id: "profile", label: "Perfil", icon: "user", badge: 0 },
   ];
+
+  if (authLoading || !userDataReady || propertyLoading) {
+    return (
+      <div style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: T.bg, color: T.text, flexDirection: "column", gap: 16, fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif" }}>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+        <div style={{ width: 40, height: 40, borderRadius: "50%", border: `3px solid rgba(155,109,255,0.3)`, borderTopColor: T.g1, animation: "spin 1s linear infinite" }} />
+        <div style={{ fontSize: 13, opacity: 0.6 }}>Carregando...</div>
+      </div>
+    );
+  }
 
   return (
     <>

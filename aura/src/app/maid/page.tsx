@@ -1316,8 +1316,8 @@ function ProfileScreen({ userData, showToast, onLogout }: { userData: any; showT
 type Tab = "home" | "checkouts" | "tasks" | "profile";
 
 export default function MaidPage() {
-  const { userData } = useAuth();
-  const { currentProperty: property } = useProperty();
+  const { userData, loading: authLoading, userDataReady } = useAuth();
+  const { currentProperty: property, loading: propertyLoading } = useProperty();
   const router = useRouter();
 
   const [tab, setTab] = useState<Tab>("home");
@@ -1325,7 +1325,7 @@ export default function MaidPage() {
   const [cabins, setCabins] = useState<Record<string, Cabin>>({});
   const [minibarItems, setMinibarItems] = useState<MinibarItem[]>([]);
   const [checkouts, setCheckouts] = useState<CheckoutEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; color: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1353,13 +1353,21 @@ export default function MaidPage() {
     setCheckouts(cos);
   }, []);
 
+  // Auth guard: redirect to login when auth resolved and no user
+  useEffect(() => {
+    if (authLoading || !userDataReady) return;
+    if (!userData) {
+      router.replace("/admin/login");
+    }
+  }, [authLoading, userDataReady, userData, router]);
+
   useEffect(() => {
     if (!property) return;
 
     let unsubscribe: (() => void) | undefined;
 
     const init = async () => {
-      setLoading(true);
+      setDataLoading(true);
       try {
         const [cabinsData, { data: miniData }] = await Promise.all([
           CabinService.getCabinsByProperty(property.id),
@@ -1391,7 +1399,7 @@ export default function MaidPage() {
       } catch {
         showToast("Erro ao carregar dados.", T.red);
       } finally {
-        setLoading(false);
+        setDataLoading(false);
       }
     };
 
@@ -1456,6 +1464,9 @@ export default function MaidPage() {
     { id: "tasks", label: "Faxinas", icon: "sparkles", badge: tasks.filter(t => t.status === "pending" || t.status === "in_progress").length },
     { id: "profile", label: "Perfil", icon: "user", badge: 0 },
   ];
+
+  const isBootstrapping = authLoading || !userDataReady || propertyLoading;
+  const loading = isBootstrapping || dataLoading;
 
   if (loading) {
     return (
