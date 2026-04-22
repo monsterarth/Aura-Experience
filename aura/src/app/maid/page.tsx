@@ -204,6 +204,7 @@ function I({ n, s = 20, c = "currentColor", w = 1.8 }: { n: IName; s?: number; c
 function MinibarSheet({
   cabinName, items, onClose, onSend,
   keyLocation, stayId, propertyId, userId, userName, showToast,
+  loanedItems, taskId,
 }: {
   cabinName: string;
   items: MinibarItem[];
@@ -215,16 +216,25 @@ function MinibarSheet({
   userId?: string;
   userName?: string;
   showToast?: (msg: string, color?: string) => void;
+  loanedItems?: string;
+  taskId?: string;
 }) {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
-  // cart → key (if cabin) → lost → fin
-  const [phase, setPhase] = useState<"cart" | "key" | "lost" | "fin">("cart");
+  // cart → key (if cabin) → lost → loaned (if loanedItems) → fin
+  const [phase, setPhase] = useState<"cart" | "key" | "lost" | "loaned" | "fin">("cart");
   const [lostDesc, setLostDesc] = useState("");
   const [lostPhoto, setLostPhoto] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [savingLost, setSavingLost] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Loaned items phase
+  const parsedLoaned = loanedItems
+    ? loanedItems.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean).map((label, i) => ({ id: String(i), label, checked: false }))
+    : [];
+  const [loanedChecks, setLoanedChecks] = useState<{ id: string; label: string; checked: boolean }[]>(parsedLoaned);
+  const [savingLoaned, setSavingLoaned] = useState(false);
 
   const adj = (id: string, d: number) =>
     setCart(p => { const n = { ...p }, v = Math.max(0, (p[id] ?? 0) + d); if (!v) delete n[id]; else n[id] = v; return n; });
@@ -297,11 +307,21 @@ function MinibarSheet({
     }
   };
 
+  const finishAll = async () => {
+    if (taskId) {
+      try {
+        await supabase.from("housekeeping_tasks").update({ cabinChecked: true, updatedAt: new Date().toISOString() }).eq("id", taskId);
+      } catch { /* non-blocking */ }
+    }
+    setPhase("fin");
+    showToast?.("Conferência concluída!");
+    setTimeout(onClose, 700);
+  };
+
   const submitLost = async (hasItems: boolean) => {
     if (!hasItems) {
-      setPhase("fin");
-      showToast?.("Conferência concluída!");
-      setTimeout(onClose, 700);
+      if (parsedLoaned.length > 0) { setPhase("loaned"); return; }
+      await finishAll();
       return;
     }
     if (!lostDesc.trim()) return;
@@ -318,8 +338,22 @@ function MinibarSheet({
       showToast?.("Erro ao registrar. Tente novamente.", T.red);
     } finally {
       setSavingLost(false);
-      setPhase("fin");
-      setTimeout(onClose, 700);
+      if (parsedLoaned.length > 0) { setPhase("loaned"); }
+      else { await finishAll(); }
+    }
+  };
+
+  const submitLoaned = async () => {
+    setSavingLoaned(true);
+    try {
+      await supabase.from("stays").update({
+        loanedItemsChecked: true,
+        loanedItemsCheckedAt: new Date().toISOString(),
+      }).eq("id", stayId ?? "");
+    } catch { /* non-blocking */ }
+    finally {
+      setSavingLoaned(false);
+      await finishAll();
     }
   };
 
@@ -363,6 +397,76 @@ function MinibarSheet({
             </button>
           </div>
           <div style={{ height: 40 }} />
+        </div>
+      </Sheet>
+    );
+  }
+
+  // ── Loaned items step ───────────────────────────────────────────────────────
+  if (phase === "loaned") {
+    const allChecked = loanedChecks.every(i => i.checked);
+    return (
+      <Sheet onClose={onClose}>
+        <div style={{ padding: "0 20px 14px", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 14, background: T.amberBg, border: `1px solid ${T.amberBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <I n="pkg" s={22} c={T.amber} />
+            </div>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 900 }}>Objetos Emprestados</div>
+              <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{cabinName}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 14, color: T.text, fontWeight: 600, marginTop: 16, lineHeight: 1.5 }}>
+            Confirme a devolução de cada item:
+          </div>
+        </div>
+        <div className="maid-sheet-body" style={{ padding: "0 16px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+            {loanedChecks.map(item => (
+              <div
+                key={item.id}
+                onClick={() => setLoanedChecks(p => p.map(i => i.id === item.id ? { ...i, checked: !i.checked } : i))}
+                style={{
+                  display: "flex", alignItems: "center", gap: 14, padding: 14, borderRadius: 14,
+                  border: `1px solid ${item.checked ? T.greenBorder : T.border}`,
+                  background: item.checked ? T.greenBg : T.glass,
+                  cursor: "pointer", transition: "all .15s", userSelect: "none",
+                }}
+              >
+                <div style={{
+                  width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
+                  border: `2px solid ${item.checked ? T.green : "rgba(255,255,255,0.15)"}`,
+                  background: item.checked ? T.green : "transparent",
+                  display: "flex", alignItems: "center", justifyContent: "center", transition: "all .15s",
+                }}>
+                  {item.checked && <I n="check" s={12} c="white" w={3} />}
+                </div>
+                <span style={{ fontSize: 14, fontWeight: 600, flex: 1, textDecoration: item.checked ? "line-through" : "none", opacity: item.checked ? 0.45 : 1, color: item.checked ? T.green : T.text }}>
+                  {item.label}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div style={{ height: 40 }} />
+        </div>
+        <div style={{ padding: "12px 16px", borderTop: `1px solid ${T.border}`, background: "#0d1020", flexShrink: 0 }}>
+          <button
+            onClick={submitLoaned}
+            disabled={!allChecked || savingLoaned}
+            style={{
+              width: "100%", padding: 16,
+              background: allChecked ? T.greenG : T.glass,
+              color: allChecked ? "#021a17" : T.muted,
+              fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const,
+              border: "none", borderRadius: 16, cursor: allChecked && !savingLoaned ? "pointer" : "not-allowed",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              opacity: allChecked ? 1 : 0.4,
+              boxShadow: allChecked ? "0 4px 20px rgba(45,212,191,0.3)" : "none",
+            }}
+          >
+            {savingLoaned ? <I n="loader" s={17} c="#021a17" w={2} /> : <><I n="check" s={17} />Confirmar Devolução</>}
+          </button>
         </div>
       </Sheet>
     );
@@ -477,6 +581,7 @@ function MinibarSheet({
           { label: "Frigobar", active: true },
           { label: keyLocation === "cabin" ? "Chave" : null },
           { label: "Achados" },
+          { label: parsedLoaned.length > 0 ? "Empréstimos" : null },
         ].filter(s => s.label).map((s, i, arr) => (
           <React.Fragment key={i}>
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -976,7 +1081,7 @@ function HomeScreen({
 
 // ─── Checkouts screen ─────────────────────────────────────────────────────────
 
-interface CheckoutEntry { cabinId: string; cabinName: string; cabinCategory: string; stayId: string; guestName: string; keyLocation: "reception" | "cabin" | "unknown"; }
+interface CheckoutEntry { cabinId: string; cabinName: string; cabinCategory: string; stayId: string; guestName: string; keyLocation: "reception" | "cabin" | "unknown"; loanedItems?: string; cabinChecked?: boolean; taskId?: string; }
 
 function CheckoutsScreen({
   checkouts, minibarItems, showToast, propertyId, userId, userName,
@@ -1045,10 +1150,19 @@ function CheckoutsScreen({
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   <button
-                    onClick={() => setMiniTarget(co)}
-                    style={{ padding: 16, background: T.grad, color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(155,109,255,0.35)" }}
+                    onClick={() => !co.cabinChecked && setMiniTarget(co)}
+                    disabled={co.cabinChecked}
+                    style={{
+                      padding: 16,
+                      background: co.cabinChecked ? T.greenG : T.grad,
+                      color: co.cabinChecked ? "#021a17" : "#fff",
+                      fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const,
+                      border: "none", borderRadius: 16, cursor: co.cabinChecked ? "default" : "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                      boxShadow: co.cabinChecked ? "0 4px 20px rgba(45,212,191,0.35)" : "0 4px 20px rgba(155,109,255,0.35)",
+                    }}
                   >
-                    <I n="check" s={16} /> Conferir
+                    <I n="check" s={16} /> {co.cabinChecked ? "Conferida" : "Conferir"}
                   </button>
                   <button
                     disabled={assumed.has(co.cabinId)}
@@ -1076,6 +1190,8 @@ function CheckoutsScreen({
           userId={userId}
           userName={userName}
           showToast={showToast}
+          loanedItems={miniTarget.loanedItems}
+          taskId={miniTarget.taskId}
         />
       )}
     </>
@@ -1335,8 +1451,8 @@ export default function MaidPage() {
     toastTimer.current = setTimeout(() => setToast(null), 2600);
   }, []);
 
-  // Derive checkouts: turnover tasks that are unassigned (global pool) + cabin status = cleaning
-  const deriveCheckouts = useCallback((allTasks: EnrichedTask[], cabinMap: Record<string, Cabin>) => {
+  // Derive checkouts: turnover tasks + async fetch loanedItems from stays
+  const deriveCheckouts = useCallback(async (allTasks: EnrichedTask[], cabinMap: Record<string, Cabin>) => {
     const turnoverPending = allTasks.filter(
       t => t.type === "turnover" && (t.status === "pending" || t.status === "in_progress")
     );
@@ -1349,7 +1465,21 @@ export default function MaidPage() {
         cabinCategory: cabinMap[t.cabinId!]?.category ?? "",
         keyLocation: t.keyLocation ?? "unknown",
         guestName: "Hóspede",
+        cabinChecked: t.cabinChecked ?? false,
+        taskId: t.id,
       }));
+
+    // Fetch loanedItems from stays for each checkout
+    const stayIds = cos.map(c => c.stayId).filter(Boolean);
+    if (stayIds.length > 0) {
+      const { data: stays } = await supabase.from("stays").select("id,loanedItems").in("id", stayIds);
+      if (stays) {
+        const stayMap: Record<string, string | undefined> = {};
+        stays.forEach((s: any) => { stayMap[s.id] = s.loanedItems; });
+        cos.forEach(c => { c.loanedItems = stayMap[c.stayId]; });
+      }
+    }
+
     setCheckouts(cos);
   }, []);
 
@@ -1360,6 +1490,13 @@ export default function MaidPage() {
       router.replace("/admin/login");
     }
   }, [authLoading, userDataReady, userData, router]);
+
+  // Se o bootstrap terminou mas não há property, libera o loading
+  useEffect(() => {
+    if (!authLoading && userDataReady && !propertyLoading && !property) {
+      setDataLoading(false);
+    }
+  }, [authLoading, userDataReady, propertyLoading, property]);
 
   useEffect(() => {
     if (!property) return;

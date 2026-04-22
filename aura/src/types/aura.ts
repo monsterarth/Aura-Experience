@@ -271,7 +271,8 @@ export interface HousekeepingTask {
 
   routineId?: string; // ID da rotina que gerou esta tarefa (se aplicável)
   customLocation?: string; // Local livre (ex: "Recepção", "Banheiro Social")
-  keyLocation?: 'reception' | 'cabin' | 'unknown'; // Localização da chave no checkout (apenas turnover)
+  keyLocation?: 'reception' | 'cabin' | 'unknown';
+  cabinChecked?: boolean;         // true após a camareira concluir a conferência (frigobar + chave + achados + empréstimos)
   observations?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -529,6 +530,9 @@ export interface Stay {
   lostItemsPhoto?: string;
   lostItemsReportedAt?: string;
   lostItemsReportedBy?: string;
+  loanedItems?: string;           // Lista de objetos emprestados (preenchida pela recepção no checkout)
+  loanedItemsChecked?: boolean;   // true após a camareira confirmar devolução
+  loanedItemsCheckedAt?: string;
 
   cestaBreakfastEnabled?: boolean;
 

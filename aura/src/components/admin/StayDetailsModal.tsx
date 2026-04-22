@@ -8,7 +8,7 @@ import {
   Users, CheckCircle, Clock, Plane,
   Briefcase, PawPrint, Trash2, Plus,
   LogIn, LogOut, RotateCcw, Sparkles, Receipt, RefreshCw, ShoppingCart, Coffee, BedDouble, ArrowRight, Search, UserRoundPen,
-  KeyRound, AlertTriangle
+  KeyRound, AlertTriangle, Package
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -81,7 +81,10 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [checkOutModalOpen, setCheckOutModalOpen] = useState(false);
+  const [checkOutStep, setCheckOutStep] = useState<'key' | 'loaned'>('key');
   const [keyLocation, setKeyLocation] = useState<'reception' | 'cabin' | null>(null);
+  const [hasLoanedItems, setHasLoanedItems] = useState<boolean | null>(null);
+  const [loanedItemsText, setLoanedItemsText] = useState("");
   const [expandedArea, setExpandedArea] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<Partial<Stay>>({});
@@ -467,6 +470,10 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     setLoading(true);
     try {
       await StayService.performCheckOut(stay.propertyId, stay.id, userData?.id || "ADMIN", userData?.fullName || "Recepção", keyLocation);
+      // Save loaned items if informed
+      if (hasLoanedItems && loanedItemsText.trim()) {
+        await supabase.from('stays').update({ loanedItems: loanedItemsText.trim() }).eq('id', stay.id);
+      }
       chatwootSyncOnCheckOut(stay.id).catch(() => {});
       toast.success("Check-out realizado com sucesso!");
       if (onUpdate) onUpdate();
@@ -475,6 +482,11 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
       toast.error("Erro ao realizar check-out.");
     } finally {
       setLoading(false);
+      // Reset state
+      setCheckOutStep('key');
+      setKeyLocation(null);
+      setHasLoanedItems(null);
+      setLoanedItemsText("");
     }
   };
 
@@ -975,58 +987,116 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
       </div>
     )}
 
-    {/* Modal de localização da chave no Check-out */}
+    {/* Modal de Check-out (2 steps: chave → objetos emprestados) */}
     {checkOutModalOpen && (
       <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
         <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-5 animate-in zoom-in-95 duration-200">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-primary/10 rounded-2xl flex items-center justify-center">
-              <KeyRound size={20} className="text-primary" />
-            </div>
-            <div>
-              <h2 className="text-base font-black text-foreground">Localização da Chave</h2>
-              <p className="text-xs text-muted-foreground">Onde está a chave da acomodação?</p>
-            </div>
-          </div>
 
-          <div className="space-y-2">
-            {([
-              { value: 'reception', label: 'Na Recepção', desc: 'Hóspede devolveu a chave', color: 'border-green-500/40 bg-green-500/5 hover:bg-green-500/10', active: 'border-green-500 bg-green-500/15', dot: 'bg-green-500' },
-              { value: 'cabin', label: 'Na Acomodação', desc: 'Camareira irá verificar', color: 'border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10', active: 'border-amber-500 bg-amber-500/15', dot: 'bg-amber-500' },
-            ] as const).map(opt => (
-              <button
-                key={opt.value}
-                onClick={() => setKeyLocation(opt.value)}
-                className={cn(
-                  "w-full flex items-center gap-3 p-3 rounded-2xl border-2 transition-all text-left",
-                  keyLocation === opt.value ? opt.active : opt.color
-                )}
-              >
-                <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", opt.dot)} />
-                <div>
-                  <p className="text-sm font-bold text-foreground">{opt.label}</p>
-                  <p className="text-xs text-muted-foreground">{opt.desc}</p>
-                </div>
-                {keyLocation === opt.value && <CheckCircle size={16} className="ml-auto text-foreground shrink-0" />}
-              </button>
+          {/* Step indicators */}
+          <div className="flex items-center gap-2 justify-center mb-1">
+            {(['key', 'loaned'] as const).map((s, i) => (
+              <div key={s} className="flex items-center gap-2">
+                <div className={cn(
+                  "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all",
+                  checkOutStep === s ? "bg-primary text-primary-foreground" :
+                  (checkOutStep === 'loaned' && s === 'key') ? "bg-green-500 text-white" : "bg-muted text-muted-foreground"
+                )}>{i + 1}</div>
+                {i < 1 && <div className={cn("h-px w-8 transition-all", checkOutStep === 'loaned' ? "bg-green-500" : "bg-border")} />}
+              </div>
             ))}
           </div>
 
-          <div className="flex gap-2 pt-1">
-            <button
-              onClick={() => setCheckOutModalOpen(false)}
-              className="flex-1 py-2.5 rounded-xl border border-border text-sm font-bold text-muted-foreground hover:bg-accent transition-all"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleConfirmCheckOut}
-              disabled={!keyLocation}
-              className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-black disabled:opacity-40 transition-all active:scale-95 flex items-center justify-center gap-2"
-            >
-              <LogOut size={15} /> Confirmar Check-out
-            </button>
-          </div>
+          {/* STEP 1: Chave */}
+          {checkOutStep === 'key' && (<>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-primary/10 rounded-2xl flex items-center justify-center">
+                <KeyRound size={20} className="text-primary" />
+              </div>
+              <div>
+                <h2 className="text-base font-black text-foreground">Localização da Chave</h2>
+                <p className="text-xs text-muted-foreground">Onde está a chave da acomodação?</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {([
+                { value: 'reception', label: 'Na Recepção', desc: 'Hóspede devolveu a chave', color: 'border-green-500/40 bg-green-500/5 hover:bg-green-500/10', active: 'border-green-500 bg-green-500/15', dot: 'bg-green-500' },
+                { value: 'cabin', label: 'Na Acomodação', desc: 'Camareira irá verificar', color: 'border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10', active: 'border-amber-500 bg-amber-500/15', dot: 'bg-amber-500' },
+              ] as const).map(opt => (
+                <button key={opt.value} onClick={() => setKeyLocation(opt.value)}
+                  className={cn("w-full flex items-center gap-3 p-3 rounded-2xl border-2 transition-all text-left", keyLocation === opt.value ? opt.active : opt.color)}
+                >
+                  <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", opt.dot)} />
+                  <div>
+                    <p className="text-sm font-bold text-foreground">{opt.label}</p>
+                    <p className="text-xs text-muted-foreground">{opt.desc}</p>
+                  </div>
+                  {keyLocation === opt.value && <CheckCircle size={16} className="ml-auto text-foreground shrink-0" />}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setCheckOutModalOpen(false)}
+                className="flex-1 py-2.5 rounded-xl border border-border text-sm font-bold text-muted-foreground hover:bg-accent transition-all">
+                Cancelar
+              </button>
+              <button onClick={() => setCheckOutStep('loaned')} disabled={!keyLocation}
+                className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-black disabled:opacity-40 transition-all active:scale-95 flex items-center justify-center gap-2">
+                Próximo →
+              </button>
+            </div>
+          </>)}
+
+          {/* STEP 2: Objetos emprestados */}
+          {checkOutStep === 'loaned' && (<>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-500/10 rounded-2xl flex items-center justify-center">
+                <Package size={20} className="text-blue-400" />
+              </div>
+              <div>
+                <h2 className="text-base font-black text-foreground">Objetos Emprestados</h2>
+                <p className="text-xs text-muted-foreground">O hóspede ficou com algum item da propriedade?</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {([
+                { value: false, label: 'Não, nada emprestado', desc: 'Hóspede não ficou com nada', color: 'border-green-500/40 bg-green-500/5 hover:bg-green-500/10', active: 'border-green-500 bg-green-500/15', dot: 'bg-green-500' },
+                { value: true, label: 'Sim, há itens', desc: 'Camareira irá verificar no checkout', color: 'border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/10', active: 'border-blue-500 bg-blue-500/15', dot: 'bg-blue-500' },
+              ] as const).map(opt => (
+                <button key={String(opt.value)} onClick={() => setHasLoanedItems(opt.value)}
+                  className={cn("w-full flex items-center gap-3 p-3 rounded-2xl border-2 transition-all text-left", hasLoanedItems === opt.value ? opt.active : opt.color)}
+                >
+                  <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", opt.dot)} />
+                  <div>
+                    <p className="text-sm font-bold text-foreground">{opt.label}</p>
+                    <p className="text-xs text-muted-foreground">{opt.desc}</p>
+                  </div>
+                  {hasLoanedItems === opt.value && <CheckCircle size={16} className="ml-auto text-foreground shrink-0" />}
+                </button>
+              ))}
+            </div>
+            {hasLoanedItems === true && (
+              <textarea
+                autoFocus
+                placeholder="Liste os itens emprestados (ex: toalha extra, secador, travesseiro, berço)..."
+                value={loanedItemsText}
+                onChange={e => setLoanedItemsText(e.target.value)}
+                rows={3}
+                className="w-full bg-secondary border border-border rounded-xl p-3 text-sm resize-none outline-none focus:border-blue-500/50 transition-colors"
+              />
+            )}
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setCheckOutStep('key')}
+                className="flex-1 py-2.5 rounded-xl border border-border text-sm font-bold text-muted-foreground hover:bg-accent transition-all">
+                ← Voltar
+              </button>
+              <button onClick={handleConfirmCheckOut}
+                disabled={hasLoanedItems === null || (hasLoanedItems === true && !loanedItemsText.trim())}
+                className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-black disabled:opacity-40 transition-all active:scale-95 flex items-center justify-center gap-2">
+                <LogOut size={15} /> Confirmar Check-out
+              </button>
+            </div>
+          </>)}
+
         </div>
       </div>
     )}
