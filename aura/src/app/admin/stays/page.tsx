@@ -412,10 +412,22 @@ export default function StaysPage() {
                                 }
                                 if (confirm(`Confirmar entrada de ${guestName}?`) && contextProperty?.id && userData?.id) {
                                   try {
-                                    await StayService.performCheckIn(contextProperty.id, s.id, userData.id, userData.fullName);
+                                    const result = await StayService.performCheckIn(contextProperty.id, s.id, userData.id, userData.fullName);
                                     chatwootSyncOnCheckIn(s.id).catch(() => {});
                                     loadStays();
-                                    toast.success("Check-in realizado!");
+                                    if (result?.messagedQueued) {
+                                      toast.success("Check-in realizado!", { description: "Mensagem de boas-vindas enfileirada." });
+                                    } else {
+                                      const reasonMap: Record<string, string> = {
+                                        rule_inactive: "Automação de boas-vindas inativa nas configurações.",
+                                        template_missing: "Template de boas-vindas não encontrado.",
+                                        guest_no_phone: "Hóspede sem telefone cadastrado.",
+                                        queue_error: "Falha ao inserir mensagem na fila.",
+                                        exception: "Erro interno ao processar automação.",
+                                      };
+                                      const desc = result?.messageQueueReason ? reasonMap[result.messageQueueReason] : undefined;
+                                      toast.warning("Check-in realizado, mas mensagem não foi enfileirada.", { description: desc });
+                                    }
                                   } catch (err: any) {
                                     const msg = err?.message ?? '';
                                     if (msg.startsWith('CABIN_NOT_AVAILABLE')) {

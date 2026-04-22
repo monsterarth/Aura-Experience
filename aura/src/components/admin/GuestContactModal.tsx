@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { Guest, Stay } from "@/types/aura";
+import { Guest, Stay, MessageTemplate } from "@/types/aura";
 import { ContactService } from "@/services/contact-service";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,8 +12,11 @@ import {
   Send,
   X,
   Loader2,
-  CheckCircle2
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface GuestContactModalProps {
   propertyId: string;
@@ -22,16 +25,56 @@ interface GuestContactModalProps {
   onClose: () => void;
 }
 
+function resolveVariables(body: string, guest: Guest, stay: Stay): string {
+  const toTitleCase = (s: string) => s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  const firstName = toTitleCase(guest.fullName.split(" ")[0]);
+
+  let text = body
+    .replace(/{{guest_name}}/g, firstName)
+    .replace(/{{guest_full_name}}/g, toTitleCase(guest.fullName));
+
+  if (stay.checkIn) text = text.replace(/{{checkin_date}}/g, new Date(stay.checkIn).toLocaleDateString('pt-BR'));
+  if (stay.checkOut) text = text.replace(/{{checkout_date}}/g, new Date(stay.checkOut).toLocaleDateString('pt-BR'));
+  if (stay.accessCode) text = text.replace(/{{access_code}}/g, stay.accessCode);
+
+  const baseUrl = "https://aaura.app.br";
+  text = text
+    .replace(/{{portal_link}}/g, `${baseUrl}/check-in`)
+    .replace(/{{survey_link}}/g, `${baseUrl}/feedback/${stay.id}`);
+
+  return text;
+}
+
 export function GuestContactModal({ propertyId, guest, stay, onClose }: GuestContactModalProps) {
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   const cleanPhone = guest.phone.replace(/\D/g, '');
 
+  useEffect(() => {
+    supabase
+      .from("message_templates")
+      .select("id, name, body, body_en, body_es")
+      .eq("propertyId", propertyId)
+      .order("name")
+      .then((res: { data: MessageTemplate[] | null }) => { if (res.data) setTemplates(res.data); });
+  }, [propertyId]);
+
+  const handleApplyTemplate = (template: MessageTemplate) => {
+    const body = (guest.preferredLanguage === 'en' && template.body_en)
+      ? template.body_en
+      : (guest.preferredLanguage === 'es' && template.body_es)
+        ? template.body_es
+        : template.body;
+    setMessage(resolveVariables(body, guest, stay));
+    setShowTemplates(false);
+  };
+
   const handleGoToChat = () => {
-    // Redireciona com o parâmetro na URL para abrir o chat automaticamente
     router.push(`/admin/comunicacao?phone=${cleanPhone}`);
   };
 
@@ -40,11 +83,9 @@ export function GuestContactModal({ propertyId, guest, stay, onClose }: GuestCon
     setSending(true);
 
     try {
-      // Garante que o contato existe com nome e vínculo de guest corretos
       await ContactService.upsertContact(propertyId, guest.fullName, cleanPhone, true, guest.id);
 
       const messageId = crypto.randomUUID();
-
       const isoNow = new Date().toISOString();
 
       await supabase.from("messages").insert({
@@ -60,7 +101,6 @@ export function GuestContactModal({ propertyId, guest, stay, onClose }: GuestCon
         createdAt: isoNow,
       });
 
-      // Garante que aparece na sidebar da Central de Comunicação
       await supabase.from('communications').upsert({
         id: cleanPhone,
         propertyId,
@@ -72,20 +112,14 @@ export function GuestContactModal({ propertyId, guest, stay, onClose }: GuestCon
       const response = await fetch('/api/chat/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          propertyId,
-          messageId, // Agora passamos o messageId exato
-          number: cleanPhone,
-          message: message.trim()
-        })
+        body: JSON.stringify({ propertyId, messageId, number: cleanPhone, message: message.trim() })
       });
 
       if (!response.ok) throw new Error("Falha na API");
 
       setSuccess(true);
       setTimeout(() => { onClose(); setSuccess(false); setMessage(""); }, 2000);
-
-    } catch (error) {
+    } catch {
       alert("Erro ao enviar mensagem.");
     } finally {
       setSending(false);
@@ -117,11 +151,41 @@ export function GuestContactModal({ propertyId, guest, stay, onClose }: GuestCon
             </div>
           ) : (
             <>
+              {/* Templates */}
+              {templates.length > 0 && (
+                <div className="space-y-2">
+                  <button
+                    onClick={() => setShowTemplates(v => !v)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
+                  >
+                    Usar template
+                    {showTemplates ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+
+                  {showTemplates && (
+                    <div className="flex flex-wrap gap-2 p-3 bg-muted/30 rounded-lg border border-border">
+                      {templates.map(t => (
+                        <button
+                          key={t.id}
+                          onClick={() => handleApplyTemplate(t)}
+                          className={cn(
+                            "px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-all",
+                            "bg-background border-border text-foreground hover:border-primary hover:text-primary"
+                          )}
+                        >
+                          {t.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Mensagem Rápida</label>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Mensagem</label>
                 <Textarea
                   placeholder={`Escreva uma mensagem para ${guest.fullName.split(' ')[0]}...`}
-                  className="min-h-[120px] resize-none text-sm"
+                  className="min-h-[140px] resize-none text-sm"
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   disabled={sending}

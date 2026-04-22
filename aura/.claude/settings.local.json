@@ -15,7 +15,12 @@
       "Bash(node -e \"const s = require\\(''./node_modules/.pnpm/@supabase+supabase-js@2.98.0/node_modules/@supabase/supabase-js/dist/main/index.js''\\); console.log\\(''navigatorLock'' in s, ''processLock'' in s\\)\")",
       "Bash(pnpm build:*)",
       "Bash(pnpm build; echo \"EXIT:$?\")",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://api.aaura.app.br\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://api.aaura.app.br/message/sendText/Fazendinha%20teste\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://api.aaura.app.br/message/sendText/Fazendinha-teste\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://api.aaura.app.br/message/sendText/fazendinha-teste\")",
+      "Bash(curl -s \"https://api.aaura.app.br/instance/fetchInstances\" -H \"apikey: BFu4X3ANkFlkIVeoLQsal9ulmx01C393\")"
     ]
   }
 }

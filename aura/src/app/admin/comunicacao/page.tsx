@@ -53,7 +53,7 @@ export default function ComunicacaoPage() {
       />
 
       {/* Botão flutuante — Fila de Automações */}
-      <div className="fixed bottom-6 right-6 z-50">
+      <div className="fixed top-6 right-6 z-50">
         <Button
           onClick={() => router.push("/admin/comunicacao/automations")}
           className="gap-2 shadow-lg"

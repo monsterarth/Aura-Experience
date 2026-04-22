@@ -5,9 +5,12 @@ import { AuditService } from "./audit-service";
 import { AutomationService } from "./automation-service";
 
 export const StayService = {
-  async triggerAutomation(propertyId: string, stayId: string, triggerEvent: AutomationTriggerEvent) {
+  async triggerAutomation(
+    propertyId: string,
+    stayId: string,
+    triggerEvent: AutomationTriggerEvent
+  ): Promise<{ queued: boolean; reason?: string }> {
     try {
-      // 1. Verifica se a regra existe e está ativa
       const { data: rule } = await supabase
         .from('automation_rules')
         .select('*')
@@ -15,9 +18,8 @@ export const StayService = {
         .eq('triggerEvent', triggerEvent)
         .single();
 
-      if (!rule || !rule.active) return;
+      if (!rule || !rule.active) return { queued: false, reason: 'rule_inactive' };
 
-      // 2. Busca o template da mensagem
       const { data: template } = await supabase
         .from('message_templates')
         .select('*')
@@ -25,14 +27,13 @@ export const StayService = {
         .eq('id', rule.templateId)
         .single();
 
-      if (!template) return;
+      if (!template) return { queued: false, reason: 'template_missing' };
 
-      // 3. Coleta os dados vitais
       const { data: stay } = await supabase.from('stays').select('*').eq('id', stayId).single();
-      if (!stay) return;
+      if (!stay) return { queued: false, reason: 'stay_not_found' };
 
       const { data: guest } = await supabase.from('guests').select('*').eq('id', stay.guestId).single();
-      if (!guest || !guest.phone) return;
+      if (!guest || !guest.phone) return { queued: false, reason: 'guest_no_phone' };
 
       let cabin = undefined;
       if (stay.cabinId) {
@@ -40,8 +41,7 @@ export const StayService = {
         if (c) cabin = c;
       }
 
-      // 4. Envia para a Fila de Processamento
-      await AutomationService.queueMessage(
+      const result = await AutomationService.queueMessage(
         propertyId,
         stayId,
         guest.phone,
@@ -52,8 +52,11 @@ export const StayService = {
         stay as Stay,
         rule.delayMinutes || 0
       );
+
+      return result.success ? { queued: true } : { queued: false, reason: 'queue_error' };
     } catch (error) {
       console.error(`Erro interno ao processar gatilho ${triggerEvent}:`, error);
+      return { queued: false, reason: 'exception' };
     }
   },
 
@@ -385,7 +388,8 @@ export const StayService = {
       details: `Check-in da ${cabinLabel} realizado pela recepção.${dateNote}`
     });
 
-    await this.triggerAutomation(propertyId, stayId, 'welcome_checkin');
+    const automation = await this.triggerAutomation(propertyId, stayId, 'welcome_checkin');
+    return { messagedQueued: automation.queued, messageQueueReason: automation.reason };
   },
 
   async performCheckOut(
