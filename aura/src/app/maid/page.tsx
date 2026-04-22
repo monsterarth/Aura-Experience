@@ -261,14 +261,31 @@ function MinibarSheet({
     setPhase("lost");
   };
 
+  const compressImage = (file: File, maxPx = 1280, quality = 0.82): Promise<Blob> =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const ratio = Math.min(1, maxPx / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * ratio);
+        canvas.height = Math.round(img.height * ratio);
+        canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(b => b ? resolve(b) : reject(new Error("compress_failed")), "image/jpeg", quality);
+      };
+      img.onerror = reject;
+      img.src = url;
+    });
+
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadingPhoto(true);
     try {
+      const compressed = await compressImage(file);
       const formData = new FormData();
-      formData.append("file", file);
-      formData.append("path", `lost-items/${stayId ?? "unknown"}/${Date.now()}`);
+      formData.append("file", new File([compressed], "lost-item.jpg", { type: "image/jpeg" }));
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       if (!res.ok) throw new Error("upload_failed");
       const { url } = await res.json();

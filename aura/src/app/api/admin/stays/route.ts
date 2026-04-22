@@ -46,20 +46,26 @@ export async function GET(request: NextRequest) {
         const { data: stays, error } = await query;
         if (error || !stays) return NextResponse.json([], { status: 200 });
 
-        // Enrich with guest name and cabin name in parallel
+        // Enrich with guest name, cabin name, and pending folio count
         const enriched = await Promise.all(stays.map(async (stay: any) => {
-            const [gRes, cRes] = await Promise.all([
+            const [gRes, cRes, folioRes] = await Promise.all([
                 stay.guestId
                     ? supabaseAdmin!.from('guests').select('fullName').eq('id', stay.guestId).maybeSingle()
                     : Promise.resolve({ data: null }),
                 stay.cabinId
                     ? supabaseAdmin!.from('cabins').select('name').eq('id', stay.cabinId).maybeSingle()
                     : Promise.resolve({ data: null }),
+                supabaseAdmin!.from('folio_items').select('id, description, quantity, unitPrice, totalPrice, status, category', { count: 'exact' }).eq('stayId', stay.id),
             ]);
+            const folioItems = (folioRes.data ?? []) as any[];
+            const pendingFolioCount = folioItems.filter((f: any) => f.status === 'pending').length;
             return {
                 ...stay,
                 guestName: gRes.data ? (gRes.data as any).fullName : 'Hóspede desconhecido',
                 cabinName: cRes.data ? (cRes.data as any).name : 'N/A',
+                folioItems,
+                pendingFolioCount,
+                hasOpenFolio: pendingFolioCount > 0,
             };
         }));
 

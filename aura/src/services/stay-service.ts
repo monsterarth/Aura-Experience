@@ -715,6 +715,16 @@ export const StayService = {
     });
   },
 
+  async closeStayBill(propertyId: string, stayId: string, actorId: string, actorName: string) {
+    await supabase.from('folio_items').update({ status: 'paid' }).eq('stayId', stayId).eq('status', 'pending');
+    await supabase.from('stays').update({ hasOpenFolio: false }).eq('id', stayId);
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
+      details: `Conta encerrada: todos os lançamentos pendentes marcados como pagos.`
+    });
+  },
+
   async archiveStay(propertyId: string, stayId: string, actorId: string, actorName: string) {
     await supabase.from('stays')
       .update({ status: 'archived', updatedAt: new Date().toISOString() })

@@ -14,7 +14,7 @@ import {
   Dog, Users, ArrowUpRight,
   Building2, MapPin, Clock, MessageCircle,
   Archive, Send, X, Star, ShieldAlert,
-  Copy, Ban, CheckCircle2, DollarSign
+  Copy, Ban, CheckCircle2, DollarSign, PackageSearch, Receipt, Image as ImageIcon
 } from "lucide-react";
 import { format, differenceInCalendarDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -25,7 +25,7 @@ import { StayDetailsModal } from "@/components/admin/StayDetailsModal";
 import { GuestContactModal } from "@/components/admin/GuestContactModal";
 import { useRouter } from "next/navigation";
 
-type TabStatus = 'futuras' | 'ativas' | 'encerradas';
+type TabStatus = 'futuras' | 'ativas' | 'pendente' | 'encerradas';
 
 export default function StaysPage() {
   const router = useRouter();
@@ -58,6 +58,7 @@ export default function StaysPage() {
       let statusFilter: string[] = [];
       if (activeTab === 'futuras') statusFilter = ['pending', 'pre_checkin_done'];
       if (activeTab === 'ativas') statusFilter = ['active'];
+      if (activeTab === 'pendente') statusFilter = ['finished'];
       if (activeTab === 'encerradas') statusFilter = ['finished', 'cancelled'];
 
       const params = new URLSearchParams({
@@ -163,6 +164,18 @@ export default function StaysPage() {
     }
   };
 
+  const handleCloseBill = async (stayId: string, guestName: string) => {
+    if (!contextProperty?.id || !userData?.id) return;
+    if (!confirm(`Encerrar a conta de ${guestName}? Todos os lançamentos pendentes serão marcados como pagos.`)) return;
+    try {
+      await StayService.closeStayBill(contextProperty.id, stayId, userData.id, userData.fullName);
+      toast.success("Conta encerrada com sucesso.");
+      loadStays();
+    } catch {
+      toast.error("Erro ao encerrar conta.");
+    }
+  };
+
   const handleArchive = async (stayId: string) => {
     if (!contextProperty?.id || !userData?.id) return;
     if (!confirm("Deseja arquivar esta estadia? Ela sairá desta lista e ficará guardada no histórico do Aura.")) return;
@@ -215,6 +228,12 @@ export default function StaysPage() {
 
   const filteredStays = stays
     .filter(s => {
+      // Aba pendente: só estadias que têm folio pendente ou objetos esquecidos
+      if (activeTab === 'pendente') {
+        const hasPending = (s.pendingFolioCount ?? 0) > 0 || !!s.lostItemsDescription;
+        if (!hasPending) return false;
+      }
+
       const term = searchTerm.toLowerCase().trim();
       if (!term) return true;
 
@@ -288,6 +307,29 @@ export default function StaysPage() {
                 {tab}
               </button>
             ))}
+            {(() => {
+              const pendingCount = stays.filter(s => (s.pendingFolioCount ?? 0) > 0 || !!s.lostItemsDescription).length;
+              return (
+                <button
+                  onClick={() => setActiveTab('pendente')}
+                  className={cn(
+                    "flex-1 md:flex-none px-6 py-3 rounded-[20px] text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2",
+                    activeTab === 'pendente'
+                      ? "bg-orange-500 text-white shadow-xl"
+                      : "text-orange-400 hover:text-orange-300 hover:bg-orange-500/10"
+                  )}
+                >
+                  <Receipt size={12} />
+                  Conta
+                  {pendingCount > 0 && (
+                    <span className={cn(
+                      "text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center",
+                      activeTab === 'pendente' ? "bg-white/20 text-white" : "bg-orange-500/20 text-orange-400"
+                    )}>{pendingCount}</span>
+                  )}
+                </button>
+              );
+            })()}
           </div>
 
           <div className="relative w-full md:w-80 px-2">
@@ -312,7 +354,7 @@ export default function StaysPage() {
             <Loader2 className="animate-spin text-primary" size={48} />
             <p className="text-xs font-bold uppercase tracking-widest text-foreground/20">Sincronizando Aura Cloud...</p>
           </div>
-        ) : filteredStays.length === 0 ? (
+        ) : filteredStays.length === 0 && activeTab !== 'pendente' ? (
           <div className="text-center p-24 bg-card rounded-[40px] border border-dashed border-white/10">
             <AlertCircle size={48} className="mx-auto text-foreground/20 mb-4" />
             <h3 className="text-xl font-bold text-foreground">Sem estadias {activeTab}</h3>
@@ -321,7 +363,7 @@ export default function StaysPage() {
         ) : (
           <>
             {/* RENDERIZAÇÃO 1: CARDS GRANDES (Para Ativas e Futuras) */}
-            {activeTab !== 'encerradas' && (
+            {activeTab !== 'encerradas' && activeTab !== 'pendente' && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredStays.map((s) => {
                   const activeInfo = getActiveStatusInfo(s.checkOut);
@@ -490,6 +532,147 @@ export default function StaysPage() {
                               <Ban size={18} />
                             </button>
                           </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* RENDERIZAÇÃO 3: CONTA PENDENTE */}
+            {activeTab === 'pendente' && (
+              <div className="space-y-6">
+                {filteredStays.length === 0 ? (
+                  <div className="text-center p-24 bg-card rounded-[40px] border border-dashed border-white/10">
+                    <CheckCircle2 size={48} className="mx-auto text-green-500/40 mb-4" />
+                    <h3 className="text-xl font-bold text-foreground">Tudo encerrado!</h3>
+                    <p className="text-foreground/40">Nenhuma conta pendente no momento.</p>
+                  </div>
+                ) : filteredStays.map((s) => {
+                  const guestName = s.guestName || "Hóspede Desconhecido";
+                  const folioItems: any[] = s.folioItems ?? [];
+                  const pendingItems = folioItems.filter((f: any) => f.status === 'pending');
+                  const paidItems = folioItems.filter((f: any) => f.status !== 'pending');
+                  const totalPending = pendingItems.reduce((acc: number, f: any) => acc + (f.totalPrice ?? 0), 0);
+                  const totalPaid = paidItems.reduce((acc: number, f: any) => acc + (f.totalPrice ?? 0), 0);
+
+                  return (
+                    <div key={s.id} className="bg-card border border-orange-500/20 rounded-[32px] overflow-hidden shadow-lg">
+                      {/* Header do card */}
+                      <div className="p-6 flex items-center justify-between border-b border-white/5">
+                        <div className="flex items-center gap-4">
+                          <div className="px-4 py-1.5 bg-primary/10 border border-primary/20 rounded-full">
+                            <span className="text-[10px] font-black text-primary uppercase tracking-widest">{s.cabinName}</span>
+                          </div>
+                          <div>
+                            <h3 className="font-black text-lg text-foreground">{guestName}</h3>
+                            <div className="flex items-center gap-2 text-foreground/40 text-[10px] font-bold uppercase tracking-widest mt-0.5">
+                              <Clock size={11} />
+                              {s.checkIn ? format(new Date(s.checkIn), "dd MMM", { locale: ptBR }) : ''} — {s.checkOut ? format(new Date(s.checkOut), "dd MMM", { locale: ptBR }) : ''}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {totalPending > 0 && (
+                            <div className="text-right">
+                              <div className="text-[10px] font-bold text-orange-400/60 uppercase tracking-widest">Saldo Pendente</div>
+                              <div className="text-xl font-black text-orange-400">R$ {totalPending.toFixed(2)}</div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="p-6 grid md:grid-cols-2 gap-6">
+                        {/* Fólio */}
+                        <div>
+                          <div className="flex items-center gap-2 mb-3">
+                            <Receipt size={14} className="text-orange-400" />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-orange-400">Lançamentos do Fólio</span>
+                          </div>
+                          {folioItems.length === 0 ? (
+                            <p className="text-foreground/30 text-sm italic">Nenhum lançamento registrado.</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {folioItems.map((item: any) => (
+                                <div key={item.id} className={cn(
+                                  "flex items-center justify-between p-3 rounded-xl border text-sm",
+                                  item.status === 'pending'
+                                    ? "bg-orange-500/5 border-orange-500/20"
+                                    : "bg-green-500/5 border-green-500/10 opacity-60"
+                                )}>
+                                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                                    {item.status === 'pending'
+                                      ? <DollarSign size={13} className="text-orange-400 shrink-0" />
+                                      : <CheckCircle2 size={13} className="text-green-500 shrink-0" />}
+                                    <span className="font-medium text-foreground truncate">{item.description}</span>
+                                    <span className="text-foreground/40 text-[10px] shrink-0">×{item.quantity}</span>
+                                  </div>
+                                  <span className={cn(
+                                    "font-black text-sm ml-3 shrink-0",
+                                    item.status === 'pending' ? "text-orange-400" : "text-green-500"
+                                  )}>R$ {(item.totalPrice ?? 0).toFixed(2)}</span>
+                                </div>
+                              ))}
+                              {(paidItems.length > 0 || pendingItems.length > 0) && (
+                                <div className="pt-2 border-t border-white/5 flex justify-between text-[11px] font-black uppercase tracking-widest">
+                                  {paidItems.length > 0 && <span className="text-green-500">Pago: R$ {totalPaid.toFixed(2)}</span>}
+                                  {pendingItems.length > 0 && <span className="text-orange-400 ml-auto">Pendente: R$ {totalPending.toFixed(2)}</span>}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Objetos Esquecidos */}
+                        <div>
+                          <div className="flex items-center gap-2 mb-3">
+                            <PackageSearch size={14} className="text-blue-400" />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-blue-400">Objetos Esquecidos</span>
+                          </div>
+                          {!s.lostItemsDescription ? (
+                            <p className="text-foreground/30 text-sm italic">Nenhum objeto reportado.</p>
+                          ) : (
+                            <div className="space-y-3">
+                              <div className="p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl">
+                                <p className="text-sm text-foreground leading-relaxed">{s.lostItemsDescription}</p>
+                                {s.lostItemsReportedAt && (
+                                  <p className="text-[10px] text-foreground/30 mt-2 font-bold uppercase tracking-widest">
+                                    Reportado em {format(new Date(s.lostItemsReportedAt), "dd/MM 'às' HH:mm", { locale: ptBR })}
+                                  </p>
+                                )}
+                              </div>
+                              {s.lostItemsPhoto && (
+                                <a href={s.lostItemsPhoto} target="_blank" rel="noopener noreferrer" className="block">
+                                  <div className="relative rounded-xl overflow-hidden border border-blue-500/20 group">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={s.lostItemsPhoto} alt="Objetos esquecidos" className="w-full max-h-48 object-cover" />
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
+                                      <ImageIcon size={24} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </div>
+                                  </div>
+                                </a>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Footer de ações */}
+                      <div className="px-6 pb-6 flex gap-3">
+                        <button
+                          onClick={() => handleOpenFicha(s)}
+                          className="flex-1 bg-white/5 hover:bg-white/10 text-foreground text-[10px] font-black uppercase py-4 rounded-2xl transition-all tracking-widest"
+                        >
+                          Ver Ficha Completa
+                        </button>
+                        {pendingItems.length > 0 && (
+                          <button
+                            onClick={() => handleCloseBill(s.id, guestName)}
+                            className="flex-1 bg-orange-500 hover:bg-orange-400 text-white text-[10px] font-black uppercase py-4 rounded-2xl transition-all tracking-widest flex items-center justify-center gap-2"
+                          >
+                            <CheckCircle2 size={14} /> Encerrar Conta
+                          </button>
                         )}
                       </div>
                     </div>
