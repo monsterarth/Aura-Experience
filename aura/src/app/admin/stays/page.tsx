@@ -666,14 +666,12 @@ export default function StaysPage() {
                         >
                           Ver Ficha Completa
                         </button>
-                        {pendingItems.length > 0 && (
-                          <button
-                            onClick={() => handleCloseBill(s.id, guestName)}
-                            className="flex-1 bg-orange-500 hover:bg-orange-400 text-white text-[10px] font-black uppercase py-4 rounded-2xl transition-all tracking-widest flex items-center justify-center gap-2"
-                          >
-                            <CheckCircle2 size={14} /> Encerrar Conta
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleCloseBill(s.id, guestName)}
+                          className="flex-1 bg-orange-500 hover:bg-orange-400 text-white text-[10px] font-black uppercase py-4 rounded-2xl transition-all tracking-widest flex items-center justify-center gap-2"
+                        >
+                          <CheckCircle2 size={14} /> {pendingItems.length > 0 ? "Encerrar Conta" : "Marcar Encerrado"}
+                        </button>
                       </div>
                     </div>
                   );

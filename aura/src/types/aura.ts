@@ -524,7 +524,11 @@ export interface Stay {
   };
 
   housekeepingItems?: { id: string; label: string }[];
-  hasOpenFolio?: boolean; // Flag para o ícone de alerta
+  hasOpenFolio?: boolean;
+  lostItemsDescription?: string;
+  lostItemsPhoto?: string;
+  lostItemsReportedAt?: string;
+  lostItemsReportedBy?: string;
 
   cestaBreakfastEnabled?: boolean;
 

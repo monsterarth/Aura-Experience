@@ -87,8 +87,12 @@ function renderCabinStatusIcon(status: Cabin["status"]) {
     }
 }
 
-function getStayBarColor(status: Stay["status"]) {
-    switch (status) {
+function getStayBarColor(stay: StayWithGuest) {
+    // finished com conta aberta → laranja
+    if (stay.status === "finished" && (stay.hasOpenFolio || stay.lostItemsDescription)) {
+        return "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-[0_0_12px_rgba(249,115,22,0.4)]";
+    }
+    switch (stay.status) {
         case "active":
             return "bg-gradient-to-r from-red-500 to-red-600 text-white shadow-[0_0_12px_rgba(239,68,68,0.3)]";
         case "pending":
@@ -903,7 +907,7 @@ export default function ReservationMapClient() {
                                                                     : cn(
                                                                         "hover:brightness-110 hover:scale-[1.02]",
                                                                         ['active', 'pending', 'pre_checkin_done'].includes(seg.stay.status) ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
-                                                                        getStayBarColor(seg.stay.status)
+                                                                        getStayBarColor(seg.stay)
                                                                     ),
                                                                 pos.clippedLeft && "rounded-l-none border-l-2 border-dashed border-white/30",
                                                                 pos.clippedRight && "rounded-r-none border-r-2 border-dashed border-white/30"
