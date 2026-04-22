@@ -80,6 +80,10 @@ export const Sidebar = () => {
   if (userData?.role && mobileOnlyRoles.includes(userData.role)) {
     if (userData.role === 'maid' && pathname !== '/maid') {
       router.replace('/maid');
+    } else if (userData.role === 'technician' && pathname !== '/maintenance') {
+      router.replace('/maintenance');
+    } else if (userData.role === 'houseman' && pathname !== '/houseman') {
+      router.replace('/houseman');
     }
     return null;
   }
