@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { Guest, Stay, MessageTemplate } from "@/types/aura";
+import { Guest, Stay, Cabin, MessageTemplate } from "@/types/aura";
 import { ContactService } from "@/services/contact-service";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,16 +22,24 @@ interface GuestContactModalProps {
   propertyId: string;
   guest: Guest;
   stay: Stay;
+  cabin?: Cabin | null;
   onClose: () => void;
 }
 
-function resolveVariables(body: string, guest: Guest, stay: Stay): string {
+function resolveVariables(body: string, guest: Guest, stay: Stay, cabin?: Cabin | null): string {
   const toTitleCase = (s: string) => s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
   const firstName = toTitleCase(guest.fullName.split(" ")[0]);
 
   let text = body
     .replace(/{{guest_name}}/g, firstName)
     .replace(/{{guest_full_name}}/g, toTitleCase(guest.fullName));
+
+  if (cabin) {
+    text = text
+      .replace(/{{cabin_name}}/g, cabin.name)
+      .replace(/{{wifi_ssid}}/g, cabin.wifi?.ssid || "")
+      .replace(/{{wifi_password}}/g, cabin.wifi?.password || "");
+  }
 
   if (stay.checkIn) text = text.replace(/{{checkin_date}}/g, new Date(stay.checkIn).toLocaleDateString('pt-BR'));
   if (stay.checkOut) text = text.replace(/{{checkout_date}}/g, new Date(stay.checkOut).toLocaleDateString('pt-BR'));
@@ -45,24 +53,44 @@ function resolveVariables(body: string, guest: Guest, stay: Stay): string {
   return text;
 }
 
-export function GuestContactModal({ propertyId, guest, stay, onClose }: GuestContactModalProps) {
+export function GuestContactModal({ propertyId, guest, stay, cabin, onClose }: GuestContactModalProps) {
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [success, setSuccess] = useState(false);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [chatwootContactUrl, setChatwootContactUrl] = useState<string | null>(null);
 
   const cleanPhone = guest.phone.replace(/\D/g, '');
 
   useEffect(() => {
-    supabase
-      .from("message_templates")
-      .select("id, name, body, body_en, body_es")
-      .eq("propertyId", propertyId)
-      .order("name")
-      .then((res: { data: MessageTemplate[] | null }) => { if (res.data) setTemplates(res.data); });
-  }, [propertyId]);
+    Promise.all([
+      supabase
+        .from("message_templates")
+        .select("id, name, body, body_en, body_es")
+        .eq("propertyId", propertyId)
+        .order("name"),
+      supabase
+        .from("properties")
+        .select("settings")
+        .eq("id", propertyId)
+        .single(),
+    ]).then(([tRes, pRes]) => {
+      if (tRes.data) setTemplates(tRes.data as MessageTemplate[]);
+
+      const wc = (pRes.data as any)?.settings?.whatsappConfig;
+      if (wc?.chatwootUrl && wc?.chatwootAccountId) {
+        const contactId = guest.chatwootContactId;
+        const base = `${wc.chatwootUrl}/app/accounts/${wc.chatwootAccountId}`;
+        setChatwootContactUrl(
+          contactId
+            ? `${base}/contacts/${contactId}`
+            : `${base}/conversations`
+        );
+      }
+    });
+  }, [propertyId, guest.chatwootContactId]);
 
   const handleApplyTemplate = (template: MessageTemplate) => {
     const body = (guest.preferredLanguage === 'en' && template.body_en)
@@ -70,12 +98,16 @@ export function GuestContactModal({ propertyId, guest, stay, onClose }: GuestCon
       : (guest.preferredLanguage === 'es' && template.body_es)
         ? template.body_es
         : template.body;
-    setMessage(resolveVariables(body, guest, stay));
+    setMessage(resolveVariables(body, guest, stay, cabin));
     setShowTemplates(false);
   };
 
   const handleGoToChat = () => {
-    router.push(`/admin/comunicacao?phone=${cleanPhone}`);
+    if (chatwootContactUrl) {
+      window.open(chatwootContactUrl, "_blank", "noopener,noreferrer");
+    } else {
+      router.push("/admin/comunicacao");
+    }
   };
 
   const handleSendMessage = async () => {

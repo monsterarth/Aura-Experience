@@ -95,16 +95,26 @@ export const StayService = {
   },
 
   async checkCabinAvailability(cabinId: string, checkIn: string, checkOut: string): Promise<void> {
+    // Normalize to date-only strings to avoid timezone-induced false overlaps.
+    // Checkout day == next checkin day is valid (12h out, 15h in).
+    const checkInDate = checkIn.slice(0, 10);
+    const checkOutDate = checkOut.slice(0, 10);
+
     const { data } = await supabase
       .from('stays')
-      .select('id')
+      .select('id, checkIn, checkOut')
       .eq('cabinId', cabinId)
       .in('status', ['pending', 'pre_checkin_done', 'active'])
-      .lt('checkIn', checkOut)
-      .gt('checkOut', checkIn)
-      .limit(1);
+      .limit(50);
 
-    if (data && data.length > 0) {
+    const conflict = (data ?? []).some(stay => {
+      const existIn = stay.checkIn.slice(0, 10);
+      const existOut = stay.checkOut.slice(0, 10);
+      // Overlap exists only when date ranges strictly interleave (same-day checkout/checkin is allowed)
+      return existIn < checkOutDate && existOut > checkInDate;
+    });
+
+    if (conflict) {
       throw new Error(`CABIN_OVERLAP:${cabinId}`);
     }
   },

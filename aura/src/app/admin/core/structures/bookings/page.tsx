@@ -450,7 +450,12 @@ export default function StructureBookingsPage() {
                                             required
                                         >
                                             <option value="" disabled>Selecione a Estadia Hospedada...</option>
-                                            {activeStays.map(stay => (
+                                            {[...activeStays].sort((a, b) => {
+                                                const numA = (a.cabinName?.match(/\d+/) ?? [])[0];
+                                                const numB = (b.cabinName?.match(/\d+/) ?? [])[0];
+                                                if (numA && numB) return parseInt(numA) - parseInt(numB);
+                                                return (a.cabinName || "").localeCompare(b.cabinName || "");
+                                            }).map(stay => (
                                                 <option key={stay.id} value={stay.id}>
                                                     {stay.guestName} - {stay.cabinName} (Res: {stay.id.slice(0, 6).toUpperCase()})
                                                 </option>

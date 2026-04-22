@@ -41,6 +41,7 @@ export default function StaysPage() {
   // States de Modais
   const [selectedStay, setSelectedStay] = useState<any | null>(null);
   const [selectedGuest, setSelectedGuest] = useState<any | null>(null);
+  const [selectedCabin, setSelectedCabin] = useState<any | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
 
   // State do Modal de WhatsApp (NOVO)
@@ -126,6 +127,7 @@ export default function StaysPage() {
       if (data && data.guest) {
         setSelectedStay(data.stay);
         setSelectedGuest(data.guest);
+        setSelectedCabin(data.cabin ?? null);
         setIsContactModalOpen(true);
       } else {
         toast.error("Hóspede não encontrado para esta reserva.");
@@ -206,10 +208,42 @@ export default function StaysPage() {
     return `Chegada em ${diff} dias`;
   };
 
-  const filteredStays = stays.filter(s =>
-    (s.guestName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (s.cabinName || "").toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const extractCabinNumber = (name: string) => {
+    const match = name?.match(/\d+/);
+    return match ? parseInt(match[0], 10) : Infinity;
+  };
+
+  const filteredStays = stays
+    .filter(s => {
+      const term = searchTerm.toLowerCase().trim();
+      if (!term) return true;
+
+      const guestMatch = (s.guestName || "").toLowerCase().includes(term);
+      const cabinMatch = (s.cabinName || "").toLowerCase().includes(term);
+
+      const checkInStr = s.checkIn ? format(new Date(s.checkIn), "dd/MM/yyyy", { locale: ptBR }) : "";
+      const checkOutStr = s.checkOut ? format(new Date(s.checkOut), "dd/MM/yyyy", { locale: ptBR }) : "";
+      const periodMatch = checkInStr.includes(term) || checkOutStr.includes(term);
+
+      const npsVal = s.nps !== undefined ? s.nps : s.npsScore;
+      const hasEval = npsVal !== undefined && npsVal !== null;
+      const evalMatch =
+        (term === "avaliado" && hasEval) ||
+        (term === "pendente" && !hasEval) ||
+        (term === "promotor" && hasEval && npsVal >= 9) ||
+        (term === "neutro" && hasEval && npsVal >= 7 && npsVal <= 8) ||
+        (term === "detrator" && hasEval && npsVal <= 6);
+
+      return guestMatch || cabinMatch || periodMatch || evalMatch;
+    })
+    .sort((a, b) => {
+      if (activeTab === 'encerradas') {
+        const dateA = a.checkOut ? new Date(a.checkOut).getTime() : 0;
+        const dateB = b.checkOut ? new Date(b.checkOut).getTime() : 0;
+        return dateB - dateA;
+      }
+      return extractCabinNumber(a.cabinName) - extractCabinNumber(b.cabinName);
+    });
 
   return (
     <RoleGuard allowedRoles={["super_admin", "admin", "reception", "governance"]}>
@@ -637,6 +671,7 @@ export default function StaysPage() {
             propertyId={contextProperty.id}
             stay={selectedStay}
             guest={selectedGuest}
+            cabin={selectedCabin}
             onClose={() => setIsContactModalOpen(false)}
           />
         )}
