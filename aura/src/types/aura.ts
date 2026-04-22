@@ -526,6 +526,7 @@ export interface Stay {
 
   housekeepingItems?: { id: string; label: string }[];
   hasOpenFolio?: boolean;
+  billClosedAt?: string;          // Timestamp do encerramento manual da conta (zeriza aba pendente)
   lostItemsDescription?: string;
   lostItemsPhoto?: string;
   lostItemsReportedAt?: string;

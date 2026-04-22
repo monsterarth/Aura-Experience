@@ -229,8 +229,9 @@ export default function StaysPage() {
 
   const filteredStays = stays
     .filter(s => {
-      // Aba pendente: só estadias que têm folio pendente ou objetos esquecidos
+      // Aba pendente: folio pendente ou objetos esquecidos, desde que a conta não tenha sido encerrada
       if (activeTab === 'pendente') {
+        if (s.billClosedAt) return false;
         const hasPending = (s.pendingFolioCount ?? 0) > 0 || !!s.lostItemsDescription;
         if (!hasPending) return false;
       }
@@ -309,7 +310,7 @@ export default function StaysPage() {
               </button>
             ))}
             {(() => {
-              const pendingCount = stays.filter(s => (s.pendingFolioCount ?? 0) > 0 || !!s.lostItemsDescription).length;
+              const pendingCount = stays.filter(s => !s.billClosedAt && ((s.pendingFolioCount ?? 0) > 0 || !!s.lostItemsDescription)).length;
               return (
                 <button
                   onClick={() => setActiveTab('pendente')}
