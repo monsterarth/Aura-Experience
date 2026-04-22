@@ -170,6 +170,7 @@ export default function StaysPage() {
     try {
       await StayService.closeStayBill(contextProperty.id, stayId, userData.id, userData.fullName);
       toast.success("Conta encerrada com sucesso.");
+      setActiveTab('encerradas');
       loadStays();
     } catch {
       toast.error("Erro ao encerrar conta.");
