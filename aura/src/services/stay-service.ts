@@ -107,7 +107,7 @@ export const StayService = {
       .in('status', ['pending', 'pre_checkin_done', 'active'])
       .limit(50);
 
-    const conflict = (data ?? []).some(stay => {
+    const conflict = (data ?? []).some((stay: { checkIn: string; checkOut: string }) => {
       const existIn = stay.checkIn.slice(0, 10);
       const existOut = stay.checkOut.slice(0, 10);
       // Overlap exists only when date ranges strictly interleave (same-day checkout/checkin is allowed)
