@@ -164,7 +164,7 @@ function Sheet({ onClose, children }: { onClose: () => void; children: React.Rea
 
 // ─── Icon component (subset) ─────────────────────────────────────────────────
 
-type IName = "home"|"coffee"|"sparkles"|"user"|"key"|"check"|"arrow"|"plus"|"minus"|"x"|"pkg"|"info"|"send"|"logout"|"edit"|"sun"|"clock"|"list"|"chevr"|"loader";
+type IName = "home"|"coffee"|"sparkles"|"user"|"key"|"check"|"arrow"|"plus"|"minus"|"x"|"pkg"|"info"|"send"|"logout"|"edit"|"sun"|"clock"|"list"|"chevr"|"loader"|"camera"|"inbox"|"search";
 
 function I({ n, s = 20, c = "currentColor", w = 1.8 }: { n: IName; s?: number; c?: string; w?: number }) {
   const d: Record<IName, React.ReactNode> = {
@@ -188,6 +188,9 @@ function I({ n, s = 20, c = "currentColor", w = 1.8 }: { n: IName; s?: number; c
     list: <><rect x="3" y="5" width="18" height="2" rx="1"/><rect x="3" y="11" width="18" height="2" rx="1"/><rect x="3" y="17" width="12" height="2" rx="1"/></>,
     chevr: <polyline points="9 18 15 12 9 6"/>,
     loader: <><path d="M21 12a9 9 0 11-6.219-8.56"/></>,
+    camera: <><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></>,
+    inbox: <><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></>,
+    search: <><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>,
   };
   return (
     <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round">
@@ -215,9 +218,13 @@ function MinibarSheet({
 }) {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
-  // 'cart' = filling minibar, 'key' = key confirmation step (only when cabin), 'fin' = all done
-  const [phase, setPhase] = useState<"cart" | "key" | "fin">("cart");
+  // cart → key (if cabin) → lost → fin
+  const [phase, setPhase] = useState<"cart" | "key" | "lost" | "fin">("cart");
+  const [lostDesc, setLostDesc] = useState("");
+  const [lostPhoto, setLostPhoto] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [savingLost, setSavingLost] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const adj = (id: string, d: number) =>
     setCart(p => { const n = { ...p }, v = Math.max(0, (p[id] ?? 0) + d); if (!v) delete n[id]; else n[id] = v; return n; });
@@ -230,17 +237,13 @@ function MinibarSheet({
     try {
       await onSend(cart);
       setBusy(false);
-      // If key is in the cabin, ask the camareira to confirm it's there
       if (keyLocation === "cabin") {
         setPhase("key");
       } else {
-        setDone(true);
-        setPhase("fin");
-        setTimeout(onClose, 700);
+        setPhase("lost");
       }
     } catch {
       setBusy(false);
-      // error toast already shown by caller
     }
   };
 
@@ -254,15 +257,56 @@ function MinibarSheet({
         );
         showToast?.("Chave não encontrada registrada no fólio.", T.amber);
       } catch { /* non-blocking */ }
-    } else if (found) {
-      showToast?.("Tudo certo! Frigobar e chave confirmados.");
     }
-    setDone(true);
-    setPhase("fin");
-    setTimeout(onClose, 700);
+    setPhase("lost");
   };
 
-  // Key confirmation screen
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingPhoto(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("path", `lost-items/${stayId ?? "unknown"}/${Date.now()}`);
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      if (!res.ok) throw new Error("upload_failed");
+      const { url } = await res.json();
+      setLostPhoto(url);
+    } catch {
+      showToast?.("Erro ao enviar foto.", T.red);
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const submitLost = async (hasItems: boolean) => {
+    if (!hasItems) {
+      setPhase("fin");
+      showToast?.("Conferência concluída!");
+      setTimeout(onClose, 700);
+      return;
+    }
+    if (!lostDesc.trim()) return;
+    setSavingLost(true);
+    try {
+      await supabase.from("stays").update({
+        lostItemsDescription: lostDesc.trim(),
+        lostItemsPhoto: lostPhoto,
+        lostItemsReportedAt: new Date().toISOString(),
+        lostItemsReportedBy: userId,
+      }).eq("id", stayId ?? "");
+      showToast?.("Objetos esquecidos registrados!", T.amber);
+    } catch {
+      showToast?.("Erro ao registrar. Tente novamente.", T.red);
+    } finally {
+      setSavingLost(false);
+      setPhase("fin");
+      setTimeout(onClose, 700);
+    }
+  };
+
+  // ── Key step ────────────────────────────────────────────────────────────────
   if (phase === "key") {
     return (
       <Sheet onClose={onClose}>
@@ -276,21 +320,13 @@ function MinibarSheet({
               <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{cabinName}</div>
             </div>
           </div>
-          <div style={{ fontSize: 14, color: T.text, fontWeight: 600, marginTop: 16, marginBottom: 20, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 14, color: T.text, fontWeight: 600, marginTop: 16, lineHeight: 1.5 }}>
             A chave estava na acomodação?
           </div>
         </div>
-
         <div className="maid-sheet-body" style={{ padding: "0 16px" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <button
-              onClick={() => confirmKey(true)}
-              style={{
-                padding: "20px 16px", background: T.greenBg, border: `2px solid ${T.greenBorder}`, borderRadius: 18,
-                cursor: "pointer", fontFamily: "inherit", color: T.green, textAlign: "left",
-                display: "flex", alignItems: "center", gap: 14,
-              }}
-            >
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
+            <button onClick={() => confirmKey(true)} style={{ padding: "20px 16px", background: T.greenBg, border: `2px solid ${T.greenBorder}`, borderRadius: 18, cursor: "pointer", fontFamily: "inherit", color: T.green, textAlign: "left", display: "flex", alignItems: "center", gap: 14 }}>
               <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(45,212,191,0.15)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 <I n="check" s={22} c={T.green} w={2.5} />
               </div>
@@ -299,15 +335,7 @@ function MinibarSheet({
                 <div style={{ fontSize: 12, color: T.green, opacity: 0.7, marginTop: 2 }}>Chave encontrada na acomodação</div>
               </div>
             </button>
-
-            <button
-              onClick={() => confirmKey(false)}
-              style={{
-                padding: "20px 16px", background: T.redBg, border: `2px solid rgba(248,113,113,0.3)`, borderRadius: 18,
-                cursor: "pointer", fontFamily: "inherit", color: T.red, textAlign: "left",
-                display: "flex", alignItems: "center", gap: 14,
-              }}
-            >
+            <button onClick={() => confirmKey(false)} style={{ padding: "20px 16px", background: T.redBg, border: `2px solid rgba(248,113,113,0.3)`, borderRadius: 18, cursor: "pointer", fontFamily: "inherit", color: T.red, textAlign: "left", display: "flex", alignItems: "center", gap: 14 }}>
               <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(248,113,113,0.12)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 <I n="x" s={22} c={T.red} w={2.5} />
               </div>
@@ -323,20 +351,133 @@ function MinibarSheet({
     );
   }
 
+  // ── Lost items step ─────────────────────────────────────────────────────────
+  if (phase === "lost") {
+    return (
+      <Sheet onClose={onClose}>
+        <div style={{ padding: "0 20px 14px", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 14, background: T.blueBg, border: `1px solid ${T.blueBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <I n="search" s={22} c={T.blue} />
+            </div>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 900 }}>Objetos Esquecidos</div>
+              <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{cabinName}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 14, color: T.text, fontWeight: 600, marginTop: 16, lineHeight: 1.5 }}>
+            Encontrou algum objeto esquecido?
+          </div>
+        </div>
+        <div className="maid-sheet-body" style={{ padding: "0 16px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
+            {/* Textarea for description */}
+            <textarea
+              placeholder="Descreva os objetos encontrados... (ex: óculos de sol, carregador, livro)"
+              value={lostDesc}
+              onChange={e => setLostDesc(e.target.value)}
+              rows={4}
+              style={{
+                width: "100%", background: T.glass2, border: `1px solid ${lostDesc ? T.blueBorder : T.border}`,
+                borderRadius: 16, padding: "14px 16px", color: T.text, fontSize: 14, fontFamily: "inherit",
+                resize: "none", outline: "none", lineHeight: 1.6, transition: "border-color .15s",
+              }}
+            />
+
+            {/* Photo upload */}
+            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handlePhotoChange} />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingPhoto}
+              style={{
+                width: "100%", padding: "14px 16px", background: lostPhoto ? "rgba(96,165,250,0.12)" : T.glass,
+                border: `1px solid ${lostPhoto ? T.blueBorder : T.border}`, borderRadius: 16,
+                cursor: uploadingPhoto ? "wait" : "pointer", fontFamily: "inherit", color: lostPhoto ? T.blue : T.muted,
+                display: "flex", alignItems: "center", gap: 12, fontSize: 14, fontWeight: 600,
+              }}
+            >
+              {uploadingPhoto ? (
+                <><span style={{ display: "inline-flex", animation: "maid-spin 1s linear infinite" }}><I n="loader" s={18} c={T.blue} w={2} /></span> Enviando foto...</>
+              ) : lostPhoto ? (
+                <><I n="check" s={18} c={T.blue} /> Foto anexada — trocar</>
+              ) : (
+                <><I n="camera" s={18} c={T.muted} /> Tirar foto dos objetos</>
+              )}
+            </button>
+
+            {lostPhoto && (
+              <div style={{ borderRadius: 16, overflow: "hidden", border: `1px solid ${T.blueBorder}` }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={lostPhoto} alt="Objetos esquecidos" style={{ width: "100%", maxHeight: 200, objectFit: "cover", display: "block" }} />
+              </div>
+            )}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 4 }}>
+              <button
+                onClick={() => submitLost(false)}
+                style={{ padding: "16px 12px", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 16, cursor: "pointer", fontFamily: "inherit", color: T.muted, fontSize: 14, fontWeight: 700 }}
+              >
+                Não encontrei
+              </button>
+              <button
+                onClick={() => submitLost(true)}
+                disabled={!lostDesc.trim() || savingLost}
+                style={{
+                  padding: "16px 12px", background: lostDesc.trim() ? T.grad : T.glass,
+                  border: `1px solid ${lostDesc.trim() ? "transparent" : T.border}`, borderRadius: 16,
+                  cursor: lostDesc.trim() && !savingLost ? "pointer" : "not-allowed", fontFamily: "inherit",
+                  color: lostDesc.trim() ? "#fff" : T.muted, fontSize: 14, fontWeight: 800,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  opacity: lostDesc.trim() ? 1 : 0.4,
+                }}
+              >
+                {savingLost ? <I n="loader" s={16} c="#fff" w={2} /> : <><I n="send" s={16} />Registrar</>}
+              </button>
+            </div>
+          </div>
+          <div style={{ height: 32 }} />
+        </div>
+      </Sheet>
+    );
+  }
+
+  // ── Cart step ───────────────────────────────────────────────────────────────
   return (
     <Sheet onClose={onClose}>
       <div style={{ padding: "0 20px 14px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 900 }}>{cabinName}</div>
-          <div style={{ fontSize: 12, color: T.muted, marginTop: 3, fontWeight: 500 }}>Registrar consumo do frigobar</div>
+          <div style={{ fontSize: 12, color: T.muted, marginTop: 3, fontWeight: 500 }}>Conferência da cabana</div>
         </div>
         <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
           <I n="x" s={15} />
         </button>
       </div>
 
+      {/* Steps indicator */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 20px 14px", flexShrink: 0 }}>
+        {[
+          { label: "Frigobar", active: true },
+          { label: keyLocation === "cabin" ? "Chave" : null },
+          { label: "Achados" },
+        ].filter(s => s.label).map((s, i, arr) => (
+          <React.Fragment key={i}>
+            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <div style={{ width: 20, height: 20, borderRadius: "50%", background: s.active ? T.g1 : "rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 900, color: s.active ? "#fff" : T.muted }}>{i + 1}</div>
+              <span style={{ fontSize: 11, fontWeight: s.active ? 700 : 500, color: s.active ? T.text : T.muted }}>{s.label}</span>
+            </div>
+            {i < arr.length - 1 && <div style={{ flex: 1, height: 1, background: T.border }} />}
+          </React.Fragment>
+        ))}
+      </div>
+
       <div className="maid-sheet-body" style={{ padding: "0 16px" }}>
-        {items.map(item => {
+        {items.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "32px 0", color: T.muted }}>
+            <I n="inbox" s={36} c={T.muted} />
+            <div style={{ fontSize: 13, marginTop: 10 }}>Nenhum item no frigobar</div>
+          </div>
+        ) : items.map(item => {
           const q = cart[item.id] ?? 0;
           return (
             <div key={item.id} style={{
@@ -369,17 +510,17 @@ function MinibarSheet({
           </div>
         )}
         <button
-          disabled={!count || busy || done}
           onClick={submitCart}
+          disabled={busy}
           style={{
-            width: "100%", padding: 16, background: done ? T.greenG : T.grad, color: "#fff",
+            width: "100%", padding: 16, background: T.grad, color: "#fff",
             fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const,
-            border: "none", borderRadius: 16, cursor: (!count || busy || done) ? "not-allowed" : "pointer",
+            border: "none", borderRadius: 16, cursor: busy ? "wait" : "pointer",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-            opacity: !count ? 0.4 : 1, boxShadow: "0 4px 20px rgba(155,109,255,0.35)",
+            boxShadow: "0 4px 20px rgba(155,109,255,0.35)",
           }}
         >
-          {done ? <><I n="check" s={17} />Lançado!</> : <><I n="send" s={17} />Lançar Frigobar</>}
+          {busy ? <I n="loader" s={17} c="#fff" w={2} /> : count > 0 ? <><I n="send" s={17} />Lançar e continuar</> : <><I n="arrow" s={17} />Sem consumo · Continuar</>}
         </button>
       </div>
     </Sheet>
@@ -781,10 +922,10 @@ function HomeScreen({
             <div>
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.amber, marginBottom: 4 }}>Checkouts aguardando</div>
               <div style={{ fontSize: 26, fontWeight: 900, color: T.amber, textShadow: "0 0 20px rgba(245,158,11,.4)" }}>{checkouts.length} cabana{checkouts.length !== 1 ? "s" : ""}</div>
-              <div style={{ fontSize: 12, color: T.amber, opacity: 0.7, marginTop: 3 }}>Lançar frigobar antes da faxina →</div>
+              <div style={{ fontSize: 12, color: T.amber, opacity: 0.7, marginTop: 3 }}>Conferir cabana antes da faxina →</div>
             </div>
             <div style={{ width: 52, height: 52, borderRadius: 16, background: "rgba(245,158,11,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <I n="coffee" s={26} c={T.amber} />
+              <I n="search" s={26} c={T.amber} />
             </div>
           </div>
         </button>
@@ -855,7 +996,7 @@ function CheckoutsScreen({
       <div className="maid-scroll" style={{ padding: "0 16px 20px" }}>
         <div style={{ padding: "10px 0 20px" }}>
           <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.3px" }}>Checkouts</div>
-          <div style={{ fontSize: 13, color: T.muted, marginTop: 5 }}>Qualquer camareira pode lançar o frigobar antes da faxina.</div>
+          <div style={{ fontSize: 13, color: T.muted, marginTop: 5 }}>Confira o frigobar e objetos esquecidos antes da faxina.</div>
         </div>
 
         {checkouts.length === 0 ? (
@@ -890,7 +1031,7 @@ function CheckoutsScreen({
                     onClick={() => setMiniTarget(co)}
                     style={{ padding: 16, background: T.grad, color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(155,109,255,0.35)" }}
                   >
-                    <I n="coffee" s={16} /> Frigobar
+                    <I n="check" s={16} /> Conferir
                   </button>
                   <button
                     disabled={assumed.has(co.cabinId)}
@@ -999,8 +1140,8 @@ function FaxinasScreen({
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: t.type === "turnover" ? "48px 1fr" : "1fr", gap: 8 }}>
                       {t.type === "turnover" && (
-                        <button onClick={() => setMiniTarget(t)} style={{ height: 50, background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 14, cursor: "pointer", color: T.amber, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          <I n="coffee" s={18} />
+                        <button onClick={() => setMiniTarget(t)} style={{ height: 50, background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 14, cursor: "pointer", color: T.amber, display: "flex", alignItems: "center", justifyContent: "center" }} title="Conferir cabana">
+                          <I n="search" s={18} c={T.amber} />
                         </button>
                       )}
                       <button onClick={() => setDetail(t.id)} style={{ padding: 16, background: T.greenG, color: "#021a17", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(45,212,191,0.3)" }}>
@@ -1042,8 +1183,8 @@ function FaxinasScreen({
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: t.type === "turnover" ? "48px 1fr" : "1fr", gap: 8 }}>
                   {t.type === "turnover" && (
-                    <button onClick={() => setMiniTarget(t)} style={{ height: 52, background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 14, cursor: "pointer", color: T.amber, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <I n="coffee" s={18} />
+                    <button onClick={() => setMiniTarget(t)} style={{ height: 52, background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 14, cursor: "pointer", color: T.amber, display: "flex", alignItems: "center", justifyContent: "center" }} title="Conferir cabana">
+                      <I n="search" s={18} c={T.amber} />
                     </button>
                   )}
                   <button onClick={() => onStart(t.id)} style={{ padding: 16, background: T.grad, color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(155,109,255,0.35)" }}>
