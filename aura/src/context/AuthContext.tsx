@@ -13,6 +13,7 @@ interface AuthContextType {
   isAdmin: boolean;
   isSuperAdmin: boolean;
   initialProperty: any | null;
+  userDataReady: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -22,12 +23,14 @@ const AuthContext = createContext<AuthContextType>({
   isAdmin: false,
   isSuperAdmin: false,
   initialProperty: null,
+  userDataReady: false,
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [userData, setUserData] = useState<Staff | null>(null);
   const [loading, setLoading] = useState(true);
+  const [userDataReady, setUserDataReady] = useState(false);
   const [initialProperty, setInitialProperty] = useState<any | null>(null);
 
   // Refs para evitar closures stale no visibility handler e onAuthStateChange
@@ -73,6 +76,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (mounted && data?.staff && !userDataRef.current) {
           userDataRef.current = data.staff; // Guard ref immediately — prevents INITIAL_SESSION race
           setUserData(data.staff);
+          setUserDataReady(true);
           if (data.property) setInitialProperty(data.property);
           setLoading(false);
         }
@@ -97,12 +101,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             if (!retry.error && retry.data.user) {
               setUser(retry.data.user);
               const staff = await fetchStaffData(retry.data.user.id);
-              if (mounted && staff) setUserData(staff);
+              if (mounted && staff) { setUserData(staff); setUserDataReady(true); }
             }
           } else if (fallbackUser) {
             setUser(fallbackUser);
             const staff = await fetchStaffData(fallbackUser.id);
-            if (mounted && staff) setUserData(staff);
+            if (mounted && staff) { setUserData(staff); setUserDataReady(true); }
           } else {
             setUser(null);
             setUserData(null);
@@ -135,11 +139,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             // Só busca staff se o fast-path ainda não resolveu
             if (!userDataRef.current) {
               const staff = await fetchStaffData(currentUser.id);
-              if (mounted && staff) setUserData(staff);
+              if (mounted && staff) { setUserData(staff); setUserDataReady(true); }
             }
           } else if (!userDataRef.current) {
             setUser(null);
             setUserData(null);
+            if (mounted) setUserDataReady(true); // unauthenticated — signal ready
           }
 
           if (mounted) setLoading(false);
@@ -164,7 +169,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setUser(currentUser);
             if (currentUser.id !== userRef.current?.id || !userDataRef.current) {
               const staff = await fetchStaffData(currentUser.id);
-              if (mounted && staff) setUserData(staff);
+              if (mounted && staff) { setUserData(staff); setUserDataReady(true); }
             }
           }
           return;
@@ -223,6 +228,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     isAdmin: userData?.role === 'admin' || userData?.role === 'super_admin',
     isSuperAdmin: userData?.role === 'super_admin',
     initialProperty,
+    userDataReady,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

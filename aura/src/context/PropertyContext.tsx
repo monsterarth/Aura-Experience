@@ -40,7 +40,7 @@ function hexToHSL(hex: string): string {
 }
 
 export const PropertyProvider = ({ children, initialSlug }: { children: ReactNode; initialSlug?: string; }) => {
-  const { userData, isSuperAdmin, loading: authLoading, initialProperty } = useAuth();
+  const { userData, isSuperAdmin, loading: authLoading, initialProperty, userDataReady } = useAuth();
   const [property, setProperty] = useState<Property | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -165,7 +165,7 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
   }, [handleSetProperty]);
 
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || !userDataReady) return;
 
     // Fast-path: se o AuthContext já trouxe a property do server, usa direto
     if (initialProperty && !loadedPropertyIdRef.current) {
@@ -182,27 +182,30 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
 
     if (initialSlug) {
       fetchPropertyBySlug(initialSlug);
-    } else if (!isSuperAdmin) {
-      // Fallback: Tenta pegar o do staff profile, senão pega do localStorage guardado de rotas anteriores
-      const savedId = typeof window !== 'undefined' ? localStorage.getItem('aura-active-property') : null;
-      const targetId = userData?.propertyId || savedId;
+      return;
+    }
 
+    const savedId = typeof window !== 'undefined' ? localStorage.getItem('aura-active-property') : null;
+
+    if (!isSuperAdmin) {
+      // Aguarda userData estar disponível antes de desistir
+      // Se authLoading=false mas userData=null, o INITIAL_SESSION ainda pode estar populando
+      const targetId = userData?.propertyId || savedId;
       if (targetId) {
         fetchPropertyById(targetId);
       } else {
+        // userData chegou mas sem propertyId e sem localStorage — sem property
         setLoading(false);
       }
-    } else if (isSuperAdmin) {
-      const savedId = typeof window !== 'undefined' ? localStorage.getItem('aura-active-property') : null;
+    } else {
+      // super_admin: usa localStorage ou espera seleção manual
       if (savedId) {
         fetchPropertyById(savedId);
       } else {
         setLoading(false);
       }
-    } else {
-      setLoading(false);
     }
-  }, [initialSlug, userData, isSuperAdmin, authLoading, initialProperty, fetchPropertyBySlug, fetchPropertyById, handleSetProperty]);
+  }, [initialSlug, userData, isSuperAdmin, authLoading, initialProperty, userDataReady, fetchPropertyBySlug, fetchPropertyById, handleSetProperty]);
 
   return (
     <PropertyContext.Provider value={{ currentProperty: property, setProperty: handleSetProperty, loading, error, refreshProperty: fetchPropertyBySlug }}>
