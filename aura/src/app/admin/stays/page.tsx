@@ -51,15 +51,16 @@ export default function StaysPage() {
   const [stayToCancel, setStayToCancel] = useState<string | null>(null);
 
   // --- Carregamento de Dados ---
-  const loadStays = useCallback(async () => {
+  const loadStays = useCallback(async (forTab?: TabStatus) => {
     if (!contextProperty?.id) return;
     setLoading(true);
+    const tab = forTab ?? activeTab;
     try {
       let statusFilter: string[] = [];
-      if (activeTab === 'futuras') statusFilter = ['pending', 'pre_checkin_done'];
-      if (activeTab === 'ativas') statusFilter = ['active'];
-      if (activeTab === 'pendente') statusFilter = ['finished'];
-      if (activeTab === 'encerradas') statusFilter = ['finished', 'cancelled'];
+      if (tab === 'futuras') statusFilter = ['pending', 'pre_checkin_done'];
+      if (tab === 'ativas') statusFilter = ['active'];
+      if (tab === 'pendente') statusFilter = ['finished'];
+      if (tab === 'encerradas') statusFilter = ['finished', 'cancelled'];
 
       const params = new URLSearchParams({
         propertyId: contextProperty.id,
@@ -171,7 +172,7 @@ export default function StaysPage() {
       await StayService.closeStayBill(contextProperty.id, stayId, userData.id, userData.fullName);
       toast.success("Conta encerrada com sucesso.");
       setActiveTab('encerradas');
-      loadStays();
+      loadStays('encerradas');
     } catch {
       toast.error("Erro ao encerrar conta.");
     }
