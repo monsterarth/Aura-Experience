@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { PropertyService } from "@/services/property-service";
@@ -28,6 +28,7 @@ export const Sidebar = () => {
   const { currentProperty: property, setProperty } = useProperty();
   const { counts: notifCounts } = useNotifications();
   const pathname = usePathname();
+  const router = useRouter();
   const [allProperties, setAllProperties] = useState<Property[]>([]);
 
   // Estado para controle do menu no mobile
@@ -77,7 +78,10 @@ export const Sidebar = () => {
   // ==========================================
   const mobileOnlyRoles = ['maid', 'technician', 'waiter', 'porter', 'houseman'];
   if (userData?.role && mobileOnlyRoles.includes(userData.role)) {
-    return null; // Retorna vazio. A tela ocupará 100% do espaço sem menu lateral.
+    if (userData.role === 'maid' && pathname !== '/maid') {
+      router.replace('/maid');
+    }
+    return null;
   }
 
   // ==========================================

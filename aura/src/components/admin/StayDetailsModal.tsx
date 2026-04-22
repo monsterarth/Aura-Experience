@@ -81,7 +81,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [checkOutModalOpen, setCheckOutModalOpen] = useState(false);
-  const [keyLocation, setKeyLocation] = useState<'reception' | 'cabin' | 'unknown' | null>(null);
+  const [keyLocation, setKeyLocation] = useState<'reception' | 'cabin' | null>(null);
   const [expandedArea, setExpandedArea] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<Partial<Stay>>({});
@@ -992,8 +992,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
           <div className="space-y-2">
             {([
               { value: 'reception', label: 'Na Recepção', desc: 'Hóspede devolveu a chave', color: 'border-green-500/40 bg-green-500/5 hover:bg-green-500/10', active: 'border-green-500 bg-green-500/15', dot: 'bg-green-500' },
-              { value: 'cabin', label: 'Na Acomodação', desc: 'Chave ficou no quarto', color: 'border-red-500/30 bg-red-500/5 hover:bg-red-500/10', active: 'border-red-500 bg-red-500/15', dot: 'bg-red-500' },
-              { value: 'unknown', label: 'Não sabemos', desc: 'Localização desconhecida', color: 'border-red-500/30 bg-red-500/5 hover:bg-red-500/10', active: 'border-red-500 bg-red-500/15', dot: 'bg-red-500' },
+              { value: 'cabin', label: 'Na Acomodação', desc: 'Camareira irá verificar', color: 'border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10', active: 'border-amber-500 bg-amber-500/15', dot: 'bg-amber-500' },
             ] as const).map(opt => (
               <button
                 key={opt.value}
