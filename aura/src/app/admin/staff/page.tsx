@@ -24,6 +24,7 @@ import { toast } from "sonner";
 const roleLabels: Record<string, string> = {
   super_admin: "Super Admin",
   admin: "Administrador",
+  hr: "Gerente / RH",
   reception: "Recepção",
   governance: "Governanta (Gestão)",
   maid: "Camareira (Mobile)",
@@ -153,6 +154,7 @@ export default function StaffManagementPage() {
                 >
                   <optgroup label="Administrativo e Recepção">
                     <option value="admin">Administrador</option>
+                    <option value="hr">Gerente / RH</option>
                     <option value="reception">Recepção</option>
                     <option value="marketing">Marketing</option>
                   </optgroup>

@@ -384,6 +384,27 @@ function HomeScreen({ requests, done, userName, onNav }: {
 function ProfileScreen({ userData, onLogout }: { userData: any; onLogout: () => void }) {
   const name = userData?.fullName || "Mensageiro";
   const initials = name.split(" ").slice(0, 2).map((w: string) => w[0] ?? "").join("").toUpperCase();
+  const [todayShift, setTodayShift] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!userData?.id) return;
+    const today = new Date();
+    const from = today.toISOString().split('T')[0];
+    const dow = today.getDay();
+    Promise.all([
+      fetch(`/api/admin/staff/schedules?staffId=${userData.id}`).then(r => r.json()),
+      fetch(`/api/admin/staff/schedule-overrides?staffId=${userData.id}&from=${from}&to=${from}`).then(r => r.json()),
+    ]).then(([schedules, overrides]) => {
+      const override = Array.isArray(overrides) ? overrides[0] : null;
+      if (override) {
+        if (!override.startTime) { setTodayShift("Folga"); return; }
+        setTodayShift(`${override.startTime.slice(0, 5)} às ${override.endTime?.slice(0, 5)}`);
+        return;
+      }
+      const base = Array.isArray(schedules) ? schedules.find((s: any) => s.dayOfWeek === dow && s.active) : null;
+      if (base) setTodayShift(`${base.startTime.slice(0, 5)} às ${base.endTime.slice(0, 5)}`);
+    }).catch(() => {});
+  }, [userData?.id]);
 
   return (
     <div className="hm-scroll" style={{ padding: "0 16px 24px" }}>
@@ -412,7 +433,7 @@ function ProfileScreen({ userData, onLogout }: { userData: any; onLogout: () => 
           <I n="sun" s={18} c={T.amber} />
         </div>
         <div>
-          <div style={{ fontWeight: 800, fontSize: 14 }}>Plantão</div>
+          <div style={{ fontWeight: 800, fontSize: 14 }}>{todayShift || "Sem escala definida"}</div>
           <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{todayLabel()}</div>
         </div>
       </div>

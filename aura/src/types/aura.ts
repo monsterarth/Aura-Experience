@@ -5,6 +5,7 @@ export type Timestamp = string;
 export type UserRole =
   | 'super_admin'
   | 'admin'
+  | 'hr'         // Gerente / RH (Gestão de Equipe e Escalas)
   | 'reception'
   | 'governance' // Governanta / Gestor do setor
   | 'maid'       // Camareira (Operacional Mobile)
@@ -688,6 +689,31 @@ export interface Staff {
   bio?: string;
   messengerName?: string;
   messengerColor?: string;
+  createdAt: Timestamp;
+}
+
+// --- ESCALAS DE TRABALHO ---
+export interface StaffSchedule {
+  id: string;
+  staffId: string;
+  propertyId: string;
+  dayOfWeek: number; // 0=Dom, 1=Seg, ..., 6=Sáb
+  startTime: string; // HH:mm
+  endTime: string;   // HH:mm
+  active: boolean;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface StaffScheduleOverride {
+  id: string;
+  staffId: string;
+  propertyId: string;
+  date: string;           // YYYY-MM-DD
+  startTime?: string | null; // null = folga
+  endTime?: string | null;
+  reason?: string;        // ex: "Folga", "Troca de turno"
+  createdBy?: string;
   createdAt: Timestamp;
 }
 

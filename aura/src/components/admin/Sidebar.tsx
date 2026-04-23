@@ -15,7 +15,8 @@ import {
   MessageSquare, Settings, Globe, Menu, X,
   Star, ClipboardList, Calendar, Bot, FileText,
   Loader2, ChevronLeft, ChevronRight, BellRing, Coffee,
-  Ticket, CalendarDays, ShoppingBag, Package, UserSearch, ContactRound
+  Ticket, CalendarDays, ShoppingBag, Package, UserSearch, ContactRound,
+  ClipboardCheck
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import Image from "next/image";
@@ -102,16 +103,16 @@ export const Sidebar = () => {
   // ==========================================
   const paineisItems = [
     { title: "Painel Aura", icon: LayoutDashboard, href: "/admin/core/dashboard", roles: ["super_admin"] },
-    { title: "Recepção", icon: BellRing, href: "/admin/reception", roles: ["super_admin", "admin", "reception"] },
+    { title: "Recepção", icon: BellRing, href: "/admin/reception", roles: ["super_admin", "admin", "reception", "hr"] },
   ];
 
   // ==========================================
   // BLOCO 2: HOSPEDAGEM (ciclo de vida do hóspede)
   // ==========================================
   const hospedagemItems = [
-    { title: "Estadias", icon: Home, href: "/admin/stays", roles: ["super_admin", "admin", "reception", "governance"] },
+    { title: "Estadias", icon: Home, href: "/admin/stays", roles: ["super_admin", "admin", "reception", "governance", "hr"] },
     { title: "Mapa de Reservas", icon: Calendar, href: "/admin/reservation-map", roles: ["super_admin", "admin", "reception"] },
-    { title: "Hóspedes", icon: UserSearch, href: "/admin/guests", roles: ["super_admin", "admin", "reception"] },
+    { title: "Hóspedes", icon: UserSearch, href: "/admin/guests", roles: ["super_admin", "admin", "reception", "hr"] },
     { title: "Comunicação", icon: MessageSquare, href: "/admin/comunicacao", roles: ["super_admin", "admin", "reception"], badge: notifCounts.messages },
   ];
 
@@ -119,7 +120,7 @@ export const Sidebar = () => {
   // BLOCO 3: AGENDA (o que acontece na propriedade)
   // ==========================================
   const agendaItems = [
-    { title: "Calendário", icon: CalendarDays, href: "/admin/calendario", roles: ["super_admin", "admin", "reception"] },
+    { title: "Calendário", icon: CalendarDays, href: "/admin/calendario", roles: ["super_admin", "admin", "reception", "hr"] },
     { title: "Eventos", icon: Ticket, href: "/admin/eventos", roles: ["super_admin", "admin", "reception"] },
     { title: "Agenda Estrut.", icon: Calendar, href: "/admin/core/structures/bookings", roles: ["super_admin", "admin", "reception"] },
     { title: "Governança", icon: Sparkles, href: "/admin/governance", roles: ["super_admin", "admin", "governance"] },
@@ -156,7 +157,8 @@ export const Sidebar = () => {
     { title: "Frigobar", icon: Coffee, href: "/admin/cabins/minibar", roles: ["super_admin", "admin"] },
     { title: "Estruturas", icon: Home, href: "/admin/core/structures", roles: ["super_admin", "admin"] },
     { title: "Catálogo Concierge", icon: Package, href: "/admin/core/concierge", roles: ["super_admin", "admin"] },
-    { title: "Equipe", icon: Users, href: "/admin/staff", roles: ["super_admin", "admin"] },
+    { title: "Equipe", icon: Users, href: "/admin/staff", roles: ["super_admin", "admin", "hr"] },
+    { title: "Escalas", icon: ClipboardCheck, href: "/admin/escalas", roles: ["super_admin", "admin", "hr"] },
     { title: "Propriedades", icon: Globe, href: "/admin/core/properties", roles: ["super_admin"] },
   ];
 
