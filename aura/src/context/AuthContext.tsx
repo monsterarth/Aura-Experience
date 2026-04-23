@@ -157,6 +157,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setUser(null);
           setUserData(null);
 
+          // Limpa cache de property para o próximo usuário não herdar a sessão anterior
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('aura-property-cache');
+            localStorage.removeItem('aura-active-property');
+          }
+
           if (typeof window !== 'undefined' &&
             !window.location.pathname.includes('/admin/login') &&
             !isLoggingOut.current) {

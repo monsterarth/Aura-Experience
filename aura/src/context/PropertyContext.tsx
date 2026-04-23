@@ -67,18 +67,19 @@ function hexToHSL(hex: string): string {
 export const PropertyProvider = ({ children, initialSlug }: { children: ReactNode; initialSlug?: string; }) => {
   const { userData, isSuperAdmin, loading: authLoading, initialProperty, userDataReady } = useAuth();
 
-  // Inicializa com o cache local — evita flash de loading no F5
-  const [property, setPropertyState] = useState<Property | null>(() => readCachedProperty());
+  const [property, setPropertyState] = useState<Property | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Ref para evitar re-runs: property já carregada nesta sessão
-  const loadedRef = useRef(!!readCachedProperty());
-  // Refs para ler userData/isSuperAdmin sem adicionar como dependências do efeito
+  const loadedRef = useRef(false);
+  // Refs para ler valores sem adicionar como dependências do efeito
   const userDataRef = useRef(userData);
   const isSuperAdminRef = useRef(isSuperAdmin);
+  const propertyRef = useRef(property);
   useEffect(() => { userDataRef.current = userData; }, [userData]);
   useEffect(() => { isSuperAdminRef.current = isSuperAdmin; }, [isSuperAdmin]);
+  useEffect(() => { propertyRef.current = property; }, [property]);
 
   // Aplica o tema visualmente no CSS do navegador
   const applyTheme = useCallback((data: Property) => {
@@ -126,11 +127,6 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
     setPropertyState(data);
   }, [applyTheme]);
 
-  // Re-aplica tema ao montar se property veio do cache
-  useEffect(() => {
-    const cached = readCachedProperty();
-    if (cached) applyTheme(cached);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Busca por SLUG
   const fetchPropertyBySlug = useCallback(async (slug: string) => {
@@ -189,16 +185,15 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
       return;
     }
 
-    // Property já carregada (cache ou busca anterior) — apenas libera loading
+    // Property já carregada nesta sessão — libera loading e atualiza em background
     if (loadedRef.current) {
       setLoading(false);
-
-      // Atualiza em background (refresh silencioso) se temos um ID salvo
-      const savedId = typeof window !== 'undefined' ? localStorage.getItem(PROPERTY_ID_KEY) : null;
-      if (savedId) {
-        supabase.from('properties').select('*').eq('id', savedId).single()
+      // Refresh silencioso usando o ID da property em memória (não localStorage)
+      const currentId = propertyRef.current?.id;
+      if (currentId) {
+        supabase.from('properties').select('*').eq('id', currentId).single()
           .then((res: { data: Property | null }) => { if (res.data) handleSetProperty(res.data); })
-          .catch(() => { /* silencioso — cache ainda válido */ });
+          .catch(() => { /* silencioso */ });
       }
       return;
     }
@@ -212,11 +207,12 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
     const ud = userDataRef.current;
     const superAdmin = isSuperAdminRef.current;
     const savedId = typeof window !== 'undefined' ? localStorage.getItem(PROPERTY_ID_KEY) : null;
-    const targetId = ud?.propertyId || savedId;
 
     if (!superAdmin) {
-      if (targetId) {
-        fetchPropertyById(targetId);
+      // Usuário normal: usa SEMPRE seu propertyId do banco — nunca localStorage
+      // (evita herdar property de sessão anterior de outro usuário)
+      if (ud?.propertyId) {
+        fetchPropertyById(ud.propertyId);
       } else {
         setLoading(false);
       }
