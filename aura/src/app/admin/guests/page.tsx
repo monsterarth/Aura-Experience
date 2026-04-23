@@ -486,7 +486,7 @@ function GuestDetailPanel({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="md:col-span-2">
                   <FieldLabel>Nome Completo</FieldLabel>
-                  <FieldInput value={formData.fullName} onChange={v => set("fullName", v)} disabled={disabled} />
+                  <FieldInput value={formData.fullName} onChange={v => set("fullName", v.toUpperCase())} disabled={disabled} />
                 </div>
                 <div>
                   <FieldLabel>Tipo de Documento</FieldLabel>
@@ -579,8 +579,24 @@ function GuestDetailPanel({
                   <FieldInput value={formData.email} onChange={v => set("email", v)} disabled={disabled} type="email" />
                 </div>
                 <div>
-                  <FieldLabel>Telefone</FieldLabel>
-                  <FieldInput value={formData.phone} onChange={v => set("phone", v)} disabled={disabled} placeholder="+55 (00) 00000-0000" />
+                  <FieldLabel>Telefone / WhatsApp</FieldLabel>
+                  <div className="flex">
+                    <span className={cn(
+                      "flex items-center px-3 bg-secondary border border-r-0 border-border rounded-l-xl text-sm font-bold text-foreground/50",
+                      !disabled && "text-foreground"
+                    )}>+</span>
+                    <input
+                      type="tel"
+                      value={(formData.phone ?? "").replace(/^\+/, "").replace(/\D/g, "")}
+                      onChange={e => set("phone", e.target.value.replace(/\D/g, ""))}
+                      disabled={disabled}
+                      placeholder="55 (00) 00000-0000"
+                      className={cn(
+                        "flex-1 bg-secondary border border-border rounded-r-xl px-3 py-2 text-sm text-foreground outline-none transition-all font-mono",
+                        disabled ? "opacity-60 cursor-default" : "focus:border-primary/50 focus:bg-secondary/80"
+                      )}
+                    />
+                  </div>
                 </div>
               </div>
             </section>
@@ -863,7 +879,7 @@ function NewGuestPanel({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="md:col-span-2">
               <FieldLabel>Nome Completo *</FieldLabel>
-              <FieldInput value={formData.fullName} onChange={v => set("fullName", v)} disabled={false} placeholder="Nome completo" />
+              <FieldInput value={formData.fullName} onChange={v => set("fullName", v.toUpperCase())} disabled={false} placeholder="NOME COMPLETO" />
             </div>
             <div>
               <FieldLabel>Tipo de Documento *</FieldLabel>
@@ -930,7 +946,10 @@ function NewGuestPanel({
             </div>
             <div>
               <FieldLabel>Telefone / WhatsApp</FieldLabel>
-              <FieldInput value={formData.phone} onChange={v => set("phone", v)} disabled={false} placeholder="+55 (00) 00000-0000" />
+              <div className="flex">
+                <span className="flex items-center px-3 bg-secondary border border-r-0 border-border rounded-l-xl text-sm font-bold text-foreground">+</span>
+                <input type="tel" value={(formData.phone ?? "").replace(/\D/g, "")} onChange={e => set("phone", e.target.value.replace(/\D/g, ""))} placeholder="55 (00) 00000-0000" className="flex-1 bg-secondary border border-border rounded-r-xl px-3 py-2 text-sm text-foreground outline-none transition-all font-mono focus:border-primary/50" />
+              </div>
             </div>
           </div>
         </section>

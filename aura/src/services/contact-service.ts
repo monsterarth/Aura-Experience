@@ -18,6 +18,7 @@ export class ContactService {
       const phoneId = this.formatPhoneId(phone);
       if (!phoneId) return null;
 
+      const normalizedName = name?.trim().toUpperCase() ?? name;
       const now = new Date().toISOString();
 
       // Tenta atualizar se já existe
@@ -30,7 +31,7 @@ export class ContactService {
 
       if (existing) {
         // Atualiza: nome, isGuest
-        const updatePayload: any = { name, isGuest, updatedAt: now };
+        const updatePayload: any = { name: normalizedName, isGuest, updatedAt: now };
         if (guestId) updatePayload.guestId = guestId;
 
         const { error } = await supabase
@@ -53,7 +54,7 @@ export class ContactService {
         const insertPayload: any = {
           id: phoneId,
           propertyId,
-          name,
+          name: normalizedName,
           phone: phoneId,
           isGuest,
           createdAt: now,

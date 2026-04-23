@@ -104,7 +104,7 @@ function NewStayPageContent() {
       GuestService.findByDocument(contextProperty.id, prefilledGuestId).then(guest => {
         if (guest) {
           setDocNumber(guest.id);
-          setGuestData({ fullName: guest.fullName, email: guest.email || "", phone: guest.phone, preferredLanguage: (guest.preferredLanguage as "pt" | "en" | "es") || "pt" });
+          setGuestData({ fullName: guest.fullName, email: guest.email || "", phone: guest.phone ? guest.phone.replace(/\D/g, '') : "", preferredLanguage: (guest.preferredLanguage as "pt" | "en" | "es") || "pt" });
         }
       });
     }
@@ -117,7 +117,7 @@ function NewStayPageContent() {
     try {
       const guest = await GuestService.findByDocument(contextProperty.id, docNumber);
       if (guest) {
-        setGuestData({ fullName: guest.fullName, email: guest.email || "", phone: guest.phone, preferredLanguage: (guest.preferredLanguage as "pt" | "en" | "es") || "pt" });
+        setGuestData({ fullName: guest.fullName, email: guest.email || "", phone: guest.phone ? guest.phone.replace(/\D/g, '') : "", preferredLanguage: (guest.preferredLanguage as "pt" | "en" | "es") || "pt" });
         toast.info("Hóspede encontrado!");
       } else {
         toast.info("Hóspede novo. Preencha os dados.");
@@ -149,11 +149,6 @@ function NewStayPageContent() {
 
     if (docType === "CPF" && docNumber && !validateCPF(docNumber)) {
       return toast.error("CPF inválido. Verifique o número digitado.");
-    }
-
-    // Exige que o número comece com + para garantir que o DDI foi informado
-    if (!guestData.phone.trim().startsWith('+')) {
-      return toast.error("Informe o número com DDI internacional. Ex: +55 53 98116-9216");
     }
 
     const cleanedPhone = guestData.phone.replace(/\D/g, '');
@@ -320,19 +315,22 @@ function NewStayPageContent() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase text-muted-foreground">Nome do Titular *</label>
-                  <input required value={guestData.fullName} onChange={e => setGuestData({ ...guestData, fullName: e.target.value })} className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors" />
+                  <input required value={guestData.fullName} onChange={e => setGuestData({ ...guestData, fullName: e.target.value.toUpperCase() })} className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase text-muted-foreground">WhatsApp *</label>
-                  <input
-                    required
-                    type="tel"
-                    autoComplete="tel"
-                    value={guestData.phone}
-                    onChange={e => setGuestData({ ...guestData, phone: e.target.value })}
-                    placeholder="Ex: +55 53 98116-9216"
-                    className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground font-mono outline-none focus:border-primary/50 transition-colors"
-                  />
+                  <div className="flex">
+                    <span className="flex items-center px-3 bg-secondary border border-r-0 border-border rounded-l-xl text-sm font-bold text-foreground">+</span>
+                    <input
+                      required
+                      type="tel"
+                      autoComplete="tel"
+                      value={(guestData.phone ?? "").replace(/\D/g, "")}
+                      onChange={e => setGuestData({ ...guestData, phone: e.target.value.replace(/\D/g, "") })}
+                      placeholder="55 53 98116-9216"
+                      className="flex-1 p-3 bg-secondary border border-border rounded-r-xl text-foreground font-mono outline-none focus:border-primary/50 transition-colors"
+                    />
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase text-muted-foreground">E-mail (Opcional)</label>

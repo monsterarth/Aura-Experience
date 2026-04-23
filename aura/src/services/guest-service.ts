@@ -28,6 +28,9 @@ export const GuestService = {
       ...guestData,
       id,
       propertyId,
+      fullName: guestData.fullName?.trim().toUpperCase() ?? guestData.fullName,
+      // Armazena telefone sempre como só dígitos (sem +, espaços ou traços)
+      phone: guestData.phone ? guestData.phone.replace(/\D/g, '') : guestData.phone,
       updatedAt: new Date().toISOString()
     };
 
