@@ -2,499 +2,271 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { MaintenanceService } from "@/services/maintenance-service";
 import { CabinService } from "@/services/cabin-service";
 import { StructureService } from "@/services/structure-service";
 import { StaffService } from "@/services/staff-service";
-import { MaintenanceChecklistItem, MaintenanceTask, Cabin, Structure, Staff } from "@/types/aura";
+import { MaintenanceTask, Cabin, Structure, Staff } from "@/types/aura";
 import { MaintenanceTaskManagerModal } from "@/components/admin/maintenance/MaintenanceTaskManagerModal";
-import { MaintenanceCompletionModal } from "@/components/admin/maintenance/MaintenanceCompletionModal";
-import { StaffMobileHub } from "@/components/admin/StaffMobileHub";
-import { Clock, Hammer, AlertCircle, CheckCircle2, PlayCircle, Plus, Edit3, Settings2, Archive, Calendar as CalendarIcon, X, Moon } from "lucide-react";
+import {
+  Wrench, AlertCircle, CheckCircle2, PlayCircle, Plus,
+  Timer, Users, ArrowRight, LayoutDashboard, Clock,
+  Flame, TrendingUp, Zap,
+} from "lucide-react";
 import { toast } from "sonner";
-import Image from "next/image";
 import { cn } from "@/lib/utils";
 
-export default function MaintenancePage() {
-    const { currentProperty: property, loading: isLoading } = useProperty();
-    const { userData } = useAuth();
+const PRIORITY_LABEL: Record<string, string> = { urgent: "Urgente", high: "Alta", medium: "Média", low: "Baixa" };
+const PRIORITY_COLOR: Record<string, string> = {
+  urgent: "text-red-500 border-red-500/30 bg-red-500/10",
+  high: "text-orange-500 border-orange-500/30 bg-orange-500/10",
+  medium: "text-yellow-600 border-yellow-500/30 bg-yellow-500/10",
+  low: "text-blue-500 border-blue-500/30 bg-blue-500/10",
+};
 
-    const [tasks, setTasks] = useState<MaintenanceTask[]>([]);
-    const [cabins, setCabins] = useState<Record<string, Cabin>>({});
-    const [structures, setStructures] = useState<Record<string, Structure>>({});
-    const [technicians, setTechnicians] = useState<any[]>([]); // Using any for Staff to avoid importing type if not exported correctly, though it should be exported
-    const [loadingInitial, setLoadingInitial] = useState(true);
+export default function MaintenanceDashboardPage() {
+  const { currentProperty: property, loading: isLoading } = useProperty();
+  const { userData } = useAuth();
 
-    const [isManagerOpen, setIsManagerOpen] = useState(false);
-    const [isCompletionOpen, setIsCompletionOpen] = useState(false);
-    const [isArchiveOpen, setIsArchiveOpen] = useState(false);
-    const [selectedTask, setSelectedTask] = useState<MaintenanceTask | null>(null);
-    const [enlargedImage, setEnlargedImage] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<MaintenanceTask[]>([]);
+  const [cabins, setCabins] = useState<Record<string, Cabin>>({});
+  const [structures, setStructures] = useState<Record<string, Structure>>({});
+  const [technicians, setTechnicians] = useState<Staff[]>([]);
+  const [loadingInitial, setLoadingInitial] = useState(true);
+  const [isManagerOpen, setIsManagerOpen] = useState(false);
 
-    useEffect(() => {
-        if (!property) return;
+  useEffect(() => {
+    if (!property) return;
 
-        let unsubscribe: () => void;
+    let unsubscribe: () => void;
 
-        const init = async () => {
-            setLoadingInitial(true);
-            try {
-                const [cabinsData, structuresData] = await Promise.all([
-                    CabinService.getCabinsByProperty(property.id),
-                    StructureService.getStructures(property.id)
-                ]);
+    const init = async () => {
+      setLoadingInitial(true);
+      try {
+        const [cabinsData, structuresData, staffData] = await Promise.all([
+          CabinService.getCabinsByProperty(property.id),
+          StructureService.getStructures(property.id),
+          StaffService.getStaffByProperty(property.id),
+        ]);
 
-                const cabinsDict: Record<string, Cabin> = {};
-                cabinsData.forEach(c => cabinsDict[c.id] = c);
-                setCabins(cabinsDict);
+        const cabinsDict: Record<string, Cabin> = {};
+        cabinsData.forEach(c => cabinsDict[c.id] = c);
+        setCabins(cabinsDict);
 
-                const structuresDict: Record<string, Structure> = {};
-                structuresData.forEach(s => structuresDict[s.id] = s);
-                setStructures(structuresDict);
+        const structuresDict: Record<string, Structure> = {};
+        structuresData.forEach(s => structuresDict[s.id] = s);
+        setStructures(structuresDict);
 
-                // Fetch Staff (Role = maintenance or technician)
-                const staffData = await StaffService.getStaffByProperty(property.id);
-                const techs = staffData.filter((s: Staff) => (s.role === 'maintenance' || s.role === 'technician') && s.active);
-                setTechnicians(techs);
+        setTechnicians(staffData.filter((s: Staff) => (s.role === 'maintenance' || s.role === 'technician') && s.active));
 
-                unsubscribe = MaintenanceService.listenToActiveTasks(property.id, (realtimeTasks) => {
-                    setTasks(realtimeTasks);
-                });
-
-            } catch (error) {
-                toast.error("Erro ao conectar base de manutenção.");
-            } finally {
-                setLoadingInitial(false);
-            }
-        };
-
-        init();
-
-        return () => {
-            if (unsubscribe) unsubscribe();
-        };
-    }, [property]);
-
-    if (isLoading || loadingInitial) {
-        return <div className="flex h-[80vh] items-center justify-center w-full"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
-    }
-
-    if (!property) {
-        return <div className="flex h-[80vh] items-center justify-center text-muted-foreground">Selecione uma propriedade no menu lateral.</div>;
-    }
-
-    // Mobile App View restriction if user is ONLY a technician
-    if (userData?.role === 'technician') {
-        const myTasks = tasks.filter(t => !t.assignedTo || t.assignedTo.length === 0 || t.assignedTo.includes(userData.id!));
-        const myPending = myTasks.filter(t => t.status === 'pending' || t.status === 'paused');
-        const myInProgress = myTasks.filter(t => t.status === 'in_progress');
-        const myWaiting = myTasks.filter(t => t.status === 'waiting_conference');
-
-        const TaskCard = ({ task }: { task: MaintenanceTask }) => (
-            <div className={cn(
-                "bg-card border p-4 rounded-[2rem] shadow-sm space-y-4 transition-colors relative mb-4 flex flex-col items-start text-left w-full",
-                task.status === 'paused' ? "border-yellow-400 opacity-75" : "border-border"
-            )}>
-                {task.status === 'paused' && (
-                    <div className="flex items-center gap-2 bg-yellow-500/10 text-yellow-700 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase mb-2">
-                        <Moon size={12} /> DND {task.pausedUntil && ` — retoma às ${new Date(task.pausedUntil).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}
-                    </div>
-                )}
-                <div className="flex items-center gap-2 mb-1 w-full flex-wrap">
-                    <p className={cn(
-                        "text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded border leading-none pt-1 pb-0.5",
-                        task.priority === 'urgent' ? 'border-red-500/30 text-red-500 bg-red-500/10' :
-                            task.priority === 'high' ? 'border-orange-500/30 text-orange-500 bg-orange-500/10' :
-                                task.priority === 'medium' ? 'border-yellow-500/30 text-yellow-600 bg-yellow-500/10' :
-                                    'border-blue-500/30 text-blue-500 bg-blue-500/10'
-                    )}>
-                        {task.priority === 'urgent' ? 'Urgente' : task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Média' : 'Baixa'}
-                    </p>
-                    {task.isRecurring && <span className="text-[10px] bg-indigo-500/10 text-indigo-500 px-2 rounded font-bold uppercase py-0.5">Recorrente</span>}
-                </div>
-                <h4 className="font-bold text-lg text-foreground leading-tight">{task.title}</h4>
-                <p className="text-sm text-muted-foreground line-clamp-2">{task.description}</p>
-                {task.imageUrl && (
-                    <button onClick={() => setEnlargedImage(task.imageUrl!)} className="relative mt-2 h-32 w-full rounded-2xl overflow-hidden border border-border group block text-left">
-                        <Image src={task.imageUrl} alt="Evidência do Problema" fill className="object-cover group-hover:scale-105 transition-transform" />
-                        <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[10px] px-2 py-1 rounded-lg font-bold uppercase tracking-widest backdrop-blur-md">Ampliar</div>
-                    </button>
-                )}
-                {task.cabinId && <p className="text-xs font-bold text-primary mt-2">📍 {cabins[task.cabinId]?.name || "Cabana Desconhecida"}</p>}
-                {task.structureId && <p className="text-xs font-bold text-primary mt-2">📍 {structures[task.structureId]?.name || "Estrutura"} {task.unitId && (structures[task.structureId]?.units?.find(u => u.id === task.unitId)?.name ? ` (${structures[task.structureId]?.units?.find(u => u.id === task.unitId)?.name})` : '')}</p>}
-
-                <div className="w-full space-y-2 pt-4 border-t border-border">
-                    {task.status === 'pending' ? (
-                        <button onClick={() => handleStartTask(task.id)} className="w-full flex items-center justify-center gap-2 bg-primary/10 hover:bg-primary text-primary hover:text-primary-foreground font-bold p-3 rounded-2xl transition-all text-xs uppercase cursor-pointer">
-                            <PlayCircle size={16} /> Iniciar Manutenção
-                        </button>
-                    ) : task.status === 'in_progress' ? (
-                        <button onClick={() => { setSelectedTask(task); setIsCompletionOpen(true); }} className="w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white font-bold p-3 rounded-2xl transition-all text-xs uppercase">
-                            <CheckCircle2 size={16} /> Finalizar Tarefa
-                        </button>
-                    ) : task.status === 'waiting_conference' ? (
-                        <div className="bg-orange-500/10 border border-orange-500/30 p-3 rounded-2xl w-full text-center">
-                            <p className="text-xs text-orange-600 font-bold flex items-center justify-center gap-2"><AlertCircle size={14} /> Aguardando Validação</p>
-                        </div>
-                    ) : null}
-                </div>
-            </div>
-        );
-
-        return (
-            <StaffMobileHub 
-                propertyId={property.id} 
-                userData={userData} 
-                renderTasks={() => (
-                    <div className="flex flex-col h-[100dvh] bg-background">
-                {enlargedImage && (
-                    <div className="fixed inset-0 z-[200] bg-black/90 flex flex-col items-center justify-center p-4" onClick={() => setEnlargedImage(null)}>
-                        <button onClick={() => setEnlargedImage(null)} className="absolute top-4 right-4 text-white bg-black/50 p-2 rounded-full backdrop-blur-md z-10"><X size={24} /></button>
-                        <div className="relative w-full h-full max-h-[80vh]">
-                            <Image src={enlargedImage} alt="Fullscreen image" fill className="object-contain" />
-                        </div>
-                    </div>
-                )}
-                
-                <MaintenanceCompletionModal
-                    isOpen={isCompletionOpen}
-                    onClose={() => { setIsCompletionOpen(false); setSelectedTask(null); }}
-                    propertyId={property.id}
-                    task={selectedTask}
-                    cabins={cabins}
-                    structures={structures}
-                />
-
-                <div className="p-6 border-b border-border bg-card shrink-0">
-                    <h1 className="text-2xl font-bold tracking-tight">Minhas Tarefas</h1>
-                    <p className="text-sm text-muted-foreground mt-1">
-                        Visualize e gerencie as manutenções atribuídas a você.
-                    </p>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4 custom-scrollbar bg-secondary/10">
-                    {myInProgress.length > 0 && (
-                        <div className="mb-8 block">
-                            <h3 className="font-bold text-sm uppercase tracking-widest text-primary flex items-center gap-2 mb-4">
-                                <PlayCircle size={16} /> Em Andamento
-                            </h3>
-                            {myInProgress.map(t => <TaskCard key={t.id} task={t} />)}
-                        </div>
-                    )}
-                    
-                    {myPending.length > 0 && (
-                        <div className="mb-8 block">
-                            <h3 className="font-bold text-sm uppercase tracking-widest text-foreground flex items-center gap-2 mb-4">
-                                <Hammer size={16} /> Pendentes
-                            </h3>
-                            {myPending.map(t => <TaskCard key={t.id} task={t} />)}
-                        </div>
-                    )}
-
-                    {myWaiting.length > 0 && (
-                        <div className="mb-4 block">
-                            <h3 className="font-bold text-sm uppercase tracking-widest text-orange-500 flex items-center gap-2 mb-4">
-                                <AlertCircle size={16} /> Requer Atenção
-                            </h3>
-                            {myWaiting.map(t => <TaskCard key={t.id} task={t} />)}
-                        </div>
-                    )}
-
-                    {myTasks.length === 0 && (
-                        <div className="h-64 border-2 border-dashed border-border rounded-[2rem] flex flex-col items-center justify-center text-muted-foreground opacity-50 p-6 text-center">
-                            <CheckCircle2 size={48} className="mb-4" />
-                            <p className="text-sm font-bold uppercase">Nenhuma tarefa atribuída</p>
-                        </div>
-                    )}
-                </div>
-            </div>
-               )}
-            />
-        );
-    }
-
-    const handleStartTask = async (taskId: string) => {
-        try {
-            await MaintenanceService.startTask(property.id, taskId, userData?.id || "unknown", userData?.fullName || "Técnico");
-            toast.success("Manutenção iniciada! Cronômetro rodando.");
-        } catch (e) {
-            toast.error("Erro ao iniciar a tarefa.");
-        }
+        unsubscribe = MaintenanceService.listenToActiveTasks(property.id, (realtimeTasks) => {
+          setTasks(realtimeTasks);
+        });
+      } catch {
+        toast.error("Erro ao conectar base de manutenção.");
+      } finally {
+        setLoadingInitial(false);
+      }
     };
 
-    const pendingTasks = tasks.filter(t => t.status === 'pending' || t.status === 'paused');
-    const inProgressTasks = tasks.filter(t => t.status === 'in_progress');
-    const waitingTasks = tasks.filter(t => t.status === 'waiting_conference');
-    const completedTasks = tasks.filter(t => t.status === 'completed');
+    init();
+    return () => { if (unsubscribe) unsubscribe(); };
+  }, [property]);
 
-    // Funcionalidade de Arquivo (Últimos 7 dias)
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const recentCompletedTasks = completedTasks.filter(t => {
-        const dateStr = t.finishedAt || t.updatedAt || t.createdAt;
-        if (!dateStr) return false;
-        return new Date(dateStr) >= sevenDaysAgo;
-    });
+  if (isLoading || loadingInitial) {
+    return <div className="flex h-[80vh] items-center justify-center w-full"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
+  }
 
-    const KanbanColumn = ({ title, icon: Icon, colorClass, items }: { title: string, icon: any, colorClass: string, items: MaintenanceTask[] }) => (
-        <div className="flex-1 min-w-[300px] flex flex-col bg-muted/20 border border-border rounded-2xl overflow-hidden">
-            <div className={cn("p-4 border-b border-border flex items-center justify-between bg-card", colorClass)}>
-                <h3 className="font-bold text-sm uppercase tracking-widest flex items-center gap-2">
-                    <Icon size={16} /> {title}
-                </h3>
-                <span className="bg-background px-2 py-0.5 rounded-full text-xs font-black shadow-sm">{items.length}</span>
-            </div>
+  if (!property) {
+    return <div className="flex h-[80vh] items-center justify-center text-muted-foreground">Selecione uma propriedade no menu lateral.</div>;
+  }
 
-            <div className="p-4 flex-1 overflow-y-auto space-y-4 custom-scrollbar">
-                {items.length === 0 ? (
-                    <div className="h-24 border-2 border-dashed border-border rounded-xl flex items-center justify-center text-xs font-bold text-muted-foreground uppercase opacity-50">Vazio</div>
-                ) : (
-                    items.map(task => {
-                        const safeAssignedArray = Array.isArray(task.assignedTo) ? task.assignedTo : [];
-                        const isManager = userData?.role === 'admin' || userData?.role === 'super_admin' || userData?.role === 'maintenance';
+  // ── Derived metrics ──────────────────────────────────────────────────────────
+  const pendingTasks   = tasks.filter(t => t.status === 'pending' || t.status === 'paused');
+  const inProgressTasks = tasks.filter(t => t.status === 'in_progress');
+  const waitingTasks   = tasks.filter(t => t.status === 'waiting_conference');
+  const completedTasks  = tasks.filter(t => t.status === 'completed');
 
-                        return (
-                            <div key={task.id} className={cn(
-                                "bg-card border p-4 rounded-xl shadow-sm space-y-4 hover:border-primary/50 transition-colors group relative",
-                                task.status === 'paused' ? "border-yellow-400 opacity-75" : "border-border"
-                            )}>
-                                {task.status === 'paused' && (
-                                    <div className="flex items-center gap-2 bg-yellow-500/10 text-yellow-700 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase mb-2">
-                                        <Moon size={12} />
-                                        DND
-                                        {task.pausedUntil && ` — retoma às ${new Date(task.pausedUntil).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}
-                                    </div>
-                                )}
-                                {isManager && (
-                                    <button
-                                        onClick={() => { setSelectedTask(task); setIsManagerOpen(true); }}
-                                        className="absolute top-4 right-4 p-2 bg-secondary text-muted-foreground hover:text-primary rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                                    >
-                                        <Edit3 size={16} />
-                                    </button>
-                                )}
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const completedToday = completedTasks.filter(t => {
+    const d = t.finishedAt ? new Date(t.finishedAt as string) : null;
+    return d ? d >= today : false;
+  });
 
-                                <div className="flex justify-between items-start">
-                                    <div className="pr-10">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <p className={cn(
-                                                "text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded border leading-none pt-1 pb-0.5",
-                                                task.priority === 'urgent' ? 'border-red-500/30 text-red-500 bg-red-500/10' :
-                                                    task.priority === 'high' ? 'border-orange-500/30 text-orange-500 bg-orange-500/10' :
-                                                        task.priority === 'medium' ? 'border-yellow-500/30 text-yellow-600 bg-yellow-500/10' :
-                                                            'border-blue-500/30 text-blue-500 bg-blue-500/10'
-                                            )}>
-                                                {task.priority === 'urgent' ? 'Urgente' : task.priority === 'high' ? 'Alta' : task.priority === 'medium' ? 'Média' : 'Baixa'}
-                                            </p>
-                                            {task.isRecurring && (
-                                                <span className="text-[10px] bg-indigo-500/10 text-indigo-500 px-2 rounded font-bold uppercase py-0.5">Recorrente</span>
-                                            )}
-                                        </div>
-                                        <h4 className="font-bold text-lg text-foreground leading-tight mt-1">{task.title}</h4>
-                                        <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{task.description}</p>
-                                        {task.imageUrl && (
-                                            <button 
-                                                className="relative mt-2 h-20 w-full rounded-lg overflow-hidden border border-border cursor-pointer group block text-left"
-                                                onClick={(e) => { e.stopPropagation(); setEnlargedImage(task.imageUrl!); }}
-                                                title="Clique para ampliar"
-                                            >
-                                                <Image src={task.imageUrl} alt="Evidência do Problema" fill className="object-cover group-hover:scale-105 transition-transform" />
-                                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                                    <span className="text-white text-[10px] uppercase font-bold tracking-widest px-2 py-1 border border-white/20 rounded bg-black/40 backdrop-blur-sm">Ampliar</span>
-                                                </div>
-                                            </button>
-                                        )}
-                                        {task.cabinId && <p className="text-xs font-bold text-primary mt-2">📍 {cabins[task.cabinId]?.name || "Cabana Desconhecida"}</p>}
-                                        {task.structureId && <p className="text-xs font-bold text-primary mt-2">📍 {structures[task.structureId]?.name || "Estrutura"} {task.unitId && (structures[task.structureId]?.units?.find(u => u.id === task.unitId)?.name ? ` (${structures[task.structureId]?.units?.find(u => u.id === task.unitId)?.name})` : '')}</p>}
-                                    </div>
-                                </div>
+  const avgMinutes = (() => {
+    const finished = completedToday.filter(t => t.startedAt && t.finishedAt);
+    if (!finished.length) return null;
+    const avg = finished.reduce((acc, t) =>
+      acc + (new Date(t.finishedAt as string).getTime() - new Date(t.startedAt as string).getTime()), 0
+    ) / finished.length / 60000;
+    return Math.round(avg);
+  })();
 
-                                <div className="space-y-2">
-                                    {task.status === 'pending' ? (
-                                        <div className="flex flex-col gap-2 pt-2 border-t border-border">
-                                            <button
-                                                onClick={() => handleStartTask(task.id)}
-                                                className="w-full flex items-center justify-center gap-2 bg-primary/10 hover:bg-primary text-primary hover:text-primary-foreground font-bold p-3 rounded-xl transition-all text-xs uppercase cursor-pointer"
-                                            >
-                                                <PlayCircle size={16} /> Iniciar Manutenção
-                                            </button>
-                                        </div>
-                                    ) : task.status === 'in_progress' ? (
-                                        <div className="flex flex-col gap-2 pt-2 border-t border-border">
-                                            <button
-                                                onClick={() => { setSelectedTask(task); setIsCompletionOpen(true); }}
-                                                className="w-full flex items-center justify-center gap-2 bg-blue-500 hover:bg-blue-600 text-white font-bold p-3 rounded-xl transition-all text-xs uppercase"
-                                            >
-                                                <CheckCircle2 size={16} /> Finalizar Tarefa
-                                            </button>
-                                        </div>
-                                    ) : task.status === 'waiting_conference' ? (
-                                        <div className="bg-orange-500/10 border border-orange-500/30 p-3 rounded-xl">
-                                            <p className="text-xs text-orange-600 font-bold flex items-center gap-2"><AlertCircle size={14} /> Aguardando Validação</p>
-                                            <button
-                                                onClick={() => { setSelectedTask(task); setIsCompletionOpen(true); }}
-                                                className="w-full mt-2 bg-orange-500 hover:bg-orange-600 text-white font-bold p-2 text-[10px] uppercase tracking-widest rounded-lg"
-                                            >
-                                                Tratar Problema
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <div className="bg-green-500/10 border border-green-500/30 p-3 rounded-xl flex justify-between items-center text-green-600 font-bold text-xs uppercase tracking-widest">
-                                            Concluído <CheckCircle2 size={14} />
-                                        </div>
-                                    )}
-                                </div>
+  const urgentTasks = tasks.filter(t => t.priority === 'urgent' && t.status !== 'completed' && t.status !== 'cancelled');
+  const techsOnField = new Set(inProgressTasks.flatMap(t => Array.isArray(t.assignedTo) ? t.assignedTo : [])).size;
+  const unassigned = pendingTasks.filter(t => !t.assignedTo?.length);
 
-                                <div className="pt-2 border-t border-border flex items-center justify-between opacity-50 mt-2">
-                                    <span className="text-[10px] font-bold uppercase">{task.checklist.length} Subitens</span>
-                                    <span className="text-[10px] font-medium">{task.createdAt ? new Date(task.createdAt).toLocaleDateString('pt-BR') : ''}</span>
-                                </div>
+  function getLocation(task: MaintenanceTask) {
+    if (task.cabinId) return cabins[task.cabinId]?.name ?? "Cabana";
+    if (task.structureId) return structures[task.structureId]?.name ?? "Estrutura";
+    return "—";
+  }
 
-                            </div>
-                        );
-                    })
-                )}
-            </div>
+  function getTechName(id: string) {
+    return technicians.find(t => t.id === id)?.fullName.split(' ')[0] ?? id.slice(0, 6);
+  }
+
+  return (
+    <div className="flex flex-col space-y-6 p-4 md:p-0">
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Manutenção</h1>
+          <p className="text-sm text-muted-foreground mt-1">Visão geral das ordens de serviço em tempo real.</p>
         </div>
-    );
+        <button
+          onClick={() => setIsManagerOpen(true)}
+          className="px-4 py-2 bg-primary text-primary-foreground font-bold text-xs uppercase tracking-widest rounded-xl hover:opacity-90 transition-opacity flex items-center gap-2 shadow-sm"
+        >
+          <Plus size={16} /> Nova OS
+        </button>
+      </div>
 
-    return (
-        <div className="h-full flex flex-col space-y-4 p-4 md:p-0">
-
-            {/* HEADER */}
-            <div className="flex items-center justify-between mt-2 md:mt-0">
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Manutenção de Propriedade</h1>
-                    <p className="text-sm text-muted-foreground mt-1 hidden sm:block">
-                        Gestão de ordens de serviço e cronograma preventivo.
-                    </p>
-                </div>
-
-                <div className="flex gap-2">
-                    <button
-                        onClick={() => setIsArchiveOpen(true)}
-                        className="px-4 py-2 bg-secondary text-foreground font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-accent transition-colors flex items-center gap-2 shadow-sm border border-border"
-                    >
-                        <Archive size={16} /> Arquivo
-                    </button>
-                    <button
-                        onClick={() => { setSelectedTask(null); setIsManagerOpen(true); }}
-                        className="px-4 py-2 bg-primary text-primary-foreground font-bold text-xs uppercase tracking-widest rounded-xl hover:opacity-90 transition-opacity flex items-center gap-2 shadow-sm"
-                    >
-                        <Plus size={16} /> Nova Tarefa
-                    </button>
-                </div>
-            </div>
-
-            {/* KANBAN BOARD */}
-            <div className="flex-1 overflow-x-auto pb-4 custom-scrollbar">
-                <div className="flex gap-4 h-full min-w-max">
-                    <KanbanColumn
-                        title="Pendentes"
-                        icon={Hammer}
-                        colorClass="text-foreground"
-                        items={pendingTasks}
-                    />
-                    <KanbanColumn
-                        title="Em Andamento"
-                        icon={PlayCircle}
-                        colorClass="text-primary"
-                        items={inProgressTasks}
-                    />
-                    <KanbanColumn
-                        title="Requer Atenção (Incompleto)"
-                        icon={AlertCircle}
-                        colorClass="text-orange-500"
-                        items={waitingTasks}
-                    />
-                </div>
-            </div>
-
-            {/* MODALS */}
-            <MaintenanceTaskManagerModal
-                isOpen={isManagerOpen}
-                onClose={() => { setIsManagerOpen(false); setSelectedTask(null); }}
-                propertyId={property.id}
-                task={selectedTask}
-                cabins={cabins}
-                structures={structures}
-                technicians={technicians}
-            />
-
-            <MaintenanceCompletionModal
-                isOpen={isCompletionOpen}
-                onClose={() => { setIsCompletionOpen(false); setSelectedTask(null); }}
-                propertyId={property.id}
-                task={selectedTask}
-                cabins={cabins}
-                structures={structures}
-            />
-
-            {/* MODAL DE ARQUIVO (últimos 7 dias) */}
-            {isArchiveOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-                    <div className="bg-card border border-border w-full max-w-3xl rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-                        <header className="p-6 border-b border-border flex justify-between items-center shrink-0">
-                            <div>
-                                <h2 className="text-xl font-black uppercase text-foreground tracking-tighter flex items-center gap-2">
-                                    <Archive size={20} className="text-muted-foreground" />
-                                    Arquivo de Manutenção
-                                </h2>
-                                <p className="text-xs text-muted-foreground font-medium mt-1">
-                                    Tarefas finalizadas nos últimos 7 dias.
-                                </p>
-                            </div>
-                            <button onClick={() => setIsArchiveOpen(false)} className="p-2 bg-secondary text-muted-foreground hover:text-foreground rounded-full hover:bg-white/5 transition-colors">
-                                <X size={20} />
-                            </button>
-                        </header>
-                        <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-secondary/20">
-                            {recentCompletedTasks.length === 0 ? (
-                                <div className="text-center py-12 text-muted-foreground">
-                                    <Archive size={40} className="mx-auto mb-4 opacity-20" />
-                                    <p className="text-sm font-bold uppercase tracking-widest">Nenhuma OS finalizada esta semana.</p>
-                                </div>
-                            ) : (
-                                recentCompletedTasks.map(task => (
-                                    <div key={task.id} className="bg-card border border-border p-4 rounded-xl flex items-center justify-between gap-4">
-                                        <div>
-                                            <p className="font-bold text-sm">{task.title}</p>
-                                            <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{task.description}</p>
-                                            <div className="flex items-center gap-2 mt-2">
-                                                <span className="text-[10px] bg-green-500/10 text-green-600 px-2 py-0.5 rounded font-bold uppercase">
-                                                    Concluído
-                                                </span>
-                                                <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-mono">
-                                                    <CalendarIcon size={10} />
-                                                    {task.finishedAt ? new Date(task.finishedAt).toLocaleDateString('pt-BR') : ''}
-                                                </span>
-                                                {task.cabinId && <span className="text-[10px] text-primary font-bold uppercase">• {cabins[task.cabinId]?.name}</span>}
-                                                {task.structureId && <span className="text-[10px] text-primary font-bold uppercase">• {structures[task.structureId]?.name}</span>}
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                        <footer className="p-6 border-t border-border shrink-0 text-center">
-                            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Aura Engine • Auditoria</p>
-                        </footer>
-                    </div>
-                </div>
-            )}
-            
-            {/* ENLARGED IMAGE MODAL */}
-            {enlargedImage && (
-                <div className="fixed inset-0 z-[200] bg-black/90 flex flex-col items-center justify-center p-4" onClick={() => setEnlargedImage(null)}>
-                    <button onClick={() => setEnlargedImage(null)} className="absolute top-4 right-4 text-white bg-black/50 p-2 rounded-full backdrop-blur-md z-10 hover:bg-black/80 transition-colors pointer-events-auto">
-                        <X size={24} />
-                    </button>
-                    <div className="relative w-full h-full max-h-[90vh]">
-                        <Image src={enlargedImage} alt="Fullscreen image" fill className="object-contain" />
-                    </div>
-                </div>
-            )}
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="bg-card border border-white/5 rounded-2xl p-4 flex flex-col gap-1 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-zinc-500/10 rounded-full blur-2xl -mr-4 -mt-4 pointer-events-none" />
+          <div className="flex items-center gap-2 text-zinc-400 mb-1"><Wrench size={14} /><span className="text-[10px] font-bold uppercase tracking-wider">Pendentes</span></div>
+          <p className="text-3xl font-black">{pendingTasks.length}</p>
+          {unassigned.length > 0 && <p className="text-[10px] text-orange-400 font-semibold">{unassigned.length} sem responsável</p>}
         </div>
-    );
+
+        <div className="bg-card border border-blue-500/20 rounded-2xl p-4 flex flex-col gap-1 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/10 rounded-full blur-2xl -mr-4 -mt-4 pointer-events-none" />
+          <div className="flex items-center gap-2 text-blue-400 mb-1"><PlayCircle size={14} /><span className="text-[10px] font-bold uppercase tracking-wider">Em Andamento</span></div>
+          <p className="text-3xl font-black text-blue-400">{inProgressTasks.length}</p>
+          {techsOnField > 0 && <p className="text-[10px] text-muted-foreground">{techsOnField} técnico{techsOnField !== 1 ? 's' : ''} em campo</p>}
+        </div>
+
+        <div className={cn("bg-card border rounded-2xl p-4 flex flex-col gap-1 relative overflow-hidden", waitingTasks.length > 0 ? "border-orange-500/30" : "border-white/5")}>
+          <div className="absolute top-0 right-0 w-16 h-16 bg-orange-500/10 rounded-full blur-2xl -mr-4 -mt-4 pointer-events-none" />
+          <div className="flex items-center gap-2 text-orange-400 mb-1"><AlertCircle size={14} /><span className="text-[10px] font-bold uppercase tracking-wider">Validação</span></div>
+          <p className={cn("text-3xl font-black", waitingTasks.length > 0 ? "text-orange-400" : "")}>{waitingTasks.length}</p>
+          {waitingTasks.length > 0 && <p className="text-[10px] text-orange-400 font-semibold animate-pulse">Aguardando aprovação</p>}
+        </div>
+
+        <div className="bg-card border border-emerald-500/20 rounded-2xl p-4 flex flex-col gap-1 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/10 rounded-full blur-2xl -mr-4 -mt-4 pointer-events-none" />
+          <div className="flex items-center gap-2 text-emerald-400 mb-1"><CheckCircle2 size={14} /><span className="text-[10px] font-bold uppercase tracking-wider">Concluídas</span></div>
+          <p className="text-3xl font-black text-emerald-400">{completedToday.length}</p>
+          <p className="text-[10px] text-muted-foreground">hoje</p>
+        </div>
+
+        <div className="bg-card border border-white/5 rounded-2xl p-4 flex flex-col gap-1 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-16 h-16 bg-primary/10 rounded-full blur-2xl -mr-4 -mt-4 pointer-events-none" />
+          <div className="flex items-center gap-2 text-primary mb-1"><Timer size={14} /><span className="text-[10px] font-bold uppercase tracking-wider">Tempo Médio</span></div>
+          <p className="text-3xl font-black">{avgMinutes != null ? avgMinutes : '—'}</p>
+          <p className="text-[10px] text-muted-foreground">{avgMinutes != null ? 'minutos / OS' : 'sem dados hoje'}</p>
+        </div>
+
+        <div className={cn("bg-card border rounded-2xl p-4 flex flex-col gap-1 relative overflow-hidden", urgentTasks.length > 0 ? "border-red-500/30" : "border-white/5")}>
+          <div className="absolute top-0 right-0 w-16 h-16 bg-red-500/10 rounded-full blur-2xl -mr-4 -mt-4 pointer-events-none" />
+          <div className="flex items-center gap-2 text-red-400 mb-1"><Flame size={14} /><span className="text-[10px] font-bold uppercase tracking-wider">Urgentes</span></div>
+          <p className={cn("text-3xl font-black", urgentTasks.length > 0 ? "text-red-400" : "")}>{urgentTasks.length}</p>
+          {urgentTasks.length > 0 && <p className="text-[10px] text-red-400 font-semibold animate-pulse">Atenção imediata</p>}
+        </div>
+      </div>
+
+      {/* Técnicos em campo */}
+      {inProgressTasks.length > 0 && (
+        <div className="bg-blue-500/5 border border-blue-500/15 rounded-2xl p-4">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400 mb-3 flex items-center gap-2">
+            <Users size={12} /> Técnicos em campo agora
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {inProgressTasks.map(task => {
+              const safeAssigned = Array.isArray(task.assignedTo) ? task.assignedTo : [];
+              const names = safeAssigned.map(getTechName).filter(Boolean);
+              const elapsed = task.startedAt
+                ? Math.round((Date.now() - new Date(task.startedAt as string).getTime()) / 60000)
+                : null;
+              return (
+                <div key={task.id} className="flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 rounded-xl px-3 py-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                  <span className="text-xs font-bold text-blue-300">{getLocation(task)}</span>
+                  <span className="text-[10px] text-muted-foreground font-medium truncate max-w-[120px]">{task.title}</span>
+                  {names.length > 0 && <span className="text-[10px] text-muted-foreground">— {names.join(', ')}</span>}
+                  {elapsed != null && <span className="text-[10px] text-blue-500/60 font-mono">{elapsed} min</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Urgentes em destaque */}
+      {urgentTasks.length > 0 && (
+        <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-4">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-red-400 mb-3 flex items-center gap-2">
+            <Flame size={12} /> Chamados urgentes
+          </p>
+          <div className="flex flex-col gap-2">
+            {urgentTasks.slice(0, 5).map(task => (
+              <div key={task.id} className="flex items-center gap-3 bg-red-500/8 border border-red-500/15 rounded-xl px-4 py-3">
+                <span className={cn("text-[10px] font-black uppercase px-2 py-0.5 rounded border", PRIORITY_COLOR[task.priority])}>
+                  {PRIORITY_LABEL[task.priority]}
+                </span>
+                <span className="text-sm font-bold text-foreground flex-1 truncate">{task.title}</span>
+                <span className="text-[10px] text-muted-foreground shrink-0">{getLocation(task)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tarefas pendentes sem responsável */}
+      {unassigned.length > 0 && (
+        <div className="bg-orange-500/5 border border-orange-500/15 rounded-2xl p-4">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-orange-400 mb-3 flex items-center gap-2">
+            <Zap size={12} /> Sem responsável ({unassigned.length})
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {unassigned.slice(0, 8).map(task => (
+              <div key={task.id} className="flex items-center gap-2 bg-orange-500/8 border border-orange-500/15 rounded-xl px-3 py-2">
+                <span className={cn("text-[10px] font-black uppercase px-1.5 py-0.5 rounded border", PRIORITY_COLOR[task.priority])}>
+                  {PRIORITY_LABEL[task.priority]}
+                </span>
+                <span className="text-xs font-semibold text-foreground truncate max-w-[160px]">{task.title}</span>
+                <span className="text-[10px] text-muted-foreground shrink-0">{getLocation(task)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* CTA → Kanban */}
+      <Link
+        href="/admin/maintenance/kanban"
+        className="flex items-center justify-center gap-2 w-full py-3 bg-secondary border border-border rounded-2xl text-xs font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+      >
+        <LayoutDashboard size={14} />
+        Ver Kanban de Tarefas
+        <ArrowRight size={14} />
+      </Link>
+
+      <MaintenanceTaskManagerModal
+        isOpen={isManagerOpen}
+        onClose={() => setIsManagerOpen(false)}
+        propertyId={property.id}
+        task={null}
+        cabins={cabins}
+        structures={structures}
+        technicians={technicians}
+      />
+    </div>
+  );
 }

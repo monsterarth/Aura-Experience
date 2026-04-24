@@ -204,8 +204,8 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
       return;
     }
 
-    const ud = userDataRef.current;
-    const superAdmin = isSuperAdminRef.current;
+    const ud = userData;
+    const superAdmin = isSuperAdmin;
     const savedId = typeof window !== 'undefined' ? localStorage.getItem(PROPERTY_ID_KEY) : null;
 
     if (!superAdmin) {
@@ -224,8 +224,7 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, userDataReady, initialProperty, initialSlug]);
-  // userData e isSuperAdmin lidos via refs — não disparam re-run desnecessário
+  }, [authLoading, userDataReady, initialProperty, initialSlug, userData, isSuperAdmin]);
 
   return (
     <PropertyContext.Provider value={{
