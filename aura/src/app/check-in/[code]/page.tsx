@@ -1063,8 +1063,8 @@ function GuestHubContent() {
                             <p className="text-muted-foreground text-sm mb-6">Utilize o código abaixo para acessar a propriedade e a sua cabana/acomodação.</p>
 
                             <div className="bg-secondary p-6 rounded-2xl border border-border text-center">
-                                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">Código de Acesso</p>
-                                <p className="text-4xl font-black text-primary tracking-widest">{stay.accessCode}</p>
+                                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">Senha do Portão</p>
+                                <p className="text-4xl font-black text-primary tracking-widest">1008#</p>
                             </div>
                         </div>
                     </div>
