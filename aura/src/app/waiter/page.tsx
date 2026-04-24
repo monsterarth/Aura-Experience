@@ -350,7 +350,7 @@ export default function WaiterPage() {
   const today = format(new Date(), "EEEE, dd 'de' MMMM", { locale: ptBR });
 
   const loadData = useCallback(async () => {
-    if (!propertyId) return;
+    if (!propertyId) { setLoading(false); return; }
     try {
       const sess = await BreakfastSalonService.getTodaySession(propertyId);
       setSession(sess);
