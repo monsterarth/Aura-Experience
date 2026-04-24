@@ -797,6 +797,7 @@ export default function GovernantaPage() {
 
   // Load data
   useEffect(() => {
+    if (!propLoading && !property) { setLoading(false); return; }
     if (!property) return;
     let unsub: () => void;
 
@@ -831,7 +832,7 @@ export default function GovernantaPage() {
 
     init();
     return () => { if (unsub) unsub(); };
-  }, [property, showToast]);
+  }, [property, propLoading, showToast]);
 
   function getLocationName(task: HousekeepingTask): string {
     if (task.cabinId && cabins[task.cabinId]) {

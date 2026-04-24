@@ -661,6 +661,7 @@ export default function MaintenancePage() {
   }, [authLoading, userDataReady, userData, router]);
 
   useEffect(() => {
+    if (!propertyLoading && !property) { setDataLoading(false); return; }
     if (!property) return;
     let unsub: (() => void) | undefined;
 
@@ -697,7 +698,7 @@ export default function MaintenancePage() {
 
     init();
     return () => unsub?.();
-  }, [property, userData?.id, userData?.role]);
+  }, [property, propertyLoading, userData?.id, userData?.role]);
 
   const handleStart = useCallback(async (taskId: string) => {
     if (!property || !userData) return;
