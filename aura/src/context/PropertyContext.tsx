@@ -205,13 +205,18 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
     }
 
     const ud = userData;
-    const superAdmin = isSuperAdmin;
+    // Deriva superAdmin diretamente do userData para evitar lag de render
+    const superAdmin = ud?.role === 'super_admin';
     const savedId = typeof window !== 'undefined' ? localStorage.getItem(PROPERTY_ID_KEY) : null;
 
     if (!superAdmin) {
       // Usuário normal: usa SEMPRE seu propertyId do banco — nunca localStorage
       // (evita herdar property de sessão anterior de outro usuário)
-      if (ud?.propertyId) {
+      if (!ud) {
+        // userData ainda não chegou — aguarda próximo render
+        return;
+      }
+      if (ud.propertyId) {
         fetchPropertyById(ud.propertyId);
       } else {
         setLoading(false);
