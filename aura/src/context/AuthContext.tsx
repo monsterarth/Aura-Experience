@@ -76,8 +76,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (mounted && data?.staff && !userDataRef.current) {
           userDataRef.current = data.staff; // Guard ref immediately — prevents INITIAL_SESSION race
           setUserData(data.staff);
-          setUserDataReady(true);
           if (data.property) setInitialProperty(data.property);
+          setUserDataReady(true);
           setLoading(false);
         }
       })
