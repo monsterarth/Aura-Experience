@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Aura — Gestão Inteligente para Pousadas",
     description,
-    url: "https://aura.software",
+    url: "https://aaura.app.br",
     siteName: "Aura",
     locale: "pt_BR",
     type: "website",

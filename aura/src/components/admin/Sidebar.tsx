@@ -178,24 +178,31 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    id: "gerencia",
+    label: "Gerência",
+    collapsible: true,
+    items: [
+      { id: "cabanas",    label: "Cabanas",           icon: Building,         href: "/admin/cabins",          roles: ["super_admin","admin","governance"] },
+      { id: "estruturas", label: "Estruturas",         icon: LayoutTemplate,   href: "/admin/core/structures", roles: ["super_admin","admin"] },
+      { id: "frigobar",   label: "Frigobar",           icon: RefrigeratorIcon, href: "/admin/cabins/minibar",  roles: ["super_admin","admin"] },
+      { id: "escalas",    label: "Escalas",            icon: ClipboardCheck,   href: "/admin/escalas",         roles: ["super_admin","admin","hr"] },
+      { id: "logs",       label: "Logs de Auditoria",  icon: FileText,         href: "/admin/logs",            roles: ["super_admin","admin"] },
+      { id: "avaliacoes", label: "Avaliações",         icon: Star,             href: "/admin/surveys/responses", roles: ["super_admin","admin","reception","marketing"] },
+    ],
+  },
+  {
     id: "setup",
     label: "Setup",
     collapsible: true,
     items: [
-      { id: "gastro_main", label: "Gastronomia",       icon: Coffee,           href: "/admin/food-and-beverage/menu",           roles: ["super_admin","admin","kitchen"] },
-      { id: "cafe",        label: "Garçom (KDS)",       icon: Phone,            href: "/admin/cafe-salao",                       roles: ["super_admin","admin","kitchen"] },
-      { id: "avaliacoes",  label: "Avaliações",          icon: Star,             href: "/admin/surveys/responses",                roles: ["super_admin","admin","reception","marketing"] },
-      { id: "equipe",      label: "Equipe",              icon: Users,            href: "/admin/staff",                            roles: ["super_admin","admin","hr"] },
-      { id: "escalas",     label: "Escalas",             icon: ClipboardCheck,   href: "/admin/escalas",                          roles: ["super_admin","admin","hr"] },
-      { id: "cabanas",     label: "Cabanas",             icon: Building,         href: "/admin/cabins",                           roles: ["super_admin","admin","governance"] },
-      { id: "frigobar",    label: "Frigobar",            icon: RefrigeratorIcon, href: "/admin/cabins/minibar",                   roles: ["super_admin","admin"] },
-      { id: "estruturas",  label: "Estruturas",          icon: LayoutTemplate,   href: "/admin/core/structures",                  roles: ["super_admin","admin"] },
-      { id: "catalogo",    label: "Catálogo Concierge",  icon: Package,          href: "/admin/core/concierge",                   roles: ["super_admin","admin"] },
-      { id: "nps",         label: "Pesquisas (NPS)",     icon: ClipboardList,    href: "/admin/surveys",                          roles: ["super_admin","admin"] },
-      { id: "automacoes",  label: "Automações",           icon: Bot,              href: "/admin/comunicacao/automations/settings", roles: ["super_admin","admin"] },
-      { id: "logs",        label: "Logs de Auditoria",   icon: FileText,         href: "/admin/logs",                             roles: ["super_admin","admin"] },
-      { id: "config",      label: "Configurações",       icon: Settings,         href: "/admin/core/properties",                  roles: ["super_admin","admin"], requireProperty: true },
-      { id: "props",       label: "Propriedades",        icon: Globe,            href: "/admin/core/properties",                  roles: ["super_admin"], exactMatch: true },
+      { id: "gastro_main", label: "Gastronomia",      icon: Coffee,        href: "/admin/food-and-beverage/menu",           roles: ["super_admin","admin","kitchen"] },
+      { id: "cafe",        label: "Café Salão (KDS)", icon: Phone,         href: "/admin/cafe-salao",                       roles: ["super_admin","admin","kitchen"] },
+      { id: "equipe",      label: "Equipe",            icon: Users,         href: "/admin/staff",                            roles: ["super_admin","admin","hr"] },
+      { id: "catalogo",    label: "Catálogo Concierge",icon: Package,       href: "/admin/core/concierge",                   roles: ["super_admin","admin"] },
+      { id: "nps",         label: "Pesquisas (NPS)",   icon: ClipboardList, href: "/admin/surveys",                          roles: ["super_admin","admin"] },
+      { id: "automacoes",  label: "Automações",        icon: Bot,           href: "/admin/comunicacao/automations/settings", roles: ["super_admin","admin"] },
+      { id: "config",      label: "Configurações",     icon: Settings,      href: "/admin/core/properties",                  roles: ["super_admin","admin"], requireProperty: true },
+      { id: "props",       label: "Propriedades",      icon: Globe,         href: "/admin/core/properties",                  roles: ["super_admin"], exactMatch: true },
     ],
   },
 ];
@@ -471,7 +478,7 @@ export const Sidebar = () => {
     return localStorage.getItem("sidebar_collapsed") === "true";
   });
   const [showEditProfile, setShowEditProfile] = useState(false);
-  const [setupOpen, setSetupOpen] = useState(true);
+  const [collapsibleOpen, setCollapsibleOpen] = useState<Record<string, boolean>>({ setup: true, gerencia: true });
   const [showImpersonateModal, setShowImpersonateModal] = useState(false);
 
   const commitHash = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || "dev";
@@ -701,8 +708,8 @@ export const Sidebar = () => {
           {NAV_GROUPS.map((group) => {
             const visibleItems = group.items.filter(canSee);
             if (visibleItems.length === 0) return null;
-            const isSetup = group.id === "setup";
-            const expanded = isSetup ? setupOpen : true;
+            const isCollapsible = !!group.collapsible;
+            const expanded = isCollapsible ? (collapsibleOpen[group.id] ?? true) : true;
 
             return (
               <div key={group.id} style={{ marginBottom: 4 }}>
@@ -712,15 +719,15 @@ export const Sidebar = () => {
                       display: "flex", alignItems: "center",
                       justifyContent: "space-between",
                       padding: "8px 10px 4px",
-                      cursor: isSetup ? "pointer" : "default",
+                      cursor: isCollapsible ? "pointer" : "default",
                     }}
-                    onClick={isSetup ? () => setSetupOpen((p) => !p) : undefined}
+                    onClick={isCollapsible ? () => setCollapsibleOpen(p => ({ ...p, [group.id]: !(p[group.id] ?? true) })) : undefined}
                   >
                     <span style={{
                       fontSize: 10, fontWeight: 800, letterSpacing: ".08em",
                       textTransform: "uppercase" as const, color: T.muted2,
                     }}>{group.label}</span>
-                    {isSetup && (
+                    {isCollapsible && (
                       <ChevronDown size={12} style={{
                         color: T.muted2, transition: "transform .2s",
                         transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
@@ -732,7 +739,7 @@ export const Sidebar = () => {
                   <div style={{ width: "100%", height: 1, background: T.border, margin: "8px 0" }} />
                 )}
 
-                {(expanded || !isSetup) && (
+                {expanded && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
                     {visibleItems.map((item) => {
                       if (item.children) {

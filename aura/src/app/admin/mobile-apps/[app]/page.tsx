@@ -12,7 +12,7 @@ const APP_META: Record<string, { label: string; path: string; color: string }> =
   maid:       { label: "Camareira",   path: "/maid",             color: "#4ec9d4" },
   manutencao: { label: "Manutenção",  path: "/maintenance",      color: "#f59e0b" },
   houseman:   { label: "Houseman",    path: "/houseman",         color: "#fb923c" },
-  garcom:     { label: "Garçom",      path: "/admin/cafe-salao", color: "#60a5fa" },
+  garcom:     { label: "Garçom",      path: "/waiter",           color: "#60a5fa" },
 };
 
 function PhoneMockup({ src, color }: { src: string; color: string }) {
