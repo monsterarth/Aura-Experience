@@ -420,7 +420,7 @@ function ProfileScreen({ userData, onLogout }: { userData: any; onLogout: () => 
             </div>
             <div>
               <div style={{ fontSize: 20, fontWeight: 900 }}>{name}</div>
-              <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>Mensageiro · Houseman</div>
+              <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>Mensageiro</div>
               <Pill color={T.green} bg={T.greenBg} border={T.greenBorder}>Ativo</Pill>
             </div>
           </div>

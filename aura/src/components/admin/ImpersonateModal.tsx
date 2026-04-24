@@ -41,13 +41,13 @@ const ROLE_META: Record<string, { label: string; color: string; badgeBg: string;
   reception:   { label: "Recepção",         color: "#2dd4bf", badgeBg: "rgba(45,212,191,0.08)",  badgeBorder: "rgba(45,212,191,0.22)"  },
   governance:  { label: "Governança",       color: "#c084fc", badgeBg: "rgba(192,132,252,0.08)", badgeBorder: "rgba(192,132,252,0.22)" },
   kitchen:     { label: "Cozinha",          color: "#fb923c", badgeBg: "rgba(251,146,60,0.08)",  badgeBorder: "rgba(251,146,60,0.25)"  },
-  maintenance: { label: "Manutenção",       color: "#f59e0b", badgeBg: "rgba(245,158,11,0.08)",  badgeBorder: "rgba(245,158,11,0.22)"  },
+  maintenance: { label: "Coord. Manutenção", color: "#f59e0b", badgeBg: "rgba(245,158,11,0.08)",  badgeBorder: "rgba(245,158,11,0.22)"  },
   marketing:   { label: "Marketing",        color: "#a3e635", badgeBg: "rgba(163,230,53,0.08)",  badgeBorder: "rgba(163,230,53,0.22)"  },
   maid:        { label: "Camareira",        color: "#4ec9d4", badgeBg: "rgba(78,201,212,0.08)",  badgeBorder: "rgba(78,201,212,0.22)"  },
-  technician:  { label: "Técnico",          color: "#f59e0b", badgeBg: "rgba(245,158,11,0.08)",  badgeBorder: "rgba(245,158,11,0.22)"  },
+  technician:  { label: "Manutenção",        color: "#f59e0b", badgeBg: "rgba(245,158,11,0.08)",  badgeBorder: "rgba(245,158,11,0.22)"  },
   waiter:      { label: "Garçom",           color: "#60a5fa", badgeBg: "rgba(96,165,250,0.08)",  badgeBorder: "rgba(96,165,250,0.22)"  },
   porter:      { label: "Porter",           color: "#fb923c", badgeBg: "rgba(251,146,60,0.08)",  badgeBorder: "rgba(251,146,60,0.25)"  },
-  houseman:    { label: "Houseman",         color: "#fb923c", badgeBg: "rgba(251,146,60,0.08)",  badgeBorder: "rgba(251,146,60,0.25)"  },
+  houseman:    { label: "Mensageiro",        color: "#fb923c", badgeBg: "rgba(251,146,60,0.08)",  badgeBorder: "rgba(251,146,60,0.25)"  },
 };
 
 function getRoleMeta(role: string) {

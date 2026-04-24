@@ -569,7 +569,7 @@ function TasksScreen({
 function ProfileScreen({ userData, showToast, onLogout }: { userData: any; showToast: (m: string, c?: string) => void; onLogout: () => void }) {
   const name = userData?.fullName || "Técnico";
   const initials = name.split(" ").slice(0, 2).map((w: string) => w[0] ?? "").join("").toUpperCase();
-  const role = userData?.role === "maintenance" ? "Gestor de Manutenção" : "Técnico";
+  const role = userData?.role === "maintenance" ? "Coordenador de Manutenção" : "Manutenção";
   const [todayShift, setTodayShift] = useState<string | null>(null);
 
   useEffect(() => {

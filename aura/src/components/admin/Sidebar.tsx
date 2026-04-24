@@ -171,7 +171,7 @@ const NAV_GROUPS: NavGroup[] = [
           { id: "app_governanta", label: "Governança", href: "/admin/mobile-apps/governanta", roles: ["super_admin","admin","hr"] },
           { id: "app_maid",       label: "Camareira",  href: "/admin/mobile-apps/maid",       roles: ["super_admin","admin","hr"] },
           { id: "app_manut",      label: "Manutenção", href: "/admin/mobile-apps/manutencao", roles: ["super_admin","admin","hr"] },
-          { id: "app_houseman",   label: "Houseman",   href: "/admin/mobile-apps/houseman",   roles: ["super_admin","admin","hr"] },
+          { id: "app_houseman",   label: "Mensageiro", href: "/admin/mobile-apps/houseman",   roles: ["super_admin","admin","hr"] },
           { id: "app_garcom",     label: "Garçom",     href: "/admin/mobile-apps/garcom",     roles: ["super_admin","admin","hr"] },
         ],
       },

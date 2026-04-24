@@ -8,7 +8,7 @@ const APPS = [
   { id: "governanta", label: "Governança",  description: "Gestão de quartos, tarefas e equipe de governança",  color: "#c084fc", path: "/governanta" },
   { id: "maid",       label: "Camareira",   description: "App da camareira — checklist de limpeza e arrumação", color: "#4ec9d4", path: "/maid" },
   { id: "manutencao", label: "Manutenção",  description: "Ordens de serviço e kanban de manutenção",           color: "#f59e0b", path: "/maintenance" },
-  { id: "houseman",   label: "Houseman",    description: "Tarefas de áreas comuns e apoio operacional",         color: "#fb923c", path: "/houseman" },
+  { id: "houseman",   label: "Mensageiro",  description: "Tarefas de áreas comuns e apoio operacional",         color: "#fb923c", path: "/houseman" },
   { id: "garcom",     label: "Garçom",      description: "Pedidos de mesa, café salão e comandas",              color: "#60a5fa", path: "/admin/cafe-salao" },
 ];
 

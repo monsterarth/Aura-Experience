@@ -28,12 +28,12 @@ const roleLabels: Record<string, string> = {
   reception: "Recepção",
   governance: "Governanta (Gestão)",
   maid: "Camareira (Mobile)",
-  maintenance: "Manutenção (Gestão)",
-  technician: "Técnico (Mobile)",
+  maintenance: "Coordenador de Manutenção",
+  technician: "Manutenção (Mobile)",
   kitchen: "Cozinha (Gestão)",
   waiter: "Garçom (Mobile)",
   porter: "Porteiro (Mobile)",
-  houseman: "Houseman (Mobile)",
+  houseman: "Mensageiro (Mobile)",
   marketing: "Marketing"
 };
 
@@ -161,11 +161,11 @@ export default function StaffManagementPage() {
                   <optgroup label="Governança">
                     <option value="governance">Governanta (Gestão)</option>
                     <option value="maid">Camareira (Mobile)</option>
-                    <option value="houseman">Houseman (Mobile)</option>
+                    <option value="houseman">Mensageiro (Mobile)</option>
                   </optgroup>
                   <optgroup label="Manutenção">
-                    <option value="maintenance">Manutenção (Gestão)</option>
-                    <option value="technician">Técnico (Mobile)</option>
+                    <option value="maintenance">Coordenador de Manutenção</option>
+                    <option value="technician">Manutenção (Mobile)</option>
                   </optgroup>
                   <optgroup label="A&B / Portaria">
                     <option value="kitchen">Cozinha/Salão (Gestão)</option>

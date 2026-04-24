@@ -137,10 +137,16 @@ export default function ReceptionDashboard() {
             // Total de cabanas
             supabase.from('cabins').select('id', { count: 'exact', head: true })
                 .eq('propertyId', property!.id),
-            // Disponíveis walk-in
-            supabase.from('cabins').select('id', { count: 'exact', head: true })
-                .eq('propertyId', property!.id).eq('status', 'available'),
+            // Cabanas com chegada hoje (não disponíveis para walk-in)
+            supabase.from('stays').select('cabinId')
+                .eq('propertyId', property!.id)
+                .gte('checkIn', todayStart.toISOString()).lte('checkIn', todayEnd.toISOString())
+                .in('status', ['pending', 'pre_checkin_done', 'active'])
+                .not('cabinId', 'is', null),
         ]);
+        const arrivingCabinIds = new Set((walkInsRes.data || []).map((s: any) => s.cabinId));
+        const availableCabins = (await supabase.from('cabins').select('id').eq('propertyId', property!.id).eq('status', 'available')).data || [];
+        const walkInCount = availableCabins.filter((c: any) => !arrivingCabinIds.has(c.id)).length;
         setStats({
             checkinsDone: checkinsDone.count || 0,
             checkinsTotal: checkinsTotal.count || 0,
@@ -148,7 +154,7 @@ export default function ReceptionDashboard() {
             checkoutsTotal: checkoutsTotal.count || 0,
             occupiedCabins: occupiedRes.count || 0,
             totalCabins: totalCabinsRes.count || 0,
-            walkIns: walkInsRes.count || 0,
+            walkIns: walkInCount,
         });
     }
 

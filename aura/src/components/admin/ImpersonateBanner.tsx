@@ -11,13 +11,13 @@ const ROLE_LABELS: Record<string, string> = {
   reception:   "Recepção",
   governance:  "Governança",
   kitchen:     "Cozinha",
-  maintenance: "Manutenção",
+  maintenance: "Coordenador de Manutenção",
   marketing:   "Marketing",
   maid:        "Camareira",
-  technician:  "Técnico",
+  technician:  "Manutenção",
   waiter:      "Garçom",
   porter:      "Porter",
-  houseman:    "Houseman",
+  houseman:    "Mensageiro",
 };
 
 export function ImpersonateBanner() {

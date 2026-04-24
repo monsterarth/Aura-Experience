@@ -44,7 +44,7 @@ const ROUTE_LABELS: Record<string, string> = {
   "hr":               "RH",
   "logs":             "Logs",
   "contacts":         "Contatos",
-  "houseman":         "Houseman",
+  "houseman":         "Mensageiro",
 };
 
 function isUuid(s: string) {

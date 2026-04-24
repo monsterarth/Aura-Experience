@@ -9,12 +9,12 @@ export type UserRole =
   | 'reception'
   | 'governance' // Governanta / Gestor do setor
   | 'maid'       // Camareira (Operacional Mobile)
-  | 'maintenance'// Gestor de Manutenção
-  | 'technician' // Técnico (Operacional Mobile)
+  | 'maintenance'// Coordenador de Manutenção
+  | 'technician' // Manutenção (Operacional Mobile)
   | 'kitchen'    // Gestor de Cozinha
   | 'waiter'     // Garçom (Operacional Mobile)
   | 'porter'     // Porteiro (Operacional Mobile)
-  | 'houseman'   // Houseman (Operacional Mobile)
+  | 'houseman'   // Mensageiro (Operacional Mobile)
   | 'marketing'; // Marketing
 
 export interface PropertyTheme {
