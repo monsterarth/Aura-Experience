@@ -18,7 +18,7 @@ import {
   CalendarDays, Package, UserSearch,
   ClipboardCheck, Map, Gift, Flag, Phone,
   LayoutGrid, RefrigeratorIcon, LayoutTemplate,
-  UserCircle2, Smartphone, Eye,
+  UserCircle2, Smartphone,
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import Image from "next/image";
@@ -480,7 +480,6 @@ export const Sidebar = () => {
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [collapsibleOpen, setCollapsibleOpen] = useState<Record<string, boolean>>({ setup: true, gerencia: true });
   const [showImpersonateModal, setShowImpersonateModal] = useState(false);
-  const [guestViewLoading, setGuestViewLoading] = useState(false);
 
   const commitHash = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || "dev";
   const shortHash = commitHash.substring(0, 7);
@@ -536,29 +535,6 @@ export const Sidebar = () => {
 
   const badgeFor: Record<string, number | undefined> = {
     comunic: notifCounts.messages,
-  };
-
-  const handleGuestView = async () => {
-    if (!property) return;
-    setGuestViewLoading(true);
-    try {
-      const supabase = createClientBrowser();
-      const { data } = await supabase
-        .from("stays")
-        .select("accessCode")
-        .eq("propertyId", property.id)
-        .eq("status", "active")
-        .order("checkIn", { ascending: false })
-        .limit(1)
-        .single();
-      if (data?.accessCode) {
-        window.open(`/check-in/${data.accessCode}`, "_blank");
-      } else {
-        window.open(`/check-in/login`, "_blank");
-      }
-    } finally {
-      setGuestViewLoading(false);
-    }
   };
 
   const toggleCollapse = () => {
@@ -807,47 +783,6 @@ export const Sidebar = () => {
           flexDirection: "column",
           gap: 6,
         }}>
-          {/* Ver como hóspede */}
-          {!isCollapsed ? (
-            <button
-              onClick={handleGuestView}
-              disabled={guestViewLoading || !property}
-              style={{
-                display: "flex", alignItems: "center", gap: 9,
-                padding: "9px 10px",
-                background: T.greenBg, border: `1px solid ${T.greenBorder}`,
-                borderRadius: 10, cursor: "pointer", fontFamily: "inherit",
-                color: T.green, fontSize: 12, fontWeight: 700,
-                letterSpacing: ".01em", transition: "background .15s", width: "100%",
-                opacity: (!property || guestViewLoading) ? 0.5 : 1,
-              }}
-            >
-              {guestViewLoading
-                ? <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />
-                : <Eye size={15} />}
-              Ver como hóspede
-            </button>
-          ) : (
-            <div style={{ display: "flex", justifyContent: "center" }}>
-              <button
-                onClick={handleGuestView}
-                disabled={guestViewLoading || !property}
-                style={{
-                  width: 36, height: 36, borderRadius: 10,
-                  border: `1px solid ${T.greenBorder}`,
-                  background: T.greenBg, cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  opacity: (!property || guestViewLoading) ? 0.5 : 1,
-                }}
-                title="Ver como hóspede"
-              >
-                {guestViewLoading
-                  ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite", color: T.green }} />
-                  : <Eye size={16} color={T.green} />}
-              </button>
-            </div>
-          )}
-
           {/* Impersonar — apenas para admin/hr/super_admin (oculto durante impersonação ativa) */}
           {isAdmin && !impersonating && !isCollapsed && (
             <button
