@@ -4,7 +4,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import { User as SupabaseUser, AuthChangeEvent, Session } from "@supabase/supabase-js";
-import { Staff } from "@/types/aura";
+import { Staff, ImpersonatingState } from "@/types/aura";
 
 interface AuthContextType {
   user: SupabaseUser | null;
@@ -14,6 +14,9 @@ interface AuthContextType {
   isSuperAdmin: boolean;
   initialProperty: any | null;
   userDataReady: boolean;
+  impersonating: ImpersonatingState | null;
+  startImpersonation: (target: Staff) => void;
+  stopImpersonation: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -24,6 +27,9 @@ const AuthContext = createContext<AuthContextType>({
   isSuperAdmin: false,
   initialProperty: null,
   userDataReady: false,
+  impersonating: null,
+  startImpersonation: () => {},
+  stopImpersonation: () => {},
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -32,6 +38,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [userDataReady, setUserDataReady] = useState(false);
   const [initialProperty, setInitialProperty] = useState<any | null>(null);
+  const [impersonating, setImpersonating] = useState<ImpersonatingState | null>(null);
 
   // Refs para evitar closures stale no visibility handler e onAuthStateChange
   const userRef = useRef<SupabaseUser | null>(null);
@@ -229,14 +236,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const startImpersonation = useCallback((target: Staff) => {
+    setImpersonating(prev => ({
+      staff: target,
+      originalUserData: prev?.originalUserData ?? (userData as Staff),
+    }));
+  }, [userData]);
+
+  const stopImpersonation = useCallback(() => {
+    setImpersonating(null);
+  }, []);
+
+  const effectiveUserData = impersonating ? impersonating.staff : userData;
+
   const value = {
     user,
-    userData,
+    userData: effectiveUserData,
     loading,
-    isAdmin: userData?.role === 'admin' || userData?.role === 'super_admin',
-    isSuperAdmin: userData?.role === 'super_admin',
+    isAdmin: effectiveUserData?.role === 'admin' || effectiveUserData?.role === 'super_admin',
+    isSuperAdmin: effectiveUserData?.role === 'super_admin',
     initialProperty,
     userDataReady,
+    impersonating,
+    startImpersonation,
+    stopImpersonation,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

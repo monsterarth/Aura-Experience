@@ -23,6 +23,7 @@ import {
 import { createClientBrowser } from "@/lib/supabase-browser";
 import Image from "next/image";
 import { StaffEditModal } from "@/components/admin/StaffEditModal";
+import { ImpersonateModal } from "@/components/admin/ImpersonateModal";
 import { useNotifications } from "@/context/NotificationContext";
 
 // ─── Design tokens — harmonizados com AdminLayoutClient ───────────────────────
@@ -110,12 +111,12 @@ type NavGroup = {
 // ─── Painel sub-items (dropdowns por cargo) ───────────────────────────────────
 const PAINEL_CHILDREN: SubItem[] = [
   { id: "painel_plataforma", label: "Plataforma",  href: "/admin/core/dashboard",      roles: ["super_admin"] },
-  { id: "painel_recepcao",   label: "Recepção",    href: "/admin/reception",            roles: ["super_admin", "admin", "hr"] },
+  { id: "painel_recepcao",   label: "Recepção",    href: "/admin/reception",            roles: ["super_admin", "admin"] },
   { id: "painel_gov",        label: "Governança",  href: "/admin/governance",           roles: ["super_admin", "admin"] },
   { id: "painel_manut",      label: "Manutenção",  href: "/admin/maintenance",          roles: ["super_admin", "admin"] },
   { id: "painel_kds",        label: "Cozinha/KDS", href: "/admin/cafe-salao/kds",       roles: ["super_admin", "admin"] },
   { id: "painel_aval",       label: "Avaliações",  href: "/admin/surveys/responses",    roles: ["super_admin", "admin"] },
-  { id: "painel_equipe",     label: "Equipe",      href: "/admin/staff",                roles: ["hr"] },
+  { id: "painel_gerencia",   label: "Gerência",    href: "/admin/hr",                   roles: ["super_admin", "admin", "hr"] },
 ];
 
 // ─── Nav groups ───────────────────────────────────────────────────────────────
@@ -457,7 +458,7 @@ function PainelNavItem({
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 export const Sidebar = () => {
-  const { userData, isSuperAdmin, loading: authLoading, userDataReady } = useAuth();
+  const { userData, isSuperAdmin, loading: authLoading, userDataReady, impersonating } = useAuth();
   const { currentProperty: property, setProperty } = useProperty();
   const { counts: notifCounts } = useNotifications();
   const pathname = usePathname();
@@ -471,6 +472,7 @@ export const Sidebar = () => {
   });
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [setupOpen, setSetupOpen] = useState(true);
+  const [showImpersonateModal, setShowImpersonateModal] = useState(false);
 
   const commitHash = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || "dev";
   const shortHash = commitHash.substring(0, 7);
@@ -774,32 +776,44 @@ export const Sidebar = () => {
           flexDirection: "column",
           gap: 6,
         }}>
-          {/* Impersonar — apenas para admin/hr/super_admin */}
-          {isAdmin && !isCollapsed && (
-            <button style={{
-              display: "flex", alignItems: "center", gap: 9,
-              padding: "9px 10px",
-              background: T.violetBg, border: `1px solid ${T.violetBorder}`,
-              borderRadius: 10, cursor: "pointer", fontFamily: "inherit",
-              color: T.violet, fontSize: 12, fontWeight: 700,
-              letterSpacing: ".01em", transition: "background .15s", width: "100%",
-            }}>
+          {/* Impersonar — apenas para admin/hr/super_admin (oculto durante impersonação ativa) */}
+          {isAdmin && !impersonating && !isCollapsed && (
+            <button
+              onClick={() => setShowImpersonateModal(true)}
+              style={{
+                display: "flex", alignItems: "center", gap: 9,
+                padding: "9px 10px",
+                background: T.violetBg, border: `1px solid ${T.violetBorder}`,
+                borderRadius: 10, cursor: "pointer", fontFamily: "inherit",
+                color: T.violet, fontSize: 12, fontWeight: 700,
+                letterSpacing: ".01em", transition: "background .15s", width: "100%",
+              }}
+            >
               <UserCircle2 size={15} color={T.violet} />
               Impersonar funcionário
             </button>
           )}
-          {isAdmin && isCollapsed && (
+          {isAdmin && !impersonating && isCollapsed && (
             <div style={{ display: "flex", justifyContent: "center" }}>
-              <button style={{
-                width: 36, height: 36, borderRadius: 10,
-                border: `1px solid ${T.violetBorder}`,
-                background: T.violetBg, cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }} title="Impersonar funcionário">
+              <button
+                onClick={() => setShowImpersonateModal(true)}
+                style={{
+                  width: 36, height: 36, borderRadius: 10,
+                  border: `1px solid ${T.violetBorder}`,
+                  background: T.violetBg, cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+                title="Impersonar funcionário"
+              >
                 <UserCircle2 size={16} color={T.violet} />
               </button>
             </div>
           )}
+
+          <ImpersonateModal
+            open={showImpersonateModal}
+            onClose={() => setShowImpersonateModal(false)}
+          />
 
           {/* Logout + version */}
           {!isCollapsed ? (

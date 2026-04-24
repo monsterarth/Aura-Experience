@@ -1024,3 +1024,8 @@ export interface Event {
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
+
+export interface ImpersonatingState {
+  staff: Staff;
+  originalUserData: Staff;
+}

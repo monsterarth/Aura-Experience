@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, ExternalLink, RotateCcw } from "lucide-react";
 import { useRef, useState } from "react";
 import { RoleGuard } from "@/components/auth/RoleGuard";
+import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
 
 const APP_META: Record<string, { label: string; path: string; color: string }> = {
@@ -134,6 +135,13 @@ function AppPreviewContent({ appId }: { appId: string }) {
 
 export default function AppPreviewPage({ params }: { params: { app: string } }) {
   const { app } = params;
+  const { impersonating } = useAuth();
+
+  // Durante impersonação de cargo mobile, permite acesso sem RoleGuard
+  if (impersonating) {
+    return <AppPreviewContent appId={app} />;
+  }
+
   return (
     <RoleGuard allowedRoles={["super_admin", "admin", "hr"]}>
       <AppPreviewContent appId={app} />
