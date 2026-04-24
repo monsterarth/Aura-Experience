@@ -757,9 +757,76 @@ function TaskCard({
   );
 }
 
+// ─── Profile Screen ───────────────────────────────────────────────────────────
+
+function ProfileScreen({ userData, onLogout }: { userData: any; onLogout: () => void }) {
+  const name = userData?.fullName || "Governanta";
+  const initials = name.split(" ").slice(0, 2).map((w: string) => w[0] ?? "").join("").toUpperCase();
+  const [todayShift, setTodayShift] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!userData?.id) return;
+    const today = new Date();
+    const from = today.toISOString().split("T")[0];
+    const dow = today.getDay();
+    Promise.all([
+      fetch(`/api/admin/staff/schedules?staffId=${userData.id}`).then(r => r.json()),
+      fetch(`/api/admin/staff/schedule-overrides?staffId=${userData.id}&from=${from}&to=${from}`).then(r => r.json()),
+    ]).then(([schedules, overrides]) => {
+      const override = Array.isArray(overrides) ? overrides[0] : null;
+      if (override) {
+        if (!override.startTime) { setTodayShift("Folga"); return; }
+        setTodayShift(`${override.startTime.slice(0, 5)} às ${override.endTime?.slice(0, 5)}`);
+        return;
+      }
+      const base = Array.isArray(schedules) ? schedules.find((s: any) => s.dayOfWeek === dow && s.active) : null;
+      if (base) setTodayShift(`${base.startTime.slice(0, 5)} às ${base.endTime.slice(0, 5)}`);
+    }).catch(() => {});
+  }, [userData?.id]);
+
+  return (
+    <div className="gov-scroll" style={{ padding: "0 16px 24px" }}>
+      <div style={{ padding: "20px 0 20px" }}>
+        <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.3px", color: T.text }}>Meu Perfil</div>
+      </div>
+
+      <div style={{ position: "relative", borderRadius: 20, marginBottom: 16 }}>
+        <div style={{ position: "absolute", inset: 0, borderRadius: 20, padding: "1px", background: T.vGrad, WebkitMask: "linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0)", WebkitMaskComposite: "xor", maskComposite: "exclude", pointerEvents: "none" }} />
+        <div style={{ background: "rgba(8,11,20,0.95)", borderRadius: 20, padding: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div style={{ width: 66, height: 66, borderRadius: 22, flexShrink: 0, background: "linear-gradient(135deg,rgba(167,139,250,0.25),rgba(124,58,237,0.25))", border: `1px solid ${T.vBorder}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 900 }}>
+              <span style={{ background: T.vGrad, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>{initials}</span>
+            </div>
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 900, color: T.text }}>{name}</div>
+              <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>Governança</div>
+              <span style={{ display: "inline-flex", alignItems: "center", fontSize: 10, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase" as const, padding: "3px 9px", borderRadius: 999, lineHeight: 1.5, color: T.green, background: T.greenBg, border: `1px solid ${T.greenBorder}` }}>Ativo</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.muted, marginBottom: 10 }}>Turno hoje</div>
+      <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 20, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+        <div style={{ width: 40, height: 40, borderRadius: 12, background: T.amberBg, border: `1px solid ${T.amberBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <I n="clock" s={18} c={T.amber} />
+        </div>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 14, color: T.text }}>{todayShift || "Sem escala definida"}</div>
+          <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{todayLabel()}</div>
+        </div>
+      </div>
+
+      <button onClick={onLogout} style={{ width: "100%", padding: 15, background: T.redBg, color: T.red, fontFamily: "inherit", fontSize: 14, fontWeight: 700, letterSpacing: "0.02em", textTransform: "uppercase" as const, border: `1px solid ${T.redBorder}`, borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+        <I n="logout" s={18} c={T.red} /> Sair do aplicativo
+      </button>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
-type Screen = "dashboard" | "conference" | "all";
+type Screen = "dashboard" | "conference" | "all" | "profile";
 
 export default function GovernantaPage() {
   const { userData } = useAuth();
@@ -794,6 +861,12 @@ export default function GovernantaPage() {
     setToast({ msg, color });
     toastTimer.current = setTimeout(() => setToast(null), 2800);
   }, []);
+
+  const handleLogout = async () => {
+    showToast("Saindo...");
+    await createClientBrowserAuto().auth.signOut();
+    router.push("/admin/login");
+  };
 
   // Load data
   useEffect(() => {
@@ -964,29 +1037,17 @@ export default function GovernantaPage() {
               <div style={{ fontSize: 11, color: T.muted, marginTop: 2, textTransform: "capitalize" }}>{todayLabel()}</div>
             </div>
 
-            <div style={{ display: "flex", gap: 8 }}>
-              <button
-                onClick={() => setShowNewTask(true)}
-                style={{
-                  width: 40, height: 40, borderRadius: 12,
-                  background: T.vGrad, border: "none",
-                  cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                  boxShadow: "0 3px 14px rgba(124,58,237,0.4)",
-                }}
-              >
-                <I n="plus" s={18} c="#fff" />
-              </button>
-              <button
-                onClick={async () => { await createClientBrowserAuto().auth.signOut(); router.push("/admin/login"); }}
-                style={{
-                  width: 40, height: 40, borderRadius: 12,
-                  background: T.glass2, border: `1px solid ${T.border}`,
-                  cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                }}
-              >
-                <I n="logout" s={17} c={T.muted} />
-              </button>
-            </div>
+            <button
+              onClick={() => setShowNewTask(true)}
+              style={{
+                width: 40, height: 40, borderRadius: 12,
+                background: T.vGrad, border: "none",
+                cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                boxShadow: "0 3px 14px rgba(124,58,237,0.4)",
+              }}
+            >
+              <I n="plus" s={18} c="#fff" />
+            </button>
           </div>
 
           {/* Stats strip */}
@@ -1146,6 +1207,11 @@ export default function GovernantaPage() {
               <div style={{ height: 100 }} />
             </>
           )}
+
+          {/* Profile view */}
+          {screen === "profile" && (
+            <ProfileScreen userData={userData} onLogout={handleLogout} />
+          )}
         </div>
 
         {/* ── Bottom nav ──────────────────────────────────────────────────────── */}
@@ -1158,6 +1224,7 @@ export default function GovernantaPage() {
             { id: "dashboard" as Screen, icon: "home" as IName, label: "Início", badge: undefined as number | undefined },
             { id: "conference" as Screen, icon: "sparkles" as IName, label: "Conferir", badge: conferenceTasks.length as number | undefined },
             { id: "all" as Screen, icon: "list" as IName, label: "Todas", badge: undefined as number | undefined },
+            { id: "profile" as Screen, icon: "user" as IName, label: "Perfil", badge: undefined as number | undefined },
           ]).map(tab => {
             const active = screen === tab.id;
             return (
