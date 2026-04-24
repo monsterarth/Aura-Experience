@@ -341,25 +341,28 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
   const handleSave = async () => {
     // Detect cabin change before saving
-    const cabinChanged = formData.cabinId && formData.cabinId !== stay.cabinId;
-    if (cabinChanged && stay.status === 'active') {
+    const cabinChanged = formData.cabinId !== stay.cabinId;
+    const isUnassigning = cabinChanged && !formData.cabinId; // was assigned, now null
+    const isTransferring = cabinChanged && !!formData.cabinId; // changed to a different cabin
+
+    if (isTransferring && stay.status === 'active') {
       // Ask about old cabin fate before proceeding
       setPendingTransferCabinId(formData.cabinId!);
       setTransferDialogOpen(true);
       return;
     }
 
-    await doSave(cabinChanged ? formData.cabinId! : null, null);
+    await doSave(isTransferring ? formData.cabinId! : null, isUnassigning, null);
   };
 
-  const doSave = async (newCabinId: string | null, oldCabinDisposition: 'cleaning' | 'available' | null) => {
+  const doSave = async (newCabinId: string | null, unassignCabin: boolean, oldCabinDisposition: 'cleaning' | 'available' | null) => {
     const cleanHousekeeping = formData.housekeepingItems?.filter(i => i.label.trim() !== "") || [];
     setLoading(true);
     try {
       const parsedCheckIn = parseDateFromInput(checkInStr, stay.checkIn);
       const parsedCheckOut = parseDateFromInput(checkOutStr, stay.checkOut);
 
-      // Strip cabinId from general payload — transfer is handled separately
+      // Strip cabinId from general payload — transfer/unassign is handled separately
       const { cabinId: _cabinId, ...restFormData } = formData;
 
       const fnrhStayPayload: Partial<Stay> = {
@@ -387,8 +390,12 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
         GuestService.upsertGuest(stay.propertyId, fnrhGuestPayload as Guest)
       ];
 
+      // Handle unassign (remove cabin)
+      if (unassignCabin) {
+        ops.push(StayService.unassignCabin(stay.propertyId, stay.id, userData?.id || "ADMIN", userData?.fullName || "Recepção"));
+      }
       // Handle cabin transfer separately
-      if (newCabinId && oldCabinDisposition) {
+      else if (newCabinId && oldCabinDisposition) {
         ops.push(StayService.transferCabin(stay.propertyId, stay.id, newCabinId, oldCabinDisposition, userData?.id || "ADMIN", userData?.fullName || "Recepção"));
       } else if (newCabinId && stay.status !== 'active') {
         // Pending stay: just reassign, no cabin status changes needed
@@ -961,7 +968,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
             <button
               onClick={async () => {
                 setTransferDialogOpen(false);
-                await doSave(pendingTransferCabinId, 'cleaning');
+                await doSave(pendingTransferCabinId, false, 'cleaning');
                 setPendingTransferCabinId(null);
               }}
               className="w-full py-3 px-4 bg-amber-500/10 border border-amber-500 text-amber-600 font-bold uppercase tracking-wider text-xs rounded-xl hover:bg-amber-500 hover:text-white transition-all"
@@ -971,7 +978,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
             <button
               onClick={async () => {
                 setTransferDialogOpen(false);
-                await doSave(pendingTransferCabinId, 'available');
+                await doSave(pendingTransferCabinId, false, 'available');
                 setPendingTransferCabinId(null);
               }}
               className="w-full py-3 px-4 bg-secondary text-foreground font-bold uppercase tracking-wider text-xs rounded-xl hover:bg-muted border border-border transition-all"
