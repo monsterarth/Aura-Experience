@@ -1,18 +1,19 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { ArrowLeft, ExternalLink, RotateCcw } from "lucide-react";
-import { useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, ExternalLink, RotateCcw, Key } from "lucide-react";
+import { useRef, useState, Suspense } from "react";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
 
 const APP_META: Record<string, { label: string; path: string; color: string }> = {
-  governanta: { label: "Governança",  path: "/governanta",       color: "#c084fc" },
-  maid:       { label: "Camareira",   path: "/maid",             color: "#4ec9d4" },
-  manutencao: { label: "Manutenção",  path: "/maintenance",      color: "#f59e0b" },
-  houseman:   { label: "Mensageiro",  path: "/houseman",         color: "#fb923c" },
-  garcom:     { label: "Garçom",      path: "/waiter",           color: "#60a5fa" },
+  governanta: { label: "Governança",        path: "/governanta",   color: "#c084fc" },
+  maid:       { label: "Camareira",         path: "/maid",         color: "#4ec9d4" },
+  manutencao: { label: "Manutenção",        path: "/maintenance",  color: "#f59e0b" },
+  houseman:   { label: "Mensageiro",        path: "/houseman",     color: "#fb923c" },
+  garcom:     { label: "Garçom",            path: "/waiter",       color: "#60a5fa" },
+  hospede:    { label: "Portal do Hóspede", path: "/check-in",     color: "#2dd4bf" },
 };
 
 function PhoneMockup({ src, color }: { src: string; color: string }) {
@@ -87,6 +88,7 @@ function PhoneMockup({ src, color }: { src: string; color: string }) {
 
 function AppPreviewContent({ appId }: { appId: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const meta = APP_META[appId];
 
   if (!meta) {
@@ -99,6 +101,27 @@ function AppPreviewContent({ appId }: { appId: string }) {
   }
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
+
+  let iframeSrc: string;
+  let externalHref: string;
+
+  if (appId === "hospede") {
+    const code = searchParams.get("code");
+    if (!code) {
+      return (
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-white/40">
+          <Key size={32} style={{ color: "#2dd4bf", opacity: 0.5 }} />
+          <p>Código de acesso não informado.</p>
+          <Link href="/admin/mobile-apps" className="text-sm underline text-teal-400">Voltar e inserir código</Link>
+        </div>
+      );
+    }
+    iframeSrc = `${origin}/check-in/${code}`;
+    externalHref = `/check-in/${code}`;
+  } else {
+    iframeSrc = `${origin}${meta.path}`;
+    externalHref = meta.path;
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -113,8 +136,16 @@ function AppPreviewContent({ appId }: { appId: string }) {
         </button>
         <span className="text-white/20">/</span>
         <span className="text-sm font-semibold text-white">{meta.label}</span>
+        {appId === "hospede" && searchParams.get("code") && (
+          <>
+            <span className="text-white/20">/</span>
+            <span className="text-xs font-mono px-2 py-0.5 rounded-md" style={{ background: "rgba(45,212,191,0.1)", color: "#2dd4bf", border: "1px solid rgba(45,212,191,0.2)" }}>
+              {searchParams.get("code")}
+            </span>
+          </>
+        )}
         <a
-          href={meta.path}
+          href={externalHref}
           target="_blank"
           rel="noopener noreferrer"
           className="ml-auto flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
@@ -127,9 +158,17 @@ function AppPreviewContent({ appId }: { appId: string }) {
 
       {/* Phone preview */}
       <div className="flex justify-center pt-2">
-        <PhoneMockup src={`${origin}${meta.path}`} color={meta.color} />
+        <PhoneMockup src={iframeSrc} color={meta.color} />
       </div>
     </div>
+  );
+}
+
+function AppPreviewWithSuspense({ appId }: { appId: string }) {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh] text-white/30 text-sm">Carregando…</div>}>
+      <AppPreviewContent appId={appId} />
+    </Suspense>
   );
 }
 
@@ -137,14 +176,13 @@ export default function AppPreviewPage({ params }: { params: { app: string } }) 
   const { app } = params;
   const { impersonating } = useAuth();
 
-  // Durante impersonação de cargo mobile, permite acesso sem RoleGuard
   if (impersonating) {
-    return <AppPreviewContent appId={app} />;
+    return <AppPreviewWithSuspense appId={app} />;
   }
 
   return (
     <RoleGuard allowedRoles={["super_admin", "admin", "hr"]}>
-      <AppPreviewContent appId={app} />
+      <AppPreviewWithSuspense appId={app} />
     </RoleGuard>
   );
 }
