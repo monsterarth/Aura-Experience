@@ -1,6 +1,5 @@
 "use client";
 
-import { use } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ExternalLink, RotateCcw } from "lucide-react";
 import { useRef, useState } from "react";
@@ -133,8 +132,8 @@ function AppPreviewContent({ appId }: { appId: string }) {
   );
 }
 
-export default function AppPreviewPage({ params }: { params: Promise<{ app: string }> }) {
-  const { app } = use(params);
+export default function AppPreviewPage({ params }: { params: { app: string } }) {
+  const { app } = params;
   return (
     <RoleGuard allowedRoles={["super_admin", "admin", "hr"]}>
       <AppPreviewContent appId={app} />
