@@ -1,8 +1,7 @@
 import { createBrowserClient } from '@supabase/ssr'
 
-// Singleton Variable: Armazena a instância global de navegador.
-// Garante que só haverá UM timer de Auth Refresh na memória da janela.
 let browserClient: ReturnType<typeof createBrowserClient> | undefined
+let iframeClient: ReturnType<typeof createBrowserClient> | undefined
 
 /**
  * Lock com timeout de 3s + steal para recuperação.
@@ -34,7 +33,6 @@ async function lockWithStealRecovery<R>(name: string, _acquireTimeout: number, f
     } catch (e: any) {
         clearTimeout(timer)
         if (e?.name === 'AbortError') {
-            // Timeout expirou — rouba o lock da aba anterior (F5 race condition)
             return await navigator.locks.request(
                 name,
                 { mode: 'exclusive', steal: true },
@@ -43,6 +41,11 @@ async function lockWithStealRecovery<R>(name: string, _acquireTimeout: number, f
         }
         throw e
     }
+}
+
+function isInIframe(): boolean {
+    if (typeof window === 'undefined') return false
+    try { return window.self !== window.top } catch { return true }
 }
 
 export function createClientBrowser() {
@@ -58,19 +61,50 @@ export function createClientBrowser() {
             global: {
                 fetch: (...args) => {
                     const options = args[1] || {};
-                    options.cache = 'no-store'; // Bypass Next.js cache para Auth Seguro
+                    options.cache = 'no-store';
                     return fetch(args[0], options);
                 }
             }
         }
     )
 
-    // Pre-aquece o cache de sessão assim que o singleton é criado.
-    // No F5, o lock da aba anterior pode bloquear getSession() por até 3s.
-    // Iniciando uma chamada aqui, o lock é resolvido (ou roubado) antes que
-    // qualquer página monte e dispare queries paralelas — que do contrário
-    // competiriam pelo mesmo lock ao mesmo tempo.
     browserClient.auth.getSession().catch(() => {})
 
     return browserClient
+}
+
+/**
+ * Cliente sem lock para uso dentro de iframes do mesmo domínio.
+ *
+ * Iframes no mesmo domínio compartilham o namespace de navigator.locks com a
+ * janela pai. Se o iframe criasse um cliente com lockWithStealRecovery, após
+ * 3s ele roubaria o lock do admin — abortando todas as requisições Supabase
+ * em curso na janela principal. Sem lock, o iframe lê a sessão dos cookies
+ * normalmente (via /api/admin/auth/me) sem competir pelo lock de refresh.
+ */
+export function createClientBrowserIframe() {
+    if (iframeClient) return iframeClient
+
+    iframeClient = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+            auth: {
+                lock: async (_name, _timeout, fn) => fn(),
+            },
+            global: {
+                fetch: (...args) => {
+                    const options = args[1] || {};
+                    options.cache = 'no-store';
+                    return fetch(args[0], options);
+                }
+            }
+        }
+    )
+
+    return iframeClient
+}
+
+export function createClientBrowserAuto() {
+    return isInIframe() ? createClientBrowserIframe() : createClientBrowser()
 }

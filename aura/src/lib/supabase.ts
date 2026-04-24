@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { createClientBrowser } from './supabase-browser';
+import { createClientBrowserAuto } from './supabase-browser';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -18,7 +18,7 @@ const globalForSupabase = globalThis as unknown as {
  * Replaces the old legacy static singleton.
  * Uses @supabase/ssr to manage cookies correctly.
  */
-export const supabase = createClientBrowser();
+export const supabase = createClientBrowserAuto();
 
 /**
  * Admin Supabase client using the Service Role Key.

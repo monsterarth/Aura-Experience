@@ -9,7 +9,7 @@ import { StaffService } from "@/services/staff-service";
 import { StructureService } from "@/services/structure-service";
 import { HousekeepingTask, Cabin, Staff, Structure } from "@/types/aura";
 import { supabase } from "@/lib/supabase";
-import { createClientBrowser } from "@/lib/supabase-browser";
+import { createClientBrowserAuto } from "@/lib/supabase-browser";
 import { useRouter } from "next/navigation";
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────
@@ -977,7 +977,7 @@ export default function GovernantaPage() {
                 <I n="plus" s={18} c="#fff" />
               </button>
               <button
-                onClick={async () => { await createClientBrowser().auth.signOut(); router.push("/admin/login"); }}
+                onClick={async () => { await createClientBrowserAuto().auth.signOut(); router.push("/admin/login"); }}
                 style={{
                   width: 40, height: 40, borderRadius: 12,
                   background: T.glass2, border: `1px solid ${T.border}`,

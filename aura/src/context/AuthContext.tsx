@@ -2,7 +2,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
-import { createClientBrowser } from "@/lib/supabase-browser";
+import { createClientBrowserAuto } from "@/lib/supabase-browser";
 import { User as SupabaseUser, AuthChangeEvent, Session } from "@supabase/supabase-js";
 import { Staff, ImpersonatingState } from "@/types/aura";
 
@@ -46,7 +46,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const isLoggingOut = useRef(false);
   const initialSessionReceived = useRef(false);
 
-  const supabase = createClientBrowser();
+  const supabase = createClientBrowserAuto();
 
   // Sync refs com state
   useEffect(() => { userRef.current = user; }, [user]);
