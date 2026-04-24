@@ -49,6 +49,18 @@ export default function GovernanceKanbanPage() {
   const [isRoutinesOpen, setIsRoutinesOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'pending' | 'in_progress' | 'conference'>('pending');
 
+  const allVisibleIds = (tasks: HousekeepingTask[]) => tasks.map(t => t.id);
+  const toggleSelectAll = (taskList: HousekeepingTask[]) => {
+    const ids = allVisibleIds(taskList);
+    const allSelected = ids.every(id => selectedIds.has(id));
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) ids.forEach(id => next.delete(id));
+      else ids.forEach(id => next.add(id));
+      return next;
+    });
+  };
+
   useEffect(() => {
     if (!property) return;
 
@@ -247,13 +259,26 @@ export default function GovernanceKanbanPage() {
     return new Date(dateStr) >= sevenDaysAgo;
   });
 
-  const KanbanColumn = ({ title, icon: Icon, colorClass, items }: { title: string, icon: any, colorClass: string, items: HousekeepingTask[] }) => (
+  const KanbanColumn = ({ title, icon: Icon, colorClass, items }: { title: string, icon: any, colorClass: string, items: HousekeepingTask[] }) => {
+    const allSelected = items.length > 0 && items.every(t => selectedIds.has(t.id));
+    return (
     <div className="flex-1 min-w-[300px] flex flex-col bg-muted/20 border border-border rounded-2xl overflow-hidden">
       <div className={cn("p-4 border-b border-border flex items-center justify-between bg-card", colorClass)}>
         <h3 className="font-bold text-sm uppercase tracking-widest flex items-center gap-2">
           <Icon size={16} /> {title}
         </h3>
-        <span className="bg-background px-2 py-0.5 rounded-full text-xs font-black shadow-sm">{items.length}</span>
+        <div className="flex items-center gap-2">
+          {items.length > 0 && (
+            <button
+              onClick={() => toggleSelectAll(items)}
+              className={cn("text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-lg transition-colors flex items-center gap-1", allSelected ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-secondary")}
+            >
+              {allSelected ? <CheckSquare size={12} /> : <Square size={12} />}
+              Todos
+            </button>
+          )}
+          <span className="bg-background px-2 py-0.5 rounded-full text-xs font-black shadow-sm">{items.length}</span>
+        </div>
       </div>
 
       <div className="p-4 flex-1 overflow-y-auto space-y-4 custom-scrollbar">
@@ -272,32 +297,36 @@ export default function GovernanceKanbanPage() {
             const isSelected = selectedIds.has(task.id);
 
             return (
-              <div key={task.id} className={cn("bg-card border p-4 rounded-xl shadow-sm space-y-4 transition-colors group relative", isSelected ? "border-primary ring-1 ring-primary/40" : "border-border hover:border-primary/50")}>
-                <div className="absolute top-4 right-4 flex items-center gap-1.5">
-                  <button
-                    onClick={() => { setSelectedTask(task); setIsManagerOpen(true); }}
-                    className="p-2 bg-secondary text-muted-foreground hover:text-primary rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                  >
-                    <Edit3 size={16} />
-                  </button>
-                  <button
-                    onClick={() => toggleSelect(task.id)}
-                    className={cn("p-1.5 rounded-lg transition-colors", isSelected ? "text-primary" : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-primary")}
-                  >
-                    {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
-                  </button>
-                </div>
-
-                <div className="flex justify-between items-start">
-                  <div className="pr-10">
-                    <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">
-                      {task.customLocation ? 'Local Específico' : task.structureId ? 'Limpeza de Estrutura' : task.type === 'turnover' ? 'Faxina de Troca' : 'Arrumação Diária'}
-                    </p>
-                    <h4 className="font-bold text-lg text-foreground leading-none">
-                      {task.customLocation || (task.structureId ? (structures[task.structureId]?.name || "Estrutura Excluída") : (cabins[task.cabinId!]?.name || "Cabana Excluída"))}
-                    </h4>
+              <div key={task.id} className={cn("bg-card border p-4 rounded-xl shadow-sm space-y-3 transition-colors group", isSelected ? "border-primary ring-1 ring-primary/40" : "border-border hover:border-primary/50")}>
+                {/* Card header: tipo + nome + ações */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <div className="mt-0.5 shrink-0">
+                      {task.structureId ? <Sparkles size={14} className="text-purple-500" /> : task.type === 'turnover' ? <AlertCircle size={14} className="text-orange-500" /> : <Coffee size={14} className="text-blue-500" />}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-0.5">
+                        {task.customLocation ? 'Local Específico' : task.structureId ? 'Limpeza de Estrutura' : task.type === 'turnover' ? 'Faxina de Troca' : 'Arrumação Diária'}
+                      </p>
+                      <h4 className="font-bold text-base text-foreground leading-none truncate">
+                        {task.customLocation || (task.structureId ? (structures[task.structureId]?.name || "Estrutura Excluída") : (cabins[task.cabinId!]?.name || "Cabana Excluída"))}
+                      </h4>
+                    </div>
                   </div>
-                  {task.structureId ? <Sparkles size={16} className="text-purple-500 shrink-0" /> : task.type === 'turnover' ? <AlertCircle size={16} className="text-orange-500 shrink-0" /> : <Coffee size={16} className="text-blue-500 shrink-0" />}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => { setSelectedTask(task); setIsManagerOpen(true); }}
+                      className="p-1.5 bg-secondary text-muted-foreground hover:text-primary rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                      <Edit3 size={14} />
+                    </button>
+                    <button
+                      onClick={() => toggleSelect(task.id)}
+                      className={cn("p-1.5 rounded-lg transition-colors", isSelected ? "text-primary" : "text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-primary")}
+                    >
+                      {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -316,8 +345,8 @@ export default function GovernanceKanbanPage() {
                           onChange={(e) => handleAssignTask(task.id, e.target.value)}
                           className="w-full bg-transparent text-xs font-bold uppercase outline-none cursor-pointer text-foreground"
                         >
-                          <option value="" disabled>Delegar para...</option>
-                          {maids.map(m => <option key={m.id} value={m.id}>{m.fullName}</option>)}
+                          <option value="" disabled className="bg-card text-muted-foreground">Delegar para...</option>
+                          {maids.map(m => <option key={m.id} value={m.id} className="bg-card text-foreground">{m.fullName}</option>)}
                         </select>
                       </div>
                       <div className="flex gap-2">
@@ -374,6 +403,7 @@ export default function GovernanceKanbanPage() {
       </div>
     </div>
   );
+  };
 
   return (
     <div className="h-full flex flex-col space-y-4 md:space-y-6 p-4 md:p-0">
@@ -477,6 +507,19 @@ export default function GovernanceKanbanPage() {
             </button>
           ))}
         </div>
+        {(() => {
+          const activeList = activeTab === 'pending' ? pendingTasks : activeTab === 'in_progress' ? inProgressTasks : waitingTasks;
+          const allActiveSel = activeList.length > 0 && activeList.every(t => selectedIds.has(t.id));
+          return activeList.length > 0 ? (
+            <button
+              onClick={() => toggleSelectAll(activeList)}
+              className={cn("mt-3 w-full py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors flex items-center justify-center gap-1.5 border", allActiveSel ? "text-primary bg-primary/10 border-primary/30" : "text-muted-foreground bg-secondary border-border hover:text-foreground")}
+            >
+              {allActiveSel ? <CheckSquare size={12} /> : <Square size={12} />}
+              {allActiveSel ? 'Desmarcar todos' : 'Selecionar todos'}
+            </button>
+          ) : null;
+        })()}
         <div className="flex-1 overflow-y-auto mt-4 space-y-4 custom-scrollbar pb-4">
           {(activeTab === 'pending' ? pendingTasks : activeTab === 'in_progress' ? inProgressTasks : waitingTasks).length === 0 ? (
             <div className="h-24 border-2 border-dashed border-border rounded-xl flex items-center justify-center text-xs font-bold text-muted-foreground uppercase opacity-50">Vazio</div>
@@ -491,25 +534,30 @@ export default function GovernanceKanbanPage() {
               const isSelected = selectedIds.has(task.id);
 
               return (
-                <div key={task.id} className={cn("bg-card border p-4 rounded-xl shadow-sm space-y-4 transition-colors group relative", isSelected ? "border-primary ring-1 ring-primary/40" : "border-border")}>
-                  <div className="absolute top-4 right-4 flex items-center gap-1.5">
-                    <button onClick={() => { setSelectedTask(task); setIsManagerOpen(true); }} className="p-2 bg-secondary text-muted-foreground hover:text-primary rounded-lg transition-colors">
-                      <Edit3 size={16} />
-                    </button>
-                    <button onClick={() => toggleSelect(task.id)} className={cn("p-1.5 rounded-lg transition-colors", isSelected ? "text-primary" : "text-muted-foreground hover:text-primary")}>
-                      {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
-                    </button>
-                  </div>
-                  <div className="flex justify-between items-start">
-                    <div className="pr-10">
-                      <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">
-                        {task.customLocation ? 'Local Específico' : task.structureId ? 'Limpeza de Estrutura' : task.type === 'turnover' ? 'Faxina de Troca' : 'Arrumação Diária'}
-                      </p>
-                      <h4 className="font-bold text-lg text-foreground leading-none">
-                        {task.customLocation || (task.structureId ? (structures[task.structureId]?.name || "Estrutura Excluída") : (cabins[task.cabinId!]?.name || "Cabana Excluída"))}
-                      </h4>
+                <div key={task.id} className={cn("bg-card border p-4 rounded-xl shadow-sm space-y-3 transition-colors group", isSelected ? "border-primary ring-1 ring-primary/40" : "border-border")}>
+                  {/* Card header: tipo + nome + ações */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2 min-w-0">
+                      <div className="mt-0.5 shrink-0">
+                        {task.structureId ? <Sparkles size={14} className="text-purple-500" /> : task.type === 'turnover' ? <AlertCircle size={14} className="text-orange-500" /> : <Coffee size={14} className="text-blue-500" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-0.5">
+                          {task.customLocation ? 'Local Específico' : task.structureId ? 'Limpeza de Estrutura' : task.type === 'turnover' ? 'Faxina de Troca' : 'Arrumação Diária'}
+                        </p>
+                        <h4 className="font-bold text-base text-foreground leading-none truncate">
+                          {task.customLocation || (task.structureId ? (structures[task.structureId]?.name || "Estrutura Excluída") : (cabins[task.cabinId!]?.name || "Cabana Excluída"))}
+                        </h4>
+                      </div>
                     </div>
-                    {task.structureId ? <Sparkles size={16} className="text-purple-500 shrink-0" /> : task.type === 'turnover' ? <AlertCircle size={16} className="text-orange-500 shrink-0" /> : <Coffee size={16} className="text-blue-500 shrink-0" />}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button onClick={() => { setSelectedTask(task); setIsManagerOpen(true); }} className="p-1.5 bg-secondary text-muted-foreground hover:text-primary rounded-lg transition-colors">
+                        <Edit3 size={14} />
+                      </button>
+                      <button onClick={() => toggleSelect(task.id)} className={cn("p-1.5 rounded-lg transition-colors", isSelected ? "text-primary" : "text-muted-foreground hover:text-primary")}>
+                        {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                      </button>
+                    </div>
                   </div>
                   <div className="space-y-2">
                     {(task.status === 'pending' || task.status === 'paused') ? (
@@ -523,8 +571,8 @@ export default function GovernanceKanbanPage() {
                         <div className="flex items-center gap-2 bg-secondary/50 p-2 rounded-lg border border-border">
                           <UserPlus size={14} className="text-muted-foreground shrink-0" />
                           <select value={safeAssignedArray[0] || ""} onChange={(e) => handleAssignTask(task.id, e.target.value)} className="w-full bg-transparent text-xs font-bold uppercase outline-none cursor-pointer text-foreground">
-                            <option value="" disabled>Delegar para...</option>
-                            {maids.map(m => <option key={m.id} value={m.id}>{m.fullName}</option>)}
+                            <option value="" disabled className="bg-card text-muted-foreground">Delegar para...</option>
+                            {maids.map(m => <option key={m.id} value={m.id} className="bg-card text-foreground">{m.fullName}</option>)}
                           </select>
                         </div>
                         <div className="flex gap-2">
