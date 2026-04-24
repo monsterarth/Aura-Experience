@@ -122,22 +122,24 @@ export const StayService = {
   async createStayRecord(params: {
     propertyId: string;
     guestId: string;
-    cabinConfigs: { cabinId: string, adults: number, children: number, babies: number }[];
+    cabinConfigs: { cabinId: string | null, adults: number, children: number, babies: number }[];
     checkIn: Date;
     checkOut: Date;
     sendAutomations: boolean;
     actorId: string;
     actorName: string;
   }) {
-    // Verify no overlapping stays before creating
+    // Verify no overlapping stays before creating (skip unassigned cabins)
     await Promise.all(
-      params.cabinConfigs.map(config =>
-        this.checkCabinAvailability(
-          config.cabinId,
-          params.checkIn.toISOString(),
-          params.checkOut.toISOString()
+      params.cabinConfigs
+        .filter(config => config.cabinId != null)
+        .map(config =>
+          this.checkCabinAvailability(
+            config.cabinId!,
+            params.checkIn.toISOString(),
+            params.checkOut.toISOString()
+          )
         )
-      )
     );
 
     const accessCode = await this.generateUniqueAccessCode(params.propertyId);
@@ -149,7 +151,7 @@ export const StayService = {
         id: stayId,
         propertyId: params.propertyId,
         guestId: params.guestId,
-        cabinId: config.cabinId,
+        cabinId: config.cabinId ?? null,
         groupId,
         accessCode,
         checkIn: params.checkIn.toISOString(),
@@ -263,7 +265,11 @@ export const StayService = {
     if (error || !stays) return [];
 
     const enriched = await Promise.all(stays.map(async (stay: any) => {
-      const { data: cabin } = await supabase.from('cabins').select('name, wifi').eq('id', stay.cabinId).maybeSingle();
+      let cabin = null;
+      if (stay.cabinId) {
+        const { data } = await supabase.from('cabins').select('name, wifi').eq('id', stay.cabinId).maybeSingle();
+        cabin = data;
+      }
       return {
         ...stay,
         cabinName: cabin ? cabin.name : "Acomodação",
@@ -284,7 +290,11 @@ export const StayService = {
     if (error || !stays) return [];
 
     const enriched = await Promise.all(stays.map(async (stay: any) => {
-      const { data: cabin } = await supabase.from('cabins').select('name').eq('id', stay.cabinId).maybeSingle();
+      let cabin = null;
+      if (stay.cabinId) {
+        const { data } = await supabase.from('cabins').select('name').eq('id', stay.cabinId).maybeSingle();
+        cabin = data;
+      }
       return {
         ...stay,
         cabinName: cabin ? cabin.name : "Acomodação"
@@ -300,7 +310,9 @@ export const StayService = {
 
     const [gRes, cRes] = await Promise.all([
       supabase.from('guests').select('*').eq('id', stay.guestId).maybeSingle(),
-      supabase.from('cabins').select('*').eq('id', stay.cabinId).eq('propertyId', propertyId).maybeSingle()
+      stay.cabinId
+        ? supabase.from('cabins').select('*').eq('id', stay.cabinId).eq('propertyId', propertyId).maybeSingle()
+        : Promise.resolve({ data: null })
     ]);
 
     return {
@@ -330,13 +342,15 @@ export const StayService = {
       const enriched = await Promise.all(stays.map(async (stay: any) => {
         const [gRes, cRes] = await Promise.all([
           supabase.from('guests').select('fullName').eq('id', stay.guestId).maybeSingle(),
-          supabase.from('cabins').select('name').eq('id', stay.cabinId).maybeSingle()
+          stay.cabinId
+            ? supabase.from('cabins').select('name').eq('id', stay.cabinId).maybeSingle()
+            : Promise.resolve({ data: null })
         ]);
 
         return {
           ...stay,
           guestName: gRes.data ? gRes.data.fullName : "Hóspede desconhecido",
-          cabinName: cRes.data ? cRes.data.name : "N/A"
+          cabinName: cRes.data ? cRes.data.name : "Sem Cabana"
         };
       }));
 
@@ -352,6 +366,8 @@ export const StayService = {
     const { data: stay } = await supabase
       .from('stays').select('cabinId, checkIn, guestId').eq('id', stayId).single();
     if (!stay) throw new Error('STAY_NOT_FOUND');
+
+    if (!stay.cabinId) throw new Error('CABIN_REQUIRED_FOR_CHECKIN');
 
     // 2. Validar status da acomodação
     const { data: cabin } = await supabase
@@ -548,7 +564,7 @@ export const StayService = {
       const { data: stay } = await supabase.from('stays').select('cabinId, guestId').eq('id', stayId).single();
       if (stay) {
         const [{ data: cabinData }, { data: guestData }] = await Promise.all([
-          supabase.from('cabins').select('number').eq('id', stay.cabinId).single(),
+          stay.cabinId ? supabase.from('cabins').select('number').eq('id', stay.cabinId).single() : Promise.resolve({ data: null }),
           supabase.from('guests').select('fullName').eq('id', stay.guestId).single(),
         ]);
         const cabinNum = cabinData?.number || '';
@@ -618,7 +634,7 @@ export const StayService = {
     const fromDate = existingHistory.length > 0
       ? existingHistory[existingHistory.length - 1].to
       : stay.checkIn?.split?.('T')?.[0] || stay.checkIn;
-    const updatedHistory = isActive
+    const updatedHistory = isActive && oldCabinId
       ? [...existingHistory, { cabinId: oldCabinId, from: fromDate, to: today }]
       : existingHistory;
 
@@ -631,32 +647,60 @@ export const StayService = {
       // Occupy new cabin first
       await supabase.from('cabins').update({ status: 'occupied', currentStayId: stayId }).eq('id', newCabinId);
 
-      // Release old cabin in two steps: clear currentStayId (may trigger a DB trigger that sets cleaning),
-      // then explicitly set the desired status to ensure final state is correct regardless of any trigger.
-      await supabase.from('cabins').update({ currentStayId: null }).eq('id', oldCabinId);
-      await supabase.from('cabins').update({ status: oldCabinDisposition }).eq('id', oldCabinId);
+      if (oldCabinId) {
+        // Release old cabin in two steps: clear currentStayId (may trigger a DB trigger that sets cleaning),
+        // then explicitly set the desired status to ensure final state is correct regardless of any trigger.
+        await supabase.from('cabins').update({ currentStayId: null }).eq('id', oldCabinId);
+        await supabase.from('cabins').update({ status: oldCabinDisposition }).eq('id', oldCabinId);
 
-      if (oldCabinDisposition === 'cleaning') {
-        await supabase.from('housekeeping_tasks').insert({
-          id: uuidv4(),
-          propertyId,
-          cabinId: oldCabinId,
-          stayId,
-          type: 'turnover',
-          status: 'pending',
-          assignedTo: [],
-          checklist: []
-        });
+        if (oldCabinDisposition === 'cleaning') {
+          await supabase.from('housekeeping_tasks').insert({
+            id: uuidv4(),
+            propertyId,
+            cabinId: oldCabinId,
+            stayId,
+            type: 'turnover',
+            status: 'pending',
+            assignedTo: [],
+            checklist: []
+          });
+        }
       }
     }
 
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
       details: isActive
-        ? `Transferência de cabana: ${oldCabinId} → ${newCabinId}. Cabana antiga: ${oldCabinDisposition === 'cleaning' ? 'enviada para limpeza' : 'liberada'}.`
-        : `Cabana da reserva alterada: ${oldCabinId} → ${newCabinId}.`
+        ? `Transferência de cabana: ${oldCabinId ?? 'sem cabana'} → ${newCabinId}. Cabana antiga: ${oldCabinId ? (oldCabinDisposition === 'cleaning' ? 'enviada para limpeza' : 'liberada') : 'sem cabana anterior'}.`
+        : `Cabana da reserva alterada: ${oldCabinId ?? 'sem cabana'} → ${newCabinId}.`
     });
 
+  },
+
+  async unassignCabin(
+    propertyId: string,
+    stayId: string,
+    actorId: string,
+    actorName: string
+  ) {
+    const { data: stay } = await supabase
+      .from('stays').select('cabinId, status, checkIn, cabinHistory').eq('id', stayId).single();
+    if (!stay) throw new Error('STAY_NOT_FOUND');
+    if (!stay.cabinId) return; // already unassigned
+
+    const oldCabinId = stay.cabinId;
+    const isActive = stay.status === 'active';
+
+    if (isActive) throw new Error('CANNOT_UNASSIGN_ACTIVE_STAY');
+
+    await supabase.from('stays')
+      .update({ cabinId: null, updatedAt: new Date().toISOString() })
+      .eq('id', stayId).eq('propertyId', propertyId);
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
+      details: `Cabana removida da reserva: ${oldCabinId} → sem cabana.`
+    });
   },
 
   // ==========================================

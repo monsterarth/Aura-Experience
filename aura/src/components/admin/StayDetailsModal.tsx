@@ -451,6 +451,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   };
 
   const handleUndoCheckOut = async () => {
+    if (!stay.cabinId) { toast.error("Não é possível reativar uma estadia sem cabana atribuída."); return; }
     if (!window.confirm("Reativar esta estadia e colocar a cabana como ocupada?")) return;
     setLoading(true);
     try {
@@ -712,7 +713,8 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                 <div>
                   <Label icon={BedDouble}>Acomodação</Label>
                   {isEditing ? (
-                    <Select disabled={isCoreFieldLocked} value={formData.cabinId} onChange={e => setFormData({ ...formData, cabinId: e.target.value })}>
+                    <Select disabled={isCoreFieldLocked} value={formData.cabinId ?? ''} onChange={e => setFormData({ ...formData, cabinId: e.target.value || null })}>
+                      <option value="">— Sem cabana —</option>
                       {cabins.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </Select>
                   ) : (

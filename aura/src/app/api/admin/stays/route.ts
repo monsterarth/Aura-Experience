@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
             return {
                 ...stay,
                 guestName: gRes.data ? (gRes.data as any).fullName : 'Hóspede desconhecido',
-                cabinName: cRes.data ? (cRes.data as any).name : 'N/A',
+                cabinName: cRes.data ? (cRes.data as any).name : 'Sem Cabana',
                 folioItems,
                 pendingFolioCount,
                 hasOpenFolio: pendingFolioCount > 0,

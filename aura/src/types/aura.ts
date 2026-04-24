@@ -461,12 +461,12 @@ export interface Stay {
   propertyId: string;
   groupId?: string | null;
   guestId: string;
-  cabinId: string;
+  cabinId: string | null;
   cabinHistory?: { cabinId: string; from: string; to: string }[];
   accessCode: string;
 
   cabinConfigs?: {
-    cabinId: string;
+    cabinId: string | null;
     name: string;
     adults: number;
     children: number;

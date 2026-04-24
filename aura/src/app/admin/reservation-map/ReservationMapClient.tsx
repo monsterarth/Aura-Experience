@@ -145,7 +145,7 @@ export default function ReservationMapClient() {
     const [actionCabin, setActionCabin] = useState<Cabin | null>(null);
 
     const [isDnDActionModalOpen, setIsDnDActionModalOpen] = useState(false);
-    const [dndData, setDnDData] = useState<{ stayId: string; oldCabinId: string; newCabinId: string } | null>(null);
+    const [dndData, setDnDData] = useState<{ stayId: string; oldCabinId: string | null; newCabinId: string } | null>(null);
 
     const [selectedStay, setSelectedStay] = useState<any | null>(null);
     const [selectedGuest, setSelectedGuest] = useState<any | null>(null);
@@ -468,19 +468,41 @@ export default function ReservationMapClient() {
             return;
         }
         e.dataTransfer.setData("stayId", stay.id);
-        e.dataTransfer.setData("oldCabinId", stay.cabinId);
+        e.dataTransfer.setData("oldCabinId", stay.cabinId ?? '');
     };
 
     const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault(); // allow drop
     };
 
-    const handleDrop = async (e: React.DragEvent, newCabinId: string) => {
+    const handleDropUnassigned = async (e: React.DragEvent) => {
         e.preventDefault();
         const stayId = e.dataTransfer.getData("stayId");
         const oldCabinId = e.dataTransfer.getData("oldCabinId");
+        if (!stayId || !oldCabinId || !contextProperty?.id) return;
+        const stay = stays.find(s => s.id === stayId);
+        if (!stay) return;
+        if (stay.status === 'active') {
+            toast.error("Não é possível remover a cabana de uma estadia ativa.");
+            return;
+        }
+        setLoading(true);
+        try {
+            await StayService.unassignCabin(contextProperty.id, stayId, userData?.id || "admin", userData?.fullName || "Admin");
+            toast.success("Cabana removida da reserva.");
+            loadData();
+        } catch {
+            toast.error("Erro ao remover cabana da reserva.");
+            setLoading(false);
+        }
+    };
 
-        if (!stayId || !oldCabinId || oldCabinId === newCabinId) return;
+    const handleDrop = async (e: React.DragEvent, newCabinId: string) => {
+        e.preventDefault();
+        const stayId = e.dataTransfer.getData("stayId");
+        const oldCabinId = e.dataTransfer.getData("oldCabinId") || null;
+
+        if (!stayId || oldCabinId === newCabinId) return;
 
         const stay = stays.find(s => s.id === stayId);
         if (!stay || !contextProperty?.id) return;
@@ -647,6 +669,11 @@ export default function ReservationMapClient() {
         return housekeepingTasks.find(t => t.cabinId === cabinId && t.status !== 'completed' && t.status !== 'cancelled') || null;
     };
 
+    const unassignedStays = useMemo(() =>
+        stays.filter(s => !s.cabinId && ['pending', 'pre_checkin_done'].includes(s.status)),
+        [stays]
+    );
+
     const maids = useMemo(() => staff.filter(s => s.role === 'maid' || s.role === 'governance'), [staff]);
     const technicians = useMemo(() => staff.filter(s => s.role === 'technician' || s.role === 'maintenance'), [staff]);
 
@@ -771,6 +798,22 @@ export default function ReservationMapClient() {
                                 >
                                     Acomodação
                                 </div>
+                                {/* Linha Sem Cabana */}
+                                {unassignedStays.length > 0 && (
+                                    <div
+                                        className="flex items-center gap-3 px-4 border-b border-amber-500/20 bg-amber-500/5"
+                                        style={{ height: ROW_HEIGHT }}
+                                    >
+                                        <div className="flex-1 min-w-0 pr-2">
+                                            <p className="text-xs font-black text-amber-600 dark:text-amber-400 truncate tracking-tight text-right">
+                                                Sem Cabana
+                                            </p>
+                                        </div>
+                                        <div className="shrink-0 flex items-center justify-center w-6 h-6 rounded-md bg-amber-500/10 text-amber-500">
+                                            <Home size={16} />
+                                        </div>
+                                    </div>
+                                )}
                                 {/* Cabin rows */}
                                 {cabins.map((cabin) => (
                                     <div
@@ -848,6 +891,55 @@ export default function ReservationMapClient() {
                                             );
                                         })}
                                     </div>
+
+                                    {/* Linha Sem Cabana — drop zone para desatrelar */}
+                                    {unassignedStays.length > 0 && (
+                                        <div
+                                            className="flex border-b border-amber-500/20 bg-amber-500/5 relative"
+                                            style={{ height: ROW_HEIGHT }}
+                                            onDragOver={handleDragOver}
+                                            onDrop={handleDropUnassigned}
+                                        >
+                                            {days.map((day, i) => {
+                                                const isToday = today ? isSameDay(day, today) : false;
+                                                const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+                                                return (
+                                                    <div
+                                                        key={i}
+                                                        className={cn(
+                                                            "shrink-0 border-r border-amber-500/10 z-0",
+                                                            isToday ? "bg-primary/[0.04]" : (isWeekend ? "bg-amber-500/[0.02]" : "")
+                                                        )}
+                                                        style={{ width: DAY_WIDTH }}
+                                                    />
+                                                );
+                                            })}
+                                            {unassignedStays.map((stay, idx) => {
+                                                const pos = getBarPosition(stay.checkIn, stay.checkOut);
+                                                if (!pos) return null;
+                                                const guestName = stay.guestName || "Hóspede";
+                                                const shortName = guestName.split(" ")[0] + (guestName.split(" ").length > 1 ? ` ${guestName.split(" ").slice(-1)}` : "");
+                                                return (
+                                                    <button
+                                                        key={stay.id}
+                                                        draggable
+                                                        onDragStart={(e) => handleDragStart(e, stay)}
+                                                        onClick={() => handleStayClick(stay)}
+                                                        className={cn(
+                                                            "absolute top-1.5 h-[calc(100%-12px)] flex items-center px-3 rounded-lg text-[10px] font-bold transition-all z-10 truncate cursor-grab active:cursor-grabbing hover:brightness-110 hover:scale-[1.02]",
+                                                            "bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-[0_0_12px_rgba(245,158,11,0.3)]",
+                                                            pos.clippedLeft && "rounded-l-none border-l-2 border-dashed border-white/30",
+                                                            pos.clippedRight && "rounded-r-none border-r-2 border-dashed border-white/30"
+                                                        )}
+                                                        style={{ left: pos.left + 2 + idx * 2, width: pos.width - 4 }}
+                                                        title={`${guestName} — sem cabana · Arraste para uma cabana para atribuir`}
+                                                    >
+                                                        <span className="truncate">{shortName}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
 
                                     {/* Cabin Rows with Stay Bars */}
                                     {cabins.map((cabin) => {
@@ -985,6 +1077,10 @@ export default function ReservationMapClient() {
                                 <div className="w-4 h-3 rounded-sm bg-gradient-to-r from-neutral-500 to-neutral-600 opacity-50 border border-dashed border-white/30" />
                                 <span className="text-[10px] font-bold text-foreground/40 uppercase tracking-widest">Transferida</span>
                             </div>
+                            <div className="flex items-center gap-2">
+                                <div className="w-4 h-3 rounded-sm bg-gradient-to-r from-amber-500 to-amber-600" />
+                                <span className="text-[10px] font-bold text-foreground/40 uppercase tracking-widest">Sem Cabana</span>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -993,7 +1089,7 @@ export default function ReservationMapClient() {
                 <p className="text-center text-[10px] font-bold text-foreground/20 uppercase tracking-[0.2em]">
                     {selectionMode
                         ? `Modo ${selectionMode === 'reservation' ? 'Reserva' : 'Bloqueio'} ativo — arraste sobre as células e solte para confirmar • Pressione o botão novamente para cancelar`
-                        : "Clique nas barras para ver detalhes • Use os botões acima para criar reservas ou bloqueios"
+                        : "Clique nas barras para ver detalhes • Arraste para mover entre cabanas • Arraste para 'Sem Cabana' para desatrelar"
                     }
                 </p>
 

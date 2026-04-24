@@ -143,8 +143,8 @@ function NewStayPageContent() {
     e.preventDefault();
     if (!contextProperty?.id || !userData?.id) return;
 
-    if (!guestData.fullName || cabinSelections.length === 0 || !dateRange?.from || !dateRange?.to) {
-      return toast.error("Nome, Cabanas e Período completo são obrigatórios.");
+    if (!guestData.fullName || !dateRange?.from || !dateRange?.to) {
+      return toast.error("Nome do hóspede e Período completo são obrigatórios.");
     }
 
     if (docType === "CPF" && docNumber && !validateCPF(docNumber)) {
@@ -223,10 +223,14 @@ function NewStayPageContent() {
       );
 
       // 5. FINALMENTE, CRIA A ESTADIA
+      const cabinConfigs = cabinSelections.length > 0
+        ? cabinSelections
+        : [{ cabinId: null, name: 'Sem Cabana', adults: 2, children: 0, babies: 0 }];
+
       const result = await StayService.createStayRecord({
         propertyId: contextProperty.id,
         guestId: savedGuestId,
-        cabinConfigs: cabinSelections,
+        cabinConfigs,
         checkIn: dateRange.from,
         checkOut: dateRange.to,
         sendAutomations,
@@ -412,6 +416,11 @@ function NewStayPageContent() {
                   ))}
                 </div>
               )}
+              {availableCabins.length > 0 && cabinSelections.length === 0 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2">
+                  Nenhuma cabana selecionada. A reserva será criada sem acomodação atribuída e poderá ser atribuída depois no mapa.
+                </p>
+              )}
             </div>
 
             {/* Controle de Datas */}
@@ -476,7 +485,7 @@ function NewStayPageContent() {
 
               <button
                 type="submit"
-                disabled={loading || cabinSelections.length === 0 || !contextProperty?.id}
+                disabled={loading || !contextProperty?.id}
                 className="w-full py-4 bg-primary text-primary-foreground font-black text-lg uppercase tracking-wider rounded-[20px] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-all active:scale-95 mt-4"
               >
                 {loading ? <Loader2 className="animate-spin" /> : "Confirmar Reserva"}

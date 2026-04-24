@@ -385,8 +385,8 @@ export default function StaysPage() {
                       <div className="p-5 md:p-8 space-y-4 md:space-y-6 flex-1">
                         {/* Topo do Card */}
                         <div className="flex justify-between items-start">
-                          <div className="px-4 py-1.5 bg-primary/10 border border-primary/20 rounded-full">
-                            <span className="text-[10px] font-black text-primary uppercase tracking-widest">{s.cabinName}</span>
+                          <div className={`px-4 py-1.5 rounded-full border ${!s.cabinId ? 'bg-amber-500/10 border-amber-500/30' : 'bg-primary/10 border-primary/20'}`}>
+                            <span className={`text-[10px] font-black uppercase tracking-widest ${!s.cabinId ? 'text-amber-600 dark:text-amber-400' : 'text-primary'}`}>{s.cabinName}</span>
                           </div>
                           <div className="flex gap-2">
                             {isUnknownGuest && <div className="p-2 bg-red-500/10 rounded-lg animate-pulse" title="Documento Pendente"><ShieldAlert size={16} className="text-red-500" /></div>}
@@ -564,8 +564,8 @@ export default function StaysPage() {
                       {/* Header do card */}
                       <div className="p-6 flex items-center justify-between border-b border-white/5">
                         <div className="flex items-center gap-4">
-                          <div className="px-4 py-1.5 bg-primary/10 border border-primary/20 rounded-full">
-                            <span className="text-[10px] font-black text-primary uppercase tracking-widest">{s.cabinName}</span>
+                          <div className={`px-4 py-1.5 rounded-full border ${!s.cabinId ? 'bg-amber-500/10 border-amber-500/30' : 'bg-primary/10 border-primary/20'}`}>
+                            <span className={`text-[10px] font-black uppercase tracking-widest ${!s.cabinId ? 'text-amber-600 dark:text-amber-400' : 'text-primary'}`}>{s.cabinName}</span>
                           </div>
                           <div>
                             <h3 className="font-black text-lg text-foreground">{guestName}</h3>
@@ -703,7 +703,7 @@ export default function StaysPage() {
                         <tr key={s.id} className="hover:bg-muted/30 transition-colors group">
                           {/* Coluna: Cabana */}
                           <td className="p-4">
-                            <span className="px-3 py-1 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest rounded-lg border border-primary/20">
+                            <span className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-lg border ${!s.cabinId ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30' : 'bg-primary/10 text-primary border-primary/20'}`}>
                               {s.cabinName}
                             </span>
                           </td>
