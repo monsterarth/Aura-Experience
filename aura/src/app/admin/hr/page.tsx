@@ -97,7 +97,7 @@ function HRDashboardContent() {
   const [weekOverrides, setWeekOverrides] = useState<StaffScheduleOverride[]>([]);
   const [loading, setLoading] = useState(true);
   const [filledBars, setFilledBars] = useState(false);
-  const [shiftFilter, setShiftFilter] = useState<"todos" | "manhã" | "tarde" | "noite">("todos");
+  const [shiftFilter, setShiftFilter] = useState<"todos" | "manhã" | "tarde" | "noite" | "plantão">("todos");
 
   useEffect(() => {
     const propertyId = currentProperty?.id ?? userData?.propertyId;
@@ -165,7 +165,14 @@ function HRDashboardContent() {
   ).length;
 
   // Shift turno classification
-  function getTurno(startTime: string): "manhã" | "tarde" | "noite" {
+  function getTurno(startTime: string, endTime?: string | null): "manhã" | "tarde" | "noite" | "plantão" {
+    if (endTime) {
+      const hStart = parseInt(startTime.split(":")[0], 10);
+      const hEnd = parseInt(endTime.split(":")[0], 10);
+      // 12h+ de duração (incluindo virada de meia-noite) → plantão
+      const duration = hEnd > hStart ? hEnd - hStart : 24 - hStart + hEnd;
+      if (duration >= 12) return "plantão";
+    }
     const h = parseInt(startTime.split(":")[0], 10);
     if (h < 12) return "manhã";
     if (h < 18) return "tarde";
@@ -180,7 +187,7 @@ function HRDashboardContent() {
     role: string;
     start: string;
     end: string;
-    turno: "manhã" | "tarde" | "noite";
+    turno: "manhã" | "tarde" | "noite" | "plantão";
     profilePictureUrl?: string;
     roleColor: string;
     roleBg: string;
@@ -217,7 +224,7 @@ function HRDashboardContent() {
         role: ROLE_LABELS[s.role] ?? s.role,
         start: fmtTime(start),
         end: end ? fmtTime(end) : "—",
-        turno: getTurno(start),
+        turno: getTurno(start, end),
         profilePictureUrl: s.profilePictureUrl,
         roleColor: rs.color,
         roleBg: rs.bg,
@@ -486,7 +493,7 @@ function HRDashboardContent() {
               </div>
             </div>
             <div style={{ display: "flex", gap: 6 }}>
-              {(["todos", "manhã", "tarde", "noite"] as const).map(f => (
+              {(["todos", "manhã", "tarde", "noite", "plantão"] as const).map(f => (
                 <button
                   key={f}
                   onClick={() => setShiftFilter(f)}
@@ -558,7 +565,9 @@ function HRDashboardContent() {
                       ? { background: "rgba(245,158,11,0.08)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.22)" }
                       : s.turno === "tarde"
                       ? { background: "rgba(96,165,250,0.08)", color: "#60a5fa", border: "1px solid rgba(96,165,250,0.22)" }
-                      : { background: "rgba(192,132,252,0.08)", color: "#c084fc", border: "1px solid rgba(192,132,252,0.22)" }),
+                      : s.turno === "noite"
+                      ? { background: "rgba(192,132,252,0.08)", color: "#c084fc", border: "1px solid rgba(192,132,252,0.22)" }
+                      : { background: "rgba(45,212,191,0.08)", color: "#2dd4bf", border: "1px solid rgba(45,212,191,0.22)" }),
                   }}>
                     {s.turno}
                   </span>
