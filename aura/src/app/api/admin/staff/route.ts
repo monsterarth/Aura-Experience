@@ -342,8 +342,8 @@ export async function PUT(request: Request) {
     const isSuperAdmin = auth.staff.role === 'super_admin';
     const sameProperty = auth.staff.propertyId === targetUser.propertyId;
 
-    // Apenas pode editar a si próprio ou (admin/super_admin/hr da mesma property)
-    if (!isSelf && !(isAdmin && sameProperty)) {
+    // Apenas pode editar a si próprio, ou ser super_admin, ou (admin/hr da mesma property)
+    if (!isSelf && !isSuperAdmin && !(isAdmin && sameProperty)) {
       return NextResponse.json({ error: "Sem permissão para editar este utilizador." }, { status: 403 });
     }
 
