@@ -10,8 +10,8 @@ import { RoleGuard } from "@/components/auth/RoleGuard";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { StaffService } from "@/services/staff-service";
-import { Staff, StaffSchedule, StaffScheduleOverride } from "@/types/aura";
-import { calculateScheduleForDate } from "@/lib/schedule-calculator";
+import { Staff, StaffSchedule, StaffScheduleOverride, ScheduleCheckpoint } from "@/types/aura";
+import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type StaffWithSchedules = Staff & { schedules: StaffSchedule[] };
@@ -95,6 +95,7 @@ function HRDashboardContent() {
 
   const [staffWithSchedules, setStaffWithSchedules] = useState<StaffWithSchedules[]>([]);
   const [weekOverrides, setWeekOverrides] = useState<StaffScheduleOverride[]>([]);
+  const [checkpoints, setCheckpoints] = useState<ScheduleCheckpoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [filledBars, setFilledBars] = useState(false);
   const [shiftFilter, setShiftFilter] = useState<"todos" | "manhã" | "tarde" | "noite" | "plantão">("todos");
@@ -111,13 +112,15 @@ function HRDashboardContent() {
         const from = toYMD(weekStart);
         const to = toYMD(addDays(weekStart, 6));
 
-        const [scheduleView, overrides] = await Promise.all([
+        const [scheduleView, overrides, cpData] = await Promise.all([
           StaffService.getPropertyScheduleView(propertyId!),
           StaffService.getPropertyScheduleOverrides(propertyId!, from, to),
+          StaffService.getPropertyCheckpoints(propertyId!),
         ]);
 
         setStaffWithSchedules(scheduleView);
         setWeekOverrides(overrides);
+        setCheckpoints(cpData);
       } catch {
         // silently fail — show zeros
       } finally {
@@ -132,7 +135,6 @@ function HRDashboardContent() {
   // ── Derived metrics ──────────────────────────────────────────────────────
   const today = new Date();
   const todayYMD = toYMD(today);
-  const todayDOW = today.getDay();
   const weekStart = getMonday(today);
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
@@ -141,15 +143,11 @@ function HRDashboardContent() {
   // KPI 1 — Equipe ativa
   const activeCount = activeStaff.length;
 
-  // KPI 2 — Hoje em turno: staff working right now (override > calculator > base schedule)
-  const todayWorking = activeStaff.filter(s => {
-    const override = weekOverrides.find(o => o.staffId === s.id && o.date === todayYMD);
-    if (override) return override.startTime !== null && override.startTime !== undefined;
-    if (!s.scheduleType || s.scheduleType === 'custom') {
-      return s.schedules.some(sc => sc.dayOfWeek === todayDOW && sc.active);
-    }
-    return calculateScheduleForDate(s, today).isWork;
-  });
+  // KPI 2 — Hoje em turno
+  const todayOverrides = weekOverrides.filter(o => o.date === todayYMD);
+  const todayWorking = activeStaff.filter(s =>
+    resolveEffectiveDaySchedule(s, s.schedules, todayOverrides, today, checkpoints).isWork
+  );
 
   // KPI 3 — Aniversários este mês
   const currentMonth = today.getMonth() + 1; // 1-based
@@ -195,36 +193,17 @@ function HRDashboardContent() {
 
   const todayShiftsRaw = activeStaff
     .map((s): ShiftEntry | null => {
-      const override = weekOverrides.find(o => o.staffId === s.id && o.date === todayYMD);
-      let start: string | null = null;
-      let end: string | null = null;
-
-      if (override) {
-        if (override.startTime === null || override.startTime === undefined) return null; // folga
-        start = override.startTime;
-        end = override.endTime ?? null;
-      } else if (!s.scheduleType || s.scheduleType === 'custom') {
-        const base = s.schedules.find(sc => sc.dayOfWeek === todayDOW && sc.active);
-        if (!base) return null;
-        start = base.startTime;
-        end = base.endTime;
-      } else {
-        const calc = calculateScheduleForDate(s, today);
-        if (!calc.isWork || !calc.startTime) return null;
-        start = calc.startTime;
-        end = calc.endTime ?? null;
-      }
-
-      if (!start) return null;
+      const resolved = resolveEffectiveDaySchedule(s, s.schedules, todayOverrides, today, checkpoints);
+      if (!resolved.isWork || !resolved.startTime) return null;
       const rs = getRoleStyle(s.role);
       return {
         id: s.id,
         name: s.fullName,
         initials: s.fullName.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase(),
         role: ROLE_LABELS[s.role] ?? s.role,
-        start: fmtTime(start),
-        end: end ? fmtTime(end) : "—",
-        turno: getTurno(start, end),
+        start: resolved.startTime,
+        end: resolved.endTime ?? "—",
+        turno: getTurno(resolved.startTime, resolved.endTime),
         profilePictureUrl: s.profilePictureUrl,
         roleColor: rs.color,
         roleBg: rs.bg,
@@ -255,20 +234,14 @@ function HRDashboardContent() {
 
   // Week bar chart data
   const weekBarData = weekDays.map((d, i) => {
-    const dow = d.getDay();
     const ymd = toYMD(d);
+    const dayOverrides = weekOverrides.filter(o => o.date === ymd);
     let shifts = 0;
     let folgas = 0;
     for (const s of activeStaff) {
-      const override = weekOverrides.find(o => o.staffId === s.id && o.date === ymd);
-      if (override) {
-        if (override.startTime === null || override.startTime === undefined) folgas++;
-        else shifts++;
-      } else if (!s.scheduleType || s.scheduleType === 'custom') {
-        if (s.schedules.some(sc => sc.dayOfWeek === dow && sc.active)) shifts++;
-      } else {
-        if (calculateScheduleForDate(s, d).isWork) shifts++;
-      }
+      const resolved = resolveEffectiveDaySchedule(s, s.schedules, dayOverrides, d, checkpoints);
+      if (resolved.hasOverride && !resolved.isWork) folgas++;
+      else if (resolved.isWork) shifts++;
     }
     return { day: DAY_LABELS[(i + 1) % 7], shifts, folgas, isToday: ymd === todayYMD };
   });
