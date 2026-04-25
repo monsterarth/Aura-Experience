@@ -56,10 +56,13 @@ export function calculateScheduleForDate(
     return { isWork: false, source: 'not-configured' };
   }
 
+  // Normaliza para meia-noite local para evitar arredondamento errado no diffDays
+  const normalizedDate = localMidnight(toLocalYMD(date));
+
   const { startTime, endTime } = scheduleConfig;
 
   if (scheduleType === '5x2') {
-    const dow = date.getDay(); // 0=Dom, 6=Sáb
+    const dow = normalizedDate.getDay(); // 0=Dom, 6=Sáb
     const isWork = dow >= 1 && dow <= 5;
     return isWork
       ? { isWork: true, startTime, endTime, source: 'calculated' }
@@ -67,10 +70,10 @@ export function calculateScheduleForDate(
   }
 
   if (scheduleType === '12x36') {
-    const refDate = resolveReferenceDate(scheduleConfig, staff.id, date, checkpoints);
+    const refDate = resolveReferenceDate(scheduleConfig, staff.id, normalizedDate, checkpoints);
     if (!refDate) return { isWork: false, source: 'not-configured' };
     const ref = localMidnight(refDate);
-    const diff = diffDays(date, ref);
+    const diff = diffDays(normalizedDate, ref);
     const isWork = positiveModulo(diff, 2) === 0;
     return isWork
       ? { isWork: true, startTime, endTime, source: 'calculated' }
@@ -78,10 +81,10 @@ export function calculateScheduleForDate(
   }
 
   if (scheduleType === '6x1') {
-    const refDate = resolveReferenceDate(scheduleConfig, staff.id, date, checkpoints);
+    const refDate = resolveReferenceDate(scheduleConfig, staff.id, normalizedDate, checkpoints);
     if (!refDate) return { isWork: false, source: 'not-configured' };
     const ref = localMidnight(refDate);
-    const diff = diffDays(date, ref);
+    const diff = diffDays(normalizedDate, ref);
     const pos = positiveModulo(diff, 7);
     const isWork = pos < 6;
     return isWork
