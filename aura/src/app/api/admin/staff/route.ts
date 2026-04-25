@@ -373,7 +373,7 @@ export async function PUT(request: Request) {
     }
 
     // Campos permitidos — role só chega aqui se passou nas guards acima
-    const allowedFields = ['fullName', 'phone', 'birthDate', 'bio', 'profilePictureUrl', 'active', 'role'];
+    const allowedFields = ['fullName', 'phone', 'birthDate', 'hireDate', 'bio', 'profilePictureUrl', 'active', 'role'];
     const safeUpdates: Record<string, unknown> = {};
     for (const key of allowedFields) {
       if (key in updates) safeUpdates[key] = updates[key];

@@ -77,6 +77,7 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
       active: staff.active,
       phone: staff.phone || "",
       birthDate: staff.birthDate || "",
+      hireDate: staff.hireDate || "",
       bio: staff.bio || "",
       profilePictureUrl: staff.profilePictureUrl || "",
     });
@@ -258,6 +259,18 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
                         type="date"
                         value={formData.birthDate || ""}
                         onChange={e => setFormData({ ...formData, birthDate: e.target.value })}
+                        className="w-full p-2.5 bg-background border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold uppercase text-muted-foreground">Contratação</label>
+                      <input
+                        type="date"
+                        value={formData.hireDate || ""}
+                        onChange={e => setFormData({ ...formData, hireDate: e.target.value })}
                         className="w-full p-2.5 bg-background border rounded-lg focus:ring-2 focus:ring-primary/20 outline-none"
                       />
                     </div>

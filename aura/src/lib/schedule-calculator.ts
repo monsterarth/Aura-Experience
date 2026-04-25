@@ -1,4 +1,4 @@
-import { Staff, StaffSchedule, StaffScheduleOverride } from '@/types/aura';
+import { Staff, StaffSchedule, StaffScheduleOverride, ScheduleConfig, ScheduleCheckpoint } from '@/types/aura';
 
 export interface DayScheduleResult {
   isWork: boolean;
@@ -20,14 +20,43 @@ function positiveModulo(n: number, m: number): number {
   return ((n % m) + m) % m;
 }
 
-export function calculateScheduleForDate(staff: Staff, date: Date): DayScheduleResult {
+function toLocalYMD(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * Resolve qual referenceDate usar para um staff em uma data específica.
+ * Usa o checkpoint mais recente cuja effectiveDate <= date.
+ * Fallback: cycleReferenceDate do scheduleConfig.
+ */
+function resolveReferenceDate(
+  scheduleConfig: ScheduleConfig,
+  staffId: string,
+  date: Date,
+  checkpoints: ScheduleCheckpoint[]
+): string | undefined {
+  const dateStr = toLocalYMD(date);
+  const applicable = checkpoints
+    .filter(c => c.staffId === staffId && c.effectiveDate <= dateStr)
+    .sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate));
+  return applicable[0]?.referenceDate ?? scheduleConfig.cycleReferenceDate;
+}
+
+export function calculateScheduleForDate(
+  staff: Staff,
+  date: Date,
+  checkpoints: ScheduleCheckpoint[] = []
+): DayScheduleResult {
   const { scheduleType, scheduleConfig } = staff;
 
   if (!scheduleType || !scheduleConfig) {
     return { isWork: false, source: 'not-configured' };
   }
 
-  const { startTime, endTime, cycleReferenceDate } = scheduleConfig;
+  const { startTime, endTime } = scheduleConfig;
 
   if (scheduleType === '5x2') {
     const dow = date.getDay(); // 0=Dom, 6=Sáb
@@ -38,8 +67,9 @@ export function calculateScheduleForDate(staff: Staff, date: Date): DayScheduleR
   }
 
   if (scheduleType === '12x36') {
-    if (!cycleReferenceDate) return { isWork: false, source: 'not-configured' };
-    const ref = localMidnight(cycleReferenceDate);
+    const refDate = resolveReferenceDate(scheduleConfig, staff.id, date, checkpoints);
+    if (!refDate) return { isWork: false, source: 'not-configured' };
+    const ref = localMidnight(refDate);
     const diff = diffDays(date, ref);
     const isWork = positiveModulo(diff, 2) === 0;
     return isWork
@@ -48,8 +78,9 @@ export function calculateScheduleForDate(staff: Staff, date: Date): DayScheduleR
   }
 
   if (scheduleType === '6x1') {
-    if (!cycleReferenceDate) return { isWork: false, source: 'not-configured' };
-    const ref = localMidnight(cycleReferenceDate);
+    const refDate = resolveReferenceDate(scheduleConfig, staff.id, date, checkpoints);
+    if (!refDate) return { isWork: false, source: 'not-configured' };
+    const ref = localMidnight(refDate);
     const diff = diffDays(date, ref);
     const pos = positiveModulo(diff, 7);
     const isWork = pos < 6;
@@ -66,7 +97,8 @@ export function resolveEffectiveDaySchedule(
   staff: Staff,
   staffSchedules: StaffSchedule[],
   overridesForDate: StaffScheduleOverride[],
-  date: Date
+  date: Date,
+  checkpoints: ScheduleCheckpoint[] = []
 ): DayScheduleResult & { hasOverride: boolean } {
   // Override tem prioridade absoluta
   const override = overridesForDate.find(o => o.staffId === staff.id);
@@ -99,6 +131,6 @@ export function resolveEffectiveDaySchedule(
     return { isWork: false, source: 'not-configured', hasOverride: false };
   }
 
-  const calculated = calculateScheduleForDate(staff, date);
+  const calculated = calculateScheduleForDate(staff, date, checkpoints);
   return { ...calculated, hasOverride: false };
 }

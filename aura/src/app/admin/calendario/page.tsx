@@ -554,22 +554,33 @@ export default function CalendarioPage() {
               </div>
             )}
 
-            {/* Month summary stats */}
-            <div className="mt-4 grid grid-cols-2 gap-3">
+            {/* Stats — day if selected, month totals otherwise */}
+            <p className="mt-4 text-[9px] text-muted-foreground/50 text-center uppercase tracking-widest">
+              {selectedDaySummary ? `Resumo do dia ${formatDatePT(selectedDay!)}` : "Totais do mês"}
+            </p>
+            <div className="mt-1 grid grid-cols-2 gap-3">
               <div className="bg-card border border-white/5 rounded-xl p-3 text-center">
-                <p className="text-2xl font-black text-emerald-400">{stays.length}</p>
+                <p className="text-2xl font-black text-emerald-400">
+                  {selectedDaySummary ? selectedDaySummary.checkIns.length + selectedDaySummary.checkOuts.length : stays.length}
+                </p>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">Hospedagens</p>
               </div>
               <div className="bg-card border border-white/5 rounded-xl p-3 text-center">
-                <p className="text-2xl font-black text-primary">{events.filter(e => e.status === "published").length}</p>
+                <p className="text-2xl font-black text-primary">
+                  {selectedDaySummary ? selectedDaySummary.events.length : events.filter(e => e.status === "published").length}
+                </p>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">Eventos</p>
               </div>
               <div className="bg-card border border-white/5 rounded-xl p-3 text-center">
-                <p className="text-2xl font-black text-slate-400">{structureBookings.length}</p>
+                <p className="text-2xl font-black text-slate-400">
+                  {selectedDaySummary ? selectedDaySummary.structureBookings.length : structureBookings.length}
+                </p>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">Estruturas</p>
               </div>
               <div className="bg-card border border-white/5 rounded-xl p-3 text-center">
-                <p className="text-2xl font-black text-amber-400">{birthdayDaysCount}</p>
+                <p className="text-2xl font-black text-amber-400">
+                  {selectedDaySummary ? selectedDaySummary.birthdays.length : birthdayDaysCount}
+                </p>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">Aniversários</p>
               </div>
             </div>

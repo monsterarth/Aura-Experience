@@ -692,6 +692,7 @@ export interface Staff {
   createdAt: Timestamp;
   scheduleType?: ScheduleType;
   scheduleConfig?: ScheduleConfig | null;
+  hireDate?: string; // YYYY-MM-DD
 }
 
 // --- ESCALAS DE TRABALHO ---
@@ -725,7 +726,18 @@ export interface ScheduleConfig {
   scheduleType: ScheduleType;
   startTime: string;           // HH:mm
   endTime: string;             // HH:mm
-  cycleReferenceDate?: string; // YYYY-MM-DD — obrigatório para 12x36 e 6x1
+  cycleReferenceDate?: string; // YYYY-MM-DD — fallback quando não há checkpoints
+}
+
+export interface ScheduleCheckpoint {
+  id: string;
+  staffId: string;
+  propertyId: string;
+  effectiveDate: string;  // YYYY-MM-DD — a partir de quando este checkpoint vale
+  referenceDate: string;  // YYYY-MM-DD — data âncora de trabalho para cálculo
+  note?: string;          // ex: "Rodízio com João", "Retorno de férias"
+  createdBy?: string;
+  createdAt: Timestamp;
 }
 
 // ==========================================

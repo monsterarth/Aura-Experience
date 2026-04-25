@@ -26,7 +26,8 @@
       "Bash(cp webfetch-1776869200712-bobx64.bin design.gz)",
       "Bash(gunzip design.gz)",
       "Bash(tar xf *)",
-      "Bash(gunzip -c \"C:\\\\Users\\\\arthu\\\\.claude\\\\projects\\\\c--Aura-Experience-aura\\\\b282cb1d-ec85-4edb-9ed4-53dbf6b7c1a9\\\\tool-results\\\\webfetch-1776958468346-vb0nqh.bin\")"
+      "Bash(gunzip -c \"C:\\\\Users\\\\arthu\\\\.claude\\\\projects\\\\c--Aura-Experience-aura\\\\b282cb1d-ec85-4edb-9ed4-53dbf6b7c1a9\\\\tool-results\\\\webfetch-1776958468346-vb0nqh.bin\")",
+      "Bash(xargs grep *)"
     ]
   }
 }

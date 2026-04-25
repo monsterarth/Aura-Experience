@@ -358,17 +358,17 @@ export default function AdminConciergePage() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg, #06080f)', position: 'relative' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
 
       {/* ── KPI Bar ─────────────────────────────────────────────────────── */}
-      <div style={{ padding: '16px 24px 0', display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, flexShrink: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 14 }}>
         {[
           { label: 'Pendentes',     value: openRequests.length, color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.22)',  Icon: Clock        },
           { label: 'Urgentes',      value: urgentCount,         color: '#f87171', bg: 'rgba(248,113,113,0.08)', border: 'rgba(248,113,113,0.22)', Icon: AlertTriangle },
           { label: 'Entregues hoje',value: tab === 'history' ? todayDeliveredCount : '—', color: '#2dd4bf', bg: 'rgba(45,212,191,0.08)',   border: 'rgba(45,212,191,0.22)',  Icon: CheckCircle2 },
           { label: 'Faturado hoje', value: tab === 'history' ? `R$ ${todayDeliveredRevenue.toFixed(2)}` : '—', color: '#9b6dff', bg: 'rgba(155,109,255,0.08)', border: 'rgba(155,109,255,0.22)', Icon: Sparkles },
         ].map((stat, i) => (
-          <div key={i} style={{ background: 'var(--bg2, #0b0e18)', border: `1px solid ${stat.border}`, borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div key={i} style={{ background: '#1c1c1c', border: `1px solid ${stat.border}`, borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: stat.bg, border: `1px solid ${stat.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <stat.Icon size={16} style={{ color: stat.color }} />
             </div>
@@ -381,7 +381,7 @@ export default function AdminConciergePage() {
       </div>
 
       {/* ── Tab bar + Toolbar ────────────────────────────────────────────── */}
-      <div style={{ padding: '14px 24px 0', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: 3 }}>
           {([
@@ -393,7 +393,7 @@ export default function AdminConciergePage() {
               display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 9,
               border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700,
               transition: 'all .15s',
-              background: tab === t.id ? 'var(--bg2, #0b0e18)' : 'transparent',
+              background: tab === t.id ? '#1c1c1c' : 'transparent',
               color: tab === t.id ? '#eef0f8' : 'rgba(238,240,248,0.42)',
               boxShadow: tab === t.id ? '0 1px 4px rgba(0,0,0,.3)' : 'none',
             }}>
@@ -463,7 +463,7 @@ export default function AdminConciergePage() {
       </div>
 
       {/* ── Main content ─────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 24px 40px', scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.08) transparent' }}>
+      <div>
 
         {/* ── PENDING TAB ───────────────────────────────────────────── */}
         {tab === 'pending' && (
@@ -494,7 +494,7 @@ export default function AdminConciergePage() {
         {tab === 'history' && (
           <div style={{ maxWidth: 800, margin: '0 auto' }}>
             {/* Day navigation */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, background: 'var(--bg2, #0b0e18)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '10px 14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '10px 14px' }}>
               <button onClick={() => setHistoryOffset(o => o - 1)} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)', flexShrink: 0 }}>
                 <ChevronLeft size={14} />
               </button>
@@ -554,7 +554,7 @@ export default function AdminConciergePage() {
                   const isLoan = req.item?.category === 'loan';
                   const av = avatarFromName(req.cabinName || '??');
                   return (
-                    <div key={req.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', background: 'var(--bg2, #0b0e18)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14 }}>
+                    <div key={req.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14 }}>
                       <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 900, color: 'rgba(238,240,248,0.42)' }}>{av}</div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 800, color: '#eef0f8' }}>{req.quantity}× {req.item?.name || req.itemId}</div>
@@ -640,7 +640,7 @@ export default function AdminConciergePage() {
       </div>
 
       {/* ── Live indicator ───────────────────────────────────────────────── */}
-      <div style={{ position: 'absolute', bottom: 20, right: 24, display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', background: 'var(--bg2, #0b0e18)', border: '1px solid rgba(0,212,255,0.25)', borderRadius: 999, pointerEvents: 'none', zIndex: 10 }}>
+      <div style={{ position: 'fixed', bottom: 24, right: 28, display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', background: '#1c1c1c', border: '1px solid rgba(0,212,255,0.25)', borderRadius: 999, pointerEvents: 'none', zIndex: 10 }}>
         <div style={{ position: 'relative', width: 8, height: 8 }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#00d4ff', animation: 'concierge-pulse 1.5s infinite' }} />
           <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#00d4ff', opacity: 0.4, animation: 'concierge-ping 1.5s infinite' }} />
@@ -686,7 +686,7 @@ function PendingCard({ req, actioning, onAction, onDetail }: {
 
   return (
     <div
-      style={{ background: 'var(--bg2, #0b0e18)', border: `1px solid ${urg.border}`, borderRadius: 18, overflow: 'hidden', cursor: 'pointer', transition: 'transform .15s', animation: 'concierge-fade-in .25s ease' }}
+      style={{ background: '#1c1c1c', border: `1px solid ${urg.border}`, borderRadius: 18, overflow: 'hidden', cursor: 'pointer', transition: 'transform .15s', animation: 'concierge-fade-in .25s ease' }}
       onClick={onDetail}
     >
       {/* Urgency accent bar */}
@@ -767,7 +767,7 @@ function DetailPanel({ req, onClose, onAction }: {
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ width: 400, height: '100%', background: 'var(--bg2, #0b0e18)', borderLeft: '1px solid rgba(255,255,255,0.12)', display: 'flex', flexDirection: 'column', animation: 'concierge-slide-in .2s ease', boxShadow: '-20px 0 60px rgba(0,0,0,.5)' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 400, height: '100%', background: '#1c1c1c', borderLeft: '1px solid rgba(255,255,255,0.12)', display: 'flex', flexDirection: 'column', animation: 'concierge-slide-in .2s ease', boxShadow: '-20px 0 60px rgba(0,0,0,.5)' }}>
         {/* Header */}
         <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
           <div style={{ flex: 1 }}>
@@ -793,7 +793,7 @@ function DetailPanel({ req, onClose, onAction }: {
               </div>
             </div>
             {req.notes && (
-              <div style={{ marginTop: 14, padding: '10px 14px', background: 'var(--bg3, #0d1020)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.07)', fontSize: 13, color: 'rgba(238,240,248,0.42)', lineHeight: 1.5, fontStyle: 'italic' }}>&ldquo;{req.notes}&rdquo;</div>
+              <div style={{ marginTop: 14, padding: '10px 14px', background: '#242424', borderRadius: 10, border: '1px solid rgba(255,255,255,0.07)', fontSize: 13, color: 'rgba(238,240,248,0.42)', lineHeight: 1.5, fontStyle: 'italic' }}>&ldquo;{req.notes}&rdquo;</div>
             )}
           </div>
 
@@ -857,7 +857,7 @@ function CatalogCard({ item, onEdit, onToggleActive, onRequest }: {
 
   return (
     <div style={{
-      background: 'var(--bg2, #0b0e18)',
+      background: '#1c1c1c',
       border: item.active ? '1px solid rgba(255,255,255,0.07)' : '1px dashed rgba(255,255,255,0.1)',
       borderRadius: 16, padding: 16, display: 'flex', flexDirection: 'column', gap: 12,
       opacity: item.active ? 1 : 0.55,
@@ -987,7 +987,7 @@ function NewRequestModal({ items, preset, onClose }: {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: 'var(--bg2, #0b0e18)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 22, width: 460, boxShadow: '0 24px 80px rgba(0,0,0,.7)', animation: 'concierge-fade-in .2s ease' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 22, width: 460, boxShadow: '0 24px 80px rgba(0,0,0,.7)', animation: 'concierge-fade-in .2s ease' }}>
         <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontSize: 15, fontWeight: 900, color: '#eef0f8' }}>Novo Pedido</div>

@@ -7,12 +7,12 @@ import { useProperty } from "@/context/PropertyContext";
 import { StaffService } from "@/services/staff-service";
 import {
   Staff, StaffSchedule, StaffScheduleOverride,
-  ScheduleType, ScheduleConfig,
+  ScheduleType, ScheduleConfig, ScheduleCheckpoint,
 } from "@/types/aura";
 import { resolveEffectiveDaySchedule, calculateScheduleForDate } from "@/lib/schedule-calculator";
 import {
   ChevronLeft, ChevronRight, X, Save, Loader2,
-  ClipboardCheck, AlertCircle, Settings,
+  ClipboardCheck, AlertCircle, Settings, Plus, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -73,7 +73,10 @@ function formatDate(date: Date): string {
   return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
-// --- Modal de edição de dia (override) ---
+function formatDateFull(dateStr: string): string {
+  return new Date(dateStr + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 interface CellModalState {
   staffId: string;
   staffName: string;
@@ -84,7 +87,6 @@ interface CellModalState {
   existingOverride?: StaffScheduleOverride | null;
 }
 
-// --- Modal de configuração de tipo de escala ---
 interface ConfigModalState {
   staff: StaffWithSchedules;
   propertyId: string;
@@ -97,6 +99,7 @@ export default function EscalasPage() {
   const [weekStart, setWeekStart] = useState<Date>(() => getMonday(new Date()));
   const [staffList, setStaffList] = useState<StaffWithSchedules[]>([]);
   const [overrides, setOverrides] = useState<StaffScheduleOverride[]>([]);
+  const [checkpoints, setCheckpoints] = useState<ScheduleCheckpoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterRole, setFilterRole] = useState<string>("all");
 
@@ -116,6 +119,13 @@ export default function EscalasPage() {
   const [configRefDate, setConfigRefDate] = useState("");
   const [configSaving, setConfigSaving] = useState(false);
 
+  // Checkpoint inline form (dentro do config modal)
+  const [showCheckpointForm, setShowCheckpointForm] = useState(false);
+  const [cpEffectiveDate, setCpEffectiveDate] = useState("");
+  const [cpReferenceDate, setCpReferenceDate] = useState("");
+  const [cpNote, setCpNote] = useState("");
+  const [cpSaving, setCpSaving] = useState(false);
+
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const from = toYMD(weekStart);
   const to = toYMD(addDays(weekStart, 6));
@@ -125,12 +135,14 @@ export default function EscalasPage() {
     if (!pId) return;
     setLoading(true);
     try {
-      const [staffData, overrideData] = await Promise.all([
+      const [staffData, overrideData, checkpointData] = await Promise.all([
         StaffService.getPropertyScheduleView(pId),
         StaffService.getPropertyScheduleOverrides(pId, from, to),
+        StaffService.getPropertyCheckpoints(pId),
       ]);
       setStaffList(staffData);
       setOverrides(overrideData);
+      setCheckpoints(checkpointData);
     } catch (e: any) {
       toast.error(e.message || "Erro ao carregar escalas.");
     } finally {
@@ -154,7 +166,6 @@ export default function EscalasPage() {
     const existing = getOverrideForDay(staff.id, date);
     const baseSchedule = staff.schedules.find(s => s.dayOfWeek === dayOfWeek && s.active);
 
-    // Para tipos calculados, usa o resultado do cálculo como referência de horário padrão
     let defaultStart = "07:00";
     let defaultEnd = "15:00";
     if (staff.scheduleConfig) {
@@ -268,7 +279,7 @@ export default function EscalasPage() {
     }
   };
 
-  // --- Handlers do modal de config ---
+  // --- Handlers do config modal ---
 
   const openConfigModal = (staff: StaffWithSchedules) => {
     setConfigModal({
@@ -279,6 +290,10 @@ export default function EscalasPage() {
     setConfigStart(staff.scheduleConfig?.startTime || "08:00");
     setConfigEnd(staff.scheduleConfig?.endTime || "17:00");
     setConfigRefDate(staff.scheduleConfig?.cycleReferenceDate || "");
+    setShowCheckpointForm(false);
+    setCpEffectiveDate("");
+    setCpReferenceDate("");
+    setCpNote("");
   };
 
   const handleSaveConfig = async () => {
@@ -309,49 +324,78 @@ export default function EscalasPage() {
     }
   };
 
-  // Inverte o ciclo 12x36: cria um override de folga no próximo dia de trabalho calculado
-  const handleInvertCycle = async () => {
+  // --- Handlers de checkpoint ---
+
+  const handleSaveCheckpoint = async () => {
     if (!configModal) return;
-    const staff = configModal.staff;
-    if (!staff.scheduleConfig?.cycleReferenceDate) return;
-
-    // Encontra o próximo dia de trabalho calculado (a partir de amanhã)
-    let targetDate: string | null = null;
-    const tomorrow = addDays(new Date(), 1);
-    for (let i = 0; i < 14; i++) {
-      const d = addDays(tomorrow, i);
-      const localD = new Date(toLocalYMD(d) + 'T00:00:00');
-      const result = calculateScheduleForDate(staff, localD);
-      if (result.isWork) {
-        targetDate = toLocalYMD(d);
-        break;
-      }
-    }
-
-    if (!targetDate) {
-      toast.error("Não foi possível encontrar o próximo dia de trabalho.");
+    if (!cpEffectiveDate || !cpReferenceDate) {
+      toast.error("Preencha a data de vigência e a data de referência.");
       return;
     }
-
-    setConfigSaving(true);
+    setCpSaving(true);
     try {
-      await StaffService.upsertScheduleOverride({
-        staffId: staff.id,
+      await StaffService.upsertScheduleCheckpoint({
+        staffId: configModal.staff.id,
         propertyId: configModal.propertyId,
-        date: targetDate,
-        startTime: null,
-        endTime: null,
-        reason: "Rodízio — ciclo invertido",
+        effectiveDate: cpEffectiveDate,
+        referenceDate: cpReferenceDate,
+        note: cpNote || undefined,
       });
-      toast.success(`Folga criada em ${new Date(targetDate + 'T00:00:00').toLocaleDateString('pt-BR')}.`);
-      setConfigModal(null);
-      load();
+      toast.success("Checkpoint salvo.");
+      setShowCheckpointForm(false);
+      setCpEffectiveDate("");
+      setCpReferenceDate("");
+      setCpNote("");
+      // Recarrega checkpoints sem fechar o modal
+      const updated = await StaffService.getPropertyCheckpoints(configModal.propertyId);
+      setCheckpoints(updated);
     } catch (e: any) {
-      toast.error(e.message || "Erro ao inverter ciclo.");
+      toast.error(e.message || "Erro ao salvar checkpoint.");
     } finally {
-      setConfigSaving(false);
+      setCpSaving(false);
     }
   };
+
+  const handleDeleteCheckpoint = async (id: string) => {
+    if (!configModal) return;
+    try {
+      await StaffService.deleteScheduleCheckpoint(id);
+      toast.success("Checkpoint removido.");
+      const updated = await StaffService.getPropertyCheckpoints(configModal.propertyId);
+      setCheckpoints(updated);
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao remover checkpoint.");
+    }
+  };
+
+  // Pré-preenche checkpoint de inversão de ciclo (próximo dia de trabalho calculado)
+  const prefillInvertCheckpoint = () => {
+    if (!configModal) return;
+    const staff = configModal.staff;
+    const staffCheckpoints = checkpoints.filter(c => c.staffId === staff.id);
+
+    const tomorrow = addDays(new Date(), 1);
+    for (let i = 0; i < 30; i++) {
+      const d = addDays(tomorrow, i);
+      const localD = new Date(toLocalYMD(d) + 'T00:00:00');
+      const result = calculateScheduleForDate(staff, localD, staffCheckpoints);
+      if (result.isWork) {
+        const nextWorkDate = toLocalYMD(d);
+        // Inverte: a referência passa a ser o dia seguinte ao de trabalho atual
+        const invertedRef = toLocalYMD(addDays(d, 1));
+        setCpEffectiveDate(nextWorkDate);
+        setCpReferenceDate(invertedRef);
+        setCpNote("Rodízio — ciclo invertido");
+        setShowCheckpointForm(true);
+        return;
+      }
+    }
+    toast.error("Não foi possível encontrar o próximo dia de trabalho nos próximos 30 dias.");
+  };
+
+  const staffCheckpointsForModal = configModal
+    ? checkpoints.filter(c => c.staffId === configModal.staff.id).sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate))
+    : [];
 
   const uniqueRoles = Array.from(new Set(staffList.map(s => s.role)));
 
@@ -436,95 +480,99 @@ export default function EscalasPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredStaff.map((staff) => (
-                  <tr key={staff.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
-                    {/* Funcionário */}
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-[#1c1c1c] border border-white/10 flex items-center justify-center text-[10px] font-black text-[#E0FFFF] shrink-0 overflow-hidden">
-                          {staff.profilePictureUrl
-                            ? <img src={staff.profilePictureUrl} alt="" className="w-full h-full object-cover" />
-                            : staff.fullName.charAt(0)
+                {filteredStaff.map((staff) => {
+                  const staffCheckpoints = checkpoints.filter(c => c.staffId === staff.id);
+                  return (
+                    <tr key={staff.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                      {/* Funcionário */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-full bg-[#1c1c1c] border border-white/10 flex items-center justify-center text-[10px] font-black text-[#E0FFFF] shrink-0 overflow-hidden">
+                            {staff.profilePictureUrl
+                              ? <img src={staff.profilePictureUrl} alt="" className="w-full h-full object-cover" />
+                              : staff.fullName.charAt(0)
+                            }
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-bold text-white/80 truncate text-[11px]">{staff.fullName}</p>
+                            <p className="text-white/30 text-[9px] uppercase tracking-wide">{ROLE_LABELS[staff.role] || staff.role}</p>
+                            {staff.scheduleType ? (
+                              <p className="text-[#00BFFF]/60 text-[8px] font-black uppercase tracking-wide">
+                                {SCHEDULE_TYPE_LABELS[staff.scheduleType]}
+                              </p>
+                            ) : (
+                              <p className="text-white/20 text-[8px] uppercase tracking-wide">Sem escala</p>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Células por dia */}
+                      {weekDays.map((day, i) => {
+                        const dayOverrides = overrides.filter(
+                          o => o.staffId === staff.id && o.date === toLocalYMD(day)
+                        );
+                        const localDay = new Date(toLocalYMD(day) + 'T00:00:00');
+                        const resolved = resolveEffectiveDaySchedule(
+                          staff,
+                          staff.schedules,
+                          dayOverrides,
+                          localDay,
+                          staffCheckpoints
+                        );
+                        const isToday = toLocalYMD(day) === toLocalYMD(new Date());
+
+                        let cellContent: React.ReactNode;
+                        let cellStyle = "bg-transparent";
+
+                        if (resolved.hasOverride) {
+                          if (!resolved.isWork) {
+                            cellStyle = "bg-red-950/30 border-red-900/30";
+                            cellContent = (
+                              <span className="text-red-400 font-bold text-[9px] uppercase tracking-wide">Folga</span>
+                            );
+                          } else {
+                            cellStyle = "bg-blue-950/30 border-blue-900/30";
+                            cellContent = (
+                              <span className="text-blue-300 font-bold text-[9px]">
+                                {resolved.startTime}–{resolved.endTime}
+                              </span>
+                            );
                           }
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-bold text-white/80 truncate text-[11px]">{staff.fullName}</p>
-                          <p className="text-white/30 text-[9px] uppercase tracking-wide">{ROLE_LABELS[staff.role] || staff.role}</p>
-                          {staff.scheduleType ? (
-                            <p className="text-[#00BFFF]/60 text-[8px] font-black uppercase tracking-wide">
-                              {SCHEDULE_TYPE_LABELS[staff.scheduleType]}
-                            </p>
-                          ) : (
-                            <p className="text-white/20 text-[8px] uppercase tracking-wide">Sem escala</p>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Células por dia */}
-                    {weekDays.map((day, i) => {
-                      const dayOverrides = overrides.filter(
-                        o => o.staffId === staff.id && o.date === toLocalYMD(day)
-                      );
-                      const localDay = new Date(toLocalYMD(day) + 'T00:00:00');
-                      const resolved = resolveEffectiveDaySchedule(
-                        staff,
-                        staff.schedules,
-                        dayOverrides,
-                        localDay
-                      );
-                      const isToday = toLocalYMD(day) === toLocalYMD(new Date());
-
-                      let cellContent: React.ReactNode;
-                      let cellStyle = "bg-transparent";
-
-                      if (resolved.hasOverride) {
-                        if (!resolved.isWork) {
-                          cellStyle = "bg-red-950/30 border-red-900/30";
+                        } else if (resolved.source === 'not-configured') {
                           cellContent = (
-                            <span className="text-red-400 font-bold text-[9px] uppercase tracking-wide">Folga</span>
+                            <span className="text-white/15 text-[9px]">—</span>
                           );
-                        } else {
-                          cellStyle = "bg-blue-950/30 border-blue-900/30";
+                        } else if (resolved.isWork) {
+                          cellStyle = "bg-[#111]";
                           cellContent = (
-                            <span className="text-blue-300 font-bold text-[9px]">
+                            <span className="text-white/50 font-bold text-[9px]">
                               {resolved.startTime}–{resolved.endTime}
                             </span>
                           );
+                        } else {
+                          cellStyle = "bg-white/[0.03]";
+                          cellContent = (
+                            <span className="text-white/20 text-[9px]">Folga</span>
+                          );
                         }
-                      } else if (resolved.source === 'not-configured') {
-                        cellContent = (
-                          <span className="text-white/15 text-[9px]">—</span>
-                        );
-                      } else if (resolved.isWork) {
-                        cellStyle = "bg-[#111]";
-                        cellContent = (
-                          <span className="text-white/50 font-bold text-[9px]">
-                            {resolved.startTime}–{resolved.endTime}
-                          </span>
-                        );
-                      } else {
-                        cellStyle = "bg-white/[0.03]";
-                        cellContent = (
-                          <span className="text-white/20 text-[9px]">Folga</span>
-                        );
-                      }
 
-                      return (
-                        <td
-                          key={i}
-                          className={`border-l border-white/5 px-2 py-2 text-center cursor-pointer transition-all hover:opacity-80 ${isToday ? 'ring-1 ring-inset ring-[#00BFFF]/20' : ''}`}
-                          onClick={() => openOverrideModal(staff, day)}
-                          title={`Editar ${DAY_LABELS_FULL[day.getDay()]} ${formatDate(day)}`}
-                        >
-                          <div className={`rounded-lg px-2 py-1.5 border ${cellStyle} flex items-center justify-center min-h-[32px]`}>
-                            {cellContent}
-                          </div>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
+                        return (
+                          <td
+                            key={i}
+                            className={`border-l border-white/5 px-2 py-2 text-center cursor-pointer transition-all hover:opacity-80 ${isToday ? 'ring-1 ring-inset ring-[#00BFFF]/20' : ''}`}
+                            onClick={() => openOverrideModal(staff, day)}
+                            title={`Editar ${DAY_LABELS_FULL[day.getDay()]} ${formatDate(day)}`}
+                          >
+                            <div className={`rounded-lg px-2 py-1.5 border ${cellStyle} flex items-center justify-center min-h-[32px]`}>
+                              {cellContent}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -548,119 +596,122 @@ export default function EscalasPage() {
               Configuração de Escalas
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {filteredStaff.map(staff => (
-                <div key={staff.id} className="bg-[#111] border border-white/10 rounded-2xl p-4 space-y-3">
-                  {/* Header do card */}
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-[#1c1c1c] border border-white/10 flex items-center justify-center text-[10px] font-black text-[#E0FFFF] shrink-0 overflow-hidden">
-                        {staff.profilePictureUrl
-                          ? <img src={staff.profilePictureUrl} alt="" className="w-full h-full object-cover" />
-                          : staff.fullName.charAt(0)
-                        }
+              {filteredStaff.map(staff => {
+                const staffCheckpoints = checkpoints.filter(c => c.staffId === staff.id);
+                return (
+                  <div key={staff.id} className="bg-[#111] border border-white/10 rounded-2xl p-4 space-y-3">
+                    {/* Header do card */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-[#1c1c1c] border border-white/10 flex items-center justify-center text-[10px] font-black text-[#E0FFFF] shrink-0 overflow-hidden">
+                          {staff.profilePictureUrl
+                            ? <img src={staff.profilePictureUrl} alt="" className="w-full h-full object-cover" />
+                            : staff.fullName.charAt(0)
+                          }
+                        </div>
+                        <div>
+                          <p className="font-bold text-white/80 text-[11px]">{staff.fullName}</p>
+                          <p className="text-white/30 text-[9px] uppercase tracking-wide">{ROLE_LABELS[staff.role] || staff.role}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-bold text-white/80 text-[11px]">{staff.fullName}</p>
-                        <p className="text-white/30 text-[9px] uppercase tracking-wide">{ROLE_LABELS[staff.role] || staff.role}</p>
-                      </div>
+                      <button
+                        onClick={() => openConfigModal(staff)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 text-white/40 hover:text-white/80 hover:border-white/20 text-[9px] font-black uppercase tracking-wide transition-all"
+                      >
+                        <Settings size={10} />
+                        Tipo
+                      </button>
                     </div>
-                    <button
-                      onClick={() => openConfigModal(staff)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 text-white/40 hover:text-white/80 hover:border-white/20 text-[9px] font-black uppercase tracking-wide transition-all"
-                    >
-                      <Settings size={10} />
-                      Tipo
-                    </button>
-                  </div>
 
-                  {/* Visualização por tipo */}
-                  {(!staff.scheduleType || staff.scheduleType === 'custom') && (
-                    <div className="grid grid-cols-7 gap-1">
-                      {DAY_LABELS.map((label, dow) => {
-                        const sched = staff.schedules.find(s => s.dayOfWeek === dow && s.active);
-                        return (
-                          <button
-                            key={dow}
-                            onClick={() => openBaseModal(staff, dow)}
-                            className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border transition-all hover:opacity-80 ${sched ? 'bg-[#1a1a1a] border-white/10' : 'border-dashed border-white/10 hover:border-white/20'}`}
-                            title={DAY_LABELS_FULL[dow]}
-                          >
-                            <span className="text-[8px] font-black uppercase text-white/40">{label}</span>
-                            {sched ? (
-                              <span className="text-[7px] text-white/50 font-bold leading-tight text-center">
-                                {sched.startTime.slice(0, 5)}<br />{sched.endTime.slice(0, 5)}
-                              </span>
-                            ) : (
-                              <span className="text-white/15 text-[8px]">+</span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {staff.scheduleType === '5x2' && staff.scheduleConfig && (() => {
-                    const cfg = staff.scheduleConfig!;
-                    return (
+                    {/* Visualização por tipo */}
+                    {(!staff.scheduleType || staff.scheduleType === 'custom') && (
                       <div className="grid grid-cols-7 gap-1">
                         {DAY_LABELS.map((label, dow) => {
-                          const isWork = dow >= 1 && dow <= 5;
+                          const sched = staff.schedules.find(s => s.dayOfWeek === dow && s.active);
                           return (
-                            <div
+                            <button
                               key={dow}
-                              className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border ${isWork ? 'bg-[#1a1a1a] border-white/10' : 'border-dashed border-white/5'}`}
+                              onClick={() => openBaseModal(staff, dow)}
+                              className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border transition-all hover:opacity-80 ${sched ? 'bg-[#1a1a1a] border-white/10' : 'border-dashed border-white/10 hover:border-white/20'}`}
+                              title={DAY_LABELS_FULL[dow]}
                             >
                               <span className="text-[8px] font-black uppercase text-white/40">{label}</span>
-                              {isWork ? (
+                              {sched ? (
                                 <span className="text-[7px] text-white/50 font-bold leading-tight text-center">
-                                  {cfg.startTime}<br />{cfg.endTime}
+                                  {sched.startTime.slice(0, 5)}<br />{sched.endTime.slice(0, 5)}
                                 </span>
                               ) : (
-                                <span className="text-white/15 text-[8px]">—</span>
+                                <span className="text-white/15 text-[8px]">+</span>
                               )}
-                            </div>
+                            </button>
                           );
                         })}
                       </div>
-                    );
-                  })()}
+                    )}
 
-                  {(staff.scheduleType === '12x36' || staff.scheduleType === '6x1') && staff.scheduleConfig && (
-                    <div className="space-y-1">
-                      <p className="text-[9px] text-white/30 font-bold uppercase tracking-wide">
-                        Ciclo desta semana
-                      </p>
-                      <div className="grid grid-cols-7 gap-1">
-                        {weekDays.map((day, i) => {
-                          const localDay = new Date(toLocalYMD(day) + 'T00:00:00');
-                          const result = calculateScheduleForDate(staff, localDay);
-                          const label = DAY_LABELS[day.getDay()];
-                          return (
-                            <div
-                              key={i}
-                              className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border ${result.isWork ? 'bg-[#1a1a1a] border-white/10' : 'border-dashed border-white/5'}`}
-                            >
-                              <span className="text-[8px] font-black uppercase text-white/40">{label}</span>
-                              {result.isWork ? (
-                                <span className="text-[7px] text-white/50 font-bold leading-tight text-center">
-                                  {result.startTime}<br />{result.endTime}
-                                </span>
-                              ) : (
-                                <span className="text-white/15 text-[8px]">—</span>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                      {staff.scheduleConfig.cycleReferenceDate && (
-                        <p className="text-[8px] text-white/20">
-                          Ref: {new Date(staff.scheduleConfig.cycleReferenceDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                    {staff.scheduleType === '5x2' && staff.scheduleConfig && (() => {
+                      const cfg = staff.scheduleConfig!;
+                      return (
+                        <div className="grid grid-cols-7 gap-1">
+                          {DAY_LABELS.map((label, dow) => {
+                            const isWork = dow >= 1 && dow <= 5;
+                            return (
+                              <div
+                                key={dow}
+                                className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border ${isWork ? 'bg-[#1a1a1a] border-white/10' : 'border-dashed border-white/5'}`}
+                              >
+                                <span className="text-[8px] font-black uppercase text-white/40">{label}</span>
+                                {isWork ? (
+                                  <span className="text-[7px] text-white/50 font-bold leading-tight text-center">
+                                    {cfg.startTime}<br />{cfg.endTime}
+                                  </span>
+                                ) : (
+                                  <span className="text-white/15 text-[8px]">—</span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+
+                    {(staff.scheduleType === '12x36' || staff.scheduleType === '6x1') && staff.scheduleConfig && (
+                      <div className="space-y-1">
+                        <p className="text-[9px] text-white/30 font-bold uppercase tracking-wide">
+                          Ciclo desta semana
                         </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
+                        <div className="grid grid-cols-7 gap-1">
+                          {weekDays.map((day, i) => {
+                            const localDay = new Date(toLocalYMD(day) + 'T00:00:00');
+                            const result = calculateScheduleForDate(staff, localDay, staffCheckpoints);
+                            const label = DAY_LABELS[day.getDay()];
+                            return (
+                              <div
+                                key={i}
+                                className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border ${result.isWork ? 'bg-[#1a1a1a] border-white/10' : 'border-dashed border-white/5'}`}
+                              >
+                                <span className="text-[8px] font-black uppercase text-white/40">{label}</span>
+                                {result.isWork ? (
+                                  <span className="text-[7px] text-white/50 font-bold leading-tight text-center">
+                                    {result.startTime}<br />{result.endTime}
+                                  </span>
+                                ) : (
+                                  <span className="text-white/15 text-[8px]">—</span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        {staffCheckpoints.length > 0 && (
+                          <p className="text-[8px] text-white/20">
+                            {staffCheckpoints.length} checkpoint{staffCheckpoints.length > 1 ? 's' : ''} de ciclo
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -698,26 +749,14 @@ export default function EscalasPage() {
             )}
 
             {!modalIsFolga && (
-              <div className="space-y-3">
-                <div className="flex gap-3">
-                  <div className="flex-1 space-y-1.5">
-                    <label className="field-label">Entrada</label>
-                    <input
-                      type="time"
-                      value={modalStart}
-                      onChange={e => setModalStart(e.target.value)}
-                      className="field-input w-full"
-                    />
-                  </div>
-                  <div className="flex-1 space-y-1.5">
-                    <label className="field-label">Saída</label>
-                    <input
-                      type="time"
-                      value={modalEnd}
-                      onChange={e => setModalEnd(e.target.value)}
-                      className="field-input w-full"
-                    />
-                  </div>
+              <div className="flex gap-3">
+                <div className="flex-1 space-y-1.5">
+                  <label className="field-label">Entrada</label>
+                  <input type="time" value={modalStart} onChange={e => setModalStart(e.target.value)} className="field-input w-full" />
+                </div>
+                <div className="flex-1 space-y-1.5">
+                  <label className="field-label">Saída</label>
+                  <input type="time" value={modalEnd} onChange={e => setModalEnd(e.target.value)} className="field-input w-full" />
                 </div>
               </div>
             )}
@@ -767,7 +806,7 @@ export default function EscalasPage() {
       {/* Modal de configuração de tipo de escala */}
       {configModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#111] border border-white/10 rounded-2xl p-6 w-full max-w-sm space-y-5 shadow-2xl">
+          <div className="bg-[#111] border border-white/10 rounded-2xl p-6 w-full max-w-md space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold">Tipo de Escala</p>
@@ -796,21 +835,11 @@ export default function EscalasPage() {
               <div className="flex gap-3">
                 <div className="flex-1 space-y-1.5">
                   <label className="field-label">Entrada</label>
-                  <input
-                    type="time"
-                    value={configStart}
-                    onChange={e => setConfigStart(e.target.value)}
-                    className="field-input w-full"
-                  />
+                  <input type="time" value={configStart} onChange={e => setConfigStart(e.target.value)} className="field-input w-full" />
                 </div>
                 <div className="flex-1 space-y-1.5">
                   <label className="field-label">Saída</label>
-                  <input
-                    type="time"
-                    value={configEnd}
-                    onChange={e => setConfigEnd(e.target.value)}
-                    className="field-input w-full"
-                  />
+                  <input type="time" value={configEnd} onChange={e => setConfigEnd(e.target.value)} className="field-input w-full" />
                 </div>
               </div>
             )}
@@ -818,9 +847,7 @@ export default function EscalasPage() {
             {(configType === '12x36' || configType === '6x1') && (
               <div className="space-y-1.5">
                 <label className="field-label">
-                  {configType === '12x36'
-                    ? 'Data de referência (dia de TRABALHO)'
-                    : 'Data de referência (1º dia de trabalho do ciclo)'}
+                  {configType === '12x36' ? 'Ref. inicial (dia de TRABALHO)' : 'Ref. inicial (1º dia de trabalho do ciclo)'}
                 </label>
                 <input
                   type="date"
@@ -830,8 +857,8 @@ export default function EscalasPage() {
                 />
                 <p className="text-[10px] text-white/30">
                   {configType === '12x36'
-                    ? 'Selecione uma data em que este funcionário TRABALHA. O sistema alternará automaticamente.'
-                    : 'Selecione o primeiro dia de uma sequência de 6 dias de trabalho.'}
+                    ? 'Data em que o funcionário TRABALHA. Os checkpoints abaixo sobrepõem esta referência quando necessário.'
+                    : 'Primeiro dia de uma sequência de 6 dias de trabalho.'}
                 </p>
               </div>
             )}
@@ -842,25 +869,129 @@ export default function EscalasPage() {
               </p>
             )}
 
-            <div className="flex gap-2 pt-1">
-              {configType === '12x36' && configModal.staff.scheduleConfig?.cycleReferenceDate && (
-                <button
-                  onClick={handleInvertCycle}
-                  disabled={configSaving}
-                  className="flex-1 py-2.5 rounded-xl border border-yellow-900/50 text-yellow-400 text-xs font-bold uppercase tracking-wide hover:bg-yellow-950/30 transition-all disabled:opacity-50"
-                >
-                  Inverter ciclo
-                </button>
-              )}
+            <div className="flex gap-2">
               <button
                 onClick={handleSaveConfig}
                 disabled={configSaving}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#E0FFFF]/10 border border-[#E0FFFF]/20 text-[#E0FFFF] text-xs font-bold uppercase tracking-wide hover:bg-[#E0FFFF]/20 transition-all disabled:opacity-50"
               >
                 {configSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                Salvar
+                Salvar tipo
               </button>
             </div>
+
+            {/* Seção de checkpoints — apenas para 12x36 e 6x1 */}
+            {(configType === '12x36' || configType === '6x1') && (
+              <div className="space-y-3 pt-2 border-t border-white/10">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-white/40">Histórico de Ciclo</p>
+                  <div className="flex gap-2">
+                    {configModal.staff.scheduleType && (configModal.staff.scheduleType === '12x36' || configModal.staff.scheduleType === '6x1') && (
+                      <button
+                        onClick={prefillInvertCheckpoint}
+                        className="text-[9px] font-black uppercase tracking-wide text-yellow-400/70 hover:text-yellow-400 transition-colors px-2 py-1 rounded-lg border border-yellow-900/30 hover:border-yellow-900/60"
+                      >
+                        Inverter ciclo
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { setShowCheckpointForm(f => !f); setCpEffectiveDate(""); setCpReferenceDate(""); setCpNote(""); }}
+                      className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wide text-[#00BFFF]/70 hover:text-[#00BFFF] transition-colors px-2 py-1 rounded-lg border border-[#00BFFF]/20 hover:border-[#00BFFF]/40"
+                    >
+                      <Plus size={10} />
+                      Adicionar
+                    </button>
+                  </div>
+                </div>
+
+                {/* Form inline de novo checkpoint */}
+                {showCheckpointForm && (
+                  <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
+                    <p className="text-[9px] font-black uppercase tracking-wide text-white/40">Novo checkpoint</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="field-label">A partir de</label>
+                        <input
+                          type="date"
+                          value={cpEffectiveDate}
+                          onChange={e => setCpEffectiveDate(e.target.value)}
+                          className="field-input w-full"
+                        />
+                        <p className="text-[9px] text-white/25">Quando entra em vigor</p>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="field-label">Dia de referência</label>
+                        <input
+                          type="date"
+                          value={cpReferenceDate}
+                          onChange={e => setCpReferenceDate(e.target.value)}
+                          className="field-input w-full"
+                        />
+                        <p className="text-[9px] text-white/25">
+                          {configType === '12x36' ? 'Dia que TRABALHA' : '1º dia do ciclo de 6'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="field-label">Nota (opcional)</label>
+                      <input
+                        type="text"
+                        value={cpNote}
+                        onChange={e => setCpNote(e.target.value)}
+                        placeholder="Ex: Rodízio com João, Retorno de férias..."
+                        className="field-input w-full"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowCheckpointForm(false)}
+                        className="flex-1 py-2 rounded-xl border border-white/10 text-white/40 text-xs font-bold hover:bg-white/5 transition-all"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={handleSaveCheckpoint}
+                        disabled={cpSaving}
+                        className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-[#E0FFFF]/10 border border-[#E0FFFF]/20 text-[#E0FFFF] text-xs font-bold hover:bg-[#E0FFFF]/20 transition-all disabled:opacity-50"
+                      >
+                        {cpSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                        Salvar
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Lista de checkpoints existentes */}
+                {staffCheckpointsForModal.length === 0 ? (
+                  <p className="text-[10px] text-white/20 text-center py-3">
+                    Nenhum checkpoint. A referência inicial do tipo é usada.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {staffCheckpointsForModal.map(cp => (
+                      <div key={cp.id} className="flex items-start justify-between gap-3 bg-white/[0.03] border border-white/[0.06] rounded-xl px-3 py-2.5">
+                        <div className="space-y-0.5 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black text-white/70">A partir de {formatDateFull(cp.effectiveDate)}</span>
+                            {cp.effectiveDate > toLocalYMD(new Date()) && (
+                              <span className="text-[8px] font-black uppercase tracking-wide text-[#00BFFF]/60 bg-[#00BFFF]/10 px-1.5 py-0.5 rounded-full">Futuro</span>
+                            )}
+                          </div>
+                          <p className="text-[9px] text-white/40">Ref: {formatDateFull(cp.referenceDate)}</p>
+                          {cp.note && <p className="text-[9px] text-white/30 truncate">{cp.note}</p>}
+                        </div>
+                        <button
+                          onClick={() => handleDeleteCheckpoint(cp.id)}
+                          className="text-white/20 hover:text-red-400 transition-colors shrink-0 p-1"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

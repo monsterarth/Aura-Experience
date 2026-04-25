@@ -1,23 +1,20 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
-import { Wedding, WeddingVendor, WeddingCabinAssignment, WeddingStatus } from "@/types/aura";
+import { supabase } from "@/lib/supabase";
+import { Wedding, WeddingCabinAssignment, WeddingStatus } from "@/types/aura";
 import { toast } from "sonner";
 import {
   Heart, Shield, Clock, Sparkles, Search, Grid3X3, List,
-  ChevronRight, ChevronLeft, X, Plus, Bed, Users, Link,
+  ChevronRight, X, Plus, Bed, Users, Globe,
   Camera, Music, Mic, Flower2, Coffee, Star, Truck, Sun,
-  Check, DollarSign, Calendar, Eye, Globe,
-  Loader2, AlertCircle, Edit2, Trash2,
+  Check, DollarSign, Calendar, Loader2,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
-// ─── Design tokens (matching the Aaura admin design system) ──────────────────
+// ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
-  bg:          "#06080f",
-  bg2:         "#0b0e18",
+  card:        "#1c1c1c",
   glass:       "rgba(255,255,255,0.035)",
   glass2:      "rgba(255,255,255,0.055)",
   glass3:      "rgba(255,255,255,0.08)",
@@ -44,154 +41,6 @@ type FilterStatus = 'all' | WeddingStatus;
 type FilterExcl = 'all' | 'exclusive' | 'nonexclusive';
 type DrawerTab = 'evento' | 'hospedagem' | 'fornecedores' | 'financeiro';
 type ViewMode = 'grid' | 'list';
-
-// ─── Mock data (used until DB is wired) ──────────────────────────────────────
-
-const MOCK_WEDDINGS: Wedding[] = [
-  {
-    id: "w1",
-    propertyId: "",
-    bride: "Isabella Carvalho", brideShort: "IC",
-    groom: "Rodrigo Mendes",   groomShort: "RM",
-    status: "confirmed",
-    weddingDate: "2025-06-14",
-    checkin: "2025-06-12", checkout: "2025-06-16",
-    ceremonyDetails: "18h00 · Jardim das Oliveiras",
-    receptionDetails: "20h00 · Espaço Panorâmico",
-    guestCount: 120,
-    exclusivity: true, cabinsOccupied: 9,
-    coupleWebsite: "https://isabella-rodrigo.com.br",
-    coordinator: "Cláudia Eventos",
-    notes: "Cerimônia ao pôr do sol. Casal prefere flores brancas. DJ confirmado até 2h.",
-    contractTotal: 48000, depositValue: 14400, depositPaid: true,
-    secondInstallmentValue: 16800, secondInstallmentPaid: false,
-    createdAt: "", updatedAt: "",
-    vendors: [
-      { id: "v1", weddingId: "w1", category: "Fotografia",    name: "Estúdio Lumière",    contact: "(11) 99821-4400", confirmed: true,  createdAt: "" },
-      { id: "v2", weddingId: "w1", category: "Filmagem",      name: "Marco Filmes",       contact: "(11) 97733-0021", confirmed: true,  createdAt: "" },
-      { id: "v3", weddingId: "w1", category: "DJ",            name: "DJ Marcus Oliveira", contact: "(11) 98890-1122", confirmed: true,  createdAt: "" },
-      { id: "v4", weddingId: "w1", category: "Decoração",     name: "Ateliê Floral Rosa", contact: "(24) 99100-3344", confirmed: true,  createdAt: "" },
-      { id: "v5", weddingId: "w1", category: "Buffet",        name: "Gastronomia Villa",  contact: "(11) 3344-5566",  confirmed: false, createdAt: "" },
-      { id: "v6", weddingId: "w1", category: "Bolo",          name: "Confeitaria Dulce",  contact: "(24) 98877-6600", confirmed: true,  createdAt: "" },
-      { id: "v7", weddingId: "w1", category: "Cerimonialista",name: "Cláudia Eventos",    contact: "(11) 97711-8899", confirmed: true,  createdAt: "" },
-      { id: "v8", weddingId: "w1", category: "Floricultura",  name: "Bouquet Jardins",    contact: "(11) 99023-4455", confirmed: false, createdAt: "" },
-    ],
-    cabinAssignments: [
-      { id: "c1", weddingId: "w1", cabinName: "Cabana 01", guestDescription: "Família Carvalho (noiva)" },
-      { id: "c2", weddingId: "w1", cabinName: "Cabana 02", guestDescription: "Família Mendes (noivo)" },
-      { id: "c3", weddingId: "w1", cabinName: "Cabana 03", guestDescription: "Padrinhos — Grupo A" },
-      { id: "c4", weddingId: "w1", cabinName: "Cabana 04", guestDescription: "Padrinhos — Grupo B" },
-      { id: "c5", weddingId: "w1", cabinName: "Cabana 05", guestDescription: "Madrinhas" },
-      { id: "c6", weddingId: "w1", cabinName: "Cabana 06", guestDescription: "Avós do casal" },
-      { id: "c7", weddingId: "w1", cabinName: "Cabana 07", guestDescription: "Tios da noiva" },
-      { id: "c8", weddingId: "w1", cabinName: "Cabana 08", guestDescription: "Tios do noivo" },
-      { id: "c9", weddingId: "w1", cabinName: "Cabana 09", guestDescription: "Amigos íntimos" },
-    ],
-  },
-  {
-    id: "w2",
-    propertyId: "",
-    bride: "Fernanda Lima", brideShort: "FL",
-    groom: "Gabriel Costa",  groomShort: "GC",
-    status: "tentative",
-    weddingDate: "2025-08-23",
-    checkin: "2025-08-22", checkout: "2025-08-25",
-    ceremonyDetails: "17h00 · Varanda Principal",
-    receptionDetails: "19h30 · Salão de Festas",
-    guestCount: 60,
-    exclusivity: false,
-    coupleWebsite: "",
-    coordinator: "",
-    notes: "Casamento intimista. Apenas família próxima. Ainda definindo menu do buffet.",
-    contractTotal: 18500, depositValue: 5550, depositPaid: false,
-    secondInstallmentValue: 6475, secondInstallmentPaid: false,
-    createdAt: "", updatedAt: "",
-    vendors: [
-      { id: "v9",  weddingId: "w2", category: "Fotografia", name: "Ana Beatriz Fotos", contact: "(21) 98800-7766", confirmed: true,  createdAt: "" },
-      { id: "v10", weddingId: "w2", category: "Decoração",  name: "Decor Íntimo",      contact: "(21) 97700-5544", confirmed: false, createdAt: "" },
-      { id: "v11", weddingId: "w2", category: "Bolo",       name: "Confeitaria Dulce", contact: "(24) 98877-6600", confirmed: true,  createdAt: "" },
-    ],
-    cabinAssignments: [
-      { id: "ca1", weddingId: "w2", cabinName: "Cabana 03", guestDescription: "Família Lima (noiva)" },
-      { id: "ca2", weddingId: "w2", cabinName: "Cabana 04", guestDescription: "Família Costa (noivo)" },
-      { id: "ca3", weddingId: "w2", cabinName: "Cabana 05", guestDescription: "Padrinhos" },
-    ],
-  },
-  {
-    id: "w3",
-    propertyId: "",
-    bride: "Camila Santos", brideShort: "CS",
-    groom: "Felipe Rocha",  groomShort: "FR",
-    status: "completed",
-    weddingDate: "2025-03-08",
-    checkin: "2025-03-06", checkout: "2025-03-10",
-    ceremonyDetails: "16h30 · Jardim das Pedras",
-    receptionDetails: "18h30 · Deck do Rio",
-    guestCount: 85,
-    exclusivity: true, cabinsOccupied: 11,
-    coupleWebsite: "https://camilaefelipe.com",
-    coordinator: "Talita Assessoria",
-    notes: "Evento realizado com sucesso. Avaliação 5 estrelas recebida.",
-    contractTotal: 32000, depositValue: 9600, depositPaid: true,
-    secondInstallmentValue: 11200, secondInstallmentPaid: true,
-    createdAt: "", updatedAt: "",
-    vendors: [
-      { id: "v12", weddingId: "w3", category: "Fotografia",    name: "Click Momentos",    contact: "(24) 99011-2233", confirmed: true, createdAt: "" },
-      { id: "v13", weddingId: "w3", category: "Banda",         name: "Banda Encanto",     contact: "(11) 98800-1100", confirmed: true, createdAt: "" },
-      { id: "v14", weddingId: "w3", category: "Decoração",     name: "Espaço Criativo",   contact: "(11) 99988-7766", confirmed: true, createdAt: "" },
-      { id: "v15", weddingId: "w3", category: "Buffet",        name: "Buffet Sabores",    contact: "(11) 3311-4422",  confirmed: true, createdAt: "" },
-      { id: "v16", weddingId: "w3", category: "Cerimonialista",name: "Talita Assessoria", contact: "(11) 97766-5544", confirmed: true, createdAt: "" },
-    ],
-    cabinAssignments: Array.from({ length: 11 }, (_, i) => ({
-      id: `cb${i}`,
-      weddingId: "w3",
-      cabinName: `Cabana ${String(i + 1).padStart(2, "0")}`,
-      guestDescription: `Hóspede grupo ${i + 1}`,
-    })),
-  },
-  {
-    id: "w4",
-    propertyId: "",
-    bride: "Juliana Ferreira", brideShort: "JF",
-    groom: "André Oliveira",   groomShort: "AO",
-    status: "confirmed",
-    weddingDate: "2025-11-29",
-    checkin: "2025-11-27", checkout: "2025-12-01",
-    ceremonyDetails: "18h30 · Lago dos Patos",
-    receptionDetails: "21h00 · Salão Principal",
-    guestCount: 200,
-    exclusivity: true, cabinsOccupied: 7,
-    coupleWebsite: "https://juliana-andre.casamento.com.br",
-    coordinator: "Premium Eventos",
-    notes: "Grande evento. Banda ao vivo. Fogo de artifício previsto. Verificar com prefeitura.",
-    contractTotal: 72000, depositValue: 21600, depositPaid: true,
-    secondInstallmentValue: 25200, secondInstallmentPaid: false,
-    createdAt: "", updatedAt: "",
-    vendors: [
-      { id: "v17", weddingId: "w4", category: "Fotografia",    name: "Foto Arte Studio",    contact: "(11) 99900-1234", confirmed: true,  createdAt: "" },
-      { id: "v18", weddingId: "w4", category: "Filmagem",      name: "Vídeo Memórias",      contact: "(11) 98765-4321", confirmed: true,  createdAt: "" },
-      { id: "v19", weddingId: "w4", category: "Banda",         name: "Orquestra Nova",      contact: "(11) 97654-3210", confirmed: true,  createdAt: "" },
-      { id: "v20", weddingId: "w4", category: "DJ",            name: "DJ Sunset",           contact: "(11) 96543-2109", confirmed: false, createdAt: "" },
-      { id: "v21", weddingId: "w4", category: "Decoração",     name: "Luxo & Flor",         contact: "(24) 99900-8877", confirmed: true,  createdAt: "" },
-      { id: "v22", weddingId: "w4", category: "Buffet",        name: "Grand Chef Catering", contact: "(11) 3300-9988",  confirmed: false, createdAt: "" },
-      { id: "v23", weddingId: "w4", category: "Bolo",          name: "Atelier du Gâteau",   contact: "(11) 98800-7766", confirmed: true,  createdAt: "" },
-      { id: "v24", weddingId: "w4", category: "Cerimonialista",name: "Premium Eventos",     contact: "(11) 97711-6655", confirmed: true,  createdAt: "" },
-      { id: "v25", weddingId: "w4", category: "Transporte",    name: "Limousines VIP",      contact: "(11) 96622-5544", confirmed: false, createdAt: "" },
-      { id: "v26", weddingId: "w4", category: "Luz e Som",     name: "Sound Pro",           contact: "(11) 95533-4433", confirmed: true,  createdAt: "" },
-    ],
-    cabinAssignments: [
-      { id: "cd1", weddingId: "w4", cabinName: "Cabana 01", guestDescription: "Casal (noivos)" },
-      { id: "cd2", weddingId: "w4", cabinName: "Cabana 02", guestDescription: "Família Ferreira" },
-      { id: "cd3", weddingId: "w4", cabinName: "Cabana 03", guestDescription: "Família Oliveira" },
-      { id: "cd4", weddingId: "w4", cabinName: "Cabana 04", guestDescription: "Padrinhos principais" },
-      { id: "cd5", weddingId: "w4", cabinName: "Cabana 05", guestDescription: "Madrinhas" },
-      { id: "cd6", weddingId: "w4", cabinName: "Cabana 06", guestDescription: "Avós" },
-      { id: "cd7", weddingId: "w4", cabinName: "Cabana 07", guestDescription: "Grupo VIP" },
-    ],
-  },
-];
-
-const CABINS_TOTAL = 11;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -237,7 +86,7 @@ function Pill({ label, bg, color, border, style }: {
 }) {
   return (
     <span style={{
-      display: "inline-flex", alignItems: "center", gap: 3,
+      display: "inline-flex", alignItems: "center",
       fontSize: 9, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase",
       padding: "2px 8px", borderRadius: 999, lineHeight: 1.6,
       background: bg, color, border: `1px solid ${border}`,
@@ -248,18 +97,15 @@ function Pill({ label, bg, color, border, style }: {
 
 // ─── Cabin map ────────────────────────────────────────────────────────────────
 
-function CabinMap({ occupied, total = CABINS_TOTAL, assignments = [] }: {
-  occupied: number; total?: number; assignments?: WeddingCabinAssignment[];
+function CabinMap({ occupied, total, assignments = [] }: {
+  occupied: number; total: number; assignments?: WeddingCabinAssignment[];
 }) {
   const free = total - occupied;
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
         <div style={{ flex: 1, height: 6, borderRadius: 999, background: T.glass3, overflow: "hidden" }}>
-          <div style={{
-            height: "100%", borderRadius: 999, background: T.grad,
-            width: `${(occupied / total) * 100}%`, transition: "width .8s",
-          }} />
+          <div style={{ height: "100%", borderRadius: 999, background: T.grad, width: `${(occupied / total) * 100}%`, transition: "width .8s" }} />
         </div>
         <span style={{ fontSize: 12, fontWeight: 800, color: T.g1, flexShrink: 0 }}>{occupied}/{total}</span>
       </div>
@@ -274,8 +120,7 @@ function CabinMap({ occupied, total = CABINS_TOTAL, assignments = [] }: {
               padding: "7px 6px", borderRadius: 10, textAlign: "center", fontSize: 10, fontWeight: 800,
               background: isOcc ? "rgba(155,109,255,0.12)" : T.glass,
               border: `1px solid ${isOcc ? "rgba(155,109,255,0.3)" : T.border}`,
-              color: isOcc ? T.g1 : T.muted2,
-              cursor: "default",
+              color: isOcc ? T.g1 : T.muted2, cursor: "default",
             }}>
               <div style={{ fontSize: 14, marginBottom: 2 }}>{isOcc ? "🏡" : "🌿"}</div>
               <div>{String(num).padStart(2, "0")}</div>
@@ -304,8 +149,8 @@ function CabinMap({ occupied, total = CABINS_TOTAL, assignments = [] }: {
 
 // ─── Detail drawer ────────────────────────────────────────────────────────────
 
-function DetailDrawer({ wedding, onClose, showFinancial }: {
-  wedding: Wedding | null; onClose: () => void; showFinancial: boolean;
+function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial }: {
+  wedding: Wedding | null; cabinsTotal: number; onClose: () => void; showFinancial: boolean;
 }) {
   const [tab, setTab] = useState<DrawerTab>("evento");
 
@@ -348,19 +193,8 @@ function DetailDrawer({ wedding, onClose, showFinancial }: {
   );
 
   return (
-    <div
-      style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "stretch", justifyContent: "flex-end" }}
-      onClick={onClose}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          width: 520, background: T.bg2, borderLeft: `1px solid ${T.border2}`,
-          display: "flex", flexDirection: "column",
-          animation: "slideIn .22s ease",
-          boxShadow: "-24px 0 80px rgba(0,0,0,.6)",
-        }}
-      >
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "stretch", justifyContent: "flex-end" }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ width: 520, background: T.card, borderLeft: `1px solid ${T.border2}`, display: "flex", flexDirection: "column", animation: "wedding-slide-in .22s ease", boxShadow: "-24px 0 80px rgba(0,0,0,.6)" }}>
         {/* Header */}
         <div style={{ padding: "20px 24px 0", borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 16 }}>
@@ -378,16 +212,9 @@ function DetailDrawer({ wedding, onClose, showFinancial }: {
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
                 <Pill label={sc.label} bg={sc.pillBg} color={sc.pillColor} border={sc.pillBorder} />
-                {wedding.exclusivity && (
-                  <Pill label="Exclusivo" bg={T.violetBg} color={T.violet} border={T.violetBorder} />
-                )}
+                {wedding.exclusivity && <Pill label="Exclusivo" bg={T.violetBg} color={T.violet} border={T.violetBorder} />}
                 {wedding.status !== "completed" && days >= 0 && (
-                  <Pill
-                    label={`em ${days}d`}
-                    bg={days <= 30 ? T.redBg : days <= 90 ? T.amberBg : T.glass2}
-                    color={days <= 30 ? T.red : days <= 90 ? T.amber : T.muted}
-                    border={days <= 30 ? T.redBorder : days <= 90 ? T.amberBorder : T.border2}
-                  />
+                  <Pill label={`em ${days}d`} bg={days <= 30 ? T.redBg : days <= 90 ? T.amberBg : T.glass2} color={days <= 30 ? T.red : days <= 90 ? T.amber : T.muted} border={days <= 30 ? T.redBorder : days <= 90 ? T.amberBorder : T.border2} />
                 )}
               </div>
             </div>
@@ -395,16 +222,9 @@ function DetailDrawer({ wedding, onClose, showFinancial }: {
               <X size={14} />
             </button>
           </div>
-          {/* Tabs */}
           <div style={{ display: "flex", gap: 0 }}>
             {tabs.map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{
-                padding: "9px 14px", border: "none", cursor: "pointer", fontFamily: "inherit",
-                fontSize: 12, fontWeight: 700, background: "transparent",
-                color: tab === t.id ? T.text : T.muted,
-                borderBottom: `2px solid ${tab === t.id ? T.g1 : "transparent"}`,
-                transition: "all .15s",
-              }}>{t.label}</button>
+              <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "9px 14px", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700, background: "transparent", color: tab === t.id ? T.text : T.muted, borderBottom: `2px solid ${tab === t.id ? T.g1 : "transparent"}`, transition: "all .15s" }}>{t.label}</button>
             ))}
           </div>
         </div>
@@ -412,23 +232,14 @@ function DetailDrawer({ wedding, onClose, showFinancial }: {
         {/* Body */}
         <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
 
-          {/* ── EVENTO ── */}
           {tab === "evento" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <InfoBox icon={Heart} label="Data do casamento" value={fmt(wedding.weddingDate)} color={T.rose} bg={T.roseBg} border={T.roseBorder} />
-                <InfoBox
-                  icon={Clock}
-                  label="Dias restantes"
-                  value={wedding.status === "completed" ? "Realizado" : (days < 0 ? "Passou" : days === 0 ? "Hoje!" : `${days} dias`)}
-                  color={days <= 30 && wedding.status !== "completed" ? T.red : T.green}
-                  bg={T.greenBg} border={T.greenBorder}
-                />
+                <InfoBox icon={Clock} label="Dias restantes" value={wedding.status === "completed" ? "Realizado" : (days < 0 ? "Passou" : days === 0 ? "Hoje!" : `${days} dias`)} color={days <= 30 && wedding.status !== "completed" ? T.red : T.green} bg={T.greenBg} border={T.greenBorder} />
                 <InfoBox icon={Calendar} label="Cerimônia" value={wedding.ceremonyDetails ?? "—"} color={T.violet} bg={T.violetBg} border={T.violetBorder} />
                 <InfoBox icon={Users} label="Convidados" value={`${wedding.guestCount} pessoas`} color={T.blue} bg={T.blueBg} border={T.blueBorder} />
               </div>
-
-              {/* Schedule */}
               <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 14, padding: 16 }}>
                 <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".05em", textTransform: "uppercase", color: T.muted, marginBottom: 12 }}>Programação</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -446,8 +257,6 @@ function DetailDrawer({ wedding, onClose, showFinancial }: {
                   ))}
                 </div>
               </div>
-
-              {/* Coordinator + Website */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 {wedding.coordinator && (
                   <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12, padding: 14 }}>
@@ -456,10 +265,7 @@ function DetailDrawer({ wedding, onClose, showFinancial }: {
                   </div>
                 )}
                 {wedding.coupleWebsite && (
-                  <a href={wedding.coupleWebsite} target="_blank" rel="noopener noreferrer" style={{
-                    background: T.gradSoft, border: "1px solid rgba(155,109,255,0.25)",
-                    borderRadius: 12, padding: 14, textDecoration: "none", display: "flex", flexDirection: "column", gap: 5,
-                  }}>
+                  <a href={wedding.coupleWebsite} target="_blank" rel="noopener noreferrer" style={{ background: T.gradSoft, border: "1px solid rgba(155,109,255,0.25)", borderRadius: 12, padding: 14, textDecoration: "none", display: "flex", flexDirection: "column", gap: 5 }}>
                     <div style={{ fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>Site dos Noivos</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, color: T.g1, fontWeight: 800, fontSize: 12 }}>
                       <Globe size={13} color={T.g1} />
@@ -468,8 +274,6 @@ function DetailDrawer({ wedding, onClose, showFinancial }: {
                   </a>
                 )}
               </div>
-
-              {/* Notes */}
               {wedding.notes && (
                 <div style={{ background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 12, padding: 14 }}>
                   <div style={{ fontSize: 10, color: T.amber, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 6 }}>Observações</div>
@@ -479,7 +283,6 @@ function DetailDrawer({ wedding, onClose, showFinancial }: {
             </div>
           )}
 
-          {/* ── HOSPEDAGEM ── */}
           {tab === "hospedagem" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
@@ -494,8 +297,6 @@ function DetailDrawer({ wedding, onClose, showFinancial }: {
                   </div>
                 ))}
               </div>
-
-              {/* Exclusivity block */}
               <div style={{ background: wedding.exclusivity ? T.violetBg : T.glass, border: `1px solid ${wedding.exclusivity ? T.violetBorder : T.border}`, borderRadius: 14, padding: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: wedding.exclusivity ? 14 : 0 }}>
                   <Shield size={16} color={wedding.exclusivity ? T.violet : T.muted} />
@@ -503,17 +304,13 @@ function DetailDrawer({ wedding, onClose, showFinancial }: {
                     <div style={{ fontSize: 13, fontWeight: 800, color: wedding.exclusivity ? T.violet : T.text }}>
                       {wedding.exclusivity ? "Com exclusividade" : "Sem exclusividade"}
                     </div>
-                    {!wedding.exclusivity && (
-                      <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>Outras cabanas podem estar ocupadas durante o evento.</div>
-                    )}
+                    {!wedding.exclusivity && <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>Outras cabanas podem estar ocupadas durante o evento.</div>}
                   </div>
                 </div>
                 {wedding.exclusivity && wedding.cabinsOccupied != null && (
-                  <CabinMap occupied={wedding.cabinsOccupied} assignments={assignments} />
+                  <CabinMap occupied={wedding.cabinsOccupied} total={cabinsTotal} assignments={assignments} />
                 )}
               </div>
-
-              {/* Assignment list */}
               {assignments.length > 0 && (
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".05em", textTransform: "uppercase", color: T.muted, marginBottom: 10 }}>Alocação de Cabanas</div>
@@ -535,7 +332,6 @@ function DetailDrawer({ wedding, onClose, showFinancial }: {
             </div>
           )}
 
-          {/* ── FORNECEDORES ── */}
           {tab === "fornecedores" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 4 }}>
@@ -554,8 +350,7 @@ function DetailDrawer({ wedding, onClose, showFinancial }: {
                   </div>
                 </div>
               </div>
-
-              {vendors.map((v, i) => {
+              {vendors.map(v => {
                 const VIcon = VENDOR_ICONS[v.category] ?? Star;
                 return (
                   <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", background: T.glass, border: `1px solid ${v.confirmed ? T.border : T.amberBorder}`, borderRadius: 14 }}>
@@ -567,23 +362,16 @@ function DetailDrawer({ wedding, onClose, showFinancial }: {
                       <div style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{v.name}</div>
                       <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>{v.contact}</div>
                     </div>
-                    <Pill
-                      label={v.confirmed ? "Confirmado" : "Pendente"}
-                      bg={v.confirmed ? T.greenBg : T.amberBg}
-                      color={v.confirmed ? T.green : T.amber}
-                      border={v.confirmed ? T.greenBorder : T.amberBorder}
-                    />
+                    <Pill label={v.confirmed ? "Confirmado" : "Pendente"} bg={v.confirmed ? T.greenBg : T.amberBg} color={v.confirmed ? T.green : T.amber} border={v.confirmed ? T.greenBorder : T.amberBorder} />
                   </div>
                 );
               })}
-
               <button style={{ width: "100%", padding: 12, borderRadius: 12, border: `1px dashed ${T.border2}`, background: "transparent", cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 700, color: T.muted, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                 <Plus size={14} /> Adicionar Fornecedor
               </button>
             </div>
           )}
 
-          {/* ── FINANCEIRO ── */}
           {tab === "financeiro" && showFinancial && (
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 14, padding: 18 }}>
@@ -607,12 +395,11 @@ function DetailDrawer({ wedding, onClose, showFinancial }: {
                   </span>
                 </div>
               </div>
-
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".05em", textTransform: "uppercase", color: T.muted, marginBottom: 4 }}>Parcelas</div>
               {[
-                { label: "1ª Parcela — Sinal (30%)",           value: deposit, paid: wedding.depositPaid ?? false },
-                { label: "2ª Parcela — Intermediária (35%)",   value: second,  paid: wedding.secondInstallmentPaid ?? false },
-                { label: "3ª Parcela — Saldo final (35%)",     value: balance, paid: paidPct === 100 },
+                { label: "1ª Parcela — Sinal (30%)",         value: deposit, paid: wedding.depositPaid ?? false },
+                { label: "2ª Parcela — Intermediária (35%)", value: second,  paid: wedding.secondInstallmentPaid ?? false },
+                { label: "3ª Parcela — Saldo final (35%)",   value: balance, paid: paidPct === 100 },
               ].map((inst, i) => (
                 <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: inst.paid ? T.greenBg : T.glass, border: `1px solid ${inst.paid ? T.greenBorder : T.border}`, borderRadius: 13 }}>
                   <div style={{ width: 32, height: 32, borderRadius: 9, flexShrink: 0, background: inst.paid ? T.greenBg : T.amberBg, border: `1px solid ${inst.paid ? T.greenBorder : T.amberBorder}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -647,8 +434,8 @@ function DetailDrawer({ wedding, onClose, showFinancial }: {
 
 // ─── Wedding card ─────────────────────────────────────────────────────────────
 
-function WeddingCard({ wedding, onOpen, view, showFinancial, highlightExclusive }: {
-  wedding: Wedding; onOpen: (w: Wedding) => void; view: ViewMode;
+function WeddingCard({ wedding, cabinsTotal, onOpen, view, showFinancial, highlightExclusive }: {
+  wedding: Wedding; cabinsTotal: number; onOpen: (w: Wedding) => void; view: ViewMode;
   showFinancial: boolean; highlightExclusive: boolean;
 }) {
   const sc = STATUS_CFG[wedding.status];
@@ -672,9 +459,9 @@ function WeddingCard({ wedding, onOpen, view, showFinancial, highlightExclusive 
     return (
       <div
         onClick={() => onOpen(wedding)}
-        style={{ display: "flex", alignItems: "center", gap: 16, padding: "14px 20px", background: T.bg2, border: `1px solid ${T.border}`, borderRadius: 16, cursor: "pointer", transition: "all .15s" }}
-        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = T.glass2; (e.currentTarget as HTMLElement).style.borderColor = T.border2; }}
-        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = T.bg2; (e.currentTarget as HTMLElement).style.borderColor = T.border; }}
+        style={{ display: "flex", alignItems: "center", gap: 16, padding: "14px 20px", background: T.card, border: `1px solid ${T.border}`, borderRadius: 16, cursor: "pointer", transition: "all .15s" }}
+        onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.background = T.glass2; el.style.borderColor = T.border2; }}
+        onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.background = T.card; el.style.borderColor = T.border; }}
       >
         <div style={{ display: "flex", flexShrink: 0 }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: T.gradSoft, border: "2px solid rgba(155,109,255,0.35)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, color: T.g1, zIndex: 2, position: "relative" }}>
@@ -704,19 +491,15 @@ function WeddingCard({ wedding, onOpen, view, showFinancial, highlightExclusive 
     );
   }
 
-  // Grid view
   return (
     <div
       onClick={() => onOpen(wedding)}
-      style={{ background: T.bg2, borderRadius: 20, overflow: "hidden", cursor: "pointer", border: `1px solid ${T.border}`, transition: "all .15s", display: "flex", flexDirection: "column" }}
+      style={{ background: T.card, borderRadius: 20, overflow: "hidden", cursor: "pointer", border: `1px solid ${T.border}`, transition: "all .15s", display: "flex", flexDirection: "column" }}
       onMouseEnter={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = T.border2; el.style.transform = "translateY(-2px)"; el.style.boxShadow = "0 12px 40px rgba(0,0,0,.4)"; }}
       onMouseLeave={e => { const el = e.currentTarget as HTMLElement; el.style.borderColor = T.border; el.style.transform = "none"; el.style.boxShadow = "none"; }}
     >
-      {/* Accent strip */}
       <div style={{ height: 4, background: `linear-gradient(90deg,${accentColor},${accentColor}88)`, opacity: .8 }} />
-
       <div style={{ padding: 20, flex: 1, display: "flex", flexDirection: "column", gap: 14 }}>
-        {/* Header */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
           <div style={{ display: "flex" }}>
             <div style={{ width: 42, height: 42, borderRadius: 13, background: T.gradSoft, border: "2px solid rgba(155,109,255,0.3)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900, color: T.g1, zIndex: 2, position: "relative" }}>
@@ -731,8 +514,6 @@ function WeddingCard({ wedding, onOpen, view, showFinancial, highlightExclusive 
             {wedding.exclusivity && highlightExclusive && <Pill label="Exclusivo" bg={T.violetBg} color={T.violet} border={T.violetBorder} />}
           </div>
         </div>
-
-        {/* Names */}
         <div>
           <div style={{ fontSize: 15, fontWeight: 900, lineHeight: 1.25, marginBottom: 4 }}>
             {wedding.bride.split(" ")[0]} <span style={{ color: T.rose }}>♥</span> {wedding.groom.split(" ")[0]}
@@ -741,8 +522,6 @@ function WeddingCard({ wedding, onOpen, view, showFinancial, highlightExclusive 
             {wedding.bride.split(" ").slice(1).join(" ")} &amp; {wedding.groom.split(" ").slice(1).join(" ")}
           </div>
         </div>
-
-        {/* Key info */}
         <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Heart size={12} color={accentColor} />
@@ -759,16 +538,14 @@ function WeddingCard({ wedding, onOpen, view, showFinancial, highlightExclusive 
             <Bed size={12} color={T.muted2} />
             <span style={{ fontSize: 12, color: T.muted, fontWeight: 600 }}>{fmt(wedding.checkin)} → {fmt(wedding.checkout)} · {nights}n</span>
           </div>
-          {wedding.exclusivity && (
+          {wedding.exclusivity && wedding.cabinsOccupied != null && (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <Shield size={12} color={T.violet} />
-              <span style={{ fontSize: 12, color: T.violet, fontWeight: 700 }}>{wedding.cabinsOccupied}/{CABINS_TOTAL} cabanas reservadas</span>
-              <span style={{ fontSize: 11, color: T.green, fontWeight: 700, marginLeft: "auto" }}>{CABINS_TOTAL - (wedding.cabinsOccupied ?? 0)} livres</span>
+              <span style={{ fontSize: 12, color: T.violet, fontWeight: 700 }}>{wedding.cabinsOccupied}/{cabinsTotal} cabanas reservadas</span>
+              <span style={{ fontSize: 11, color: T.green, fontWeight: 700, marginLeft: "auto" }}>{cabinsTotal - (wedding.cabinsOccupied ?? 0)} livres</span>
             </div>
           )}
         </div>
-
-        {/* Vendor progress */}
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
             <span style={{ fontSize: 10, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>Fornecedores</span>
@@ -778,8 +555,6 @@ function WeddingCard({ wedding, onOpen, view, showFinancial, highlightExclusive 
             <div style={{ height: "100%", borderRadius: 999, background: T.green, width: `${(vendorConfirmed / Math.max(1, vendors.length)) * 100}%` }} />
           </div>
         </div>
-
-        {/* Financial */}
         {showFinancial && (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTop: `1px solid ${T.border}` }}>
             <div>
@@ -800,17 +575,42 @@ function WeddingCard({ wedding, onOpen, view, showFinancial, highlightExclusive 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function CasamentosPage() {
-  const { user } = useAuth();
-  const { currentProperty } = useProperty();
+  const { currentProperty: property, loading: propLoading } = useProperty();
 
-  const [weddings] = useState<Wedding[]>(MOCK_WEDDINGS);
+  const [weddings, setWeddings] = useState<Wedding[]>([]);
+  const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Wedding | null>(null);
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
   const [filterExcl, setFilterExcl] = useState<FilterExcl>("all");
   const [search, setSearch] = useState("");
   const [view, setView] = useState<ViewMode>("grid");
-  const [showFinancial, setShowFinancial] = useState(true);
-  const [highlightExclusive, setHighlightExclusive] = useState(true);
+  const [showFinancial] = useState(true);
+  const [highlightExclusive] = useState(true);
+  const [cabinsTotal, setCabinsTotal] = useState(0);
+
+  const loadWeddings = useCallback(async () => {
+    if (!property) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/weddings?propertyId=${property.id}`);
+      if (!res.ok) throw new Error('Erro ao carregar casamentos');
+      setWeddings(await res.json());
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao carregar casamentos');
+    } finally {
+      setLoading(false);
+    }
+  }, [property]);
+
+  useEffect(() => {
+    loadWeddings();
+  }, [loadWeddings]);
+
+  useEffect(() => {
+    if (!property) return;
+    supabase.from('cabins').select('id', { count: 'exact', head: true }).eq('propertyId', property.id)
+      .then((res: { count: number | null }) => { if (res.count) setCabinsTotal(res.count); });
+  }, [property]);
 
   const filtered = useMemo(() => weddings
     .filter(w => {
@@ -833,24 +633,36 @@ export default function CasamentosPage() {
   const pendingVendors = weddings.flatMap(w => w.vendors ?? []).filter(v => !v.confirmed).length;
 
   const kpis = [
-    { label: "Próximos eventos",      value: upcoming.length,      sub: "confirmados ou em neg.", color: T.rose,  bg: T.roseBg,    border: T.roseBorder,   icon: Heart    },
-    { label: "Com exclusividade",     value: exclusive.length,     sub: "pousada reservada",      color: T.violet,bg: T.violetBg,  border: T.violetBorder, icon: Shield   },
-    { label: "Fornecedores pendentes",value: pendingVendors,       sub: "aguardando confirmação", color: T.amber, bg: T.amberBg,   border: T.amberBorder,  icon: Clock    },
-    { label: "Receita total",         value: fmtMoney(totalRevenue),sub: "todos os contratos",    color: T.g1,    bg: T.gradSoft,  border: "rgba(155,109,255,0.22)", icon: Sparkles },
+    { label: "Próximos eventos",       value: upcoming.length,       sub: "confirmados ou em neg.", color: T.rose,   bg: T.roseBg,   border: T.roseBorder,   icon: Heart    },
+    { label: "Com exclusividade",      value: exclusive.length,      sub: "pousada reservada",      color: T.violet, bg: T.violetBg, border: T.violetBorder, icon: Shield   },
+    { label: "Fornecedores pendentes", value: pendingVendors,        sub: "aguardando confirmação", color: T.amber,  bg: T.amberBg,  border: T.amberBorder,  icon: Clock    },
+    { label: "Receita total",          value: fmtMoney(totalRevenue),sub: "todos os contratos",     color: T.g1,     bg: T.gradSoft, border: "rgba(155,109,255,0.22)", icon: Sparkles },
   ];
 
+  if (propLoading) return (
+    <div className="flex items-center justify-center h-[60vh]">
+      <Loader2 className="w-6 h-6 animate-spin" style={{ color: T.g1 }} />
+    </div>
+  );
+
+  if (!property) return (
+    <div className="flex items-center justify-center h-[60vh]">
+      <p className="text-sm" style={{ color: T.muted }}>Selecione uma propriedade.</p>
+    </div>
+  );
+
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: T.bg }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
 
       <style>{`
-        @keyframes fadeIn { from { opacity:0; transform:translateY(5px) } to { opacity:1; transform:translateY(0) } }
-        @keyframes slideIn { from { opacity:0; transform:translateX(24px) } to { opacity:1; transform:translateX(0) } }
+        @keyframes wedding-fade-in { from { opacity:0; transform:translateY(5px) } to { opacity:1; transform:translateY(0) } }
+        @keyframes wedding-slide-in { from { opacity:0; transform:translateX(24px) } to { opacity:1; transform:translateX(0) } }
       `}</style>
 
       {/* KPIs */}
-      <div style={{ padding: "16px 24px 0", display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, flexShrink: 0 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 14 }}>
         {kpis.map((k, i) => (
-          <div key={i} style={{ background: T.bg2, border: `1px solid ${k.border}`, borderRadius: 14, padding: "14px 18px", display: "flex", alignItems: "center", gap: 12, animation: `fadeIn .3s ease ${i * .07}s both`, position: "relative", overflow: "hidden" }}>
+          <div key={i} style={{ background: T.card, border: `1px solid ${k.border}`, borderRadius: 14, padding: "14px 18px", display: "flex", alignItems: "center", gap: 12, animation: `wedding-fade-in .3s ease ${i * .07}s both`, position: "relative", overflow: "hidden" }}>
             <div style={{ position: "absolute", top: -20, right: -20, width: 70, height: 70, borderRadius: "50%", background: `radial-gradient(circle,${k.color}18 0%,transparent 70%)`, pointerEvents: "none" }} />
             <div style={{ width: 36, height: 36, borderRadius: 10, background: k.bg, border: `1px solid ${k.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <k.icon size={16} color={k.color} />
@@ -864,97 +676,74 @@ export default function CasamentosPage() {
       </div>
 
       {/* Toolbar */}
-      <div style={{ padding: "14px 24px 0", display: "flex", alignItems: "center", gap: 10, flexShrink: 0, flexWrap: "wrap" }}>
-        {/* Search */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, background: T.glass, border: `1px solid ${T.border2}`, borderRadius: 10, padding: "7px 12px", flex: 1, maxWidth: 280 }}>
           <Search size={13} color={T.muted} />
-          <input
-            value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Nome do casal…"
-            style={{ background: "none", border: "none", outline: "none", color: T.text, fontFamily: "inherit", fontSize: 13, flex: 1 }}
-          />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Nome do casal…" style={{ background: "none", border: "none", outline: "none", color: T.text, fontFamily: "inherit", fontSize: 13, flex: 1 }} />
         </div>
-
-        {/* Status filter */}
         <div style={{ display: "flex", gap: 5 }}>
           {([
-            { id: "all",       label: "Todos"       },
-            { id: "confirmed", label: "Confirmado"  },
-            { id: "tentative", label: "Em neg."     },
-            { id: "completed", label: "Realizado"   },
+            { id: "all",       label: "Todos"      },
+            { id: "confirmed", label: "Confirmado" },
+            { id: "tentative", label: "Em neg."    },
+            { id: "completed", label: "Realizado"  },
           ] as { id: FilterStatus; label: string }[]).map(f => (
-            <button key={f.id} onClick={() => setFilterStatus(f.id)} style={{
-              padding: "7px 12px", borderRadius: 9, border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700,
-              background: filterStatus === f.id ? T.gradSoft : T.glass,
-              color: filterStatus === f.id ? T.g1 : T.muted,
-              outline: filterStatus === f.id ? `1px solid rgba(155,109,255,.28)` : `1px solid ${T.border}`,
-              transition: "all .15s",
-            }}>{f.label}</button>
+            <button key={f.id} onClick={() => setFilterStatus(f.id)} style={{ padding: "7px 12px", borderRadius: 9, border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700, background: filterStatus === f.id ? "rgba(155,109,255,0.15)" : T.glass, color: filterStatus === f.id ? T.g1 : T.muted, outline: filterStatus === f.id ? `1px solid rgba(155,109,255,.28)` : `1px solid ${T.border}`, transition: "all .15s" }}>{f.label}</button>
           ))}
         </div>
-
-        {/* Exclusivity filter */}
         <div style={{ display: "flex", gap: 5 }}>
           {([
-            { id: "all",          label: "Todos"       },
-            { id: "exclusive",    label: "Exclusivo"   },
-            { id: "nonexclusive", label: "Sem exclus." },
+            { id: "all",          label: "Todos"      },
+            { id: "exclusive",    label: "Exclusivo"  },
+            { id: "nonexclusive", label: "Sem exclus."},
           ] as { id: FilterExcl; label: string }[]).map(f => (
-            <button key={f.id} onClick={() => setFilterExcl(f.id)} style={{
-              padding: "7px 12px", borderRadius: 9, border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700,
-              background: filterExcl === f.id ? T.violetBg : T.glass,
-              color: filterExcl === f.id ? T.violet : T.muted,
-              outline: filterExcl === f.id ? `1px solid ${T.violetBorder}` : `1px solid ${T.border}`,
-              transition: "all .15s",
-            }}>{f.label}</button>
+            <button key={f.id} onClick={() => setFilterExcl(f.id)} style={{ padding: "7px 12px", borderRadius: 9, border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700, background: filterExcl === f.id ? T.violetBg : T.glass, color: filterExcl === f.id ? T.violet : T.muted, outline: filterExcl === f.id ? `1px solid ${T.violetBorder}` : `1px solid ${T.border}`, transition: "all .15s" }}>{f.label}</button>
           ))}
         </div>
-
-        {/* View toggle */}
         <div style={{ display: "flex", gap: 2, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 9, padding: 3, marginLeft: "auto" }}>
-          {[
-            { id: "grid" as ViewMode, Icon: Grid3X3 },
-            { id: "list" as ViewMode, Icon: List },
-          ].map(({ id, Icon }) => (
-            <button key={id} onClick={() => setView(id)} style={{ width: 30, height: 28, borderRadius: 7, border: "none", cursor: "pointer", background: view === id ? T.bg2 : "transparent", color: view === id ? T.text : T.muted, display: "flex", alignItems: "center", justifyContent: "center", transition: "all .15s" }}>
+          {([{ id: "grid" as ViewMode, Icon: Grid3X3 }, { id: "list" as ViewMode, Icon: List }]).map(({ id, Icon }) => (
+            <button key={id} onClick={() => setView(id)} style={{ width: 30, height: 28, borderRadius: 7, border: "none", cursor: "pointer", background: view === id ? T.card : "transparent", color: view === id ? T.text : T.muted, display: "flex", alignItems: "center", justifyContent: "center", transition: "all .15s" }}>
               <Icon size={14} />
             </button>
           ))}
         </div>
-
-        {/* New button */}
         <button style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 16px", borderRadius: 10, border: "none", background: T.grad, cursor: "pointer", color: "#fff", fontSize: 13, fontWeight: 800, fontFamily: "inherit", boxShadow: "0 4px 14px rgba(155,109,255,.3)" }}>
           <Plus size={14} color="#fff" /> Novo Casamento
         </button>
       </div>
 
       {/* Cards */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "14px 24px 24px", scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.08) transparent" }}>
-        {filtered.length === 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "50%", gap: 12, color: T.muted }}>
+      <div>
+        {loading ? (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "64px 0", gap: 12, color: T.muted }}>
+            <Loader2 size={20} className="animate-spin" style={{ color: T.g1 }} />
+            <span style={{ fontSize: 13, fontWeight: 600 }}>Carregando casamentos…</span>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "64px 0", gap: 12, color: T.muted }}>
             <Heart size={32} color={T.muted2} />
-            <div style={{ fontSize: 14, fontWeight: 700 }}>Nenhum casamento encontrado</div>
+            <div style={{ fontSize: 14, fontWeight: 700 }}>{weddings.length === 0 ? "Nenhum casamento cadastrado" : "Nenhum casamento encontrado"}</div>
           </div>
         ) : view === "grid" ? (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(320px,1fr))", gap: 14 }}>
             {filtered.map((w, i) => (
-              <div key={w.id} style={{ animation: `fadeIn .3s ease ${i * .06}s both` }}>
-                <WeddingCard wedding={w} onOpen={setSelected} view="grid" showFinancial={showFinancial} highlightExclusive={highlightExclusive} />
+              <div key={w.id} style={{ animation: `wedding-fade-in .3s ease ${i * .06}s both` }}>
+                <WeddingCard wedding={w} cabinsTotal={cabinsTotal} onOpen={setSelected} view="grid" showFinancial={showFinancial} highlightExclusive={highlightExclusive} />
               </div>
             ))}
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 900, margin: "0 auto" }}>
             {filtered.map((w, i) => (
-              <div key={w.id} style={{ animation: `fadeIn .2s ease ${i * .05}s both` }}>
-                <WeddingCard wedding={w} onOpen={setSelected} view="list" showFinancial={showFinancial} highlightExclusive={highlightExclusive} />
+              <div key={w.id} style={{ animation: `wedding-fade-in .2s ease ${i * .05}s both` }}>
+                <WeddingCard wedding={w} cabinsTotal={cabinsTotal} onOpen={setSelected} view="list" showFinancial={showFinancial} highlightExclusive={highlightExclusive} />
               </div>
             ))}
           </div>
         )}
       </div>
 
-      <DetailDrawer wedding={selected} onClose={() => setSelected(null)} showFinancial={showFinancial} />
+      <DetailDrawer wedding={selected} cabinsTotal={cabinsTotal} onClose={() => setSelected(null)} showFinancial={showFinancial} />
     </div>
   );
 }

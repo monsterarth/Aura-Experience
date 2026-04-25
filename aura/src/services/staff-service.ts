@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { Staff, StaffSchedule, StaffScheduleOverride, UserRole, ScheduleType, ScheduleConfig } from "@/types/aura";
+import { Staff, StaffSchedule, StaffScheduleOverride, UserRole, ScheduleType, ScheduleConfig, ScheduleCheckpoint } from "@/types/aura";
 
 export const StaffService = {
   async createStaffMember(params: {
@@ -158,5 +158,37 @@ export const StaffService = {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Erro ao salvar configuração de escala.');
+  },
+
+  // --- CHECKPOINTS DE CICLO ---
+
+  async getStaffCheckpoints(staffId: string): Promise<ScheduleCheckpoint[]> {
+    const response = await fetch(`/api/admin/staff/schedule-checkpoints?staffId=${staffId}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Erro ao carregar checkpoints.');
+    return data;
+  },
+
+  async getPropertyCheckpoints(propertyId: string): Promise<ScheduleCheckpoint[]> {
+    const response = await fetch(`/api/admin/staff/schedule-checkpoints?propertyId=${propertyId}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Erro ao carregar checkpoints.');
+    return data;
+  },
+
+  async upsertScheduleCheckpoint(payload: Omit<ScheduleCheckpoint, 'id' | 'createdAt'>): Promise<void> {
+    const response = await fetch('/api/admin/staff/schedule-checkpoints', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Erro ao salvar checkpoint.');
+  },
+
+  async deleteScheduleCheckpoint(id: string): Promise<void> {
+    const response = await fetch(`/api/admin/staff/schedule-checkpoints?id=${id}`, { method: 'DELETE' });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Erro ao remover checkpoint.');
   },
 };
