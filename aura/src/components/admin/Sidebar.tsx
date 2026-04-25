@@ -15,10 +15,10 @@ import {
   MessageSquare, Settings, Globe, Menu, X,
   Star, ClipboardList, Bot, FileText,
   Loader2, ChevronLeft, ChevronRight, Coffee,
-  CalendarDays, Package, UserSearch,
+  CalendarDays, UserSearch,
   ClipboardCheck, Map, Gift, Flag, Phone,
   LayoutGrid, RefrigeratorIcon, LayoutTemplate,
-  UserCircle2, Smartphone,
+  UserCircle2, Smartphone, Heart,
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import Image from "next/image";
@@ -148,7 +148,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: "calendario", label: "Calendário Geral", icon: CalendarDays, href: "/admin/calendario",              roles: ["super_admin","admin","reception","hr"] },
       { id: "agenda",     label: "Agendamentos",      icon: ClipboardCheck, href: "/admin/core/structures/bookings", roles: ["super_admin","admin","reception"] },
-      { id: "eventos",    label: "Eventos",            icon: Flag,           href: "/admin/eventos",               roles: ["super_admin","admin","reception"] },
+      { id: "eventos",     label: "Eventos",     icon: Flag,  href: "/admin/eventos",     roles: ["super_admin","admin","reception"] },
+      { id: "casamentos",  label: "Casamentos",  icon: Heart, href: "/admin/casamentos", roles: ["super_admin","admin","reception"] },
     ],
   },
   {
@@ -198,7 +199,6 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "gastro_main", label: "Gastronomia",      icon: Coffee,        href: "/admin/food-and-beverage/menu",           roles: ["super_admin","admin","kitchen"] },
       { id: "cafe",        label: "Café Salão (KDS)", icon: Phone,         href: "/admin/cafe-salao",                       roles: ["super_admin","admin","kitchen"] },
       { id: "equipe",      label: "Equipe",            icon: Users,         href: "/admin/staff",                            roles: ["super_admin","admin","hr"] },
-      { id: "catalogo",    label: "Catálogo Concierge",icon: Package,       href: "/admin/core/concierge",                   roles: ["super_admin","admin"] },
       { id: "nps",         label: "Pesquisas (NPS)",   icon: ClipboardList, href: "/admin/surveys",                          roles: ["super_admin","admin"] },
       { id: "automacoes",  label: "Automações",        icon: Bot,           href: "/admin/comunicacao/automations/settings", roles: ["super_admin","admin"] },
       { id: "config",      label: "Configurações",     icon: Settings,      href: "/admin/core/properties",                  roles: ["super_admin","admin"], requireProperty: true },

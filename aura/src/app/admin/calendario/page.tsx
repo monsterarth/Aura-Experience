@@ -8,7 +8,7 @@ import { Event } from "@/types/aura";
 import { supabase } from "@/lib/supabase";
 import { format, addMonths, subMonths, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Loader2, ChevronLeft, ChevronRight, X, Calendar, Ticket, Home, CalendarDays, LogIn, LogOut as LogOutIcon } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, X, Ticket, CalendarDays, LogIn, LogOut as LogOutIcon, Gift } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ==========================================
@@ -33,12 +33,23 @@ interface StructureBookingEntry {
   status: string;
 }
 
-// Day summary: what to show in the calendar cell for a given date
+interface BirthdayEntry {
+  guestName: string;
+  age?: number;
+}
+
+interface BirthdayRecord {
+  dateStr: string;
+  guestName: string;
+  age?: number;
+}
+
 interface DaySummary {
   checkIns: StayEntry[];
   checkOuts: StayEntry[];
   events: Event[];
   structureBookings: StructureBookingEntry[];
+  birthdays: BirthdayEntry[];
 }
 
 const WEEK_DAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
@@ -82,6 +93,7 @@ export default function CalendarioPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [stays, setStays] = useState<StayEntry[]>([]);
   const [structureBookings, setStructureBookings] = useState<StructureBookingEntry[]>([]);
+  const [birthdayRecords, setBirthdayRecords] = useState<BirthdayRecord[]>([]);
 
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
@@ -91,13 +103,13 @@ export default function CalendarioPage() {
     try {
       const { start, end, year, month } = getMonthBounds(currentMonth);
 
-      // Load in parallel
+      // Step 1: Load raw data in parallel (no joins — RLS blocks them from browser)
       const [eventsData, staysResult, structuresResult] = await Promise.all([
         EventService.getEventsForCalendar(property.id, year, month),
 
         supabase
           .from("stays")
-          .select("id, checkIn, checkOut, guestName:guests(fullName), cabinName:cabins(name)")
+          .select("id, checkIn, checkOut, guestId, cabinId")
           .eq("propertyId", property.id)
           .lte("checkIn", end)
           .gte("checkOut", start)
@@ -105,7 +117,7 @@ export default function CalendarioPage() {
 
         supabase
           .from("structure_bookings")
-          .select("id, date, startTime, endTime, status, structureName:structures(name), guestName:guests(fullName)")
+          .select("id, date, startTime, endTime, status, structureId, guestId, guestName")
           .eq("propertyId", property.id)
           .gte("date", start)
           .lte("date", end)
@@ -114,27 +126,103 @@ export default function CalendarioPage() {
 
       setEvents(eventsData);
 
-      // Map stays
-      const staysMapped: StayEntry[] = (staysResult.data || []).map((s: any) => ({
+      const rawStays: any[] = staysResult.data || [];
+      const rawSbs: any[] = structuresResult.data || [];
+
+      // Step 2: Collect IDs for bulk resolution
+      const stayGuestIds = rawStays.map((s) => s.guestId).filter(Boolean) as string[];
+      const sbGuestIds = rawSbs.map((b) => b.guestId).filter(Boolean) as string[];
+      const allGuestIds = Array.from(new Set(stayGuestIds.concat(sbGuestIds)));
+      const allCabinIds = Array.from(new Set(rawStays.map((s: any) => s.cabinId).filter(Boolean))) as string[];
+      const allStructureIds = Array.from(new Set(rawSbs.map((b: any) => b.structureId).filter(Boolean))) as string[];
+
+      // Step 3: Resolve names + birthday data in parallel
+      const [guestNamesMap, guestBdayResult, cabinsResult, structuresNameResult, staffBdayResult] = await Promise.all([
+        allGuestIds.length > 0
+          ? fetch("/api/admin/guests/names", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ids: allGuestIds }),
+            }).then((r) => r.json() as Promise<Record<string, string>>)
+          : Promise.resolve({} as Record<string, string>),
+
+        allGuestIds.length > 0
+          ? supabase.from("guests").select("id, fullName, birthDate").in("id", allGuestIds)
+          : Promise.resolve({ data: [] }),
+
+        allCabinIds.length > 0
+          ? supabase.from("cabins").select("id, name").in("id", allCabinIds)
+          : Promise.resolve({ data: [] }),
+
+        allStructureIds.length > 0
+          ? supabase.from("structures").select("id, name").in("id", allStructureIds)
+          : Promise.resolve({ data: [] }),
+
+        supabase
+          .from("staff")
+          .select("id, fullName, birthDate")
+          .eq("propertyId", property.id)
+          .eq("active", true)
+          .not("birthDate", "is", null),
+      ]);
+
+      // Build lookup maps
+      const cabinNameMap: Record<string, string> = {};
+      for (const c of (cabinsResult.data || []) as any[]) cabinNameMap[c.id] = c.name;
+
+      const structureNameMap: Record<string, string> = {};
+      for (const s of (structuresNameResult.data || []) as any[]) structureNameMap[s.id] = s.name;
+
+      // Step 4: Map stays
+      const staysMapped: StayEntry[] = rawStays.map((s) => ({
         id: s.id,
         checkIn: toLocalDateStr(s.checkIn),
         checkOut: toLocalDateStr(s.checkOut),
-        guestName: s.guestName?.fullName,
-        cabinName: s.cabinName?.name,
+        guestName: guestNamesMap[s.guestId] || "Hóspede",
+        cabinName: cabinNameMap[s.cabinId] || undefined,
       }));
       setStays(staysMapped);
 
-      // Map structure bookings
-      const sbMapped: StructureBookingEntry[] = (structuresResult.data || []).map((b: any) => ({
+      // Step 5: Map structure bookings
+      const sbMapped: StructureBookingEntry[] = rawSbs.map((b) => ({
         id: b.id,
         date: b.date,
         startTime: b.startTime,
         endTime: b.endTime,
         status: b.status,
-        structureName: b.structureName?.name,
-        guestName: b.guestName?.fullName,
+        structureName: structureNameMap[b.structureId] || "Estrutura",
+        guestName: guestNamesMap[b.guestId] ?? b.guestName ?? undefined,
       }));
       setStructureBookings(sbMapped);
+
+      // Step 6: Compute birthday records for current month (guests + staff)
+      const currentYear = currentMonth.getFullYear();
+      const currentMonthNum = currentMonth.getMonth() + 1;
+      const birthdayList: BirthdayRecord[] = [];
+
+      const addBirthdays = (people: any[], nameOverride?: (p: any) => string) => {
+        for (const p of people) {
+          if (!p.birthDate) continue;
+          const parts = p.birthDate.split("-");
+          if (parts.length < 3) continue;
+          const bMonth = parseInt(parts[1], 10);
+          const bDay = parseInt(parts[2], 10);
+          const bYear = parseInt(parts[0], 10);
+          if (bMonth !== currentMonthNum) continue;
+          const dateStr = `${currentYear}-${String(bMonth).padStart(2, "0")}-${String(bDay).padStart(2, "0")}`;
+          const age = currentYear - bYear;
+          birthdayList.push({
+            dateStr,
+            guestName: nameOverride ? nameOverride(p) : (guestNamesMap[p.id] || p.fullName || "Hóspede"),
+            age: age > 0 && age < 150 ? age : undefined,
+          });
+        }
+      };
+
+      addBirthdays((guestBdayResult.data || []) as any[]);
+      addBirthdays((staffBdayResult.data || []) as any[], (p) => p.fullName || "Funcionário");
+
+      setBirthdayRecords(birthdayList);
 
     } catch (err) {
       console.error("Erro ao carregar calendário:", err);
@@ -165,9 +253,10 @@ export default function CalendarioPage() {
 
   const summaryByDate = useMemo((): Record<string, DaySummary> => {
     const map: Record<string, DaySummary> = {};
+    const { start: boundsStart, end: boundsEnd } = getMonthBounds(currentMonth);
 
     const ensure = (d: string) => {
-      if (!map[d]) map[d] = { checkIns: [], checkOuts: [], events: [], structureBookings: [] };
+      if (!map[d]) map[d] = { checkIns: [], checkOuts: [], events: [], structureBookings: [], birthdays: [] };
     };
 
     stays.forEach((s) => {
@@ -177,9 +266,19 @@ export default function CalendarioPage() {
       map[s.checkOut].checkOuts.push(s);
     });
 
+    // Spread multi-day events across all days in range
     events.forEach((e) => {
-      ensure(e.startDate);
-      map[e.startDate].events.push(e);
+      const end = e.endDate || e.startDate;
+      let cur = new Date(e.startDate + "T00:00:00");
+      const endD = new Date(end + "T00:00:00");
+      while (cur <= endD) {
+        const d = cur.toISOString().split("T")[0];
+        if (d >= boundsStart && d <= boundsEnd) {
+          ensure(d);
+          map[d].events.push(e);
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
     });
 
     structureBookings.forEach((b) => {
@@ -187,17 +286,31 @@ export default function CalendarioPage() {
       map[b.date].structureBookings.push(b);
     });
 
+    birthdayRecords.forEach((b) => {
+      ensure(b.dateStr);
+      map[b.dateStr].birthdays.push({ guestName: b.guestName, age: b.age });
+    });
+
     return map;
-  }, [stays, events, structureBookings]);
+  }, [stays, events, structureBookings, birthdayRecords, currentMonth]);
 
   const selectedDaySummary = useMemo((): DaySummary | null => {
     if (!selectedDay) return null;
-    return summaryByDate[selectedDay] || { checkIns: [], checkOuts: [], events: [], structureBookings: [] };
+    return summaryByDate[selectedDay] || { checkIns: [], checkOuts: [], events: [], structureBookings: [], birthdays: [] };
   }, [selectedDay, summaryByDate]);
 
   const totalSelectedItems = selectedDaySummary
-    ? selectedDaySummary.checkIns.length + selectedDaySummary.checkOuts.length + selectedDaySummary.events.length + selectedDaySummary.structureBookings.length
+    ? selectedDaySummary.checkIns.length +
+      selectedDaySummary.checkOuts.length +
+      selectedDaySummary.events.length +
+      selectedDaySummary.structureBookings.length +
+      selectedDaySummary.birthdays.length
     : 0;
+
+  const birthdayDaysCount = useMemo(
+    () => new Set(birthdayRecords.map((b) => b.dateStr)).size,
+    [birthdayRecords]
+  );
 
   if (!property) {
     return (
@@ -230,6 +343,7 @@ export default function CalendarioPage() {
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-primary" /> Evento local</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-400" /> Evento externo</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-400" /> Estrutura</div>
+        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-400" /> Aniversário</div>
       </div>
 
       {loading ? (
@@ -271,7 +385,13 @@ export default function CalendarioPage() {
                   const summary = summaryByDate[dateStr];
                   const isToday = dateStr === format(new Date(), "yyyy-MM-dd");
                   const isSelected = selectedDay === dateStr;
-                  const hasItems = summary && (summary.checkIns.length + summary.checkOuts.length + summary.events.length + summary.structureBookings.length) > 0;
+                  const hasItems = summary && (
+                    summary.checkIns.length +
+                    summary.checkOuts.length +
+                    summary.events.length +
+                    summary.structureBookings.length +
+                    summary.birthdays.length
+                  ) > 0;
 
                   return (
                     <button
@@ -289,21 +409,20 @@ export default function CalendarioPage() {
 
                       {summary && (
                         <div className="flex flex-wrap gap-0.5">
-                          {/* Check-ins */}
                           {summary.checkIns.slice(0, 2).map((_, i) => (
                             <span key={`ci-${i}`} className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
                           ))}
-                          {/* Check-outs */}
                           {summary.checkOuts.slice(0, 2).map((_, i) => (
                             <span key={`co-${i}`} className="w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" />
                           ))}
-                          {/* Events */}
                           {summary.events.slice(0, 3).map((e, i) => (
                             <span key={`ev-${i}`} className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", e.type === "local" ? "bg-primary" : "bg-purple-400")} />
                           ))}
-                          {/* Structure bookings */}
                           {summary.structureBookings.slice(0, 2).map((_, i) => (
                             <span key={`sb-${i}`} className="w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0" />
+                          ))}
+                          {summary.birthdays.slice(0, 2).map((_, i) => (
+                            <span key={`bd-${i}`} className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
                           ))}
                         </div>
                       )}
@@ -407,6 +526,24 @@ export default function CalendarioPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* Birthdays */}
+                  {selectedDaySummary.birthdays.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Gift size={12} className="text-amber-400" />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">Aniversários ({selectedDaySummary.birthdays.length})</span>
+                      </div>
+                      <div className="space-y-2">
+                        {selectedDaySummary.birthdays.map((b, i) => (
+                          <div key={i} className="p-2.5 bg-amber-500/5 border border-amber-500/10 rounded-xl">
+                            <p className="text-sm font-bold">{b.guestName}</p>
+                            {b.age !== undefined && <p className="text-[10px] text-muted-foreground">{b.age} anos</p>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -432,11 +569,10 @@ export default function CalendarioPage() {
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">Estruturas</p>
               </div>
               <div className="bg-card border border-white/5 rounded-xl p-3 text-center">
-                <p className="text-2xl font-black text-muted-foreground">—</p>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">Privados*</p>
+                <p className="text-2xl font-black text-amber-400">{birthdayDaysCount}</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">Aniversários</p>
               </div>
             </div>
-            <p className="text-[9px] text-muted-foreground/40 text-center mt-1">* Eventos privados disponíveis em breve</p>
           </div>
         </div>
       )}

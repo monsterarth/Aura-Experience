@@ -690,6 +690,8 @@ export interface Staff {
   messengerName?: string;
   messengerColor?: string;
   createdAt: Timestamp;
+  scheduleType?: ScheduleType;
+  scheduleConfig?: ScheduleConfig | null;
 }
 
 // --- ESCALAS DE TRABALHO ---
@@ -715,6 +717,15 @@ export interface StaffScheduleOverride {
   reason?: string;        // ex: "Folga", "Troca de turno"
   createdBy?: string;
   createdAt: Timestamp;
+}
+
+export type ScheduleType = '5x2' | '12x36' | '6x1' | 'custom';
+
+export interface ScheduleConfig {
+  scheduleType: ScheduleType;
+  startTime: string;           // HH:mm
+  endTime: string;             // HH:mm
+  cycleReferenceDate?: string; // YYYY-MM-DD — obrigatório para 12x36 e 6x1
 }
 
 // ==========================================
@@ -1028,4 +1039,75 @@ export interface Event {
 export interface ImpersonatingState {
   staff: Staff;
   originalUserData: Staff;
+}
+
+// ==========================================
+// MÓDULO DE CASAMENTOS
+// ==========================================
+
+export type WeddingStatus = 'tentative' | 'confirmed' | 'completed' | 'cancelled';
+
+export interface WeddingVendor {
+  id: string;
+  weddingId: string;
+  category: string;
+  name: string;
+  contact?: string;
+  confirmed: boolean;
+  notes?: string;
+  createdAt: Timestamp;
+}
+
+export interface WeddingCabinAssignment {
+  id: string;
+  weddingId: string;
+  cabinId?: string;
+  cabinName: string;
+  guestDescription: string;
+}
+
+export interface WeddingInstallment {
+  id: string;
+  weddingId: string;
+  label: string;
+  value: number;
+  paid: boolean;
+  dueDate?: string;
+}
+
+export interface Wedding {
+  id: string;
+  propertyId: string;
+  // Couple
+  bride: string;
+  brideShort?: string;
+  groom: string;
+  groomShort?: string;
+  coupleWebsite?: string;
+  // Event
+  weddingDate: string;       // YYYY-MM-DD
+  ceremonyDetails?: string;  // e.g. "18h00 · Jardim das Oliveiras"
+  receptionDetails?: string;
+  guestCount: number;
+  coordinator?: string;
+  status: WeddingStatus;
+  // Stay
+  checkin: string;
+  checkout: string;
+  // Exclusivity
+  exclusivity: boolean;
+  cabinsOccupied?: number;
+  // Financial
+  contractTotal: number;
+  depositValue?: number;
+  depositPaid?: boolean;
+  secondInstallmentValue?: number;
+  secondInstallmentPaid?: boolean;
+  // Notes
+  notes?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  // Joined / virtual
+  vendors?: WeddingVendor[];
+  cabinAssignments?: WeddingCabinAssignment[];
 }

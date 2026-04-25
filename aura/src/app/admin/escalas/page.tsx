@@ -5,9 +5,14 @@ import { RoleGuard } from "@/components/auth/RoleGuard";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { StaffService } from "@/services/staff-service";
-import { Staff, StaffSchedule, StaffScheduleOverride } from "@/types/aura";
 import {
-  ChevronLeft, ChevronRight, X, Save, Loader2, ClipboardCheck, AlertCircle
+  Staff, StaffSchedule, StaffScheduleOverride,
+  ScheduleType, ScheduleConfig,
+} from "@/types/aura";
+import { resolveEffectiveDaySchedule, calculateScheduleForDate } from "@/lib/schedule-calculator";
+import {
+  ChevronLeft, ChevronRight, X, Save, Loader2,
+  ClipboardCheck, AlertCircle, Settings,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -27,6 +32,13 @@ const ROLE_LABELS: Record<string, string> = {
   marketing: "Marketing",
   hr: "RH",
   admin: "Administrador",
+};
+
+const SCHEDULE_TYPE_LABELS: Record<ScheduleType, string> = {
+  '5x2': '5×2',
+  '12x36': '12×36',
+  '6x1': '6×1',
+  'custom': 'Custom',
 };
 
 type StaffWithSchedules = Staff & { schedules: StaffSchedule[] };
@@ -50,20 +62,32 @@ function toYMD(date: Date): string {
   return date.toISOString().split('T')[0];
 }
 
+function toLocalYMD(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function formatDate(date: Date): string {
   return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
+// --- Modal de edição de dia (override) ---
 interface CellModalState {
   staffId: string;
   staffName: string;
   propertyId: string;
-  // null = escala base; string = data específica (override)
   date: string | null;
   dayOfWeek: number | null;
-  // Valores existentes
   existingSchedule?: StaffSchedule | null;
   existingOverride?: StaffScheduleOverride | null;
+}
+
+// --- Modal de configuração de tipo de escala ---
+interface ConfigModalState {
+  staff: StaffWithSchedules;
+  propertyId: string;
 }
 
 export default function EscalasPage() {
@@ -75,12 +99,22 @@ export default function EscalasPage() {
   const [overrides, setOverrides] = useState<StaffScheduleOverride[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterRole, setFilterRole] = useState<string>("all");
+
+  // Override/cell modal
   const [modal, setModal] = useState<CellModalState | null>(null);
   const [modalStart, setModalStart] = useState("");
   const [modalEnd, setModalEnd] = useState("");
   const [modalReason, setModalReason] = useState("");
   const [modalIsFolga, setModalIsFolga] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Config modal
+  const [configModal, setConfigModal] = useState<ConfigModalState | null>(null);
+  const [configType, setConfigType] = useState<ScheduleType>('custom');
+  const [configStart, setConfigStart] = useState("08:00");
+  const [configEnd, setConfigEnd] = useState("17:00");
+  const [configRefDate, setConfigRefDate] = useState("");
+  const [configSaving, setConfigSaving] = useState(false);
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const from = toYMD(weekStart);
@@ -110,14 +144,52 @@ export default function EscalasPage() {
     ? staffList
     : staffList.filter(s => s.role === filterRole);
 
-  const getScheduleForDay = (staff: StaffWithSchedules, dayOfWeek: number): StaffSchedule | undefined =>
-    staff.schedules.find(s => s.dayOfWeek === dayOfWeek && s.active);
-
   const getOverrideForDay = (staffId: string, date: Date): StaffScheduleOverride | undefined =>
-    overrides.find(o => o.staffId === staffId && o.date === toYMD(date));
+    overrides.find(o => o.staffId === staffId && o.date === toLocalYMD(date));
+
+  // --- Handlers do modal de célula ---
+
+  const openOverrideModal = (staff: StaffWithSchedules, date: Date) => {
+    const dayOfWeek = date.getDay();
+    const existing = getOverrideForDay(staff.id, date);
+    const baseSchedule = staff.schedules.find(s => s.dayOfWeek === dayOfWeek && s.active);
+
+    // Para tipos calculados, usa o resultado do cálculo como referência de horário padrão
+    let defaultStart = "07:00";
+    let defaultEnd = "15:00";
+    if (staff.scheduleConfig) {
+      defaultStart = staff.scheduleConfig.startTime;
+      defaultEnd = staff.scheduleConfig.endTime;
+    } else if (baseSchedule) {
+      defaultStart = baseSchedule.startTime.slice(0, 5);
+      defaultEnd = baseSchedule.endTime.slice(0, 5);
+    }
+
+    setModal({
+      staffId: staff.id,
+      staffName: staff.fullName,
+      propertyId: property?.id || userData?.propertyId || "",
+      date: toLocalYMD(date),
+      dayOfWeek,
+      existingSchedule: baseSchedule,
+      existingOverride: existing,
+    });
+
+    if (existing) {
+      setModalIsFolga(!existing.startTime);
+      setModalStart(existing.startTime?.slice(0, 5) || defaultStart);
+      setModalEnd(existing.endTime?.slice(0, 5) || defaultEnd);
+      setModalReason(existing.reason || "");
+    } else {
+      setModalIsFolga(false);
+      setModalStart(defaultStart);
+      setModalEnd(defaultEnd);
+      setModalReason("");
+    }
+  };
 
   const openBaseModal = (staff: StaffWithSchedules, dayOfWeek: number) => {
-    const existing = getScheduleForDay(staff, dayOfWeek);
+    const existing = staff.schedules.find(s => s.dayOfWeek === dayOfWeek && s.active);
     setModal({
       staffId: staff.id,
       staffName: staff.fullName,
@@ -129,33 +201,7 @@ export default function EscalasPage() {
     setModalStart(existing?.startTime?.slice(0, 5) || "07:00");
     setModalEnd(existing?.endTime?.slice(0, 5) || "15:00");
     setModalReason("");
-    setModalIsFolga(!existing?.active && !!existing);
-  };
-
-  const openOverrideModal = (staff: StaffWithSchedules, date: Date) => {
-    const dayOfWeek = date.getDay();
-    const baseSchedule = getScheduleForDay(staff, dayOfWeek);
-    const existing = getOverrideForDay(staff.id, date);
-    setModal({
-      staffId: staff.id,
-      staffName: staff.fullName,
-      propertyId: property?.id || userData?.propertyId || "",
-      date: toYMD(date),
-      dayOfWeek,
-      existingSchedule: baseSchedule,
-      existingOverride: existing,
-    });
-    if (existing) {
-      setModalIsFolga(!existing.startTime);
-      setModalStart(existing.startTime?.slice(0, 5) || baseSchedule?.startTime?.slice(0, 5) || "07:00");
-      setModalEnd(existing.endTime?.slice(0, 5) || baseSchedule?.endTime?.slice(0, 5) || "15:00");
-      setModalReason(existing.reason || "");
-    } else {
-      setModalIsFolga(false);
-      setModalStart(baseSchedule?.startTime?.slice(0, 5) || "07:00");
-      setModalEnd(baseSchedule?.endTime?.slice(0, 5) || "15:00");
-      setModalReason("");
-    }
+    setModalIsFolga(false);
   };
 
   const handleSave = async () => {
@@ -163,7 +209,6 @@ export default function EscalasPage() {
     setSaving(true);
     try {
       if (modal.date === null && modal.dayOfWeek !== null) {
-        // Salvar escala base
         await StaffService.upsertStaffSchedule({
           staffId: modal.staffId,
           propertyId: modal.propertyId,
@@ -174,7 +219,6 @@ export default function EscalasPage() {
         });
         toast.success("Escala base salva.");
       } else if (modal.date) {
-        // Salvar override
         await StaffService.upsertScheduleOverride({
           staffId: modal.staffId,
           propertyId: modal.propertyId,
@@ -224,6 +268,91 @@ export default function EscalasPage() {
     }
   };
 
+  // --- Handlers do modal de config ---
+
+  const openConfigModal = (staff: StaffWithSchedules) => {
+    setConfigModal({
+      staff,
+      propertyId: property?.id || userData?.propertyId || "",
+    });
+    setConfigType(staff.scheduleType || 'custom');
+    setConfigStart(staff.scheduleConfig?.startTime || "08:00");
+    setConfigEnd(staff.scheduleConfig?.endTime || "17:00");
+    setConfigRefDate(staff.scheduleConfig?.cycleReferenceDate || "");
+  };
+
+  const handleSaveConfig = async () => {
+    if (!configModal) return;
+    if ((configType === '12x36' || configType === '6x1') && !configRefDate) {
+      toast.error("Informe a data de referência para este tipo de escala.");
+      return;
+    }
+    setConfigSaving(true);
+    try {
+      const scheduleConfig: ScheduleConfig = {
+        scheduleType: configType,
+        startTime: configStart,
+        endTime: configEnd,
+        ...(configRefDate ? { cycleReferenceDate: configRefDate } : {}),
+      };
+      await StaffService.updateScheduleConfig(configModal.staff.id, {
+        scheduleType: configType,
+        scheduleConfig,
+      });
+      toast.success("Tipo de escala salvo.");
+      setConfigModal(null);
+      load();
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao salvar configuração.");
+    } finally {
+      setConfigSaving(false);
+    }
+  };
+
+  // Inverte o ciclo 12x36: cria um override de folga no próximo dia de trabalho calculado
+  const handleInvertCycle = async () => {
+    if (!configModal) return;
+    const staff = configModal.staff;
+    if (!staff.scheduleConfig?.cycleReferenceDate) return;
+
+    // Encontra o próximo dia de trabalho calculado (a partir de amanhã)
+    let targetDate: string | null = null;
+    const tomorrow = addDays(new Date(), 1);
+    for (let i = 0; i < 14; i++) {
+      const d = addDays(tomorrow, i);
+      const localD = new Date(toLocalYMD(d) + 'T00:00:00');
+      const result = calculateScheduleForDate(staff, localD);
+      if (result.isWork) {
+        targetDate = toLocalYMD(d);
+        break;
+      }
+    }
+
+    if (!targetDate) {
+      toast.error("Não foi possível encontrar o próximo dia de trabalho.");
+      return;
+    }
+
+    setConfigSaving(true);
+    try {
+      await StaffService.upsertScheduleOverride({
+        staffId: staff.id,
+        propertyId: configModal.propertyId,
+        date: targetDate,
+        startTime: null,
+        endTime: null,
+        reason: "Rodízio — ciclo invertido",
+      });
+      toast.success(`Folga criada em ${new Date(targetDate + 'T00:00:00').toLocaleDateString('pt-BR')}.`);
+      setConfigModal(null);
+      load();
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao inverter ciclo.");
+    } finally {
+      setConfigSaving(false);
+    }
+  };
+
   const uniqueRoles = Array.from(new Set(staffList.map(s => s.role)));
 
   return (
@@ -240,7 +369,6 @@ export default function EscalasPage() {
             </div>
           </div>
 
-          {/* Filtro de cargo */}
           <select
             value={filterRole}
             onChange={e => setFilterRole(e.target.value)}
@@ -297,7 +425,7 @@ export default function EscalasPage() {
                     Funcionário
                   </th>
                   {weekDays.map((day, i) => {
-                    const isToday = toYMD(day) === toYMD(new Date());
+                    const isToday = toLocalYMD(day) === toLocalYMD(new Date());
                     return (
                       <th key={i} className={`px-3 py-3 font-black uppercase tracking-widest text-[10px] border-b border-l border-white/5 text-center ${isToday ? 'text-[#00BFFF]' : 'text-white/40'}`}>
                         <div>{DAY_LABELS[day.getDay()]}</div>
@@ -322,45 +450,63 @@ export default function EscalasPage() {
                         <div className="min-w-0">
                           <p className="font-bold text-white/80 truncate text-[11px]">{staff.fullName}</p>
                           <p className="text-white/30 text-[9px] uppercase tracking-wide">{ROLE_LABELS[staff.role] || staff.role}</p>
+                          {staff.scheduleType ? (
+                            <p className="text-[#00BFFF]/60 text-[8px] font-black uppercase tracking-wide">
+                              {SCHEDULE_TYPE_LABELS[staff.scheduleType]}
+                            </p>
+                          ) : (
+                            <p className="text-white/20 text-[8px] uppercase tracking-wide">Sem escala</p>
+                          )}
                         </div>
                       </div>
                     </td>
 
                     {/* Células por dia */}
                     {weekDays.map((day, i) => {
-                      const override = getOverrideForDay(staff.id, day);
-                      const base = getScheduleForDay(staff, day.getDay());
-                      const isToday = toYMD(day) === toYMD(new Date());
+                      const dayOverrides = overrides.filter(
+                        o => o.staffId === staff.id && o.date === toLocalYMD(day)
+                      );
+                      const localDay = new Date(toLocalYMD(day) + 'T00:00:00');
+                      const resolved = resolveEffectiveDaySchedule(
+                        staff,
+                        staff.schedules,
+                        dayOverrides,
+                        localDay
+                      );
+                      const isToday = toLocalYMD(day) === toLocalYMD(new Date());
 
                       let cellContent: React.ReactNode;
                       let cellStyle = "bg-transparent";
 
-                      if (override) {
-                        if (!override.startTime) {
-                          // Folga
+                      if (resolved.hasOverride) {
+                        if (!resolved.isWork) {
                           cellStyle = "bg-red-950/30 border-red-900/30";
                           cellContent = (
                             <span className="text-red-400 font-bold text-[9px] uppercase tracking-wide">Folga</span>
                           );
                         } else {
-                          // Override com horário
                           cellStyle = "bg-blue-950/30 border-blue-900/30";
                           cellContent = (
                             <span className="text-blue-300 font-bold text-[9px]">
-                              {override.startTime.slice(0, 5)}–{override.endTime?.slice(0, 5)}
+                              {resolved.startTime}–{resolved.endTime}
                             </span>
                           );
                         }
-                      } else if (base) {
+                      } else if (resolved.source === 'not-configured') {
+                        cellContent = (
+                          <span className="text-white/15 text-[9px]">—</span>
+                        );
+                      } else if (resolved.isWork) {
                         cellStyle = "bg-[#111]";
                         cellContent = (
                           <span className="text-white/50 font-bold text-[9px]">
-                            {base.startTime.slice(0, 5)}–{base.endTime.slice(0, 5)}
+                            {resolved.startTime}–{resolved.endTime}
                           </span>
                         );
                       } else {
+                        cellStyle = "bg-white/[0.03]";
                         cellContent = (
-                          <span className="text-white/15 text-[9px]">—</span>
+                          <span className="text-white/20 text-[9px]">Folga</span>
                         );
                       }
 
@@ -384,59 +530,135 @@ export default function EscalasPage() {
           </div>
         )}
 
-        {/* Legenda + botão de escala base */}
+        {/* Legenda */}
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pt-2">
           <div className="flex items-center gap-4 text-[10px] font-bold uppercase tracking-widest text-white/40">
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#111] border border-white/10 inline-block" />Escala base</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#111] border border-white/10 inline-block" />Trabalho</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-950/50 border border-blue-900/30 inline-block" />Override</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-950/30 border border-red-900/30 inline-block" />Folga</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-950/30 border border-red-900/30 inline-block" />Folga (override)</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-white/[0.03] border border-white/10 inline-block" />Folga (calculada)</span>
           </div>
-          <p className="text-[10px] text-white/30">Clique em uma célula para editar o dia. Use a escala base para definir o padrão semanal.</p>
+          <p className="text-[10px] text-white/30">Clique em uma célula para ajustar o dia.</p>
         </div>
 
-        {/* Seção de escala base por funcionário */}
+        {/* Cards de configuração por funcionário */}
         {filteredStaff.length > 0 && (
           <div className="space-y-2">
             <h2 className="text-[10px] font-black uppercase tracking-widest text-white/40 pt-4 border-t border-white/5">
-              Escalas Base (Padrão Semanal)
+              Configuração de Escalas
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {filteredStaff.map(staff => (
                 <div key={staff.id} className="bg-[#111] border border-white/10 rounded-2xl p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-[#1c1c1c] border border-white/10 flex items-center justify-center text-[10px] font-black text-[#E0FFFF] shrink-0 overflow-hidden">
-                      {staff.profilePictureUrl
-                        ? <img src={staff.profilePictureUrl} alt="" className="w-full h-full object-cover" />
-                        : staff.fullName.charAt(0)
-                      }
+                  {/* Header do card */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-full bg-[#1c1c1c] border border-white/10 flex items-center justify-center text-[10px] font-black text-[#E0FFFF] shrink-0 overflow-hidden">
+                        {staff.profilePictureUrl
+                          ? <img src={staff.profilePictureUrl} alt="" className="w-full h-full object-cover" />
+                          : staff.fullName.charAt(0)
+                        }
+                      </div>
+                      <div>
+                        <p className="font-bold text-white/80 text-[11px]">{staff.fullName}</p>
+                        <p className="text-white/30 text-[9px] uppercase tracking-wide">{ROLE_LABELS[staff.role] || staff.role}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-bold text-white/80 text-[11px]">{staff.fullName}</p>
-                      <p className="text-white/30 text-[9px] uppercase tracking-wide">{ROLE_LABELS[staff.role] || staff.role}</p>
+                    <button
+                      onClick={() => openConfigModal(staff)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 text-white/40 hover:text-white/80 hover:border-white/20 text-[9px] font-black uppercase tracking-wide transition-all"
+                    >
+                      <Settings size={10} />
+                      Tipo
+                    </button>
+                  </div>
+
+                  {/* Visualização por tipo */}
+                  {(!staff.scheduleType || staff.scheduleType === 'custom') && (
+                    <div className="grid grid-cols-7 gap-1">
+                      {DAY_LABELS.map((label, dow) => {
+                        const sched = staff.schedules.find(s => s.dayOfWeek === dow && s.active);
+                        return (
+                          <button
+                            key={dow}
+                            onClick={() => openBaseModal(staff, dow)}
+                            className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border transition-all hover:opacity-80 ${sched ? 'bg-[#1a1a1a] border-white/10' : 'border-dashed border-white/10 hover:border-white/20'}`}
+                            title={DAY_LABELS_FULL[dow]}
+                          >
+                            <span className="text-[8px] font-black uppercase text-white/40">{label}</span>
+                            {sched ? (
+                              <span className="text-[7px] text-white/50 font-bold leading-tight text-center">
+                                {sched.startTime.slice(0, 5)}<br />{sched.endTime.slice(0, 5)}
+                              </span>
+                            ) : (
+                              <span className="text-white/15 text-[8px]">+</span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
-                  </div>
-                  <div className="grid grid-cols-7 gap-1">
-                    {DAY_LABELS.map((label, dow) => {
-                      const sched = getScheduleForDay(staff, dow);
-                      return (
-                        <button
-                          key={dow}
-                          onClick={() => openBaseModal(staff, dow)}
-                          className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border transition-all hover:opacity-80 ${sched ? 'bg-[#1a1a1a] border-white/10' : 'border-dashed border-white/10 hover:border-white/20'}`}
-                          title={`${DAY_LABELS_FULL[dow]}`}
-                        >
-                          <span className="text-[8px] font-black uppercase text-white/40">{label}</span>
-                          {sched ? (
-                            <span className="text-[7px] text-white/50 font-bold leading-tight text-center">
-                              {sched.startTime.slice(0, 5)}<br />{sched.endTime.slice(0, 5)}
-                            </span>
-                          ) : (
-                            <span className="text-white/15 text-[8px]">+</span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  )}
+
+                  {staff.scheduleType === '5x2' && staff.scheduleConfig && (() => {
+                    const cfg = staff.scheduleConfig!;
+                    return (
+                      <div className="grid grid-cols-7 gap-1">
+                        {DAY_LABELS.map((label, dow) => {
+                          const isWork = dow >= 1 && dow <= 5;
+                          return (
+                            <div
+                              key={dow}
+                              className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border ${isWork ? 'bg-[#1a1a1a] border-white/10' : 'border-dashed border-white/5'}`}
+                            >
+                              <span className="text-[8px] font-black uppercase text-white/40">{label}</span>
+                              {isWork ? (
+                                <span className="text-[7px] text-white/50 font-bold leading-tight text-center">
+                                  {cfg.startTime}<br />{cfg.endTime}
+                                </span>
+                              ) : (
+                                <span className="text-white/15 text-[8px]">—</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+
+                  {(staff.scheduleType === '12x36' || staff.scheduleType === '6x1') && staff.scheduleConfig && (
+                    <div className="space-y-1">
+                      <p className="text-[9px] text-white/30 font-bold uppercase tracking-wide">
+                        Ciclo desta semana
+                      </p>
+                      <div className="grid grid-cols-7 gap-1">
+                        {weekDays.map((day, i) => {
+                          const localDay = new Date(toLocalYMD(day) + 'T00:00:00');
+                          const result = calculateScheduleForDate(staff, localDay);
+                          const label = DAY_LABELS[day.getDay()];
+                          return (
+                            <div
+                              key={i}
+                              className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border ${result.isWork ? 'bg-[#1a1a1a] border-white/10' : 'border-dashed border-white/5'}`}
+                            >
+                              <span className="text-[8px] font-black uppercase text-white/40">{label}</span>
+                              {result.isWork ? (
+                                <span className="text-[7px] text-white/50 font-bold leading-tight text-center">
+                                  {result.startTime}<br />{result.endTime}
+                                </span>
+                              ) : (
+                                <span className="text-white/15 text-[8px]">—</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {staff.scheduleConfig.cycleReferenceDate && (
+                        <p className="text-[8px] text-white/20">
+                          Ref: {new Date(staff.scheduleConfig.cycleReferenceDate + 'T00:00:00').toLocaleDateString('pt-BR')}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -444,7 +666,7 @@ export default function EscalasPage() {
         )}
       </div>
 
-      {/* Modal de edição */}
+      {/* Modal de edição de dia */}
       {modal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#111] border border-white/10 rounded-2xl p-6 w-full max-w-sm space-y-5 shadow-2xl">
@@ -463,7 +685,6 @@ export default function EscalasPage() {
               </button>
             </div>
 
-            {/* Folga toggle (apenas para override de data específica) */}
             {modal.date && (
               <label className="flex items-center gap-3 cursor-pointer">
                 <div
@@ -514,7 +735,6 @@ export default function EscalasPage() {
               </div>
             )}
 
-            {/* Info sobre escala base */}
             {modal.date && modal.existingSchedule && (
               <p className="text-[10px] text-white/30">
                 Escala base: {modal.existingSchedule.startTime.slice(0, 5)}–{modal.existingSchedule.endTime.slice(0, 5)}
@@ -522,7 +742,6 @@ export default function EscalasPage() {
             )}
 
             <div className="flex gap-2 pt-1">
-              {/* Botão de remover */}
               {(modal.date ? modal.existingOverride : modal.existingSchedule) && (
                 <button
                   onClick={modal.date ? handleDeleteOverride : handleDeleteBase}
@@ -538,6 +757,107 @@ export default function EscalasPage() {
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#E0FFFF]/10 border border-[#E0FFFF]/20 text-[#E0FFFF] text-xs font-bold uppercase tracking-wide hover:bg-[#E0FFFF]/20 transition-all disabled:opacity-50"
               >
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de configuração de tipo de escala */}
+      {configModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#111] border border-white/10 rounded-2xl p-6 w-full max-w-sm space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold">Tipo de Escala</p>
+                <p className="text-white font-bold text-sm mt-0.5">{configModal.staff.fullName}</p>
+              </div>
+              <button onClick={() => setConfigModal(null)} className="p-2 text-white/30 hover:text-white rounded-xl hover:bg-white/5">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="field-label">Tipo de escala</label>
+              <select
+                value={configType}
+                onChange={e => setConfigType(e.target.value as ScheduleType)}
+                className="field-input w-full"
+              >
+                <option value="5x2">5×2 — Segunda a Sexta</option>
+                <option value="12x36">12×36 — Trabalha 12h, folga 36h</option>
+                <option value="6x1">6×1 — Trabalha 6 dias, folga 1</option>
+                <option value="custom">Custom — Configuração manual por dia</option>
+              </select>
+            </div>
+
+            {configType !== 'custom' && (
+              <div className="flex gap-3">
+                <div className="flex-1 space-y-1.5">
+                  <label className="field-label">Entrada</label>
+                  <input
+                    type="time"
+                    value={configStart}
+                    onChange={e => setConfigStart(e.target.value)}
+                    className="field-input w-full"
+                  />
+                </div>
+                <div className="flex-1 space-y-1.5">
+                  <label className="field-label">Saída</label>
+                  <input
+                    type="time"
+                    value={configEnd}
+                    onChange={e => setConfigEnd(e.target.value)}
+                    className="field-input w-full"
+                  />
+                </div>
+              </div>
+            )}
+
+            {(configType === '12x36' || configType === '6x1') && (
+              <div className="space-y-1.5">
+                <label className="field-label">
+                  {configType === '12x36'
+                    ? 'Data de referência (dia de TRABALHO)'
+                    : 'Data de referência (1º dia de trabalho do ciclo)'}
+                </label>
+                <input
+                  type="date"
+                  value={configRefDate}
+                  onChange={e => setConfigRefDate(e.target.value)}
+                  className="field-input w-full"
+                />
+                <p className="text-[10px] text-white/30">
+                  {configType === '12x36'
+                    ? 'Selecione uma data em que este funcionário TRABALHA. O sistema alternará automaticamente.'
+                    : 'Selecione o primeiro dia de uma sequência de 6 dias de trabalho.'}
+                </p>
+              </div>
+            )}
+
+            {configType === 'custom' && (
+              <p className="text-[10px] text-white/30">
+                Configure os dias e horários individualmente nos botões da grade abaixo do card do funcionário.
+              </p>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              {configType === '12x36' && configModal.staff.scheduleConfig?.cycleReferenceDate && (
+                <button
+                  onClick={handleInvertCycle}
+                  disabled={configSaving}
+                  className="flex-1 py-2.5 rounded-xl border border-yellow-900/50 text-yellow-400 text-xs font-bold uppercase tracking-wide hover:bg-yellow-950/30 transition-all disabled:opacity-50"
+                >
+                  Inverter ciclo
+                </button>
+              )}
+              <button
+                onClick={handleSaveConfig}
+                disabled={configSaving}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#E0FFFF]/10 border border-[#E0FFFF]/20 text-[#E0FFFF] text-xs font-bold uppercase tracking-wide hover:bg-[#E0FFFF]/20 transition-all disabled:opacity-50"
+              >
+                {configSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 Salvar
               </button>
             </div>

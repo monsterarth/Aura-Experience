@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { Staff, StaffSchedule, StaffScheduleOverride, UserRole } from "@/types/aura";
+import { Staff, StaffSchedule, StaffScheduleOverride, UserRole, ScheduleType, ScheduleConfig } from "@/types/aura";
 
 export const StaffService = {
   async createStaffMember(params: {
@@ -145,5 +145,18 @@ export const StaffService = {
     const response = await fetch(`/api/admin/staff/schedule-overrides?id=${id}`, { method: 'DELETE' });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'Erro ao remover override.');
+  },
+
+  async updateScheduleConfig(staffId: string, payload: {
+    scheduleType: ScheduleType;
+    scheduleConfig: ScheduleConfig;
+  }): Promise<void> {
+    const response = await fetch('/api/admin/staff/schedule-config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ staffId, ...payload }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Erro ao salvar configuração de escala.');
   },
 };
