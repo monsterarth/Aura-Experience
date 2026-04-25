@@ -11,6 +11,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { StaffService } from "@/services/staff-service";
 import { Staff, StaffSchedule, StaffScheduleOverride } from "@/types/aura";
+import { calculateScheduleForDate } from "@/lib/schedule-calculator";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type StaffWithSchedules = Staff & { schedules: StaffSchedule[] };
@@ -140,11 +141,14 @@ function HRDashboardContent() {
   // KPI 1 — Equipe ativa
   const activeCount = activeStaff.length;
 
-  // KPI 2 — Hoje em turno: staff working right now (base schedule for today OR non-null override)
+  // KPI 2 — Hoje em turno: staff working right now (override > calculator > base schedule)
   const todayWorking = activeStaff.filter(s => {
     const override = weekOverrides.find(o => o.staffId === s.id && o.date === todayYMD);
     if (override) return override.startTime !== null && override.startTime !== undefined;
-    return s.schedules.some(sc => sc.dayOfWeek === todayDOW && sc.active);
+    if (!s.scheduleType || s.scheduleType === 'custom') {
+      return s.schedules.some(sc => sc.dayOfWeek === todayDOW && sc.active);
+    }
+    return calculateScheduleForDate(s, today).isWork;
   });
 
   // KPI 3 — Aniversários este mês
@@ -192,11 +196,16 @@ function HRDashboardContent() {
         if (override.startTime === null || override.startTime === undefined) return null; // folga
         start = override.startTime;
         end = override.endTime ?? null;
-      } else {
+      } else if (!s.scheduleType || s.scheduleType === 'custom') {
         const base = s.schedules.find(sc => sc.dayOfWeek === todayDOW && sc.active);
         if (!base) return null;
         start = base.startTime;
         end = base.endTime;
+      } else {
+        const calc = calculateScheduleForDate(s, today);
+        if (!calc.isWork || !calc.startTime) return null;
+        start = calc.startTime;
+        end = calc.endTime ?? null;
       }
 
       if (!start) return null;
@@ -248,8 +257,10 @@ function HRDashboardContent() {
       if (override) {
         if (override.startTime === null || override.startTime === undefined) folgas++;
         else shifts++;
-      } else {
+      } else if (!s.scheduleType || s.scheduleType === 'custom') {
         if (s.schedules.some(sc => sc.dayOfWeek === dow && sc.active)) shifts++;
+      } else {
+        if (calculateScheduleForDate(s, d).isWork) shifts++;
       }
     }
     return { day: DAY_LABELS[(i + 1) % 7], shifts, folgas, isToday: ymd === todayYMD };

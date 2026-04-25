@@ -47,6 +47,7 @@ interface BirthdayRecord {
 interface DaySummary {
   checkIns: StayEntry[];
   checkOuts: StayEntry[];
+  inHouse: StayEntry[];
   events: Event[];
   structureBookings: StructureBookingEntry[];
   birthdays: BirthdayEntry[];
@@ -96,6 +97,7 @@ export default function CalendarioPage() {
   const [birthdayRecords, setBirthdayRecords] = useState<BirthdayRecord[]>([]);
 
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [totalCabins, setTotalCabins] = useState(0);
 
   const loadData = useCallback(async () => {
     if (!property?.id) return;
@@ -150,9 +152,7 @@ export default function CalendarioPage() {
           ? supabase.from("guests").select("id, fullName, birthDate").in("id", allGuestIds)
           : Promise.resolve({ data: [] }),
 
-        allCabinIds.length > 0
-          ? supabase.from("cabins").select("id, name").in("id", allCabinIds)
-          : Promise.resolve({ data: [] }),
+        supabase.from("cabins").select("id, name").eq("propertyId", property.id),
 
         allStructureIds.length > 0
           ? supabase.from("structures").select("id, name").in("id", allStructureIds)
@@ -167,6 +167,8 @@ export default function CalendarioPage() {
       ]);
 
       // Build lookup maps
+      setTotalCabins(cabinsResult.data ? cabinsResult.data.length : 0);
+
       const cabinNameMap: Record<string, string> = {};
       for (const c of (cabinsResult.data || []) as any[]) cabinNameMap[c.id] = c.name;
 
@@ -256,14 +258,26 @@ export default function CalendarioPage() {
     const { start: boundsStart, end: boundsEnd } = getMonthBounds(currentMonth);
 
     const ensure = (d: string) => {
-      if (!map[d]) map[d] = { checkIns: [], checkOuts: [], events: [], structureBookings: [], birthdays: [] };
+      if (!map[d]) map[d] = { checkIns: [], checkOuts: [], inHouse: [], events: [], structureBookings: [], birthdays: [] };
     };
 
     stays.forEach((s) => {
-      ensure(s.checkIn);
-      map[s.checkIn].checkIns.push(s);
-      ensure(s.checkOut);
-      map[s.checkOut].checkOuts.push(s);
+      let cur = new Date(s.checkIn + "T00:00:00");
+      const endD = new Date(s.checkOut + "T00:00:00");
+      while (cur <= endD) {
+        const d = cur.toISOString().split("T")[0];
+        if (d >= boundsStart && d <= boundsEnd) {
+          ensure(d);
+          if (d === s.checkIn) {
+            map[d].checkIns.push(s);
+          } else if (d === s.checkOut) {
+            map[d].checkOuts.push(s);
+          } else {
+            map[d].inHouse.push(s);
+          }
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
     });
 
     // Spread multi-day events across all days in range
@@ -296,12 +310,13 @@ export default function CalendarioPage() {
 
   const selectedDaySummary = useMemo((): DaySummary | null => {
     if (!selectedDay) return null;
-    return summaryByDate[selectedDay] || { checkIns: [], checkOuts: [], events: [], structureBookings: [], birthdays: [] };
+    return summaryByDate[selectedDay] || { checkIns: [], checkOuts: [], inHouse: [], events: [], structureBookings: [], birthdays: [] };
   }, [selectedDay, summaryByDate]);
 
   const totalSelectedItems = selectedDaySummary
     ? selectedDaySummary.checkIns.length +
       selectedDaySummary.checkOuts.length +
+      selectedDaySummary.inHouse.length +
       selectedDaySummary.events.length +
       selectedDaySummary.structureBookings.length +
       selectedDaySummary.birthdays.length
@@ -340,6 +355,7 @@ export default function CalendarioPage() {
       <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-400" /> Check-in</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-orange-400" /> Check-out</div>
+        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-400" /> Hospedado</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-primary" /> Evento local</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-400" /> Evento externo</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-400" /> Estrutura</div>
@@ -385,9 +401,13 @@ export default function CalendarioPage() {
                   const summary = summaryByDate[dateStr];
                   const isToday = dateStr === format(new Date(), "yyyy-MM-dd");
                   const isSelected = selectedDay === dateStr;
+                  const occupancy = summary ? summary.checkIns.length + summary.inHouse.length : 0;
+                  const isLotado = totalCabins > 0 && occupancy >= totalCabins;
+
                   const hasItems = summary && (
                     summary.checkIns.length +
                     summary.checkOuts.length +
+                    summary.inHouse.length +
                     summary.events.length +
                     summary.structureBookings.length +
                     summary.birthdays.length
@@ -398,32 +418,47 @@ export default function CalendarioPage() {
                       key={day}
                       onClick={() => setSelectedDay(isSelected ? null : dateStr)}
                       className={cn(
-                        "min-h-[80px] border-b border-r border-white/5 p-1.5 flex flex-col text-left transition-all",
+                        "min-h-[80px] border-b border-r border-white/5 p-1.5 flex flex-col items-center text-left transition-all relative",
                         isSelected ? "bg-primary/10 border-primary/20" : hasItems ? "hover:bg-secondary/50" : "hover:bg-secondary/20",
                       )}
                     >
                       <span className={cn(
-                        "text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full mb-1",
+                        "text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full mb-1 shrink-0 self-start",
                         isToday ? "bg-primary text-black" : "text-foreground/70",
                       )}>{day}</span>
 
                       {summary && (
-                        <div className="flex flex-wrap gap-0.5">
-                          {summary.checkIns.slice(0, 2).map((_, i) => (
-                            <span key={`ci-${i}`} className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                          ))}
-                          {summary.checkOuts.slice(0, 2).map((_, i) => (
-                            <span key={`co-${i}`} className="w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" />
-                          ))}
-                          {summary.events.slice(0, 3).map((e, i) => (
-                            <span key={`ev-${i}`} className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", e.type === "local" ? "bg-primary" : "bg-purple-400")} />
-                          ))}
-                          {summary.structureBookings.slice(0, 2).map((_, i) => (
-                            <span key={`sb-${i}`} className="w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0" />
-                          ))}
-                          {summary.birthdays.slice(0, 2).map((_, i) => (
-                            <span key={`bd-${i}`} className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
-                          ))}
+                        <div className="flex flex-col gap-1 w-full flex-1">
+                          {isLotado && (
+                            <span className="text-[8px] font-black uppercase bg-rose-500/20 text-rose-400 px-1 py-0.5 rounded-md w-full text-center tracking-widest shrink-0">Lotado</span>
+                          )}
+                          {summary.checkIns.length >= 5 && !isLotado && (
+                            <span className="text-[8px] font-black uppercase bg-emerald-500/20 text-emerald-400 px-1 py-0.5 rounded-md w-full text-center shrink-0">{summary.checkIns.length} Entradas</span>
+                          )}
+                          {summary.checkOuts.length >= 5 && (
+                            <span className="text-[8px] font-black uppercase bg-orange-500/20 text-orange-400 px-1 py-0.5 rounded-md w-full text-center shrink-0">{summary.checkOuts.length} Saídas</span>
+                          )}
+
+                          <div className="flex flex-wrap gap-0.5 justify-start w-full content-start">
+                            {summary.checkIns.length < 5 && summary.checkIns.map((_, i) => (
+                              <span key={`ci-${i}`} className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+                            ))}
+                            {summary.checkOuts.length < 5 && summary.checkOuts.map((_, i) => (
+                              <span key={`co-${i}`} className="w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" />
+                            ))}
+                            {summary.inHouse.slice(0, 3).map((_, i) => (
+                              <span key={`ih-${i}`} className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                            ))}
+                            {summary.events.slice(0, 3).map((e, i) => (
+                              <span key={`ev-${i}`} className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", e.type === "local" ? "bg-primary" : "bg-purple-400")} />
+                            ))}
+                            {summary.structureBookings.slice(0, 2).map((_, i) => (
+                              <span key={`sb-${i}`} className="w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0" />
+                            ))}
+                            {summary.birthdays.slice(0, 2).map((_, i) => (
+                              <span key={`bd-${i}`} className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+                            ))}
+                          </div>
                         </div>
                       )}
                     </button>
@@ -477,6 +512,24 @@ export default function CalendarioPage() {
                       <div className="space-y-2">
                         {selectedDaySummary.checkOuts.map((s) => (
                           <div key={s.id} className="p-2.5 bg-orange-500/5 border border-orange-500/10 rounded-xl">
+                            <p className="text-sm font-bold">{s.guestName || "Hóspede"}</p>
+                            {s.cabinName && <p className="text-[10px] text-muted-foreground">{s.cabinName}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Hospedados (In House) */}
+                  {selectedDaySummary.inHouse.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <LogIn size={12} className="text-blue-400" />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-blue-400">Hospedados ({selectedDaySummary.inHouse.length})</span>
+                      </div>
+                      <div className="space-y-2">
+                        {selectedDaySummary.inHouse.map((s) => (
+                          <div key={s.id} className="p-2.5 bg-blue-500/5 border border-blue-500/10 rounded-xl">
                             <p className="text-sm font-bold">{s.guestName || "Hóspede"}</p>
                             {s.cabinName && <p className="text-[10px] text-muted-foreground">{s.cabinName}</p>}
                           </div>
@@ -561,7 +614,7 @@ export default function CalendarioPage() {
             <div className="mt-1 grid grid-cols-2 gap-3">
               <div className="bg-card border border-white/5 rounded-xl p-3 text-center">
                 <p className="text-2xl font-black text-emerald-400">
-                  {selectedDaySummary ? selectedDaySummary.checkIns.length + selectedDaySummary.checkOuts.length : stays.length}
+                  {selectedDaySummary ? selectedDaySummary.checkIns.length + selectedDaySummary.checkOuts.length + selectedDaySummary.inHouse.length : stays.length}
                 </p>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">Hospedagens</p>
               </div>

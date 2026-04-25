@@ -36,7 +36,7 @@ export async function GET(request: Request) {
       // Busca todos os staff ativos da property com suas escalas
       const { data: staffList, error: staffError } = await supabaseAdmin
         .from('staff')
-        .select('id, fullName, role, active, profilePictureUrl, scheduleType, scheduleConfig')
+        .select('id, fullName, role, active, profilePictureUrl, scheduleType, scheduleConfig, birthDate')
         .eq('propertyId', propertyId)
         .eq('active', true)
         .order('fullName');
