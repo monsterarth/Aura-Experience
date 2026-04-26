@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { ConciergeService } from "@/services/concierge-service";
 import { ConciergeRequest, ConciergeItem, ConciergeCategory } from "@/types/aura";
 import { ImageUpload } from "@/components/admin/ImageUpload";
+import EmojiPicker from "emoji-picker-react";
 import {
   ShoppingBag, Loader2, CheckCircle2, RotateCcw, XCircle,
   Package, AlertTriangle, Clock, Pin, Eye, X, Save, Plus,
@@ -48,6 +49,20 @@ const defaultForm: ItemForm = {
   availableForGuest: true, availableForMaid: false,
   order: '0',
 };
+
+// ─── Emoji helpers ────────────────────────────────────────────────────────────
+
+const EMOJI_PREFIX = 'emoji:';
+function isEmojiUrl(url?: string) { return !!url && url.startsWith(EMOJI_PREFIX); }
+function emojiFromUrl(url?: string) { return url ? url.slice(EMOJI_PREFIX.length) : ''; }
+function emojiToUrl(em: string) { return `${EMOJI_PREFIX}${em}`; }
+
+// Returns { kind: 'emoji', value } | { kind: 'image', value } | { kind: 'none' }
+function resolveItemIcon(item: { image_url?: string; category: string }) {
+  if (isEmojiUrl(item.image_url)) return { kind: 'emoji' as const, value: emojiFromUrl(item.image_url) };
+  if (item.image_url) return { kind: 'image' as const, value: item.image_url };
+  return { kind: 'none' as const, value: '' };
+}
 
 // ─── Urgency helpers ──────────────────────────────────────────────────────────
 
@@ -716,9 +731,19 @@ function PendingCard({ req, actioning, onAction, onDetail }: {
 
         {/* Item row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, marginBottom: 12 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 9, background: isLoan ? 'rgba(96,165,250,0.08)' : 'rgba(155,109,255,0.08)', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.22)' : 'rgba(155,109,255,0.22)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            {isLoan ? <Package size={14} style={{ color: '#60a5fa' }} /> : <ShoppingBag size={14} style={{ color: '#9b6dff' }} />}
-          </div>
+          {(() => {
+            const icon = resolveItemIcon({ image_url: req.item?.image_url, category: req.item?.category ?? 'consumption' });
+            if (icon.kind === 'emoji') return (
+              <div style={{ width: 32, height: 32, borderRadius: 9, background: isLoan ? 'rgba(96,165,250,0.06)' : 'rgba(155,109,255,0.06)', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.15)' : 'rgba(155,109,255,0.15)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 18 }}>
+                {icon.value}
+              </div>
+            );
+            return (
+              <div style={{ width: 32, height: 32, borderRadius: 9, background: isLoan ? 'rgba(96,165,250,0.08)' : 'rgba(155,109,255,0.08)', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.22)' : 'rgba(155,109,255,0.22)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                {isLoan ? <Package size={14} style={{ color: '#60a5fa' }} /> : <ShoppingBag size={14} style={{ color: '#9b6dff' }} />}
+              </div>
+            );
+          })()}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: '#eef0f8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{req.quantity}× {req.item?.name || req.itemId}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3, flexWrap: 'wrap' }}>
@@ -784,9 +809,19 @@ function DetailPanel({ req, onClose, onAction }: {
           {/* Item card */}
           <div style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 16, padding: 18 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 48, height: 48, borderRadius: 14, background: isLoan ? 'rgba(96,165,250,0.08)' : 'rgba(155,109,255,0.08)', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.22)' : 'rgba(155,109,255,0.22)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                {isLoan ? <Package size={22} style={{ color: '#60a5fa' }} /> : <ShoppingBag size={22} style={{ color: '#9b6dff' }} />}
-              </div>
+              {(() => {
+                const icon = resolveItemIcon({ image_url: req.item?.image_url, category: req.item?.category ?? 'consumption' });
+                if (icon.kind === 'emoji') return (
+                  <div style={{ width: 48, height: 48, borderRadius: 14, background: isLoan ? 'rgba(96,165,250,0.06)' : 'rgba(155,109,255,0.06)', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.15)' : 'rgba(155,109,255,0.15)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 26 }}>
+                    {icon.value}
+                  </div>
+                );
+                return (
+                  <div style={{ width: 48, height: 48, borderRadius: 14, background: isLoan ? 'rgba(96,165,250,0.08)' : 'rgba(155,109,255,0.08)', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.22)' : 'rgba(155,109,255,0.22)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {isLoan ? <Package size={22} style={{ color: '#60a5fa' }} /> : <ShoppingBag size={22} style={{ color: '#9b6dff' }} />}
+                  </div>
+                );
+              })()}
               <div>
                 <div style={{ fontSize: 16, fontWeight: 900, color: '#eef0f8' }}>{req.quantity}× {req.item?.name || req.itemId}</div>
                 <span style={{ display: 'inline-flex', marginTop: 4, padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', background: isLoan ? 'rgba(96,165,250,0.08)' : 'rgba(155,109,255,0.08)', color: isLoan ? '#60a5fa' : '#9b6dff', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.22)' : 'rgba(155,109,255,0.22)'}` }}>{isLoan ? 'Empréstimo' : 'Consumo'}</span>
@@ -863,15 +898,24 @@ function CatalogCard({ item, onEdit, onToggleActive, onRequest }: {
       opacity: item.active ? 1 : 0.55,
     }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-        {item.image_url ? (
-          <div style={{ width: 40, height: 40, borderRadius: 12, overflow: 'hidden', flexShrink: 0, position: 'relative', filter: item.active ? 'none' : 'grayscale(1)' }}>
-            <Image src={item.image_url} alt={item.name} fill className="object-cover" />
-          </div>
-        ) : (
-          <div style={{ width: 40, height: 40, borderRadius: 12, background: isLoan ? 'rgba(96,165,250,0.08)' : 'rgba(155,109,255,0.08)', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.22)' : 'rgba(155,109,255,0.22)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            {isLoan ? <Package size={18} style={{ color: '#60a5fa' }} /> : <ShoppingBag size={18} style={{ color: '#9b6dff' }} />}
-          </div>
-        )}
+        {(() => {
+          const icon = resolveItemIcon(item);
+          if (icon.kind === 'emoji') return (
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: isLoan ? 'rgba(96,165,250,0.06)' : 'rgba(155,109,255,0.06)', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.15)' : 'rgba(155,109,255,0.15)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 22, filter: item.active ? 'none' : 'grayscale(1) opacity(0.5)' }}>
+              {icon.value}
+            </div>
+          );
+          if (icon.kind === 'image') return (
+            <div style={{ width: 40, height: 40, borderRadius: 12, overflow: 'hidden', flexShrink: 0, position: 'relative', filter: item.active ? 'none' : 'grayscale(1)' }}>
+              <Image src={icon.value} alt={item.name} fill className="object-cover" />
+            </div>
+          );
+          return (
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: isLoan ? 'rgba(96,165,250,0.08)' : 'rgba(155,109,255,0.08)', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.22)' : 'rgba(155,109,255,0.22)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              {isLoan ? <Package size={18} style={{ color: '#60a5fa' }} /> : <ShoppingBag size={18} style={{ color: '#9b6dff' }} />}
+            </div>
+          );
+        })()}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           {!item.active && (
             <span style={{ padding: '2px 7px', borderRadius: 999, fontSize: 8, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', background: 'rgba(255,255,255,0.06)', color: 'rgba(238,240,248,0.35)', border: '1px solid rgba(255,255,255,0.1)' }}>
@@ -1058,6 +1102,8 @@ function NewRequestModal({ items, preset, onClose }: {
 
 // ─── CatalogFormModal ─────────────────────────────────────────────────────────
 
+type LangTab = 'pt' | 'en' | 'es';
+
 function CatalogFormModal({ form, setForm, editingId, saving, onClose, onSave }: {
   form: ItemForm;
   setForm: React.Dispatch<React.SetStateAction<ItemForm>>;
@@ -1066,99 +1112,415 @@ function CatalogFormModal({ form, setForm, editingId, saving, onClose, onSave }:
   onClose: () => void;
   onSave: () => void;
 }) {
+  const [lang, setLang] = useState<LangTab>('pt');
+  const initialEmoji = isEmojiUrl(form.image_url) ? emojiFromUrl(form.image_url) : '💧';
+  const [imageType, setImageType] = useState<'emoji' | 'url'>(isEmojiUrl(form.image_url) || !form.image_url ? 'emoji' : 'url');
+  const [emoji, setEmoji] = useState(initialEmoji);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const emojiPickerRef = React.useRef<HTMLDivElement>(null);
+
+  const isLoan = form.category === 'loan';
+  // active is derived: at least one audience must be selected
+  const isActive = form.availableForGuest || form.availableForMaid;
+  const canSave = form.name.trim().length > 0;
+
+  // Keep image_url in sync with emoji picker / imageType
+  React.useEffect(() => {
+    if (imageType === 'emoji') {
+      setForm(prev => ({ ...prev, image_url: emojiToUrl(emoji) }));
+    }
+    // when imageType === 'url', user edits the input directly — don't overwrite
+  }, [emoji, imageType]); // eslint-disable-line
+
+  // Sync active field with availability selection
+  React.useEffect(() => {
+    setForm(prev => ({ ...prev, active: prev.availableForGuest || prev.availableForMaid }));
+  }, [form.availableForGuest, form.availableForMaid]); // eslint-disable-line
+
+  // Close emoji picker on outside click
+  React.useEffect(() => {
+    if (!emojiOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
+        setEmojiOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [emojiOpen]);
+
+  const set = <K extends keyof ItemForm>(k: K, v: ItemForm[K]) =>
+    setForm(prev => ({ ...prev, [k]: v }));
+
+  const LANGS: { id: LangTab; flag: string; label: string }[] = [
+    { id: 'pt', flag: '🇧🇷', label: 'PT' },
+    { id: 'en', flag: '🇺🇸', label: 'EN' },
+    { id: 'es', flag: '🇪🇸', label: 'ES' },
+  ];
+
+  const inputSt: React.CSSProperties = {
+    background: 'rgba(255,255,255,0.035)',
+    border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: 10,
+    padding: '9px 12px',
+    color: '#eef0f8',
+    fontFamily: 'inherit',
+    fontSize: 13,
+    outline: 'none',
+    width: '100%',
+    transition: 'border-color .15s',
+  };
+  const labelSt: React.CSSProperties = {
+    fontSize: 10, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase',
+    color: 'rgba(238,240,248,0.42)', marginBottom: 5, display: 'block',
+  };
+  const sectionLabel: React.CSSProperties = {
+    fontSize: 11, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase',
+    color: 'rgba(238,240,248,0.42)', marginBottom: 12,
+  };
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-card border border-border rounded-3xl w-full max-w-2xl my-4 animate-in fade-in zoom-in-95 duration-200">
-        <div className="p-5 border-b border-border flex items-center justify-between">
-          <h2 className="font-bold text-sm uppercase tracking-wide">{editingId ? 'Editar Item' : 'Novo Item'}</h2>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-secondary transition-colors"><X size={16} /></button>
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', backdropFilter: 'blur(8px)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+      onClick={onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background: '#0b0e18', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 24, width: 560, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 32px 100px rgba(0,0,0,.8)', animation: 'concierge-fade-in .2s ease' }}
+      >
+        {/* ── Header ── */}
+        <div style={{ padding: '22px 24px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 11, background: 'rgba(155,109,255,0.12)', border: '1px solid rgba(155,109,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <ListOrdered size={17} style={{ color: '#9b6dff' }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 16, fontWeight: 900, color: '#eef0f8' }}>{editingId ? 'Editar Item do Catálogo' : 'Novo Item do Catálogo'}</div>
+              <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', marginTop: 2 }}>Preencha os dados do item em todos os idiomas</div>
+            </div>
+            <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)', flexShrink: 0 }}>
+              <X size={13} />
+            </button>
+          </div>
         </div>
-        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
-          {/* Category */}
+
+        {/* ── Body ── */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 22, scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.08) transparent' }}>
+
+          {/* ── Identidade Visual ── */}
           <div>
-            <label className="field-label">Categoria</label>
-            <div className="flex gap-2">
-              {(['consumption', 'loan'] as ConciergeCategory[]).map(cat => (
-                <button key={cat} onClick={() => setForm(prev => ({ ...prev, category: cat }))} className={cn('flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-bold uppercase tracking-wide transition-all', form.category === cat ? 'bg-primary text-primary-foreground border-primary' : 'bg-secondary border-border text-muted-foreground hover:text-foreground')}>
-                  {cat === 'consumption' ? <ShoppingBag size={13} /> : <Package size={13} />}
-                  {cat === 'consumption' ? 'Consumo' : 'Empréstimo'}
-                </button>
-              ))}
+            <div style={sectionLabel}>Identidade Visual</div>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              {/* Preview */}
+              <div
+                style={{ width: 72, height: 72, borderRadius: 18, flexShrink: 0, background: 'rgba(155,109,255,0.12)', border: '2px solid rgba(155,109,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 34, cursor: 'pointer', transition: 'border-color .15s' }}
+                onClick={() => setEmojiOpen(p => !p)}
+              >
+                {imageType === 'emoji' ? emoji : (form.image_url ? '🖼️' : '📦')}
+              </div>
+
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {/* Type toggle */}
+                <div style={{ display: 'flex', gap: 5 }}>
+                  {([{ id: 'emoji', label: 'Emoji' }, { id: 'url', label: 'URL / Upload' }] as { id: 'emoji' | 'url'; label: string }[]).map(t => (
+                    <button key={t.id} onClick={() => setImageType(t.id)} style={{
+                      padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700,
+                      background: imageType === t.id ? 'rgba(155,109,255,0.12)' : 'rgba(255,255,255,0.035)',
+                      color: imageType === t.id ? '#9b6dff' : 'rgba(238,240,248,0.42)',
+                      border: `1px solid ${imageType === t.id ? 'rgba(155,109,255,.28)' : 'rgba(255,255,255,0.07)'}`,
+                    }}>{t.label}</button>
+                  ))}
+                </div>
+
+                {imageType === 'url' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <input
+                      value={form.image_url} onChange={e => set('image_url', e.target.value)}
+                      placeholder="https://…"
+                      style={inputSt}
+                      onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')}
+                      onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')}
+                    />
+                    <div style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)' }}>Ou use o componente de upload abaixo</div>
+                    <ImageUpload value={form.image_url} onUploadSuccess={url => set('image_url', url)} path="concierge-items" />
+                  </div>
+                ) : (
+                  <div ref={emojiPickerRef} style={{ position: 'relative' }}>
+                    <button onClick={() => setEmojiOpen(p => !p)} style={{
+                      width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)',
+                      background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13,
+                      color: 'rgba(238,240,248,0.42)', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8,
+                    }}>
+                      <span style={{ fontSize: 20 }}>{emoji}</span>
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>Clique para trocar emoji</span>
+                    </button>
+                    {emojiOpen && (
+                      <div style={{
+                        position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 80,
+                        animation: 'concierge-fade-in .15s ease',
+                        /* constrain width so it never overflows the 560px modal */
+                        maxWidth: 'min(340px, calc(560px - 48px - 84px))',
+                      }}>
+                        <EmojiPicker
+                          onEmojiClick={(data) => { setEmoji(data.emoji); setEmojiOpen(false); }}
+                          theme={'dark' as any}
+                          skinTonesDisabled
+                          searchPlaceholder="Buscar emoji…"
+                          width="100%"
+                          height={360}
+                          previewConfig={{ showPreview: false }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-          {/* Image */}
+
+          {/* ── Nome & Descrição por idioma ── */}
           <div>
-            <label className="field-label">Imagem</label>
-            <ImageUpload value={form.image_url} onUploadSuccess={(url) => setForm(prev => ({ ...prev, image_url: url }))} path="concierge-items" />
-          </div>
-          {/* Names */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {([{ lang: 'PT', key: 'name' as const, ph: 'Ex: Lenha', req: true }, { lang: 'EN', key: 'name_en' as const, ph: 'E.g. Firewood' }, { lang: 'ES', key: 'name_es' as const, ph: 'Ej: Leña' }]).map(({ lang, key, ph, req }) => (
-              <div key={key}>
-                <label className="field-label">Nome ({lang}){req ? ' *' : ''}</label>
-                <input className="field-input" value={form[key]} onChange={e => setForm(prev => ({ ...prev, [key]: e.target.value }))} placeholder={ph} />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={sectionLabel}>Nome & Descrição</div>
+              {/* Lang tabs */}
+              <div style={{ display: 'flex', gap: 3, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 9, padding: 3 }}>
+                {LANGS.map(l => (
+                  <button key={l.id} onClick={() => setLang(l.id)} style={{
+                    padding: '4px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit',
+                    fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 4,
+                    background: lang === l.id ? '#0b0e18' : 'transparent',
+                    color: lang === l.id ? '#eef0f8' : 'rgba(238,240,248,0.42)',
+                    boxShadow: lang === l.id ? '0 1px 4px rgba(0,0,0,.3)' : 'none',
+                    border: 'none', transition: 'all .15s',
+                  }}>
+                    <span>{l.flag}</span>{l.label}
+                  </button>
+                ))}
               </div>
-            ))}
-          </div>
-          {/* Descriptions */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {(['description', 'description_en', 'description_es'] as const).map((key, i) => (
-              <div key={key}>
-                <label className="field-label">Descrição ({['PT', 'EN', 'ES'][i]})</label>
-                <textarea className="field-input resize-none" rows={2} value={form[key]} onChange={e => setForm(prev => ({ ...prev, [key]: e.target.value }))} />
-              </div>
-            ))}
-          </div>
-          {/* Pricing */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div>
-              <label className="field-label">Preço (R$)</label>
-              <input type="number" min="0" step="0.01" className="field-input" value={form.price} onChange={e => setForm(prev => ({ ...prev, price: e.target.value }))} />
             </div>
-            {form.category === 'loan' && (
-              <div>
-                <label className="field-label">Multa Extravio (R$)</label>
-                <input type="number" min="0" step="0.01" className="field-input" value={form.loss_price} placeholder="0.00" onChange={e => setForm(prev => ({ ...prev, loss_price: e.target.value }))} />
+
+            {/* PT */}
+            {lang === 'pt' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, animation: 'concierge-fade-in .15s ease' }}>
+                <div>
+                  <label style={labelSt}>Nome em Português <span style={{ color: '#f87171' }}>*</span></label>
+                  <input value={form.name} onChange={e => set('name', e.target.value)} placeholder="Ex: Água Mineral (500ml)" style={inputSt}
+                    onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
+                </div>
+                <div>
+                  <label style={labelSt}>Descrição em Português</label>
+                  <textarea value={form.description} onChange={e => set('description', e.target.value)} placeholder="Ex: Água mineral sem gás, garrafa individual de 500ml." rows={3}
+                    style={{ ...inputSt, resize: 'vertical', lineHeight: 1.5 }}
+                    onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
+                </div>
               </div>
             )}
-            <div>
-              <label className="field-label">Qtd Inclusa</label>
-              <input type="number" min="0" className="field-input" value={form.included_qty} onChange={e => setForm(prev => ({ ...prev, included_qty: e.target.value }))} />
-            </div>
-            <div>
-              <label className="field-label">Ordem</label>
-              <input type="number" min="0" className="field-input" value={form.order} onChange={e => setForm(prev => ({ ...prev, order: e.target.value }))} />
+            {/* EN */}
+            {lang === 'en' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, animation: 'concierge-fade-in .15s ease' }}>
+                <div>
+                  <label style={labelSt}>Name in English</label>
+                  <input value={form.name_en} onChange={e => set('name_en', e.target.value)} placeholder="e.g. Still Water (500ml)" style={inputSt}
+                    onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
+                </div>
+                <div>
+                  <label style={labelSt}>Description in English</label>
+                  <textarea value={form.description_en} onChange={e => set('description_en', e.target.value)} placeholder="e.g. Still mineral water, individual 500ml bottle." rows={3}
+                    style={{ ...inputSt, resize: 'vertical', lineHeight: 1.5 }}
+                    onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
+                </div>
+              </div>
+            )}
+            {/* ES */}
+            {lang === 'es' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, animation: 'concierge-fade-in .15s ease' }}>
+                <div>
+                  <label style={labelSt}>Nombre en Español</label>
+                  <input value={form.name_es} onChange={e => set('name_es', e.target.value)} placeholder="Ej: Agua Mineral (500ml)" style={inputSt}
+                    onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
+                </div>
+                <div>
+                  <label style={labelSt}>Descripción en Español</label>
+                  <textarea value={form.description_es} onChange={e => set('description_es', e.target.value)} placeholder="Ej: Agua mineral sin gas, botella individual de 500ml." rows={3}
+                    style={{ ...inputSt, resize: 'vertical', lineHeight: 1.5 }}
+                    onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
+                </div>
+              </div>
+            )}
+
+            {/* Completeness indicator */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
+              <span style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)', fontWeight: 700 }}>Preenchimento:</span>
+              {[
+                { flag: '🇧🇷', label: 'PT', filled: !!form.name.trim() },
+                { flag: '🇺🇸', label: 'EN', filled: !!form.name_en.trim() },
+                { flag: '🇪🇸', label: 'ES', filled: !!form.name_es.trim() },
+              ].map(l => (
+                <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: l.filled ? '#2dd4bf' : 'rgba(255,255,255,0.12)' }} />
+                  <span style={{ fontSize: 10, color: l.filled ? '#2dd4bf' : 'rgba(238,240,248,0.22)', fontWeight: 700 }}>{l.flag} {l.label}</span>
+                </div>
+              ))}
             </div>
           </div>
-          {/* Availability */}
-          <div className="space-y-2">
-            <label className="field-label">Disponibilidade</label>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { key: 'availableForGuest' as const, label: 'Hóspede', Icon: User, on: 'bg-blue-500/10 border-blue-500/40 text-blue-600', check: 'bg-blue-500 border-blue-500' },
-                { key: 'availableForMaid' as const, label: 'Camareira', Icon: Wrench, on: 'bg-orange-500/10 border-orange-500/40 text-orange-600', check: 'bg-orange-500 border-orange-500' },
-              ].map(({ key, label, Icon, on, check }) => (
-                <button key={key} type="button" onClick={() => setForm(prev => ({ ...prev, [key]: !prev[key] }))} className={cn('flex items-center gap-2 p-3 rounded-xl border text-xs font-bold transition-all', form[key] ? on : 'bg-secondary border-border text-muted-foreground')}>
-                  <div className={cn('w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-colors', form[key] ? check : 'border-muted-foreground/40')}>
-                    {form[key] && <span className="text-white text-[10px] font-black">✓</span>}
+
+          {/* ── Tipo de Item ── */}
+          <div>
+            <div style={sectionLabel}>Tipo de Item</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {([
+                { id: 'consumption' as ConciergeCategory, label: 'Consumo', desc: 'Item entregue e cobrado. Ex: bebida, kit amenities.', Icon: ShoppingBag, color: '#9b6dff', bg: 'rgba(155,109,255,0.12)', border: 'rgba(155,109,255,0.3)' },
+                { id: 'loan' as ConciergeCategory, label: 'Empréstimo', desc: 'Item cedido e devolvido. Ex: guarda-chuva, cadeira.', Icon: Package, color: '#60a5fa', bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.22)' },
+              ]).map(cat => (
+                <button key={cat.id} onClick={() => set('category', cat.id)} style={{
+                  padding: 14, borderRadius: 14, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                  background: form.category === cat.id ? cat.bg : 'rgba(255,255,255,0.035)',
+                  border: `2px solid ${form.category === cat.id ? cat.border : 'rgba(255,255,255,0.07)'}`,
+                  transition: 'all .15s',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: 8, background: form.category === cat.id ? cat.bg : 'rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <cat.Icon size={14} style={{ color: form.category === cat.id ? cat.color : 'rgba(238,240,248,0.42)' }} />
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 900, color: form.category === cat.id ? cat.color : '#eef0f8' }}>{cat.label}</span>
+                    {form.category === cat.id && <div style={{ width: 7, height: 7, borderRadius: '50%', background: cat.color, marginLeft: 'auto', boxShadow: `0 0 8px ${cat.color}` }} />}
                   </div>
-                  <Icon size={13} />{label}
+                  <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', lineHeight: 1.4 }}>{cat.desc}</div>
                 </button>
               ))}
             </div>
           </div>
-          {/* Active */}
-          <div className="flex items-center gap-3">
-            <button onClick={() => setForm(prev => ({ ...prev, active: !prev.active }))} className={cn('relative w-11 h-6 rounded-full transition-colors', form.active ? 'bg-primary' : 'bg-secondary border border-border')}>
-              <span className={cn('absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform', form.active ? 'translate-x-6' : 'translate-x-1')} />
-            </button>
-            <span className="text-xs font-semibold text-foreground">{form.active ? 'Ativo' : 'Inativo'}</span>
+
+          {/* ── Preço & Quantidade ── */}
+          <div>
+            <div style={sectionLabel}>Preço & Quantidade</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={labelSt}>{isLoan ? 'Preço de entrega (opcional)' : 'Preço unitário (R$)'}</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 12, fontWeight: 700, color: 'rgba(238,240,248,0.42)', pointerEvents: 'none' }}>R$</span>
+                  <input type="number" min="0" step="0.01" value={form.price} onChange={e => set('price', e.target.value)}
+                    placeholder="0,00" style={{ ...inputSt, paddingLeft: 34 }}
+                    onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
+                </div>
+                <div style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)', marginTop: 4, lineHeight: 1.4 }}>
+                  {isLoan ? 'Cobrado na entrega, se aplicável.' : 'Valor cobrado por unidade consumida.'}
+                </div>
+              </div>
+              <div>
+                <label style={labelSt}>Qtde inclusa na hospedagem</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button onClick={() => set('included_qty', String(Math.max(0, parseInt(form.included_qty || '0') - 1)))}
+                    style={{ width: 34, height: 37, borderRadius: 9, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontSize: 18, color: '#eef0f8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>−</button>
+                  <input type="number" min="0" value={form.included_qty} onChange={e => set('included_qty', e.target.value)}
+                    style={{ ...inputSt, textAlign: 'center', padding: '9px 4px' }}
+                    onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
+                  <button onClick={() => set('included_qty', String(parseInt(form.included_qty || '0') + 1))}
+                    style={{ width: 34, height: 37, borderRadius: 9, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontSize: 18, color: '#eef0f8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>+</button>
+                </div>
+                <div style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)', marginTop: 4, lineHeight: 1.4 }}>Unidades gratuitas por estadia.</div>
+              </div>
+            </div>
+
+            {/* Loss price — loan only */}
+            {isLoan && (
+              <div style={{ marginTop: 10 }}>
+                <label style={{ ...labelSt, color: 'rgba(248,113,113,0.7)' }}>Preço de extravio (R$)</label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 12, fontWeight: 700, color: '#f87171', pointerEvents: 'none' }}>R$</span>
+                  <input type="number" min="0" step="0.01" value={form.loss_price} onChange={e => set('loss_price', e.target.value)}
+                    placeholder="0,00" style={{ ...inputSt, paddingLeft: 34, borderColor: 'rgba(248,113,113,0.3)' }}
+                    onFocus={e => (e.target.style.borderColor = '#f87171')} onBlur={e => (e.target.style.borderColor = 'rgba(248,113,113,0.3)')} />
+                </div>
+                <div style={{ fontSize: 10, color: 'rgba(248,113,113,0.6)', marginTop: 4 }}>Cobrado automaticamente se o item for marcado como extraviado.</div>
+              </div>
+            )}
+
+            {/* Order */}
+            <div style={{ marginTop: 10 }}>
+              <label style={labelSt}>Ordem de exibição</label>
+              <input type="number" min="0" value={form.order} onChange={e => set('order', e.target.value)}
+                style={inputSt}
+                onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
+            </div>
           </div>
+
+          {/* ── Disponibilidade ── */}
+          <div>
+            <div style={{ ...sectionLabel, marginBottom: 6 }}>Disponibilidade</div>
+            <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.35)', marginBottom: 12 }}>
+              Selecione quem pode solicitar este item. Nenhum selecionado = item inativo.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {([
+                { key: 'availableForGuest' as const, label: 'Hóspede', desc: 'Visível no app do hóspede.', Icon: User, color: '#2dd4bf', bg: 'rgba(45,212,191,0.08)', border: 'rgba(45,212,191,0.22)' },
+                { key: 'availableForMaid' as const, label: 'Camareira', desc: 'Visível no app da camareira.', Icon: Wrench, color: '#c084fc', bg: 'rgba(192,132,252,0.08)', border: 'rgba(192,132,252,0.22)' },
+              ]).map(opt => {
+                const on = form[opt.key];
+                return (
+                  <button key={opt.key} onClick={() => set(opt.key, !on)} style={{
+                    padding: 14, borderRadius: 14, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                    background: on ? opt.bg : 'rgba(255,255,255,0.035)',
+                    border: `2px solid ${on ? opt.border : 'rgba(255,255,255,0.07)'}`,
+                    transition: 'all .15s',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: 8, background: on ? opt.bg : 'rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <opt.Icon size={14} style={{ color: on ? opt.color : 'rgba(238,240,248,0.42)' }} />
+                      </div>
+                      <span style={{ fontSize: 13, fontWeight: 900, color: on ? opt.color : '#eef0f8' }}>{opt.label}</span>
+                      {/* checkmark */}
+                      <div style={{
+                        marginLeft: 'auto', width: 18, height: 18, borderRadius: 5,
+                        background: on ? opt.color : 'transparent',
+                        border: `2px solid ${on ? opt.color : 'rgba(255,255,255,0.2)'}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        transition: 'all .15s', flexShrink: 0,
+                      }}>
+                        {on && <CheckCircle2 size={11} style={{ color: '#fff', strokeWidth: 3 }} />}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', lineHeight: 1.4 }}>{opt.desc}</div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Status indicator — derived from selection */}
+            {!isActive && (
+              <div style={{ marginTop: 10, padding: '10px 14px', borderRadius: 10, background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.2)', display: 'flex', alignItems: 'center', gap: 8, animation: 'concierge-fade-in .2s ease' }}>
+                <XCircle size={14} style={{ color: '#f87171', flexShrink: 0 }} />
+                <span style={{ fontSize: 12, color: 'rgba(248,113,113,0.8)', fontWeight: 600 }}>Nenhum público selecionado — o item ficará inativo e oculto do catálogo.</span>
+              </div>
+            )}
+          </div>
+
         </div>
-        <div className="p-5 border-t border-border flex gap-3 justify-end">
-          <button onClick={onClose} className="px-4 py-2 rounded-xl bg-secondary text-foreground text-xs font-bold uppercase tracking-wide hover:bg-border transition-colors">Cancelar</button>
-          <button onClick={onSave} disabled={saving} className="px-5 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold uppercase tracking-wide hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2">
-            {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}Salvar
+
+        {/* ── Footer ── */}
+        <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
+          {/* Live preview pill */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 12px', borderRadius: 999, background: 'rgba(255,255,255,0.035)', border: `1px solid ${isActive ? 'rgba(255,255,255,0.12)' : 'rgba(248,113,113,0.2)'}`, fontSize: 12, fontWeight: 700, flexShrink: 0, maxWidth: 220, overflow: 'hidden', transition: 'border-color .2s' }}>
+            <span style={{ fontSize: 16, flexShrink: 0, opacity: isActive ? 1 : 0.4 }}>{imageType === 'emoji' ? emoji : '📦'}</span>
+            <span style={{ color: form.name.trim() ? (isActive ? '#eef0f8' : 'rgba(238,240,248,0.35)') : 'rgba(238,240,248,0.42)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{form.name.trim() || 'Nome do item'}</span>
+            <span style={{ flexShrink: 0, padding: '1px 6px', borderRadius: 999, fontSize: 8, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', background: isLoan ? 'rgba(96,165,250,0.08)' : 'rgba(155,109,255,0.08)', color: isLoan ? '#60a5fa' : '#9b6dff', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.22)' : 'rgba(155,109,255,0.22)'}` }}>
+              {isLoan ? 'Empréstimo' : 'Consumo'}
+            </span>
+            {!isActive && <span style={{ flexShrink: 0, padding: '1px 6px', borderRadius: 999, fontSize: 8, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', background: 'rgba(248,113,113,0.08)', color: '#f87171', border: '1px solid rgba(248,113,113,0.22)' }}>inativo</span>}
+          </div>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose} style={{ padding: '10px 18px', borderRadius: 11, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: 'rgba(238,240,248,0.42)' }}>
+            Cancelar
+          </button>
+          <button onClick={onSave} disabled={!canSave || saving} style={{
+            padding: '10px 22px', borderRadius: 11, border: 'none', cursor: canSave && !saving ? 'pointer' : 'default',
+            fontFamily: 'inherit', fontSize: 13, fontWeight: 800, color: '#fff',
+            background: canSave ? 'linear-gradient(135deg,#9b6dff,#4ec9d4)' : 'rgba(155,109,255,0.3)',
+            boxShadow: canSave && !saving ? '0 4px 14px rgba(155,109,255,.3)' : 'none',
+            transition: 'all .2s', display: 'flex', alignItems: 'center', gap: 7, opacity: saving ? 0.7 : 1,
+          }}>
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            {editingId ? 'Salvar Alterações' : 'Criar Item'}
           </button>
         </div>
       </div>
