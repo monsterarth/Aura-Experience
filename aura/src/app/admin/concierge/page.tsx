@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { ConciergeService } from "@/services/concierge-service";
+import { StayService } from "@/services/stay-service";
 import { ConciergeRequest, ConciergeItem, ConciergeCategory } from "@/types/aura";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import EmojiPicker from "emoji-picker-react";
@@ -674,7 +675,7 @@ export default function AdminConciergePage() {
       {detail && <DetailPanel req={detail} onClose={() => setDetail(null)} onAction={runAction} />}
 
       {/* ── New request modal ─────────────────────────────────────────────── */}
-      {showNew && <NewRequestModal items={items} preset={newItemPreset} onClose={() => { setShowNew(false); setNewItemPreset(null); }} />}
+      {showNew && <NewRequestModal preset={newItemPreset} onClose={() => { setShowNew(false); setNewItemPreset(null); }} />}
 
       {/* ── Catalog form modal ────────────────────────────────────────────── */}
       {showForm && (
@@ -959,17 +960,16 @@ function CatalogCard({ item, onEdit, onToggleActive, onRequest }: {
 
 // ─── NewRequestModal ──────────────────────────────────────────────────────────
 
-interface ActiveStay { id: string; cabinName: string; guestName: string; cabinId?: string; }
-interface CabinOption { id: string; name: string; stay?: ActiveStay; }
+interface CabinOption { id: string; name: string; stayId?: string; guestName?: string; }
 
-function NewRequestModal({ items, preset, onClose }: {
-  items: ConciergeItem[];
+function NewRequestModal({ preset, onClose }: {
   preset: ConciergeItem | null;
   onClose: () => void;
 }) {
   const { currentProperty: property } = useProperty();
   const { userData } = useAuth();
-  const [itemId, setItemId] = useState(preset?.id || items[0]?.id || '');
+  const [catalogItems, setCatalogItems] = useState<ConciergeItem[]>([]);
+  const [itemId, setItemId] = useState(preset?.id || '');
   const [qty, setQty] = useState(1);
   const [notes, setNotes] = useState('');
   const [urgent, setUrgent] = useState(false);
@@ -978,7 +978,7 @@ function NewRequestModal({ items, preset, onClose }: {
   const [selectedCabinId, setSelectedCabinId] = useState('');
   const [loading, setLoading] = useState(true);
 
-  const selectedItem = items.find(i => i.id === itemId);
+  const selectedItem = catalogItems.find(i => i.id === itemId);
   const selectedCabin = cabins.find(c => c.id === selectedCabinId);
   const isLoan = selectedItem?.category === 'loan';
 
@@ -986,51 +986,34 @@ function NewRequestModal({ items, preset, onClose }: {
     if (!property) return;
     (async () => {
       try {
-        const [{ data: cabinData }, { data: stayData }] = await Promise.all([
-          supabase
-            .from('cabins')
-            .select('id, name')
-            .eq('propertyId', property.id)
-            .order('name', { ascending: true }),
-          supabase
-            .from('stays')
-            .select('id, cabinId, guestId')
-            .eq('propertyId', property.id)
-            .eq('status', 'checked_in'),
+        const [activeStays, { data: cabinData }, { data: itemData }] = await Promise.all([
+          StayService.getStaysByStatus(property.id, ['active', 'pending', 'pre_checkin_done']),
+          supabase.from('cabins').select('id, name').eq('propertyId', property.id).order('name', { ascending: true }),
+          supabase.from('concierge_items').select('*').eq('propertyId', property.id).eq('active', true).order('order', { ascending: true }),
         ]);
 
-        const stays = (stayData || []) as any[];
-        const guestIds = [...new Set(stays.map((s: any) => s.guestId).filter(Boolean))];
-        const { data: guestData } = guestIds.length > 0
-          ? await supabase.from('guests').select('id, fullName').in('id', guestIds)
-          : { data: [] };
-        const guestMap = Object.fromEntries((guestData || []).map((g: any) => [g.id, g.fullName]));
-
-        const stayByCabinId = new Map<string, ActiveStay>();
-        for (const s of stays) {
-          if (!s.cabinId) continue;
-          stayByCabinId.set(s.cabinId, {
-            id: s.id,
-            cabinId: s.cabinId,
-            cabinName: '',
-            guestName: guestMap[s.guestId] || '—',
-          });
+        const stayByCabinId = new Map<string, { stayId: string; guestName: string }>();
+        for (const s of activeStays as any[]) {
+          if (s.cabinId) stayByCabinId.set(s.cabinId, { stayId: s.id, guestName: s.guestName || '—' });
         }
 
-        const opts: CabinOption[] = (cabinData || []).map((c: any) => ({
-          id: c.id,
-          name: c.name,
-          stay: stayByCabinId.get(c.id),
-        }));
+        const opts: CabinOption[] = (cabinData || []).map((c: any) => {
+          const match = stayByCabinId.get(c.id);
+          return { id: c.id, name: c.name, stayId: match?.stayId, guestName: match?.guestName };
+        });
 
         setCabins(opts);
-        const firstWithStay = opts.find(c => !!c.stay);
+        const firstWithStay = opts.find(c => !!c.stayId);
         setSelectedCabinId(firstWithStay?.id || opts[0]?.id || '');
+
+        const items = (itemData || []) as ConciergeItem[];
+        setCatalogItems(items);
+        if (!preset?.id && items.length > 0) setItemId(items[0].id);
       } finally {
         setLoading(false);
       }
     })();
-  }, [property]);
+  }, [property]); // eslint-disable-line
 
   const handle = async () => {
     if (!property || !userData || !itemId || !selectedCabinId) return;
@@ -1038,7 +1021,7 @@ function NewRequestModal({ items, preset, onClose }: {
     try {
       await ConciergeService.createRequest({
         propertyId: property.id,
-        stayId: selectedCabin?.stay?.id,
+        stayId: selectedCabin?.stayId,
         cabinId: selectedCabinId,
         itemId,
         quantity: qty,
@@ -1123,12 +1106,12 @@ function NewRequestModal({ items, preset, onClose }: {
                   >
                     {cabins.map(c => (
                       <option key={c.id} value={c.id} style={{ background: '#161824', color: '#eef0f8' }}>
-                        {c.name}{c.stay ? ` — ${c.stay.guestName}` : ' — Sem estadia'}
+                        {c.name}{c.stayId ? ` — ${c.guestName}` : ' — Sem estadia'}
                       </option>
                     ))}
                   </select>
                 </div>
-                {selectedCabin && !selectedCabin.stay && (
+                {selectedCabin && !selectedCabin.stayId && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderRadius: 9, background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.2)', fontSize: 11, color: '#f59e0b' }}>
                     <AlertTriangle size={11} />
                     Cabana sem estadia ativa — pedido será criado sem vínculo com hóspede.
@@ -1149,7 +1132,7 @@ function NewRequestModal({ items, preset, onClose }: {
                 style={{ background: 'transparent', border: 'none', color: '#eef0f8', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, outline: 'none', width: '100%', cursor: 'pointer' }}
               >
                 {(['loan', 'consumption'] as ConciergeCategory[]).map(cat => {
-                  const catItems = items.filter(i => i.category === cat && i.active);
+                  const catItems = catalogItems.filter(i => i.category === cat);
                   if (catItems.length === 0) return null;
                   return [
                     <option key={`sep-${cat}`} disabled style={{ background: '#0f1120', color: 'rgba(238,240,248,0.35)', fontSize: 10, fontWeight: 800, letterSpacing: '0.06em' }}>
