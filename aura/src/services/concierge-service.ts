@@ -206,12 +206,13 @@ export const ConciergeService = {
   async createRequest(
     data: {
       propertyId: string;
-      stayId: string;
+      stayId?: string;
       cabinId?: string;
       itemId: string;
       quantity: number;
       notes?: string;
       requestedBy?: 'guest' | 'maid';
+      urgent?: boolean;
     },
     actorId: string,
     actorName: string

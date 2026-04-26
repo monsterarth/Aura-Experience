@@ -1001,7 +1001,7 @@ export interface MinibarCabinOverride {
 export interface ConciergeRequest {
   id: string;
   propertyId: string;
-  stayId: string;
+  stayId?: string;
   cabinId?: string;
   itemId: string;
   quantity: number;
@@ -1011,6 +1011,7 @@ export interface ConciergeRequest {
   assignedName?: string;
   total_price?: number;
   notes?: string;
+  urgent?: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
   // Joined fields

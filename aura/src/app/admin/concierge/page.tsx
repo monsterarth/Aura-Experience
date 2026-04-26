@@ -164,7 +164,7 @@ export default function AdminConciergePage() {
     ageIntervalRef.current = setInterval(() => {
       setOpenRequests(prev => prev.map(r => {
         const ageMin = r.ageMin + 1;
-        return { ...r, ageMin, urgency: getUrgency(ageMin) };
+        return { ...r, ageMin, urgency: r.urgent ? 'urgent' : getUrgency(ageMin) };
       }));
     }, 60_000);
     return () => { if (ageIntervalRef.current) clearInterval(ageIntervalRef.current); };
@@ -175,7 +175,7 @@ export default function AdminConciergePage() {
   useEffect(() => {
     const enriched: EnrichedRequest[] = rawOpen.map(r => {
       const ageMin = Math.floor((Date.now() - new Date(r.createdAt).getTime()) / 60_000);
-      return { ...r, ageMin, urgency: getUrgency(ageMin) };
+      return { ...r, ageMin, urgency: r.urgent ? 'urgent' : getUrgency(ageMin) };
     });
     setOpenRequests(enriched);
   }, [rawOpen]);
@@ -960,6 +960,7 @@ function CatalogCard({ item, onEdit, onToggleActive, onRequest }: {
 // ─── NewRequestModal ──────────────────────────────────────────────────────────
 
 interface ActiveStay { id: string; cabinName: string; guestName: string; cabinId?: string; }
+interface CabinOption { id: string; name: string; stay?: ActiveStay; }
 
 function NewRequestModal({ items, preset, onClose }: {
   items: ConciergeItem[];
@@ -971,51 +972,79 @@ function NewRequestModal({ items, preset, onClose }: {
   const [itemId, setItemId] = useState(preset?.id || items[0]?.id || '');
   const [qty, setQty] = useState(1);
   const [notes, setNotes] = useState('');
+  const [urgent, setUrgent] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [stays, setStays] = useState<ActiveStay[]>([]);
-  const [stayId, setStayId] = useState('');
-  const [loadingStays, setLoadingStays] = useState(true);
+  const [cabins, setCabins] = useState<CabinOption[]>([]);
+  const [selectedCabinId, setSelectedCabinId] = useState('');
+  const [loading, setLoading] = useState(true);
 
   const selectedItem = items.find(i => i.id === itemId);
+  const selectedCabin = cabins.find(c => c.id === selectedCabinId);
+  const isLoan = selectedItem?.category === 'loan';
 
   useEffect(() => {
     if (!property) return;
     (async () => {
       try {
-        const { data } = await supabase
-          .from('stays')
-          .select('id, cabinId, guestId, cabins:cabinId(name), guests:guestId(fullName)')
-          .eq('propertyId', property.id)
-          .eq('status', 'checked_in')
-          .order('checkIn', { ascending: false });
+        const [{ data: cabinData }, { data: stayData }] = await Promise.all([
+          supabase
+            .from('cabins')
+            .select('id, name')
+            .eq('propertyId', property.id)
+            .order('name', { ascending: true }),
+          supabase
+            .from('stays')
+            .select('id, cabinId, guestId')
+            .eq('propertyId', property.id)
+            .eq('status', 'checked_in'),
+        ]);
 
-        const mapped: ActiveStay[] = (data || []).map((s: any) => ({
-          id: s.id,
-          cabinId: s.cabinId,
-          cabinName: s.cabins?.name || '—',
-          guestName: s.guests?.fullName || '—',
+        const stays = (stayData || []) as any[];
+        const guestIds = [...new Set(stays.map((s: any) => s.guestId).filter(Boolean))];
+        const { data: guestData } = guestIds.length > 0
+          ? await supabase.from('guests').select('id, fullName').in('id', guestIds)
+          : { data: [] };
+        const guestMap = Object.fromEntries((guestData || []).map((g: any) => [g.id, g.fullName]));
+
+        const stayByCabinId = new Map<string, ActiveStay>();
+        for (const s of stays) {
+          if (!s.cabinId) continue;
+          stayByCabinId.set(s.cabinId, {
+            id: s.id,
+            cabinId: s.cabinId,
+            cabinName: '',
+            guestName: guestMap[s.guestId] || '—',
+          });
+        }
+
+        const opts: CabinOption[] = (cabinData || []).map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          stay: stayByCabinId.get(c.id),
         }));
-        setStays(mapped);
-        if (mapped.length > 0) setStayId(mapped[0].id);
+
+        setCabins(opts);
+        const firstWithStay = opts.find(c => !!c.stay);
+        setSelectedCabinId(firstWithStay?.id || opts[0]?.id || '');
       } finally {
-        setLoadingStays(false);
+        setLoading(false);
       }
     })();
   }, [property]);
 
   const handle = async () => {
-    if (!property || !userData || !itemId || !stayId) return;
+    if (!property || !userData || !itemId || !selectedCabinId) return;
     setSaving(true);
-    const selectedStay = stays.find(s => s.id === stayId);
     try {
       await ConciergeService.createRequest({
         propertyId: property.id,
-        stayId,
-        cabinId: selectedStay?.cabinId,
+        stayId: selectedCabin?.stay?.id,
+        cabinId: selectedCabinId,
         itemId,
         quantity: qty,
         notes: notes.trim() || undefined,
         requestedBy: 'guest',
+        urgent,
       }, userData.id, userData.fullName);
       toast.success('Pedido criado.');
       onClose();
@@ -1026,73 +1055,210 @@ function NewRequestModal({ items, preset, onClose }: {
     }
   };
 
-  const inputSt: React.CSSProperties = { background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '9px 12px', color: '#eef0f8', fontFamily: 'inherit', fontSize: 13, outline: 'none', width: '100%' };
-  const labelSt: React.CSSProperties = { fontSize: 11, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'rgba(238,240,248,0.42)', marginBottom: 5, display: 'block' };
+  const inputSt: React.CSSProperties = {
+    background: 'rgba(255,255,255,0.04)',
+    border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: 10,
+    padding: '9px 12px',
+    color: '#eef0f8',
+    fontFamily: 'inherit',
+    fontSize: 13,
+    outline: 'none',
+    width: '100%',
+    transition: 'border-color .15s',
+  };
+
+  const sectionLabel: React.CSSProperties = {
+    fontSize: 10, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase',
+    color: 'rgba(238,240,248,0.35)', marginBottom: 10,
+  };
+
+  const canSubmit = !!itemId && !!selectedCabinId && !saving;
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', backdropFilter: 'blur(6px)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 22, width: 460, boxShadow: '0 24px 80px rgba(0,0,0,.7)', animation: 'concierge-fade-in .2s ease' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 900, color: '#eef0f8' }}>Novo Pedido</div>
-            <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', marginTop: 2 }}>Registrar solicitação manualmente</div>
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', backdropFilter: 'blur(8px)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+      onClick={onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ background: '#0b0e18', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 24, width: 500, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 32px 100px rgba(0,0,0,.8)', animation: 'concierge-fade-in .2s ease' }}
+      >
+        {/* ── Header ── */}
+        <div style={{ padding: '22px 24px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 11, background: 'rgba(155,109,255,0.12)', border: '1px solid rgba(155,109,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <ShoppingBag size={17} style={{ color: '#9b6dff' }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 16, fontWeight: 900, color: '#eef0f8' }}>Novo Pedido</div>
+              <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', marginTop: 2 }}>Registrar solicitação manualmente</div>
+            </div>
+            <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)', flexShrink: 0 }}>
+              <X size={13} />
+            </button>
           </div>
-          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)' }}>
-            <X size={13} />
-          </button>
         </div>
-        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Stay picker */}
+
+        {/* ── Body ── */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 22, scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.08) transparent' }}>
+
+          {/* ── Cabana ── */}
           <div>
-            <label style={labelSt}>Cabana / Hóspede</label>
-            {loadingStays ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(238,240,248,0.42)', fontSize: 13 }}>
-                <Loader2 size={14} className="animate-spin" /> Carregando estadias…
+            <div style={sectionLabel}>Cabana</div>
+            {loading ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(238,240,248,0.42)', fontSize: 13, padding: '10px 0' }}>
+                <Loader2 size={14} className="animate-spin" /> Carregando cabanas…
               </div>
-            ) : stays.length === 0 ? (
-              <div style={{ fontSize: 13, color: 'rgba(238,240,248,0.42)', padding: '9px 0' }}>Nenhuma estadia ativa no momento.</div>
+            ) : cabins.length === 0 ? (
+              <div style={{ fontSize: 13, color: 'rgba(238,240,248,0.42)', padding: '10px 0' }}>Nenhuma cabana cadastrada.</div>
             ) : (
-              <select value={stayId} onChange={e => setStayId(e.target.value)} style={{ ...inputSt, appearance: 'none' }}>
-                {stays.map(s => (
-                  <option key={s.id} value={s.id} style={{ background: '#0d1020' }}>{s.cabinName} — {s.guestName}</option>
-                ))}
-              </select>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#161824', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '9px 12px' }}>
+                  <Pin size={13} style={{ color: 'rgba(238,240,248,0.42)', flexShrink: 0 }} />
+                  <select
+                    value={selectedCabinId}
+                    onChange={e => setSelectedCabinId(e.target.value)}
+                    style={{ background: 'transparent', border: 'none', color: '#eef0f8', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, outline: 'none', width: '100%', cursor: 'pointer' }}
+                  >
+                    {cabins.map(c => (
+                      <option key={c.id} value={c.id} style={{ background: '#161824', color: '#eef0f8' }}>
+                        {c.name}{c.stay ? ` — ${c.stay.guestName}` : ' — Sem estadia'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {selectedCabin && !selectedCabin.stay && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderRadius: 9, background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.2)', fontSize: 11, color: '#f59e0b' }}>
+                    <AlertTriangle size={11} />
+                    Cabana sem estadia ativa — pedido será criado sem vínculo com hóspede.
+                  </div>
+                )}
+              </div>
             )}
           </div>
-          {/* Item */}
+
+          {/* ── Item ── */}
           <div>
-            <label style={labelSt}>Item do Catálogo</label>
-            <select value={itemId} onChange={e => setItemId(e.target.value)} style={{ ...inputSt, appearance: 'none' }}>
-              {(['loan', 'consumption'] as ConciergeCategory[]).map(cat => (
-                <optgroup key={cat} label={cat === 'loan' ? 'Empréstimos' : 'Consumo'}>
-                  {items.filter(i => i.category === cat).map(i => (
-                    <option key={i.id} value={i.id} style={{ background: '#0d1020' }}>{i.name}{i.price > 0 ? ` · R$${i.price.toFixed(2)}` : ''}</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
+            <div style={sectionLabel}>Item do Catálogo</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#161824', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '9px 12px' }}>
+              <Package size={13} style={{ color: 'rgba(238,240,248,0.42)', flexShrink: 0 }} />
+              <select
+                value={itemId}
+                onChange={e => setItemId(e.target.value)}
+                style={{ background: 'transparent', border: 'none', color: '#eef0f8', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, outline: 'none', width: '100%', cursor: 'pointer' }}
+              >
+                {(['loan', 'consumption'] as ConciergeCategory[]).map(cat => {
+                  const catItems = items.filter(i => i.category === cat && i.active);
+                  if (catItems.length === 0) return null;
+                  return [
+                    <option key={`sep-${cat}`} disabled style={{ background: '#0f1120', color: 'rgba(238,240,248,0.35)', fontSize: 10, fontWeight: 800, letterSpacing: '0.06em' }}>
+                      {'── ' + (cat === 'loan' ? 'EMPRÉSTIMOS' : 'CONSUMO')}
+                    </option>,
+                    ...catItems.map(i => (
+                      <option key={i.id} value={i.id} style={{ background: '#161824', color: '#eef0f8' }}>
+                        {i.name}{i.price > 0 ? ` · R$${i.price.toFixed(2)}` : ''}
+                      </option>
+                    )),
+                  ];
+                })}
+              </select>
+            </div>
+            {selectedItem && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, padding: '8px 12px', background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10 }}>
+                <div style={{ width: 28, height: 28, borderRadius: 8, background: isLoan ? 'rgba(96,165,250,0.08)' : 'rgba(155,109,255,0.08)', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.2)' : 'rgba(155,109,255,0.2)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 15 }}>
+                  {isEmojiUrl(selectedItem.image_url) ? emojiFromUrl(selectedItem.image_url) : (isLoan ? <Package size={13} style={{ color: '#60a5fa' }} /> : <ShoppingBag size={13} style={{ color: '#9b6dff' }} />)}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#eef0f8' }}>{selectedItem.name}</div>
+                  <div style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)', marginTop: 1 }}>{isLoan ? 'Empréstimo' : 'Consumo'}</div>
+                </div>
+                {selectedItem.price > 0 && (
+                  <div style={{ fontSize: 13, fontWeight: 900, color: '#9b6dff', flexShrink: 0 }}>R$ {(selectedItem.price * qty).toFixed(2)}</div>
+                )}
+              </div>
+            )}
           </div>
-          {/* Qty */}
+
+          {/* ── Quantidade ── */}
           <div>
-            <label style={labelSt}>Quantidade</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button onClick={() => setQty(q => Math.max(1, q - 1))} style={{ width: 34, height: 34, borderRadius: 9, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontSize: 18, color: '#eef0f8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-              <span style={{ fontSize: 18, fontWeight: 900, minWidth: 32, textAlign: 'center', color: '#eef0f8' }}>{qty}</span>
-              <button onClick={() => setQty(q => q + 1)} style={{ width: 34, height: 34, borderRadius: 9, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontSize: 18, color: '#eef0f8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
-              {selectedItem && selectedItem.price > 0 && <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 800, color: '#9b6dff' }}>R$ {(selectedItem.price * qty).toFixed(2)}</span>}
+            <div style={sectionLabel}>Quantidade</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button
+                onClick={() => setQty(q => Math.max(1, q - 1))}
+                style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontSize: 20, color: '#eef0f8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+              >−</button>
+              <span style={{ fontSize: 20, fontWeight: 900, minWidth: 36, textAlign: 'center', color: '#eef0f8' }}>{qty}</span>
+              <button
+                onClick={() => setQty(q => q + 1)}
+                style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontSize: 20, color: '#eef0f8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+              >+</button>
             </div>
           </div>
-          {/* Notes */}
+
+          {/* ── Urgente + Observações ── */}
           <div>
-            <label style={labelSt}>Observações (opcional)</label>
-            <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Ex: gelado, sem açúcar…" style={inputSt} />
+            <div style={sectionLabel}>Opções</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {/* Urgente toggle */}
+              <button
+                onClick={() => setUrgent(u => !u)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 12, cursor: 'pointer',
+                  background: urgent ? 'rgba(248,113,113,0.08)' : 'rgba(255,255,255,0.035)',
+                  border: `1px solid ${urgent ? 'rgba(248,113,113,0.35)' : 'rgba(255,255,255,0.07)'}`,
+                  transition: 'all .15s', textAlign: 'left', fontFamily: 'inherit',
+                }}
+              >
+                <div style={{
+                  width: 20, height: 20, borderRadius: 6, border: `2px solid ${urgent ? '#f87171' : 'rgba(255,255,255,0.2)'}`,
+                  background: urgent ? '#f87171' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0, transition: 'all .15s',
+                }}>
+                  {urgent && <div style={{ width: 8, height: 8, borderRadius: 2, background: '#fff' }} />}
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: urgent ? '#f87171' : '#eef0f8' }}>Marcar como Urgente</div>
+                  <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', marginTop: 1 }}>Pedido aparece destacado na fila de pendentes</div>
+                </div>
+                {urgent && (
+                  <AlertTriangle size={15} style={{ color: '#f87171', marginLeft: 'auto', flexShrink: 0 }} />
+                )}
+              </button>
+
+              {/* Observações */}
+              <input
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                placeholder="Observações (opcional) — Ex: gelado, sem açúcar…"
+                style={inputSt}
+                onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')}
+                onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')}
+              />
+            </div>
           </div>
         </div>
-        <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: '11px', borderRadius: 11, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: 'rgba(238,240,248,0.42)' }}>Cancelar</button>
-          <button onClick={handle} disabled={!itemId || !stayId || saving} style={{ flex: 2, padding: '11px', borderRadius: 11, border: 'none', background: 'linear-gradient(135deg,#9b6dff,#4ec9d4)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, color: '#fff', boxShadow: '0 4px 14px rgba(155,109,255,.35)', opacity: (!itemId || !stayId || saving) ? 0.5 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-            {saving ? <Loader2 size={13} className="animate-spin" /> : null}
-            Criar Pedido
+
+        {/* ── Footer ── */}
+        <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8, flexShrink: 0 }}>
+          <button
+            onClick={onClose}
+            style={{ flex: 1, padding: '12px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: 'rgba(238,240,248,0.42)' }}
+          >Cancelar</button>
+          <button
+            onClick={handle}
+            disabled={!canSubmit}
+            style={{
+              flex: 2, padding: '12px', borderRadius: 12, border: 'none',
+              background: urgent ? 'linear-gradient(135deg,#f87171,#f59e0b)' : 'linear-gradient(135deg,#9b6dff,#4ec9d4)',
+              cursor: canSubmit ? 'pointer' : 'not-allowed', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, color: '#fff',
+              boxShadow: urgent ? '0 4px 14px rgba(248,113,113,.3)' : '0 4px 14px rgba(155,109,255,.35)',
+              opacity: canSubmit ? 1 : 0.5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              transition: 'all .15s',
+            }}
+          >
+            {saving ? <Loader2 size={13} className="animate-spin" /> : urgent ? <AlertTriangle size={13} /> : null}
+            {urgent ? 'Criar Pedido Urgente' : 'Criar Pedido'}
           </button>
         </div>
       </div>
