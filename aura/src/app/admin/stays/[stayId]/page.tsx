@@ -428,7 +428,7 @@ export default function StayDetailPage() {
   );
 
   if (!stay) return (
-    <RoleGuard allowedRoles={["super_admin", "admin", "reception", "governance"]}>
+    <RoleGuard allowedRoles={["super_admin", "admin", "reception", "governance", "hr"]}>
       <div className="min-h-screen flex flex-col items-center justify-center gap-3">
         <p className="text-muted-foreground text-sm">Estadia não encontrada.</p>
         <Link href="/admin/stays" className="text-primary text-sm font-bold hover:underline">← Voltar para Estadias</Link>
@@ -441,7 +441,7 @@ export default function StayDetailPage() {
   // ── JSX ───────────────────────────────────────────────────────────────────
 
   return (
-    <RoleGuard allowedRoles={["super_admin", "admin", "reception", "governance"]}>
+    <RoleGuard allowedRoles={["super_admin", "admin", "reception", "governance", "hr"]}>
       <style>{`@media print{.no-print{display:none!important}body{background:#fff}}`}</style>
 
       <div className="min-h-screen bg-background text-foreground">

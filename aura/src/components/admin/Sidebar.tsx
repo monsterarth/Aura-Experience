@@ -137,7 +137,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Hospedagem",
     items: [
       { id: "stays",   label: "Estadias",     icon: Home,          href: "/admin/stays",           roles: ["super_admin","admin","reception","governance","hr"] },
-      { id: "mapa",    label: "Mapa",          icon: Map,           href: "/admin/reservation-map", roles: ["super_admin","admin","reception"] },
+      { id: "mapa",    label: "Mapa",          icon: Map,           href: "/admin/reservation-map", roles: ["super_admin","admin","reception","hr"] },
       { id: "hospedes",label: "Hóspedes",      icon: UserSearch,    href: "/admin/guests",          roles: ["super_admin","admin","reception","hr"] },
       { id: "comunic", label: "Comunicação",   icon: MessageSquare, href: "/admin/comunicacao",     roles: ["super_admin","admin","reception"] },
     ],
@@ -158,7 +158,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: "manutencao", label: "Manutenção", icon: Wrench,   href: "/admin/maintenance/kanban", roles: ["super_admin","admin","maintenance"] },
       { id: "governanca", label: "Governança", icon: Sparkles, href: "/admin/governance/kanban",  roles: ["super_admin","admin","governance"] },
-      { id: "concierge",  label: "Concierge",  icon: Gift,     href: "/admin/concierge",          roles: ["super_admin","admin","reception"] },
+      { id: "concierge",  label: "Concierge",  icon: Gift,     href: "/admin/concierge",          roles: ["super_admin","admin","reception","hr"] },
     ],
   },
   {

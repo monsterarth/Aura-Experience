@@ -61,9 +61,11 @@ export function calculateScheduleForDate(
 
   const { startTime, endTime } = scheduleConfig;
 
+  const dow = normalizedDate.getDay();
+  const hasFixedDayOff = scheduleConfig.fixedDayOff != null && dow === scheduleConfig.fixedDayOff;
+
   if (scheduleType === '5x2') {
-    const dow = normalizedDate.getDay(); // 0=Dom, 6=Sáb
-    const isWork = dow >= 1 && dow <= 5;
+    const isWork = dow >= 1 && dow <= 5 && !hasFixedDayOff;
     return isWork
       ? { isWork: true, startTime, endTime, source: 'calculated' }
       : { isWork: false, source: 'calculated' };
@@ -74,7 +76,7 @@ export function calculateScheduleForDate(
     if (!refDate) return { isWork: false, source: 'not-configured' };
     const ref = localMidnight(refDate);
     const diff = diffDays(normalizedDate, ref);
-    const isWork = positiveModulo(diff, 2) === 0;
+    const isWork = positiveModulo(diff, 2) === 0 && !hasFixedDayOff;
     return isWork
       ? { isWork: true, startTime, endTime, source: 'calculated' }
       : { isWork: false, source: 'calculated' };
@@ -86,7 +88,7 @@ export function calculateScheduleForDate(
     const ref = localMidnight(refDate);
     const diff = diffDays(normalizedDate, ref);
     const pos = positiveModulo(diff, 7);
-    const isWork = pos < 6;
+    const isWork = pos < 6 && !hasFixedDayOff;
     return isWork
       ? { isWork: true, startTime, endTime, source: 'calculated' }
       : { isWork: false, source: 'calculated' };

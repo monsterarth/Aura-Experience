@@ -727,6 +727,7 @@ export interface ScheduleConfig {
   startTime: string;           // HH:mm
   endTime: string;             // HH:mm
   cycleReferenceDate?: string; // YYYY-MM-DD — fallback quando não há checkpoints
+  fixedDayOff?: number | null; // 0=Dom...6=Sáb — folga fixa semanal, null=nenhuma
 }
 
 export interface ScheduleCheckpoint {

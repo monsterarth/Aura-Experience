@@ -117,6 +117,7 @@ export default function EscalasPage() {
   const [configStart, setConfigStart] = useState("08:00");
   const [configEnd, setConfigEnd] = useState("17:00");
   const [configRefDate, setConfigRefDate] = useState("");
+  const [configFixedDayOff, setConfigFixedDayOff] = useState<number | null>(null);
   const [configSaving, setConfigSaving] = useState(false);
 
   // Checkpoint inline form (dentro do config modal)
@@ -290,6 +291,7 @@ export default function EscalasPage() {
     setConfigStart(staff.scheduleConfig?.startTime || "08:00");
     setConfigEnd(staff.scheduleConfig?.endTime || "17:00");
     setConfigRefDate(staff.scheduleConfig?.cycleReferenceDate || "");
+    setConfigFixedDayOff(staff.scheduleConfig?.fixedDayOff ?? null);
     setShowCheckpointForm(false);
     setCpEffectiveDate("");
     setCpReferenceDate("");
@@ -309,6 +311,7 @@ export default function EscalasPage() {
         startTime: configStart,
         endTime: configEnd,
         ...(configRefDate ? { cycleReferenceDate: configRefDate } : {}),
+        fixedDayOff: configFixedDayOff,
       };
       await StaffService.updateScheduleConfig(configModal.staff.id, {
         scheduleType: configType,
@@ -654,14 +657,23 @@ export default function EscalasPage() {
                       return (
                         <div className="grid grid-cols-7 gap-1">
                           {DAY_LABELS.map((label, dow) => {
-                            const isWork = dow >= 1 && dow <= 5;
+                            const isFixedOff = cfg.fixedDayOff != null && dow === cfg.fixedDayOff;
+                            const isWork = dow >= 1 && dow <= 5 && !isFixedOff;
                             return (
                               <div
                                 key={dow}
-                                className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border ${isWork ? 'bg-[#1a1a1a] border-white/10' : 'border-dashed border-white/5'}`}
+                                className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border ${
+                                  isFixedOff
+                                    ? 'border-dashed border-amber-900/30 bg-amber-950/20'
+                                    : isWork
+                                    ? 'bg-[#1a1a1a] border-white/10'
+                                    : 'border-dashed border-white/5'
+                                }`}
                               >
                                 <span className="text-[8px] font-black uppercase text-white/40">{label}</span>
-                                {isWork ? (
+                                {isFixedOff ? (
+                                  <span className="text-amber-600/60 text-[7px] font-bold">Folga</span>
+                                ) : isWork ? (
                                   <span className="text-[7px] text-white/50 font-bold leading-tight text-center">
                                     {cfg.startTime}<br />{cfg.endTime}
                                   </span>
@@ -867,6 +879,25 @@ export default function EscalasPage() {
               <p className="text-[10px] text-white/30">
                 Configure os dias e horários individualmente nos botões da grade abaixo do card do funcionário.
               </p>
+            )}
+
+            {configType !== 'custom' && (
+              <div className="space-y-1.5">
+                <label className="field-label">Dia de folga fixa</label>
+                <select
+                  value={configFixedDayOff ?? ''}
+                  onChange={e => setConfigFixedDayOff(e.target.value === '' ? null : Number(e.target.value))}
+                  className="field-input w-full"
+                >
+                  <option value="">Nenhuma</option>
+                  {DAY_LABELS_FULL.map((name, i) => (
+                    <option key={i} value={i}>{name}</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-white/30">
+                  Dia da semana que sempre será folga, independente do ciclo. Overrides pontuais têm prioridade.
+                </p>
+              </div>
             )}
 
             <div className="flex gap-2">

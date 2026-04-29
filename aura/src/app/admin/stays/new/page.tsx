@@ -257,7 +257,7 @@ function NewStayPageContent() {
   };
 
   return (
-    <RoleGuard allowedRoles={["super_admin", "admin", "reception"]}>
+    <RoleGuard allowedRoles={["super_admin", "admin", "reception", "hr"]}>
       <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-4 md:space-y-8 pb-20 animate-in fade-in duration-500">
 
         {/* Header */}

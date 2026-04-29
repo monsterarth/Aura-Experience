@@ -97,7 +97,7 @@ export default function StaffManagementPage() {
   };
 
   return (
-    <RoleGuard allowedRoles={["super_admin", "admin"]}>
+    <RoleGuard allowedRoles={["super_admin", "admin", "hr"]}>
       <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-4 md:space-y-8">
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
