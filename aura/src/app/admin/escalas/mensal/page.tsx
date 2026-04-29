@@ -168,7 +168,13 @@ export default function EscalasMensalPage() {
   };
 
   const uniqueRoles = Array.from(new Set(staffList.map(s => s.role)));
-  const filteredStaff = (filterRole === "all" ? staffList : staffList.filter(s => s.role === filterRole))
+  const filteredStaff = (filterRole === "all"
+    ? staffList
+    : filterRole === "cat_governance"
+      ? staffList.filter(s => ['maid', 'governance', 'houseman'].includes(s.role))
+    : filterRole === "cat_maintenance"
+      ? staffList.filter(s => ['maintenance', 'technician'].includes(s.role))
+    : staffList.filter(s => s.role === filterRole))
     .sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role) || a.fullName.localeCompare(b.fullName));
 
   const todayYMD = toLocalYMD(today);
@@ -282,9 +288,15 @@ export default function EscalasMensalPage() {
               className="bg-[#111] border border-white/10 text-white/70 text-xs font-bold rounded-xl px-3 py-2 outline-none"
             >
               <option value="all">Todos os cargos</option>
-              {uniqueRoles.sort((a, b) => ROLE_ORDER.indexOf(a) - ROLE_ORDER.indexOf(b)).map(r => (
-                <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>
-              ))}
+              <optgroup label="Setores">
+                <option value="cat_governance">Governança (Govern., Camar., Mensag.)</option>
+                <option value="cat_maintenance">Manutenção (Coord. e Técn.)</option>
+              </optgroup>
+              <optgroup label="Cargos">
+                {uniqueRoles.sort((a, b) => ROLE_ORDER.indexOf(a) - ROLE_ORDER.indexOf(b)).map(r => (
+                  <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>
+                ))}
+              </optgroup>
             </select>
             <Link
               href="/admin/escalas"

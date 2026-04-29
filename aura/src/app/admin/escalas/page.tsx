@@ -159,6 +159,10 @@ export default function EscalasPage() {
 
   const filteredStaff = filterRole === "all"
     ? staffList
+    : filterRole === "cat_governance"
+      ? staffList.filter(s => ['maid', 'governance', 'houseman'].includes(s.role))
+    : filterRole === "cat_maintenance"
+      ? staffList.filter(s => ['maintenance', 'technician'].includes(s.role))
     : staffList.filter(s => s.role === filterRole);
 
   const getOverrideForDay = (staffId: string, date: Date): StaffScheduleOverride | undefined =>
@@ -469,9 +473,15 @@ export default function EscalasPage() {
             className="bg-[#111] border border-white/10 text-white/80 text-xs font-bold rounded-xl px-4 py-2.5 outline-none uppercase tracking-wide"
           >
             <option value="all">Todos os cargos</option>
-            {uniqueRoles.map(r => (
-              <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>
-            ))}
+            <optgroup label="Setores">
+              <option value="cat_governance">Governança (Govern., Camar., Mensag.)</option>
+              <option value="cat_maintenance">Manutenção (Coord. e Técn.)</option>
+            </optgroup>
+            <optgroup label="Cargos">
+              {uniqueRoles.map(r => (
+                <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>
+              ))}
+            </optgroup>
           </select>
         </div>
 
