@@ -71,6 +71,9 @@ function getCellData(
 
   if (resolved.hasOverride) {
     if (!resolved.isWork) {
+      if (dow === 0) {
+        return { label: "DOMINGO", bg: "#7c3aed", color: "#fff", bold: true };
+      }
       return { label: "FOLGA", bg: "#16a34a", color: "#fff", bold: true };
     }
     // Override de trabalho (ex: troca de turno)
@@ -201,6 +204,10 @@ export default function EscalasMensalPage() {
       defaultEnd = baseSchedule.endTime.slice(0, 5);
     }
 
+    const staffCheckpoints = checkpoints.filter(c => c.staffId === staff.id);
+    const localDate = new Date(toLocalYMD(date) + "T00:00:00");
+    const resolved = resolveEffectiveDaySchedule(staff, staff.schedules, overrides, localDate, staffCheckpoints);
+
     setModal({
       staffId: staff.id,
       staffName: staff.fullName,
@@ -217,7 +224,7 @@ export default function EscalasMensalPage() {
       setModalEnd(existing.endTime?.slice(0, 5) || defaultEnd);
       setModalReason(existing.reason || "");
     } else {
-      setModalIsFolga(false);
+      setModalIsFolga(!resolved.isWork);
       setModalStart(defaultStart);
       setModalEnd(defaultEnd);
       setModalReason("");

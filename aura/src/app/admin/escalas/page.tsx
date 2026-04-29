@@ -185,6 +185,10 @@ export default function EscalasPage() {
       defaultEnd = baseSchedule.endTime.slice(0, 5);
     }
 
+    const staffCheckpoints = checkpoints.filter(c => c.staffId === staff.id);
+    const localDate = new Date(toLocalYMD(date) + "T00:00:00");
+    const resolved = resolveEffectiveDaySchedule(staff, staff.schedules, overrides, localDate, staffCheckpoints);
+
     setModal({
       staffId: staff.id,
       staffName: staff.fullName,
@@ -201,7 +205,7 @@ export default function EscalasPage() {
       setModalEnd(existing.endTime?.slice(0, 5) || defaultEnd);
       setModalReason(existing.reason || "");
     } else {
-      setModalIsFolga(false);
+      setModalIsFolga(!resolved.isWork);
       setModalStart(defaultStart);
       setModalEnd(defaultEnd);
       setModalReason("");
