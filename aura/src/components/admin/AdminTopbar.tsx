@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useProperty } from "@/context/PropertyContext";
+import { useAuth } from "@/context/AuthContext";
 import { ChevronRight, Search, X } from "lucide-react";
 import { NotificationCenter } from "@/components/admin/NotificationCenter";
 
@@ -80,7 +81,7 @@ function Breadcrumb() {
       {/* Property root */}
       <span
         className="font-semibold shrink-0"
-        style={{ color: "rgba(255,255,255,0.85)" }}
+        style={{ color: "var(--foreground)" }}
       >
         {propertyName}
       </span>
@@ -89,19 +90,19 @@ function Breadcrumb() {
         const isLast = i === crumbs.length - 1;
         return (
           <React.Fragment key={crumb.href}>
-            <ChevronRight size={13} style={{ color: "rgba(255,255,255,0.2)", flexShrink: 0 }} />
+            <ChevronRight size={13} style={{ color: "var(--muted-foreground)", opacity: 0.4, flexShrink: 0 }} />
             {isLast ? (
               <span
                 className="truncate font-medium"
-                style={{ color: "rgba(255,255,255,0.5)" }}
+                style={{ color: "var(--muted-foreground)" }}
               >
                 {crumb.label}
               </span>
             ) : (
               <Link
                 href={crumb.href}
-                className="shrink-0 font-medium transition-colors hover:text-white"
-                style={{ color: "rgba(255,255,255,0.45)" }}
+                className="shrink-0 font-medium"
+                style={{ color: "var(--muted-foreground)", opacity: 0.7 }}
               >
                 {crumb.label}
               </Link>
@@ -195,15 +196,15 @@ function SearchBox() {
           display: "flex",
           alignItems: "center",
           gap: 8,
-          background: "rgba(255,255,255,0.05)",
-          border: "1px solid rgba(255,255,255,0.09)",
+          background: "var(--muted)",
+          border: "1px solid var(--border)",
           borderRadius: 10,
           padding: "6px 12px",
           width: open ? 220 : 160,
           transition: "width .2s ease",
         }}
       >
-        <Search size={13} style={{ color: "rgba(255,255,255,0.3)", flexShrink: 0 }} />
+        <Search size={13} style={{ color: "var(--muted-foreground)", flexShrink: 0 }} />
         <input
           ref={inputRef}
           value={query}
@@ -214,7 +215,7 @@ function SearchBox() {
             background: "none",
             border: "none",
             outline: "none",
-            color: "rgba(255,255,255,0.8)",
+            color: "var(--foreground)",
             fontSize: 12,
             fontFamily: "inherit",
             flex: 1,
@@ -224,7 +225,7 @@ function SearchBox() {
         {query && (
           <button
             onClick={() => { setQuery(""); inputRef.current?.focus(); }}
-            style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", color: "rgba(255,255,255,0.3)" }}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", color: "var(--muted-foreground)" }}
           >
             <X size={12} />
           </button>
@@ -238,11 +239,11 @@ function SearchBox() {
             top: "calc(100% + 6px)",
             right: 0,
             width: 240,
-            background: "#1c1c1c",
-            border: "1px solid rgba(255,255,255,0.1)",
+            background: "var(--card)",
+            border: "1px solid var(--border)",
             borderRadius: 12,
             overflow: "hidden",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.15)",
             zIndex: 100,
           }}
         >
@@ -260,16 +261,16 @@ function SearchBox() {
                 border: "none",
                 cursor: "pointer",
                 textAlign: "left",
-                color: "rgba(255,255,255,0.75)",
+                color: "var(--foreground)",
                 fontSize: 12,
                 fontFamily: "inherit",
                 fontWeight: 500,
                 transition: "background .12s",
               }}
-              onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
+              onMouseEnter={e => (e.currentTarget.style.background = "var(--muted)")}
               onMouseLeave={e => (e.currentTarget.style.background = "none")}
             >
-              <ChevronRight size={12} style={{ color: "rgba(255,255,255,0.2)", flexShrink: 0 }} />
+              <ChevronRight size={12} style={{ color: "var(--muted-foreground)", flexShrink: 0 }} />
               {r.label}
             </button>
           ))}
@@ -290,9 +291,9 @@ export function AdminTopbar() {
         alignItems: "center",
         gap: 12,
         padding: "0 20px",
-        background: "rgba(17,17,17,0.85)",
+        background: "color-mix(in srgb, var(--card) 85%, transparent)",
         backdropFilter: "blur(12px)",
-        borderBottom: "1px solid rgba(255,255,255,0.07)",
+        borderBottom: "1px solid var(--border)",
         position: "sticky",
         top: 0,
         zIndex: 30,

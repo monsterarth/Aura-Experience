@@ -334,7 +334,7 @@ export default function ReceptionDashboard() {
                         <span className="bg-gradient-to-r from-primary to-primary/50 text-transparent bg-clip-text">
                             Recepção
                         </span>
-                        <span className="text-sm font-medium px-2 py-1 bg-white/5 border border-white/10 rounded-md text-muted-foreground flex items-center gap-2">
+                        <span className="text-sm font-medium px-2 py-1 bg-muted border border-border rounded-md text-muted-foreground flex items-center gap-2">
                             <span className="relative flex h-2 w-2">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: '#B0E0E6' }}></span>
                                 <span className="relative inline-flex rounded-full h-2 w-2" style={{ backgroundColor: '#B0E0E6' }}></span>
@@ -347,7 +347,7 @@ export default function ReceptionDashboard() {
                     </p>
                 </div>
 
-                <div className="flex items-center gap-4 bg-white/5 border border-white/10 px-4 py-2 rounded-2xl">
+                <div className="flex items-center gap-4 bg-muted border border-border px-4 py-2 rounded-2xl">
                     <Clock className="w-5 h-5 text-primary" />
                     <div className="text-right">
                         <p className="font-bold text-lg leading-none">
@@ -401,7 +401,7 @@ export default function ReceptionDashboard() {
                 {/* COLUNA 1: Operação de Limpeza e Estruturas */}
                 <div className="space-y-6">
                     {/* FAXINAS */}
-                    <div className="bg-card border border-white/5 rounded-3xl p-5 shadow-lg relative overflow-hidden">
+                    <div className="bg-card border border-border rounded-3xl p-5 shadow-lg relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none" />
                         <div className="flex items-center justify-between mb-5">
                             <h2 className="font-bold flex items-center gap-2">
@@ -425,9 +425,9 @@ export default function ReceptionDashboard() {
                                 const statusColor =
                                     task.status === 'in_progress' ? 'text-amber-400 bg-amber-400/10 border-amber-400/20' :
                                     task.status === 'waiting_conference' ? 'text-blue-400 bg-blue-400/10 border-blue-400/20' :
-                                    'text-muted-foreground bg-white/5 border-white/10';
+                                    'text-muted-foreground bg-muted border-border';
                                 return (
-                                    <div key={task.id} className="bg-white/5 border border-white/10 rounded-2xl p-3 flex flex-col gap-2">
+                                    <div key={task.id} className="bg-muted border border-border rounded-2xl p-3 flex flex-col gap-2">
                                         <div className="flex justify-between items-center gap-2">
                                             <span className="font-bold text-sm truncate">{getTaskLocationName(task)}</span>
                                             <span className="text-[10px] uppercase font-bold text-primary tracking-wider bg-primary/10 px-2 py-0.5 rounded-full shrink-0">
@@ -451,7 +451,7 @@ export default function ReceptionDashboard() {
                             })}
 
                             {recentlyReleasedCabins.length > 0 && (
-                                <div className="pt-3 border-t border-white/10">
+                                <div className="pt-3 border-t border-border">
                                     <p className="text-xs text-muted-foreground mb-2">Recém liberadas:</p>
                                     <div className="flex flex-wrap gap-2">
                                         {recentlyReleasedCabins.map(name => (
@@ -466,7 +466,7 @@ export default function ReceptionDashboard() {
                     </div>
 
                     {/* ESTRUTURAS */}
-                    <div className="bg-card border border-white/5 rounded-3xl p-5 shadow-lg">
+                    <div className="bg-card border border-border rounded-3xl p-5 shadow-lg">
                         <h2 className="font-bold flex items-center gap-2 mb-5">
                             <Calendar className="w-5 h-5 text-purple-400" />
                             Agenda das Estruturas
@@ -476,7 +476,7 @@ export default function ReceptionDashboard() {
                                 <p className="text-xs text-muted-foreground text-center py-4">Nenhuma reserva hoje.</p>
                             )}
                             {structureAgenda.map(est => (
-                                <div key={est.id} className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/5">
+                                <div key={est.id} className="flex items-center justify-between p-3 rounded-2xl bg-muted border border-border">
                                     <div className="flex items-center gap-3">
                                         <div className={cn(
                                             "w-2 h-2 rounded-full",
@@ -537,7 +537,7 @@ export default function ReceptionDashboard() {
                     </div>
 
                     {/* PEDIDOS E SERVIÇOS */}
-                    <div className="bg-card border border-white/5 rounded-3xl p-5 shadow-lg">
+                    <div className="bg-card border border-border rounded-3xl p-5 shadow-lg">
                         <div className="flex items-center justify-between mb-5">
                             <h2 className="font-bold flex items-center gap-2">
                                 <BellRing className="w-5 h-5 text-blue-400" />
@@ -550,7 +550,7 @@ export default function ReceptionDashboard() {
                                 <p className="text-xs text-muted-foreground text-center py-4">Nenhum pedido pendente.</p>
                             )}
                             {pendingRequests.map(p => (
-                                <div key={p.id} className="bg-white/5 border border-white/5 rounded-2xl p-3 flex justify-between items-center">
+                                <div key={p.id} className="bg-muted border border-border rounded-2xl p-3 flex justify-between items-center">
                                     <div>
                                         <span className="text-[10px] uppercase font-bold text-blue-400 tracking-wider">
                                             {p.item?.category === 'loan' ? 'Empréstimo' : 'Concierge'}
@@ -574,7 +574,7 @@ export default function ReceptionDashboard() {
 
                 {/* COLUNA 3: F&B (Café da Manhã) */}
                 <div className="space-y-6">
-                    <div className="bg-card border border-white/5 rounded-3xl p-5 shadow-lg h-full flex flex-col">
+                    <div className="bg-card border border-border rounded-3xl p-5 shadow-lg h-full flex flex-col">
                         <h2 className="font-bold flex items-center gap-2 mb-5">
                             <Coffee className="w-5 h-5 text-amber-500" />
                             Café da Manhã & F&B
@@ -582,7 +582,7 @@ export default function ReceptionDashboard() {
 
                         {/* SWITCH MODALIDADE — visível apenas para propriedades com modality 'both' */}
                         {property.settings?.fbSettings?.breakfast?.modality === 'both' && (
-                        <div className="bg-white/5 border border-white/10 rounded-2xl p-1 flex relative mb-6">
+                        <div className="bg-muted border border-border rounded-2xl p-1 flex relative mb-6">
                             <div className={cn(
                                 "absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-xl bg-primary transition-all duration-300 shadow-md",
                                 breakfastMode === 'delivery' ? "left-1" : "left-[calc(50%+3px)]"
@@ -621,12 +621,12 @@ export default function ReceptionDashboard() {
                                 <p className="text-xs text-muted-foreground text-center py-4">Nenhum pedido de café da manhã hoje.</p>
                             )}
                             {breakfastOrders.map(order => (
-                                <div key={order.id} className="bg-black/20 border border-white/5 rounded-2xl p-3 flex flex-col gap-2">
+                                <div key={order.id} className="bg-muted border border-border rounded-2xl p-3 flex flex-col gap-2">
                                     <div className="flex justify-between items-center">
                                         <span className="font-bold text-sm text-amber-100">
                                             {orderCabinNames[order.stayId!] ?? 'Cabana'}
                                         </span>
-                                        <span className="text-xs bg-white/10 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono text-muted-foreground">
+                                        <span className="text-xs bg-muted px-2 py-0.5 rounded-full flex items-center gap-1 font-mono text-muted-foreground">
                                             <Clock size={10} /> {order.deliveryTime ?? '—'}
                                         </span>
                                     </div>
@@ -655,7 +655,7 @@ export default function ReceptionDashboard() {
                             )}
                         </div>
 
-                        <button className="w-full mt-4 py-3 bg-white/5 hover:bg-white/10 text-xs font-bold uppercase tracking-widest rounded-xl border border-white/10 transition-colors flex items-center justify-center gap-2">
+                        <button className="w-full mt-4 py-3 bg-muted hover:bg-muted/80 text-xs font-bold uppercase tracking-widest rounded-xl border border-border transition-colors flex items-center justify-center gap-2">
                             <Utensils size={14} />
                             Gerenciar Cardápio F&B
                         </button>
@@ -671,7 +671,7 @@ function StatCard({ icon: Icon, label, value, sub, color, bg, highlight = false 
     return (
         <div className={cn(
             "bg-card border p-4 lg:p-5 rounded-3xl relative overflow-hidden group transition-all duration-300",
-            highlight ? "border-primary/30 shadow-[0_0_15px_rgba(var(--primary),0.1)]" : "border-white/5 shadow-sm"
+            highlight ? "border-primary/30 shadow-[0_0_15px_rgba(var(--primary),0.1)]" : "border-border shadow-sm"
         )}>
             <div className={cn(
                 "absolute -right-4 -top-4 w-24 h-24 rounded-full blur-3xl opacity-50 transition-opacity group-hover:opacity-100",

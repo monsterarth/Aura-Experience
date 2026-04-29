@@ -291,7 +291,7 @@ const S = {
 
 // ─── NavItemRow ───────────────────────────────────────────────────────────────
 function NavItemRow({
-  item, isActive, collapsed, badgeCount, onClick, isSubItem = false,
+  item, isActive, collapsed, badgeCount, onClick, isSubItem = false, TT = T,
 }: {
   item: NavItem | SubItem;
   isActive: boolean;
@@ -299,6 +299,7 @@ function NavItemRow({
   badgeCount?: number | null;
   onClick?: () => void;
   isSubItem?: boolean;
+  TT?: typeof T;
 }) {
   const [hovered, setHovered] = useState(false);
   const Icon = "icon" in item ? item.icon : null;
@@ -314,8 +315,8 @@ function NavItemRow({
     cursor: "pointer",
     borderRadius: 10,
     fontFamily: "inherit",
-    background: isActive ? T.gradSoft : hovered ? T.glass2 : "transparent",
-    color: isActive ? T.g1 : hovered ? T.text : T.muted,
+    background: isActive ? TT.gradSoft : hovered ? TT.glass2 : "transparent",
+    color: isActive ? TT.g1 : hovered ? TT.text : TT.muted,
     fontSize: isSubItem ? 12 : 13,
     fontWeight: isActive ? 700 : 500,
     transition: "background .15s, color .15s",
@@ -329,11 +330,11 @@ function NavItemRow({
     <>
       {isActive && !collapsed && !isSubItem && <div style={S.activeAccent} />}
       {isSubItem && !collapsed && (
-        <span style={{ width: 4, height: 4, borderRadius: "50%", background: isActive ? T.g1 : T.muted2, flexShrink: 0 }} />
+        <span style={{ width: 4, height: 4, borderRadius: "50%", background: isActive ? TT.g1 : TT.muted2, flexShrink: 0 }} />
       )}
       {Icon && !isSubItem && (
         <span style={{ flexShrink: 0, opacity: isActive ? 1 : 0.75 }}>
-          <Icon size={16} style={{ color: isActive ? T.g1 : "currentColor", strokeWidth: isActive ? 2.2 : 1.7 }} />
+          <Icon size={16} style={{ color: isActive ? TT.g1 : "currentColor", strokeWidth: isActive ? 2.2 : 1.7 }} />
         </span>
       )}
       {!collapsed && (
@@ -349,7 +350,7 @@ function NavItemRow({
         <span style={{
           position: "absolute", top: 4, right: 4,
           width: 14, height: 14, borderRadius: 999,
-          background: T.grad, color: "#fff",
+          background: TT.grad, color: "#fff",
           fontSize: 8, fontWeight: 900,
           display: "flex", alignItems: "center", justifyContent: "center",
         }}>{badgeCount > 9 ? "9+" : badgeCount}</span>
@@ -373,7 +374,7 @@ function NavItemRow({
 
 // ─── PainelNavItem — item com dropdown expansível ─────────────────────────────
 function PainelNavItem({
-  item, role, pathname, collapsed, badgeCount, onClick,
+  item, role, pathname, collapsed, badgeCount, onClick, TT = T,
 }: {
   item: NavItem;
   role: string | null | undefined;
@@ -381,6 +382,7 @@ function PainelNavItem({
   collapsed: boolean;
   badgeCount?: number | null;
   onClick?: () => void;
+  TT?: typeof T;
 }) {
   const [open, setOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -406,8 +408,8 @@ function PainelNavItem({
     justifyContent: collapsed ? "center" : "flex-start",
     width: "100%", border: "none", cursor: "pointer",
     borderRadius: 10, fontFamily: "inherit",
-    background: (isActive || isChildActive) ? T.gradSoft : hovered ? T.glass2 : "transparent",
-    color: (isActive || isChildActive) ? T.g1 : hovered ? T.text : T.muted,
+    background: (isActive || isChildActive) ? TT.gradSoft : hovered ? TT.glass2 : "transparent",
+    color: (isActive || isChildActive) ? TT.g1 : hovered ? TT.text : TT.muted,
     fontSize: 13, fontWeight: (isActive || isChildActive) ? 700 : 500,
     transition: "background .15s, color .15s",
     position: "relative" as const,
@@ -429,7 +431,7 @@ function PainelNavItem({
         >
           {(isActive || isChildActive) && !collapsed && <div style={S.activeAccent} />}
           <span style={{ flexShrink: 0, opacity: (isActive || isChildActive) ? 1 : 0.75 }}>
-            <Icon size={16} style={{ color: (isActive || isChildActive) ? T.g1 : "currentColor", strokeWidth: (isActive || isChildActive) ? 2.2 : 1.7 }} />
+            <Icon size={16} style={{ color: (isActive || isChildActive) ? TT.g1 : "currentColor", strokeWidth: (isActive || isChildActive) ? 2.2 : 1.7 }} />
           </span>
           {!collapsed && (
             <span style={{ flex: 1, textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -447,7 +449,7 @@ function PainelNavItem({
             style={{
               background: "none", border: "none", cursor: "pointer",
               padding: "6px 6px", borderRadius: 8,
-              color: (isActive || isChildActive) ? T.g1 : T.muted2,
+              color: (isActive || isChildActive) ? TT.g1 : TT.muted2,
               display: "flex", alignItems: "center", justifyContent: "center",
               transition: "color .15s",
               flexShrink: 0,
@@ -471,6 +473,7 @@ function PainelNavItem({
                 collapsed={false}
                 onClick={onClick}
                 isSubItem
+                TT={TT}
               />
             );
           })}
@@ -786,6 +789,7 @@ export const Sidebar = () => {
                             collapsed={isCollapsed}
                             badgeCount={badgeFor[item.id]}
                             onClick={() => setIsOpen(false)}
+                            TT={TT}
                           />
                         );
                       }
@@ -797,6 +801,7 @@ export const Sidebar = () => {
                           collapsed={isCollapsed}
                           badgeCount={badgeFor[item.id] ?? item.badge}
                           onClick={() => setIsOpen(false)}
+                          TT={TT}
                         />
                       );
                     })}
