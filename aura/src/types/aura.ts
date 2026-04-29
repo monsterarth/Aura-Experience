@@ -693,6 +693,8 @@ export interface Staff {
   scheduleType?: ScheduleType;
   scheduleConfig?: ScheduleConfig | null;
   hireDate?: string; // YYYY-MM-DD
+  uiTheme?: 'dark' | 'light';
+  sidebarDefaultCollapsed?: boolean;
 }
 
 // --- ESCALAS DE TRABALHO ---
@@ -1138,4 +1140,27 @@ export interface Wedding {
   // Joined / virtual
   vendors?: WeddingVendor[];
   cabinAssignments?: WeddingCabinAssignment[];
+}
+
+// ==========================================
+// MÓDULO SOCIAL — SCRAPS & REACTIONS
+// ==========================================
+
+export interface StaffScrap {
+  id: string;
+  fromStaffId: string;
+  toStaffId: string;
+  propertyId: string;
+  message: string;
+  createdAt: Timestamp;
+  fromStaff?: Pick<Staff, 'id' | 'fullName' | 'role' | 'profilePictureUrl' | 'messengerColor'>;
+  reactions?: StaffScrapReaction[];
+}
+
+export interface StaffScrapReaction {
+  id: string;
+  scrapId: string;
+  staffId: string;
+  emoji: string;
+  createdAt: Timestamp;
 }

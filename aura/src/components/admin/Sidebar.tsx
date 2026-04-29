@@ -1,7 +1,7 @@
 // src/components/admin/Sidebar.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
@@ -22,8 +22,8 @@ import {
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import Image from "next/image";
-import { StaffEditModal } from "@/components/admin/StaffEditModal";
 import { ImpersonateModal } from "@/components/admin/ImpersonateModal";
+import { StaffService } from "@/services/staff-service";
 import { useNotifications } from "@/context/NotificationContext";
 
 // ─── Design tokens — harmonizados com AdminLayoutClient ───────────────────────
@@ -62,6 +62,19 @@ const T = {
   red:          "#f87171",
   sidebarW:   256,
   collapsedW: 64,
+};
+
+const T_LIGHT_OVERRIDE = {
+  bg:    '#ede9e4',
+  bg2:   '#e0dbd4',
+  bg3:   '#ffffff',
+  glass:   'rgba(0,0,0,0.03)',
+  glass2:  'rgba(0,0,0,0.06)',
+  border:  'rgba(0,0,0,0.09)',
+  border2: 'rgba(0,0,0,0.14)',
+  text:    '#1e2530',
+  muted:   'rgba(30,37,48,0.52)',
+  muted2:  'rgba(30,37,48,0.30)',
 };
 
 // ─── Role meta ────────────────────────────────────────────────────────────────
@@ -129,6 +142,10 @@ const NAV_GROUPS: NavGroup[] = [
         id: "painel", label: "Painel", icon: LayoutGrid,
         href: "/admin/dashboard", roles: ["super_admin","admin","hr","reception","governance","maintenance","kitchen","marketing"],
         children: PAINEL_CHILDREN,
+      },
+      {
+        id: "perfil", label: "Meu Perfil", icon: UserCircle2,
+        href: "/admin/perfil", roles: ["super_admin","admin","hr","reception","governance","maintenance","kitchen","marketing"],
       },
     ],
   },
@@ -477,9 +494,12 @@ export const Sidebar = () => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem("sidebar_collapsed") === "true";
   });
-  const [showEditProfile, setShowEditProfile] = useState(false);
   const [collapsibleOpen, setCollapsibleOpen] = useState<Record<string, boolean>>({ setup: true, gerencia: true });
   const [showImpersonateModal, setShowImpersonateModal] = useState(false);
+  const savePreferenceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const isLightTheme = userData?.uiTheme === 'light';
+  const TT = isLightTheme ? { ...T, ...T_LIGHT_OVERRIDE } : T;
 
   const commitHash = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || "dev";
   const shortHash = commitHash.substring(0, 7);
@@ -490,6 +510,16 @@ export const Sidebar = () => {
   useEffect(() => {
     if (isSuperAdmin) PropertyService.getAllProperties().then(setAllProperties);
   }, [isSuperAdmin]);
+
+  // Sync sidebar collapse preference from DB on first login (only if localStorage has no value)
+  useEffect(() => {
+    if (!userData?.id) return;
+    const localVal = localStorage.getItem("sidebar_collapsed");
+    if (localVal === null && userData.sidebarDefaultCollapsed !== undefined) {
+      setIsCollapsed(userData.sidebarDefaultCollapsed);
+      localStorage.setItem("sidebar_collapsed", String(userData.sidebarDefaultCollapsed));
+    }
+  }, [userData?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -541,9 +571,13 @@ export const Sidebar = () => {
     const next = !isCollapsed;
     setIsCollapsed(next);
     localStorage.setItem("sidebar_collapsed", String(next));
+    if (savePreferenceRef.current) clearTimeout(savePreferenceRef.current);
+    savePreferenceRef.current = setTimeout(() => {
+      if (userData?.id) StaffService.updateStaff(userData.id, { sidebarDefaultCollapsed: next });
+    }, 800);
   };
 
-  const sidebarBg = T.bg2;
+  const sidebarBg = TT.bg2;
 
   return (
     <>
@@ -571,10 +605,10 @@ export const Sidebar = () => {
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
         style={{
-          width: isCollapsed ? T.collapsedW : T.sidebarW,
-          minWidth: isCollapsed ? T.collapsedW : T.sidebarW,
+          width: isCollapsed ? TT.collapsedW : TT.sidebarW,
+          minWidth: isCollapsed ? TT.collapsedW : TT.sidebarW,
           background: sidebarBg,
-          borderRight: `1px solid ${T.border}`,
+          borderRight: `1px solid ${TT.border}`,
           display: "flex",
           flexDirection: "column",
           transition: "width .22s cubic-bezier(.4,0,.2,1), min-width .22s cubic-bezier(.4,0,.2,1)",
@@ -586,7 +620,7 @@ export const Sidebar = () => {
         {/* Logo */}
         <div style={{
           padding: isCollapsed ? "18px 0" : "18px 20px",
-          borderBottom: `1px solid ${T.border}`,
+          borderBottom: `1px solid ${TT.border}`,
           display: "flex", alignItems: "center",
           justifyContent: isCollapsed ? "center" : "space-between",
           flexShrink: 0, gap: 8,
@@ -595,7 +629,7 @@ export const Sidebar = () => {
             <>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 {property?.logoUrl ? (
-                  <div style={{ width: 28, height: 28, borderRadius: 8, overflow: "hidden", flexShrink: 0, border: `1px solid ${T.border2}` }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 8, overflow: "hidden", flexShrink: 0, border: `1px solid ${TT.border2}` }}>
                     <Image src={property.logoUrl} alt={property.name} width={28} height={28} style={{ objectFit: "cover" }} />
                   </div>
                 ) : (
@@ -608,10 +642,10 @@ export const Sidebar = () => {
                 </span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <button className="lg:hidden" onClick={() => setIsOpen(false)} style={{ ...S.collapseBtn, padding: 6 }}>
+                <button className="lg:hidden" onClick={() => setIsOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: TT.muted, padding: 6, display: "flex", borderRadius: 6, transition: "color .15s" }}>
                   <X size={16} />
                 </button>
-                <button onClick={toggleCollapse} style={S.collapseBtn} className="hidden lg:flex">
+                <button onClick={toggleCollapse} style={{ background: "none", border: "none", cursor: "pointer", color: TT.muted, padding: 4, display: "flex", borderRadius: 6, transition: "color .15s" }} className="hidden lg:flex">
                   <ChevronLeft size={15} />
                 </button>
               </div>
@@ -626,22 +660,22 @@ export const Sidebar = () => {
         {/* User info */}
         <div style={{
           padding: isCollapsed ? "12px 0" : "14px 16px",
-          borderBottom: `1px solid ${T.border}`,
+          borderBottom: `1px solid ${TT.border}`,
           flexShrink: 0,
           display: "flex",
           justifyContent: isCollapsed ? "center" : "flex-start",
         }}>
           {!isCollapsed ? (
             <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%" }}>
-              <button onClick={() => setShowEditProfile(true)} style={S.avatar(roleMeta.color, 36)} title="Editar perfil">
+              <Link href="/admin/perfil" style={S.avatar(roleMeta.color, 36)} title="Meu Perfil">
                 {userData?.profilePictureUrl ? (
                   <img src={userData.profilePictureUrl} alt="" style={{ width: "100%", height: "100%", borderRadius: 10, objectFit: "cover" }} />
                 ) : (
                   <span>{roleMeta.short}</span>
                 )}
-              </button>
+              </Link>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: T.text }}>
+                <div style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: TT.text }}>
                   {userData?.fullName ?? "Usuário"}
                 </div>
                 <span style={{
@@ -657,24 +691,24 @@ export const Sidebar = () => {
               </div>
             </div>
           ) : (
-            <button onClick={() => setShowEditProfile(true)} style={S.avatar(roleMeta.color, 32)} title="Perfil">
+            <Link href="/admin/perfil" style={S.avatar(roleMeta.color, 32)} title="Meu Perfil">
               {userData?.profilePictureUrl ? (
                 <img src={userData.profilePictureUrl} alt="" style={{ width: "100%", height: "100%", borderRadius: 8, objectFit: "cover" }} />
               ) : (
                 <span>{roleMeta.short}</span>
               )}
-            </button>
+            </Link>
           )}
         </div>
 
         {/* Super admin property switcher */}
         {isSuperAdmin && !isCollapsed && (
-          <div style={{ padding: "10px 16px", borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
-            <label style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".2em", color: T.muted2 }}>
+          <div style={{ padding: "10px 16px", borderBottom: `1px solid ${TT.border}`, flexShrink: 0 }}>
+            <label style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".2em", color: TT.muted2 }}>
               Propriedade
             </label>
             <div style={{ position: "relative", marginTop: 6 }}>
-              <Building size={13} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: T.g2 }} />
+              <Building size={13} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: TT.g2 }} />
               <select
                 value={property?.id ?? ""}
                 onChange={(e) => {
@@ -683,9 +717,9 @@ export const Sidebar = () => {
                 }}
                 style={{
                   width: "100%",
-                  background: T.bg3, border: `1px solid ${T.border2}`,
+                  background: TT.bg3, border: `1px solid ${TT.border2}`,
                   padding: "8px 32px 8px 32px", borderRadius: 10,
-                  fontSize: 12, fontWeight: 700, color: T.text,
+                  fontSize: 12, fontWeight: 700, color: TT.text,
                   outline: "none", appearance: "none", cursor: "pointer",
                   fontFamily: "inherit",
                 }}
@@ -693,7 +727,7 @@ export const Sidebar = () => {
                 <option value="">Selecionar…</option>
                 {allProperties.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-              <ChevronDown size={12} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", color: T.muted2, pointerEvents: "none" }} />
+              <ChevronDown size={12} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", color: TT.muted2, pointerEvents: "none" }} />
             </div>
           </div>
         )}
@@ -703,7 +737,7 @@ export const Sidebar = () => {
           flex: 1, overflowY: "auto", overflowX: "hidden",
           padding: isCollapsed ? "10px 0" : "10px 10px",
           scrollbarWidth: "thin" as const,
-          scrollbarColor: "rgba(255,255,255,0.08) transparent",
+          scrollbarColor: `${TT.border} transparent`,
         }}>
           {NAV_GROUPS.map((group) => {
             const visibleItems = group.items.filter(canSee);
@@ -725,18 +759,18 @@ export const Sidebar = () => {
                   >
                     <span style={{
                       fontSize: 10, fontWeight: 800, letterSpacing: ".08em",
-                      textTransform: "uppercase" as const, color: T.muted2,
+                      textTransform: "uppercase" as const, color: TT.muted2,
                     }}>{group.label}</span>
                     {isCollapsible && (
                       <ChevronDown size={12} style={{
-                        color: T.muted2, transition: "transform .2s",
+                        color: TT.muted2, transition: "transform .2s",
                         transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
                       }} />
                     )}
                   </div>
                 )}
                 {isCollapsed && group.label && (
-                  <div style={{ width: "100%", height: 1, background: T.border, margin: "8px 0" }} />
+                  <div style={{ width: "100%", height: 1, background: TT.border, margin: "8px 0" }} />
                 )}
 
                 {expanded && (
@@ -776,7 +810,7 @@ export const Sidebar = () => {
 
         {/* Footer */}
         <div style={{
-          borderTop: `1px solid ${T.border}`,
+          borderTop: `1px solid ${TT.border}`,
           padding: isCollapsed ? "10px 0" : "10px",
           flexShrink: 0,
           display: "flex",
@@ -790,13 +824,13 @@ export const Sidebar = () => {
               style={{
                 display: "flex", alignItems: "center", gap: 9,
                 padding: "9px 10px",
-                background: T.violetBg, border: `1px solid ${T.violetBorder}`,
+                background: TT.violetBg, border: `1px solid ${TT.violetBorder}`,
                 borderRadius: 10, cursor: "pointer", fontFamily: "inherit",
-                color: T.violet, fontSize: 12, fontWeight: 700,
+                color: TT.violet, fontSize: 12, fontWeight: 700,
                 letterSpacing: ".01em", transition: "background .15s", width: "100%",
               }}
             >
-              <UserCircle2 size={15} color={T.violet} />
+              <UserCircle2 size={15} color={TT.violet} />
               Impersonar funcionário
             </button>
           )}
@@ -806,13 +840,13 @@ export const Sidebar = () => {
                 onClick={() => setShowImpersonateModal(true)}
                 style={{
                   width: 36, height: 36, borderRadius: 10,
-                  border: `1px solid ${T.violetBorder}`,
-                  background: T.violetBg, cursor: "pointer",
+                  border: `1px solid ${TT.violetBorder}`,
+                  background: TT.violetBg, cursor: "pointer",
                   display: "flex", alignItems: "center", justifyContent: "center",
                 }}
                 title="Impersonar funcionário"
               >
-                <UserCircle2 size={16} color={T.violet} />
+                <UserCircle2 size={16} color={TT.violet} />
               </button>
             </div>
           )}
@@ -825,7 +859,7 @@ export const Sidebar = () => {
           {/* Logout + version */}
           {!isCollapsed ? (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-              <span style={{ fontSize: 11, color: T.muted2, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <span style={{ fontSize: 11, color: TT.muted2, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {appVersion} · {shortHash}
               </span>
               <button
@@ -834,13 +868,13 @@ export const Sidebar = () => {
                 title="Sair"
                 style={{
                   background: "none", border: "none", cursor: "pointer",
-                  color: T.muted, padding: 6, borderRadius: 8,
+                  color: TT.muted, padding: 6, borderRadius: 8,
                   display: "flex", transition: "color .15s",
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = T.red)}
-                onMouseLeave={(e) => (e.currentTarget.style.color = T.muted)}
+                onMouseEnter={(e) => (e.currentTarget.style.color = TT.red)}
+                onMouseLeave={(e) => (e.currentTarget.style.color = TT.muted)}
               >
-                {isLoggingOut ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite", color: T.red }} /> : <LogOut size={16} />}
+                {isLoggingOut ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite", color: TT.red }} /> : <LogOut size={16} />}
               </button>
             </div>
           ) : (
@@ -851,20 +885,20 @@ export const Sidebar = () => {
                 title="Sair"
                 style={{
                   width: 36, height: 36, borderRadius: 10,
-                  border: `1px solid ${T.border2}`,
-                  background: T.glass,
+                  border: `1px solid ${TT.border2}`,
+                  background: TT.glass,
                   cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                  color: T.muted,
+                  color: TT.muted,
                 }}
               >
-                {isLoggingOut ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite", color: T.red }} /> : <LogOut size={15} />}
+                {isLoggingOut ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite", color: TT.red }} /> : <LogOut size={15} />}
               </button>
               <button onClick={toggleCollapse} title="Expandir" style={{
                 width: 36, height: 36, borderRadius: 10,
-                border: `1px solid ${T.border2}`,
-                background: T.glass2, cursor: "pointer",
+                border: `1px solid ${TT.border2}`,
+                background: TT.glass2, cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center",
-                color: T.muted,
+                color: TT.muted,
               }}>
                 <ChevronRight size={15} />
               </button>
@@ -872,15 +906,6 @@ export const Sidebar = () => {
           )}
         </div>
       </aside>
-
-      {/* Edit profile modal */}
-      {showEditProfile && userData && (
-        <StaffEditModal
-          staff={userData as any}
-          onClose={() => setShowEditProfile(false)}
-          onSave={() => { setShowEditProfile(false); window.location.reload(); }}
-        />
-      )}
 
       {/* Logout overlay */}
       {isLoggingOut && (
@@ -897,11 +922,11 @@ export const Sidebar = () => {
               }} />
               <LogOut style={{
                 position: "absolute", top: "50%", left: "50%",
-                transform: "translate(-50%,-50%)", color: T.text, width: 22, height: 22,
+                transform: "translate(-50%,-50%)", color: "#fff", width: 22, height: 22,
               }} />
             </div>
             <div style={{ textAlign: "center" }}>
-              <h3 style={{ fontSize: 18, fontWeight: 900, color: T.text, letterSpacing: ".15em", textTransform: "uppercase" }}>
+              <h3 style={{ fontSize: 18, fontWeight: 900, color: "#fff", letterSpacing: ".15em", textTransform: "uppercase" }}>
                 Saindo do Aura
               </h3>
               <p style={{ fontSize: 11, color: T.g2, letterSpacing: ".1em", textTransform: "uppercase", marginTop: 6 }}>

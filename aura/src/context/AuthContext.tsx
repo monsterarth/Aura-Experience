@@ -17,6 +17,7 @@ interface AuthContextType {
   impersonating: ImpersonatingState | null;
   startImpersonation: (target: Staff) => void;
   stopImpersonation: () => void;
+  refreshUserData: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -30,6 +31,7 @@ const AuthContext = createContext<AuthContextType>({
   impersonating: null,
   startImpersonation: () => {},
   stopImpersonation: () => {},
+  refreshUserData: async () => {},
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -236,6 +238,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const refreshUserData = useCallback(async () => {
+    if (!userRef.current) return;
+    const staff = await fetchStaffData(userRef.current.id);
+    if (staff) setUserData(staff);
+  }, [fetchStaffData]);
+
   const startImpersonation = useCallback((target: Staff) => {
     setImpersonating(prev => ({
       staff: target,
@@ -260,6 +268,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     impersonating,
     startImpersonation,
     stopImpersonation,
+    refreshUserData,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

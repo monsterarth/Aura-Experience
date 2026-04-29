@@ -342,6 +342,19 @@ export async function PUT(request: Request) {
     const isSuperAdmin = auth.staff.role === 'super_admin';
     const sameProperty = auth.staff.propertyId === targetUser.propertyId;
 
+    // Preferências de UI são sempre permitidas pelo próprio utilizador (bypass de permissões)
+    const UI_PREFS = ['uiTheme', 'sidebarDefaultCollapsed'] as const;
+    const isSelfPreferenceOnly = isSelf && Object.keys(updates).every(k => (UI_PREFS as readonly string[]).includes(k));
+    if (isSelfPreferenceOnly) {
+      const safePrefs: Record<string, unknown> = {};
+      for (const key of UI_PREFS) {
+        if (key in updates) safePrefs[key] = updates[key];
+      }
+      const { error: prefError } = await supabaseAdmin.from('staff').update(safePrefs).eq('id', staffId);
+      if (prefError) throw prefError;
+      return NextResponse.json({ success: true });
+    }
+
     // Apenas pode editar a si próprio, ou ser super_admin, ou (admin/hr da mesma property)
     if (!isSelf && !isSuperAdmin && !(isAdmin && sameProperty)) {
       return NextResponse.json({ error: "Sem permissão para editar este utilizador." }, { status: 403 });
@@ -373,7 +386,7 @@ export async function PUT(request: Request) {
     }
 
     // Campos permitidos — role só chega aqui se passou nas guards acima
-    const allowedFields = ['fullName', 'phone', 'birthDate', 'hireDate', 'bio', 'profilePictureUrl', 'active', 'role'];
+    const allowedFields = ['fullName', 'phone', 'birthDate', 'hireDate', 'bio', 'profilePictureUrl', 'active', 'role', 'uiTheme', 'sidebarDefaultCollapsed'];
     const safeUpdates: Record<string, unknown> = {};
     for (const key of allowedFields) {
       if (key in updates) safeUpdates[key] = updates[key];
@@ -422,8 +435,20 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const requestedPropertyId = searchParams.get('propertyId');
+  const staffId = searchParams.get('staffId');
 
   try {
+    // Single staff lookup by ID (for profile page)
+    if (staffId) {
+      const { data: target } = await supabaseAdmin.from('staff').select('*').eq('id', staffId).single();
+      if (!target) return NextResponse.json({ error: 'Staff não encontrado.' }, { status: 404 });
+      // Only allow same-property access (super_admin can see all)
+      if (auth.staff.role !== 'super_admin' && target.propertyId !== auth.staff.propertyId) {
+        return NextResponse.json({ error: 'Sem permissão.' }, { status: 403 });
+      }
+      return NextResponse.json({ staff: target });
+    }
+
     let query = supabaseAdmin.from('staff').select('*');
 
     // Super admin pode listar qualquer property; outros só a própria
