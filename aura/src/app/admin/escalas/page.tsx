@@ -316,15 +316,23 @@ export default function EscalasPage() {
         startTime: configStart,
         endTime: configEnd,
         ...(configRefDate ? { cycleReferenceDate: configRefDate } : {}),
-        fixedDayOff: configFixedDayOff,
+        fixedDayOff: configFixedDayOff ?? null,
         weekdayTimeOverrides: Object.keys(configWeekdayOverrides).length > 0 ? configWeekdayOverrides : undefined,
-        sundayMonthOff: configSundayMonthOff,
+        sundayMonthOff: configSundayMonthOff ?? null,
       };
       await StaffService.updateScheduleConfig(configModal.staff.id, {
         scheduleType: configType,
         scheduleConfig,
       });
       toast.success("Tipo de escala salvo.");
+
+      // Atualiza o staffList localmente para que o modal mostre valores corretos se reaberto
+      setStaffList(prev => prev.map(s =>
+        s.id === configModal.staff.id
+          ? { ...s, scheduleType: configType, scheduleConfig }
+          : s
+      ));
+
       setConfigModal(null);
       load();
     } catch (e: any) {

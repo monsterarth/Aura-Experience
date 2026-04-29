@@ -13,18 +13,16 @@ import { ChevronLeft, ChevronRight, Loader2, AlertCircle, CalendarDays } from "l
 import { toast } from "sonner";
 import Link from "next/link";
 
-const ROLE_LABELS: Record<string, string> = {
-  reception: "Recepção", governance: "Governanta", maid: "Camareira",
-  maintenance: "Coord. Manutenção", technician: "Manutenção", kitchen: "Cozinha",
-  waiter: "Garçom", porter: "Porteiro", houseman: "Mensageiro",
-  marketing: "Marketing", hr: "RH", admin: "Administrador",
-};
-
 const MONTH_NAMES = [
   "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
-  "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"
+  "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro",
 ];
-const DOW_SHORT = ["D","S","T","Q","Q","S","S"];
+const DOW_PT = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+
+const ROLE_ORDER = [
+  "reception","governance","maid","maintenance","technician",
+  "kitchen","waiter","porter","houseman","marketing","hr","admin","super_admin",
+];
 
 type StaffWithSchedules = Staff & { schedules: StaffSchedule[] };
 
@@ -36,12 +34,71 @@ function toLocalYMD(date: Date): string {
 }
 
 function getMonthDays(year: number, month: number): Date[] {
-  const days: Date[] = [];
   const total = new Date(year, month + 1, 0).getDate();
-  for (let d = 1; d <= total; d++) {
-    days.push(new Date(year, month, d));
+  return Array.from({ length: total }, (_, i) => new Date(year, month, i + 1));
+}
+
+// Cell value + color
+interface CellData {
+  label: string;
+  bg: string;
+  color: string;
+  bold: boolean;
+}
+
+function getCellData(
+  staff: StaffWithSchedules,
+  day: Date,
+  dayOverrides: StaffScheduleOverride[],
+  checkpoints: ScheduleCheckpoint[],
+): CellData {
+  const localDay = new Date(toLocalYMD(day) + "T00:00:00");
+  const resolved = resolveEffectiveDaySchedule(
+    staff, staff.schedules, dayOverrides, localDay, checkpoints
+  );
+
+  const dow = day.getDay();
+
+  if (resolved.hasOverride) {
+    if (!resolved.isWork) {
+      return { label: "FOLGA", bg: "#16a34a", color: "#fff", bold: true };
+    }
+    // Override de trabalho (ex: troca de turno)
+    return {
+      label: `${resolved.startTime}–${resolved.endTime}`,
+      bg: "#1d4ed8",
+      color: "#fff",
+      bold: true,
+    };
   }
-  return days;
+
+  if (resolved.source === "not-configured") {
+    return { label: "", bg: "transparent", color: "#555", bold: false };
+  }
+
+  if (!resolved.isWork) {
+    // Domingo = cor especial
+    if (dow === 0) {
+      return { label: "DOMINGO", bg: "#7c3aed", color: "#fff", bold: true };
+    }
+    if (dow === 6) {
+      return { label: "FOLGA", bg: "#16a34a", color: "#fff", bold: true };
+    }
+    return { label: "FOLGA", bg: "#16a34a", color: "#fff", bold: true };
+  }
+
+  // Trabalho
+  const timeStr = `${resolved.startTime}–${resolved.endTime}`;
+  // Horário alternativo (se diferente do padrão)
+  const cfg = staff.scheduleConfig;
+  const isAltTime = cfg && (resolved.startTime !== cfg.startTime || resolved.endTime !== cfg.endTime);
+
+  return {
+    label: timeStr,
+    bg: isAltTime ? "#854d0e" : "#1c1c1c",
+    color: isAltTime ? "#fef08a" : "#d1d5db",
+    bold: false,
+  };
 }
 
 export default function EscalasMensalPage() {
@@ -59,7 +116,7 @@ export default function EscalasMensalPage() {
 
   const monthDays = getMonthDays(year, month);
   const fromYMD = toLocalYMD(monthDays[0]);
-  const toYMD = toLocalYMD(monthDays[monthDays.length - 1]);
+  const toYMD_str = toLocalYMD(monthDays[monthDays.length - 1]);
 
   const load = useCallback(async () => {
     const pId = property?.id || userData?.propertyId;
@@ -68,7 +125,7 @@ export default function EscalasMensalPage() {
     try {
       const [staffData, overrideData, checkpointData] = await Promise.all([
         StaffService.getPropertyScheduleView(pId),
-        StaffService.getPropertyScheduleOverrides(pId, fromYMD, toYMD),
+        StaffService.getPropertyScheduleOverrides(pId, fromYMD, toYMD_str),
         StaffService.getPropertyCheckpoints(pId),
       ]);
       setStaffList(staffData);
@@ -79,7 +136,7 @@ export default function EscalasMensalPage() {
     } finally {
       setLoading(false);
     }
-  }, [property?.id, userData?.propertyId, fromYMD, toYMD]);
+  }, [property?.id, userData?.propertyId, fromYMD, toYMD_str]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -92,178 +149,169 @@ export default function EscalasMensalPage() {
     else setMonth(m => m + 1);
   };
 
-  const filteredStaff = filterRole === "all"
-    ? staffList
-    : staffList.filter(s => s.role === filterRole);
-
   const uniqueRoles = Array.from(new Set(staffList.map(s => s.role)));
+  const filteredStaff = (filterRole === "all" ? staffList : staffList.filter(s => s.role === filterRole))
+    .sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role) || a.fullName.localeCompare(b.fullName));
+
   const todayYMD = toLocalYMD(today);
+
+  const ROLE_LABELS: Record<string, string> = {
+    reception: "Recepção", governance: "Governanta", maid: "Camareira",
+    maintenance: "Manutenção", technician: "Técnico", kitchen: "Cozinha",
+    waiter: "Garçom", porter: "Porteiro", houseman: "Mensageiro",
+    marketing: "Marketing", hr: "RH", admin: "Admin",
+  };
+
+  // Pre-compute cells
+  const staffCheckpointsMap = new Map(
+    filteredStaff.map(s => [s.id, checkpoints.filter(c => c.staffId === s.id)])
+  );
 
   return (
     <RoleGuard allowedRoles={["super_admin", "admin", "hr"]}>
-      <div className="p-4 md:p-8 space-y-6 max-w-[1800px] mx-auto">
+      <div className="p-4 md:p-6 space-y-5 max-w-full mx-auto">
 
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <CalendarDays size={28} className="text-[#E0FFFF]" />
+            <CalendarDays size={26} className="text-[#E0FFFF]" />
             <div>
-              <h1 className="text-2xl font-black text-white uppercase tracking-widest">Escala Mensal</h1>
-              <p className="text-xs text-white/40 tracking-wide">Visão completa do mês</p>
+              <h1 className="text-xl font-black text-white uppercase tracking-widest">Escala Mensal</h1>
+              <p className="text-xs text-white/40">Visão completa · {MONTH_NAMES[month]} {year}</p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
             <select
               value={filterRole}
               onChange={e => setFilterRole(e.target.value)}
-              className="bg-[#111] border border-white/10 text-white/80 text-xs font-bold rounded-xl px-4 py-2.5 outline-none uppercase tracking-wide"
+              className="bg-[#111] border border-white/10 text-white/70 text-xs font-bold rounded-xl px-3 py-2 outline-none"
             >
               <option value="all">Todos os cargos</option>
-              {uniqueRoles.map(r => (
+              {uniqueRoles.sort((a, b) => ROLE_ORDER.indexOf(a) - ROLE_ORDER.indexOf(b)).map(r => (
                 <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>
               ))}
             </select>
             <Link
               href="/admin/escalas"
-              className="text-[10px] font-black text-[#00BFFF] uppercase tracking-widest hover:opacity-70 transition-opacity px-3 py-2.5 border border-[#00BFFF]/20 rounded-xl"
+              className="text-[10px] font-black text-[#00BFFF] uppercase tracking-widest hover:opacity-70 transition-opacity px-3 py-2 border border-[#00BFFF]/20 rounded-xl"
             >
-              Ver semana
+              ← Semana
             </Link>
           </div>
         </div>
 
         {/* Navegação de mês */}
-        <div className="flex items-center gap-4 bg-[#111] border border-white/10 rounded-2xl px-4 py-3 w-fit">
-          <button onClick={prevMonth} className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-all">
-            <ChevronLeft size={18} />
+        <div className="flex items-center gap-3 bg-[#111] border border-white/10 rounded-2xl px-4 py-2.5 w-fit">
+          <button onClick={prevMonth} className="p-1 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-all">
+            <ChevronLeft size={16} />
           </button>
-          <span className="text-sm font-bold text-white/80 tracking-wide min-w-[160px] text-center">
-            {MONTH_NAMES[month]} {year}
+          <span className="text-sm font-black text-white tracking-wide min-w-[150px] text-center">
+            {MONTH_NAMES[month].toUpperCase()} {year}
           </span>
-          <button onClick={nextMonth} className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-all">
-            <ChevronRight size={18} />
+          <button onClick={nextMonth} className="p-1 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-all">
+            <ChevronRight size={16} />
           </button>
           <button
             onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); }}
-            className="text-[10px] font-black text-[#00BFFF] uppercase tracking-widest hover:opacity-70 transition-opacity ml-2"
+            className="text-[9px] font-black text-[#00BFFF] uppercase tracking-widest hover:opacity-70 ml-1"
           >
             Hoje
           </button>
         </div>
 
-        {/* Grade mensal */}
         {loading ? (
           <div className="flex items-center justify-center py-24">
-            <Loader2 size={32} className="animate-spin text-[#E0FFFF]/40" />
+            <Loader2 size={28} className="animate-spin text-[#E0FFFF]/40" />
           </div>
         ) : filteredStaff.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-white/30 gap-2">
-            <AlertCircle size={32} />
-            <p className="text-sm font-bold uppercase tracking-widest">Nenhum funcionário encontrado</p>
+            <AlertCircle size={28} />
+            <p className="text-sm font-bold uppercase tracking-widest">Nenhum funcionário</p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-white/10">
-            <table className="text-[10px] border-collapse" style={{ minWidth: `${180 + monthDays.length * 36}px` }}>
-              <thead>
-                <tr className="bg-[#0e0e0e]">
-                  <th className="sticky left-0 z-10 bg-[#0e0e0e] text-left px-4 py-3 text-white/40 font-black uppercase tracking-widest text-[9px] border-b border-white/5 min-w-[160px]">
-                    Funcionário
+          <div className="overflow-auto rounded-2xl border border-white/10 shadow-2xl" style={{ maxHeight: "80vh" }}>
+            <table className="border-collapse text-[10px]" style={{ minWidth: `${120 + filteredStaff.length * 100}px` }}>
+              <thead className="sticky top-0 z-20">
+                <tr style={{ background: "#0a0a0a" }}>
+                  {/* Dia header */}
+                  <th
+                    className="sticky left-0 z-30 px-3 py-2 text-left border-b border-r border-white/10 font-black text-white/30 uppercase tracking-widest text-[9px]"
+                    style={{ background: "#0a0a0a", minWidth: 80 }}
+                  >
+                    Dia
                   </th>
-                  {monthDays.map((day, i) => {
-                    const ymd = toLocalYMD(day);
-                    const dow = day.getDay();
-                    const isToday = ymd === todayYMD;
-                    const isWeekend = dow === 0 || dow === 6;
-                    return (
-                      <th
-                        key={i}
-                        className={`px-1 py-2 border-b border-l border-white/5 text-center w-9 ${
-                          isToday ? "text-[#00BFFF]" : isWeekend ? "text-white/20" : "text-white/40"
-                        }`}
-                      >
-                        <div className="font-black text-[9px]">{day.getDate()}</div>
-                        <div className="text-[8px] font-bold opacity-60">{DOW_SHORT[dow]}</div>
-                      </th>
-                    );
-                  })}
+                  {/* Employee headers */}
+                  {filteredStaff.map(staff => (
+                    <th
+                      key={staff.id}
+                      className="px-2 py-2 text-center border-b border-l border-white/10 font-black text-white/80 text-[9px] uppercase tracking-wide"
+                      style={{ minWidth: 90, maxWidth: 110 }}
+                    >
+                      <div className="truncate">{staff.fullName.split(" ")[0]}</div>
+                      <div className="font-normal text-white/30 text-[8px] normal-case tracking-normal mt-0.5">
+                        {ROLE_LABELS[staff.role] || staff.role}
+                      </div>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {filteredStaff.map(staff => {
-                  const staffCheckpoints = checkpoints.filter(c => c.staffId === staff.id);
+                {monthDays.map((day, rowIdx) => {
+                  const ymd = toLocalYMD(day);
+                  const dow = day.getDay();
+                  const isToday = ymd === todayYMD;
+                  const isWeekend = dow === 0 || dow === 6;
+                  const rowBg = isToday
+                    ? "rgba(0,191,255,0.06)"
+                    : isWeekend
+                    ? "rgba(255,255,255,0.015)"
+                    : "transparent";
+
                   return (
-                    <tr key={staff.id} className="border-b border-white/5 hover:bg-white/[0.015] transition-colors">
-                      {/* Nome */}
-                      <td className="sticky left-0 z-10 bg-[#111] px-4 py-2 border-b border-white/5">
-                        <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-full bg-[#1c1c1c] border border-white/10 flex items-center justify-center text-[9px] font-black text-[#E0FFFF] shrink-0 overflow-hidden">
-                            {staff.profilePictureUrl
-                              ? <img src={staff.profilePictureUrl} alt="" className="w-full h-full object-cover" />
-                              : staff.fullName.charAt(0)}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-bold text-white/80 truncate text-[10px]">{staff.fullName}</p>
-                            <p className="text-white/30 text-[8px] uppercase tracking-wide">{ROLE_LABELS[staff.role] || staff.role}</p>
-                          </div>
+                    <tr
+                      key={ymd}
+                      style={{ background: rowBg }}
+                      className="border-b border-white/5 hover:bg-white/[0.02] transition-colors"
+                    >
+                      {/* Day label — sticky */}
+                      <td
+                        className="sticky left-0 z-10 px-3 py-1 border-r border-white/10 font-bold"
+                        style={{ background: isToday ? "#0d2033" : isWeekend ? "#111" : "#0e0e0e" }}
+                      >
+                        <div className={`flex items-center gap-2 ${isToday ? "text-[#00BFFF]" : isWeekend ? "text-white/50" : "text-white/60"}`}>
+                          <span className="font-black text-[12px] w-5 text-right">{day.getDate()}</span>
+                          <span className="text-[9px] font-bold uppercase tracking-wide opacity-60">{DOW_PT[dow]}</span>
                         </div>
                       </td>
 
-                      {/* Célula por dia */}
-                      {monthDays.map((day, i) => {
-                        const ymd = toLocalYMD(day);
+                      {/* Employee cells */}
+                      {filteredStaff.map(staff => {
+                        const staffCheckpoints = staffCheckpointsMap.get(staff.id) || [];
                         const dayOverrides = overrides.filter(o => o.staffId === staff.id && o.date === ymd);
-                        const localDay = new Date(ymd + "T00:00:00");
-                        const resolved = resolveEffectiveDaySchedule(
-                          staff, staff.schedules, dayOverrides, localDay, staffCheckpoints
-                        );
-                        const isToday = ymd === todayYMD;
-                        const dow = day.getDay();
-                        const isWeekend = dow === 0 || dow === 6;
-
-                        let bg = "transparent";
-                        let indicator: React.ReactNode;
-
-                        if (resolved.hasOverride) {
-                          if (!resolved.isWork) {
-                            // Override de folga
-                            bg = "rgba(127,29,29,0.25)";
-                            indicator = <span className="block w-2 h-2 rounded-full bg-red-500 mx-auto" title="Folga (override)" />;
-                          } else {
-                            // Override de trabalho
-                            bg = "rgba(30,58,138,0.25)";
-                            indicator = (
-                              <span className="block text-[7px] font-bold text-blue-300 leading-tight text-center" title={`${resolved.startTime}–${resolved.endTime} (override)`}>
-                                {resolved.startTime}
-                              </span>
-                            );
-                          }
-                        } else if (resolved.source === "not-configured") {
-                          indicator = <span className="text-white/10 text-[9px]">·</span>;
-                        } else if (resolved.isWork) {
-                          bg = isWeekend ? "rgba(234,179,8,0.08)" : "rgba(255,255,255,0.04)";
-                          indicator = (
-                            <span className="block text-[7px] font-bold text-white/50 leading-tight text-center" title={`${resolved.startTime}–${resolved.endTime}`}>
-                              {resolved.startTime}
-                            </span>
-                          );
-                        } else {
-                          // Folga calculada — weekend diferente de weekday
-                          if (isWeekend) {
-                            indicator = <span className="text-white/10 text-[9px]">·</span>;
-                          } else {
-                            indicator = <span className="block w-2 h-0.5 rounded bg-white/15 mx-auto" title="Folga" />;
-                          }
-                        }
+                        const cell = getCellData(staff, day, dayOverrides, staffCheckpoints);
 
                         return (
                           <td
-                            key={i}
-                            className={`border-l border-white/5 px-1 py-2 text-center ${isToday ? "ring-1 ring-inset ring-[#00BFFF]/20" : ""}`}
-                            style={{ background: bg }}
+                            key={staff.id}
+                            className="border-l border-white/5 px-1 py-0.5 text-center"
+                            style={{
+                              background: cell.bg !== "transparent" ? cell.bg : undefined,
+                            }}
                           >
-                            <div className="flex items-center justify-center min-h-[20px]">
-                              {indicator}
-                            </div>
+                            {cell.label ? (
+                              <span
+                                className="block text-[9px] leading-tight py-0.5"
+                                style={{
+                                  color: cell.color,
+                                  fontWeight: cell.bold ? 800 : 500,
+                                  letterSpacing: cell.bold ? "0.04em" : undefined,
+                                }}
+                              >
+                                {cell.label}
+                              </span>
+                            ) : (
+                              <span className="block text-white/10 text-[8px]">·</span>
+                            )}
                           </td>
                         );
                       })}
@@ -276,18 +324,26 @@ export default function EscalasMensalPage() {
         )}
 
         {/* Legenda */}
-        <div className="flex flex-wrap items-center gap-4 text-[10px] font-bold uppercase tracking-widest text-white/40 pt-2">
+        <div className="flex flex-wrap items-center gap-4 text-[9px] font-bold uppercase tracking-widest text-white/40">
           <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-white/20 inline-block" />Trabalho
+            <span className="w-3 h-3 rounded inline-block" style={{ background: "#1c1c1c", border: "1px solid rgba(255,255,255,0.1)" }} />
+            Trabalho
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />Override trabalho
+            <span className="w-3 h-3 rounded inline-block" style={{ background: "#854d0e" }} />
+            Horário diferenciado
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />Folga (override)
+            <span className="w-3 h-3 rounded inline-block" style={{ background: "#16a34a" }} />
+            Folga
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-3 h-0.5 rounded bg-white/20 inline-block" />Folga (calculada)
+            <span className="w-3 h-3 rounded inline-block" style={{ background: "#7c3aed" }} />
+            Domingo
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded inline-block" style={{ background: "#1d4ed8" }} />
+            Override pontual
           </span>
         </div>
       </div>
