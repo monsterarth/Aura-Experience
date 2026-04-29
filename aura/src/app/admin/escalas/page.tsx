@@ -120,7 +120,8 @@ export default function EscalasPage() {
   const [configRefDate, setConfigRefDate] = useState("");
   const [configFixedDayOff, setConfigFixedDayOff] = useState<number | null>(null);
   const [configWeekdayOverrides, setConfigWeekdayOverrides] = useState<Partial<Record<number, { startTime: string; endTime: string }>>>({});
-  const [configSundayMonthOff, setConfigSundayMonthOff] = useState<number | null>(null);
+  const [configSundayOffCycle, setConfigSundayOffCycle] = useState<boolean>(false);
+  const [configEffectiveDate, setConfigEffectiveDate] = useState("");
   const [configSaving, setConfigSaving] = useState(false);
 
   // Checkpoint inline form (dentro do config modal)
@@ -296,7 +297,8 @@ export default function EscalasPage() {
     setConfigRefDate(staff.scheduleConfig?.cycleReferenceDate || "");
     setConfigFixedDayOff(staff.scheduleConfig?.fixedDayOff ?? null);
     setConfigWeekdayOverrides(staff.scheduleConfig?.weekdayTimeOverrides || {});
-    setConfigSundayMonthOff(staff.scheduleConfig?.sundayMonthOff ?? null);
+    setConfigSundayOffCycle(staff.scheduleConfig?.sundayOffCycle ?? false);
+    setConfigEffectiveDate(toLocalYMD(new Date()));
     setShowCheckpointForm(false);
     setCpEffectiveDate("");
     setCpReferenceDate("");
@@ -309,8 +311,30 @@ export default function EscalasPage() {
       toast.error("Informe a data de referência para este tipo de escala.");
       return;
     }
+    if (!configEffectiveDate) {
+      toast.error("Informe a data de início de vigência desta regra.");
+      return;
+    }
     setConfigSaving(true);
     try {
+      const oldConfig = configModal.staff.scheduleConfig;
+      let history = oldConfig?.history ? [...oldConfig.history] : [];
+
+      // Se havia uma configuração anterior, guarda ela no histórico
+      if (oldConfig) {
+        const effectiveDateObj = new Date(configEffectiveDate + 'T00:00:00');
+        const endDateStr = toLocalYMD(addDays(effectiveDateObj, -1));
+        
+        // Remove 'history' do clone para não aninhar
+        const { history: _, ...oldConfigData } = oldConfig;
+        
+        history.push({
+          ...oldConfigData,
+          endDate: endDateStr,
+          scheduleType: configModal.staff.scheduleType!
+        });
+      }
+
       const scheduleConfig: ScheduleConfig = {
         scheduleType: configType,
         startTime: configStart,
@@ -318,8 +342,10 @@ export default function EscalasPage() {
         ...(configRefDate ? { cycleReferenceDate: configRefDate } : {}),
         fixedDayOff: configFixedDayOff ?? null,
         weekdayTimeOverrides: Object.keys(configWeekdayOverrides).length > 0 ? configWeekdayOverrides : undefined,
-        sundayMonthOff: configSundayMonthOff ?? null,
+        sundayOffCycle: configSundayOffCycle || undefined,
+        history: history.length > 0 ? history : undefined,
       };
+      
       await StaffService.updateScheduleConfig(configModal.staff.id, {
         scheduleType: configType,
         scheduleConfig,
@@ -921,82 +947,103 @@ export default function EscalasPage() {
               </div>
             )}
 
-            {/* Horário diferente por dia da semana — disponível para 5x2 */}
-            {configType === '5x2' && (
-              <div className="space-y-2 pt-2 border-t border-white/10">
-                <p className="text-[10px] font-black uppercase tracking-widest text-white/40">Horário por dia da semana</p>
-                <p className="text-[10px] text-white/30">Deixe em branco para usar o horário padrão acima.</p>
-                <div className="grid grid-cols-5 gap-2">
-                  {[1, 2, 3, 4, 5].map(dow => {
-                    const hasOverride = !!configWeekdayOverrides[dow];
-                    return (
-                      <div key={dow} className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[9px] font-black uppercase text-white/50">{DAY_LABELS[dow]}</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setConfigWeekdayOverrides(prev => {
-                                const next = { ...prev };
-                                if (next[dow]) { delete next[dow]; }
-                                else { next[dow] = { startTime: configStart, endTime: configEnd }; }
-                                return next;
-                              });
-                            }}
-                            className={`text-[8px] font-black px-1 py-0.5 rounded transition-colors ${hasOverride ? 'text-[#00BFFF] bg-[#00BFFF]/10' : 'text-white/20 hover:text-white/50'}`}
-                          >
-                            {hasOverride ? '✓' : '+'}
-                          </button>
-                        </div>
-                        {hasOverride && (
-                          <div className="space-y-1">
-                            <input
-                              type="time"
-                              value={configWeekdayOverrides[dow]?.startTime || ''}
-                              onChange={e => setConfigWeekdayOverrides(prev => ({
-                                ...prev,
-                                [dow]: { startTime: e.target.value, endTime: prev[dow]?.endTime || configEnd }
-                              }))}
-                              className="field-input w-full text-[9px] py-1 px-2"
-                            />
-                            <input
-                              type="time"
-                              value={configWeekdayOverrides[dow]?.endTime || ''}
-                              onChange={e => setConfigWeekdayOverrides(prev => ({
-                                ...prev,
-                                [dow]: { startTime: prev[dow]?.startTime || configStart, endTime: e.target.value }
-                              }))}
-                              className="field-input w-full text-[9px] py-1 px-2"
-                            />
+            {/* Horário diferente por dia da semana — todos os tipos exceto custom */}
+            {configType !== 'custom' && (() => {
+              // Para 5x2: dias 1-5; para 6x1/12x36: Dom-Sáb
+              const dows = configType === '5x2' ? [1, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5, 6];
+              return (
+                <div className="space-y-2 pt-2 border-t border-white/10">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-white/40">Horário por dia da semana</p>
+                  <p className="text-[10px] text-white/30">Clique <span className="font-bold">+</span> em um dia para definir um horário diferente. Deixe sem override para usar o padrão.</p>
+                  <div className={`grid gap-2 ${configType === '5x2' ? 'grid-cols-5' : 'grid-cols-7'}`}>
+                    {dows.map(dow => {
+                      const hasOverride = !!configWeekdayOverrides[dow];
+                      return (
+                        <div key={dow} className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[9px] font-black uppercase text-white/50">{DAY_LABELS[dow]}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfigWeekdayOverrides(prev => {
+                                  const next = { ...prev };
+                                  if (next[dow]) { delete next[dow]; }
+                                  else { next[dow] = { startTime: configStart, endTime: configEnd }; }
+                                  return next;
+                                });
+                              }}
+                              className={`text-[8px] font-black px-1 py-0.5 rounded transition-colors ${hasOverride ? 'text-[#00BFFF] bg-[#00BFFF]/10' : 'text-white/20 hover:text-white/50'}`}
+                            >
+                              {hasOverride ? '✓' : '+'}
+                            </button>
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                          {hasOverride && (
+                            <div className="space-y-1">
+                              <input
+                                type="time"
+                                value={configWeekdayOverrides[dow]?.startTime || ''}
+                                onChange={e => setConfigWeekdayOverrides(prev => ({
+                                  ...prev,
+                                  [dow]: { startTime: e.target.value, endTime: prev[dow]?.endTime || configEnd }
+                                }))}
+                                className="field-input w-full text-[9px] py-1 px-2"
+                              />
+                              <input
+                                type="time"
+                                value={configWeekdayOverrides[dow]?.endTime || ''}
+                                onChange={e => setConfigWeekdayOverrides(prev => ({
+                                  ...prev,
+                                  [dow]: { startTime: prev[dow]?.startTime || configStart, endTime: e.target.value }
+                                }))}
+                                className="field-input w-full text-[9px] py-1 px-2"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
+              );
+            })()}
+
+            {/* Regra de domingo para 6x1 — ciclo 3 trabalha / 1 folga */}
+            {configType === '6x1' && (
+              <div className="space-y-2 pt-2 border-t border-white/10">
+                <p className="text-[10px] font-black uppercase tracking-widest text-white/40">Regra de Domingo</p>
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <div
+                    onClick={() => setConfigSundayOffCycle(v => !v)}
+                    className={`mt-0.5 w-9 h-5 rounded-full transition-colors relative flex-shrink-0 ${
+                      configSundayOffCycle ? 'bg-[#00BFFF]' : 'bg-white/10'
+                    }`}
+                  >
+                    <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${
+                      configSundayOffCycle ? 'left-4' : 'left-0.5'
+                    }`} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white/70">Ciclo de domingo: trabalha 3, folga 1</p>
+                    <p className="text-[10px] text-white/30 mt-0.5">
+                      O colaborador folga no 4º domingo de cada ciclo, contando a partir da data de referência inicial. Overrides pontuais têm prioridade.
+                    </p>
+                  </div>
+                </label>
               </div>
             )}
 
-            {/* Regra de domingo para 6x1 */}
-            {configType === '6x1' && (
-              <div className="space-y-1.5 pt-2 border-t border-white/10">
-                <label className="field-label">Folga de domingo (regra mensal)</label>
-                <select
-                  value={configSundayMonthOff ?? ''}
-                  onChange={e => setConfigSundayMonthOff(e.target.value === '' ? null : Number(e.target.value))}
-                  className="field-input w-full"
-                >
-                  <option value="">Usar ciclo normal (sem regra fixa)</option>
-                  <option value="1">1º domingo do mês</option>
-                  <option value="2">2º domingo do mês</option>
-                  <option value="3">3º domingo do mês</option>
-                  <option value="4">4º domingo do mês</option>
-                </select>
-                <p className="text-[10px] text-white/30">
-                  O colaborador folga sempre neste domingo, independente do ciclo 6×1. Os outros 3 domingos seguem o ciclo normal.
-                </p>
-              </div>
-            )}
+            <div className="space-y-1.5 border-t border-white/10 pt-3">
+              <label className="field-label">A partir de qual data esta regra vale?</label>
+              <input
+                type="date"
+                value={configEffectiveDate}
+                onChange={e => setConfigEffectiveDate(e.target.value)}
+                className="field-input w-full"
+              />
+              <p className="text-[10px] text-white/30">
+                Se a regra anterior já estava em uso, ela será guardada no histórico e manterá o cálculo passado correto.
+              </p>
+            </div>
 
             <div className="flex gap-2">
               <button

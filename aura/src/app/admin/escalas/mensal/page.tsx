@@ -9,7 +9,7 @@ import {
   Staff, StaffSchedule, StaffScheduleOverride, ScheduleCheckpoint,
 } from "@/types/aura";
 import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
-import { ChevronLeft, ChevronRight, Loader2, AlertCircle, CalendarDays } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, AlertCircle, CalendarDays, X, Save } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -36,6 +36,16 @@ function toLocalYMD(date: Date): string {
 function getMonthDays(year: number, month: number): Date[] {
   const total = new Date(year, month + 1, 0).getDate();
   return Array.from({ length: total }, (_, i) => new Date(year, month, i + 1));
+}
+
+interface CellModalState {
+  staffId: string;
+  staffName: string;
+  propertyId: string;
+  date: string | null;
+  dayOfWeek: number | null;
+  existingSchedule?: StaffSchedule | null;
+  existingOverride?: StaffScheduleOverride | null;
 }
 
 // Cell value + color
@@ -114,6 +124,14 @@ export default function EscalasMensalPage() {
   const [loading, setLoading] = useState(true);
   const [filterRole, setFilterRole] = useState("all");
 
+  // Modal State
+  const [modal, setModal] = useState<CellModalState | null>(null);
+  const [modalStart, setModalStart] = useState("");
+  const [modalEnd, setModalEnd] = useState("");
+  const [modalReason, setModalReason] = useState("");
+  const [modalIsFolga, setModalIsFolga] = useState(false);
+  const [saving, setSaving] = useState(false);
+
   const monthDays = getMonthDays(year, month);
   const fromYMD = toLocalYMD(monthDays[0]);
   const toYMD_str = toLocalYMD(monthDays[monthDays.length - 1]);
@@ -160,6 +178,83 @@ export default function EscalasMensalPage() {
     maintenance: "Manutenção", technician: "Técnico", kitchen: "Cozinha",
     waiter: "Garçom", porter: "Porteiro", houseman: "Mensageiro",
     marketing: "Marketing", hr: "RH", admin: "Admin",
+  };
+
+  const openOverrideModal = (staff: StaffWithSchedules, date: Date) => {
+    const dayOfWeek = date.getDay();
+    const existing = overrides.find(o => o.staffId === staff.id && o.date === toLocalYMD(date));
+    const baseSchedule = staff.schedules.find(s => s.dayOfWeek === dayOfWeek && s.active);
+
+    let defaultStart = "07:00";
+    let defaultEnd = "15:00";
+    if (staff.scheduleConfig) {
+      defaultStart = staff.scheduleConfig.startTime;
+      defaultEnd = staff.scheduleConfig.endTime;
+    } else if (baseSchedule) {
+      defaultStart = baseSchedule.startTime.slice(0, 5);
+      defaultEnd = baseSchedule.endTime.slice(0, 5);
+    }
+
+    setModal({
+      staffId: staff.id,
+      staffName: staff.fullName,
+      propertyId: property?.id || userData?.propertyId || "",
+      date: toLocalYMD(date),
+      dayOfWeek,
+      existingSchedule: baseSchedule,
+      existingOverride: existing,
+    });
+
+    if (existing) {
+      setModalIsFolga(!existing.startTime);
+      setModalStart(existing.startTime?.slice(0, 5) || defaultStart);
+      setModalEnd(existing.endTime?.slice(0, 5) || defaultEnd);
+      setModalReason(existing.reason || "");
+    } else {
+      setModalIsFolga(false);
+      setModalStart(defaultStart);
+      setModalEnd(defaultEnd);
+      setModalReason("");
+    }
+  };
+
+  const handleSave = async () => {
+    if (!modal) return;
+    setSaving(true);
+    try {
+      if (modal.date) {
+        await StaffService.upsertScheduleOverride({
+          staffId: modal.staffId,
+          propertyId: modal.propertyId,
+          date: modal.date,
+          startTime: modalIsFolga ? null : modalStart,
+          endTime: modalIsFolga ? null : modalEnd,
+          reason: modalReason || (modalIsFolga ? "Folga" : undefined),
+        });
+        toast.success(modalIsFolga ? "Folga registrada." : "Horário do dia salvo.");
+      }
+      setModal(null);
+      load();
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao salvar.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteOverride = async () => {
+    if (!modal?.existingOverride) return;
+    setSaving(true);
+    try {
+      await StaffService.deleteScheduleOverride(modal.existingOverride.id);
+      toast.success("Override removido.");
+      setModal(null);
+      load();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   // Pre-compute cells
@@ -293,7 +388,8 @@ export default function EscalasMensalPage() {
                         return (
                           <td
                             key={staff.id}
-                            className="border-l border-white/5 px-1 py-0.5 text-center"
+                            className="border-l border-white/5 px-1 py-0.5 text-center cursor-pointer transition-opacity hover:opacity-70"
+                            onClick={() => openOverrideModal(staff, day)}
                             style={{
                               background: cell.bg !== "transparent" ? cell.bg : undefined,
                             }}
@@ -347,6 +443,83 @@ export default function EscalasMensalPage() {
           </span>
         </div>
       </div>
+
+      {/* Modal de edição de dia */}
+      {modal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#111] border border-white/10 rounded-2xl p-6 w-full max-w-sm space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold">
+                  {modal.date ? `${DOW_PT[modal.dayOfWeek!]} ${modal.date ? new Date(modal.date + 'T00:00:00').toLocaleDateString('pt-BR') : ''}` : ''}
+                </p>
+                <p className="text-white font-bold text-sm mt-0.5">{modal.staffName}</p>
+              </div>
+              <button onClick={() => setModal(null)} className="p-2 text-white/30 hover:text-white rounded-xl hover:bg-white/5">
+                <X size={18} />
+              </button>
+            </div>
+
+            {modal.date && (
+              <label className="flex items-center gap-3 cursor-pointer">
+                <div
+                  onClick={() => setModalIsFolga(f => !f)}
+                  className={`w-10 h-5 rounded-full transition-colors relative ${modalIsFolga ? 'bg-red-500' : 'bg-white/10'}`}
+                >
+                  <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${modalIsFolga ? 'left-5' : 'left-0.5'}`} />
+                </div>
+                <span className="text-sm font-bold text-white/70">Marcar como folga</span>
+              </label>
+            )}
+
+            {!modalIsFolga && (
+              <div className="flex gap-3">
+                <div className="flex-1 space-y-1.5">
+                  <label className="field-label">Entrada</label>
+                  <input type="time" value={modalStart} onChange={e => setModalStart(e.target.value)} className="field-input w-full" />
+                </div>
+                <div className="flex-1 space-y-1.5">
+                  <label className="field-label">Saída</label>
+                  <input type="time" value={modalEnd} onChange={e => setModalEnd(e.target.value)} className="field-input w-full" />
+                </div>
+              </div>
+            )}
+
+            {modal.date && (
+              <div className="space-y-1.5">
+                <label className="field-label">Motivo (opcional)</label>
+                <input
+                  type="text"
+                  value={modalReason}
+                  onChange={e => setModalReason(e.target.value)}
+                  placeholder={modalIsFolga ? "Ex: Folga semanal" : "Ex: Troca de turno"}
+                  className="field-input w-full"
+                />
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-1">
+              {modal.date && modal.existingOverride && (
+                <button
+                  onClick={handleDeleteOverride}
+                  disabled={saving}
+                  className="flex-1 py-2.5 rounded-xl border border-red-900/50 text-red-400 text-xs font-bold uppercase tracking-wide hover:bg-red-950/30 transition-all disabled:opacity-50"
+                >
+                  Remover Override
+                </button>
+              )}
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#E0FFFF]/10 border border-[#E0FFFF]/20 text-[#E0FFFF] text-xs font-bold uppercase tracking-wide hover:bg-[#E0FFFF]/20 transition-all disabled:opacity-50"
+              >
+                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </RoleGuard>
   );
 }

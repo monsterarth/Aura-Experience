@@ -45,16 +45,44 @@ function resolveReferenceDate(
   return applicable[0]?.referenceDate ?? scheduleConfig.cycleReferenceDate;
 }
 
+export function getEffectiveConfig(staff: Staff, date: Date): { scheduleType: NonNullable<Staff['scheduleType']>; scheduleConfig: ScheduleConfig } | null {
+  if (!staff.scheduleType || !staff.scheduleConfig) return null;
+
+  const dateStr = toLocalYMD(date);
+  const history = staff.scheduleConfig.history || [];
+
+  // Filter history items valid for the date (date <= endDate)
+  // Sort by endDate ascending to get the earliest valid history item
+  const validHistory = [...history]
+    .filter(h => dateStr <= h.endDate)
+    .sort((a, b) => a.endDate.localeCompare(b.endDate));
+
+  if (validHistory.length > 0) {
+    const hist = validHistory[0];
+    return {
+      scheduleType: hist.scheduleType,
+      scheduleConfig: hist as any // Cast history item to ScheduleConfig since it matches the shape
+    };
+  }
+
+  // If no history item covers this date, use the current config
+  return {
+    scheduleType: staff.scheduleType,
+    scheduleConfig: staff.scheduleConfig
+  };
+}
+
 export function calculateScheduleForDate(
   staff: Staff,
   date: Date,
   checkpoints: ScheduleCheckpoint[] = []
 ): DayScheduleResult {
-  const { scheduleType, scheduleConfig } = staff;
-
-  if (!scheduleType || !scheduleConfig) {
+  const effective = getEffectiveConfig(staff, date);
+  if (!effective) {
     return { isWork: false, source: 'not-configured' };
   }
+
+  const { scheduleType, scheduleConfig } = effective;
 
   // Normaliza para meia-noite local
   const normalizedDate = localMidnight(toLocalYMD(date));
@@ -88,22 +116,25 @@ export function calculateScheduleForDate(
 
   if (scheduleType === '6x1') {
     const refDate = resolveReferenceDate(scheduleConfig, staff.id, normalizedDate, checkpoints);
-    if (!refDate) return { isWork: false, source: 'not-configured' };
-    const ref = localMidnight(refDate);
-    const diff = diffDays(normalizedDate, ref);
-    const pos = positiveModulo(diff, 7);
-    let isWork = pos < 6 && !hasFixedDayOff;
+    
+    // O dia de folga normal do 6x1 passa a ser controlado estritamente pelo fixedDayOff
+    // A data de referência agora serve primariamente para o ciclo de domingos
+    let isWork = !hasFixedDayOff;
 
-    // Regra de domingo para 6x1: o Nº domingo do mês é sempre folga
-    if (isWork && dow === 0 && scheduleConfig.sundayMonthOff != null) {
-      let sundayCount = 0;
-      for (let d = 1; d <= normalizedDate.getDate(); d++) {
-        if (new Date(normalizedDate.getFullYear(), normalizedDate.getMonth(), d).getDay() === 0) {
-          sundayCount++;
+    // Regra de domingo 6x1: trabalha 3, folga o 4º — ciclo baseado na data de referência
+    if (dow === 0 && scheduleConfig.sundayOffCycle && refDate) {
+      const ref = localMidnight(refDate);
+      // Encontra o primeiro domingo >= data de referência do ciclo
+      const refDow = ref.getDay(); // 0=Dom
+      const daysToFirstSunday = refDow === 0 ? 0 : 7 - refDow;
+      const firstRefSunday = new Date(ref.getTime() + daysToFirstSunday * 86_400_000);
+
+      if (normalizedDate >= firstRefSunday) {
+        // sundayIndex: 0, 1, 2 = trabalho; 3 = folga; 4, 5, 6 = trabalho; 7 = folga...
+        const sundayIndex = diffDays(normalizedDate, firstRefSunday) / 7;
+        if (positiveModulo(sundayIndex, 4) === 3) {
+          isWork = false;
         }
-      }
-      if (sundayCount === scheduleConfig.sundayMonthOff) {
-        isWork = false;
       }
     }
 
@@ -138,8 +169,11 @@ export function resolveEffectiveDaySchedule(
     };
   }
 
+  const effective = getEffectiveConfig(staff, date);
+  const effectiveStaffType = effective?.scheduleType;
+
   // Para custom, usa StaffSchedule por dayOfWeek
-  if (!staff.scheduleType || staff.scheduleType === 'custom') {
+  if (!effectiveStaffType || effectiveStaffType === 'custom') {
     const dow = date.getDay();
     const base = staffSchedules.find(s => s.staffId === staff.id && s.dayOfWeek === dow && s.active);
     if (base) {
