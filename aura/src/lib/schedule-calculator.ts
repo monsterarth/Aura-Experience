@@ -5,6 +5,7 @@ export interface DayScheduleResult {
   startTime?: string;
   endTime?: string;
   source: 'calculated' | 'base-schedule' | 'not-configured';
+  reason?: string;
 }
 
 function localMidnight(dateStr: string): Date {
@@ -158,7 +159,7 @@ export function resolveEffectiveDaySchedule(
   const override = overridesForDate.find(o => o.staffId === staff.id);
   if (override) {
     if (!override.startTime) {
-      return { isWork: false, source: 'calculated', hasOverride: true };
+      return { isWork: false, source: 'calculated', hasOverride: true, reason: override.reason };
     }
     return {
       isWork: true,
@@ -166,6 +167,7 @@ export function resolveEffectiveDaySchedule(
       endTime: override.endTime?.slice(0, 5),
       source: 'calculated',
       hasOverride: true,
+      reason: override.reason,
     };
   }
 

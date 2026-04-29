@@ -588,13 +588,21 @@ export default function EscalasPage() {
 
                         let cellContent: React.ReactNode;
                         let cellStyle = "bg-transparent";
+                        const isBanco = resolved.reason?.toLowerCase().includes("banco");
 
                         if (resolved.hasOverride) {
                           if (!resolved.isWork) {
-                            cellStyle = "bg-red-950/30 border-red-900/30";
-                            cellContent = (
-                              <span className="text-red-400 font-bold text-[9px] uppercase tracking-wide">Folga</span>
-                            );
+                            if (isBanco) {
+                              cellStyle = "bg-yellow-950/30 border-yellow-900/30";
+                              cellContent = (
+                                <span className="text-yellow-400 font-bold text-[9px] uppercase tracking-wide">Banco</span>
+                              );
+                            } else {
+                              cellStyle = "bg-red-950/30 border-red-900/30";
+                              cellContent = (
+                                <span className="text-red-400 font-bold text-[9px] uppercase tracking-wide">Folga</span>
+                              );
+                            }
                           } else {
                             cellStyle = "bg-blue-950/30 border-blue-900/30";
                             cellContent = (
@@ -626,9 +634,12 @@ export default function EscalasPage() {
                             key={i}
                             className={`border-l border-white/5 px-2 py-2 text-center cursor-pointer transition-all hover:opacity-80 ${isToday ? 'ring-1 ring-inset ring-[#00BFFF]/20' : ''}`}
                             onClick={() => openOverrideModal(staff, day)}
-                            title={`Editar ${DAY_LABELS_FULL[day.getDay()]} ${formatDate(day)}`}
+                            title={resolved.reason ? `${resolved.reason}` : `Editar ${DAY_LABELS_FULL[day.getDay()]} ${formatDate(day)}`}
                           >
-                            <div className={`rounded-lg px-2 py-1.5 border ${cellStyle} flex items-center justify-center min-h-[32px]`}>
+                            <div className={`rounded-lg px-2 py-1.5 border ${cellStyle} flex items-center justify-center min-h-[32px] relative group`}>
+                              {resolved.reason && (
+                                <div className="absolute top-1 right-1 w-1 h-1 rounded-full bg-yellow-400/80 shadow-[0_0_2px_rgba(0,0,0,0.5)]" />
+                              )}
                               {cellContent}
                             </div>
                           </td>
@@ -810,15 +821,29 @@ export default function EscalasPage() {
             </div>
 
             {modal.date && (
-              <label className="flex items-center gap-3 cursor-pointer">
-                <div
-                  onClick={() => setModalIsFolga(f => !f)}
-                  className={`w-10 h-5 rounded-full transition-colors relative ${modalIsFolga ? 'bg-red-500' : 'bg-white/10'}`}
-                >
-                  <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${modalIsFolga ? 'left-5' : 'left-0.5'}`} />
-                </div>
-                <span className="text-sm font-bold text-white/70">Marcar como folga</span>
-              </label>
+              <div className="space-y-4">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <div
+                    onClick={() => setModalIsFolga(f => !f)}
+                    className={`w-10 h-5 rounded-full transition-colors relative ${modalIsFolga ? 'bg-red-500' : 'bg-white/10'}`}
+                  >
+                    <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${modalIsFolga ? 'left-5' : 'left-0.5'}`} />
+                  </div>
+                  <span className="text-sm font-bold text-white/70">Marcar como folga</span>
+                </label>
+
+                {modalIsFolga && (
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <div
+                      onClick={() => setModalReason(r => r === "Banco de horas" ? "" : "Banco de horas")}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${modalReason === "Banco de horas" ? 'bg-yellow-500' : 'bg-white/10'}`}
+                    >
+                      <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${modalReason === "Banco de horas" ? 'left-5' : 'left-0.5'}`} />
+                    </div>
+                    <span className="text-sm font-bold text-white/70">Banco de horas</span>
+                  </label>
+                )}
+              </div>
             )}
 
             {!modalIsFolga && (

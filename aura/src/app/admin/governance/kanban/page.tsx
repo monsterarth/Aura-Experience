@@ -389,7 +389,7 @@ export default function GovernanceKanbanPage() {
                       <button onClick={() => { setSelectedTask(task); setIsChecklistOpen(true); }} className="flex-1 py-2 bg-green-600 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-green-700 transition-all flex justify-center items-center gap-1 shadow-sm">Finalizar <ClipboardCheck size={14} /></button>
                     </>
                   )}
-                  {task.status === 'waiting_conference' && (userData?.role === 'super_admin' || userData?.role === 'admin' || userData?.role === 'governance') && (
+                  {task.status === 'waiting_conference' && (userData?.role === 'super_admin' || userData?.role === 'admin' || userData?.role === 'governance' || userData?.role === 'hr') && (
                     <>
                       <button onClick={() => handleConferTask(task.id, task.cabinId || task.structureId!, false)} className="flex-1 py-2 bg-red-500/10 text-red-600 text-[10px] font-bold uppercase rounded-lg hover:bg-red-500 hover:text-white transition-all">Reprovar</button>
                       <button onClick={() => handleConferTask(task.id, task.cabinId || task.structureId!, true)} className="flex-1 py-2 bg-primary text-primary-foreground text-[10px] font-bold uppercase rounded-lg hover:opacity-90 transition-all shadow-sm">Liberar</button>
@@ -422,7 +422,7 @@ export default function GovernanceKanbanPage() {
           </div>
         </div>
         <div className="flex gap-3">
-          {(userData?.role === 'super_admin' || userData?.role === 'admin' || userData?.role === 'governance') && (
+          {(userData?.role === 'super_admin' || userData?.role === 'admin' || userData?.role === 'governance' || userData?.role === 'hr') && (
             <>
               <button
                 onClick={() => setIsSettingsOpen(true)}
@@ -606,7 +606,7 @@ export default function GovernanceKanbanPage() {
                         <button onClick={() => { setSelectedTask(task); setIsChecklistOpen(true); }} className="flex-1 py-2 bg-green-600 text-white text-[10px] font-bold uppercase rounded-lg hover:bg-green-700 transition-all flex justify-center items-center gap-1 shadow-sm">Finalizar <ClipboardCheck size={14} /></button>
                       </>
                     )}
-                    {task.status === 'waiting_conference' && (userData?.role === 'super_admin' || userData?.role === 'admin' || userData?.role === 'governance') && (
+                    {task.status === 'waiting_conference' && (userData?.role === 'super_admin' || userData?.role === 'admin' || userData?.role === 'governance' || userData?.role === 'hr') && (
                       <>
                         <button onClick={() => handleConferTask(task.id, task.cabinId || task.structureId!, false)} className="flex-1 py-2 bg-red-500/10 text-red-600 text-[10px] font-bold uppercase rounded-lg hover:bg-red-500 hover:text-white transition-all">Reprovar</button>
                         <button onClick={() => handleConferTask(task.id, task.cabinId || task.structureId!, true)} className="flex-1 py-2 bg-primary text-primary-foreground text-[10px] font-bold uppercase rounded-lg hover:opacity-90 transition-all shadow-sm">Liberar</button>

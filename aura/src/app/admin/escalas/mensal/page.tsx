@@ -54,6 +54,7 @@ interface CellData {
   bg: string;
   color: string;
   bold: boolean;
+  reason?: string;
 }
 
 function getCellData(
@@ -68,13 +69,17 @@ function getCellData(
   );
 
   const dow = day.getDay();
+  const isBanco = resolved.reason?.toLowerCase().includes("banco de horas");
 
   if (resolved.hasOverride) {
     if (!resolved.isWork) {
-      if (dow === 0) {
-        return { label: "DOMINGO", bg: "#7c3aed", color: "#fff", bold: true };
+      if (isBanco) {
+        return { label: "BANCO", bg: "#ca8a04", color: "#fff", bold: true, reason: resolved.reason };
       }
-      return { label: "FOLGA", bg: "#16a34a", color: "#fff", bold: true };
+      if (dow === 0) {
+        return { label: "DOMINGO", bg: "#7c3aed", color: "#fff", bold: true, reason: resolved.reason };
+      }
+      return { label: "FOLGA", bg: "#16a34a", color: "#fff", bold: true, reason: resolved.reason };
     }
     // Override de trabalho (ex: troca de turno)
     return {
@@ -82,6 +87,7 @@ function getCellData(
       bg: "#1d4ed8",
       color: "#fff",
       bold: true,
+      reason: resolved.reason,
     };
   }
 
@@ -111,6 +117,7 @@ function getCellData(
     bg: isAltTime ? "#854d0e" : "#1c1c1c",
     color: isAltTime ? "#fef08a" : "#d1d5db",
     bold: false,
+    reason: resolved.reason,
   };
 }
 
@@ -407,12 +414,16 @@ export default function EscalasMensalPage() {
                         return (
                           <td
                             key={staff.id}
-                            className="border-l border-white/5 px-1 py-0.5 text-center cursor-pointer transition-opacity hover:opacity-70"
+                            className="border-l border-white/5 px-1 py-0.5 text-center cursor-pointer transition-opacity hover:opacity-70 relative group"
                             onClick={() => openOverrideModal(staff, day)}
                             style={{
                               background: cell.bg !== "transparent" ? cell.bg : undefined,
                             }}
+                            title={cell.reason || undefined}
                           >
+                            {cell.reason && (
+                              <div className="absolute top-0.5 right-0.5 w-1 h-1 rounded-full bg-yellow-400/80 shadow-[0_0_2px_rgba(0,0,0,0.5)]" />
+                            )}
                             {cell.label ? (
                               <span
                                 className="block text-[9px] leading-tight py-0.5"
@@ -480,15 +491,29 @@ export default function EscalasMensalPage() {
             </div>
 
             {modal.date && (
-              <label className="flex items-center gap-3 cursor-pointer">
-                <div
-                  onClick={() => setModalIsFolga(f => !f)}
-                  className={`w-10 h-5 rounded-full transition-colors relative ${modalIsFolga ? 'bg-red-500' : 'bg-white/10'}`}
-                >
-                  <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${modalIsFolga ? 'left-5' : 'left-0.5'}`} />
-                </div>
-                <span className="text-sm font-bold text-white/70">Marcar como folga</span>
-              </label>
+              <div className="space-y-4">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <div
+                    onClick={() => setModalIsFolga(f => !f)}
+                    className={`w-10 h-5 rounded-full transition-colors relative ${modalIsFolga ? 'bg-red-500' : 'bg-white/10'}`}
+                  >
+                    <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${modalIsFolga ? 'left-5' : 'left-0.5'}`} />
+                  </div>
+                  <span className="text-sm font-bold text-white/70">Marcar como folga</span>
+                </label>
+
+                {modalIsFolga && (
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <div
+                      onClick={() => setModalReason(r => r === "Banco de horas" ? "" : "Banco de horas")}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${modalReason === "Banco de horas" ? 'bg-yellow-500' : 'bg-white/10'}`}
+                    >
+                      <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${modalReason === "Banco de horas" ? 'left-5' : 'left-0.5'}`} />
+                    </div>
+                    <span className="text-sm font-bold text-white/70">Banco de horas</span>
+                  </label>
+                )}
+              </div>
             )}
 
             {!modalIsFolga && (

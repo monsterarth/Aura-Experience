@@ -236,7 +236,7 @@ export default function MaintenanceKanbanPage() {
                     <div className="h-24 border-2 border-dashed border-border rounded-xl flex items-center justify-center text-xs font-bold text-muted-foreground uppercase opacity-50">Vazio</div>
                 ) : (
                     items.map(task => {
-                        const isManager = userData?.role === 'admin' || userData?.role === 'super_admin' || userData?.role === 'maintenance';
+                        const isManager = userData?.role === 'admin' || userData?.role === 'super_admin' || userData?.role === 'maintenance' || userData?.role === 'hr';
                         return (
                             <div key={task.id} className={cn(
                                 "bg-card border p-4 rounded-xl shadow-sm space-y-4 hover:border-primary/50 transition-colors group relative",
