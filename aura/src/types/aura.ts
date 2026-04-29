@@ -728,6 +728,8 @@ export interface ScheduleConfig {
   endTime: string;             // HH:mm
   cycleReferenceDate?: string; // YYYY-MM-DD — fallback quando não há checkpoints
   fixedDayOff?: number | null; // 0=Dom...6=Sáb — folga fixa semanal, null=nenhuma
+  weekdayTimeOverrides?: Partial<Record<number, { startTime: string; endTime: string }>>; // horário diferente por dia da semana
+  sundayMonthOff?: number | null; // 1=1º Dom, 2=2º Dom, 3=3º Dom, 4=4º Dom — para 6x1
 }
 
 export interface ScheduleCheckpoint {

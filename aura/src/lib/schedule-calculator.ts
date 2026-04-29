@@ -56,18 +56,22 @@ export function calculateScheduleForDate(
     return { isWork: false, source: 'not-configured' };
   }
 
-  // Normaliza para meia-noite local para evitar arredondamento errado no diffDays
+  // Normaliza para meia-noite local
   const normalizedDate = localMidnight(toLocalYMD(date));
 
   const { startTime, endTime } = scheduleConfig;
-
   const dow = normalizedDate.getDay();
   const hasFixedDayOff = scheduleConfig.fixedDayOff != null && dow === scheduleConfig.fixedDayOff;
+
+  // Horário efetivo: override por dia da semana tem prioridade sobre o padrão
+  const dowOverride = scheduleConfig.weekdayTimeOverrides?.[dow];
+  const effectiveStart = dowOverride?.startTime ?? startTime;
+  const effectiveEnd = dowOverride?.endTime ?? endTime;
 
   if (scheduleType === '5x2') {
     const isWork = dow >= 1 && dow <= 5 && !hasFixedDayOff;
     return isWork
-      ? { isWork: true, startTime, endTime, source: 'calculated' }
+      ? { isWork: true, startTime: effectiveStart, endTime: effectiveEnd, source: 'calculated' }
       : { isWork: false, source: 'calculated' };
   }
 
@@ -78,7 +82,7 @@ export function calculateScheduleForDate(
     const diff = diffDays(normalizedDate, ref);
     const isWork = positiveModulo(diff, 2) === 0 && !hasFixedDayOff;
     return isWork
-      ? { isWork: true, startTime, endTime, source: 'calculated' }
+      ? { isWork: true, startTime: effectiveStart, endTime: effectiveEnd, source: 'calculated' }
       : { isWork: false, source: 'calculated' };
   }
 
@@ -88,9 +92,23 @@ export function calculateScheduleForDate(
     const ref = localMidnight(refDate);
     const diff = diffDays(normalizedDate, ref);
     const pos = positiveModulo(diff, 7);
-    const isWork = pos < 6 && !hasFixedDayOff;
+    let isWork = pos < 6 && !hasFixedDayOff;
+
+    // Regra de domingo para 6x1: o Nº domingo do mês é sempre folga
+    if (isWork && dow === 0 && scheduleConfig.sundayMonthOff != null) {
+      let sundayCount = 0;
+      for (let d = 1; d <= normalizedDate.getDate(); d++) {
+        if (new Date(normalizedDate.getFullYear(), normalizedDate.getMonth(), d).getDay() === 0) {
+          sundayCount++;
+        }
+      }
+      if (sundayCount === scheduleConfig.sundayMonthOff) {
+        isWork = false;
+      }
+    }
+
     return isWork
-      ? { isWork: true, startTime, endTime, source: 'calculated' }
+      ? { isWork: true, startTime: effectiveStart, endTime: effectiveEnd, source: 'calculated' }
       : { isWork: false, source: 'calculated' };
   }
 
