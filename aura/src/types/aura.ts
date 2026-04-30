@@ -97,7 +97,9 @@ export interface Guest {
   id: string;
   propertyId: string;
   fullName: string;
-  nationality: string; // 'Brasil' por padrão
+  nationality: string; // ISO 3166-1 alpha-2 (ex: 'BR')
+  nationalityName?: string; // Nome legível (ex: 'Brasil')
+  residenceCountry?: string; // ISO 3166-1 alpha-2 — país de residência (pode diferir da nacionalidade)
   email: string;
   phone: string;
   document: {
@@ -497,6 +499,7 @@ export interface Stay {
     fullName: string;
     document: string;
     type: 'adult' | 'child' | 'free';
+    birthDate?: string; // YYYY-MM-DD opcional — usado para aniversariantes e faixa etária
   }[];
 
   // FNRH

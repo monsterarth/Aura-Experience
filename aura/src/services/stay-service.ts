@@ -147,6 +147,18 @@ export const StayService = {
 
     const payloads = params.cabinConfigs.map(config => {
       const stayId = uuidv4();
+
+      const additionalGuests: { id: string; type: string; fullName: string; document: string; birthDate: string }[] = [];
+      for (let i = 0; i < Math.max(0, config.adults - 1); i++) {
+        additionalGuests.push({ id: uuidv4(), type: 'adult', fullName: 'ACOMPANHANTE', document: '', birthDate: '' });
+      }
+      for (let i = 0; i < config.children; i++) {
+        additionalGuests.push({ id: uuidv4(), type: 'child', fullName: 'ACOMPANHANTE', document: '', birthDate: '' });
+      }
+      for (let i = 0; i < config.babies; i++) {
+        additionalGuests.push({ id: uuidv4(), type: 'free', fullName: 'ACOMPANHANTE', document: '', birthDate: '' });
+      }
+
       return {
         id: stayId,
         propertyId: params.propertyId,
@@ -157,6 +169,7 @@ export const StayService = {
         checkIn: params.checkIn.toISOString(),
         checkOut: params.checkOut.toISOString(),
         counts: { adults: config.adults, children: config.children, babies: config.babies },
+        additionalGuests,
         status: 'pending',
         automationFlags: {
           send48h: params.sendAutomations,

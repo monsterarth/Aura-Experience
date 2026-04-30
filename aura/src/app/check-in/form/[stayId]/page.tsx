@@ -13,42 +13,58 @@ import {
 } from "lucide-react";
 import { fetchCEP, sanitizeDocumentForFnrh, validateCPF } from "@/lib/utils-checkin";
 import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
-import { toast } from "sonner";
+import { toast, Toaster } from "sonner";
 import { cn } from "@/lib/utils";
 
 const countries = [
-  { name: "Brasil", flag: "🇧🇷", ddi: "+55" },
-  { name: "Estados Unidos", flag: "🇺🇸", ddi: "+1" },
-  { name: "Argentina", flag: "🇦🇷", ddi: "+54" },
-  { name: "Portugal", flag: "🇵🇹", ddi: "+351" },
-  { name: "Uruguai", flag: "🇺🇾", ddi: "+598" },
-  { name: "Chile", flag: "🇨🇱", ddi: "+56" },
-  { name: "Paraguai", flag: "🇵🇾", ddi: "+595" },
-  { name: "Outro", flag: "🌍", ddi: "" },
+  { name: "Brasil", iso: "BR", flag: "🇧🇷", ddi: "+55" },
+  { name: "Estados Unidos", iso: "US", flag: "🇺🇸", ddi: "+1" },
+  { name: "Argentina", iso: "AR", flag: "🇦🇷", ddi: "+54" },
+  { name: "Portugal", iso: "PT", flag: "🇵🇹", ddi: "+351" },
+  { name: "Uruguai", iso: "UY", flag: "🇺🇾", ddi: "+598" },
+  { name: "Chile", iso: "CL", flag: "🇨🇱", ddi: "+56" },
+  { name: "Paraguai", iso: "PY", flag: "🇵🇾", ddi: "+595" },
+  { name: "Itália", iso: "IT", flag: "🇮🇹", ddi: "+39" },
+  { name: "Alemanha", iso: "DE", flag: "🇩🇪", ddi: "+49" },
+  { name: "França", iso: "FR", flag: "🇫🇷", ddi: "+33" },
+  { name: "Espanha", iso: "ES", flag: "🇪🇸", ddi: "+34" },
+  { name: "Reino Unido", iso: "GB", flag: "🇬🇧", ddi: "+44" },
+  { name: "México", iso: "MX", flag: "🇲🇽", ddi: "+52" },
+  { name: "Colômbia", iso: "CO", flag: "🇨🇴", ddi: "+57" },
+  { name: "Peru", iso: "PE", flag: "🇵🇪", ddi: "+51" },
+  { name: "Bolívia", iso: "BO", flag: "🇧🇴", ddi: "+591" },
+  { name: "Venezuela", iso: "VE", flag: "🇻🇪", ddi: "+58" },
+  { name: "Equador", iso: "EC", flag: "🇪🇨", ddi: "+593" },
+  { name: "Outro", iso: "XX", flag: "🌍", ddi: "" },
 ];
 
 // Dicionário de Traduções Estáticas
 const translations = {
   pt: {
     titleHolder: "Titular da Reserva",
+    preferredLang: "Idioma Preferido",
     nationality: "Nacionalidade *",
+    nationalityISO: "ISO",
     select: "Selecione...",
     searchCountry: "Pesquisar país...",
-    doc: "Passaporte / ID *",
+    doc: "Passaporte / ID",
     fullName: "Nome Completo *",
     birth: "Nascimento *",
     gender: "Gênero *",
     male: "Masculino",
     female: "Feminino",
     other: "Outro",
+    notInformed: "Não Informado",
     occupation: "Profissão *",
     companions: "Acompanhantes",
     adult: "Adulto",
     child: "Criança",
     free: "Free (Bebê)",
     docOpt: "(Opcional)",
+    birthDateOpt: "Nascimento (Opcional)",
     add: "Add",
     ageRule: "Adulto: 18+ anos | Criança: 6 a 17 anos | Free (Bebê): Até 5 anos",
+    residenceCountry: "País de Residência *",
     residence: "Residência",
     zip: "CEP / Zip *",
     street: "Logradouro (Rua/Av) *",
@@ -124,24 +140,29 @@ const translations = {
   },
   en: {
     titleHolder: "Reservation Holder",
+    preferredLang: "Preferred Language",
     nationality: "Nationality *",
+    nationalityISO: "ISO",
     select: "Select...",
     searchCountry: "Search country...",
-    doc: "Passport / ID *",
+    doc: "Passport / ID",
     fullName: "Full Name *",
     birth: "Date of Birth *",
     gender: "Gender *",
     male: "Male",
     female: "Female",
     other: "Other",
+    notInformed: "Not Informed",
     occupation: "Occupation *",
     companions: "Companions",
     adult: "Adult",
     child: "Child",
     free: "Infant (Free)",
     docOpt: "(Optional)",
+    birthDateOpt: "Date of Birth (Optional)",
     add: "Add",
     ageRule: "Adult: 18+ years | Child: 6 to 17 years | Infant: Under 5 years",
+    residenceCountry: "Country of Residence *",
     residence: "Residence",
     zip: "Zip / Postal Code *",
     street: "Street Address *",
@@ -217,24 +238,29 @@ const translations = {
   },
   es: {
     titleHolder: "Titular de la Reserva",
+    preferredLang: "Idioma Preferido",
     nationality: "Nacionalidad *",
+    nationalityISO: "ISO",
     select: "Seleccione...",
     searchCountry: "Buscar país...",
-    doc: "Pasaporte / ID *",
+    doc: "Pasaporte / ID",
     fullName: "Nombre Completo *",
     birth: "Fecha de Nacimiento *",
     gender: "Género *",
     male: "Masculino",
     female: "Femenino",
     other: "Otro",
+    notInformed: "No Informado",
     occupation: "Profesión *",
     companions: "Acompañantes",
     adult: "Adulto",
     child: "Niño",
     free: "Bebé (Gratis)",
     docOpt: "(Opcional)",
+    birthDateOpt: "Fecha de Nacimiento (Opcional)",
     add: "Añadir",
     ageRule: "Adulto: 18+ años | Niño: 6 a 17 años | Bebé: Menos de 5 años",
+    residenceCountry: "País de Residencia *",
     residence: "Residencia",
     zip: "Código Postal *",
     street: "Dirección (Calle/Av) *",
@@ -369,7 +395,8 @@ export default function UnifiedPreCheckin() {
   const [guest, setGuest] = useState<any>({
     address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", complement: "", ibgeCityId: "" },
     document: { number: "", type: "CPF" },
-    nationality: "Brasil", fullName: "", birthDate: "", gender: "", raca: "NAO_DECLARADO", phone: "", email: ""
+    nationality: "BR", nationalityName: "Brasil", residenceCountry: "BR",
+    fullName: "", birthDate: "", gender: "", raca: "NAO_DECLARADO", phone: "", email: ""
   });
 
   const [stay, setStay] = useState<any>({
@@ -422,8 +449,25 @@ export default function UnifiedPreCheckin() {
           setPropertyData(propData);
           setFnrhDomains({ generos, racas, transportes, motivos, tiposDocumento });
 
-          setGuest((prev: any) => ({ ...prev, ...data.guest, address: { ...prev.address, ...(data.guest?.address || {}) }, document: { ...prev.document, ...(data.guest?.document || {}) } }));
-          setStay((prev: any) => ({ ...prev, ...data.stay, propertyId: targetPropertyId, petDetails: { ...prev.petDetails, ...(data.stay?.petDetails || {}) }, additionalGuests: data.stay.additionalGuests || [], counts: data.stay.counts || { adults: 1, children: 0, babies: 0 }, areaConfigs: data.stay.areaConfigs || [], bedAssignments: data.stay.bedAssignments || [] }));
+          setGuest((prev: any) => ({
+            ...prev, ...data.guest,
+            address: { ...prev.address, ...(data.guest?.address || {}) },
+            document: { ...prev.document, ...(data.guest?.document || {}) },
+            nationality: data.guest?.nationality || prev.nationality || "BR",
+            nationalityName: data.guest?.nationalityName || data.guest?.nationality || prev.nationalityName || "Brasil",
+            residenceCountry: data.guest?.residenceCountry || data.guest?.nationality || prev.residenceCountry || "BR",
+            gender: data.guest?.gender || prev.gender || "",
+          }));
+          setStay((prev: any) => ({
+            ...prev, ...data.stay, propertyId: targetPropertyId,
+            petDetails: { ...prev.petDetails, ...(data.stay?.petDetails || {}) },
+            additionalGuests: data.stay.additionalGuests || [],
+            counts: data.stay.counts || { adults: 1, children: 0, babies: 0 },
+            areaConfigs: data.stay.areaConfigs || [],
+            bedAssignments: data.stay.bedAssignments || [],
+            transportation: data.stay?.transportation || prev.transportation || "CARRO",
+            travelReason: data.stay?.travelReason || prev.travelReason || "TURISMO",
+          }));
           setCabin(data.cabin);
 
           if (data.stay.groupId) {
@@ -493,8 +537,13 @@ export default function UnifiedPreCheckin() {
     } else if (guest.document?.type === "CPF" && !validateCPF(guest.document.number)) {
       errors.push("CPF Inválido");
     }
-    if (!guest.birthDate) errors.push(t.birth);
-    if (!guest.gender) errors.push(t.gender);
+    if (!guest.birthDate) {
+      errors.push(t.birth);
+    } else {
+      const age = getAge(guest.birthDate);
+      if (age === null) errors.push(lang === 'en' ? 'Invalid date of birth' : lang === 'es' ? 'Fecha de nacimiento inválida' : 'Data de nascimento inválida');
+      else if (age < 18) errors.push(lang === 'en' ? 'Holder must be 18 or older' : lang === 'es' ? 'El titular debe tener 18 años o más' : 'O titular deve ter 18 anos ou mais');
+    }
     if (!guest.occupation) errors.push(t.occupation);
     if (!guest.address?.zipCode) errors.push(t.zip);
     if (!guest.address?.street) errors.push(t.street);
@@ -508,9 +557,7 @@ export default function UnifiedPreCheckin() {
 
     stay.additionalGuests?.forEach((g: any, index: number) => {
       if (!g.fullName) errors.push(`${t.companions} #${index + 1} (${t.fullName})`);
-      if (!g.document && g.type === 'adult') {
-        errors.push(`${t.companions} #${index + 1} (${t.doc})`);
-      } else if (g.document && sanitizeDocumentForFnrh(g.document).length === 11 && !validateCPF(g.document)) {
+      if (g.document && sanitizeDocumentForFnrh(g.document).length === 11 && !validateCPF(g.document)) {
         errors.push(`${t.companions} #${index + 1} (CPF Inválido)`);
       }
     });
@@ -522,14 +569,36 @@ export default function UnifiedPreCheckin() {
     return errors;
   };
 
+  const getAge = (birthDate: string): number | null => {
+    if (!birthDate) return null;
+    const birth = new Date(birthDate);
+    if (isNaN(birth.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - birth.getFullYear();
+    const m = today.getMonth() - birth.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
+    return age;
+  };
+
   const validateStep = (step: 1 | 2 | 3): string[] => {
     const errors: string[] = [];
     if (step === 1) {
       if (!guest.fullName) errors.push(t.fullName);
       if (!guest.document?.number) errors.push(t.doc);
       else if (guest.document?.type === "CPF" && !validateCPF(guest.document.number)) errors.push("CPF Inválido");
-      if (!guest.birthDate) errors.push(t.birth);
+      if (!guest.birthDate) {
+        errors.push(t.birth);
+      } else {
+        const age = getAge(guest.birthDate);
+        if (age === null) errors.push(lang === 'en' ? 'Invalid date of birth' : lang === 'es' ? 'Fecha de nacimiento inválida' : 'Data de nascimento inválida');
+        else if (age < 18) errors.push(lang === 'en' ? 'Holder must be 18 or older' : lang === 'es' ? 'El titular debe tener 18 años o más' : 'O titular deve ter 18 anos ou mais');
+      }
       if (!guest.occupation) errors.push(t.occupation);
+    }
+    if (step === 2) {
+      stay.additionalGuests?.forEach((g: any, index: number) => {
+        if (!g.fullName || g.fullName === 'ACOMPANHANTE') errors.push(`${t.companions} #${index + 1} (${t.fullName})`);
+      });
     }
     if (step === 3) {
       if (!guest.address?.zipCode) errors.push(t.zip);
@@ -538,6 +607,7 @@ export default function UnifiedPreCheckin() {
       if (!guest.address?.neighborhood) errors.push(t.neighborhood);
       if (!guest.address?.city) errors.push(t.city);
       if (!guest.address?.state) errors.push(t.state);
+      if (!guest.residenceCountry) errors.push(t.residenceCountry);
     }
     return errors;
   };
@@ -552,6 +622,7 @@ export default function UnifiedPreCheckin() {
         raca: guest.raca,
         occupation: guest.occupation,
         nationality: guest.nationality,
+        nationalityName: guest.nationalityName,
         preferredLanguage: lang
       },
       stayData: {} as Record<string, any>
@@ -561,7 +632,7 @@ export default function UnifiedPreCheckin() {
       guestData: {} as Record<string, any>
     };
     return {
-      guestData: { address: guest.address },
+      guestData: { address: guest.address, residenceCountry: guest.residenceCountry },
       stayData: {} as Record<string, any>
     };
   };
@@ -912,16 +983,40 @@ export default function UnifiedPreCheckin() {
             <User size={20} className="text-primary" /> {t.titleHolder}
           </h3>
 
+          {/* Idioma preferido */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.preferredLang}</label>
+            <div className="flex gap-2">
+              {(['pt', 'en', 'es'] as const).map(l => (
+                <button
+                  key={l} type="button"
+                  onClick={() => setLang(l)}
+                  className={cn(
+                    "flex-1 py-3 rounded-2xl text-sm font-black uppercase tracking-widest border transition-all",
+                    lang === l
+                      ? "bg-primary text-primary-foreground border-primary shadow-md"
+                      : "bg-secondary border-border text-muted-foreground hover:border-primary/40"
+                  )}
+                >
+                  {l === 'pt' ? '🇧🇷 PT' : l === 'en' ? '🇺🇸 EN' : '🇪🇸 ES'}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="col-span-1 space-y-1">
+            <div className="col-span-2 space-y-1">
               <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.nationality}</label>
               <select
-                value={guest.nationality || "Brasil"}
-                onChange={e => setGuest({ ...guest, nationality: e.target.value })}
+                value={guest.nationality || "BR"}
+                onChange={e => {
+                  const c = countries.find(c => c.iso === e.target.value);
+                  setGuest({ ...guest, nationality: e.target.value, nationalityName: c?.name || e.target.value });
+                }}
                 className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 transition-colors text-sm appearance-none"
               >
                 {countries.map(c => (
-                  <option key={c.name} value={c.name}>{c.name}</option>
+                  <option key={c.iso} value={c.iso}>{c.flag} {c.name} ({c.iso})</option>
                 ))}
               </select>
             </div>
@@ -939,13 +1034,14 @@ export default function UnifiedPreCheckin() {
               </select>
             </div>
 
-            <div className="col-span-2 space-y-1">
+            <div className="col-span-2 md:col-span-1 space-y-1">
               <label className="text-[10px] font-bold text-muted-foreground uppercase">Nº de Identificação</label>
               <input
                 value={guest.document?.number || ""}
                 onChange={e => setGuest({ ...guest, document: { ...guest.document, number: e.target.value } })}
+                onFocus={e => { if (e.target.value === 'N/A' || e.target.value === 'n/a') setGuest({ ...guest, document: { ...guest.document, number: '' } }); }}
                 onBlur={() => handleCPFBlur(guest.document?.type, guest.document?.number)}
-                className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 transition-colors text-sm"
+                className={`w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 transition-colors text-sm ${(guest.document?.number === 'N/A' || guest.document?.number === 'n/a') ? 'text-muted-foreground/50 italic' : ''}`}
                 placeholder={guest.document?.type === "CPF" ? "000.000.000-00" : "Documento"}
               />
             </div>
@@ -986,11 +1082,11 @@ export default function UnifiedPreCheckin() {
               <div className="space-y-1">
                 <label className="text-[9px] font-bold text-muted-foreground uppercase">{t.gender} (Opcional)</label>
                 <select
-                  value={guest.gender || "NAO_INFORMADO"}
+                  value={guest.gender || ""}
                   onChange={e => setGuest({ ...guest, gender: e.target.value })}
                   className="w-full bg-secondary border border-border p-3 rounded-xl outline-none text-xs font-medium focus:border-primary/50 transition-colors appearance-none"
                 >
-                  <option value="" disabled>{t.select}</option>
+                  <option value="">{t.notInformed}</option>
                   {fnrhDomains?.generos.map(g => (
                     <option key={g.id} value={g.id}>{g.label}</option>
                   ))}
@@ -1060,11 +1156,18 @@ export default function UnifiedPreCheckin() {
                         newGuests[idx].fullName = e.target.value;
                         setStay({ ...stay, additionalGuests: newGuests });
                       }}
-                      className="w-full bg-background border border-border p-3 rounded-xl outline-none text-sm focus:border-primary/50 transition-colors"
+                      onFocus={e => {
+                        if (e.target.value === 'ACOMPANHANTE') {
+                          const newGuests = [...stay.additionalGuests];
+                          newGuests[idx].fullName = '';
+                          setStay({ ...stay, additionalGuests: newGuests });
+                        }
+                      }}
+                      className={`w-full bg-background border border-border p-3 rounded-xl outline-none text-sm focus:border-primary/50 transition-colors ${g.fullName === 'ACOMPANHANTE' ? 'text-muted-foreground/50 italic' : ''}`}
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[9px] font-bold uppercase text-muted-foreground">{t.doc} {g.type === 'adult' ? '*' : t.docOpt}</label>
+                    <label className="text-[9px] font-bold uppercase text-muted-foreground">{t.doc} {t.docOpt}</label>
                     <input
                       value={g.document}
                       onChange={e => {
@@ -1072,8 +1175,21 @@ export default function UnifiedPreCheckin() {
                         newGuests[idx].document = e.target.value;
                         setStay({ ...stay, additionalGuests: newGuests });
                       }}
-                      onBlur={() => handleCPFBlur("CPF", g.document, "Acompanhante")}
+                      onBlur={() => g.document && handleCPFBlur("CPF", g.document, "Acompanhante")}
                       className="w-full bg-background border border-border p-3 rounded-xl outline-none text-sm focus:border-primary/50 transition-colors"
+                    />
+                  </div>
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-[9px] font-bold uppercase text-muted-foreground">{t.birthDateOpt}</label>
+                    <input
+                      type="date"
+                      value={g.birthDate || ""}
+                      onChange={e => {
+                        const newGuests = [...stay.additionalGuests];
+                        newGuests[idx].birthDate = e.target.value;
+                        setStay({ ...stay, additionalGuests: newGuests });
+                      }}
+                      className="w-full bg-background border border-border p-3 rounded-xl outline-none text-sm focus:border-primary/50 transition-colors [color-scheme:light] dark:[color-scheme:dark]"
                     />
                   </div>
                 </div>
@@ -1089,7 +1205,7 @@ export default function UnifiedPreCheckin() {
                   toast.error(lang === 'en' ? `Maximum capacity reached (${maxCapacity} guests)` : lang === 'es' ? `Capacidad máxima alcanzada (${maxCapacity} huéspedes)` : `Capacidade máxima atingida (${maxCapacity} hóspedes)`);
                   return;
                 }
-                setStay((p: any) => ({ ...p, additionalGuests: [...p.additionalGuests, { id: Date.now().toString(), type, fullName: "", document: "" }] }));
+                setStay((p: any) => ({ ...p, additionalGuests: [...p.additionalGuests, { id: Date.now().toString(), type, fullName: "", document: "", birthDate: "" }] }));
               };
               return (
                 <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
@@ -1305,6 +1421,29 @@ export default function UnifiedPreCheckin() {
                 className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 text-sm transition-colors"
                 maxLength={2}
               />
+            </div>
+
+            <div className="md:col-span-4 space-y-1 pt-2 border-t border-border mt-2">
+              <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.residenceCountry}</label>
+              <select
+                value={guest.residenceCountry || guest.nationality || "BR"}
+                onChange={e => setGuest({ ...guest, residenceCountry: e.target.value })}
+                className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 transition-colors text-sm appearance-none"
+              >
+                {countries.map(c => (
+                  <option key={c.iso} value={c.iso}>{c.flag} {c.name} ({c.iso})</option>
+                ))}
+              </select>
+              {guest.residenceCountry && guest.nationality && guest.residenceCountry !== guest.nationality && (
+                <p className="text-[9px] text-primary/70 font-medium mt-1">
+                  {lang === 'en'
+                    ? `Nationality: ${countries.find(c => c.iso === guest.nationality)?.name || guest.nationality} — Residence: ${countries.find(c => c.iso === guest.residenceCountry)?.name || guest.residenceCountry}`
+                    : lang === 'es'
+                    ? `Nacionalidad: ${countries.find(c => c.iso === guest.nationality)?.name || guest.nationality} — Residencia: ${countries.find(c => c.iso === guest.residenceCountry)?.name || guest.residenceCountry}`
+                    : `Nacionalidade: ${countries.find(c => c.iso === guest.nationality)?.name || guest.nationality} — Residência: ${countries.find(c => c.iso === guest.residenceCountry)?.name || guest.residenceCountry}`
+                  }
+                </p>
+              )}
             </div>
           </div>
         </section>
@@ -1668,6 +1807,7 @@ export default function UnifiedPreCheckin() {
         </div>
       )}
 
+      <Toaster position="top-center" richColors expand duration={5000} />
     </main>
   );
 }
