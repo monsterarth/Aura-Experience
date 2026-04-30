@@ -37,7 +37,7 @@ const ROLE_RANK: Record<UserRole, number> = {
 const ROLE_META: Record<string, { label: string; color: string; badgeBg: string; badgeBorder: string }> = {
   super_admin: { label: "Super Admin",      color: "#9b6dff", badgeBg: "rgba(155,109,255,0.12)", badgeBorder: "rgba(155,109,255,0.28)" },
   admin:       { label: "Administrador",    color: "#4ec9d4", badgeBg: "rgba(78,201,212,0.12)",  badgeBorder: "rgba(78,201,212,0.28)"  },
-  hr:          { label: "Recursos Humanos", color: "#60a5fa", badgeBg: "rgba(96,165,250,0.08)",  badgeBorder: "rgba(96,165,250,0.22)"  },
+  hr:          { label: "Gestão",           color: "#60a5fa", badgeBg: "rgba(96,165,250,0.08)",  badgeBorder: "rgba(96,165,250,0.22)"  },
   reception:   { label: "Recepção",         color: "#2dd4bf", badgeBg: "rgba(45,212,191,0.08)",  badgeBorder: "rgba(45,212,191,0.22)"  },
   governance:  { label: "Governança",       color: "#c084fc", badgeBg: "rgba(192,132,252,0.08)", badgeBorder: "rgba(192,132,252,0.22)" },
   kitchen:     { label: "Cozinha",          color: "#fb923c", badgeBg: "rgba(251,146,60,0.08)",  badgeBorder: "rgba(251,146,60,0.25)"  },

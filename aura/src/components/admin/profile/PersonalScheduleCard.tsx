@@ -29,7 +29,7 @@ interface Props {
   propertyId: string;
 }
 
-export function PersonalScheduleCard({ staff, propertyId }: Props) {
+export function PersonalScheduleCard({ staff }: Props) {
   const [schedules, setSchedules] = useState<StaffSchedule[]>([]);
   const [overrides, setOverrides] = useState<StaffScheduleOverride[]>([]);
   const [checkpoints, setCheckpoints] = useState<ScheduleCheckpoint[]>([]);
@@ -43,50 +43,38 @@ export function PersonalScheduleCard({ staff, propertyId }: Props) {
     const to = toYMD(weekDates[6]);
 
     Promise.all([
-      StaffService.getStaffSchedules(staff.id),
-      StaffService.getScheduleOverrides(staff.id, from, to),
-      StaffService.getStaffCheckpoints(staff.id),
+      StaffService.getStaffSchedules(staff.id).catch(() => [] as StaffSchedule[]),
+      StaffService.getScheduleOverrides(staff.id, from, to).catch(() => [] as StaffScheduleOverride[]),
+      StaffService.getStaffCheckpoints(staff.id).catch(() => [] as ScheduleCheckpoint[]),
     ]).then(([s, o, c]) => {
       setSchedules(s);
       setOverrides(o);
       setCheckpoints(c);
-      setLoading(false);
-    });
+    }).finally(() => setLoading(false));
   }, [staff.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const today = toYMD(new Date());
 
-  const T = {
-    grad: "linear-gradient(135deg,#9b6dff 0%,#4ec9d4 100%)",
-    gradSoft: "linear-gradient(135deg,rgba(155,109,255,0.15) 0%,rgba(78,201,212,0.15) 100%)",
-    g2: "#4ec9d4",
-  };
-
   return (
-    <div style={{
-      background: "var(--card)",
-      border: "1px solid var(--border)",
-      borderRadius: "var(--radius)",
-      padding: "20px",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-        <CalendarDays size={16} style={{ color: T.g2, flexShrink: 0 }} />
-        <span style={{ fontSize: 13, fontWeight: 800, color: "var(--foreground)", letterSpacing: ".04em", textTransform: "uppercase" }}>
+    <div className="bg-card border border-border rounded-xl p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <CalendarDays size={16} className="text-cyan-400 flex-shrink-0" />
+        <span className="text-[13px] font-extrabold text-foreground uppercase tracking-wider">
           Minha Semana
         </span>
       </div>
 
       {loading ? (
-        <div style={{ display: "flex", gap: 6 }}>
+        <div className="flex gap-1.5">
           {Array.from({ length: 7 }, (_, i) => (
-            <div key={i} style={{
-              flex: 1, height: 72, borderRadius: 10,
-              background: "var(--muted)", opacity: 0.4, animation: "pulse 1.5s ease-in-out infinite",
-            }} />
+            <div
+              key={i}
+              className="flex-1 h-[72px] rounded-xl bg-muted opacity-40 animate-pulse"
+            />
           ))}
         </div>
       ) : (
-        <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
           {weekDates.map((date, i) => {
             const dateStr = toYMD(date);
             const isToday = dateStr === today;
@@ -94,58 +82,62 @@ export function PersonalScheduleCard({ staff, propertyId }: Props) {
             const result = resolveEffectiveDaySchedule(staff, schedules, dayOverrides, date, checkpoints);
 
             return (
-              <div key={i} style={{
-                flex: 1, minWidth: 44,
-                borderRadius: 10, padding: "8px 6px",
-                textAlign: "center",
-                border: isToday ? "1.5px solid rgba(155,109,255,0.6)" : "1px solid var(--border)",
-                background: isToday
-                  ? T.gradSoft
-                  : result.isWork
-                    ? "rgba(78,201,212,0.05)"
-                    : "var(--muted)",
-                display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-                position: "relative",
-              }}>
+              <div
+                key={i}
+                className="flex-1 min-w-[44px] rounded-xl flex flex-col items-center gap-1 py-2 px-1.5 text-center relative"
+                style={{
+                  border: isToday
+                    ? "1.5px solid rgba(155,109,255,0.55)"
+                    : "1px solid var(--border)",
+                  background: isToday
+                    ? "linear-gradient(135deg,rgba(155,109,255,0.12),rgba(78,201,212,0.12))"
+                    : result.isWork
+                      ? "rgba(78,201,212,0.05)"
+                      : "var(--muted)",
+                }}
+              >
                 {isToday && (
-                  <div style={{
-                    position: "absolute", top: -1, left: "50%", transform: "translateX(-50%)",
-                    width: 16, height: 3, borderRadius: 999, background: T.grad,
-                  }} />
+                  <div
+                    className="absolute -top-px left-1/2 -translate-x-1/2 w-4 h-[3px] rounded-full"
+                    style={{ background: "linear-gradient(135deg,#9b6dff,#4ec9d4)" }}
+                  />
                 )}
-                <span style={{
-                  fontSize: 10, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase",
-                  color: isToday ? "#9b6dff" : "var(--muted-foreground)",
-                }}>
+
+                <span
+                  className="text-[10px] font-extrabold uppercase tracking-widest"
+                  style={{ color: isToday ? "#9b6dff" : "var(--muted-foreground)" }}
+                >
                   {DAYS_PT[date.getDay()]}
                 </span>
-                <span style={{
-                  fontSize: 14, fontWeight: 900,
-                  color: isToday ? "#9b6dff" : "var(--foreground)",
-                }}>
+
+                <span
+                  className="text-sm font-black"
+                  style={{ color: isToday ? "#9b6dff" : "var(--foreground)" }}
+                >
                   {date.getDate()}
                 </span>
-                {result.hasOverride ? (
-                  <div style={{
-                    width: 6, height: 6, borderRadius: "50%",
-                    background: result.isWork ? "#60a5fa" : "#f87171",
-                    flexShrink: 0,
-                  }} />
-                ) : null}
+
+                {result.hasOverride && (
+                  <div
+                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                    style={{ background: result.isWork ? "#60a5fa" : "#f87171" }}
+                  />
+                )}
+
                 {result.isWork ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 1, alignItems: "center" }}>
-                    <div style={{
-                      width: 24, height: 3, borderRadius: 999,
-                      background: T.grad,
-                    }} />
+                  <div className="flex flex-col items-center gap-0.5">
+                    <div
+                      className="w-6 h-[3px] rounded-full"
+                      style={{ background: "linear-gradient(135deg,#9b6dff,#4ec9d4)" }}
+                    />
                     {result.startTime && (
-                      <span style={{ fontSize: 9, color: T.g2, fontWeight: 700 }}>
+                      <span className="text-[9px] font-bold text-cyan-400">
                         {result.startTime.slice(0, 5)}
                       </span>
                     )}
                   </div>
                 ) : (
-                  <span style={{ fontSize: 9, color: "var(--muted-foreground)", fontWeight: 600 }}>
+                  <span className="text-[9px] font-semibold text-muted-foreground">
                     folga
                   </span>
                 )}
@@ -156,18 +148,21 @@ export function PersonalScheduleCard({ staff, propertyId }: Props) {
       )}
 
       {!loading && (
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <div style={{ width: 20, height: 3, borderRadius: 999, background: T.grad }} />
-            <span style={{ fontSize: 11, color: "var(--muted-foreground)" }}>Trabalho</span>
+        <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border">
+          <div className="flex items-center gap-1.5">
+            <div
+              className="w-5 h-[3px] rounded-full"
+              style={{ background: "linear-gradient(135deg,#9b6dff,#4ec9d4)" }}
+            />
+            <span className="text-[11px] text-muted-foreground">Trabalho</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#60a5fa" }} />
-            <span style={{ fontSize: 11, color: "var(--muted-foreground)" }}>Override</span>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-blue-400" />
+            <span className="text-[11px] text-muted-foreground">Override</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <Clock size={11} style={{ color: "var(--muted-foreground)" }} />
-            <span style={{ fontSize: 11, color: "var(--muted-foreground)", textTransform: "capitalize" }}>
+          <div className="flex items-center gap-1.5">
+            <Clock size={11} className="text-muted-foreground" />
+            <span className="text-[11px] text-muted-foreground capitalize">
               {staff.scheduleType ?? "custom"}
             </span>
           </div>

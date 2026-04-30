@@ -81,7 +81,7 @@ const T_LIGHT_OVERRIDE = {
 const ROLE_META: Record<string, { label: string; short: string; color: string; badge: string; badgeBg: string; badgeBorder: string }> = {
   super_admin: { label: "Super Admin",      short: "SA", color: T.g1,     badge: "Super Admin", badgeBg: "rgba(155,109,255,0.12)", badgeBorder: "rgba(155,109,255,0.28)" },
   admin:       { label: "Administrador",    short: "AD", color: T.g2,     badge: "Admin",       badgeBg: "rgba(78,201,212,0.12)",  badgeBorder: "rgba(78,201,212,0.28)"  },
-  hr:          { label: "Recursos Humanos", short: "RH", color: T.blue,   badge: "RH",          badgeBg: T.blueBg,                 badgeBorder: T.blueBorder             },
+  hr:          { label: "Gestão",           short: "GT", color: T.blue,   badge: "Gestão",      badgeBg: T.blueBg,                 badgeBorder: T.blueBorder             },
   reception:   { label: "Recepção",         short: "RC", color: T.green,  badge: "Recepção",    badgeBg: T.greenBg,                badgeBorder: T.greenBorder            },
   governance:  { label: "Governança",       short: "GV", color: T.violet, badge: "Governança",  badgeBg: T.violetBg,               badgeBorder: T.violetBorder           },
   kitchen:     { label: "Cozinha",          short: "CZ", color: T.orange, badge: "Cozinha",     badgeBg: T.orangeBg,               badgeBorder: "rgba(251,146,60,0.25)"  },
@@ -146,6 +146,10 @@ const NAV_GROUPS: NavGroup[] = [
       {
         id: "perfil", label: "Meu Perfil", icon: UserCircle2,
         href: "/admin/perfil", roles: ["super_admin","admin","hr","reception","governance","maintenance","kitchen","marketing"],
+      },
+      {
+        id: "configuracoes", label: "Configurações", icon: Settings,
+        href: "/admin/perfil/configuracoes", roles: ["super_admin","admin","hr","reception","governance","maintenance","kitchen","marketing"],
       },
     ],
   },

@@ -5,7 +5,7 @@ export type Timestamp = string;
 export type UserRole =
   | 'super_admin'
   | 'admin'
-  | 'hr'         // Gerente / RH (Gestão de Equipe e Escalas)
+  | 'hr'         // Gestão (Gestão de Equipe e Escalas)
   | 'reception'
   | 'governance' // Governanta / Gestor do setor
   | 'maid'       // Camareira (Operacional Mobile)

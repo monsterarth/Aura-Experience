@@ -31,7 +31,7 @@ const ROLE_LABELS: Record<string, string> = {
   porter: "Porteiro",
   houseman: "Mensageiro",
   marketing: "Marketing",
-  hr: "RH",
+  hr: "Gestão",
   admin: "Administrador",
 };
 

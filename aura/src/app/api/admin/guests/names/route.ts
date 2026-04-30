@@ -5,7 +5,7 @@ import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export async function POST(request: NextRequest) {
-    const auth = await requireAuth(['super_admin', 'admin', 'reception', 'governance']);
+    const auth = await requireAuth(['super_admin', 'admin', 'hr', 'reception', 'governance']);
     if (isAuthError(auth)) return auth;
     if (!supabaseAdmin) return NextResponse.json({}, { status: 500 });
 

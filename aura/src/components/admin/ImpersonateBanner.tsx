@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 const ROLE_LABELS: Record<string, string> = {
   super_admin: "Super Admin",
   admin:       "Administrador",
-  hr:          "Recursos Humanos",
+  hr:          "Gestão",
   reception:   "Recepção",
   governance:  "Governança",
   kitchen:     "Cozinha",

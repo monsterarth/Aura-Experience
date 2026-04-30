@@ -9,7 +9,7 @@ import { requireAuth, isAuthError } from "@/lib/api-auth";
  * - ?propertyId=&from=&to= → todos os overrides da property no período
  */
 export async function GET(request: Request) {
-  const auth = await requireAuth(['super_admin', 'admin', 'hr']);
+  const auth = await requireAuth(['super_admin', 'admin', 'hr', 'reception', 'governance', 'kitchen', 'maintenance', 'marketing']);
   if (isAuthError(auth)) return auth;
 
   const { searchParams } = new URL(request.url);

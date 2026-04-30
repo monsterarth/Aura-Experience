@@ -193,7 +193,7 @@ export default function EscalasMensalPage() {
     reception: "Recepção", governance: "Governanta", maid: "Camareira",
     maintenance: "Manutenção", technician: "Técnico", kitchen: "Cozinha",
     waiter: "Garçom", porter: "Porteiro", houseman: "Mensageiro",
-    marketing: "Marketing", hr: "RH", admin: "Admin",
+    marketing: "Marketing", hr: "Gestão", admin: "Admin",
   };
 
   const openOverrideModal = (staff: StaffWithSchedules, date: Date) => {

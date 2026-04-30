@@ -9,7 +9,7 @@ import { requireAuth, isAuthError } from "@/lib/api-auth";
  * - ?propertyId= → visão completa da property (todos os staff com suas escalas)
  */
 export async function GET(request: Request) {
-  const auth = await requireAuth(['super_admin', 'admin', 'hr']);
+  const auth = await requireAuth(['super_admin', 'admin', 'hr', 'reception', 'governance', 'kitchen', 'maintenance', 'marketing']);
   if (isAuthError(auth)) return auth;
 
   const { searchParams } = new URL(request.url);

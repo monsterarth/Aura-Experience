@@ -52,7 +52,7 @@ const ROLE_LABELS: Record<string, string> = {
   porter:      "Porteiro",
   houseman:    "Mensageiro",
   marketing:   "Marketing",
-  hr:          "RH",
+  hr:          "Gestão",
   admin:       "Administrador",
   super_admin: "Super Admin",
 };
@@ -367,7 +367,7 @@ function HRDashboardContent() {
               WebkitTextFillColor: "transparent",
               backgroundClip: "text",
             }}>
-              Recursos Humanos
+              Gestão
             </span>
           </h1>
           <p style={{ fontSize: 13, color: "rgba(238,240,248,0.42)", marginTop: 5, fontWeight: 500, textTransform: "capitalize" }}>

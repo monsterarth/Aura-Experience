@@ -114,7 +114,7 @@ export async function POST(request: Request) {
  * Requer role: super_admin ou admin.
  */
 export async function PATCH(request: Request) {
-  const auth = await requireAuth(['super_admin', 'admin', 'hr']);
+  const auth = await requireAuth(['super_admin', 'admin', 'hr', 'reception', 'governance', 'kitchen', 'maintenance', 'marketing']);
   if (isAuthError(auth)) return auth;
 
   try {
@@ -134,6 +134,12 @@ export async function PATCH(request: Request) {
 
     if (fetchError || !targetUser) {
       return NextResponse.json({ error: "Utilizador não encontrado." }, { status: 404 });
+    }
+
+    // Roles sem privilégio de gestão só podem alterar a si próprios
+    const managerRoles = ['super_admin', 'admin', 'hr'];
+    if (!managerRoles.includes(auth.staff.role) && auth.staff.id !== staffId) {
+      return NextResponse.json({ error: "Sem permissão para alterar outro utilizador." }, { status: 403 });
     }
 
     // Admin e HR só podem alterar staff da sua própria property

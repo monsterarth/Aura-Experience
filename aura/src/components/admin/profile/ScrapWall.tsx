@@ -6,14 +6,13 @@ import { useAuth } from "@/context/AuthContext";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import { MessageCircle, Send, Trash2, Loader2, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
-import Image from "next/image";
 
 const EMOJI_PRESETS = ["❤️", "😂", "👏", "🙌", "🔥", "😮", "😢", "👀"];
 
 const ROLE_META: Record<string, { badge: string; color: string }> = {
   super_admin: { badge: "Super Admin", color: "#9b6dff" },
   admin:       { badge: "Admin",       color: "#4ec9d4" },
-  hr:          { badge: "RH",          color: "#60a5fa" },
+  hr:          { badge: "Gestão",       color: "#60a5fa" },
   reception:   { badge: "Recepção",    color: "#2dd4bf" },
   governance:  { badge: "Governança",  color: "#c084fc" },
   kitchen:     { badge: "Cozinha",     color: "#fb923c" },
@@ -28,8 +27,7 @@ function timeAgo(dateStr: string): string {
   if (minutes < 60) return `${minutes}min`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `${days}d`;
+  return `${Math.floor(hours / 24)}d`;
 }
 
 function getInitials(name: string) {
@@ -42,7 +40,7 @@ interface Props {
   propertyId: string;
 }
 
-export function ScrapWall({ profileStaffId, isOwnProfile, propertyId }: Props) {
+export function ScrapWall({ profileStaffId, isOwnProfile }: Props) {
   const { userData } = useAuth();
   const [scraps, setScraps] = useState<StaffScrap[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,28 +66,15 @@ export function ScrapWall({ profileStaffId, isOwnProfile, propertyId }: Props) {
     }
   }, [profileStaffId]);
 
-  useEffect(() => {
-    fetchScraps();
-  }, [fetchScraps]);
+  useEffect(() => { fetchScraps(); }, [fetchScraps]);
 
-  // Realtime subscription
   useEffect(() => {
     const supabase = createClientBrowser();
     const channel = supabase
       .channel(`scraps_${profileStaffId}`)
-      .on("postgres_changes", {
-        event: "*",
-        schema: "public",
-        table: "staff_scraps",
-        filter: `toStaffId=eq.${profileStaffId}`,
-      }, () => fetchScraps())
-      .on("postgres_changes", {
-        event: "*",
-        schema: "public",
-        table: "staff_scrap_reactions",
-      }, () => fetchScraps())
+      .on("postgres_changes", { event: "*", schema: "public", table: "staff_scraps", filter: `toStaffId=eq.${profileStaffId}` }, () => fetchScraps())
+      .on("postgres_changes", { event: "*", schema: "public", table: "staff_scrap_reactions" }, () => fetchScraps())
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [profileStaffId, fetchScraps]);
 
@@ -131,14 +116,13 @@ export function ScrapWall({ profileStaffId, isOwnProfile, propertyId }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scrapId, emoji }),
       });
-      // Optimistic update via realtime — no need to refetch manually
     } catch {
       toast.error("Erro ao reagir.");
     }
   };
 
   const getReactionGroups = (reactions: StaffScrap["reactions"]) => {
-    if (!reactions?.length) return {};
+    if (!reactions?.length) return {} as Record<string, { count: number; hasOwn: boolean }>;
     return reactions.reduce((acc, r) => {
       if (!acc[r.emoji]) acc[r.emoji] = { count: 0, hasOwn: false };
       acc[r.emoji].count++;
@@ -147,98 +131,77 @@ export function ScrapWall({ profileStaffId, isOwnProfile, propertyId }: Props) {
     }, {} as Record<string, { count: number; hasOwn: boolean }>);
   };
 
-  const T = {
-    grad: "linear-gradient(135deg,#9b6dff 0%,#4ec9d4 100%)",
-    g1: "#9b6dff", g2: "#4ec9d4",
-  };
-
   const canDelete = (scrap: StaffScrap) =>
     scrap.fromStaffId === userData?.id ||
     userData?.role === "admin" ||
     userData?.role === "super_admin";
 
+  const myRoleColor = ROLE_META[userData?.role ?? ""]?.color ?? "#4ec9d4";
+
   return (
-    <div style={{
-      background: "var(--card)",
-      border: "1px solid var(--border)",
-      borderRadius: "var(--radius)",
-      overflow: "hidden",
-    }}>
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
       {/* Header */}
-      <div style={{
-        padding: "16px 20px",
-        borderBottom: "1px solid var(--border)",
-        display: "flex", alignItems: "center", gap: 8,
-      }}>
-        <MessageCircle size={16} style={{ color: T.g2, flexShrink: 0 }} />
-        <span style={{ fontSize: 13, fontWeight: 800, color: "var(--foreground)", letterSpacing: ".04em", textTransform: "uppercase" }}>
+      <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
+        <MessageCircle size={16} className="text-cyan-400 flex-shrink-0" />
+        <span className="text-[13px] font-extrabold text-foreground uppercase tracking-wider">
           Recados
         </span>
         {scraps.length > 0 && (
-          <span style={{
-            fontSize: 11, fontWeight: 800,
-            background: T.grad, color: "#fff",
-            borderRadius: 999, padding: "1px 8px", marginLeft: 4,
-          }}>
+          <span
+            className="text-[11px] font-extrabold text-white rounded-full px-2 py-0.5 ml-1"
+            style={{ background: "linear-gradient(135deg,#9b6dff,#4ec9d4)" }}
+          >
             {scraps.length}
           </span>
         )}
       </div>
 
-      {/* New scrap input */}
-      <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)" }}>
-        <div style={{ display: "flex", gap: 10 }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: 10, flexShrink: 0,
-            background: "linear-gradient(135deg,rgba(155,109,255,0.2),rgba(78,201,212,0.2))",
-            border: `1px solid ${ROLE_META[userData?.role ?? ""]?.color ?? T.g2}44`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 12, fontWeight: 900,
-            color: ROLE_META[userData?.role ?? ""]?.color ?? T.g2,
-            overflow: "hidden",
-          }}>
+      {/* Compose */}
+      <div className="px-5 py-4 border-b border-border">
+        <div className="flex gap-3">
+          {/* My avatar */}
+          <div
+            className="w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center text-xs font-black overflow-hidden"
+            style={{
+              background: "linear-gradient(135deg,rgba(155,109,255,0.2),rgba(78,201,212,0.2))",
+              border: `1px solid ${myRoleColor}44`,
+              color: myRoleColor,
+            }}
+          >
             {userData?.profilePictureUrl ? (
-              <img src={userData.profilePictureUrl} alt="" style={{ width: "100%", height: "100%", borderRadius: 10, objectFit: "cover" }} />
+              <img src={userData.profilePictureUrl} alt="" className="w-full h-full object-cover rounded-xl" />
             ) : (
-              <span>{getInitials(userData?.fullName ?? "?")}</span>
+              getInitials(userData?.fullName ?? "?")
             )}
           </div>
-          <div style={{ flex: 1 }}>
+
+          <div className="flex-1 min-w-0">
             <textarea
               ref={textareaRef}
               value={message}
               onChange={e => setMessage(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleSubmit(); }}
-              placeholder={isOwnProfile ? "Escreva algo no seu mural…" : `Escreva um recado para ${userData?.fullName?.split(" ")[0]}…`}
+              placeholder={isOwnProfile ? "Escreva algo no seu mural…" : `Deixe um recado…`}
               maxLength={1000}
               rows={2}
-              style={{
-                width: "100%", resize: "none",
-                background: "var(--muted)", border: "1px solid var(--border)",
-                borderRadius: 10, padding: "10px 12px",
-                fontSize: 13, color: "var(--foreground)",
-                fontFamily: "inherit", lineHeight: 1.5,
-                outline: "none", boxSizing: "border-box",
-              }}
+              className="w-full resize-none bg-muted border border-border rounded-xl px-3 py-2.5 text-[13px] text-foreground outline-none leading-relaxed"
             />
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
-              <span style={{ fontSize: 11, color: message.length > 900 ? "#f87171" : "var(--muted-foreground)" }}>
+            <div className="flex items-center justify-between mt-2">
+              <span className={`text-[11px] ${message.length > 900 ? "text-red-400" : "text-muted-foreground"}`}>
                 {message.length}/1000
               </span>
               <button
                 onClick={handleSubmit}
                 disabled={!message.trim() || submitting}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-opacity disabled:opacity-50"
                 style={{
-                  display: "flex", alignItems: "center", gap: 6,
-                  padding: "7px 14px",
-                  background: message.trim() ? T.grad : "var(--border)",
+                  background: message.trim()
+                    ? "linear-gradient(135deg,#9b6dff,#4ec9d4)"
+                    : "var(--border)",
                   color: message.trim() ? "#fff" : "var(--muted-foreground)",
-                  border: "none", borderRadius: 8, cursor: message.trim() ? "pointer" : "default",
-                  fontSize: 12, fontWeight: 700, fontFamily: "inherit",
-                  transition: "opacity .15s",
                 }}
               >
-                {submitting ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Send size={13} />}
+                {submitting ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
                 Enviar
               </button>
             </div>
@@ -246,82 +209,70 @@ export function ScrapWall({ profileStaffId, isOwnProfile, propertyId }: Props) {
         </div>
       </div>
 
-      {/* Scraps list */}
-      <div style={{ padding: "8px 0" }}>
+      {/* List */}
+      <div>
         {loading ? (
-          <div style={{ padding: "24px", textAlign: "center", color: "var(--muted-foreground)", fontSize: 13 }}>
+          <p className="text-center text-[13px] text-muted-foreground py-6">
             Carregando recados…
-          </div>
+          </p>
         ) : scraps.length === 0 ? (
-          <div style={{ padding: "32px 20px", textAlign: "center" }}>
-            <MessageCircle size={32} style={{ color: "var(--muted-foreground)", margin: "0 auto 12px", display: "block" }} />
-            <p style={{ fontSize: 14, color: "var(--muted-foreground)", margin: 0, fontWeight: 600 }}>
-              Nenhum recado ainda
-            </p>
-            <p style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 4 }}>
-              Seja o primeiro a escrever!
-            </p>
+          <div className="flex flex-col items-center py-10 text-muted-foreground">
+            <MessageCircle size={32} className="mb-3 opacity-30" />
+            <p className="text-sm font-semibold">Nenhum recado ainda</p>
+            <p className="text-xs mt-1">Seja o primeiro a escrever!</p>
           </div>
         ) : (
-          scraps.map((scrap) => {
+          scraps.map(scrap => {
             const from = scrap.fromStaff;
-            const fromRole = ROLE_META[from?.role ?? ""] ?? { badge: from?.role ?? "Staff", color: T.g2 };
+            const fromRole = ROLE_META[from?.role ?? ""] ?? { badge: from?.role ?? "Staff", color: "#4ec9d4" };
             const reactionGroups = getReactionGroups(scrap.reactions);
 
             return (
-              <div key={scrap.id} style={{
-                padding: "14px 20px",
-                borderBottom: "1px solid var(--border)",
-                display: "flex", gap: 12,
-              }}>
+              <div key={scrap.id} className="flex gap-3 px-5 py-4 border-b border-border last:border-b-0">
                 {/* Avatar */}
-                <div style={{
-                  width: 38, height: 38, borderRadius: 10, flexShrink: 0,
-                  background: "linear-gradient(135deg,rgba(155,109,255,0.15),rgba(78,201,212,0.15))",
-                  border: `1px solid ${fromRole.color}44`,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 12, fontWeight: 900, color: fromRole.color,
-                  overflow: "hidden",
-                }}>
+                <div
+                  className="w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center text-xs font-black overflow-hidden"
+                  style={{
+                    background: "linear-gradient(135deg,rgba(155,109,255,0.12),rgba(78,201,212,0.12))",
+                    border: `1px solid ${fromRole.color}44`,
+                    color: fromRole.color,
+                  }}
+                >
                   {from?.profilePictureUrl ? (
-                    <img src={from.profilePictureUrl} alt="" style={{ width: "100%", height: "100%", borderRadius: 10, objectFit: "cover" }} />
+                    <img src={from.profilePictureUrl} alt="" className="w-full h-full object-cover rounded-xl" />
                   ) : (
-                    <span>{getInitials(from?.fullName ?? "?")}</span>
+                    getInitials(from?.fullName ?? "?")
                   )}
                 </div>
 
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  {/* Header */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, fontWeight: 800, color: "var(--foreground)" }}>
+                <div className="flex-1 min-w-0">
+                  {/* Header row */}
+                  <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                    <span className="text-[13px] font-extrabold text-foreground">
                       {from?.fullName ?? "Funcionário"}
                     </span>
-                    <span style={{
-                      fontSize: 9, fontWeight: 800, letterSpacing: ".04em",
-                      textTransform: "uppercase", padding: "2px 7px",
-                      borderRadius: 999, lineHeight: 1.6,
-                      background: `${fromRole.color}18`,
-                      color: fromRole.color,
-                      border: `1px solid ${fromRole.color}33`,
-                    }}>
+                    <span
+                      className="text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-full"
+                      style={{
+                        background: `${fromRole.color}18`,
+                        color: fromRole.color,
+                        border: `1px solid ${fromRole.color}33`,
+                      }}
+                    >
                       {fromRole.badge}
                     </span>
-                    <span style={{ fontSize: 11, color: "var(--muted-foreground)", marginLeft: "auto" }}>
+                    <span className="text-[11px] text-muted-foreground ml-auto">
                       {timeAgo(scrap.createdAt as string)}
                     </span>
                     {canDelete(scrap) && (
                       <button
                         onClick={() => handleDelete(scrap.id)}
                         disabled={deletingId === scrap.id}
-                        style={{
-                          background: "none", border: "none", cursor: "pointer",
-                          color: "var(--muted-foreground)", padding: 2, display: "flex", borderRadius: 4,
-                          opacity: deletingId === scrap.id ? 0.4 : 0.6,
-                        }}
+                        className="text-muted-foreground opacity-50 hover:opacity-100 p-0.5 flex rounded transition-opacity disabled:opacity-30"
                         title="Apagar recado"
                       >
                         {deletingId === scrap.id
-                          ? <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />
+                          ? <Loader2 size={12} className="animate-spin" />
                           : <Trash2 size={12} />
                         }
                       </button>
@@ -329,58 +280,42 @@ export function ScrapWall({ profileStaffId, isOwnProfile, propertyId }: Props) {
                   </div>
 
                   {/* Message */}
-                  <p style={{
-                    fontSize: 13, color: "var(--foreground)",
-                    lineHeight: 1.6, margin: 0,
-                    whiteSpace: "pre-wrap", wordBreak: "break-word",
-                  }}>
+                  <p className="text-[13px] text-foreground leading-relaxed whitespace-pre-wrap break-words">
                     {scrap.message}
                   </p>
 
                   {/* Reactions */}
-                  <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 4, marginTop: 8 }}>
-                    {/* Existing reactions */}
+                  <div className="flex items-center flex-wrap gap-1 mt-2">
                     {Object.entries(reactionGroups).map(([emoji, { count, hasOwn }]) => (
                       <button
                         key={emoji}
                         onClick={() => handleReact(scrap.id, emoji)}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs cursor-pointer transition-opacity hover:opacity-80"
                         style={{
-                          display: "flex", alignItems: "center", gap: 4,
-                          padding: "3px 8px", borderRadius: 999, cursor: "pointer",
                           background: hasOwn ? "rgba(155,109,255,0.12)" : "var(--muted)",
                           border: `1px solid ${hasOwn ? "rgba(155,109,255,0.35)" : "var(--border)"}`,
-                          fontSize: 13, fontFamily: "inherit",
                         }}
                       >
-                        <span>{emoji}</span>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: hasOwn ? "#9b6dff" : "var(--muted-foreground)" }}>
+                        <span className="text-sm">{emoji}</span>
+                        <span
+                          className="text-[11px] font-bold"
+                          style={{ color: hasOwn ? "#9b6dff" : "var(--muted-foreground)" }}
+                        >
                           {count}
                         </span>
                       </button>
                     ))}
 
-                    {/* Add reaction — emoji picker */}
-                    {EMOJI_PRESETS.map(emoji => {
-                      const alreadyShown = emoji in reactionGroups;
-                      if (alreadyShown) return null;
-                      return (
-                        <button
-                          key={emoji}
-                          onClick={() => handleReact(scrap.id, emoji)}
-                          style={{
-                            padding: "3px 6px", borderRadius: 999, cursor: "pointer",
-                            background: "transparent", border: "1px solid transparent",
-                            fontSize: 14, fontFamily: "inherit", opacity: 0.4,
-                            transition: "opacity .15s, border-color .15s",
-                          }}
-                          onMouseEnter={e => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.borderColor = "var(--border)"; }}
-                          onMouseLeave={e => { e.currentTarget.style.opacity = "0.4"; e.currentTarget.style.borderColor = "transparent"; }}
-                          title={`Reagir com ${emoji}`}
-                        >
-                          {emoji}
-                        </button>
-                      );
-                    })}
+                    {EMOJI_PRESETS.filter(e => !(e in reactionGroups)).map(emoji => (
+                      <button
+                        key={emoji}
+                        onClick={() => handleReact(scrap.id, emoji)}
+                        className="px-1.5 py-0.5 rounded-full text-sm opacity-30 hover:opacity-100 border border-transparent hover:border-border transition-all"
+                        title={`Reagir com ${emoji}`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
@@ -388,25 +323,17 @@ export function ScrapWall({ profileStaffId, isOwnProfile, propertyId }: Props) {
           })
         )}
 
-        {/* Load more */}
         {hasMore && (
-          <div style={{ padding: "12px 20px", display: "flex", justifyContent: "center" }}>
+          <div className="flex justify-center px-5 py-3">
             <button
               onClick={() => {
                 setLoadingMore(true);
                 fetchScraps(scraps.length, true).finally(() => setLoadingMore(false));
               }}
               disabled={loadingMore}
-              style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "8px 16px",
-                background: "var(--muted)", border: "1px solid var(--border)",
-                borderRadius: 8, cursor: "pointer",
-                fontSize: 12, fontWeight: 700, color: "var(--muted-foreground)",
-                fontFamily: "inherit",
-              }}
+              className="flex items-center gap-1.5 px-4 py-2 bg-muted border border-border rounded-lg text-xs font-bold text-muted-foreground cursor-pointer hover:opacity-80 transition-opacity disabled:opacity-50"
             >
-              {loadingMore ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <ChevronDown size={13} />}
+              {loadingMore ? <Loader2 size={13} className="animate-spin" /> : <ChevronDown size={13} />}
               Carregar mais
             </button>
           </div>

@@ -42,7 +42,7 @@ const ROUTE_LABELS: Record<string, string> = {
   "properties":       "Propriedades",
   "structures":       "Estruturas",
   "bookings":         "Agendamentos",
-  "hr":               "RH",
+  "hr":               "Gestão",
   "logs":             "Logs",
   "contacts":         "Contatos",
   "houseman":         "Mensageiro",
