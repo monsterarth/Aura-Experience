@@ -622,7 +622,6 @@ export default function UnifiedPreCheckin() {
         raca: guest.raca,
         occupation: guest.occupation,
         nationality: guest.nationality,
-        nationalityName: guest.nationalityName,
         preferredLanguage: lang
       },
       stayData: {} as Record<string, any>
@@ -660,8 +659,9 @@ export default function UnifiedPreCheckin() {
     setIsSaving(true);
     try {
       // Create a payload copy with sanitized fields for FNRH
+      const { nationalityName: _nn, ...guestForDb } = guest;
       const fnrhGuestPayload = {
-        ...guest,
+        ...guestForDb,
         preferredLanguage: lang,
         document: {
           ...guest.document,
