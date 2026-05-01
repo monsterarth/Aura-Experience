@@ -631,7 +631,7 @@ export default function UnifiedPreCheckin() {
       guestData: {} as Record<string, any>
     };
     return {
-      guestData: { address: guest.address, residenceCountry: guest.residenceCountry },
+      guestData: { address: guest.address },
       stayData: {} as Record<string, any>
     };
   };
@@ -659,7 +659,7 @@ export default function UnifiedPreCheckin() {
     setIsSaving(true);
     try {
       // Create a payload copy with sanitized fields for FNRH
-      const { nationalityName: _nn, ...guestForDb } = guest;
+      const { nationalityName: _nn, residenceCountry: _rc, ...guestForDb } = guest;
       const fnrhGuestPayload = {
         ...guestForDb,
         preferredLanguage: lang,
