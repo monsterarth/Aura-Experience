@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || '';
     const startDate = searchParams.get('startDate') || '';
     const endDate = searchParams.get('endDate') || '';
+    const userId = searchParams.get('userId') || '';
 
     const isSuperAdmin = auth.staff.role === 'super_admin';
     const propertyId = isSuperAdmin
@@ -32,6 +33,7 @@ export async function GET(request: NextRequest) {
         .range(offset, offset + limit - 1);
 
     if (propertyId) query = query.eq('propertyId', propertyId);
+    if (userId) query = query.eq('userId', userId);
     if (entity) query = query.eq('entity', entity);
     if (action) query = query.eq('action', action);
     if (search) {

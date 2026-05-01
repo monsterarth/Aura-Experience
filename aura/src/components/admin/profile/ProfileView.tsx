@@ -1,16 +1,17 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Staff } from "@/types/aura";
+import { Staff, StaffSchedule, StaffScheduleOverride, ScheduleCheckpoint } from "@/types/aura";
 import { useAuth } from "@/context/AuthContext";
 import { StaffService } from "@/services/staff-service";
+import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
 import { PersonalScheduleCard } from "./PersonalScheduleCard";
 import { ScrapWall } from "./ScrapWall";
 import { TeammatesList } from "./TeammatesList";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import {
   Pencil, Check, X, Phone, Mail, Calendar,
-  Clock, Loader2, UserCircle2, Settings,
+  Clock, Loader2, UserCircle2, Settings, Trophy,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -61,6 +62,8 @@ export function ProfileView({ staffId, isOwnProfile }: Props) {
   const [editingField, setEditingField] = useState<"fullName" | "bio" | null>(null);
   const [editValue, setEditValue] = useState("");
   const [saving, setSaving] = useState(false);
+  const [weekActivityCount, setWeekActivityCount] = useState<number | null>(null);
+  const [nextDayOff, setNextDayOff] = useState<string | null>(null);
 
   useEffect(() => {
     if (!staffId) return;
@@ -70,6 +73,61 @@ export function ProfileView({ staffId, isOwnProfile }: Props) {
       .catch(() => toast.error("Erro ao carregar perfil."))
       .finally(() => setLoading(false));
   }, [staffId]);
+
+  useEffect(() => {
+    if (!staff) return;
+
+    // Card 1: atividades dessa semana
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const diffToMonday = (dayOfWeek + 6) % 7;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - diffToMonday);
+    monday.setHours(0, 0, 0, 0);
+    const startDate = monday.toISOString();
+
+    fetch(`/api/admin/audit-logs?userId=${staff.id}&startDate=${encodeURIComponent(startDate)}&limit=100`)
+      .then(r => r.json())
+      .then(data => setWeekActivityCount(data.total ?? (data.logs?.length ?? 0)))
+      .catch(() => setWeekActivityCount(0));
+
+    // Card 2: próxima folga
+    if (!staff.scheduleType) { setNextDayOff(null); return; }
+
+    const toYMD = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${dd}`;
+    };
+
+    const tomorrow = new Date(now);
+    tomorrow.setDate(now.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+    const rangeEnd = new Date(now);
+    rangeEnd.setDate(now.getDate() + 30);
+
+    Promise.all([
+      StaffService.getStaffSchedules(staff.id).catch(() => [] as StaffSchedule[]),
+      StaffService.getScheduleOverrides(staff.id, toYMD(tomorrow), toYMD(rangeEnd)).catch(() => [] as StaffScheduleOverride[]),
+      StaffService.getStaffCheckpoints(staff.id).catch(() => [] as ScheduleCheckpoint[]),
+    ]).then(([schedules, overrides, checkpoints]) => {
+      const DAY_NAMES = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+      for (let i = 1; i <= 30; i++) {
+        const date = new Date(now);
+        date.setDate(now.getDate() + i);
+        date.setHours(12, 0, 0, 0);
+        const dateStr = toYMD(date);
+        const dayOverrides = overrides.filter(o => o.date === dateStr);
+        const result = resolveEffectiveDaySchedule(staff, schedules, dayOverrides, date, checkpoints);
+        if (!result.isWork) {
+          setNextDayOff(DAY_NAMES[date.getDay()]);
+          return;
+        }
+      }
+      setNextDayOff(null);
+    }).catch(() => setNextDayOff(null));
+  }, [staff?.id, staff?.scheduleType]);
 
   useEffect(() => {
     if (isOwnProfile && authUser) setStaff(authUser);
@@ -218,22 +276,40 @@ export function ProfileView({ staffId, isOwnProfile }: Props) {
 
           {/* Stats */}
           <div className="grid grid-cols-3 gap-2.5 mb-4">
-            {[
-              { label: "Na Equipe",  value: days !== null ? `${days}d` : "—",   sub: staff.hireDate ? formatDate(staff.hireDate) : "Data não definida" },
-              { label: "Escala",     value: SCHEDULE_LABELS[staff.scheduleType ?? ""] ?? "—", sub: "Tipo de escala" },
-              { label: "Cargo",      value: roleMeta.short,                      sub: roleMeta.label },
-            ].map(stat => (
-              <div key={stat.label} className="bg-muted border border-border rounded-xl p-3 text-center">
-                <div
-                  className="text-lg font-black"
-                  style={{ background: "linear-gradient(135deg,#9b6dff,#4ec9d4)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}
-                >
-                  {stat.value}
-                </div>
-                <div className="text-[10px] font-extrabold text-muted-foreground uppercase tracking-wide mt-0.5">{stat.label}</div>
-                <div className="text-[11px] text-muted-foreground mt-0.5 truncate">{stat.sub}</div>
+            {/* Card 1 — Atividades essa semana */}
+            <div className="bg-muted border border-border rounded-xl p-3 text-center">
+              <div
+                className="text-lg font-black"
+                style={{ background: "linear-gradient(135deg,#9b6dff,#4ec9d4)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}
+              >
+                {weekActivityCount ?? "—"}
               </div>
-            ))}
+              <div className="text-[10px] font-extrabold text-muted-foreground uppercase tracking-wide mt-0.5">Atividades</div>
+              <div className="text-[11px] text-muted-foreground mt-0.5 truncate">essa semana no aura</div>
+            </div>
+
+            {/* Card 2 — Próxima folga */}
+            <div className="bg-muted border border-border rounded-xl p-3 text-center">
+              <div
+                className="text-lg font-black"
+                style={{ background: "linear-gradient(135deg,#9b6dff,#4ec9d4)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}
+              >
+                {SCHEDULE_LABELS[staff.scheduleType ?? ""] ?? "—"}
+              </div>
+              <div className="text-[10px] font-extrabold text-muted-foreground uppercase tracking-wide mt-0.5">Escala</div>
+              <div className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                {nextDayOff ? `próxima folga: ${nextDayOff}` : staff.scheduleType ? "sem folga em 30d" : "não configurada"}
+              </div>
+            </div>
+
+            {/* Card 3 — Conquistas (placeholder) */}
+            <div className="bg-muted border border-border rounded-xl p-3 text-center opacity-60">
+              <div className="flex items-center justify-center">
+                <Trophy size={20} className="text-muted-foreground" />
+              </div>
+              <div className="text-[10px] font-extrabold text-muted-foreground uppercase tracking-wide mt-0.5">Conquistas</div>
+              <div className="text-[11px] text-muted-foreground mt-0.5">Em breve...</div>
+            </div>
           </div>
 
           {/* Bio */}

@@ -377,6 +377,52 @@ export function NotificationCenter() {
 
   const total = whatsapp.length + concierge.length + bookings.length;
 
+  // ─── Tab blinking when there are unread notifications ───────────────────────
+
+  useEffect(() => {
+    if (total === 0) return;
+
+    const originalTitle = document.title;
+    const alertTitle = `(${total}) Nova mensagem — Aura`;
+    let blinkState = false;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const startBlinking = () => {
+      if (intervalId) return;
+      intervalId = setInterval(() => {
+        document.title = blinkState ? alertTitle : originalTitle;
+        blinkState = !blinkState;
+      }, 1000);
+    };
+
+    const stopBlinking = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+      document.title = originalTitle;
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        startBlinking();
+      } else {
+        stopBlinking();
+      }
+    };
+
+    if (document.hidden) {
+      startBlinking();
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      stopBlinking();
+    };
+  }, [total]);
+
   // ─── Navigate helpers ───────────────────────────────────────────────────────
 
   const goTo = (path: string) => {
