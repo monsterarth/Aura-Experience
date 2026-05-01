@@ -6,7 +6,7 @@ import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
-    const auth = await requireAuth(['super_admin', 'admin']);
+    const auth = await requireAuth();
     if (isAuthError(auth)) return auth;
 
     if (!supabaseAdmin) return NextResponse.json({ error: 'Server error' }, { status: 500 });
@@ -19,9 +19,14 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search') || '';
     const startDate = searchParams.get('startDate') || '';
     const endDate = searchParams.get('endDate') || '';
-    const userId = searchParams.get('userId') || '';
+    const requestedUserId = searchParams.get('userId') || '';
 
+    const isPrivileged = ['super_admin', 'admin', 'hr'].includes(auth.staff.role);
     const isSuperAdmin = auth.staff.role === 'super_admin';
+
+    // Usuários comuns só podem ver os próprios logs — forçar userId
+    const userId = isPrivileged ? requestedUserId : auth.userId;
+
     const propertyId = isSuperAdmin
         ? (searchParams.get('propertyId') || null)
         : auth.staff.propertyId;

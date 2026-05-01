@@ -11,7 +11,7 @@ import { TeammatesList } from "./TeammatesList";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import {
   Pencil, Check, X, Phone, Mail, Calendar,
-  Clock, Loader2, UserCircle2, Settings, Trophy,
+  Clock, Loader2, UserCircle2, Settings, Trophy, Activity,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -64,6 +64,8 @@ export function ProfileView({ staffId, isOwnProfile }: Props) {
   const [saving, setSaving] = useState(false);
   const [weekActivityCount, setWeekActivityCount] = useState<number | null>(null);
   const [nextDayOff, setNextDayOff] = useState<string | null>(null);
+  const [activityLogs, setActivityLogs] = useState<Array<{ id: string; action: string; entity: string; details: string; timestamp: string }>>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
 
   useEffect(() => {
     if (!staffId) return;
@@ -86,9 +88,9 @@ export function ProfileView({ staffId, isOwnProfile }: Props) {
     monday.setHours(0, 0, 0, 0);
     const startDate = monday.toISOString();
 
-    fetch(`/api/admin/audit-logs?userId=${staff.id}&startDate=${encodeURIComponent(startDate)}&limit=100`)
+    fetch(`/api/admin/audit-logs/my-count?userId=${staff.id}&startDate=${encodeURIComponent(startDate)}`)
       .then(r => r.json())
-      .then(data => setWeekActivityCount(data.total ?? (data.logs?.length ?? 0)))
+      .then(data => setWeekActivityCount(data.count ?? 0))
       .catch(() => setWeekActivityCount(0));
 
     // Card 2: próxima folga
@@ -132,6 +134,16 @@ export function ProfileView({ staffId, isOwnProfile }: Props) {
   useEffect(() => {
     if (isOwnProfile && authUser) setStaff(authUser);
   }, [isOwnProfile, authUser]);
+
+  useEffect(() => {
+    if (!staffId) return;
+    setLogsLoading(true);
+    fetch(`/api/admin/audit-logs?userId=${staffId}&limit=20`)
+      .then(r => r.json())
+      .then(data => setActivityLogs(data.logs ?? []))
+      .catch(() => setActivityLogs([]))
+      .finally(() => setLogsLoading(false));
+  }, [staffId]);
 
   const startEdit = (field: "fullName" | "bio") => {
     setEditingField(field);
@@ -384,6 +396,40 @@ export function ProfileView({ staffId, isOwnProfile }: Props) {
       {isOwnProfile && staff.propertyId && (
         <TeammatesList propertyId={staff.propertyId} currentStaffId={staff.id} />
       )}
+
+      {/* Histórico de atividades */}
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <div className="flex items-center gap-2 px-5 py-4 border-b border-border">
+          <Activity size={15} className="text-muted-foreground" />
+          <span className="text-sm font-extrabold uppercase tracking-wide text-foreground">Atividades recentes</span>
+        </div>
+        {logsLoading ? (
+          <div className="flex items-center justify-center py-10">
+            <Loader2 size={20} className="animate-spin text-cyan-400" />
+          </div>
+        ) : activityLogs.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-10">Nenhuma atividade registrada.</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {activityLogs.map(log => (
+              <li key={log.id} className="flex items-start gap-3 px-5 py-3">
+                <div className="mt-0.5 flex-shrink-0 w-6 h-6 rounded-full bg-muted flex items-center justify-center">
+                  <Activity size={11} className="text-muted-foreground" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] text-foreground leading-snug truncate">{log.details}</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {new Date(log.timestamp).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                </div>
+                <span className="flex-shrink-0 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
+                  {log.action}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       {/* Mural de recados */}
       {staff.propertyId && (
