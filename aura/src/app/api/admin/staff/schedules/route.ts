@@ -9,7 +9,7 @@ import { requireAuth, isAuthError } from "@/lib/api-auth";
  * - ?propertyId= → visão completa da property (todos os staff com suas escalas)
  */
 export async function GET(request: Request) {
-  const auth = await requireAuth(['super_admin', 'admin', 'hr', 'reception', 'governance', 'kitchen', 'maintenance', 'marketing']);
+  const auth = await requireAuth(['super_admin', 'admin', 'manager', 'reception', 'governance', 'kitchen', 'maintenance', 'marketing']);
   if (isAuthError(auth)) return auth;
 
   const { searchParams } = new URL(request.url);
@@ -70,7 +70,7 @@ export async function GET(request: Request) {
  * Body: { staffId, propertyId, dayOfWeek, startTime, endTime, active? }
  */
 export async function POST(request: Request) {
-  const auth = await requireAuth(['super_admin', 'admin', 'hr']);
+  const auth = await requireAuth(['super_admin', 'admin', 'manager']);
   if (isAuthError(auth)) return auth;
 
   try {
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
  * Remove uma linha de escala semanal.
  */
 export async function DELETE(request: Request) {
-  const auth = await requireAuth(['super_admin', 'admin', 'hr']);
+  const auth = await requireAuth(['super_admin', 'admin', 'manager']);
   if (isAuthError(auth)) return auth;
 
   const { searchParams } = new URL(request.url);

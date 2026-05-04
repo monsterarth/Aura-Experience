@@ -692,7 +692,7 @@ export default function ReservationMapClient() {
     const ROW_HEIGHT = compact ? ROW_HEIGHT_COMPACT : ROW_HEIGHT_NORMAL;
 
     return (
-        <RoleGuard allowedRoles={["super_admin", "admin", "reception", "hr"]}>
+        <RoleGuard allowedRoles={["super_admin", "admin", "reception", "manager"]}>
             <div className="p-6 max-w-[100vw] space-y-6 animate-in fade-in duration-500">
 
                 {/* Header */}

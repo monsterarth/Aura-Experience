@@ -124,12 +124,12 @@ type NavGroup = {
 // ─── Painel sub-items (dropdowns por cargo) ───────────────────────────────────
 const PAINEL_CHILDREN: SubItem[] = [
   { id: "painel_plataforma", label: "Plataforma",  href: "/admin/core/dashboard",      roles: ["super_admin"] },
-  { id: "painel_recepcao",   label: "Recepção",    href: "/admin/reception",            roles: ["super_admin", "admin", "hr"] },
-  { id: "painel_gov",        label: "Governança",  href: "/admin/governance",           roles: ["super_admin", "admin", "hr"] },
-  { id: "painel_manut",      label: "Manutenção",  href: "/admin/maintenance",          roles: ["super_admin", "admin", "hr"] },
+  { id: "painel_recepcao",   label: "Recepção",    href: "/admin/reception",            roles: ["super_admin", "admin", "manager"] },
+  { id: "painel_gov",        label: "Governança",  href: "/admin/governance",           roles: ["super_admin", "admin", "manager"] },
+  { id: "painel_manut",      label: "Manutenção",  href: "/admin/maintenance",          roles: ["super_admin", "admin", "manager"] },
   { id: "painel_kds",        label: "Cozinha/KDS", href: "/admin/cafe-salao/kds",       roles: ["super_admin", "admin"] },
-  { id: "painel_aval",       label: "Avaliações",  href: "/admin/surveys/responses",    roles: ["super_admin", "admin", "hr"] },
-  { id: "painel_gerencia",   label: "Gerência",    href: "/admin/hr",                   roles: ["super_admin", "admin", "hr"] },
+  { id: "painel_aval",       label: "Avaliações",  href: "/admin/surveys/responses",    roles: ["super_admin", "admin", "manager"] },
+  { id: "painel_gerencia",   label: "Gerência",    href: "/admin/hr",                   roles: ["super_admin", "admin", "manager"] },
 ];
 
 // ─── Nav groups ───────────────────────────────────────────────────────────────
@@ -140,16 +140,16 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         id: "painel", label: "Painel", icon: LayoutGrid,
-        href: "/admin/dashboard", roles: ["super_admin","admin","hr","reception","governance","maintenance","kitchen","marketing"],
+        href: "/admin/dashboard", roles: ["super_admin","admin","manager","reception","governance","maintenance","kitchen","marketing"],
         children: PAINEL_CHILDREN,
       },
       {
         id: "perfil", label: "Meu Perfil", icon: UserCircle2,
-        href: "/admin/perfil", roles: ["super_admin","admin","hr","reception","governance","maintenance","kitchen","marketing"],
+        href: "/admin/perfil", roles: ["super_admin","admin","manager","reception","governance","maintenance","kitchen","marketing"],
       },
       {
         id: "configuracoes", label: "Configurações", icon: Settings,
-        href: "/admin/perfil/configuracoes", roles: ["super_admin","admin","hr","reception","governance","maintenance","kitchen","marketing"],
+        href: "/admin/perfil/configuracoes", roles: ["super_admin","admin","manager","reception","governance","maintenance","kitchen","marketing"],
       },
     ],
   },
@@ -157,17 +157,17 @@ const NAV_GROUPS: NavGroup[] = [
     id: "hospedagem",
     label: "Hospedagem",
     items: [
-      { id: "stays",   label: "Estadias",     icon: Home,          href: "/admin/stays",           roles: ["super_admin","admin","reception","governance","hr"] },
-      { id: "mapa",    label: "Mapa",          icon: Map,           href: "/admin/reservation-map", roles: ["super_admin","admin","reception","hr"] },
-      { id: "hospedes",label: "Hóspedes",      icon: UserSearch,    href: "/admin/guests",          roles: ["super_admin","admin","reception","hr"] },
-      { id: "comunic", label: "Comunicação",   icon: MessageSquare, href: "/admin/comunicacao",     roles: ["super_admin","admin","reception"] },
+      { id: "stays",   label: "Estadias",     icon: Home,          href: "/admin/stays",           roles: ["super_admin","admin","reception","governance","manager"] },
+      { id: "mapa",    label: "Mapa",          icon: Map,           href: "/admin/reservation-map", roles: ["super_admin","admin","reception","manager"] },
+      { id: "hospedes",label: "Hóspedes",      icon: UserSearch,    href: "/admin/guests",          roles: ["super_admin","admin","reception","manager"] },
+      { id: "comunic", label: "Comunicação",   icon: MessageSquare, href: "/admin/comunicacao",     roles: ["super_admin","admin","reception","manager"] },
     ],
   },
   {
     id: "calendarios",
     label: "Calendários",
     items: [
-      { id: "calendario", label: "Calendário Geral", icon: CalendarDays, href: "/admin/calendario",              roles: ["super_admin","admin","reception","hr"] },
+      { id: "calendario", label: "Calendário Geral", icon: CalendarDays, href: "/admin/calendario",              roles: ["super_admin","admin","reception","manager"] },
       { id: "agenda",     label: "Agendamentos",      icon: ClipboardCheck, href: "/admin/core/structures/bookings", roles: ["super_admin","admin","reception"] },
       { id: "eventos",     label: "Eventos",     icon: Flag,  href: "/admin/eventos",     roles: ["super_admin","admin","reception"] },
       { id: "casamentos",  label: "Casamentos",  icon: Heart, href: "/admin/casamentos", roles: ["super_admin","admin","reception"] },
@@ -177,9 +177,9 @@ const NAV_GROUPS: NavGroup[] = [
     id: "operacoes",
     label: "Operações",
     items: [
-      { id: "manutencao", label: "Manutenção", icon: Wrench,   href: "/admin/maintenance/kanban", roles: ["super_admin","admin","maintenance","hr"] },
-      { id: "governanca", label: "Governança", icon: Sparkles, href: "/admin/governance/kanban",  roles: ["super_admin","admin","governance","hr"] },
-      { id: "concierge",  label: "Concierge",  icon: Gift,     href: "/admin/concierge",          roles: ["super_admin","admin","reception","hr"] },
+      { id: "manutencao", label: "Manutenção", icon: Wrench,   href: "/admin/maintenance/kanban", roles: ["super_admin","admin","maintenance","manager"] },
+      { id: "governanca", label: "Governança", icon: Sparkles, href: "/admin/governance/kanban",  roles: ["super_admin","admin","governance","manager"] },
+      { id: "concierge",  label: "Concierge",  icon: Gift,     href: "/admin/concierge",          roles: ["super_admin","admin","reception","manager"] },
     ],
   },
   {
@@ -188,13 +188,13 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         id: "apps_mobile", label: "Apps Mobile", icon: Smartphone,
-        href: "/admin/mobile-apps", roles: ["super_admin","admin","hr"],
+        href: "/admin/mobile-apps", roles: ["super_admin","admin","manager"],
         children: [
-          { id: "app_governanta", label: "Governança", href: "/admin/mobile-apps/governanta", roles: ["super_admin","admin","hr"] },
-          { id: "app_maid",       label: "Camareira",  href: "/admin/mobile-apps/maid",       roles: ["super_admin","admin","hr"] },
-          { id: "app_manut",      label: "Manutenção", href: "/admin/mobile-apps/manutencao", roles: ["super_admin","admin","hr"] },
-          { id: "app_houseman",   label: "Mensageiro", href: "/admin/mobile-apps/houseman",   roles: ["super_admin","admin","hr"] },
-          { id: "app_garcom",     label: "Garçom",     href: "/admin/mobile-apps/garcom",     roles: ["super_admin","admin","hr"] },
+          { id: "app_governanta", label: "Governança", href: "/admin/mobile-apps/governanta", roles: ["super_admin","admin","manager"] },
+          { id: "app_maid",       label: "Camareira",  href: "/admin/mobile-apps/maid",       roles: ["super_admin","admin","manager"] },
+          { id: "app_manut",      label: "Manutenção", href: "/admin/mobile-apps/manutencao", roles: ["super_admin","admin","manager"] },
+          { id: "app_houseman",   label: "Mensageiro", href: "/admin/mobile-apps/houseman",   roles: ["super_admin","admin","manager"] },
+          { id: "app_garcom",     label: "Garçom",     href: "/admin/mobile-apps/garcom",     roles: ["super_admin","admin","manager"] },
         ],
       },
     ],
@@ -204,12 +204,12 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Gerência",
     collapsible: true,
     items: [
-      { id: "cabanas",    label: "Cabanas",           icon: Building,         href: "/admin/cabins",          roles: ["super_admin","admin","governance","hr"] },
+      { id: "cabanas",    label: "Cabanas",           icon: Building,         href: "/admin/cabins",          roles: ["super_admin","admin","governance","manager"] },
       { id: "estruturas", label: "Estruturas",         icon: LayoutTemplate,   href: "/admin/core/structures", roles: ["super_admin","admin"] },
       { id: "frigobar",   label: "Frigobar",           icon: RefrigeratorIcon, href: "/admin/cabins/minibar",  roles: ["super_admin","admin"] },
-      { id: "escalas",    label: "Escalas",            icon: ClipboardCheck,   href: "/admin/escalas",         roles: ["super_admin","admin","hr"] },
+      { id: "escalas",    label: "Escalas",            icon: ClipboardCheck,   href: "/admin/escalas",         roles: ["super_admin","admin","manager"] },
       { id: "logs",       label: "Logs de Auditoria",  icon: FileText,         href: "/admin/logs",            roles: ["super_admin","admin"] },
-      { id: "avaliacoes", label: "Avaliações",         icon: Star,             href: "/admin/surveys/responses", roles: ["super_admin","admin","reception","marketing","hr"] },
+      { id: "avaliacoes", label: "Avaliações",         icon: Star,             href: "/admin/surveys/responses", roles: ["super_admin","admin","reception","marketing","manager"] },
     ],
   },
   {
@@ -219,8 +219,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: "gastro_main", label: "Gastronomia",      icon: Coffee,        href: "/admin/food-and-beverage/menu",           roles: ["super_admin","admin","kitchen"] },
       { id: "cafe",        label: "Café Salão (KDS)", icon: Phone,         href: "/admin/cafe-salao",                       roles: ["super_admin","admin","kitchen"] },
-      { id: "equipe",      label: "Equipe",            icon: Users,         href: "/admin/staff",                            roles: ["super_admin","admin","hr"] },
-      { id: "nps",         label: "Pesquisas (NPS)",   icon: ClipboardList, href: "/admin/surveys",                          roles: ["super_admin","admin","hr"] },
+      { id: "equipe",      label: "Equipe",            icon: Users,         href: "/admin/staff",                            roles: ["super_admin","admin","manager"] },
+      { id: "nps",         label: "Pesquisas (NPS)",   icon: ClipboardList, href: "/admin/surveys",                          roles: ["super_admin","admin","manager"] },
       { id: "automacoes",  label: "Automações",        icon: Bot,           href: "/admin/comunicacao/automations/settings", roles: ["super_admin","admin"] },
       { id: "config",      label: "Configurações",     icon: Settings,      href: "/admin/core/properties",                  roles: ["super_admin","admin"], requireProperty: true },
       { id: "props",       label: "Propriedades",      icon: Globe,         href: "/admin/core/properties",                  roles: ["super_admin"], exactMatch: true },
@@ -556,7 +556,7 @@ export const Sidebar = () => {
 
   const role = userData?.role ?? null;
   const roleMeta = getRoleMeta(role);
-  const isAdmin = ["super_admin", "admin", "hr"].includes(role ?? "");
+  const isAdmin = ["super_admin", "admin", "manager"].includes(role ?? "");
 
   function canSee(item: NavItem) {
     if (!role) return false;

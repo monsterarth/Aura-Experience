@@ -11,7 +11,7 @@ import { requireAuth, isAuthError } from "@/lib/api-auth";
  */
 export async function POST(request: Request) {
   // Auth: super_admin, admin e hr podem criar staff
-  const auth = await requireAuth(['super_admin', 'admin', 'hr']);
+  const auth = await requireAuth(['super_admin', 'admin', 'manager']);
   if (isAuthError(auth)) return auth;
 
   try {
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     }
 
     // Admin e HR só podem criar staff para a sua própria property
-    if (auth.staff.role === 'admin' || auth.staff.role === 'hr') {
+    if (auth.staff.role === 'admin' || auth.staff.role === 'manager') {
       if (propertyId && propertyId !== auth.staff.propertyId) {
         return NextResponse.json(
           { error: "Admins só podem criar staff para a sua própria propriedade." },
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
         );
       }
       // HR não pode criar admin ou super_admin
-      if (auth.staff.role === 'hr' && (role === 'admin' || role === 'super_admin')) {
+      if (auth.staff.role === 'manager' && (role === 'admin' || role === 'super_admin')) {
         return NextResponse.json(
           { error: "RH não pode criar staff com cargo de Admin ou Super Admin." },
           { status: 403 }
@@ -114,7 +114,7 @@ export async function POST(request: Request) {
  * Requer role: super_admin ou admin.
  */
 export async function PATCH(request: Request) {
-  const auth = await requireAuth(['super_admin', 'admin', 'hr', 'reception', 'governance', 'kitchen', 'maintenance', 'marketing']);
+  const auth = await requireAuth(['super_admin', 'admin', 'manager', 'reception', 'governance', 'kitchen', 'maintenance', 'marketing']);
   if (isAuthError(auth)) return auth;
 
   try {
@@ -137,13 +137,13 @@ export async function PATCH(request: Request) {
     }
 
     // Roles sem privilégio de gestão só podem alterar a si próprios
-    const managerRoles = ['super_admin', 'admin', 'hr'];
+    const managerRoles = ['super_admin', 'admin', 'manager'];
     if (!managerRoles.includes(auth.staff.role) && auth.staff.id !== staffId) {
       return NextResponse.json({ error: "Sem permissão para alterar outro utilizador." }, { status: 403 });
     }
 
     // Admin e HR só podem alterar staff da sua própria property
-    if ((auth.staff.role === 'admin' || auth.staff.role === 'hr') && targetUser.propertyId !== auth.staff.propertyId) {
+    if ((auth.staff.role === 'admin' || auth.staff.role === 'manager') && targetUser.propertyId !== auth.staff.propertyId) {
       return NextResponse.json({ error: "Sem permissão para alterar este utilizador." }, { status: 403 });
     }
 
@@ -153,7 +153,7 @@ export async function PATCH(request: Request) {
     }
 
     // HR não pode alterar senha de admin ou super_admin
-    if (auth.staff.role === 'hr' && (targetUser.role === 'admin' || targetUser.role === 'super_admin') && auth.staff.id !== staffId) {
+    if (auth.staff.role === 'manager' && (targetUser.role === 'admin' || targetUser.role === 'super_admin') && auth.staff.id !== staffId) {
       return NextResponse.json({ error: "RH não tem permissão para alterar Admin ou Super Admin." }, { status: 403 });
     }
 
@@ -243,7 +243,7 @@ export async function PATCH(request: Request) {
  * Admin não pode excluir super_admin nem staff de outra property.
  */
 export async function DELETE(request: Request) {
-  const auth = await requireAuth(['super_admin', 'admin', 'hr']);
+  const auth = await requireAuth(['super_admin', 'admin', 'manager']);
   if (isAuthError(auth)) return auth;
 
   const { searchParams } = new URL(request.url);
@@ -270,7 +270,7 @@ export async function DELETE(request: Request) {
     }
 
     // Admin e HR só podem excluir staff da sua property
-    if ((auth.staff.role === 'admin' || auth.staff.role === 'hr') && targetUser.propertyId !== auth.staff.propertyId) {
+    if ((auth.staff.role === 'admin' || auth.staff.role === 'manager') && targetUser.propertyId !== auth.staff.propertyId) {
       return NextResponse.json({ error: "Sem permissão para excluir este utilizador." }, { status: 403 });
     }
 
@@ -280,7 +280,7 @@ export async function DELETE(request: Request) {
     }
 
     // HR não pode excluir admin ou super_admin
-    if (auth.staff.role === 'hr' && (targetUser.role === 'admin' || targetUser.role === 'super_admin')) {
+    if (auth.staff.role === 'manager' && (targetUser.role === 'admin' || targetUser.role === 'super_admin')) {
       return NextResponse.json({ error: "RH não tem permissão para excluir Admin ou Super Admin." }, { status: 403 });
     }
 
@@ -344,7 +344,7 @@ export async function PUT(request: Request) {
     }
 
     const isSelf = auth.staff.id === staffId;
-    const isAdmin = auth.staff.role === 'admin' || auth.staff.role === 'super_admin' || auth.staff.role === 'hr';
+    const isAdmin = auth.staff.role === 'admin' || auth.staff.role === 'super_admin' || auth.staff.role === 'manager';
     const isSuperAdmin = auth.staff.role === 'super_admin';
     const sameProperty = auth.staff.propertyId === targetUser.propertyId;
 
@@ -367,7 +367,7 @@ export async function PUT(request: Request) {
     }
 
     // HR não pode editar admin ou super_admin
-    if (auth.staff.role === 'hr' && !isSelf && (targetUser.role === 'admin' || targetUser.role === 'super_admin')) {
+    if (auth.staff.role === 'manager' && !isSelf && (targetUser.role === 'admin' || targetUser.role === 'super_admin')) {
       return NextResponse.json({ error: "RH não tem permissão para editar Admin ou Super Admin." }, { status: 403 });
     }
 
@@ -464,7 +464,7 @@ export async function GET(request: Request) {
       query = query.eq('propertyId', auth.staff.propertyId);
     }
     // HR não vê super_admin nem admin na listagem
-    if (auth.staff.role === 'hr') {
+    if (auth.staff.role === 'manager') {
       query = query.not('role', 'in', '("super_admin","admin")');
     }
 

@@ -161,7 +161,7 @@ function MobileAppsContent() {
 
 export default function MobileAppsPage() {
   return (
-    <RoleGuard allowedRoles={["super_admin", "admin", "hr"]}>
+    <RoleGuard allowedRoles={["super_admin", "admin", "manager"]}>
       <MobileAppsContent />
     </RoleGuard>
   );

@@ -9,7 +9,7 @@ import { ScheduleType, ScheduleConfig } from "@/types/aura";
  * Salva o tipo de escala e configuração (horários, data de referência) no registro do staff.
  */
 export async function PUT(request: Request) {
-  const auth = await requireAuth(['super_admin', 'admin', 'hr']);
+  const auth = await requireAuth(['super_admin', 'admin', 'manager']);
   if (isAuthError(auth)) return auth;
 
   try {

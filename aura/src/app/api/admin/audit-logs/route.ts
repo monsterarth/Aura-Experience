@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get('endDate') || '';
     const requestedUserId = searchParams.get('userId') || '';
 
-    const isPrivileged = ['super_admin', 'admin', 'hr'].includes(auth.staff.role);
+    const isPrivileged = ['super_admin', 'admin', 'manager'].includes(auth.staff.role);
     const isSuperAdmin = auth.staff.role === 'super_admin';
 
     // Usuários comuns só podem ver os próprios logs — forçar userId

@@ -21,7 +21,7 @@ const DOW_PT = ["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
 
 const ROLE_ORDER = [
   "reception","governance","maid","maintenance","technician",
-  "kitchen","waiter","porter","houseman","marketing","hr","admin","super_admin",
+  "kitchen","waiter","porter","houseman","marketing","manager","admin","super_admin",
 ];
 
 type StaffWithSchedules = Staff & { schedules: StaffSchedule[] };
@@ -283,7 +283,7 @@ export default function EscalasMensalPage() {
   );
 
   return (
-    <RoleGuard allowedRoles={["super_admin", "admin", "hr"]}>
+    <RoleGuard allowedRoles={["super_admin", "admin", "manager"]}>
       <div className="p-4 md:p-6 space-y-5 max-w-full mx-auto">
 
         {/* Header */}

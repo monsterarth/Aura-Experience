@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate') || '';
     const requestedUserId = searchParams.get('userId') || auth.userId;
 
-    const isPrivileged = ['super_admin', 'admin', 'hr'].includes(auth.staff.role);
+    const isPrivileged = ['super_admin', 'admin', 'manager'].includes(auth.staff.role);
 
     // Usuários comuns só podem ver colegas da mesma propriedade
     if (!isPrivileged && requestedUserId !== auth.userId) {

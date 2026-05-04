@@ -1055,7 +1055,7 @@ function GuestsPageInner() {
   };
 
   return (
-    <RoleGuard allowedRoles={["super_admin", "admin", "reception"]}>
+    <RoleGuard allowedRoles={["super_admin", "admin", "reception", "manager"]}>
       <div className="flex h-[calc(100vh-0px)] overflow-hidden">
 
         {/* ===== LEFT: Guest List ===== */}

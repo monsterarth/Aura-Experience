@@ -886,7 +886,7 @@ function HRDashboardContent() {
 
 export default function HRDashboardPage() {
   return (
-    <RoleGuard allowedRoles={["super_admin", "admin", "hr"]}>
+    <RoleGuard allowedRoles={["super_admin", "admin", "manager"]}>
       <HRDashboardContent />
     </RoleGuard>
   );

@@ -97,7 +97,7 @@ export default function StaffManagementPage() {
   };
 
   return (
-    <RoleGuard allowedRoles={["super_admin", "admin", "hr"]}>
+    <RoleGuard allowedRoles={["super_admin", "admin", "manager"]}>
       <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-4 md:space-y-8">
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -154,7 +154,7 @@ export default function StaffManagementPage() {
                 >
                   <optgroup label="Administrativo e Recepção">
                     <option value="admin">Administrador</option>
-                    <option value="hr">Gerente / RH</option>
+                    <option value="manager">Gerente / RH</option>
                     <option value="reception">Recepção</option>
                     <option value="marketing">Marketing</option>
                   </optgroup>

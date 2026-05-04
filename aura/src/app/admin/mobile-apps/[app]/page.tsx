@@ -181,7 +181,7 @@ export default function AppPreviewPage({ params }: { params: { app: string } }) 
   }
 
   return (
-    <RoleGuard allowedRoles={["super_admin", "admin", "hr"]}>
+    <RoleGuard allowedRoles={["super_admin", "admin", "manager"]}>
       <AppPreviewWithSuspense appId={app} />
     </RoleGuard>
   );

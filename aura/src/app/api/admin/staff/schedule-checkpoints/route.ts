@@ -9,7 +9,7 @@ import { requireAuth, isAuthError } from "@/lib/api-auth";
  * - ?staffId=&from=&to=     → checkpoints no intervalo de datas
  */
 export async function GET(request: Request) {
-  const auth = await requireAuth(['super_admin', 'admin', 'hr', 'reception', 'governance', 'kitchen', 'maintenance', 'marketing']);
+  const auth = await requireAuth(['super_admin', 'admin', 'manager', 'reception', 'governance', 'kitchen', 'maintenance', 'marketing']);
   if (isAuthError(auth)) return auth;
 
   const { searchParams } = new URL(request.url);
@@ -62,7 +62,7 @@ export async function GET(request: Request) {
  * Upsert por (staffId, effectiveDate).
  */
 export async function POST(request: Request) {
-  const auth = await requireAuth(['super_admin', 'admin', 'hr']);
+  const auth = await requireAuth(['super_admin', 'admin', 'manager']);
   if (isAuthError(auth)) return auth;
 
   try {
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
  * DELETE /api/admin/staff/schedule-checkpoints?id=...
  */
 export async function DELETE(request: Request) {
-  const auth = await requireAuth(['super_admin', 'admin', 'hr']);
+  const auth = await requireAuth(['super_admin', 'admin', 'manager']);
   if (isAuthError(auth)) return auth;
 
   const { searchParams } = new URL(request.url);

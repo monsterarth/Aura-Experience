@@ -452,7 +452,7 @@ export default function EscalasPage() {
   const uniqueRoles = Array.from(new Set(staffList.map(s => s.role)));
 
   return (
-    <RoleGuard allowedRoles={["super_admin", "admin", "hr"]}>
+    <RoleGuard allowedRoles={["super_admin", "admin", "manager"]}>
       <div className="p-4 md:p-8 space-y-6 max-w-[1400px] mx-auto">
 
         {/* Header */}

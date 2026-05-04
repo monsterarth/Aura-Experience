@@ -291,7 +291,7 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
                           </optgroup>
                         )}
                         <optgroup label="Recepção e Marketing">
-                          <option value="hr">Gerente / RH</option>
+                          <option value="manager">Gerente / RH</option>
                           <option value="reception">Recepção</option>
                           <option value="marketing">Marketing</option>
                         </optgroup>
