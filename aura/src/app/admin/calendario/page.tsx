@@ -94,17 +94,26 @@ function dotCount(n: number) {
   return 4 + Math.ceil((n - 6) / 3);
 }
 
-function DotStack({ count, color }: { count: number; color: string }) {
+function DotStack({ count, color, textColor }: { count: number; color: string; textColor: string }) {
   const dots = dotCount(count);
+  const showCount = count > 4;
   return (
-    <span className="relative flex items-center shrink-0" style={{ width: 6 + (dots - 1) * 6, height: 6 }}>
+    <span className="relative inline-flex items-end shrink-0" style={{ width: 6 + (dots - 1) * 6, height: showCount ? 14 : 6 }}>
       {Array.from({ length: dots }).map((_, i) => (
         <span
           key={i}
           className={cn("absolute w-1.5 h-1.5 rounded-full", color)}
-          style={{ left: i * 6, zIndex: i }}
+          style={{ left: i * 6, bottom: 0, zIndex: i }}
         />
       ))}
+      {showCount && (
+        <span
+          className={cn("absolute left-0 text-[7px] font-black leading-none", textColor)}
+          style={{ top: 0, zIndex: dots + 1 }}
+        >
+          {count}
+        </span>
+      )}
     </span>
   );
 }
@@ -508,41 +517,32 @@ export default function CalendarioPage() {
 
                           {/* Dot stacks — one cluster per category */}
                           <div className="flex flex-wrap gap-1.5 w-full mt-0.5">
-                            {/* Check-ins */}
                             {!hiddenLayers.has("checkin") && summary.checkIns.length > 0 && summary.checkIns.length < 5 && (
-                              <DotStack count={summary.checkIns.length} color="bg-emerald-400" />
+                              <DotStack count={summary.checkIns.length} color="bg-emerald-400" textColor="text-emerald-400" />
                             )}
-                            {/* Check-outs */}
                             {!hiddenLayers.has("checkout") && summary.checkOuts.length > 0 && summary.checkOuts.length < 5 && (
-                              <DotStack count={summary.checkOuts.length} color="bg-orange-400" />
+                              <DotStack count={summary.checkOuts.length} color="bg-orange-400" textColor="text-orange-400" />
                             )}
-                            {/* In-house */}
                             {!hiddenLayers.has("inhouse") && summary.inHouse.length > 0 && (
-                              <DotStack count={summary.inHouse.length} color="bg-blue-400" />
+                              <DotStack count={summary.inHouse.length} color="bg-blue-400" textColor="text-blue-400" />
                             )}
-                            {/* Events local */}
                             {!hiddenLayers.has("evlocal") && summary.events.filter(e => e.type === "local").length > 0 && (
-                              <DotStack count={summary.events.filter(e => e.type === "local").length} color="bg-primary" />
+                              <DotStack count={summary.events.filter(e => e.type === "local").length} color="bg-primary" textColor="text-primary" />
                             )}
-                            {/* Events external */}
                             {!hiddenLayers.has("evext") && summary.events.filter(e => e.type !== "local").length > 0 && (
-                              <DotStack count={summary.events.filter(e => e.type !== "local").length} color="bg-purple-400" />
+                              <DotStack count={summary.events.filter(e => e.type !== "local").length} color="bg-purple-400" textColor="text-purple-400" />
                             )}
-                            {/* Structures */}
                             {!hiddenLayers.has("structure") && summary.structureBookings.length > 0 && (
-                              <DotStack count={summary.structureBookings.length} color="bg-slate-400" />
+                              <DotStack count={summary.structureBookings.length} color="bg-slate-400" textColor="text-slate-400" />
                             )}
-                            {/* Birthdays in-house */}
                             {!hiddenLayers.has("bdInhouse") && summary.birthdays.filter(b => b.isInHouse).length > 0 && (
-                              <DotStack count={summary.birthdays.filter(b => b.isInHouse).length} color="bg-amber-400" />
+                              <DotStack count={summary.birthdays.filter(b => b.isInHouse).length} color="bg-amber-400" textColor="text-amber-400" />
                             )}
-                            {/* Birthdays out */}
                             {!hiddenLayers.has("bdOut") && summary.birthdays.filter(b => !b.isInHouse && !b.isStaff).length > 0 && (
-                              <DotStack count={summary.birthdays.filter(b => !b.isInHouse && !b.isStaff).length} color="bg-amber-400/40" />
+                              <DotStack count={summary.birthdays.filter(b => !b.isInHouse && !b.isStaff).length} color="bg-amber-400/40" textColor="text-amber-400/60" />
                             )}
-                            {/* Birthdays staff */}
                             {!hiddenLayers.has("bdStaff") && summary.birthdays.filter(b => b.isStaff).length > 0 && (
-                              <DotStack count={summary.birthdays.filter(b => b.isStaff).length} color="bg-indigo-400" />
+                              <DotStack count={summary.birthdays.filter(b => b.isStaff).length} color="bg-indigo-400" textColor="text-indigo-400" />
                             )}
                           </div>
                         </div>
