@@ -97,19 +97,20 @@ function dotCount(n: number) {
 function DotStack({ count, color, textColor }: { count: number; color: string; textColor: string }) {
   const dots = dotCount(count);
   const showCount = count > 4;
+  const w = 6 + (dots - 1) * 6;
   return (
-    <span className="relative inline-flex items-end shrink-0" style={{ width: 6 + (dots - 1) * 6, height: showCount ? 14 : 6 }}>
+    <span className="relative inline-flex shrink-0" style={{ width: w, height: 6 }}>
       {Array.from({ length: dots }).map((_, i) => (
         <span
           key={i}
           className={cn("absolute w-1.5 h-1.5 rounded-full", color)}
-          style={{ left: i * 6, bottom: 0, zIndex: i }}
+          style={{ left: i * 6, top: 0, zIndex: i }}
         />
       ))}
       {showCount && (
         <span
-          className={cn("absolute left-0 text-[7px] font-black leading-none", textColor)}
-          style={{ top: 0, zIndex: dots + 1 }}
+          className={cn("absolute inset-0 flex items-center justify-center text-[6px] font-black leading-none drop-shadow-[0_0_2px_rgba(0,0,0,0.9)]", textColor)}
+          style={{ zIndex: dots + 1 }}
         >
           {count}
         </span>
