@@ -506,7 +506,7 @@ export default function CalendarioPage() {
                       {summary && (
                         <div className="flex flex-col gap-1 w-full flex-1">
                           {isLotado && (
-                            <span className="text-[8px] font-black uppercase bg-rose-500/20 text-rose-400 px-1 py-0.5 rounded-md w-full text-center tracking-widest shrink-0">Lotado</span>
+                            <span className="text-[8px] font-black uppercase bg-blue-500/20 text-blue-400 px-1 py-0.5 rounded-md w-full text-center tracking-widest shrink-0">Lotado</span>
                           )}
                           {summary.checkIns.length >= 5 && !isLotado && (
                             <span className="text-[8px] font-black uppercase bg-emerald-500/20 text-emerald-400 px-1 py-0.5 rounded-md w-full text-center shrink-0">{summary.checkIns.length} Entradas</span>
@@ -517,13 +517,13 @@ export default function CalendarioPage() {
 
                           {/* Dot stacks — one cluster per category */}
                           <div className="flex flex-wrap gap-1.5 w-full mt-0.5">
-                            {!hiddenLayers.has("checkin") && summary.checkIns.length > 0 && summary.checkIns.length < 5 && (
+                            {!hiddenLayers.has("checkin") && !isLotado && summary.checkIns.length > 0 && summary.checkIns.length < 5 && (
                               <DotStack count={summary.checkIns.length} color="bg-emerald-400" textColor="text-emerald-400" />
                             )}
                             {!hiddenLayers.has("checkout") && summary.checkOuts.length > 0 && summary.checkOuts.length < 5 && (
                               <DotStack count={summary.checkOuts.length} color="bg-orange-400" textColor="text-orange-400" />
                             )}
-                            {!hiddenLayers.has("inhouse") && summary.inHouse.length > 0 && (
+                            {!hiddenLayers.has("inhouse") && !isLotado && summary.inHouse.length > 0 && (
                               <DotStack count={summary.inHouse.length} color="bg-blue-400" textColor="text-blue-400" />
                             )}
                             {!hiddenLayers.has("evlocal") && summary.events.filter(e => e.type === "local").length > 0 && (
