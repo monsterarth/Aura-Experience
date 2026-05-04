@@ -509,6 +509,7 @@ export default function CalendarioPage() {
                   const isSelected = selectedDay === dateStr;
                   const occupancy = summary ? summary.checkIns.length + summary.inHouse.length : 0;
                   const isLotado = totalCabins > 0 && occupancy >= totalCabins;
+                  const isQuaseCheia = totalCabins > 0 && !isLotado && occupancy / totalCabins >= 0.8;
 
                   const hasItems = summary && (
                     summary.checkIns.length +
@@ -537,6 +538,9 @@ export default function CalendarioPage() {
                         <div className="flex flex-col gap-1 w-full flex-1">
                           {isLotado && (
                             <span className="text-[8px] font-black uppercase bg-blue-500/20 text-blue-400 px-1 py-0.5 rounded-md w-full text-center tracking-widest shrink-0">Lotado</span>
+                          )}
+                          {isQuaseCheia && (
+                            <span className="text-[8px] font-black uppercase bg-blue-500/10 text-blue-400/80 px-1 py-0.5 rounded-md w-full text-center tracking-widest shrink-0">{occupancy} Estadias</span>
                           )}
                           {summary.checkIns.length >= 5 && !isLotado && (
                             <span className="text-[8px] font-black uppercase bg-emerald-500/20 text-emerald-400 px-1 py-0.5 rounded-md w-full text-center shrink-0">{summary.checkIns.length} Entradas</span>
