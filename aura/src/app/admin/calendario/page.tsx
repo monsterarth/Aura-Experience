@@ -555,7 +555,7 @@ export default function CalendarioPage() {
                             const add = (count: number, color: string, textColor: string) => { if (count > 0) groups.push({ count, color, textColor }); };
                             if (!hiddenLayers.has("checkin") && !isLotado) add(summary.checkIns.length < 5 ? summary.checkIns.length : 0, "bg-emerald-400", "text-emerald-400");
                             if (!hiddenLayers.has("checkout")) add(summary.checkOuts.length < 5 ? summary.checkOuts.length : 0, "bg-orange-400", "text-orange-400");
-                            if (!hiddenLayers.has("inhouse") && !isLotado) add(summary.inHouse.length, "bg-blue-400", "text-blue-400");
+                            if (!hiddenLayers.has("inhouse") && !isLotado && !isQuaseCheia) add(summary.inHouse.length, "bg-blue-400", "text-blue-400");
                             if (!hiddenLayers.has("evlocal")) add(summary.events.filter(e => e.type === "local").length, "bg-primary", "text-primary");
                             if (!hiddenLayers.has("evext")) add(summary.events.filter(e => e.type !== "local").length, "bg-purple-400", "text-purple-400");
                             if (!hiddenLayers.has("structure")) add(summary.structureBookings.length, "bg-slate-400", "text-slate-400");
