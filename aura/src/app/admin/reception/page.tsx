@@ -204,9 +204,24 @@ export default function ReceptionDashboard() {
     }
 
     async function loadBreakfast() {
+        // Busca pedidos de hoje + amanhã para cobrir pedidos feitos antecipadamente
         const today = new Date().toISOString().split('T')[0];
-        const orders = await fbService.getOrders(property!.id, { date: today, type: 'breakfast' });
-        const active = orders.filter(o => o.status !== 'cancelled');
+        const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+        const [todayOrders, tomorrowOrders] = await Promise.all([
+            fbService.getOrders(property!.id, { date: today, type: 'breakfast' }),
+            fbService.getOrders(property!.id, { date: tomorrowStr, type: 'breakfast' }),
+        ]);
+
+        const allOrders = [...todayOrders, ...tomorrowOrders];
+        const active = allOrders.filter(o => o.status !== 'cancelled');
+        // Ordenar por data de entrega e depois horário
+        active.sort((a, b) => {
+            const dateA = (a.deliveryDate ?? '') + (a.deliveryTime ?? '');
+            const dateB = (b.deliveryDate ?? '') + (b.deliveryTime ?? '');
+            return dateA.localeCompare(dateB);
+        });
         setBreakfastOrders(active);
 
         const cabinMap: Record<string, string> = {};
@@ -614,7 +629,7 @@ export default function ReceptionDashboard() {
 
                         <div className="flex items-center justify-between mb-3">
                             <h3 className="text-sm font-semibold text-foreground/80">
-                                {breakfastMode === 'buffet' ? 'Pedidos Personalizados Hoje' : 'Pedidos p/ Hoje (Delivery)'}
+                                Pedidos Hoje + Amanhã
                             </h3>
                             <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-mono">
                                 {breakfastOrders.length}
@@ -623,17 +638,25 @@ export default function ReceptionDashboard() {
 
                         <div className="space-y-3 flex-1">
                             {breakfastOrders.length === 0 && (
-                                <p className="text-xs text-muted-foreground text-center py-4">Nenhum pedido de café da manhã hoje.</p>
+                                <p className="text-xs text-muted-foreground text-center py-4">Nenhum pedido de café da manhã.</p>
                             )}
-                            {breakfastOrders.map(order => (
+                            {breakfastOrders.map(order => {
+                                const today = new Date().toISOString().split('T')[0];
+                                const isToday = !order.deliveryDate || order.deliveryDate === today;
+                                return (
                                 <div key={order.id} className="bg-muted border border-border rounded-2xl p-3 flex flex-col gap-2">
                                     <div className="flex justify-between items-center">
                                         <span className="font-bold text-sm text-amber-100">
                                             {orderCabinNames[order.stayId!] ?? 'Cabana'}
                                         </span>
-                                        <span className="text-xs bg-muted px-2 py-0.5 rounded-full flex items-center gap-1 font-mono text-muted-foreground">
-                                            <Clock size={10} /> {order.deliveryTime ?? '—'}
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            {!isToday && (
+                                                <span className="text-[10px] uppercase font-bold bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-md">Amanhã</span>
+                                            )}
+                                            <span className="text-xs bg-muted px-2 py-0.5 rounded-full flex items-center gap-1 font-mono text-muted-foreground">
+                                                <Clock size={10} /> {order.deliveryTime ?? '—'}
+                                            </span>
+                                        </div>
                                     </div>
                                     <p className="text-xs text-muted-foreground italic">&quot;{formatOrderItems(order.items as any[])}&quot;</p>
                                     <div className="flex justify-end mt-1">
@@ -648,7 +671,8 @@ export default function ReceptionDashboard() {
                                         )}
                                     </div>
                                 </div>
-                            ))}
+                                );
+                            })}
 
                             {breakfastMode === 'buffet' && (
                                 <div className="mt-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex gap-3 text-amber-200">

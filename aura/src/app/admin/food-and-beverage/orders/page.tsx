@@ -4,30 +4,360 @@ import React, { useState, useEffect } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { fbService } from "@/services/fb-service";
 import { StayService } from "@/services/stay-service";
-import { FBOrder, Stay } from "@/types/aura";
-import { Loader2, RefreshCcw, Printer, Clock, CheckCircle2, Package, ChefHat, CalendarDays, X, FileText } from "lucide-react";
+import { FBOrder } from "@/types/aura";
+import {
+    Loader2, RefreshCcw, Printer, Clock, CheckCircle2,
+    Package, ChefHat, CalendarDays, X, FileText, Coffee
+} from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
+type StayInfo = { cabinName: string; guestName: string };
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function getRegularItems(order: FBOrder) {
+    return (order.items as any[]).filter(it => it.menuItemId !== 'guest_observations');
+}
+function getObservations(order: FBOrder) {
+    return (order.items as any[]).find(it => it.menuItemId === 'guest_observations') ?? null;
+}
+function groupByGuest(items: any[]): { guestGroups: Record<string, any[]>; groupItems: any[] } {
+    const guestGroups: Record<string, any[]> = {};
+    const groupItems: any[] = [];
+    items.forEach(it => {
+        if (it.guestName) {
+            guestGroups[it.guestName] = guestGroups[it.guestName] ?? [];
+            guestGroups[it.guestName].push(it);
+        } else {
+            groupItems.push(it);
+        }
+    });
+    return { guestGroups, groupItems };
+}
+
+// ─── Status badge ─────────────────────────────────────────────────────────────
+function StatusBadge({ status }: { status: string }) {
+    switch (status) {
+        case 'pending':   return <span className="bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5"><Clock size={12} /> Pendente</span>;
+        case 'preparing': return <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5"><ChefHat size={12} /> Preparando</span>;
+        case 'delivered': return <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5"><CheckCircle2 size={12} /> Entregue</span>;
+        case 'cancelled': return <span className="bg-red-500/10 text-red-400 border border-red-500/20 px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wider">Cancelado</span>;
+        default:          return <span className="bg-secondary text-muted-foreground px-2.5 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wider">{status}</span>;
+    }
+}
+
+// ─── Item line (tela) ─────────────────────────────────────────────────────────
+function ItemRow({ item }: { item: any }) {
+    return (
+        <div className="flex gap-3 items-start py-1.5 border-b border-border/30 last:border-0">
+            <span className="font-black text-primary bg-primary/10 min-w-[2rem] h-7 flex items-center justify-center rounded-lg text-sm shrink-0 px-1">
+                {item.quantity}×
+            </span>
+            <div className="flex-1 min-w-0">
+                <span className="font-bold text-sm text-foreground leading-snug block">{item.name}</span>
+                {item.flavor && <span className="text-xs text-amber-400/80 block">Sabor: {item.flavor}</span>}
+                {item.guestName && <span className="text-xs font-semibold text-primary/80 block">→ {item.guestName}</span>}
+                {!item.guestName && item.notes && item.notes !== item.name && (
+                    <span className="text-xs text-muted-foreground block">{item.notes}</span>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ─── Thermal ticket (JSX separado para usar no modal e na área de print) ──────
+function ThermalTicket({ order, cabinName, propertyName }: { order: FBOrder; cabinName: string; propertyName: string }) {
+    const regularItems = getRegularItems(order);
+    const obs = getObservations(order);
+    const { guestGroups, groupItems } = groupByGuest(regularItems);
+    const guestNames = Object.keys(guestGroups);
+
+    return (
+        <div className="font-mono text-black bg-white" style={{ width: '80mm', fontSize: '12px', lineHeight: '1.4' }}>
+            {/* Cabeçalho */}
+            <div className="text-center pb-3 mb-3" style={{ borderBottom: '2px dashed #000' }}>
+                <div style={{ fontWeight: 900, fontSize: '15px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    {propertyName}
+                </div>
+                <div style={{ fontWeight: 700, fontSize: '13px' }}>CAFÉ DA MANHÃ</div>
+                <div style={{ fontSize: '11px', marginTop: '2px' }}>
+                    Pedido #{order.id.substring(0, 6).toUpperCase()}
+                </div>
+                <div style={{ fontSize: '10px', color: '#444' }}>
+                    {new Date(order.createdAt || '').toLocaleString('pt-BR')}
+                </div>
+            </div>
+
+            {/* Cabana + Horário */}
+            <div className="text-center mb-3">
+                <div style={{
+                    fontWeight: 900, fontSize: '28px', border: '3px solid #000',
+                    display: 'inline-block', padding: '4px 12px', borderRadius: '8px',
+                    letterSpacing: '-0.02em', lineHeight: 1.1,
+                    wordBreak: 'break-word', maxWidth: '100%',
+                }}>
+                    {cabinName}
+                </div>
+                {order.deliveryTime && (
+                    <div style={{ fontWeight: 700, fontSize: '16px', marginTop: '6px' }}>
+                        Entrega: {order.deliveryTime}
+                    </div>
+                )}
+                {order.deliveryDate && (
+                    <div style={{ fontSize: '11px', color: '#555' }}>
+                        {new Date(order.deliveryDate + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' })}
+                    </div>
+                )}
+            </div>
+
+            {/* Itens */}
+            <div style={{ borderTop: '2px dashed #000', borderBottom: '2px dashed #000', padding: '8px 0', marginBottom: '8px' }}>
+                {/* Itens por hóspede */}
+                {guestNames.map(name => (
+                    <div key={name} style={{ marginBottom: '8px' }}>
+                        <div style={{ fontWeight: 900, fontSize: '11px', textTransform: 'uppercase', borderBottom: '1px solid #000', paddingBottom: '2px', marginBottom: '4px', letterSpacing: '0.08em' }}>
+                            ▸ {name}
+                        </div>
+                        <div style={{ paddingLeft: '8px' }}>
+                            {guestGroups[name].map((it: any, i: number) => (
+                                <div key={i} style={{ marginBottom: '3px' }}>
+                                    <div style={{ fontWeight: 700 }}>
+                                        <span style={{ background: '#000', color: '#fff', padding: '0 4px', borderRadius: '3px', marginRight: '4px', fontSize: '11px' }}>
+                                            {it.quantity}×
+                                        </span>
+                                        {it.name.toUpperCase()}
+                                    </div>
+                                    {it.flavor && (
+                                        <div style={{ paddingLeft: '24px', fontSize: '11px', color: '#333' }}>Sabor: {it.flavor}</div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ))}
+
+                {/* Itens de grupo */}
+                {groupItems.length > 0 && (
+                    <div style={{ borderTop: guestNames.length > 0 ? '1px dashed #000' : 'none', paddingTop: guestNames.length > 0 ? '6px' : 0 }}>
+                        {guestNames.length > 0 && (
+                            <div style={{ fontWeight: 900, fontSize: '11px', textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.08em' }}>
+                                PARA O GRUPO:
+                            </div>
+                        )}
+                        {groupItems.map((it: any, i: number) => (
+                            <div key={i} style={{ marginBottom: '3px' }}>
+                                <div style={{ fontWeight: 700 }}>
+                                    <span style={{ background: '#000', color: '#fff', padding: '0 4px', borderRadius: '3px', marginRight: '4px', fontSize: '11px' }}>
+                                        {it.quantity}×
+                                    </span>
+                                    {it.name.toUpperCase()}
+                                </div>
+                                {it.flavor && (
+                                    <div style={{ paddingLeft: '24px', fontSize: '11px', color: '#333' }}>Sabor: {it.flavor}</div>
+                                )}
+                                {it.notes && it.notes !== it.name && (
+                                    <div style={{ paddingLeft: '24px', fontSize: '11px', color: '#555' }}>{it.notes}</div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Observações */}
+            {obs && obs.notes && (
+                <div style={{ borderBottom: '2px dashed #000', paddingBottom: '6px', marginBottom: '6px' }}>
+                    <div style={{ fontWeight: 900, fontSize: '11px', textTransform: 'uppercase', marginBottom: '2px' }}>OBSERVAÇÕES:</div>
+                    <div style={{ fontSize: '11px', whiteSpace: 'pre-wrap' }}>{obs.notes}</div>
+                </div>
+            )}
+
+            {/* Total */}
+            <div className="text-center" style={{ fontWeight: 700, fontSize: '12px', marginBottom: '8px' }}>
+                TOTAL: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(order.totalPrice)}
+            </div>
+
+            {/* Rodapé */}
+            <div className="text-center" style={{ fontSize: '10px', color: '#666', borderTop: '1px dashed #ccc', paddingTop: '4px' }}>
+                ★ Bom Apetite ★
+            </div>
+        </div>
+    );
+}
+
+// ─── Modal de detalhe ─────────────────────────────────────────────────────────
+function OrderDetailModal({
+    order,
+    stayInfo,
+    propertyName,
+    onClose,
+    onStatusChange,
+}: {
+    order: FBOrder;
+    stayInfo: StayInfo | undefined;
+    propertyName: string;
+    onClose: () => void;
+    onStatusChange: (id: string, status: FBOrder['status']) => void;
+}) {
+    const cabinName = stayInfo?.cabinName || order.cabinName || 'N/A';
+    const guestName = stayInfo?.guestName || order.guestName || '—';
+    const regularItems = getRegularItems(order);
+    const obs = getObservations(order);
+    const { guestGroups, groupItems } = groupByGuest(regularItems);
+    const guestNames = Object.keys(guestGroups);
+    const [printing, setPrinting] = useState(false);
+
+    const handlePrint = () => {
+        setPrinting(true);
+        setTimeout(() => {
+            window.print();
+            setTimeout(() => setPrinting(false), 600);
+        }, 250);
+    };
+
+    return (
+        <>
+            {/* Área de impressão térmica — só aparece no print */}
+            <div className="hidden print:block">
+                <ThermalTicket order={order} cabinName={cabinName} propertyName={propertyName} />
+            </div>
+
+            {/* Modal overlay */}
+            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 print:hidden">
+                <div className="bg-card w-full sm:max-w-lg rounded-t-[32px] sm:rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[92dvh] animate-in slide-in-from-bottom-4 sm:zoom-in duration-200">
+
+                    {/* Header */}
+                    <div className="flex items-start justify-between p-5 pb-4 border-b border-border">
+                        <div>
+                            <div className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest mb-1 flex items-center gap-1.5">
+                                <Coffee size={12} />
+                                {order.type === 'breakfast' ? 'Café da Manhã' : 'Restaurante'} • {order.modality}
+                                {order.deliveryDate && (
+                                    <span className="ml-2 bg-blue-500/15 text-blue-400 px-1.5 py-0.5 rounded text-[10px]">
+                                        {new Date(order.deliveryDate + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                                    </span>
+                                )}
+                            </div>
+                            <h2 className="text-2xl font-black tracking-tight leading-none">{cabinName}</h2>
+                            <p className="text-sm text-muted-foreground mt-1">{guestName}</p>
+                        </div>
+                        <button onClick={onClose} className="p-2 hover:bg-secondary rounded-xl transition-colors text-muted-foreground hover:text-foreground">
+                            <X size={20} />
+                        </button>
+                    </div>
+
+                    {/* Status + Hora */}
+                    <div className="flex items-center justify-between px-5 py-3 bg-secondary/40 border-b border-border">
+                        <div className="flex items-center gap-2 font-mono font-bold">
+                            <Clock size={15} className="text-primary" />
+                            <span>{order.deliveryTime ?? 'Sem horário'}</span>
+                        </div>
+                        <StatusBadge status={order.status} />
+                    </div>
+
+                    {/* Itens */}
+                    <div className="overflow-y-auto flex-1 px-5 py-4 custom-scrollbar">
+                        {guestNames.length > 0 && guestNames.map(name => (
+                            <div key={name} className="mb-5">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-primary">▸ {name}</span>
+                                    <div className="flex-1 h-px bg-border" />
+                                </div>
+                                {guestGroups[name].map((it: any, i: number) => (
+                                    <ItemRow key={i} item={it} />
+                                ))}
+                            </div>
+                        ))}
+
+                        {groupItems.length > 0 && (
+                            <div className="mb-5">
+                                {guestNames.length > 0 && (
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Para o Grupo</span>
+                                        <div className="flex-1 h-px bg-border" />
+                                    </div>
+                                )}
+                                {groupItems.map((it: any, i: number) => (
+                                    <ItemRow key={i} item={it} />
+                                ))}
+                            </div>
+                        )}
+
+                        {obs && obs.notes && (
+                            <div className="mt-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-1">Observações</p>
+                                <p className="text-sm text-foreground whitespace-pre-wrap">{obs.notes}</p>
+                            </div>
+                        )}
+
+                        <div className="flex items-center justify-between mt-4 pt-3 border-t border-border">
+                            <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Total</span>
+                            <span className="font-black text-lg text-primary">
+                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(order.totalPrice)}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="p-4 border-t border-border bg-secondary/30 space-y-3">
+                        {/* Status buttons */}
+                        <div className="grid grid-cols-3 gap-2">
+                            <button
+                                onClick={() => onStatusChange(order.id, 'pending')}
+                                disabled={order.status === 'pending'}
+                                className="py-2.5 rounded-xl font-bold text-[11px] uppercase tracking-wider border border-yellow-500/30 text-yellow-600 hover:bg-yellow-500/10 disabled:opacity-30 transition-colors"
+                            >
+                                Pendente
+                            </button>
+                            <button
+                                onClick={() => onStatusChange(order.id, 'preparing')}
+                                disabled={order.status === 'preparing'}
+                                className="py-2.5 bg-blue-500/10 text-blue-400 rounded-xl font-bold text-[11px] uppercase tracking-wider border border-blue-500/30 hover:bg-blue-500/20 disabled:opacity-30 transition-colors"
+                            >
+                                Preparo
+                            </button>
+                            <button
+                                onClick={() => onStatusChange(order.id, 'delivered')}
+                                disabled={order.status === 'delivered'}
+                                className="py-2.5 bg-green-500/10 text-green-400 rounded-xl font-bold text-[11px] uppercase tracking-wider border border-green-500/30 hover:bg-green-500/20 disabled:opacity-30 transition-colors"
+                            >
+                                Pronto
+                            </button>
+                        </div>
+                        {/* Print button */}
+                        <button
+                            onClick={handlePrint}
+                            disabled={printing}
+                            className="w-full py-3 bg-primary text-primary-foreground rounded-xl font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-60 transition-all"
+                        >
+                            <Printer size={16} />
+                            {printing ? 'Abrindo impressão...' : 'Imprimir Comanda Térmica'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </>
+    );
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 export default function FBOrdersPage() {
     const { currentProperty } = useProperty();
     const [loading, setLoading] = useState(true);
     const [orders, setOrders] = useState<FBOrder[]>([]);
-    const [stays, setStays] = useState<{ [key: string]: { cabinName: string, guestName: string } }>({});
+    const [stays, setStays] = useState<{ [stayId: string]: StayInfo }>({});
 
-    // Filter controls
     const [dateFilter, setDateFilter] = useState<"yesterday" | "today" | "tomorrow">("today");
     const [typeFilter, setTypeFilter] = useState<"all" | "breakfast" | "restaurant">("all");
 
-    // Printing
-    const [printingOrder, setPrintingOrder] = useState<FBOrder | null>(null);
-    const [printMode, setPrintMode] = useState<'thermal' | 'a4' | null>(null);
+    const [selectedOrder, setSelectedOrder] = useState<FBOrder | null>(null);
+    const [printA4Mode, setPrintA4Mode] = useState(false);
 
     useEffect(() => {
         if (currentProperty) loadOrders();
     }, [currentProperty, dateFilter, typeFilter]);
 
-    // Simple Auto-Refresh (a cada 30 seg)
     useEffect(() => {
         const interval = setInterval(() => {
             if (currentProperty) loadOrders(false);
@@ -38,9 +368,7 @@ export default function FBOrdersPage() {
     async function loadOrders(showLoader = true) {
         if (!currentProperty) return;
         if (showLoader) setLoading(true);
-
         try {
-            // Calculate target date based on filter
             const targetDate = new Date();
             if (dateFilter === "yesterday") targetDate.setDate(targetDate.getDate() - 1);
             if (dateFilter === "tomorrow") targetDate.setDate(targetDate.getDate() + 1);
@@ -52,32 +380,24 @@ export default function FBOrdersPage() {
             const fetchedOrders = await fbService.getOrders(currentProperty.id, filters);
             setOrders(fetchedOrders);
 
-            // Fetch missing stay details (Cabin names, guest names)
             const newStays = { ...stays };
-            let hasNewStays = false;
-
+            let changed = false;
             for (const order of fetchedOrders) {
                 if (order.stayId && !newStays[order.stayId]) {
                     try {
-                        const stayInfo = await StayService.getStayWithGuestAndCabin(currentProperty.id, order.stayId);
-                        if (stayInfo) {
+                        const info = await StayService.getStayWithGuestAndCabin(currentProperty.id, order.stayId);
+                        if (info) {
                             newStays[order.stayId] = {
-                                cabinName: stayInfo.cabin?.name || "N/A",
-                                guestName: stayInfo.guest?.fullName || "Desconhecido",
+                                cabinName: info.cabin?.name || "N/A",
+                                guestName: info.guest?.fullName || "Desconhecido",
                             };
-                            hasNewStays = true;
+                            changed = true;
                         }
-                    } catch (e) {
-                        console.error("Error fetching stay", e);
-                    }
+                    } catch { /* ignore */ }
                 }
             }
-
-            if (hasNewStays) {
-                setStays(newStays);
-            }
-
-        } catch (error) {
+            if (changed) setStays(newStays);
+        } catch {
             toast.error("Erro ao carregar pedidos.");
         } finally {
             if (showLoader) setLoading(false);
@@ -89,72 +409,61 @@ export default function FBOrdersPage() {
             await fbService.updateOrderStatus(id, newStatus);
             toast.success("Status atualizado!");
             setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o));
-        } catch (error) {
+            // Atualiza também no modal se estiver aberto
+            setSelectedOrder(prev => prev?.id === id ? { ...prev, status: newStatus } : prev);
+        } catch {
             toast.error("Erro ao atualizar status.");
         }
     }
 
-    const handlePrint = (order: FBOrder) => {
-        setPrintMode('thermal');
-        setPrintingOrder(order);
-        setTimeout(() => {
-            window.print();
-            setTimeout(() => { setPrintingOrder(null); setPrintMode(null); }, 500);
-        }, 300);
-    };
-
     const handlePrintA4 = () => {
-        setPrintMode('a4');
+        setPrintA4Mode(true);
         setTimeout(() => {
             window.print();
-            setTimeout(() => setPrintMode(null), 500);
-        }, 300);
-    };
-
-    if (loading) return <div className="flex justify-center p-24"><Loader2 className="animate-spin text-primary" size={40} /></div>;
-
-    const StatusBadge = ({ status }: { status: string }) => {
-        switch (status) {
-            case 'pending': return <span className="bg-yellow-500/10 text-yellow-600 border border-yellow-500/20 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-widest flex items-center gap-1.5"><Clock size={14} /> Pendente</span>;
-            case 'preparing': return <span className="bg-blue-500/10 text-blue-500 border border-blue-500/20 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-widest flex items-center gap-1.5"><ChefHat size={14} /> Preparando</span>;
-            case 'delivered': return <span className="bg-green-500/10 text-green-500 border border-green-500/20 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-widest flex items-center gap-1.5"><CheckCircle2 size={14} /> Entregue</span>;
-            case 'cancelled': return <span className="bg-red-500/10 text-red-500 border border-red-500/20 px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-widest">Cancelado</span>;
-            default: return <span className="bg-secondary text-muted-foreground px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest">{status}</span>;
-        }
+            setTimeout(() => setPrintA4Mode(false), 600);
+        }, 250);
     };
 
     const targetDateObj = new Date();
     if (dateFilter === "yesterday") targetDateObj.setDate(targetDateObj.getDate() - 1);
     if (dateFilter === "tomorrow") targetDateObj.setDate(targetDateObj.getDate() + 1);
 
-    return (
-        <div className="space-y-4 md:space-y-8 p-4 md:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500 print:bg-white print:text-black print:p-0 print:space-y-0">
+    if (loading) return (
+        <div className="flex justify-center p-24">
+            <Loader2 className="animate-spin text-primary" size={40} />
+        </div>
+    );
 
-            {/* IMPRESSÃO A4 — lista de todos os pedidos filtrados */}
-            {printMode === 'a4' && (
+    return (
+        <div className="space-y-6 print:bg-white print:text-black print:p-0 print:space-y-0">
+
+            {/* ── IMPRESSÃO A4 ── */}
+            {printA4Mode && (
                 <div className="hidden print:block font-sans text-black p-8">
-                    <div className="flex justify-between items-start mb-6 pb-4 border-b-2 border-black">
+                    <div className="flex justify-between items-start mb-6 pb-4" style={{ borderBottom: '2px solid #000' }}>
                         <div>
-                            <h1 className="text-2xl font-black uppercase">{currentProperty?.name}</h1>
-                            <h2 className="text-lg font-bold">Lista de Pedidos de Café da Manhã</h2>
+                            <h1 style={{ fontSize: '20px', fontWeight: 900, textTransform: 'uppercase' }}>{currentProperty?.name}</h1>
+                            <h2 style={{ fontSize: '15px', fontWeight: 700 }}>Lista de Pedidos de Café da Manhã</h2>
                         </div>
-                        <div className="text-right text-sm">
-                            <p className="font-bold">{targetDateObj.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</p>
-                            <p className="text-gray-600">Impresso em {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                        <div style={{ textAlign: 'right', fontSize: '12px' }}>
+                            <div style={{ fontWeight: 700 }}>
+                                {targetDateObj.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+                            </div>
+                            <div style={{ color: '#555' }}>
+                                Impresso em {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            </div>
                         </div>
                     </div>
 
                     {orders.length === 0 ? (
-                        <p className="text-center text-gray-500 py-12">Nenhum pedido para esta data.</p>
+                        <p style={{ textAlign: 'center', color: '#888', padding: '40px 0' }}>Nenhum pedido para esta data.</p>
                     ) : (
-                        <table className="w-full text-sm border-collapse">
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                             <thead>
-                                <tr className="border-b-2 border-black">
-                                    <th className="text-left py-2 pr-4 font-black uppercase text-xs tracking-wider">Cabana</th>
-                                    <th className="text-left py-2 pr-4 font-black uppercase text-xs tracking-wider">Horário</th>
-                                    <th className="text-left py-2 pr-4 font-black uppercase text-xs tracking-wider w-1/2">Itens</th>
-                                    <th className="text-left py-2 pr-4 font-black uppercase text-xs tracking-wider">Observações</th>
-                                    <th className="text-left py-2 font-black uppercase text-xs tracking-wider">Status</th>
+                                <tr style={{ borderBottom: '2px solid #000' }}>
+                                    {['Cabana', 'Horário', 'Itens', 'Obs.', 'Status'].map(h => (
+                                        <th key={h} style={{ textAlign: 'left', padding: '6px 8px 6px 0', fontWeight: 900, textTransform: 'uppercase', fontSize: '10px', letterSpacing: '0.08em' }}>{h}</th>
+                                    ))}
                                 </tr>
                             </thead>
                             <tbody>
@@ -162,31 +471,43 @@ export default function FBOrdersPage() {
                                     .sort((a, b) => (a.deliveryTime ?? '').localeCompare(b.deliveryTime ?? ''))
                                     .map((order, idx) => {
                                         const stayData = order.stayId ? stays[order.stayId] : undefined;
-                                        const cabinName = stayData?.cabinName || order.cabinName || 'N/A';
-                                        const regularItems = (order.items as any[]).filter(it => it.menuItemId !== 'guest_observations');
-                                        const obs = (order.items as any[]).find(it => it.menuItemId === 'guest_observations');
-                                        const itemsText = regularItems.map(it => {
-                                            const parts = [`${it.quantity}x ${it.name}`];
-                                            if (it.flavor) parts.push(`(${it.flavor})`);
-                                            if (it.guestName) parts.push(`→ ${it.guestName}`);
-                                            return parts.join(' ');
-                                        }).join(', ');
-                                        const statusLabel: Record<string, string> = { pending: 'Pendente', preparing: 'Preparando', delivered: 'Entregue', cancelled: 'Cancelado', confirmed: 'Confirmado' };
+                                        const cabin = stayData?.cabinName || order.cabinName || 'N/A';
+                                        const regularItems = getRegularItems(order);
+                                        const obs = getObservations(order);
+                                        const { guestGroups, groupItems } = groupByGuest(regularItems);
+                                        const guestNames = Object.keys(guestGroups);
+                                        const statusLabels: Record<string, string> = { pending: 'Pendente', preparing: 'Preparando', delivered: 'Entregue', cancelled: 'Cancelado' };
                                         return (
-                                            <tr key={order.id} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'} style={{ borderBottom: '1px solid #ddd' }}>
-                                                <td className="py-2 pr-4 font-black text-base align-top">{cabinName}</td>
-                                                <td className="py-2 pr-4 font-mono font-bold align-top">{order.deliveryTime ?? '—'}</td>
-                                                <td className="py-2 pr-4 align-top leading-relaxed">{itemsText}</td>
-                                                <td className="py-2 pr-4 align-top text-xs text-gray-600">{obs?.notes ?? '—'}</td>
-                                                <td className="py-2 align-top font-bold text-xs uppercase">{statusLabel[order.status] ?? order.status}</td>
+                                            <tr key={order.id} style={{ background: idx % 2 === 0 ? '#f9f9f9' : '#fff', borderBottom: '1px solid #ddd', verticalAlign: 'top' }}>
+                                                <td style={{ padding: '8px 8px 8px 0', fontWeight: 900, fontSize: '13px' }}>{cabin}</td>
+                                                <td style={{ padding: '8px 8px 8px 0', fontFamily: 'monospace', fontWeight: 700, whiteSpace: 'nowrap' }}>{order.deliveryTime ?? '—'}</td>
+                                                <td style={{ padding: '8px 8px 8px 0' }}>
+                                                    {guestNames.map(name => (
+                                                        <div key={name} style={{ marginBottom: '4px' }}>
+                                                            <strong style={{ fontSize: '10px', textTransform: 'uppercase' }}>{name}:</strong>
+                                                            {guestGroups[name].map((it: any, i: number) => (
+                                                                <div key={i} style={{ paddingLeft: '8px' }}>
+                                                                    {it.quantity}× {it.name}{it.flavor ? ` (${it.flavor})` : ''}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ))}
+                                                    {groupItems.map((it: any, i: number) => (
+                                                        <div key={i}>{it.quantity}× {it.name}{it.flavor ? ` (${it.flavor})` : ''}</div>
+                                                    ))}
+                                                </td>
+                                                <td style={{ padding: '8px 8px 8px 0', fontSize: '11px', color: '#555', maxWidth: '120px' }}>{obs?.notes ?? '—'}</td>
+                                                <td style={{ padding: '8px 0', fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{statusLabels[order.status] ?? order.status}</td>
                                             </tr>
                                         );
                                     })}
                             </tbody>
                             <tfoot>
-                                <tr className="border-t-2 border-black">
-                                    <td colSpan={4} className="pt-3 text-sm font-bold">Total: {orders.length} pedido{orders.length !== 1 ? 's' : ''}</td>
-                                    <td className="pt-3 text-sm font-black">
+                                <tr style={{ borderTop: '2px solid #000' }}>
+                                    <td colSpan={3} style={{ paddingTop: '8px', fontWeight: 700, fontSize: '12px' }}>
+                                        Total: {orders.length} pedido{orders.length !== 1 ? 's' : ''}
+                                    </td>
+                                    <td colSpan={2} style={{ paddingTop: '8px', fontWeight: 900, fontSize: '12px', textAlign: 'right' }}>
                                         {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(orders.reduce((s, o) => s + o.totalPrice, 0))}
                                     </td>
                                 </tr>
@@ -196,228 +517,133 @@ export default function FBOrdersPage() {
                 </div>
             )}
 
-            {/* IMPRESSÃO TÉRMICA 80mm — ticket individual */}
-            {printMode === 'thermal' && printingOrder && (
-                <div className="hidden print:block w-[80mm] min-h-[50mm] p-2 font-mono text-black mx-auto overflow-hidden">
-                    <div className="text-center mb-4 border-b-2 border-dashed border-black pb-4">
-                        <h2 className="font-extrabold text-xl uppercase leading-tight">{currentProperty?.name}</h2>
-                        <h3 className="font-bold text-lg leading-tight">CAFE DA MANHA - TICKET</h3>
-                        <p className="text-sm">Pedido #{printingOrder.id.substring(0, 6).toUpperCase()}</p>
-                        <p className="text-sm mt-1">{new Date(printingOrder.createdAt || '').toLocaleString('pt-BR')}</p>
+            {/* ── TELA ── */}
+            <div className="print:hidden space-y-6">
+                {/* Filtros */}
+                <div className="flex flex-col lg:flex-row gap-3 justify-between bg-card border border-border p-3 rounded-3xl shadow-sm">
+                    <div className="flex bg-secondary p-1 rounded-2xl w-full lg:w-auto">
+                        {(['yesterday', 'today', 'tomorrow'] as const).map(d => (
+                            <button key={d} onClick={() => setDateFilter(d)}
+                                className={cn("flex-1 px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-xl transition-all",
+                                    dateFilter === d ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                                )}>
+                                {d === 'yesterday' ? 'Ontem' : d === 'today' ? 'Hoje' : 'Amanhã'}
+                            </button>
+                        ))}
                     </div>
-
-                    <div className="mb-4 text-center">
-                        <h1 className="text-4xl font-black border-4 border-black inline-block px-4 py-2 rounded-xl mb-2">
-                            {printingOrder.stayId ? stays[printingOrder.stayId]?.cabinName : "N/A"}
-                        </h1>
-                        {printingOrder.deliveryTime && (
-                            <div className="text-xl font-bold">Entrega: {printingOrder.deliveryTime}</div>
-                        )}
+                    <div className="flex items-center gap-2">
+                        <div className="flex bg-secondary p-1 rounded-2xl">
+                            {(['all', 'breakfast', 'restaurant'] as const).map(t => (
+                                <button key={t} onClick={() => setTypeFilter(t)}
+                                    className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-xl transition-all",
+                                        typeFilter === t ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                                    )}>
+                                    {t === 'all' ? 'Todos' : t === 'breakfast' ? 'Café' : 'Restaurante'}
+                                </button>
+                            ))}
+                        </div>
+                        <button onClick={handlePrintA4}
+                            className="p-2.5 text-muted-foreground hover:text-primary bg-secondary rounded-xl transition-colors shrink-0 flex items-center gap-1.5 px-3 text-xs font-bold uppercase tracking-widest"
+                            title="Imprimir lista A4">
+                            <FileText size={15} /> A4
+                        </button>
+                        <button onClick={() => loadOrders()} className="p-2.5 text-muted-foreground hover:text-primary bg-secondary rounded-xl transition-colors shrink-0" title="Atualizar">
+                            <RefreshCcw size={16} />
+                        </button>
                     </div>
+                </div>
 
-                    <div className="border-t-2 border-b-2 border-dashed border-black py-4 mb-4">
-                        {(() => {
-                            const regularItems = (printingOrder.items as any[]).filter(it => it.menuItemId !== 'guest_observations');
-                            const individualItems = regularItems.filter(it => it.guestName);
-                            const groupItems = regularItems.filter(it => !it.guestName);
+                {/* Título */}
+                <div className="flex items-center gap-3">
+                    <CalendarDays className="text-primary" size={22} />
+                    <h2 className="text-lg font-black uppercase tracking-tight">
+                        Pedidos para: {targetDateObj.toLocaleDateString("pt-BR")}
+                    </h2>
+                    <span className="text-sm text-muted-foreground font-mono">({orders.length})</span>
+                </div>
 
-                            // Agrupar itens individuais por nome do hóspede
-                            const guestGroups: Record<string, any[]> = {};
-                            individualItems.forEach(it => {
-                                if (!guestGroups[it.guestName]) guestGroups[it.guestName] = [];
-                                guestGroups[it.guestName].push(it);
-                            });
+                {/* Cards */}
+                {orders.length === 0 ? (
+                    <div className="text-center p-16 bg-card border border-border rounded-3xl border-dashed">
+                        <Package className="mx-auto h-12 w-12 text-muted-foreground opacity-40 mb-4" />
+                        <p className="text-lg font-bold">Nenhum pedido encontrado.</p>
+                        <p className="text-muted-foreground text-sm mt-1">Aguardando novos pedidos para esta data.</p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {orders.map(order => {
+                            const stayData = order.stayId ? stays[order.stayId] : undefined;
+                            const guestName = stayData?.guestName || order.guestName || '—';
+                            const cabinName = stayData?.cabinName || order.cabinName || 'N/A';
+                            const regularItems = getRegularItems(order);
+                            const obs = getObservations(order);
+                            const { guestGroups, groupItems } = groupByGuest(regularItems);
                             const guestNames = Object.keys(guestGroups);
 
                             return (
-                                <div className="space-y-3">
-                                    {/* Itens individuais agrupados por hóspede */}
-                                    {guestNames.map(name => (
-                                        <div key={name}>
-                                            <div className="font-extrabold text-sm uppercase border-b border-black pb-0.5 mb-1.5">
-                                                ▸ {name}
+                                <div
+                                    key={order.id}
+                                    onClick={() => setSelectedOrder(order)}
+                                    className={cn(
+                                        "bg-card border border-border rounded-2xl overflow-hidden flex flex-col cursor-pointer transition-all hover:border-primary/60 hover:shadow-lg hover:shadow-primary/5 active:scale-[0.99]",
+                                        order.status === 'delivered' ? 'opacity-55 hover:opacity-100' : ''
+                                    )}
+                                >
+                                    {/* Header do card */}
+                                    <div className="p-4 border-b border-border">
+                                        <div className="flex items-start justify-between gap-2 mb-2">
+                                            <div className="min-w-0">
+                                                <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest mb-1">
+                                                    {order.type === 'breakfast' ? 'Café da Manhã' : 'Restaurante'} • {order.modality}
+                                                </p>
+                                                <h3 className="text-xl font-black tracking-tight leading-none break-words">{cabinName}</h3>
+                                                <p className="text-xs text-muted-foreground mt-1 truncate">{guestName}</p>
                                             </div>
-                                            <div className="pl-2 space-y-1">
+                                            <div className="flex flex-col items-end gap-2 shrink-0">
+                                                <StatusBadge status={order.status} />
+                                                {order.deliveryTime && (
+                                                    <span className="flex items-center gap-1 font-mono font-bold text-sm text-foreground">
+                                                        <Clock size={13} className="text-primary" />{order.deliveryTime}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Itens */}
+                                    <div className="px-4 py-3 flex-1 space-y-0">
+                                        {guestNames.map(name => (
+                                            <div key={name} className="mb-2">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">▸ {name}</p>
                                                 {guestGroups[name].map((it: any, i: number) => (
-                                                    <div key={i} className="text-sm">
-                                                        <span className="font-bold">{it.quantity}X {it.name.toUpperCase()}</span>
-                                                        {it.flavor && <div className="pl-4 text-xs font-normal">Sabor: {it.flavor}</div>}
-                                                    </div>
+                                                    <ItemRow key={i} item={it} />
                                                 ))}
                                             </div>
-                                        </div>
-                                    ))}
-
-                                    {/* Itens de grupo */}
-                                    {groupItems.length > 0 && (
-                                        <div className={guestNames.length > 0 ? "pt-2 border-t border-dashed border-black" : ""}>
-                                            {guestNames.length > 0 && (
-                                                <div className="font-extrabold text-xs uppercase mb-1.5">PARA O GRUPO:</div>
-                                            )}
-                                            {groupItems.map((it: any, i: number) => (
-                                                <div key={i} className="text-sm font-bold space-y-0.5">
-                                                    <span>{it.quantity}X {it.name.toUpperCase()}</span>
-                                                    {it.notes && <div className="pl-4 text-xs font-normal">{it.notes}</div>}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })()}
-                    </div>
-
-                    {(() => {
-                        const obs = (printingOrder.items as any[]).find(it => it.menuItemId === 'guest_observations');
-                        return obs ? (
-                            <div className="border-b-2 border-dashed border-black pb-4 mb-4">
-                                <p className="font-extrabold text-sm uppercase mb-1">OBSERVAÇÕES:</p>
-                                <p className="text-sm whitespace-pre-wrap break-words">{obs.notes}</p>
-                            </div>
-                        ) : null;
-                    })()}
-
-                    <div className="text-center font-bold text-sm mb-4">
-                        TOTAL: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(printingOrder.totalPrice)}
-                    </div>
-                </div>
-            )}
-
-            {/* SCREEN VIEW (Oculto na impressão) */}
-            <div className="print:hidden space-y-8">
-                {/* Filtros e Controles */}
-                <div className="flex flex-col lg:flex-row gap-4 justify-between bg-card border border-border p-4 rounded-3xl shadow-sm">
-                    <div className="flex bg-secondary p-1 rounded-2xl w-full lg:w-auto">
-                        <button onClick={() => setDateFilter("yesterday")} className={cn("flex-1 px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-xl transition-all", dateFilter === 'yesterday' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>Ontem</button>
-                        <button onClick={() => setDateFilter("today")} className={cn("flex-1 px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-xl transition-all", dateFilter === 'today' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>Hoje</button>
-                        <button onClick={() => setDateFilter("tomorrow")} className={cn("flex-1 px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-xl transition-all", dateFilter === 'tomorrow' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>Amanhã</button>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                        <div className="flex bg-secondary p-1 rounded-2xl">
-                            <button onClick={() => setTypeFilter("all")} className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-xl transition-all", typeFilter === 'all' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>Todos</button>
-                            <button onClick={() => setTypeFilter("breakfast")} className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-xl transition-all", typeFilter === 'breakfast' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>Café</button>
-                            <button onClick={() => setTypeFilter("restaurant")} className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-xl transition-all", typeFilter === 'restaurant' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>Restaurante</button>
-                        </div>
-
-                        <button
-                            onClick={handlePrintA4}
-                            className="p-3 text-muted-foreground hover:text-primary bg-secondary rounded-xl transition-colors shrink-0 flex items-center gap-2 px-4 text-xs font-bold uppercase tracking-widest"
-                            title="Imprimir lista A4"
-                        >
-                            <FileText size={16} /> A4
-                        </button>
-
-                        <button onClick={() => loadOrders()} className="p-3 text-muted-foreground hover:text-primary bg-secondary rounded-xl transition-colors shrink-0" title="Atualizar">
-                            <RefreshCcw size={18} />
-                        </button>
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-3 px-4">
-                    <CalendarDays className="text-primary" size={24} />
-                    <h2 className="text-xl font-black uppercase tracking-tighter">Pedidos para: {targetDateObj.toLocaleDateString("pt-BR")}</h2>
-                </div>
-
-                {orders.length === 0 ? (
-                    <div className="text-center p-12 bg-card border border-border rounded-3xl border-dashed">
-                        <Package className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-4" />
-                        <p className="text-lg font-bold">Nenhum pedido encontrado.</p>
-                        <p className="text-muted-foreground text-sm">Aguardando novos pedidos para esta data.</p>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                        {orders.map(order => {
-                            const stayData = order.stayId ? stays[order.stayId] : undefined;
-                            const guestName = stayData?.guestName || "Desconhecido";
-                            const cabinName = stayData?.cabinName || "N/A";
-                            const itemsList = order.items as any[];
-
-                            return (
-                                <div key={order.id} className={cn("bg-card border border-border rounded-3xl shadow-sm overflow-hidden flex flex-col transition-all hover:border-primary/50 group",
-                                    order.status === 'delivered' ? 'opacity-60 grayscale hover:grayscale-0' : '')}
-                                >
-                                    {/* CABIN HEADER */}
-                                    <div className="bg-primary/5 p-5 border-b border-border flex justify-between items-start">
-                                        <div>
-                                            <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest mb-1">{order.type === 'breakfast' ? 'Café da Manhã' : 'Restaurante'} • {order.modality}</p>
-                                            <div className="flex items-center gap-2">
-                                                <h3 className="text-3xl font-black tracking-tighter text-foreground">{cabinName}</h3>
-                                            </div>
-                                            <p className="text-sm text-muted-foreground mt-1 font-medium">{guestName}</p>
-                                        </div>
-                                        <button onClick={() => handlePrint(order)} className="p-2 text-muted-foreground hover:text-primary hover:bg-secondary rounded-xl transition-colors" title="Imprimir Ticket">
-                                            <Printer size={18} />
-                                        </button>
-                                    </div>
-
-                                    {/* INFO (TIME & STATUS) */}
-                                    <div className="p-4 bg-secondary/30 border-b border-border flex items-center justify-between">
-                                        <div className="flex items-center gap-2 font-mono font-bold text-foreground">
-                                            {order.deliveryTime ? (
-                                                <span className="flex items-center gap-1.5"><Clock size={16} className="text-primary" /> {order.deliveryTime}</span>
-                                            ) : (
-                                                <span className="text-xs text-muted-foreground">S/ Hora</span>
-                                            )}
-                                        </div>
-                                        <StatusBadge status={order.status} />
-                                    </div>
-
-                                    {/* ITEMS LIST */}
-                                    <div className="p-5 flex-1 space-y-3 overflow-y-auto max-h-[250px] custom-scrollbar">
-                                        {itemsList.filter((item: any) => item.menuItemId !== 'guest_observations').map((item: any, idx: number) => (
-                                            <div key={idx} className="space-y-0.5">
-                                                <div className="flex gap-3">
-                                                    <span className="font-black text-primary bg-primary/10 w-7 h-7 flex items-center justify-center rounded-lg text-sm shrink-0">
-                                                        {item.quantity}x
-                                                    </span>
-                                                    <div className="flex-1 min-w-0">
-                                                        <span className="font-bold text-sm text-foreground leading-tight block">{item.name}</span>
-                                                        {item.flavor && <span className="text-xs text-muted-foreground block">Sabor: {item.flavor}</span>}
-                                                        {item.guestName && <span className="text-xs font-bold text-primary block">→ {item.guestName}</span>}
-                                                        {!item.guestName && item.notes && <span className="text-xs text-muted-foreground block">{item.notes}</span>}
-                                                    </div>
-                                                </div>
-                                            </div>
                                         ))}
-                                        {/* Observações gerais */}
-                                        {itemsList.find((item: any) => item.menuItemId === 'guest_observations') && (
-                                            <div className="mt-3 pt-3 border-t border-border/50">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Observações</p>
-                                                <p className="text-xs text-foreground whitespace-pre-wrap break-words">{itemsList.find((item: any) => item.menuItemId === 'guest_observations').notes}</p>
+                                        {groupItems.length > 0 && (
+                                            <div className={guestNames.length > 0 ? "pt-2 mt-2 border-t border-border/50" : ""}>
+                                                {guestNames.length > 0 && (
+                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Grupo</p>
+                                                )}
+                                                {groupItems.map((it: any, i: number) => (
+                                                    <ItemRow key={i} item={it} />
+                                                ))}
+                                            </div>
+                                        )}
+                                        {obs && obs.notes && (
+                                            <div className="mt-2 pt-2 border-t border-border/40">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-0.5">Obs.</p>
+                                                <p className="text-xs text-foreground/80 line-clamp-2">{obs.notes}</p>
                                             </div>
                                         )}
                                     </div>
 
-                                    {/* ACTIONS */}
-                                    <div className="p-4 border-t border-border bg-secondary/30 mt-auto flex flex-col gap-3">
-                                        <div className="flex justify-between items-center px-1">
-                                            <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Total</span>
-                                            <span className="font-black text-primary">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(order.totalPrice)}</span>
-                                        </div>
-                                        <div className="grid grid-cols-3 gap-2">
-                                            <button
-                                                onClick={() => updateStatus(order.id, 'pending')}
-                                                disabled={order.status === 'pending'}
-                                                className="px-2 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-wider disabled:opacity-30 hover:bg-yellow-500/10 hover:text-yellow-600 transition-colors"
-                                            >
-                                                Pendente
-                                            </button>
-                                            <button
-                                                onClick={() => updateStatus(order.id, 'preparing')}
-                                                disabled={order.status === 'preparing'}
-                                                className="px-2 py-2.5 bg-blue-500/10 text-blue-500 rounded-xl font-bold text-[10px] uppercase tracking-wider disabled:opacity-30 hover:bg-blue-500/20 transition-colors"
-                                            >
-                                                Preparo
-                                            </button>
-                                            <button
-                                                onClick={() => updateStatus(order.id, 'delivered')}
-                                                disabled={order.status === 'delivered'}
-                                                className="px-2 py-2.5 bg-green-500/10 text-green-500 rounded-xl font-bold text-[10px] uppercase tracking-wider disabled:opacity-30 hover:bg-green-500/20 transition-colors"
-                                            >
-                                                Pronto
-                                            </button>
-                                        </div>
+                                    {/* Footer */}
+                                    <div className="px-4 py-3 border-t border-border bg-secondary/20 flex items-center justify-between">
+                                        <span className="text-xs text-muted-foreground font-mono">#{order.id.substring(0, 6).toUpperCase()}</span>
+                                        <span className="font-black text-primary text-sm">
+                                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(order.totalPrice)}
+                                        </span>
                                     </div>
                                 </div>
                             );
@@ -426,16 +652,15 @@ export default function FBOrdersPage() {
                 )}
             </div>
 
-            {/* Modal Fullscreen Print Warning */}
-            {printMode !== null && (
-                <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center print:hidden p-4">
-                    <div className="bg-card w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl p-8 text-center animate-in zoom-in">
-                        {printMode === 'a4' ? <FileText size={48} className="mx-auto text-primary mb-4 animate-bounce" /> : <Printer size={48} className="mx-auto text-primary mb-4 animate-bounce" />}
-                        <h2 className="text-xl font-black mb-2">Preparando Impressão</h2>
-                        <p className="text-muted-foreground text-sm mb-6">O diálogo de impressão do navegador será aberto. Pressione ESC para cancelar se não abrir.</p>
-                        <button onClick={() => { setPrintingOrder(null); setPrintMode(null); }} className="px-6 py-3 w-full border border-border text-foreground hover:bg-secondary font-bold uppercase tracking-widest text-xs rounded-xl">Cancelar / Fechar</button>
-                    </div>
-                </div>
+            {/* ── Modal de detalhe ── */}
+            {selectedOrder && (
+                <OrderDetailModal
+                    order={selectedOrder}
+                    stayInfo={selectedOrder.stayId ? stays[selectedOrder.stayId] : undefined}
+                    propertyName={currentProperty?.name ?? ''}
+                    onClose={() => setSelectedOrder(null)}
+                    onStatusChange={updateStatus}
+                />
             )}
         </div>
     );
