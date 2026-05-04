@@ -21,7 +21,7 @@ const ROLE_TO_MOBILE_APP: Partial<Record<UserRole, string>> = {
 const ROLE_RANK: Record<UserRole, number> = {
   super_admin: 100,
   admin:       80,
-  hr:          60,
+  manager:     60,
   reception:   40,
   governance:  40,
   kitchen:     40,
