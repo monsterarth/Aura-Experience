@@ -85,6 +85,27 @@ function formatDatePT(dateStr: string): string {
 }
 
 // ==========================================
+// DOT STACK
+// ==========================================
+
+const MAX_STACK = 4;
+
+function DotStack({ count, color }: { count: number; color: string }) {
+  const dots = Math.min(count, MAX_STACK);
+  return (
+    <span className="relative flex items-center shrink-0" style={{ width: 6 + (dots - 1) * 4, height: 6 }}>
+      {Array.from({ length: dots }).map((_, i) => (
+        <span
+          key={i}
+          className={cn("absolute w-1.5 h-1.5 rounded-full border border-card/60", color)}
+          style={{ left: i * 4, zIndex: i }}
+        />
+      ))}
+    </span>
+  );
+}
+
+// ==========================================
 // MAIN COMPONENT
 // ==========================================
 
@@ -94,11 +115,15 @@ export default function CalendarioPage() {
 
   const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()));
   const [loading, setLoading] = useState(true);
+  const [hiddenLayers, setHiddenLayers] = useState<Set<string>>(new Set());
 
   const [events, setEvents] = useState<Event[]>([]);
   const [stays, setStays] = useState<StayEntry[]>([]);
   const [structureBookings, setStructureBookings] = useState<StructureBookingEntry[]>([]);
   const [birthdayRecords, setBirthdayRecords] = useState<BirthdayRecord[]>([]);
+
+  const toggleLayer = (key: string) =>
+    setHiddenLayers((prev) => { const s = new Set(prev); s.has(key) ? s.delete(key) : s.add(key); return s; });
 
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [totalCabins, setTotalCabins] = useState(0);
@@ -368,17 +393,36 @@ export default function CalendarioPage() {
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-400" /> Check-in</div>
-        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-orange-400" /> Check-out</div>
-        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-400" /> Hospedados</div>
-        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-primary" /> Evento local</div>
-        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-400" /> Evento externo</div>
-        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-400" /> Estrutura</div>
-        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-400" /> Aniversário (in-house)</div>
-        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-400/30" /> Aniversário (fora)</div>
-        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-indigo-400" /> Aniversário (equipe)</div>
+      {/* Legend — click to toggle layers */}
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        {([
+          { key: "checkin",   color: "bg-emerald-400", label: "Check-in" },
+          { key: "checkout",  color: "bg-orange-400",  label: "Check-out" },
+          { key: "inhouse",   color: "bg-blue-400",    label: "Hospedados" },
+          { key: "evlocal",   color: "bg-primary",     label: "Evento local" },
+          { key: "evext",     color: "bg-purple-400",  label: "Evento externo" },
+          { key: "structure", color: "bg-slate-400",   label: "Estrutura" },
+          { key: "bdInhouse", color: "bg-amber-400",   label: "Aniversário (in-house)" },
+          { key: "bdOut",     color: "bg-amber-400/30",label: "Aniversário (fora)" },
+          { key: "bdStaff",   color: "bg-indigo-400",  label: "Aniversário (equipe)" },
+        ] as const).map(({ key, color, label }) => {
+          const hidden = hiddenLayers.has(key);
+          return (
+            <button
+              key={key}
+              onClick={() => toggleLayer(key)}
+              className={cn(
+                "flex items-center gap-1.5 px-2 py-1 rounded-lg border transition-all select-none",
+                hidden
+                  ? "border-white/5 text-muted-foreground/30 opacity-50"
+                  : "border-white/10 text-muted-foreground hover:border-white/20",
+              )}
+            >
+              <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", color, hidden && "opacity-30")} />
+              {label}
+            </button>
+          );
+        })}
       </div>
 
       {loading ? (
@@ -458,25 +502,44 @@ export default function CalendarioPage() {
                             <span className="text-[8px] font-black uppercase bg-orange-500/20 text-orange-400 px-1 py-0.5 rounded-md w-full text-center shrink-0">{summary.checkOuts.length} Saídas</span>
                           )}
 
-                          <div className="flex flex-wrap gap-0.5 justify-start w-full content-start">
-                            {summary.checkIns.length < 5 && summary.checkIns.map((_, i) => (
-                              <span key={`ci-${i}`} className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                            ))}
-                            {summary.checkOuts.length < 5 && summary.checkOuts.map((_, i) => (
-                              <span key={`co-${i}`} className="w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" />
-                            ))}
-                            {summary.inHouse.slice(0, 3).map((_, i) => (
-                              <span key={`ih-${i}`} className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
-                            ))}
-                            {summary.events.slice(0, 3).map((e, i) => (
-                              <span key={`ev-${i}`} className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", e.type === "local" ? "bg-primary" : "bg-purple-400")} />
-                            ))}
-                            {summary.structureBookings.slice(0, 2).map((_, i) => (
-                              <span key={`sb-${i}`} className="w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0" />
-                            ))}
-                            {summary.birthdays.slice(0, 2).map((b, i) => (
-                              <span key={`bd-${i}`} className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", b.isStaff ? "bg-indigo-400" : b.isInHouse ? "bg-amber-400" : "bg-amber-400/30")} />
-                            ))}
+                          {/* Dot stacks — one cluster per category */}
+                          <div className="flex flex-wrap gap-1.5 w-full mt-0.5">
+                            {/* Check-ins */}
+                            {!hiddenLayers.has("checkin") && summary.checkIns.length > 0 && summary.checkIns.length < 5 && (
+                              <DotStack count={summary.checkIns.length} color="bg-emerald-400" />
+                            )}
+                            {/* Check-outs */}
+                            {!hiddenLayers.has("checkout") && summary.checkOuts.length > 0 && summary.checkOuts.length < 5 && (
+                              <DotStack count={summary.checkOuts.length} color="bg-orange-400" />
+                            )}
+                            {/* In-house */}
+                            {!hiddenLayers.has("inhouse") && summary.inHouse.length > 0 && (
+                              <DotStack count={summary.inHouse.length} color="bg-blue-400" />
+                            )}
+                            {/* Events local */}
+                            {!hiddenLayers.has("evlocal") && summary.events.filter(e => e.type === "local").length > 0 && (
+                              <DotStack count={summary.events.filter(e => e.type === "local").length} color="bg-primary" />
+                            )}
+                            {/* Events external */}
+                            {!hiddenLayers.has("evext") && summary.events.filter(e => e.type !== "local").length > 0 && (
+                              <DotStack count={summary.events.filter(e => e.type !== "local").length} color="bg-purple-400" />
+                            )}
+                            {/* Structures */}
+                            {!hiddenLayers.has("structure") && summary.structureBookings.length > 0 && (
+                              <DotStack count={summary.structureBookings.length} color="bg-slate-400" />
+                            )}
+                            {/* Birthdays in-house */}
+                            {!hiddenLayers.has("bdInhouse") && summary.birthdays.filter(b => b.isInHouse).length > 0 && (
+                              <DotStack count={summary.birthdays.filter(b => b.isInHouse).length} color="bg-amber-400" />
+                            )}
+                            {/* Birthdays out */}
+                            {!hiddenLayers.has("bdOut") && summary.birthdays.filter(b => !b.isInHouse && !b.isStaff).length > 0 && (
+                              <DotStack count={summary.birthdays.filter(b => !b.isInHouse && !b.isStaff).length} color="bg-amber-400/40" />
+                            )}
+                            {/* Birthdays staff */}
+                            {!hiddenLayers.has("bdStaff") && summary.birthdays.filter(b => b.isStaff).length > 0 && (
+                              <DotStack count={summary.birthdays.filter(b => b.isStaff).length} color="bg-indigo-400" />
+                            )}
                           </div>
                         </div>
                       )}
