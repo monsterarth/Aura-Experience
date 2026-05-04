@@ -99,7 +99,7 @@ function DotStack({ count, color, textColor }: { count: number; color: string; t
   const showCount = count > 4;
   const w = 6 + (dots - 1) * 6;
   return (
-    <span className="relative inline-flex shrink-0" style={{ width: w, height: 6 }}>
+    <span className="relative inline-flex shrink-0 mr-[6px] last:mr-0" style={{ width: w, height: 6 }}>
       {Array.from({ length: dots }).map((_, i) => (
         <span
           key={i}
@@ -109,7 +109,7 @@ function DotStack({ count, color, textColor }: { count: number; color: string; t
       ))}
       {showCount && (
         <span
-          className={cn("absolute inset-0 flex items-center justify-center text-[6px] font-black leading-none drop-shadow-[0_0_2px_rgba(0,0,0,0.9)]", textColor)}
+          className={cn("absolute inset-0 flex items-center justify-center text-[6px] font-black leading-none opacity-0 group-hover:opacity-100 transition-opacity", textColor, "drop-shadow-[0_0_3px_rgba(0,0,0,1)] [text-shadow:0_0_4px_rgba(0,0,0,1)]")}
           style={{ zIndex: dots + 1 }}
         >
           {count}
@@ -495,7 +495,7 @@ export default function CalendarioPage() {
                       key={day}
                       onClick={() => setSelectedDay(isSelected ? null : dateStr)}
                       className={cn(
-                        "min-h-[80px] border-b border-r border-white/5 p-1.5 flex flex-col items-center text-left transition-all relative",
+                        "group min-h-[80px] border-b border-r border-white/5 p-1.5 flex flex-col items-center text-left transition-all relative",
                         isSelected ? "bg-primary/10 border-primary/20" : hasItems ? "hover:bg-secondary/50" : "hover:bg-secondary/20",
                       )}
                     >
@@ -517,7 +517,7 @@ export default function CalendarioPage() {
                           )}
 
                           {/* Dot stacks — one cluster per category */}
-                          <div className="flex flex-wrap gap-1.5 w-full mt-0.5">
+                          <div className="flex flex-wrap gap-0 w-full mt-0.5">
                             {!hiddenLayers.has("checkin") && !isLotado && summary.checkIns.length > 0 && summary.checkIns.length < 5 && (
                               <DotStack count={summary.checkIns.length} color="bg-emerald-400" textColor="text-emerald-400" />
                             )}
