@@ -177,9 +177,10 @@ const NAV_GROUPS: NavGroup[] = [
     id: "operacoes",
     label: "Operações",
     items: [
-      { id: "manutencao", label: "Manutenção", icon: Wrench,   href: "/admin/maintenance/kanban", roles: ["super_admin","admin","maintenance","manager"] },
-      { id: "governanca", label: "Governança", icon: Sparkles, href: "/admin/governance/kanban",  roles: ["super_admin","admin","governance","manager"] },
-      { id: "concierge",  label: "Concierge",  icon: Gift,     href: "/admin/concierge",          roles: ["super_admin","admin","reception","manager"] },
+      { id: "manutencao",  label: "Manutenção",  icon: Wrench,       href: "/admin/maintenance/kanban",          roles: ["super_admin","admin","maintenance","manager"] },
+      { id: "governanca",  label: "Governança",  icon: Sparkles,     href: "/admin/governance/kanban",           roles: ["super_admin","admin","governance","manager"] },
+      { id: "concierge",   label: "Concierge",   icon: Gift,         href: "/admin/concierge",                   roles: ["super_admin","admin","reception","manager"] },
+      { id: "pedidos_fb",  label: "Pedidos F&B", icon: Coffee,       href: "/admin/food-and-beverage/orders",    roles: ["super_admin","admin","reception","kitchen"] },
     ],
   },
   {

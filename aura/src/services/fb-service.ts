@@ -46,6 +46,11 @@ const mapOrder = (dbObj: any): FBOrder => ({
     totalPrice: dbObj.total_price,
     deliveryTime: dbObj.delivery_time,
     deliveryDate: dbObj.delivery_date,
+    requestedBy: dbObj.requested_by,
+    guestName: dbObj.guest_name,
+    cabinName: dbObj.cabin_name,
+    tableId: dbObj.table_id,
+    attendanceId: dbObj.attendance_id,
     createdAt: dbObj.created_at,
     updatedAt: dbObj.updated_at,
 });
@@ -328,10 +333,13 @@ export const fbService = {
             .from('fb_orders')
             .select('*')
             .eq('property_id', propertyId)
+            .order('delivery_date', { ascending: true, nullsFirst: false })
+            .order('delivery_time', { ascending: true, nullsFirst: false })
             .order('created_at', { ascending: false });
 
         if (filters?.date) {
-            query = query.eq('delivery_date', filters.date);
+            // Match by delivery_date OR (delivery_date is null AND created_at falls on that date)
+            query = query.or(`delivery_date.eq.${filters.date},and(delivery_date.is.null,created_at.gte.${filters.date}T00:00:00,created_at.lte.${filters.date}T23:59:59)`);
         }
         if (filters?.type) {
             query = query.eq('type', filters.type);

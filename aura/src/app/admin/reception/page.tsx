@@ -1,11 +1,13 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
     Users, LogIn, LogOut, Clock, Calendar,
     Coffee, MessageCircleWarning, AlertTriangle,
     Sparkles, CheckCircle2, Timer, BellRing,
-    Home, Utensils, Info, Check, X, Megaphone, CheckCircle, Star
+    Home, Utensils, Info, Check, X, Megaphone, CheckCircle, Star,
+    ExternalLink
 } from "lucide-react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -24,6 +26,7 @@ import { toast } from "sonner";
 export default function ReceptionDashboard() {
     const { userData } = useAuth();
     const { currentProperty: property, loading: propLoading } = useProperty();
+    const router = useRouter();
 
     const [currentTime, setCurrentTime] = useState(new Date());
     const [breakfastMode, setBreakfastMode] = useState<"buffet" | "delivery">("delivery");
@@ -610,7 +613,9 @@ export default function ReceptionDashboard() {
                         )}
 
                         <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold text-foreground/80">Pedidos p/ Hoje (Delivery)</h3>
+                            <h3 className="text-sm font-semibold text-foreground/80">
+                                {breakfastMode === 'buffet' ? 'Pedidos Personalizados Hoje' : 'Pedidos p/ Hoje (Delivery)'}
+                            </h3>
                             <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-mono">
                                 {breakfastOrders.length}
                             </span>
@@ -655,9 +660,12 @@ export default function ReceptionDashboard() {
                             )}
                         </div>
 
-                        <button className="w-full mt-4 py-3 bg-muted hover:bg-muted/80 text-xs font-bold uppercase tracking-widest rounded-xl border border-border transition-colors flex items-center justify-center gap-2">
-                            <Utensils size={14} />
-                            Gerenciar Cardápio F&B
+                        <button
+                            onClick={() => router.push('/admin/food-and-beverage/orders')}
+                            className="w-full mt-4 py-3 bg-muted hover:bg-muted/80 text-xs font-bold uppercase tracking-widest rounded-xl border border-border transition-colors flex items-center justify-center gap-2"
+                        >
+                            <ExternalLink size={14} />
+                            Ver todos / Imprimir pedidos
                         </button>
                     </div>
                 </div>

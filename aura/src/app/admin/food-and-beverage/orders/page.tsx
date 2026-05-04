@@ -5,7 +5,7 @@ import { useProperty } from "@/context/PropertyContext";
 import { fbService } from "@/services/fb-service";
 import { StayService } from "@/services/stay-service";
 import { FBOrder, Stay } from "@/types/aura";
-import { Loader2, RefreshCcw, Printer, Clock, CheckCircle2, Package, ChefHat, CalendarDays, X } from "lucide-react";
+import { Loader2, RefreshCcw, Printer, Clock, CheckCircle2, Package, ChefHat, CalendarDays, X, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -19,8 +19,9 @@ export default function FBOrdersPage() {
     const [dateFilter, setDateFilter] = useState<"yesterday" | "today" | "tomorrow">("today");
     const [typeFilter, setTypeFilter] = useState<"all" | "breakfast" | "restaurant">("all");
 
-    // Printing Modal
+    // Printing
     const [printingOrder, setPrintingOrder] = useState<FBOrder | null>(null);
+    const [printMode, setPrintMode] = useState<'thermal' | 'a4' | null>(null);
 
     useEffect(() => {
         if (currentProperty) loadOrders();
@@ -93,11 +94,20 @@ export default function FBOrdersPage() {
         }
     }
 
-    // Handlers para impressão térmica simulada
     const handlePrint = (order: FBOrder) => {
+        setPrintMode('thermal');
         setPrintingOrder(order);
         setTimeout(() => {
             window.print();
+            setTimeout(() => { setPrintingOrder(null); setPrintMode(null); }, 500);
+        }, 300);
+    };
+
+    const handlePrintA4 = () => {
+        setPrintMode('a4');
+        setTimeout(() => {
+            window.print();
+            setTimeout(() => setPrintMode(null), 500);
         }, 300);
     };
 
@@ -119,8 +129,75 @@ export default function FBOrdersPage() {
 
     return (
         <div className="space-y-4 md:space-y-8 p-4 md:p-8 animate-in fade-in slide-in-from-bottom-4 duration-500 print:bg-white print:text-black print:p-0 print:space-y-0">
-            {/* INVISIBLE PRINT AREA - Só aparece na hora de dar Ctrl+P graças às classes Tailwind print: */}
-            {printingOrder && (
+
+            {/* IMPRESSÃO A4 — lista de todos os pedidos filtrados */}
+            {printMode === 'a4' && (
+                <div className="hidden print:block font-sans text-black p-8">
+                    <div className="flex justify-between items-start mb-6 pb-4 border-b-2 border-black">
+                        <div>
+                            <h1 className="text-2xl font-black uppercase">{currentProperty?.name}</h1>
+                            <h2 className="text-lg font-bold">Lista de Pedidos de Café da Manhã</h2>
+                        </div>
+                        <div className="text-right text-sm">
+                            <p className="font-bold">{targetDateObj.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</p>
+                            <p className="text-gray-600">Impresso em {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                        </div>
+                    </div>
+
+                    {orders.length === 0 ? (
+                        <p className="text-center text-gray-500 py-12">Nenhum pedido para esta data.</p>
+                    ) : (
+                        <table className="w-full text-sm border-collapse">
+                            <thead>
+                                <tr className="border-b-2 border-black">
+                                    <th className="text-left py-2 pr-4 font-black uppercase text-xs tracking-wider">Cabana</th>
+                                    <th className="text-left py-2 pr-4 font-black uppercase text-xs tracking-wider">Horário</th>
+                                    <th className="text-left py-2 pr-4 font-black uppercase text-xs tracking-wider w-1/2">Itens</th>
+                                    <th className="text-left py-2 pr-4 font-black uppercase text-xs tracking-wider">Observações</th>
+                                    <th className="text-left py-2 font-black uppercase text-xs tracking-wider">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {[...orders]
+                                    .sort((a, b) => (a.deliveryTime ?? '').localeCompare(b.deliveryTime ?? ''))
+                                    .map((order, idx) => {
+                                        const stayData = order.stayId ? stays[order.stayId] : undefined;
+                                        const cabinName = stayData?.cabinName || order.cabinName || 'N/A';
+                                        const regularItems = (order.items as any[]).filter(it => it.menuItemId !== 'guest_observations');
+                                        const obs = (order.items as any[]).find(it => it.menuItemId === 'guest_observations');
+                                        const itemsText = regularItems.map(it => {
+                                            const parts = [`${it.quantity}x ${it.name}`];
+                                            if (it.flavor) parts.push(`(${it.flavor})`);
+                                            if (it.guestName) parts.push(`→ ${it.guestName}`);
+                                            return parts.join(' ');
+                                        }).join(', ');
+                                        const statusLabel: Record<string, string> = { pending: 'Pendente', preparing: 'Preparando', delivered: 'Entregue', cancelled: 'Cancelado', confirmed: 'Confirmado' };
+                                        return (
+                                            <tr key={order.id} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'} style={{ borderBottom: '1px solid #ddd' }}>
+                                                <td className="py-2 pr-4 font-black text-base align-top">{cabinName}</td>
+                                                <td className="py-2 pr-4 font-mono font-bold align-top">{order.deliveryTime ?? '—'}</td>
+                                                <td className="py-2 pr-4 align-top leading-relaxed">{itemsText}</td>
+                                                <td className="py-2 pr-4 align-top text-xs text-gray-600">{obs?.notes ?? '—'}</td>
+                                                <td className="py-2 align-top font-bold text-xs uppercase">{statusLabel[order.status] ?? order.status}</td>
+                                            </tr>
+                                        );
+                                    })}
+                            </tbody>
+                            <tfoot>
+                                <tr className="border-t-2 border-black">
+                                    <td colSpan={4} className="pt-3 text-sm font-bold">Total: {orders.length} pedido{orders.length !== 1 ? 's' : ''}</td>
+                                    <td className="pt-3 text-sm font-black">
+                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(orders.reduce((s, o) => s + o.totalPrice, 0))}
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    )}
+                </div>
+            )}
+
+            {/* IMPRESSÃO TÉRMICA 80mm — ticket individual */}
+            {printMode === 'thermal' && printingOrder && (
                 <div className="hidden print:block w-[80mm] min-h-[50mm] p-2 font-mono text-black mx-auto overflow-hidden">
                     <div className="text-center mb-4 border-b-2 border-dashed border-black pb-4">
                         <h2 className="font-extrabold text-xl uppercase leading-tight">{currentProperty?.name}</h2>
@@ -222,6 +299,14 @@ export default function FBOrdersPage() {
                             <button onClick={() => setTypeFilter("breakfast")} className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-xl transition-all", typeFilter === 'breakfast' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>Café</button>
                             <button onClick={() => setTypeFilter("restaurant")} className={cn("px-4 py-2 text-xs font-bold uppercase tracking-widest rounded-xl transition-all", typeFilter === 'restaurant' ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>Restaurante</button>
                         </div>
+
+                        <button
+                            onClick={handlePrintA4}
+                            className="p-3 text-muted-foreground hover:text-primary bg-secondary rounded-xl transition-colors shrink-0 flex items-center gap-2 px-4 text-xs font-bold uppercase tracking-widest"
+                            title="Imprimir lista A4"
+                        >
+                            <FileText size={16} /> A4
+                        </button>
 
                         <button onClick={() => loadOrders()} className="p-3 text-muted-foreground hover:text-primary bg-secondary rounded-xl transition-colors shrink-0" title="Atualizar">
                             <RefreshCcw size={18} />
@@ -342,13 +427,13 @@ export default function FBOrdersPage() {
             </div>
 
             {/* Modal Fullscreen Print Warning */}
-            {printingOrder && (
+            {printMode !== null && (
                 <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center print:hidden p-4">
                     <div className="bg-card w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl p-8 text-center animate-in zoom-in">
-                        <Printer size={48} className="mx-auto text-primary mb-4 animate-bounce" />
+                        {printMode === 'a4' ? <FileText size={48} className="mx-auto text-primary mb-4 animate-bounce" /> : <Printer size={48} className="mx-auto text-primary mb-4 animate-bounce" />}
                         <h2 className="text-xl font-black mb-2">Preparando Impressão</h2>
                         <p className="text-muted-foreground text-sm mb-6">O diálogo de impressão do navegador será aberto. Pressione ESC para cancelar se não abrir.</p>
-                        <button onClick={() => setPrintingOrder(null)} className="px-6 py-3 w-full border border-border text-foreground hover:bg-secondary font-bold uppercase tracking-widest text-xs rounded-xl">Cancelar / Fechar</button>
+                        <button onClick={() => { setPrintingOrder(null); setPrintMode(null); }} className="px-6 py-3 w-full border border-border text-foreground hover:bg-secondary font-bold uppercase tracking-widest text-xs rounded-xl">Cancelar / Fechar</button>
                     </div>
                 </div>
             )}
