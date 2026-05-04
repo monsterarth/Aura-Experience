@@ -88,17 +88,21 @@ function formatDatePT(dateStr: string): string {
 // DOT STACK
 // ==========================================
 
-const MAX_STACK = 4;
+function dotCount(n: number) {
+  if (n <= 4) return n;
+  if (n <= 6) return 4;
+  return 4 + Math.ceil((n - 6) / 3);
+}
 
 function DotStack({ count, color }: { count: number; color: string }) {
-  const dots = Math.min(count, MAX_STACK);
+  const dots = dotCount(count);
   return (
-    <span className="relative flex items-center shrink-0" style={{ width: 6 + (dots - 1) * 4, height: 6 }}>
+    <span className="relative flex items-center shrink-0" style={{ width: 6 + (dots - 1) * 6, height: 6 }}>
       {Array.from({ length: dots }).map((_, i) => (
         <span
           key={i}
-          className={cn("absolute w-1.5 h-1.5 rounded-full border border-card/60", color)}
-          style={{ left: i * 4, zIndex: i }}
+          className={cn("absolute w-1.5 h-1.5 rounded-full", color)}
+          style={{ left: i * 6, zIndex: i }}
         />
       ))}
     </span>
