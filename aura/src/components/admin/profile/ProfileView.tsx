@@ -39,6 +39,22 @@ function daysSince(dateStr?: string): number | null {
   return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
 }
 
+function formatTenure(dateStr?: string): string {
+  if (!dateStr) return "";
+  const start = new Date(dateStr + "T00:00:00");
+  const now = new Date();
+  let years = now.getFullYear() - start.getFullYear();
+  let months = now.getMonth() - start.getMonth();
+  let days = now.getDate() - start.getDate();
+  if (days < 0) { months--; days += new Date(now.getFullYear(), now.getMonth(), 0).getDate(); }
+  if (months < 0) { years--; months += 12; }
+  const parts: string[] = [];
+  if (years > 0) parts.push(`${years} ${years === 1 ? "ano" : "anos"}`);
+  if (months > 0) parts.push(`${months} ${months === 1 ? "mês" : "meses"}`);
+  if (days > 0 || parts.length === 0) parts.push(`${days} ${days === 1 ? "dia" : "dias"}`);
+  return parts.join(", ");
+}
+
 function formatDate(dateStr?: string): string {
   if (!dateStr) return "—";
   return new Date(dateStr + "T00:00:00").toLocaleDateString("pt-BR", {
@@ -276,10 +292,10 @@ export function ProfileView({ staffId, isOwnProfile }: Props) {
                 <span className={`text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-0.5 rounded-full ${roleMeta.badgeCls}`}>
                   {roleMeta.label}
                 </span>
-                {days !== null && (
+                {staff.hireDate && (
                   <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                     <Calendar size={11} />
-                    Aqui há {days} {days === 1 ? "dia" : "dias"}
+                    Aqui há {formatTenure(staff.hireDate)}
                   </span>
                 )}
               </div>

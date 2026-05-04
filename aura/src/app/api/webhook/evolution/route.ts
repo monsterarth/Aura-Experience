@@ -46,6 +46,10 @@ async function resolvePropertyId(instance: string): Promise<string | null> {
   return match?.id ?? null;
 }
 
+export async function GET() {
+  return NextResponse.json({ status: "ok" });
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -154,6 +158,7 @@ export async function POST(req: Request) {
         mediaUrl: mediaUrl || null,
         direction,
         isAutomated: false,
+        isReadByAdmin: direction === "inbound" ? false : true,
         status: direction === "inbound" ? "delivered" : "sent",
         createdAt: isoNow,
         attempts: 0,
