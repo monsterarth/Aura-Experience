@@ -378,6 +378,7 @@ export default function CalendarioPage() {
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-400" /> Estrutura</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-400" /> Aniversário (in-house)</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-400/30" /> Aniversário (fora)</div>
+        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-indigo-400" /> Aniversário (equipe)</div>
       </div>
 
       {loading ? (
@@ -474,7 +475,7 @@ export default function CalendarioPage() {
                               <span key={`sb-${i}`} className="w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0" />
                             ))}
                             {summary.birthdays.slice(0, 2).map((b, i) => (
-                              <span key={`bd-${i}`} className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", b.isInHouse ? "bg-amber-400" : "bg-amber-400/30")} />
+                              <span key={`bd-${i}`} className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", b.isStaff ? "bg-indigo-400" : b.isInHouse ? "bg-amber-400" : "bg-amber-400/30")} />
                             ))}
                           </div>
                         </div>
@@ -618,24 +619,39 @@ export default function CalendarioPage() {
                     </div>
                   )}
 
-                  {/* Birthdays — not in-house (guests + staff) */}
-                  {selectedDaySummary.birthdays.some((b) => !b.isInHouse) && (
+                  {/* Birthdays — staff */}
+                  {selectedDaySummary.birthdays.some((b) => b.isStaff) && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Gift size={12} className="text-indigo-400" />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">
+                          Equipe ({selectedDaySummary.birthdays.filter((b) => b.isStaff).length})
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        {selectedDaySummary.birthdays.filter((b) => b.isStaff).map((b, i) => (
+                          <div key={i} className="p-2.5 bg-indigo-500/5 border border-indigo-500/10 rounded-xl">
+                            <p className="text-sm font-bold text-indigo-300">{b.guestName}</p>
+                            {b.age !== undefined && <p className="text-[10px] text-indigo-400/60">{b.age} anos</p>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Birthdays — guests not in-house */}
+                  {selectedDaySummary.birthdays.some((b) => !b.isInHouse && !b.isStaff) && (
                     <div>
                       <div className="flex items-center gap-2 mb-2">
                         <Gift size={12} className="text-amber-400/40" />
                         <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
-                          Outros aniversários ({selectedDaySummary.birthdays.filter((b) => !b.isInHouse).length})
+                          Aniversários · Fora ({selectedDaySummary.birthdays.filter((b) => !b.isInHouse && !b.isStaff).length})
                         </span>
                       </div>
                       <div className="space-y-2">
-                        {selectedDaySummary.birthdays.filter((b) => !b.isInHouse).map((b, i) => (
+                        {selectedDaySummary.birthdays.filter((b) => !b.isInHouse && !b.isStaff).map((b, i) => (
                           <div key={i} className="p-2 bg-muted/20 border border-white/5 rounded-xl">
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="text-sm text-muted-foreground">{b.guestName}</p>
-                              <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/50 shrink-0">
-                                {b.isStaff ? "Funcionário" : "Fora"}
-                              </span>
-                            </div>
+                            <p className="text-sm text-muted-foreground">{b.guestName}</p>
                             {b.age !== undefined && <p className="text-[10px] text-muted-foreground/50">{b.age} anos</p>}
                           </div>
                         ))}
