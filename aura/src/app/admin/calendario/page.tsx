@@ -8,7 +8,7 @@ import { Event } from "@/types/aura";
 import { supabase } from "@/lib/supabase";
 import { format, addMonths, subMonths, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Loader2, ChevronLeft, ChevronRight, X, Ticket, CalendarDays, LogIn, LogOut as LogOutIcon, Gift } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, X, Ticket, CalendarDays, LogIn, LogOut as LogOutIcon, Gift, BedDouble } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ==========================================
@@ -36,12 +36,16 @@ interface StructureBookingEntry {
 interface BirthdayEntry {
   guestName: string;
   age?: number;
+  isInHouse: boolean;
+  isStaff?: boolean;
 }
 
 interface BirthdayRecord {
   dateStr: string;
   guestName: string;
   age?: number;
+  isInHouse: boolean;
+  isStaff?: boolean;
 }
 
 interface DaySummary {
@@ -202,7 +206,15 @@ export default function CalendarioPage() {
       const currentMonthNum = currentMonth.getMonth() + 1;
       const birthdayList: BirthdayRecord[] = [];
 
-      const addBirthdays = (people: any[], nameOverride?: (p: any) => string) => {
+      // Build a map guestId → [{checkIn, checkOut}] to detect in-house status
+      const stayGuestMap: Record<string, { checkIn: string; checkOut: string }[]> = {};
+      for (const s of rawStays) {
+        if (!s.guestId) continue;
+        if (!stayGuestMap[s.guestId]) stayGuestMap[s.guestId] = [];
+        stayGuestMap[s.guestId].push({ checkIn: toLocalDateStr(s.checkIn), checkOut: toLocalDateStr(s.checkOut) });
+      }
+
+      const addBirthdays = (people: any[], isStaff = false, nameOverride?: (p: any) => string) => {
         for (const p of people) {
           if (!p.birthDate) continue;
           const parts = p.birthDate.split("-");
@@ -213,16 +225,21 @@ export default function CalendarioPage() {
           if (bMonth !== currentMonthNum) continue;
           const dateStr = `${currentYear}-${String(bMonth).padStart(2, "0")}-${String(bDay).padStart(2, "0")}`;
           const age = currentYear - bYear;
+          const isInHouse = !isStaff && (stayGuestMap[p.id] || []).some(
+            (s) => s.checkIn <= dateStr && dateStr <= s.checkOut
+          );
           birthdayList.push({
             dateStr,
             guestName: nameOverride ? nameOverride(p) : (guestNamesMap[p.id] || p.fullName || "Hóspede"),
             age: age > 0 && age < 150 ? age : undefined,
+            isInHouse,
+            isStaff,
           });
         }
       };
 
       addBirthdays((guestBdayResult.data || []) as any[]);
-      addBirthdays((staffBdayResult.data || []) as any[], (p) => p.fullName || "Funcionário");
+      addBirthdays((staffBdayResult.data || []) as any[], true, (p) => p.fullName || "Funcionário");
 
       setBirthdayRecords(birthdayList);
 
@@ -302,7 +319,7 @@ export default function CalendarioPage() {
 
     birthdayRecords.forEach((b) => {
       ensure(b.dateStr);
-      map[b.dateStr].birthdays.push({ guestName: b.guestName, age: b.age });
+      map[b.dateStr].birthdays.push({ guestName: b.guestName, age: b.age, isInHouse: b.isInHouse, isStaff: b.isStaff });
     });
 
     return map;
@@ -355,11 +372,12 @@ export default function CalendarioPage() {
       <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-400" /> Check-in</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-orange-400" /> Check-out</div>
-        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-400" /> Hospedado</div>
+        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-400" /> Hospedados</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-primary" /> Evento local</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-purple-400" /> Evento externo</div>
         <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-400" /> Estrutura</div>
-        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-400" /> Aniversário</div>
+        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-400" /> Aniversário (in-house)</div>
+        <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-400/30" /> Aniversário (fora)</div>
       </div>
 
       {loading ? (
@@ -455,8 +473,8 @@ export default function CalendarioPage() {
                             {summary.structureBookings.slice(0, 2).map((_, i) => (
                               <span key={`sb-${i}`} className="w-1.5 h-1.5 rounded-full bg-slate-400 flex-shrink-0" />
                             ))}
-                            {summary.birthdays.slice(0, 2).map((_, i) => (
-                              <span key={`bd-${i}`} className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+                            {summary.birthdays.slice(0, 2).map((b, i) => (
+                              <span key={`bd-${i}`} className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", b.isInHouse ? "bg-amber-400" : "bg-amber-400/30")} />
                             ))}
                           </div>
                         </div>
@@ -524,7 +542,7 @@ export default function CalendarioPage() {
                   {selectedDaySummary.inHouse.length > 0 && (
                     <div>
                       <div className="flex items-center gap-2 mb-2">
-                        <LogIn size={12} className="text-blue-400" />
+                        <BedDouble size={12} className="text-blue-400" />
                         <span className="text-[10px] font-black uppercase tracking-widest text-blue-400">Hospedados ({selectedDaySummary.inHouse.length})</span>
                       </div>
                       <div className="space-y-2">
@@ -580,18 +598,45 @@ export default function CalendarioPage() {
                     </div>
                   )}
 
-                  {/* Birthdays */}
-                  {selectedDaySummary.birthdays.length > 0 && (
+                  {/* Birthdays — in-house */}
+                  {selectedDaySummary.birthdays.some((b) => b.isInHouse) && (
                     <div>
                       <div className="flex items-center gap-2 mb-2">
                         <Gift size={12} className="text-amber-400" />
-                        <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">Aniversários ({selectedDaySummary.birthdays.length})</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">
+                          Aniversários · In-house ({selectedDaySummary.birthdays.filter((b) => b.isInHouse).length})
+                        </span>
                       </div>
                       <div className="space-y-2">
-                        {selectedDaySummary.birthdays.map((b, i) => (
+                        {selectedDaySummary.birthdays.filter((b) => b.isInHouse).map((b, i) => (
                           <div key={i} className="p-2.5 bg-amber-500/5 border border-amber-500/10 rounded-xl">
                             <p className="text-sm font-bold">{b.guestName}</p>
                             {b.age !== undefined && <p className="text-[10px] text-muted-foreground">{b.age} anos</p>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Birthdays — not in-house (guests + staff) */}
+                  {selectedDaySummary.birthdays.some((b) => !b.isInHouse) && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Gift size={12} className="text-amber-400/40" />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
+                          Outros aniversários ({selectedDaySummary.birthdays.filter((b) => !b.isInHouse).length})
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        {selectedDaySummary.birthdays.filter((b) => !b.isInHouse).map((b, i) => (
+                          <div key={i} className="p-2 bg-muted/20 border border-white/5 rounded-xl">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm text-muted-foreground">{b.guestName}</p>
+                              <span className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/50 shrink-0">
+                                {b.isStaff ? "Funcionário" : "Fora"}
+                              </span>
+                            </div>
+                            {b.age !== undefined && <p className="text-[10px] text-muted-foreground/50">{b.age} anos</p>}
                           </div>
                         ))}
                       </div>
