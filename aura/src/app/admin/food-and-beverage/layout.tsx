@@ -9,9 +9,9 @@ import { useAuth } from "@/context/AuthContext";
 
 export default function FandBLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
-    const { userRole } = useAuth();
+    const { userData } = useAuth();
 
-    const canSeeMenu = ["super_admin", "admin", "kitchen"].includes(userRole ?? "");
+    const canSeeMenu = ["super_admin", "admin", "kitchen"].includes(userData?.role ?? "");
 
     const tabs = [
         { name: "Pedidos", href: "/admin/food-and-beverage/orders", icon: ListOrdered },
