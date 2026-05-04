@@ -94,26 +94,55 @@ function dotCount(n: number) {
   return 4 + Math.ceil((n - 6) / 3);
 }
 
-function DotStack({ count, color, textColor }: { count: number; color: string; textColor: string }) {
-  const dots = dotCount(count);
-  const showCount = count > 4;
-  const w = 6 + (dots - 1) * 6;
+interface DotGroup { count: number; color: string; textColor: string; }
+
+function DotRow({ groups }: { groups: DotGroup[] }) {
+  // Build a flat list of dots with their absolute x position
+  const allDots: { color: string; x: number; groupIdx: number }[] = [];
+  let x = 0;
+  groups.forEach((g, gi) => {
+    const dots = dotCount(g.count);
+    for (let i = 0; i < dots; i++) {
+      allDots.push({ color: g.color, x, groupIdx: gi });
+      x += 6;
+    }
+  });
+  const totalW = x;
+
+  // For hover count labels, track start x and width per group
+  const groupMeta: { startX: number; width: number; group: DotGroup }[] = [];
+  let cx = 0;
+  groups.forEach((g) => {
+    const dots = dotCount(g.count);
+    const w = dots * 6;
+    groupMeta.push({ startX: cx, width: w, group: g });
+    cx += w;
+  });
+
   return (
-    <span className="relative inline-flex shrink-0 mr-[6px] last:mr-0" style={{ width: w, height: 6 }}>
-      {Array.from({ length: dots }).map((_, i) => (
+    <span className="relative inline-flex shrink-0" style={{ width: totalW, height: 6 }}>
+      {allDots.map((d, i) => (
         <span
           key={i}
-          className={cn("absolute w-1.5 h-1.5 rounded-full", color)}
-          style={{ left: i * 6, top: 0, zIndex: i }}
+          className={cn("absolute w-1.5 h-1.5 rounded-full", d.color)}
+          style={{ left: d.x, top: 0 }}
         />
       ))}
-      {showCount && (
-        <span
-          className={cn("absolute inset-0 flex items-center justify-center text-[6px] font-black leading-none opacity-0 group-hover:opacity-100 transition-opacity", textColor, "drop-shadow-[0_0_3px_rgba(0,0,0,1)] [text-shadow:0_0_4px_rgba(0,0,0,1)]")}
-          style={{ zIndex: dots + 1 }}
-        >
-          {count}
-        </span>
+      {groupMeta.map(({ startX, width, group }, gi) =>
+        group.count > 4 ? (
+          <span
+            key={`label-${gi}`}
+            className={cn(
+              "absolute flex items-center justify-center text-[6px] font-black leading-none",
+              "opacity-0 group-hover:opacity-100 transition-opacity",
+              group.textColor,
+              "[text-shadow:-1px_-1px_0_#000,1px_-1px_0_#000,-1px_1px_0_#000,1px_1px_0_#000]",
+            )}
+            style={{ left: startX, width, top: 0, height: 6 }}
+          >
+            {group.count}
+          </span>
+        ) : null
       )}
     </span>
   );
@@ -496,7 +525,7 @@ export default function CalendarioPage() {
                       onClick={() => setSelectedDay(isSelected ? null : dateStr)}
                       className={cn(
                         "group min-h-[80px] border-b border-r border-white/5 p-1.5 flex flex-col items-center text-left transition-all relative",
-                        isSelected ? "bg-primary/10 border-primary/20" : hasItems ? "hover:bg-secondary/50" : "hover:bg-secondary/20",
+                        isSelected ? "bg-primary/20 ring-1 ring-inset ring-primary/40" : hasItems ? "hover:bg-secondary/50" : "hover:bg-secondary/20",
                       )}
                     >
                       <span className={cn(
@@ -516,36 +545,21 @@ export default function CalendarioPage() {
                             <span className="text-[8px] font-black uppercase bg-orange-500/20 text-orange-400 px-1 py-0.5 rounded-md w-full text-center shrink-0">{summary.checkOuts.length} Saídas</span>
                           )}
 
-                          {/* Dot stacks — one cluster per category */}
-                          <div className="flex flex-wrap gap-0 w-full mt-0.5">
-                            {!hiddenLayers.has("checkin") && !isLotado && summary.checkIns.length > 0 && summary.checkIns.length < 5 && (
-                              <DotStack count={summary.checkIns.length} color="bg-emerald-400" textColor="text-emerald-400" />
-                            )}
-                            {!hiddenLayers.has("checkout") && summary.checkOuts.length > 0 && summary.checkOuts.length < 5 && (
-                              <DotStack count={summary.checkOuts.length} color="bg-orange-400" textColor="text-orange-400" />
-                            )}
-                            {!hiddenLayers.has("inhouse") && !isLotado && summary.inHouse.length > 0 && (
-                              <DotStack count={summary.inHouse.length} color="bg-blue-400" textColor="text-blue-400" />
-                            )}
-                            {!hiddenLayers.has("evlocal") && summary.events.filter(e => e.type === "local").length > 0 && (
-                              <DotStack count={summary.events.filter(e => e.type === "local").length} color="bg-primary" textColor="text-primary" />
-                            )}
-                            {!hiddenLayers.has("evext") && summary.events.filter(e => e.type !== "local").length > 0 && (
-                              <DotStack count={summary.events.filter(e => e.type !== "local").length} color="bg-purple-400" textColor="text-purple-400" />
-                            )}
-                            {!hiddenLayers.has("structure") && summary.structureBookings.length > 0 && (
-                              <DotStack count={summary.structureBookings.length} color="bg-slate-400" textColor="text-slate-400" />
-                            )}
-                            {!hiddenLayers.has("bdInhouse") && summary.birthdays.filter(b => b.isInHouse).length > 0 && (
-                              <DotStack count={summary.birthdays.filter(b => b.isInHouse).length} color="bg-amber-400" textColor="text-amber-400" />
-                            )}
-                            {!hiddenLayers.has("bdOut") && summary.birthdays.filter(b => !b.isInHouse && !b.isStaff).length > 0 && (
-                              <DotStack count={summary.birthdays.filter(b => !b.isInHouse && !b.isStaff).length} color="bg-amber-400/40" textColor="text-amber-400/60" />
-                            )}
-                            {!hiddenLayers.has("bdStaff") && summary.birthdays.filter(b => b.isStaff).length > 0 && (
-                              <DotStack count={summary.birthdays.filter(b => b.isStaff).length} color="bg-indigo-400" textColor="text-indigo-400" />
-                            )}
-                          </div>
+                          {/* Dot row — all categories in one continuous strip */}
+                          {(() => {
+                            const groups: DotGroup[] = [];
+                            const add = (count: number, color: string, textColor: string) => { if (count > 0) groups.push({ count, color, textColor }); };
+                            if (!hiddenLayers.has("checkin") && !isLotado) add(summary.checkIns.length < 5 ? summary.checkIns.length : 0, "bg-emerald-400", "text-emerald-400");
+                            if (!hiddenLayers.has("checkout")) add(summary.checkOuts.length < 5 ? summary.checkOuts.length : 0, "bg-orange-400", "text-orange-400");
+                            if (!hiddenLayers.has("inhouse") && !isLotado) add(summary.inHouse.length, "bg-blue-400", "text-blue-400");
+                            if (!hiddenLayers.has("evlocal")) add(summary.events.filter(e => e.type === "local").length, "bg-primary", "text-primary");
+                            if (!hiddenLayers.has("evext")) add(summary.events.filter(e => e.type !== "local").length, "bg-purple-400", "text-purple-400");
+                            if (!hiddenLayers.has("structure")) add(summary.structureBookings.length, "bg-slate-400", "text-slate-400");
+                            if (!hiddenLayers.has("bdInhouse")) add(summary.birthdays.filter(b => b.isInHouse).length, "bg-amber-400", "text-amber-400");
+                            if (!hiddenLayers.has("bdOut")) add(summary.birthdays.filter(b => !b.isInHouse && !b.isStaff).length, "bg-amber-400/40", "text-amber-400/60");
+                            if (!hiddenLayers.has("bdStaff")) add(summary.birthdays.filter(b => b.isStaff).length, "bg-indigo-400", "text-indigo-400");
+                            return groups.length > 0 ? <DotRow groups={groups} /> : null;
+                          })()}
                         </div>
                       )}
                     </button>
