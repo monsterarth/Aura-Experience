@@ -133,7 +133,7 @@ function ThermalTicket({
     const obs = getObservations(order);
 
     return (
-        <div className="font-mono text-black bg-white" style={{ width: '80mm', fontSize: '12px', lineHeight: '1.4' }}>
+        <div className="font-mono text-black bg-white" style={{ width: '100%', fontSize: '12px', lineHeight: '1.4', padding: '4mm' }}>
             {/* Cabeçalho */}
             <div className="text-center pb-3 mb-3" style={{ borderBottom: '2px dashed #000' }}>
                 <div style={{ fontWeight: 900, fontSize: '15px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -258,7 +258,7 @@ function OrderDetailModal({
     return (
         <>
             {/* Área de impressão térmica — só aparece no print */}
-            <div className="hidden print:block">
+            <div className="hidden print:block" style={{ width: '100%' }}>
                 <ThermalTicket order={order} cabinName={cabinName} propertyName={propertyName} groups={groups} />
             </div>
 
