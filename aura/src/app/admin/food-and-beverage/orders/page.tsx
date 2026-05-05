@@ -300,11 +300,7 @@ function OrderDetailModal({
     const changeQty = (idx: number, delta: number) => {
         setEditItems(prev => prev.map((it, i) => {
             if (i !== idx) return it;
-            const newQty = Math.max(0, it.quantity + delta);
-            return { ...it, quantity: newQty };
-        }).filter((_, i, arr) => {
-            // Remove item only after the decrement button is pressed and reaches 0
-            return arr[i].quantity > 0;
+            return { ...it, quantity: Math.max(0, it.quantity + delta) };
         }));
     };
 
@@ -485,36 +481,45 @@ function OrderDetailModal({
                     {editing ? (
                         /* ── MODO EDIÇÃO ── */
                         <div className="space-y-5">
-                            {/* Seção 1: itens já no pedido (preserva guestName por linha) */}
-                            {editItems.length > 0 && (
-                                <div>
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Pedido atual</p>
-                                    <div className="space-y-1">
-                                        {editItems.map((it, idx) => (
-                                            <div key={idx} className="flex items-center gap-3 py-1.5 border-b border-border/20 last:border-0">
-                                                <div className="flex items-center gap-1 shrink-0">
-                                                    <button onClick={() => changeQty(idx, -1)}
-                                                        className="w-7 h-7 rounded-lg bg-secondary hover:bg-red-500/20 hover:text-red-400 flex items-center justify-center text-muted-foreground transition-colors">
-                                                        <Minus size={13} />
-                                                    </button>
-                                                    <span className="font-black text-primary bg-primary/10 min-w-[2rem] h-7 flex items-center justify-center rounded-lg text-sm px-1">
-                                                        {it.quantity}×
-                                                    </span>
-                                                    <button onClick={() => changeQty(idx, 1)}
-                                                        className="w-7 h-7 rounded-lg bg-secondary hover:bg-green-500/20 hover:text-green-400 flex items-center justify-center text-muted-foreground transition-colors">
-                                                        <Plus size={13} />
-                                                    </button>
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <span className="font-bold text-sm block leading-snug">{it.name}</span>
-                                                    {it.flavor && <span className="text-xs text-amber-400/80 block">Sabor: {it.flavor}</span>}
-                                                    {it.guestName && <span className="text-xs text-primary/70 block">→ {it.guestName}</span>}
+                            {/* Seção 1: itens já no pedido, agrupados por categoria */}
+                            {editItems.length > 0 && (() => {
+                                // Indexar cada item com seu idx original antes de agrupar
+                                const indexed = editItems.map((it, idx) => ({ ...it, _idx: idx }));
+                                const editGroups = groupByCategory(indexed, categories, menuItems);
+                                return (
+                                    <div className="space-y-4">
+                                        {editGroups.map(({ label, items: groupItems }) => (
+                                            <div key={label}>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">{label}</p>
+                                                <div className="space-y-1">
+                                                    {groupItems.map((it: any) => (
+                                                        <div key={it._idx} className="flex items-center gap-3 py-1.5 border-b border-border/20 last:border-0">
+                                                            <div className="flex items-center gap-1 shrink-0">
+                                                                <button onClick={() => changeQty(it._idx, -1)}
+                                                                    className="w-7 h-7 rounded-lg bg-secondary hover:bg-red-500/20 hover:text-red-400 flex items-center justify-center text-muted-foreground transition-colors">
+                                                                    <Minus size={13} />
+                                                                </button>
+                                                                <span className="font-black text-primary bg-primary/10 min-w-[2rem] h-7 flex items-center justify-center rounded-lg text-sm px-1">
+                                                                    {it.quantity}×
+                                                                </span>
+                                                                <button onClick={() => changeQty(it._idx, 1)}
+                                                                    className="w-7 h-7 rounded-lg bg-secondary hover:bg-green-500/20 hover:text-green-400 flex items-center justify-center text-muted-foreground transition-colors">
+                                                                    <Plus size={13} />
+                                                                </button>
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <span className="font-bold text-sm block leading-snug">{it.name}</span>
+                                                                {it.flavor && <span className="text-xs text-amber-400/80 block">Sabor: {it.flavor}</span>}
+                                                                {it.guestName && <span className="text-xs text-primary/70 block">→ {it.guestName}</span>}
+                                                            </div>
+                                                        </div>
+                                                    ))}
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
-                                </div>
-                            )}
+                                );
+                            })()}
 
                             {/* Seção 2: catálogo para adicionar novos itens */}
                             {(() => {
