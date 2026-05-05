@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { propertyId, stayId, modality, items, totalPrice, deliveryTime, deliveryDate, tableId, attendanceId } = body;
+        const { propertyId, stayId, modality, items, totalPrice, deliveryTime, deliveryDate, tableId, attendanceId, skipWindowCheck } = body;
 
         if (!propertyId || !stayId || !modality || !items || !deliveryDate) {
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -95,8 +95,8 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Invalid stay or property" }, { status: 403 });
         }
 
-        // Enforce order time window for breakfast deliveries
-        if (modality === 'delivery') {
+        // Enforce order time window for breakfast deliveries (bypass when called from admin)
+        if (modality === 'delivery' && !skipWindowCheck) {
             const { data: prop } = await supabaseAdmin
                 .from('properties')
                 .select('settings')

@@ -337,6 +337,7 @@ function OrderDetailModal({
                         totalPrice,
                         deliveryTime: editTime || undefined,
                         deliveryDate: tomorrowISO,
+                        skipWindowCheck: true,
                     }),
                 });
                 if (!res.ok) throw new Error('Erro ao criar');
