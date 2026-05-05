@@ -269,7 +269,8 @@ function OrderDetailModal({
 
     // Estado de edição: cópia mutável dos itens (sem guest_observations)
     const [editItems, setEditItems] = useState<any[]>([]);
-    const [expandedFlavors, setExpandedFlavors] = useState<string | null>(null); // menuItemId com seletor de sabor aberto
+    // Item sendo adicionado: guarda o menuItem + seleção em andamento
+    const [pendingAdd, setPendingAdd] = useState<{ mi: FBMenuItem; flavor: string; guestName: string } | null>(null);
     const [editObs, setEditObs] = useState('');
     const [editTime, setEditTime] = useState(order.deliveryTime ?? '');
 
@@ -282,7 +283,10 @@ function OrderDetailModal({
     };
 
     const enterDuplicate = () => {
-        setEditItems(getRegularItems(order).map(it => ({ ...it })));
+        const regularItems = getRegularItems(order);
+        console.log('[enterDuplicate] order.items raw:', order.items);
+        console.log('[enterDuplicate] regularItems:', regularItems);
+        setEditItems(regularItems.map(it => ({ ...it })));
         setEditObs(obs?.notes ?? '');
         setEditTime(order.deliveryTime ?? '');
         setDuplicating(true);
@@ -531,76 +535,98 @@ function OrderDetailModal({
                                 return (
                                     <div>
                                         <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Adicionar item</p>
+
+                                        {/* Painel de confirmação do item sendo adicionado */}
+                                        {pendingAdd && (
+                                            <div className="mb-3 p-3 bg-primary/5 border border-primary/20 rounded-xl space-y-2">
+                                                <p className="text-xs font-bold text-foreground">{pendingAdd.mi.name}</p>
+
+                                                {pendingAdd.mi.flavors && pendingAdd.mi.flavors.length > 0 && (
+                                                    <div>
+                                                        <p className="text-[10px] text-muted-foreground mb-1">Sabor</p>
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            {pendingAdd.mi.flavors.map(f => (
+                                                                <button key={f.name}
+                                                                    onClick={() => setPendingAdd(p => p ? { ...p, flavor: f.name } : p)}
+                                                                    className={cn("px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors",
+                                                                        pendingAdd.flavor === f.name
+                                                                            ? "bg-primary text-primary-foreground border-primary"
+                                                                            : "bg-secondary border-border text-muted-foreground hover:text-foreground"
+                                                                    )}>
+                                                                    {f.name}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                <div>
+                                                    <p className="text-[10px] text-muted-foreground mb-1">Hóspede (opcional)</p>
+                                                    <input
+                                                        type="text"
+                                                        value={pendingAdd.guestName}
+                                                        onChange={e => setPendingAdd(p => p ? { ...p, guestName: e.target.value } : p)}
+                                                        placeholder="ex: Hóspede 1"
+                                                        className="w-full bg-secondary border border-border rounded-lg px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary"
+                                                    />
+                                                </div>
+
+                                                <div className="flex gap-2 pt-1">
+                                                    <button onClick={() => setPendingAdd(null)}
+                                                        className="flex-1 py-1.5 rounded-lg text-xs font-bold border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                                                        Cancelar
+                                                    </button>
+                                                    <button
+                                                        disabled={pendingAdd.mi.flavors && pendingAdd.mi.flavors.length > 0 && !pendingAdd.flavor}
+                                                        onClick={() => {
+                                                            const mi = pendingAdd.mi;
+                                                            setEditItems(prev => [...prev, {
+                                                                menuItemId: mi.id,
+                                                                name: mi.name,
+                                                                quantity: 1,
+                                                                unitPrice: mi.price ?? 0,
+                                                                totalPrice: mi.price ?? 0,
+                                                                flavor: pendingAdd.flavor || undefined,
+                                                                guestName: pendingAdd.guestName.trim() || undefined,
+                                                            }]);
+                                                            setPendingAdd(null);
+                                                        }}
+                                                        className="flex-1 py-1.5 rounded-lg text-xs font-bold bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-40 transition-all">
+                                                        Adicionar
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+
                                         <div className="space-y-4">
                                             {allGroups.map(({ label, items }) => (
                                                 <div key={label}>
                                                     <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-1">{label}</p>
                                                     <div className="space-y-1">
-                                                        {items.map(mi => {
-                                                            const hasFlavors = mi.flavors && mi.flavors.length > 0;
-                                                            const isExpanded = expandedFlavors === mi.id;
-                                                            return (
-                                                                <div key={mi.id} className="border-b border-border/15 last:border-0">
-                                                                    <div className="flex items-center gap-3 py-1">
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                if (hasFlavors) {
-                                                                                    setExpandedFlavors(isExpanded ? null : mi.id);
-                                                                                } else {
-                                                                                    setEditItems(prev => [...prev, {
-                                                                                        menuItemId: mi.id,
-                                                                                        name: mi.name,
-                                                                                        quantity: 1,
-                                                                                        unitPrice: mi.price ?? 0,
-                                                                                        totalPrice: mi.price ?? 0,
-                                                                                    }]);
-                                                                                }
-                                                                            }}
-                                                                            className={cn(
-                                                                                "w-7 h-7 rounded-lg flex items-center justify-center transition-colors shrink-0",
-                                                                                isExpanded
-                                                                                    ? "bg-primary/20 text-primary"
-                                                                                    : "bg-secondary hover:bg-green-500/20 hover:text-green-400 text-muted-foreground"
-                                                                            )}
-                                                                        >
-                                                                            <Plus size={13} />
-                                                                        </button>
-                                                                        <span className="flex-1 text-sm text-muted-foreground">{mi.name}</span>
-                                                                        {hasFlavors && (
-                                                                            <span className="text-[10px] text-muted-foreground/50 shrink-0">escolher sabor</span>
-                                                                        )}
-                                                                        {mi.price != null && mi.price > 0 && (
-                                                                            <span className="text-xs text-muted-foreground/60 font-mono shrink-0">
-                                                                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(mi.price)}
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                    {isExpanded && hasFlavors && (
-                                                                        <div className="ml-10 mb-2 flex flex-wrap gap-1.5">
-                                                                            {mi.flavors!.map(f => (
-                                                                                <button
-                                                                                    key={f.name}
-                                                                                    onClick={() => {
-                                                                                        setEditItems(prev => [...prev, {
-                                                                                            menuItemId: mi.id,
-                                                                                            name: mi.name,
-                                                                                            quantity: 1,
-                                                                                            unitPrice: mi.price ?? 0,
-                                                                                            totalPrice: mi.price ?? 0,
-                                                                                            flavor: f.name,
-                                                                                        }]);
-                                                                                        setExpandedFlavors(null);
-                                                                                    }}
-                                                                                    className="px-2.5 py-1 rounded-lg bg-secondary hover:bg-primary/20 hover:text-primary text-xs font-bold text-muted-foreground border border-border/50 transition-colors"
-                                                                                >
-                                                                                    {f.name}
-                                                                                </button>
-                                                                            ))}
-                                                                        </div>
+                                                        {items.map(mi => (
+                                                            <div key={mi.id} className="flex items-center gap-3 py-1 border-b border-border/15 last:border-0">
+                                                                <button
+                                                                    onClick={() => setPendingAdd({ mi, flavor: '', guestName: '' })}
+                                                                    className={cn(
+                                                                        "w-7 h-7 rounded-lg flex items-center justify-center transition-colors shrink-0",
+                                                                        pendingAdd?.mi.id === mi.id
+                                                                            ? "bg-primary/20 text-primary"
+                                                                            : "bg-secondary hover:bg-green-500/20 hover:text-green-400 text-muted-foreground"
                                                                     )}
-                                                                </div>
-                                                            );
-                                                        })}
+                                                                >
+                                                                    <Plus size={13} />
+                                                                </button>
+                                                                <span className="flex-1 text-sm text-muted-foreground">{mi.name}</span>
+                                                                {mi.flavors && mi.flavors.length > 0 && (
+                                                                    <span className="text-[10px] text-muted-foreground/40 shrink-0">{mi.flavors.length} sabores</span>
+                                                                )}
+                                                                {mi.price != null && mi.price > 0 && (
+                                                                    <span className="text-xs text-muted-foreground/60 font-mono shrink-0">
+                                                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(mi.price)}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        ))}
                                                     </div>
                                                 </div>
                                             ))}
