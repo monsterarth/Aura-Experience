@@ -565,7 +565,7 @@ function GuestHubContent() {
             : 999;
 
         const fbEnabled = property?.settings?.fbSettings?.breakfast?.enabled &&
-            (property.settings.fbSettings.breakfast.modality === 'delivery' || property.settings.fbSettings.breakfast.modality === 'both');
+            (['delivery', 'buffet', 'both'].includes(property.settings.fbSettings.breakfast.modality ?? ''));
 
         return (
             <div className="min-h-screen bg-background text-foreground flex flex-col items-center relative overflow-hidden font-sans" style={themeStyles}>
@@ -607,7 +607,7 @@ function GuestHubContent() {
                     <div className="grid grid-cols-2 gap-3">
                         {/* Breakfast */}
                         {fbEnabled && (
-                            <button onClick={() => router.push(`/check-in/${code}/breakfast`)} className="col-span-2 relative overflow-hidden bg-card border border-border p-5 rounded-[2rem] shadow-sm hover:shadow-md hover:border-primary/50 transition-all flex items-center justify-between group">
+                            <button onClick={() => router.push(`/check-in/${code}/breakfast/status`)} className="col-span-2 relative overflow-hidden bg-card border border-border p-5 rounded-[2rem] shadow-sm hover:shadow-md hover:border-primary/50 transition-all flex items-center justify-between group">
                                 <div className="absolute -right-4 -top-4 w-24 h-24 bg-primary/10 rounded-full blur-xl group-hover:bg-primary/20 transition-all"></div>
                                 <div className="flex items-center gap-4 relative z-10">
                                     <div className="w-12 h-12 bg-primary text-primary-foreground rounded-2xl flex items-center justify-center shadow-lg shadow-primary/30 shrink-0">

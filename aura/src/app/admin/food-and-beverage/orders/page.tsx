@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { fbService } from "@/services/fb-service";
 import { StayService } from "@/services/stay-service";
-import { FBOrder } from "@/types/aura";
+import { FBOrder, FBCategory, FBMenuItem } from "@/types/aura";
 import {
     Loader2, RefreshCcw, Printer, Clock, CheckCircle2,
     Package, ChefHat, CalendarDays, X, FileText, Coffee
@@ -22,18 +22,54 @@ function getRegularItems(order: FBOrder) {
 function getObservations(order: FBOrder) {
     return (order.items as any[]).find(it => it.menuItemId === 'guest_observations') ?? null;
 }
-function groupByGuest(items: any[]): { guestGroups: Record<string, any[]>; groupItems: any[] } {
-    const guestGroups: Record<string, any[]> = {};
-    const groupItems: any[] = [];
-    items.forEach(it => {
-        if (it.guestName) {
-            guestGroups[it.guestName] = guestGroups[it.guestName] ?? [];
-            guestGroups[it.guestName].push(it);
+
+// Groups items by category for display.
+// Returns: first a-la-carte items (no guestName, uncategorized or explicitly à-la-carte),
+// then each category in order, with items inside sorted by guestName.
+function groupByCategory(
+    items: any[],
+    categories: FBCategory[],
+    menuItems: FBMenuItem[]
+): { label: string; items: any[] }[] {
+    const menuItemMap = new Map(menuItems.map(m => [m.id, m]));
+    const categoryMap = new Map(categories.map(c => [c.id, c]));
+
+    // Map each order item to its category
+    const byCategoryId: Record<string, any[]> = {};
+    const alaCarte: any[] = [];
+
+    for (const it of items) {
+        const menuItem = menuItemMap.get(it.menuItemId);
+        const cat = menuItem ? categoryMap.get(menuItem.categoryId) : undefined;
+        if (!cat) {
+            alaCarte.push(it);
         } else {
-            groupItems.push(it);
+            if (!byCategoryId[cat.id]) byCategoryId[cat.id] = [];
+            byCategoryId[cat.id].push(it);
         }
-    });
-    return { guestGroups, groupItems };
+    }
+
+    const groups: { label: string; items: any[] }[] = [];
+
+    // A-la-carte first (items without a known category)
+    if (alaCarte.length > 0) {
+        groups.push({ label: 'À la carte', items: alaCarte });
+    }
+
+    // Then categories in order
+    for (const cat of categories) {
+        const catItems = byCategoryId[cat.id];
+        if (catItems && catItems.length > 0) {
+            // Within each category, sort: named guests first, then group items
+            const sorted = [
+                ...catItems.filter(it => it.guestName).sort((a, b) => (a.guestName ?? '').localeCompare(b.guestName ?? '')),
+                ...catItems.filter(it => !it.guestName),
+            ];
+            groups.push({ label: cat.name, items: sorted });
+        }
+    }
+
+    return groups;
 }
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
@@ -66,12 +102,35 @@ function ItemRow({ item }: { item: any }) {
     );
 }
 
-// ─── Thermal ticket (JSX separado para usar no modal e na área de print) ──────
-function ThermalTicket({ order, cabinName, propertyName }: { order: FBOrder; cabinName: string; propertyName: string }) {
-    const regularItems = getRegularItems(order);
+// ─── Items grouped by category (tela) ─────────────────────────────────────────
+function ItemsByCategoryScreen({ groups }: { groups: { label: string; items: any[] }[] }) {
+    return (
+        <div className="space-y-3">
+            {groups.map(({ label, items }) => (
+                <div key={label}>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 flex items-center gap-1.5">
+                        {label}
+                    </p>
+                    {items.map((it, i) => <ItemRow key={i} item={it} />)}
+                </div>
+            ))}
+        </div>
+    );
+}
+
+// ─── Thermal ticket ────────────────────────────────────────────────────────────
+function ThermalTicket({
+    order,
+    cabinName,
+    propertyName,
+    groups,
+}: {
+    order: FBOrder;
+    cabinName: string;
+    propertyName: string;
+    groups: { label: string; items: any[] }[];
+}) {
     const obs = getObservations(order);
-    const { guestGroups, groupItems } = groupByGuest(regularItems);
-    const guestNames = Object.keys(guestGroups);
 
     return (
         <div className="font-mono text-black bg-white" style={{ width: '80mm', fontSize: '12px', lineHeight: '1.4' }}>
@@ -111,22 +170,30 @@ function ThermalTicket({ order, cabinName, propertyName }: { order: FBOrder; cab
                 )}
             </div>
 
-            {/* Itens */}
+            {/* Itens por categoria */}
             <div style={{ borderTop: '2px dashed #000', borderBottom: '2px dashed #000', padding: '8px 0', marginBottom: '8px' }}>
-                {/* Itens por hóspede */}
-                {guestNames.map(name => (
-                    <div key={name} style={{ marginBottom: '8px' }}>
-                        <div style={{ fontWeight: 900, fontSize: '11px', textTransform: 'uppercase', borderBottom: '1px solid #000', paddingBottom: '2px', marginBottom: '4px', letterSpacing: '0.08em' }}>
-                            ▸ {name}
+                {groups.map(({ label, items }, gi) => (
+                    <div key={label} style={{ marginBottom: gi < groups.length - 1 ? '8px' : 0 }}>
+                        <div style={{
+                            fontWeight: 900, fontSize: '10px', textTransform: 'uppercase',
+                            borderBottom: '1px solid #ccc', paddingBottom: '2px', marginBottom: '4px',
+                            letterSpacing: '0.08em', color: '#555',
+                        }}>
+                            {label}
                         </div>
-                        <div style={{ paddingLeft: '8px' }}>
-                            {guestGroups[name].map((it: any, i: number) => (
-                                <div key={i} style={{ marginBottom: '3px' }}>
+                        <div style={{ paddingLeft: '4px' }}>
+                            {items.map((it: any, i: number) => (
+                                <div key={i} style={{ marginBottom: '4px' }}>
                                     <div style={{ fontWeight: 700 }}>
                                         <span style={{ background: '#000', color: '#fff', padding: '0 4px', borderRadius: '3px', marginRight: '4px', fontSize: '11px' }}>
                                             {it.quantity}×
                                         </span>
                                         {it.name.toUpperCase()}
+                                        {it.guestName && (
+                                            <span style={{ fontWeight: 400, fontSize: '10px', color: '#444', marginLeft: '4px' }}>
+                                                → {it.guestName}
+                                            </span>
+                                        )}
                                     </div>
                                     {it.flavor && (
                                         <div style={{ paddingLeft: '24px', fontSize: '11px', color: '#333' }}>Sabor: {it.flavor}</div>
@@ -136,33 +203,6 @@ function ThermalTicket({ order, cabinName, propertyName }: { order: FBOrder; cab
                         </div>
                     </div>
                 ))}
-
-                {/* Itens de grupo */}
-                {groupItems.length > 0 && (
-                    <div style={{ borderTop: guestNames.length > 0 ? '1px dashed #000' : 'none', paddingTop: guestNames.length > 0 ? '6px' : 0 }}>
-                        {guestNames.length > 0 && (
-                            <div style={{ fontWeight: 900, fontSize: '11px', textTransform: 'uppercase', marginBottom: '4px', letterSpacing: '0.08em' }}>
-                                PARA O GRUPO:
-                            </div>
-                        )}
-                        {groupItems.map((it: any, i: number) => (
-                            <div key={i} style={{ marginBottom: '3px' }}>
-                                <div style={{ fontWeight: 700 }}>
-                                    <span style={{ background: '#000', color: '#fff', padding: '0 4px', borderRadius: '3px', marginRight: '4px', fontSize: '11px' }}>
-                                        {it.quantity}×
-                                    </span>
-                                    {it.name.toUpperCase()}
-                                </div>
-                                {it.flavor && (
-                                    <div style={{ paddingLeft: '24px', fontSize: '11px', color: '#333' }}>Sabor: {it.flavor}</div>
-                                )}
-                                {it.notes && it.notes !== it.name && (
-                                    <div style={{ paddingLeft: '24px', fontSize: '11px', color: '#555' }}>{it.notes}</div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                )}
             </div>
 
             {/* Observações */}
@@ -191,21 +231,20 @@ function OrderDetailModal({
     order,
     stayInfo,
     propertyName,
+    groups,
     onClose,
     onStatusChange,
 }: {
     order: FBOrder;
     stayInfo: StayInfo | undefined;
     propertyName: string;
+    groups: { label: string; items: any[] }[];
     onClose: () => void;
     onStatusChange: (id: string, status: FBOrder['status']) => void;
 }) {
     const cabinName = stayInfo?.cabinName || order.cabinName || 'N/A';
     const guestName = stayInfo?.guestName || order.guestName || '—';
-    const regularItems = getRegularItems(order);
     const obs = getObservations(order);
-    const { guestGroups, groupItems } = groupByGuest(regularItems);
-    const guestNames = Object.keys(guestGroups);
     const [printing, setPrinting] = useState(false);
 
     const handlePrint = () => {
@@ -220,7 +259,7 @@ function OrderDetailModal({
         <>
             {/* Área de impressão térmica — só aparece no print */}
             <div className="hidden print:block">
-                <ThermalTicket order={order} cabinName={cabinName} propertyName={propertyName} />
+                <ThermalTicket order={order} cabinName={cabinName} propertyName={propertyName} groups={groups} />
             </div>
 
             {/* Modal overlay */}
@@ -256,36 +295,12 @@ function OrderDetailModal({
                         <StatusBadge status={order.status} />
                     </div>
 
-                    {/* Itens */}
+                    {/* Itens por categoria */}
                     <div className="overflow-y-auto flex-1 px-5 py-4 custom-scrollbar">
-                        {guestNames.length > 0 && guestNames.map(name => (
-                            <div key={name} className="mb-5">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-[10px] font-black uppercase tracking-widest text-primary">▸ {name}</span>
-                                    <div className="flex-1 h-px bg-border" />
-                                </div>
-                                {guestGroups[name].map((it: any, i: number) => (
-                                    <ItemRow key={i} item={it} />
-                                ))}
-                            </div>
-                        ))}
-
-                        {groupItems.length > 0 && (
-                            <div className="mb-5">
-                                {guestNames.length > 0 && (
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Para o Grupo</span>
-                                        <div className="flex-1 h-px bg-border" />
-                                    </div>
-                                )}
-                                {groupItems.map((it: any, i: number) => (
-                                    <ItemRow key={i} item={it} />
-                                ))}
-                            </div>
-                        )}
+                        <ItemsByCategoryScreen groups={groups} />
 
                         {obs && obs.notes && (
-                            <div className="mt-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
+                            <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
                                 <p className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-1">Observações</p>
                                 <p className="text-sm text-foreground whitespace-pre-wrap">{obs.notes}</p>
                             </div>
@@ -301,7 +316,6 @@ function OrderDetailModal({
 
                     {/* Actions */}
                     <div className="p-4 border-t border-border bg-secondary/30 space-y-3">
-                        {/* Status buttons */}
                         <div className="grid grid-cols-3 gap-2">
                             <button
                                 onClick={() => onStatusChange(order.id, 'pending')}
@@ -325,7 +339,6 @@ function OrderDetailModal({
                                 Pronto
                             </button>
                         </div>
-                        {/* Print button */}
                         <button
                             onClick={handlePrint}
                             disabled={printing}
@@ -347,6 +360,8 @@ export default function FBOrdersPage() {
     const [loading, setLoading] = useState(true);
     const [orders, setOrders] = useState<FBOrder[]>([]);
     const [stays, setStays] = useState<{ [stayId: string]: StayInfo }>({});
+    const [categories, setCategories] = useState<FBCategory[]>([]);
+    const [menuItems, setMenuItems] = useState<FBMenuItem[]>([]);
 
     const [dateFilter, setDateFilter] = useState<"yesterday" | "today" | "tomorrow">("today");
     const [typeFilter, setTypeFilter] = useState<"all" | "breakfast" | "restaurant">("all");
@@ -377,8 +392,15 @@ export default function FBOrdersPage() {
             const filters: any = { date: isoDate };
             if (typeFilter !== "all") filters.type = typeFilter;
 
-            const fetchedOrders = await fbService.getOrders(currentProperty.id, filters);
+            const [fetchedOrders, cats, itms] = await Promise.all([
+                fbService.getOrders(currentProperty.id, filters),
+                fbService.getCategories(currentProperty.id),
+                fbService.getMenuItems(currentProperty.id),
+            ]);
+
             setOrders(fetchedOrders);
+            setCategories(cats.filter(c => c.type === 'both' || c.type === 'breakfast').sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
+            setMenuItems(itms);
 
             const newStays = { ...stays };
             let changed = false;
@@ -409,7 +431,6 @@ export default function FBOrdersPage() {
             await fbService.updateOrderStatus(id, newStatus);
             toast.success("Status atualizado!");
             setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o));
-            // Atualiza também no modal se estiver aberto
             setSelectedOrder(prev => prev?.id === id ? { ...prev, status: newStatus } : prev);
         } catch {
             toast.error("Erro ao atualizar status.");
@@ -433,6 +454,11 @@ export default function FBOrdersPage() {
             <Loader2 className="animate-spin text-primary" size={40} />
         </div>
     );
+
+    // Pre-compute groups for selected order (modal + thermal print)
+    const selectedOrderGroups = selectedOrder
+        ? groupByCategory(getRegularItems(selectedOrder), categories, menuItems)
+        : [];
 
     return (
         <div className="space-y-6 print:bg-white print:text-black print:p-0 print:space-y-0">
@@ -472,28 +498,25 @@ export default function FBOrdersPage() {
                                     .map((order, idx) => {
                                         const stayData = order.stayId ? stays[order.stayId] : undefined;
                                         const cabin = stayData?.cabinName || order.cabinName || 'N/A';
-                                        const regularItems = getRegularItems(order);
                                         const obs = getObservations(order);
-                                        const { guestGroups, groupItems } = groupByGuest(regularItems);
-                                        const guestNames = Object.keys(guestGroups);
+                                        const groups = groupByCategory(getRegularItems(order), categories, menuItems);
                                         const statusLabels: Record<string, string> = { pending: 'Pendente', preparing: 'Preparando', delivered: 'Entregue', cancelled: 'Cancelado' };
                                         return (
                                             <tr key={order.id} style={{ background: idx % 2 === 0 ? '#f9f9f9' : '#fff', borderBottom: '1px solid #ddd', verticalAlign: 'top' }}>
                                                 <td style={{ padding: '8px 8px 8px 0', fontWeight: 900, fontSize: '13px' }}>{cabin}</td>
                                                 <td style={{ padding: '8px 8px 8px 0', fontFamily: 'monospace', fontWeight: 700, whiteSpace: 'nowrap' }}>{order.deliveryTime ?? '—'}</td>
                                                 <td style={{ padding: '8px 8px 8px 0' }}>
-                                                    {guestNames.map(name => (
-                                                        <div key={name} style={{ marginBottom: '4px' }}>
-                                                            <strong style={{ fontSize: '10px', textTransform: 'uppercase' }}>{name}:</strong>
-                                                            {guestGroups[name].map((it: any, i: number) => (
+                                                    {groups.map(({ label, items }) => (
+                                                        <div key={label} style={{ marginBottom: '4px' }}>
+                                                            <strong style={{ fontSize: '10px', textTransform: 'uppercase', color: '#555' }}>{label}:</strong>
+                                                            {items.map((it: any, i: number) => (
                                                                 <div key={i} style={{ paddingLeft: '8px' }}>
-                                                                    {it.quantity}× {it.name}{it.flavor ? ` (${it.flavor})` : ''}
+                                                                    {it.quantity}× {it.name}
+                                                                    {it.flavor ? ` (${it.flavor})` : ''}
+                                                                    {it.guestName ? ` → ${it.guestName}` : ''}
                                                                 </div>
                                                             ))}
                                                         </div>
-                                                    ))}
-                                                    {groupItems.map((it: any, i: number) => (
-                                                        <div key={i}>{it.quantity}× {it.name}{it.flavor ? ` (${it.flavor})` : ''}</div>
                                                     ))}
                                                 </td>
                                                 <td style={{ padding: '8px 8px 8px 0', fontSize: '11px', color: '#555', maxWidth: '120px' }}>{obs?.notes ?? '—'}</td>
@@ -575,10 +598,8 @@ export default function FBOrdersPage() {
                             const stayData = order.stayId ? stays[order.stayId] : undefined;
                             const guestName = stayData?.guestName || order.guestName || '—';
                             const cabinName = stayData?.cabinName || order.cabinName || 'N/A';
-                            const regularItems = getRegularItems(order);
                             const obs = getObservations(order);
-                            const { guestGroups, groupItems } = groupByGuest(regularItems);
-                            const guestNames = Object.keys(guestGroups);
+                            const groups = groupByCategory(getRegularItems(order), categories, menuItems);
 
                             return (
                                 <div
@@ -610,26 +631,9 @@ export default function FBOrdersPage() {
                                         </div>
                                     </div>
 
-                                    {/* Itens */}
-                                    <div className="px-4 py-3 flex-1 space-y-0">
-                                        {guestNames.map(name => (
-                                            <div key={name} className="mb-2">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">▸ {name}</p>
-                                                {guestGroups[name].map((it: any, i: number) => (
-                                                    <ItemRow key={i} item={it} />
-                                                ))}
-                                            </div>
-                                        ))}
-                                        {groupItems.length > 0 && (
-                                            <div className={guestNames.length > 0 ? "pt-2 mt-2 border-t border-border/50" : ""}>
-                                                {guestNames.length > 0 && (
-                                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Grupo</p>
-                                                )}
-                                                {groupItems.map((it: any, i: number) => (
-                                                    <ItemRow key={i} item={it} />
-                                                ))}
-                                            </div>
-                                        )}
+                                    {/* Itens por categoria */}
+                                    <div className="px-4 py-3 flex-1">
+                                        <ItemsByCategoryScreen groups={groups} />
                                         {obs && obs.notes && (
                                             <div className="mt-2 pt-2 border-t border-border/40">
                                                 <p className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-0.5">Obs.</p>
@@ -658,6 +662,7 @@ export default function FBOrdersPage() {
                     order={selectedOrder}
                     stayInfo={selectedOrder.stayId ? stays[selectedOrder.stayId] : undefined}
                     propertyName={currentProperty?.name ?? ''}
+                    groups={selectedOrderGroups}
                     onClose={() => setSelectedOrder(null)}
                     onStatusChange={updateStatus}
                 />
