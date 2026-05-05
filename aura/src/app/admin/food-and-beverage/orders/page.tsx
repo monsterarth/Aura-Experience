@@ -325,22 +325,48 @@ function OrderDetailModal({
                     : new Date();
                 base.setDate(base.getDate() + 1);
                 const tomorrowISO = base.toISOString().split('T')[0];
-                const res = await fetch('/api/guest/breakfast-orders', {
+                const postPayload = {
+                    propertyId: order.propertyId,
+                    stayId: order.stayId,
+                    modality: order.modality,
+                    type: order.type,
+                    items,
+                    totalPrice,
+                    deliveryTime: editTime || undefined,
+                    deliveryDate: tomorrowISO,
+                    skipWindowCheck: true,
+                };
+                console.log('[duplicate] POST payload:', postPayload);
+                let res = await fetch('/api/guest/breakfast-orders', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        propertyId: order.propertyId,
-                        stayId: order.stayId,
-                        modality: order.modality,
-                        type: order.type,
-                        items,
-                        totalPrice,
-                        deliveryTime: editTime || undefined,
-                        deliveryDate: tomorrowISO,
-                        skipWindowCheck: true,
-                    }),
+                    body: JSON.stringify(postPayload),
                 });
-                if (!res.ok) throw new Error('Erro ao criar');
+
+                // Se já existe pedido para amanhã, faz PATCH no existente
+                if (res.status === 409) {
+                    const conflict = await res.json();
+                    const existingId = conflict.error?.replace('ORDER_EXISTS:', '');
+                    if (!existingId) throw new Error('Conflito ao criar pedido');
+                    res = await fetch('/api/guest/breakfast-orders', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            orderId: existingId,
+                            stayId: order.stayId,
+                            propertyId: order.propertyId,
+                            items,
+                            totalPrice,
+                            deliveryTime: editTime || undefined,
+                        }),
+                    });
+                }
+
+                if (!res.ok) {
+                    const errBody = await res.json().catch(() => ({}));
+                    console.error('[duplicate] final response error:', res.status, errBody);
+                    throw new Error(`Erro ao criar (${res.status}): ${JSON.stringify(errBody)}`);
+                }
                 const created = await res.json();
                 toast.success('Pedido duplicado para amanhã!');
                 onOrderDuplicated?.(created);
