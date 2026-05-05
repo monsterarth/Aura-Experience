@@ -7,7 +7,8 @@ import { StayService } from "@/services/stay-service";
 import { FBOrder, FBCategory, FBMenuItem } from "@/types/aura";
 import {
     Loader2, RefreshCcw, Printer, Clock, CheckCircle2,
-    Package, ChefHat, CalendarDays, X, FileText, Coffee
+    Package, ChefHat, CalendarDays, X, FileText, Coffee,
+    Pencil, Plus, Minus, Save, Copy
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -237,6 +238,9 @@ function OrderDetailModal({
     groups,
     onClose,
     onStatusChange,
+    onOrderUpdated,
+    onOrderDuplicated,
+    autoEnterDuplicate,
 }: {
     order: FBOrder;
     stayInfo: StayInfo | undefined;
@@ -244,11 +248,122 @@ function OrderDetailModal({
     groups: { label: string; items: any[] }[];
     onClose: () => void;
     onStatusChange: (id: string, status: FBOrder['status']) => void;
+    onOrderUpdated: (updated: FBOrder) => void;
+    onOrderDuplicated?: (created: FBOrder) => void;
+    autoEnterDuplicate?: boolean;
 }) {
     const cabinName = stayInfo?.cabinName || order.cabinName || 'N/A';
     const guestName = stayInfo?.guestName || order.guestName || '—';
     const obs = getObservations(order);
+
     const [printing, setPrinting] = useState(false);
+    const [editing, setEditing] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [duplicating, setDuplicating] = useState(false);
+
+    // Estado de edição: cópia mutável dos itens (sem guest_observations)
+    const [editItems, setEditItems] = useState<any[]>([]);
+    const [editObs, setEditObs] = useState('');
+    const [editTime, setEditTime] = useState(order.deliveryTime ?? '');
+
+    const enterEdit = () => {
+        setEditItems(getRegularItems(order).map(it => ({ ...it })));
+        setEditObs(obs?.notes ?? '');
+        setEditTime(order.deliveryTime ?? '');
+        setDuplicating(false);
+        setEditing(true);
+    };
+
+    const enterDuplicate = () => {
+        setEditItems(getRegularItems(order).map(it => ({ ...it })));
+        setEditObs(obs?.notes ?? '');
+        setEditTime(order.deliveryTime ?? '');
+        setDuplicating(true);
+        setEditing(true);
+    };
+
+    useEffect(() => {
+        if (autoEnterDuplicate) enterDuplicate();
+    }, [autoEnterDuplicate]);
+
+    const changeQty = (idx: number, delta: number) => {
+        setEditItems(prev => prev.map((it, i) => {
+            if (i !== idx) return it;
+            const newQty = Math.max(0, it.quantity + delta);
+            return { ...it, quantity: newQty };
+        }).filter((_, i, arr) => {
+            // Remove item only after the decrement button is pressed and reaches 0
+            return arr[i].quantity > 0;
+        }));
+    };
+
+    const saveEdit = async () => {
+        setSaving(true);
+        try {
+            const items = editItems.filter(it => it.quantity > 0);
+            if (editObs.trim()) {
+                items.push({
+                    menuItemId: 'guest_observations',
+                    name: 'Observações Gerais',
+                    quantity: 1,
+                    unitPrice: 0,
+                    totalPrice: 0,
+                    notes: editObs.trim(),
+                });
+            }
+            const totalPrice = items.reduce((s, it) => s + (it.unitPrice ?? 0) * it.quantity, 0);
+
+            if (duplicating) {
+                const base = order.deliveryDate
+                    ? new Date(order.deliveryDate + 'T12:00:00')
+                    : new Date();
+                base.setDate(base.getDate() + 1);
+                const tomorrowISO = base.toISOString().split('T')[0];
+                const res = await fetch('/api/guest/breakfast-orders', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        propertyId: order.propertyId,
+                        stayId: order.stayId,
+                        modality: order.modality,
+                        type: order.type,
+                        items,
+                        totalPrice,
+                        deliveryTime: editTime || undefined,
+                        deliveryDate: tomorrowISO,
+                    }),
+                });
+                if (!res.ok) throw new Error('Erro ao criar');
+                const created = await res.json();
+                toast.success('Pedido duplicado para amanhã!');
+                onOrderDuplicated?.(created);
+                setEditing(false);
+                setDuplicating(false);
+                onClose();
+            } else {
+                const res = await fetch('/api/guest/breakfast-orders', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        orderId: order.id,
+                        stayId: order.stayId,
+                        propertyId: order.propertyId,
+                        items,
+                        totalPrice,
+                        deliveryTime: editTime || undefined,
+                    }),
+                });
+                if (!res.ok) throw new Error('Erro ao salvar');
+                toast.success('Pedido atualizado!');
+                onOrderUpdated({ ...order, items, totalPrice, deliveryTime: editTime || order.deliveryTime });
+                setEditing(false);
+            }
+        } catch {
+            toast.error(duplicating ? 'Erro ao duplicar pedido.' : 'Erro ao salvar alterações.');
+        } finally {
+            setSaving(false);
+        }
+    };
 
     const handlePrint = () => {
         setPrinting(true);
@@ -262,96 +377,182 @@ function OrderDetailModal({
     };
 
     return (
-        <>
-            {/* Modal overlay */}
-            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 print:hidden">
-                <div className="bg-card w-full sm:max-w-lg rounded-t-[32px] sm:rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[92dvh] animate-in slide-in-from-bottom-4 sm:zoom-in duration-200">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <div className="bg-card w-full sm:max-w-lg rounded-t-[32px] sm:rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[92dvh] animate-in slide-in-from-bottom-4 sm:zoom-in duration-200">
 
-                    {/* Header */}
-                    <div className="flex items-start justify-between p-5 pb-4 border-b border-border">
-                        <div>
-                            <div className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest mb-1 flex items-center gap-1.5">
-                                <Coffee size={12} />
-                                {order.type === 'breakfast' ? 'Café da Manhã' : 'Restaurante'} • {order.modality}
-                                {order.deliveryDate && (
-                                    <span className="ml-2 bg-blue-500/15 text-blue-400 px-1.5 py-0.5 rounded text-[10px]">
-                                        {new Date(order.deliveryDate + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-                                    </span>
-                                )}
-                            </div>
-                            <h2 className="text-2xl font-black tracking-tight leading-none">{cabinName}</h2>
-                            <p className="text-sm text-muted-foreground mt-1">{guestName}</p>
+                {/* Header */}
+                <div className="flex items-start justify-between p-5 pb-4 border-b border-border">
+                    <div>
+                        <div className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest mb-1 flex items-center gap-1.5">
+                            <Coffee size={12} />
+                            {order.type === 'breakfast' ? 'Café da Manhã' : 'Restaurante'} • {order.modality}
+                            {order.deliveryDate && (
+                                <span className="ml-2 bg-blue-500/15 text-blue-400 px-1.5 py-0.5 rounded text-[10px]">
+                                    {new Date(order.deliveryDate + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                                </span>
+                            )}
+                            {duplicating && (
+                                <span className="ml-1 bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                    Duplicando → amanhã
+                                </span>
+                            )}
                         </div>
-                        <button onClick={onClose} className="p-2 hover:bg-secondary rounded-xl transition-colors text-muted-foreground hover:text-foreground">
-                            <X size={20} />
-                        </button>
+                        <h2 className="text-2xl font-black tracking-tight leading-none">{cabinName}</h2>
+                        <p className="text-sm text-muted-foreground mt-1">{guestName}</p>
                     </div>
+                    <button onClick={onClose} className="p-2 hover:bg-secondary rounded-xl transition-colors text-muted-foreground hover:text-foreground">
+                        <X size={20} />
+                    </button>
+                </div>
 
-                    {/* Status + Hora */}
-                    <div className="flex items-center justify-between px-5 py-3 bg-secondary/40 border-b border-border">
+                {/* Status + Hora */}
+                <div className="flex items-center justify-between px-5 py-3 bg-secondary/40 border-b border-border">
+                    {editing ? (
+                        <div className="flex items-center gap-2">
+                            <Clock size={15} className="text-primary shrink-0" />
+                            <input
+                                type="time"
+                                value={editTime}
+                                onChange={e => setEditTime(e.target.value)}
+                                className="bg-secondary border border-border rounded-lg px-2 py-1 text-sm font-mono font-bold text-foreground focus:outline-none focus:border-primary"
+                            />
+                        </div>
+                    ) : (
                         <div className="flex items-center gap-2 font-mono font-bold">
                             <Clock size={15} className="text-primary" />
                             <span>{order.deliveryTime ?? 'Sem horário'}</span>
                         </div>
-                        <StatusBadge status={order.status} />
-                    </div>
+                    )}
+                    <StatusBadge status={order.status} />
+                </div>
 
-                    {/* Itens por categoria */}
-                    <div className="overflow-y-auto flex-1 px-5 py-4 custom-scrollbar">
-                        <ItemsByCategoryScreen groups={groups} />
+                {/* Itens */}
+                <div className="overflow-y-auto flex-1 px-5 py-4 custom-scrollbar">
+                    {editing ? (
+                        /* ── MODO EDIÇÃO ── */
+                        <div className="space-y-4">
+                            {editItems.length === 0 ? (
+                                <p className="text-sm text-muted-foreground text-center py-4">Nenhum item no pedido.</p>
+                            ) : (
+                                editItems.map((it, idx) => (
+                                    <div key={idx} className="flex items-center gap-3 py-2 border-b border-border/30 last:border-0">
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <button
+                                                onClick={() => changeQty(idx, -1)}
+                                                className="w-7 h-7 rounded-lg bg-secondary hover:bg-red-500/20 hover:text-red-400 flex items-center justify-center text-muted-foreground transition-colors"
+                                            >
+                                                <Minus size={13} />
+                                            </button>
+                                            <span className="font-black text-primary bg-primary/10 min-w-[2rem] h-7 flex items-center justify-center rounded-lg text-sm px-1">
+                                                {it.quantity}×
+                                            </span>
+                                            <button
+                                                onClick={() => changeQty(idx, 1)}
+                                                className="w-7 h-7 rounded-lg bg-secondary hover:bg-green-500/20 hover:text-green-400 flex items-center justify-center text-muted-foreground transition-colors"
+                                            >
+                                                <Plus size={13} />
+                                            </button>
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <span className="font-bold text-sm block leading-snug">{it.name}</span>
+                                            {it.flavor && <span className="text-xs text-amber-400/80 block">Sabor: {it.flavor}</span>}
+                                            {it.guestName && <span className="text-xs text-primary/70 block">→ {it.guestName}</span>}
+                                        </div>
+                                    </div>
+                                ))
+                            )}
 
-                        {obs && obs.notes && (
-                            <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
+                            {/* Observações editáveis */}
+                            <div className="mt-2">
                                 <p className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-1">Observações</p>
-                                <p className="text-sm text-foreground whitespace-pre-wrap">{obs.notes}</p>
+                                <textarea
+                                    value={editObs}
+                                    onChange={e => setEditObs(e.target.value)}
+                                    placeholder="Adicionar observações..."
+                                    rows={3}
+                                    className="w-full bg-amber-500/5 border border-amber-500/20 rounded-xl px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-amber-500/50 resize-none"
+                                />
                             </div>
-                        )}
-
-                        <div className="flex items-center justify-between mt-4 pt-3 border-t border-border">
-                            <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Total</span>
-                            <span className="font-black text-lg text-primary">
-                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(order.totalPrice)}
-                            </span>
                         </div>
-                    </div>
+                    ) : (
+                        /* ── MODO VISUALIZAÇÃO ── */
+                        <>
+                            <ItemsByCategoryScreen groups={groups} />
 
-                    {/* Actions */}
-                    <div className="p-4 border-t border-border bg-secondary/30 space-y-3">
-                        <div className="grid grid-cols-3 gap-2">
+                            {obs && obs.notes && (
+                                <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-amber-400 mb-1">Observações</p>
+                                    <p className="text-sm text-foreground whitespace-pre-wrap">{obs.notes}</p>
+                                </div>
+                            )}
+
+                            <div className="flex items-center justify-between mt-4 pt-3 border-t border-border">
+                                <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Total</span>
+                                <span className="font-black text-lg text-primary">
+                                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(order.totalPrice)}
+                                </span>
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                {/* Actions */}
+                <div className="p-4 border-t border-border bg-secondary/30 space-y-3">
+                    {editing ? (
+                        /* ── Botões modo edição ── */
+                        <div className="flex gap-2">
                             <button
-                                onClick={() => onStatusChange(order.id, 'pending')}
-                                disabled={order.status === 'pending'}
-                                className="py-2.5 rounded-xl font-bold text-[11px] uppercase tracking-wider border border-yellow-500/30 text-yellow-600 hover:bg-yellow-500/10 disabled:opacity-30 transition-colors"
+                                onClick={() => setEditing(false)}
+                                className="flex-1 py-3 rounded-xl font-bold text-sm border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
                             >
-                                Pendente
+                                Cancelar
                             </button>
                             <button
-                                onClick={() => onStatusChange(order.id, 'preparing')}
-                                disabled={order.status === 'preparing'}
-                                className="py-2.5 bg-blue-500/10 text-blue-400 rounded-xl font-bold text-[11px] uppercase tracking-wider border border-blue-500/30 hover:bg-blue-500/20 disabled:opacity-30 transition-colors"
+                                onClick={saveEdit}
+                                disabled={saving}
+                                className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-60 transition-all"
                             >
-                                Preparo
-                            </button>
-                            <button
-                                onClick={() => onStatusChange(order.id, 'delivered')}
-                                disabled={order.status === 'delivered'}
-                                className="py-2.5 bg-green-500/10 text-green-400 rounded-xl font-bold text-[11px] uppercase tracking-wider border border-green-500/30 hover:bg-green-500/20 disabled:opacity-30 transition-colors"
-                            >
-                                Pronto
+                                <Save size={15} />
+                                {saving ? 'Salvando...' : 'Salvar'}
                             </button>
                         </div>
-                        <button
-                            onClick={handlePrint}
-                            disabled={printing}
-                            className="w-full py-3 bg-primary text-primary-foreground rounded-xl font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-60 transition-all"
-                        >
-                            <Printer size={16} />
-                            {printing ? 'Abrindo impressão...' : 'Imprimir Comanda Térmica'}
-                        </button>
-                    </div>
+                    ) : (
+                        /* ── Botões modo visualização ── */
+                        <>
+                            <div className="grid grid-cols-3 gap-2">
+                                <button onClick={() => onStatusChange(order.id, 'pending')} disabled={order.status === 'pending'}
+                                    className="py-2.5 rounded-xl font-bold text-[11px] uppercase tracking-wider border border-yellow-500/30 text-yellow-600 hover:bg-yellow-500/10 disabled:opacity-30 transition-colors">
+                                    Pendente
+                                </button>
+                                <button onClick={() => onStatusChange(order.id, 'preparing')} disabled={order.status === 'preparing'}
+                                    className="py-2.5 bg-blue-500/10 text-blue-400 rounded-xl font-bold text-[11px] uppercase tracking-wider border border-blue-500/30 hover:bg-blue-500/20 disabled:opacity-30 transition-colors">
+                                    Preparo
+                                </button>
+                                <button onClick={() => onStatusChange(order.id, 'delivered')} disabled={order.status === 'delivered'}
+                                    className="py-2.5 bg-green-500/10 text-green-400 rounded-xl font-bold text-[11px] uppercase tracking-wider border border-green-500/30 hover:bg-green-500/20 disabled:opacity-30 transition-colors">
+                                    Pronto
+                                </button>
+                            </div>
+                            <button onClick={enterDuplicate}
+                                className="w-full py-3 rounded-xl font-bold text-sm border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors flex items-center justify-center gap-2">
+                                <Copy size={15} /> Duplicar para amanhã
+                            </button>
+                            <div className="flex gap-2">
+                                <button onClick={enterEdit}
+                                    className="flex-1 py-3 rounded-xl font-bold text-sm border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors flex items-center justify-center gap-2">
+                                    <Pencil size={15} /> Editar pedido
+                                </button>
+                                <button onClick={handlePrint} disabled={printing}
+                                    className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl font-bold text-sm uppercase tracking-widest flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-60 transition-all">
+                                    <Printer size={15} />
+                                    {printing ? 'Imprimindo...' : 'Imprimir'}
+                                </button>
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
-        </>
+        </div>
     );
 }
 
@@ -368,6 +569,7 @@ export default function FBOrdersPage() {
     const [typeFilter, setTypeFilter] = useState<"all" | "breakfast" | "restaurant">("all");
 
     const [selectedOrder, setSelectedOrder] = useState<FBOrder | null>(null);
+    const [pendingDuplicate, setPendingDuplicate] = useState(false);
     const [printA4Mode, setPrintA4Mode] = useState(false);
 
     useEffect(() => {
@@ -645,7 +847,16 @@ export default function FBOrdersPage() {
 
                                     {/* Footer */}
                                     <div className="px-4 py-3 border-t border-border bg-secondary/20 flex items-center justify-between">
-                                        <span className="text-xs text-muted-foreground font-mono">#{order.id.substring(0, 6).toUpperCase()}</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs text-muted-foreground font-mono">#{order.id.substring(0, 6).toUpperCase()}</span>
+                                            <button
+                                                onClick={e => { e.stopPropagation(); setSelectedOrder(order); setPendingDuplicate(true); }}
+                                                className="p-1 rounded-lg hover:bg-primary/10 hover:text-primary text-muted-foreground transition-colors"
+                                                title="Duplicar para amanhã"
+                                            >
+                                                <Copy size={13} />
+                                            </button>
+                                        </div>
                                         <span className="font-black text-primary text-sm">
                                             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(order.totalPrice)}
                                         </span>
@@ -664,8 +875,18 @@ export default function FBOrdersPage() {
                     stayInfo={selectedOrder.stayId ? stays[selectedOrder.stayId] : undefined}
                     propertyName={currentProperty?.name ?? ''}
                     groups={selectedOrderGroups}
-                    onClose={() => setSelectedOrder(null)}
+                    onClose={() => { setSelectedOrder(null); setPendingDuplicate(false); }}
                     onStatusChange={updateStatus}
+                    onOrderUpdated={(updated) => {
+                        setOrders(prev => prev.map(o => o.id === updated.id ? updated : o));
+                        setSelectedOrder(updated);
+                    }}
+                    onOrderDuplicated={(created) => {
+                        if (dateFilter === 'tomorrow') {
+                            setOrders(prev => [created, ...prev]);
+                        }
+                    }}
+                    autoEnterDuplicate={pendingDuplicate}
                 />
             )}
         </div>
