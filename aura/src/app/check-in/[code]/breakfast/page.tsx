@@ -271,6 +271,25 @@ function BreakfastWizard() {
                 if (existing) {
                     setExistingOrder(existing);
                     if (existing.deliveryTime) setDeliveryTime(existing.deliveryTime);
+
+                    // Pré-popular seleções com itens do pedido anterior
+                    const regularItems = (existing.items as any[]).filter(it => it.menuItemId !== 'guest_observations');
+                    if (existing.modality === 'buffet') {
+                        const preBuffet: Record<string, boolean> = {};
+                        regularItems.forEach(it => { preBuffet[it.menuItemId] = true; });
+                        setBuffetSelections(preBuffet);
+                    } else {
+                        const preSelections: OrderSelection[] = regularItems.map(it => ({
+                            id: Math.random().toString(36).substr(2, 9),
+                            menuItemId: it.menuItemId,
+                            quantity: it.quantity,
+                            flavor: it.flavor,
+                            guestName: it.guestName,
+                        }));
+                        if (preSelections.length > 0) setSelections(preSelections);
+                    }
+                    const obsItem = (existing.items as any[]).find(it => it.menuItemId === 'guest_observations');
+                    if (obsItem?.notes) setObservationsText(obsItem.notes);
                 }
 
                 // Buffet: verificar se hóspede está alocado em mesa
