@@ -118,112 +118,115 @@ function ItemsByCategoryScreen({ groups }: { groups: { label: string; items: any
     );
 }
 
-// ─── Thermal ticket ────────────────────────────────────────────────────────────
-function ThermalTicket({
-    order,
-    cabinName,
-    propertyName,
-    groups,
-}: {
-    order: FBOrder;
-    cabinName: string;
-    propertyName: string;
-    groups: { label: string; items: any[] }[];
-}) {
+// ─── Thermal ticket HTML (para impressão em janela separada) ──────────────────
+function buildThermalHTML(
+    order: FBOrder,
+    cabinName: string,
+    propertyName: string,
+    groups: { label: string; items: any[] }[],
+): string {
     const obs = getObservations(order);
 
-    return (
-        <div className="font-mono text-black bg-white" style={{ width: '100%', fontSize: '12px', lineHeight: '1.4', padding: '4mm' }}>
-            {/* Cabeçalho */}
-            <div className="text-center pb-3 mb-3" style={{ borderBottom: '2px dashed #000' }}>
-                <div style={{ fontWeight: 900, fontSize: '15px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    {propertyName}
-                </div>
-                <div style={{ fontWeight: 700, fontSize: '13px' }}>CAFÉ DA MANHÃ</div>
-                <div style={{ fontSize: '11px', marginTop: '2px' }}>
-                    Pedido #{order.id.substring(0, 6).toUpperCase()}
-                </div>
-                <div style={{ fontSize: '10px', color: '#444' }}>
-                    {new Date(order.createdAt || '').toLocaleString('pt-BR')}
-                </div>
+    const itemsHTML = groups.map(({ label, items }, gi) => `
+        <div style="margin-bottom:${gi < groups.length - 1 ? '8px' : '0'}">
+            <div style="font-weight:900;font-size:10px;text-transform:uppercase;border-bottom:1px solid #ccc;padding-bottom:2px;margin-bottom:4px;letter-spacing:0.08em;color:#555;">
+                ${label}
             </div>
-
-            {/* Cabana + Horário */}
-            <div className="text-center mb-3">
-                <div style={{
-                    fontWeight: 900, fontSize: '28px', border: '3px solid #000',
-                    display: 'inline-block', padding: '4px 12px', borderRadius: '8px',
-                    letterSpacing: '-0.02em', lineHeight: 1.1,
-                    wordBreak: 'break-word', maxWidth: '100%',
-                }}>
-                    {cabinName}
-                </div>
-                {order.deliveryTime && (
-                    <div style={{ fontWeight: 700, fontSize: '16px', marginTop: '6px' }}>
-                        Entrega: {order.deliveryTime}
-                    </div>
-                )}
-                {order.deliveryDate && (
-                    <div style={{ fontSize: '11px', color: '#555' }}>
-                        {new Date(order.deliveryDate + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' })}
-                    </div>
-                )}
-            </div>
-
-            {/* Itens por categoria */}
-            <div style={{ borderTop: '2px dashed #000', borderBottom: '2px dashed #000', padding: '8px 0', marginBottom: '8px' }}>
-                {groups.map(({ label, items }, gi) => (
-                    <div key={label} style={{ marginBottom: gi < groups.length - 1 ? '8px' : 0 }}>
-                        <div style={{
-                            fontWeight: 900, fontSize: '10px', textTransform: 'uppercase',
-                            borderBottom: '1px solid #ccc', paddingBottom: '2px', marginBottom: '4px',
-                            letterSpacing: '0.08em', color: '#555',
-                        }}>
-                            {label}
+            <div style="padding-left:4px;">
+                ${items.map((it: any) => `
+                    <div style="margin-bottom:4px;">
+                        <div style="font-weight:700;">
+                            <span style="background:#000;color:#fff;padding:0 4px;border-radius:3px;margin-right:4px;font-size:11px;">${it.quantity}×</span>
+                            ${it.name.toUpperCase()}
+                            ${it.guestName ? `<span style="font-weight:400;font-size:10px;color:#444;margin-left:4px;">→ ${it.guestName}</span>` : ''}
                         </div>
-                        <div style={{ paddingLeft: '4px' }}>
-                            {items.map((it: any, i: number) => (
-                                <div key={i} style={{ marginBottom: '4px' }}>
-                                    <div style={{ fontWeight: 700 }}>
-                                        <span style={{ background: '#000', color: '#fff', padding: '0 4px', borderRadius: '3px', marginRight: '4px', fontSize: '11px' }}>
-                                            {it.quantity}×
-                                        </span>
-                                        {it.name.toUpperCase()}
-                                        {it.guestName && (
-                                            <span style={{ fontWeight: 400, fontSize: '10px', color: '#444', marginLeft: '4px' }}>
-                                                → {it.guestName}
-                                            </span>
-                                        )}
-                                    </div>
-                                    {it.flavor && (
-                                        <div style={{ paddingLeft: '24px', fontSize: '11px', color: '#333' }}>Sabor: {it.flavor}</div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
+                        ${it.flavor ? `<div style="padding-left:24px;font-size:11px;color:#333;">Sabor: ${it.flavor}</div>` : ''}
                     </div>
-                ))}
-            </div>
-
-            {/* Observações */}
-            {obs && obs.notes && (
-                <div style={{ borderBottom: '2px dashed #000', paddingBottom: '6px', marginBottom: '6px' }}>
-                    <div style={{ fontWeight: 900, fontSize: '11px', textTransform: 'uppercase', marginBottom: '2px' }}>OBSERVAÇÕES:</div>
-                    <div style={{ fontSize: '11px', whiteSpace: 'pre-wrap' }}>{obs.notes}</div>
-                </div>
-            )}
-
-            {/* Total */}
-            <div className="text-center" style={{ fontWeight: 700, fontSize: '12px', marginBottom: '8px' }}>
-                TOTAL: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(order.totalPrice)}
-            </div>
-
-            {/* Rodapé */}
-            <div className="text-center" style={{ fontSize: '10px', color: '#666', borderTop: '1px dashed #ccc', paddingTop: '4px' }}>
-                ★ Bom Apetite ★
+                `).join('')}
             </div>
         </div>
-    );
+    `).join('');
+
+    const obsHTML = obs?.notes ? `
+        <div style="border-bottom:2px dashed #000;padding-bottom:6px;margin-bottom:6px;">
+            <div style="font-weight:900;font-size:11px;text-transform:uppercase;margin-bottom:2px;">OBSERVAÇÕES:</div>
+            <div style="font-size:11px;white-space:pre-wrap;">${obs.notes}</div>
+        </div>
+    ` : '';
+
+    const deliveryDateStr = order.deliveryDate
+        ? new Date(order.deliveryDate + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' })
+        : '';
+
+    const totalStr = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(order.totalPrice);
+    const createdStr = new Date(order.createdAt || '').toLocaleString('pt-BR');
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    @page { size: 80mm auto; margin: 0; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 4mm;
+      background: #fff;
+      color: #000;
+      font-family: monospace;
+      font-size: 12px;
+      line-height: 1.4;
+      width: 80mm;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+  </style>
+</head>
+<body>
+  <!-- Cabeçalho -->
+  <div style="text-align:center;padding-bottom:8px;margin-bottom:8px;border-bottom:2px dashed #000;">
+    <div style="font-weight:900;font-size:15px;text-transform:uppercase;letter-spacing:0.05em;">${propertyName}</div>
+    <div style="font-weight:700;font-size:13px;">CAFÉ DA MANHÃ</div>
+    <div style="font-size:11px;margin-top:2px;">Pedido #${order.id.substring(0, 6).toUpperCase()}</div>
+    <div style="font-size:10px;color:#444;">${createdStr}</div>
+  </div>
+
+  <!-- Cabana + Horário -->
+  <div style="text-align:center;margin-bottom:10px;">
+    <div style="font-weight:900;font-size:26px;border:3px solid #000;display:inline-block;padding:4px 10px;border-radius:8px;letter-spacing:-0.02em;line-height:1.1;word-break:break-word;max-width:100%;">
+      ${cabinName}
+    </div>
+    ${order.deliveryTime ? `<div style="font-weight:700;font-size:16px;margin-top:6px;">Entrega: ${order.deliveryTime}</div>` : ''}
+    ${deliveryDateStr ? `<div style="font-size:11px;color:#555;">${deliveryDateStr}</div>` : ''}
+  </div>
+
+  <!-- Itens -->
+  <div style="border-top:2px dashed #000;border-bottom:2px dashed #000;padding:8px 0;margin-bottom:8px;">
+    ${itemsHTML}
+  </div>
+
+  <!-- Observações -->
+  ${obsHTML}
+
+  <!-- Total -->
+  <div style="text-align:center;font-weight:700;font-size:12px;margin-bottom:8px;">
+    TOTAL: ${totalStr}
+  </div>
+
+  <!-- Rodapé -->
+  <div style="text-align:center;font-size:10px;color:#666;border-top:1px dashed #ccc;padding-top:4px;">
+    ★ Bom Apetite ★
+  </div>
+
+  <script>
+    window.onload = function() {
+      window.print();
+      window.onafterprint = function() { window.close(); };
+      setTimeout(function() { window.close(); }, 4000);
+    };
+  </script>
+</body>
+</html>`;
 }
 
 // ─── Modal de detalhe ─────────────────────────────────────────────────────────
@@ -249,19 +252,17 @@ function OrderDetailModal({
 
     const handlePrint = () => {
         setPrinting(true);
-        setTimeout(() => {
-            window.print();
-            setTimeout(() => setPrinting(false), 600);
-        }, 250);
+        const html = buildThermalHTML(order, cabinName, propertyName, groups);
+        const win = window.open('', '_blank', 'width=400,height=700,toolbar=0,menubar=0,location=0');
+        if (win) {
+            win.document.write(html);
+            win.document.close();
+        }
+        setTimeout(() => setPrinting(false), 600);
     };
 
     return (
         <>
-            {/* Área de impressão térmica — só aparece no print */}
-            <div className="hidden print:block" style={{ width: '100%' }}>
-                <ThermalTicket order={order} cabinName={cabinName} propertyName={propertyName} groups={groups} />
-            </div>
-
             {/* Modal overlay */}
             <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 print:hidden">
                 <div className="bg-card w-full sm:max-w-lg rounded-t-[32px] sm:rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[92dvh] animate-in slide-in-from-bottom-4 sm:zoom-in duration-200">
