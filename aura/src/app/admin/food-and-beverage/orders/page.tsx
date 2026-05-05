@@ -236,6 +236,9 @@ function OrderDetailModal({
     stayInfo,
     propertyName,
     groups,
+    categories,
+    menuItems,
+    deliveryTimes,
     onClose,
     onStatusChange,
     onOrderUpdated,
@@ -246,6 +249,9 @@ function OrderDetailModal({
     stayInfo: StayInfo | undefined;
     propertyName: string;
     groups: { label: string; items: any[] }[];
+    categories: FBCategory[];
+    menuItems: FBMenuItem[];
+    deliveryTimes: string[];
     onClose: () => void;
     onStatusChange: (id: string, status: FBOrder['status']) => void;
     onOrderUpdated: (updated: FBOrder) => void;
@@ -408,15 +414,31 @@ function OrderDetailModal({
                 {/* Status + Hora */}
                 <div className="flex items-center justify-between px-5 py-3 bg-secondary/40 border-b border-border">
                     {editing ? (
-                        <div className="flex items-center gap-2">
-                            <Clock size={15} className="text-primary shrink-0" />
-                            <input
-                                type="time"
-                                value={editTime}
-                                onChange={e => setEditTime(e.target.value)}
-                                className="bg-secondary border border-border rounded-lg px-2 py-1 text-sm font-mono font-bold text-foreground focus:outline-none focus:border-primary"
-                            />
-                        </div>
+                        deliveryTimes.length > 0 ? (
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <Clock size={15} className="text-primary shrink-0" />
+                                {deliveryTimes.map(t => (
+                                    <button key={t} onClick={() => setEditTime(t)}
+                                        className={cn("px-2.5 py-1 rounded-lg text-xs font-mono font-bold border transition-colors",
+                                            editTime === t
+                                                ? "bg-primary text-primary-foreground border-primary"
+                                                : "bg-secondary border-border text-muted-foreground hover:text-foreground"
+                                        )}>
+                                        {t}
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-2">
+                                <Clock size={15} className="text-primary shrink-0" />
+                                <input
+                                    type="time"
+                                    value={editTime}
+                                    onChange={e => setEditTime(e.target.value)}
+                                    className="bg-secondary border border-border rounded-lg px-2 py-1 text-sm font-mono font-bold text-foreground focus:outline-none focus:border-primary"
+                                />
+                            </div>
+                        )
                     ) : (
                         <div className="flex items-center gap-2 font-mono font-bold">
                             <Clock size={15} className="text-primary" />
@@ -429,38 +451,81 @@ function OrderDetailModal({
                 {/* Itens */}
                 <div className="overflow-y-auto flex-1 px-5 py-4 custom-scrollbar">
                     {editing ? (
-                        /* ── MODO EDIÇÃO ── */
-                        <div className="space-y-4">
-                            {editItems.length === 0 ? (
-                                <p className="text-sm text-muted-foreground text-center py-4">Nenhum item no pedido.</p>
-                            ) : (
-                                editItems.map((it, idx) => (
-                                    <div key={idx} className="flex items-center gap-3 py-2 border-b border-border/30 last:border-0">
-                                        <div className="flex items-center gap-1 shrink-0">
-                                            <button
-                                                onClick={() => changeQty(idx, -1)}
-                                                className="w-7 h-7 rounded-lg bg-secondary hover:bg-red-500/20 hover:text-red-400 flex items-center justify-center text-muted-foreground transition-colors"
-                                            >
-                                                <Minus size={13} />
-                                            </button>
-                                            <span className="font-black text-primary bg-primary/10 min-w-[2rem] h-7 flex items-center justify-center rounded-lg text-sm px-1">
-                                                {it.quantity}×
-                                            </span>
-                                            <button
-                                                onClick={() => changeQty(idx, 1)}
-                                                className="w-7 h-7 rounded-lg bg-secondary hover:bg-green-500/20 hover:text-green-400 flex items-center justify-center text-muted-foreground transition-colors"
-                                            >
-                                                <Plus size={13} />
-                                            </button>
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <span className="font-bold text-sm block leading-snug">{it.name}</span>
-                                            {it.flavor && <span className="text-xs text-amber-400/80 block">Sabor: {it.flavor}</span>}
-                                            {it.guestName && <span className="text-xs text-primary/70 block">→ {it.guestName}</span>}
+                        /* ── MODO EDIÇÃO: catálogo completo agrupado por categoria ── */
+                        <div className="space-y-5">
+                            {(() => {
+                                // Agrupar todos os itens ativos do cardápio por categoria
+                                const activeItems = menuItems.filter(mi => mi.active);
+                                const catMap = new Map(categories.map(c => [c.id, c]));
+
+                                // Itens sem categoria = à la carte
+                                const alacarte = activeItems.filter(mi => !mi.categoryId || !catMap.has(mi.categoryId));
+                                const catGroups = categories
+                                    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+                                    .map(c => ({ cat: c, items: activeItems.filter(mi => mi.categoryId === c.id) }))
+                                    .filter(g => g.items.length > 0);
+
+                                const allGroups = [
+                                    ...(alacarte.length > 0 ? [{ label: 'À la carte', items: alacarte }] : []),
+                                    ...catGroups.map(g => ({ label: g.cat.name, items: g.items })),
+                                ];
+
+                                return allGroups.map(({ label, items }) => (
+                                    <div key={label}>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">{label}</p>
+                                        <div className="space-y-1">
+                                            {items.map(mi => {
+                                                const idx = editItems.findIndex(ei => ei.menuItemId === mi.id);
+                                                const qty = idx >= 0 ? editItems[idx].quantity : 0;
+                                                return (
+                                                    <div key={mi.id} className="flex items-center gap-3 py-1.5 border-b border-border/20 last:border-0">
+                                                        <div className="flex items-center gap-1 shrink-0">
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (idx >= 0) changeQty(idx, -1);
+                                                                }}
+                                                                disabled={qty === 0}
+                                                                className="w-7 h-7 rounded-lg bg-secondary hover:bg-red-500/20 hover:text-red-400 flex items-center justify-center text-muted-foreground transition-colors disabled:opacity-30"
+                                                            >
+                                                                <Minus size={13} />
+                                                            </button>
+                                                            <span className={cn("font-black min-w-[2rem] h-7 flex items-center justify-center rounded-lg text-sm px-1",
+                                                                qty > 0 ? "bg-primary/10 text-primary" : "text-muted-foreground/40"
+                                                            )}>
+                                                                {qty}×
+                                                            </span>
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (idx >= 0) {
+                                                                        changeQty(idx, 1);
+                                                                    } else {
+                                                                        setEditItems(prev => [...prev, {
+                                                                            menuItemId: mi.id,
+                                                                            name: mi.name,
+                                                                            quantity: 1,
+                                                                            unitPrice: mi.price ?? 0,
+                                                                            totalPrice: mi.price ?? 0,
+                                                                        }]);
+                                                                    }
+                                                                }}
+                                                                className="w-7 h-7 rounded-lg bg-secondary hover:bg-green-500/20 hover:text-green-400 flex items-center justify-center text-muted-foreground transition-colors"
+                                                            >
+                                                                <Plus size={13} />
+                                                            </button>
+                                                        </div>
+                                                        <span className={cn("flex-1 text-sm font-medium leading-snug", qty > 0 ? "text-foreground font-bold" : "text-muted-foreground")}>{mi.name}</span>
+                                                        {mi.price != null && mi.price > 0 && (
+                                                            <span className="text-xs text-muted-foreground font-mono shrink-0">
+                                                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(mi.price)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
-                                ))
-                            )}
+                                ));
+                            })()}
 
                             {/* Observações editáveis */}
                             <div className="mt-2">
@@ -875,6 +940,9 @@ export default function FBOrdersPage() {
                     stayInfo={selectedOrder.stayId ? stays[selectedOrder.stayId] : undefined}
                     propertyName={currentProperty?.name ?? ''}
                     groups={selectedOrderGroups}
+                    categories={categories}
+                    menuItems={menuItems}
+                    deliveryTimes={currentProperty?.settings?.fbSettings?.breakfast?.delivery?.deliveryTimes ?? []}
                     onClose={() => { setSelectedOrder(null); setPendingDuplicate(false); }}
                     onStatusChange={updateStatus}
                     onOrderUpdated={(updated) => {
