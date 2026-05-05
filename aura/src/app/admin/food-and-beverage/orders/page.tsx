@@ -269,6 +269,7 @@ function OrderDetailModal({
 
     // Estado de edição: cópia mutável dos itens (sem guest_observations)
     const [editItems, setEditItems] = useState<any[]>([]);
+    const [expandedFlavors, setExpandedFlavors] = useState<string | null>(null); // menuItemId com seletor de sabor aberto
     const [editObs, setEditObs] = useState('');
     const [editTime, setEditTime] = useState(order.deliveryTime ?? '');
 
@@ -535,28 +536,71 @@ function OrderDetailModal({
                                                 <div key={label}>
                                                     <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-1">{label}</p>
                                                     <div className="space-y-1">
-                                                        {items.map(mi => (
-                                                            <div key={mi.id} className="flex items-center gap-3 py-1 border-b border-border/15 last:border-0">
-                                                                <button
-                                                                    onClick={() => setEditItems(prev => [...prev, {
-                                                                        menuItemId: mi.id,
-                                                                        name: mi.name,
-                                                                        quantity: 1,
-                                                                        unitPrice: mi.price ?? 0,
-                                                                        totalPrice: mi.price ?? 0,
-                                                                    }])}
-                                                                    className="w-7 h-7 rounded-lg bg-secondary hover:bg-green-500/20 hover:text-green-400 flex items-center justify-center text-muted-foreground transition-colors shrink-0"
-                                                                >
-                                                                    <Plus size={13} />
-                                                                </button>
-                                                                <span className="flex-1 text-sm text-muted-foreground">{mi.name}</span>
-                                                                {mi.price != null && mi.price > 0 && (
-                                                                    <span className="text-xs text-muted-foreground/60 font-mono shrink-0">
-                                                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(mi.price)}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        ))}
+                                                        {items.map(mi => {
+                                                            const hasFlavors = mi.flavors && mi.flavors.length > 0;
+                                                            const isExpanded = expandedFlavors === mi.id;
+                                                            return (
+                                                                <div key={mi.id} className="border-b border-border/15 last:border-0">
+                                                                    <div className="flex items-center gap-3 py-1">
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                if (hasFlavors) {
+                                                                                    setExpandedFlavors(isExpanded ? null : mi.id);
+                                                                                } else {
+                                                                                    setEditItems(prev => [...prev, {
+                                                                                        menuItemId: mi.id,
+                                                                                        name: mi.name,
+                                                                                        quantity: 1,
+                                                                                        unitPrice: mi.price ?? 0,
+                                                                                        totalPrice: mi.price ?? 0,
+                                                                                    }]);
+                                                                                }
+                                                                            }}
+                                                                            className={cn(
+                                                                                "w-7 h-7 rounded-lg flex items-center justify-center transition-colors shrink-0",
+                                                                                isExpanded
+                                                                                    ? "bg-primary/20 text-primary"
+                                                                                    : "bg-secondary hover:bg-green-500/20 hover:text-green-400 text-muted-foreground"
+                                                                            )}
+                                                                        >
+                                                                            <Plus size={13} />
+                                                                        </button>
+                                                                        <span className="flex-1 text-sm text-muted-foreground">{mi.name}</span>
+                                                                        {hasFlavors && (
+                                                                            <span className="text-[10px] text-muted-foreground/50 shrink-0">escolher sabor</span>
+                                                                        )}
+                                                                        {mi.price != null && mi.price > 0 && (
+                                                                            <span className="text-xs text-muted-foreground/60 font-mono shrink-0">
+                                                                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(mi.price)}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                    {isExpanded && hasFlavors && (
+                                                                        <div className="ml-10 mb-2 flex flex-wrap gap-1.5">
+                                                                            {mi.flavors!.map(f => (
+                                                                                <button
+                                                                                    key={f.name}
+                                                                                    onClick={() => {
+                                                                                        setEditItems(prev => [...prev, {
+                                                                                            menuItemId: mi.id,
+                                                                                            name: mi.name,
+                                                                                            quantity: 1,
+                                                                                            unitPrice: mi.price ?? 0,
+                                                                                            totalPrice: mi.price ?? 0,
+                                                                                            flavor: f.name,
+                                                                                        }]);
+                                                                                        setExpandedFlavors(null);
+                                                                                    }}
+                                                                                    className="px-2.5 py-1 rounded-lg bg-secondary hover:bg-primary/20 hover:text-primary text-xs font-bold text-muted-foreground border border-border/50 transition-colors"
+                                                                                >
+                                                                                    {f.name}
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
                                                     </div>
                                                 </div>
                                             ))}
