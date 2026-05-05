@@ -168,9 +168,9 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Calendários",
     items: [
       { id: "calendario", label: "Calendário Geral", icon: CalendarDays, href: "/admin/calendario",              roles: ["super_admin","admin","reception","manager"] },
-      { id: "agenda",     label: "Agendamentos",      icon: ClipboardCheck, href: "/admin/core/structures/bookings", roles: ["super_admin","admin","reception"] },
-      { id: "eventos",     label: "Eventos",     icon: Flag,  href: "/admin/eventos",     roles: ["super_admin","admin","reception"] },
-      { id: "casamentos",  label: "Casamentos",  icon: Heart, href: "/admin/casamentos", roles: ["super_admin","admin","reception"] },
+      { id: "agenda",     label: "Agendamentos",      icon: ClipboardCheck, href: "/admin/core/structures/bookings", roles: ["super_admin","admin","reception","manager"] },
+      { id: "eventos",     label: "Eventos",     icon: Flag,  href: "/admin/eventos",     roles: ["super_admin","admin","reception","manager"] },
+      { id: "casamentos",  label: "Casamentos",  icon: Heart, href: "/admin/casamentos", roles: ["super_admin","admin","reception","manager"] },
     ],
   },
   {
@@ -180,7 +180,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "manutencao",  label: "Manutenção",  icon: Wrench,       href: "/admin/maintenance/kanban",          roles: ["super_admin","admin","maintenance","manager"] },
       { id: "governanca",  label: "Governança",  icon: Sparkles,     href: "/admin/governance/kanban",           roles: ["super_admin","admin","governance","manager"] },
       { id: "concierge",   label: "Concierge",   icon: Gift,         href: "/admin/concierge",                   roles: ["super_admin","admin","reception","manager"] },
-      { id: "pedidos_fb",  label: "Pedidos F&B", icon: Coffee,       href: "/admin/food-and-beverage/orders",    roles: ["super_admin","admin","reception","kitchen"] },
+      { id: "pedidos_fb",  label: "Pedidos F&B", icon: Coffee,       href: "/admin/food-and-beverage/orders",    roles: ["super_admin","admin","reception","kitchen","manager"] },
     ],
   },
   {
@@ -206,10 +206,10 @@ const NAV_GROUPS: NavGroup[] = [
     collapsible: true,
     items: [
       { id: "cabanas",    label: "Cabanas",           icon: Building,         href: "/admin/cabins",          roles: ["super_admin","admin","governance","manager"] },
-      { id: "estruturas", label: "Estruturas",         icon: LayoutTemplate,   href: "/admin/core/structures", roles: ["super_admin","admin"] },
-      { id: "frigobar",   label: "Frigobar",           icon: RefrigeratorIcon, href: "/admin/cabins/minibar",  roles: ["super_admin","admin"] },
+      { id: "estruturas", label: "Estruturas",         icon: LayoutTemplate,   href: "/admin/core/structures", roles: ["super_admin","admin","manager"] },
+      { id: "frigobar",   label: "Frigobar",           icon: RefrigeratorIcon, href: "/admin/cabins/minibar",  roles: ["super_admin","admin","manager"] },
       { id: "escalas",    label: "Escalas",            icon: ClipboardCheck,   href: "/admin/escalas",         roles: ["super_admin","admin","manager"] },
-      { id: "logs",       label: "Logs de Auditoria",  icon: FileText,         href: "/admin/logs",            roles: ["super_admin","admin"] },
+      { id: "logs",       label: "Logs de Auditoria",  icon: FileText,         href: "/admin/logs",            roles: ["super_admin","admin","manager"] },
       { id: "avaliacoes", label: "Avaliações",         icon: Star,             href: "/admin/surveys/responses", roles: ["super_admin","admin","reception","marketing","manager"] },
     ],
   },
@@ -218,8 +218,8 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Setup",
     collapsible: true,
     items: [
-      { id: "gastro_main", label: "Gastronomia",      icon: Coffee,        href: "/admin/food-and-beverage/menu",           roles: ["super_admin","admin","kitchen"] },
-      { id: "cafe",        label: "Café Salão (KDS)", icon: Phone,         href: "/admin/cafe-salao",                       roles: ["super_admin","admin","kitchen"] },
+      { id: "gastro_main", label: "Gastronomia",      icon: Coffee,        href: "/admin/food-and-beverage/menu",           roles: ["super_admin","admin","kitchen","manager"] },
+      { id: "cafe",        label: "Café Salão (KDS)", icon: Phone,         href: "/admin/cafe-salao",                       roles: ["super_admin","admin","kitchen","manager"] },
       { id: "equipe",      label: "Equipe",            icon: Users,         href: "/admin/staff",                            roles: ["super_admin","admin","manager"] },
       { id: "nps",         label: "Pesquisas (NPS)",   icon: ClipboardList, href: "/admin/surveys",                          roles: ["super_admin","admin","manager"] },
       { id: "automacoes",  label: "Automações",        icon: Bot,           href: "/admin/comunicacao/automations/settings", roles: ["super_admin","admin"] },
