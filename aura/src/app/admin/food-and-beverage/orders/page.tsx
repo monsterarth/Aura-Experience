@@ -478,80 +478,91 @@ function OrderDetailModal({
                 {/* Itens */}
                 <div className="overflow-y-auto flex-1 px-5 py-4 custom-scrollbar">
                     {editing ? (
-                        /* ── MODO EDIÇÃO: catálogo completo agrupado por categoria ── */
+                        /* ── MODO EDIÇÃO ── */
                         <div className="space-y-5">
+                            {/* Seção 1: itens já no pedido (preserva guestName por linha) */}
+                            {editItems.length > 0 && (
+                                <div>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Pedido atual</p>
+                                    <div className="space-y-1">
+                                        {editItems.map((it, idx) => (
+                                            <div key={idx} className="flex items-center gap-3 py-1.5 border-b border-border/20 last:border-0">
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    <button onClick={() => changeQty(idx, -1)}
+                                                        className="w-7 h-7 rounded-lg bg-secondary hover:bg-red-500/20 hover:text-red-400 flex items-center justify-center text-muted-foreground transition-colors">
+                                                        <Minus size={13} />
+                                                    </button>
+                                                    <span className="font-black text-primary bg-primary/10 min-w-[2rem] h-7 flex items-center justify-center rounded-lg text-sm px-1">
+                                                        {it.quantity}×
+                                                    </span>
+                                                    <button onClick={() => changeQty(idx, 1)}
+                                                        className="w-7 h-7 rounded-lg bg-secondary hover:bg-green-500/20 hover:text-green-400 flex items-center justify-center text-muted-foreground transition-colors">
+                                                        <Plus size={13} />
+                                                    </button>
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <span className="font-bold text-sm block leading-snug">{it.name}</span>
+                                                    {it.flavor && <span className="text-xs text-amber-400/80 block">Sabor: {it.flavor}</span>}
+                                                    {it.guestName && <span className="text-xs text-primary/70 block">→ {it.guestName}</span>}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Seção 2: catálogo para adicionar novos itens */}
                             {(() => {
-                                // Agrupar todos os itens ativos do cardápio por categoria
                                 const activeItems = menuItems.filter(mi => mi.active);
                                 const catMap = new Map(categories.map(c => [c.id, c]));
-
-                                // Itens sem categoria = à la carte
                                 const alacarte = activeItems.filter(mi => !mi.categoryId || !catMap.has(mi.categoryId));
                                 const catGroups = categories
                                     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
                                     .map(c => ({ cat: c, items: activeItems.filter(mi => mi.categoryId === c.id) }))
                                     .filter(g => g.items.length > 0);
-
                                 const allGroups = [
                                     ...(alacarte.length > 0 ? [{ label: 'À la carte', items: alacarte }] : []),
                                     ...catGroups.map(g => ({ label: g.cat.name, items: g.items })),
                                 ];
 
-                                return allGroups.map(({ label, items }) => (
-                                    <div key={label}>
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">{label}</p>
-                                        <div className="space-y-1">
-                                            {items.map(mi => {
-                                                const idx = editItems.findIndex(ei => ei.menuItemId === mi.id);
-                                                const qty = idx >= 0 ? editItems[idx].quantity : 0;
-                                                return (
-                                                    <div key={mi.id} className="flex items-center gap-3 py-1.5 border-b border-border/20 last:border-0">
-                                                        <div className="flex items-center gap-1 shrink-0">
-                                                            <button
-                                                                onClick={() => {
-                                                                    if (idx >= 0) changeQty(idx, -1);
-                                                                }}
-                                                                disabled={qty === 0}
-                                                                className="w-7 h-7 rounded-lg bg-secondary hover:bg-red-500/20 hover:text-red-400 flex items-center justify-center text-muted-foreground transition-colors disabled:opacity-30"
-                                                            >
-                                                                <Minus size={13} />
-                                                            </button>
-                                                            <span className={cn("font-black min-w-[2rem] h-7 flex items-center justify-center rounded-lg text-sm px-1",
-                                                                qty > 0 ? "bg-primary/10 text-primary" : "text-muted-foreground/40"
-                                                            )}>
-                                                                {qty}×
-                                                            </span>
-                                                            <button
-                                                                onClick={() => {
-                                                                    if (idx >= 0) {
-                                                                        changeQty(idx, 1);
-                                                                    } else {
-                                                                        setEditItems(prev => [...prev, {
-                                                                            menuItemId: mi.id,
-                                                                            name: mi.name,
-                                                                            quantity: 1,
-                                                                            unitPrice: mi.price ?? 0,
-                                                                            totalPrice: mi.price ?? 0,
-                                                                        }]);
-                                                                    }
-                                                                }}
-                                                                className="w-7 h-7 rounded-lg bg-secondary hover:bg-green-500/20 hover:text-green-400 flex items-center justify-center text-muted-foreground transition-colors"
-                                                            >
-                                                                <Plus size={13} />
-                                                            </button>
-                                                        </div>
-                                                        <span className={cn("flex-1 text-sm font-medium leading-snug", qty > 0 ? "text-foreground font-bold" : "text-muted-foreground")}>{mi.name}</span>
-                                                        {mi.price != null && mi.price > 0 && (
-                                                            <span className="text-xs text-muted-foreground font-mono shrink-0">
-                                                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(mi.price)}
-                                                            </span>
-                                                        )}
+                                if (activeItems.length === 0) return null;
+
+                                return (
+                                    <div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Adicionar item</p>
+                                        <div className="space-y-4">
+                                            {allGroups.map(({ label, items }) => (
+                                                <div key={label}>
+                                                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60 mb-1">{label}</p>
+                                                    <div className="space-y-1">
+                                                        {items.map(mi => (
+                                                            <div key={mi.id} className="flex items-center gap-3 py-1 border-b border-border/15 last:border-0">
+                                                                <button
+                                                                    onClick={() => setEditItems(prev => [...prev, {
+                                                                        menuItemId: mi.id,
+                                                                        name: mi.name,
+                                                                        quantity: 1,
+                                                                        unitPrice: mi.price ?? 0,
+                                                                        totalPrice: mi.price ?? 0,
+                                                                    }])}
+                                                                    className="w-7 h-7 rounded-lg bg-secondary hover:bg-green-500/20 hover:text-green-400 flex items-center justify-center text-muted-foreground transition-colors shrink-0"
+                                                                >
+                                                                    <Plus size={13} />
+                                                                </button>
+                                                                <span className="flex-1 text-sm text-muted-foreground">{mi.name}</span>
+                                                                {mi.price != null && mi.price > 0 && (
+                                                                    <span className="text-xs text-muted-foreground/60 font-mono shrink-0">
+                                                                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(mi.price)}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        ))}
                                                     </div>
-                                                );
-                                            })}
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
-                                ));
+                                );
                             })()}
 
                             {/* Observações editáveis */}
