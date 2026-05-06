@@ -8,6 +8,7 @@ import { CabinService } from "@/services/cabin-service";
 import { StaffService } from "@/services/staff-service";
 import { StructureService } from "@/services/structure-service";
 import { HousekeepingTask, Cabin, Staff, Structure } from "@/types/aura";
+import { MaidMobileApp } from "@/components/admin/MaidMobileApp";
 import { supabase } from "@/lib/supabase";
 import { createClientBrowserAuto } from "@/lib/supabase-browser";
 import { useRouter } from "next/navigation";
@@ -1010,6 +1011,17 @@ export default function GovernantaPage() {
   }
 
   // ── Render ────────────────────────────────────────────────────────────────────
+
+  if (userData?.role === "maid") {
+    return (
+      <>
+        <style>{STYLE}</style>
+        <div className="gov-shell" style={{ height: "100dvh", background: T.bg, color: T.text, overflow: "auto", maxWidth: 480, margin: "0 auto" }}>
+          <MaidMobileApp propertyId={property.id} userData={userData} tasks={tasks} cabins={cabins} />
+        </div>
+      </>
+    );
+  }
 
   const allActiveTasks = tasks.filter(t => t.status !== "completed" && t.status !== "cancelled");
 
