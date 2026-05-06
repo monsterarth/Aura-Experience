@@ -64,11 +64,13 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
   // Quem pode alterar o cargo de outra pessoa?
   // - super_admin pode tudo
   // - admin pode alterar roles abaixo de admin (não pode promover a admin/super_admin)
+  // - manager pode alterar roles abaixo de admin (não pode tocar em admin/super_admin)
   // - ninguém pode alterar o próprio role
   const canEditRole =
     !isSelf &&
     (userData?.role === "super_admin" ||
-      (userData?.role === "admin" && staff.role !== "super_admin"));
+      ((userData?.role === "admin" || userData?.role === "manager") &&
+        staff.role !== "super_admin" && staff.role !== "admin"));
 
   useEffect(() => {
     setFormData({
