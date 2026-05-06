@@ -11,12 +11,10 @@ import { StructureService } from "@/services/structure-service";
 import { StaffService } from "@/services/staff-service";
 import { supabase } from "@/lib/supabase";
 import { HousekeepingTask, Cabin, Staff, Structure } from "@/types/aura";
-import { MaidMobileApp } from "@/components/admin/MaidMobileApp";
-import { StaffMobileHub } from "@/components/admin/StaffMobileHub";
 import { PropertyMapGrid, ActiveStayInfo } from "@/components/admin/PropertyMapGrid";
 import {
   Sparkles, CheckCircle2, AlertCircle,
-  ClipboardCheck, Moon, LayoutDashboard, Smartphone,
+  ClipboardCheck, Moon, LayoutDashboard,
   Timer, Users, ArrowRight
 } from "lucide-react";
 import { toast } from "sonner";
@@ -31,8 +29,6 @@ export default function GovernancePage() {
   const [structures, setStructures] = useState<Record<string, Structure>>({});
   const [maids, setMaids] = useState<Staff[]>([]);
   const [loadingInitial, setLoadingInitial] = useState(true);
-
-  const [govMode, setGovMode] = useState<'admin' | 'maid' | null>(null);
 
   const [activeStays, setActiveStays] = useState<ActiveStayInfo[]>([]);
   const [staysLoading, setStaysLoading] = useState(true);
@@ -123,76 +119,8 @@ export default function GovernancePage() {
   }
 
   if (userData?.role === 'maid') {
-    return (
-      <StaffMobileHub
-        propertyId={property.id}
-        userData={userData}
-        renderTasks={() => (
-           <MaidMobileApp
-             propertyId={property.id}
-             userData={userData}
-             tasks={tasks}
-             cabins={cabins}
-           />
-        )}
-      />
-    );
-  }
-
-  if (userData?.role === 'governance' && govMode === null) {
-    return (
-      <div className="min-h-[100dvh] flex flex-col items-center justify-center bg-background p-6">
-        <div className="w-full max-w-sm space-y-8">
-          <div className="text-center space-y-2">
-            <h1 className="text-2xl font-black tracking-tight text-foreground">Olá, {userData.fullName.split(' ')[0]}!</h1>
-            <p className="text-sm text-muted-foreground font-medium">Como você vai trabalhar hoje?</p>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <button
-              onClick={() => setGovMode('admin')}
-              className="flex flex-col items-center gap-4 p-6 bg-card border-2 border-border hover:border-primary rounded-3xl shadow-sm hover:shadow-md transition-all group"
-            >
-              <div className="p-4 bg-primary/10 rounded-2xl group-hover:bg-primary/20 transition-colors">
-                <LayoutDashboard size={28} className="text-primary" />
-              </div>
-              <div className="text-center">
-                <p className="font-black text-sm text-foreground">Gestão</p>
-                <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest mt-0.5">Mapa</p>
-              </div>
-            </button>
-            <button
-              onClick={() => setGovMode('maid')}
-              className="flex flex-col items-center gap-4 p-6 bg-card border-2 border-border hover:border-teal-500 rounded-3xl shadow-sm hover:shadow-md transition-all group"
-            >
-              <div className="p-4 bg-teal-500/10 rounded-2xl group-hover:bg-teal-500/20 transition-colors">
-                <Smartphone size={28} className="text-teal-500" />
-              </div>
-              <div className="text-center">
-                <p className="font-black text-sm text-foreground">Campo</p>
-                <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-widest mt-0.5">Mobile</p>
-              </div>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (userData?.role === 'governance' && govMode === 'maid') {
-    return (
-      <StaffMobileHub
-        propertyId={property.id}
-        userData={userData}
-        renderTasks={() => (
-          <MaidMobileApp
-            propertyId={property.id}
-            userData={userData}
-            tasks={tasks}
-            cabins={cabins}
-          />
-        )}
-      />
-    );
+    window.location.href = '/governanta';
+    return null;
   }
 
   // ---- PAINEL DE COMANDO: métricas derivadas ----

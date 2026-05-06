@@ -2,7 +2,6 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
@@ -16,18 +15,15 @@ import { HousekeepingTaskManagerModal } from "@/components/admin/HousekeepingTas
 import { HousekeepingRoutinesModal } from "@/components/admin/HousekeepingRoutinesModal";
 import { ChecklistSettingsModal } from "@/components/admin/ChecklistSettingsModal";
 import { MinibarModal } from "@/components/admin/MinibarModal";
-import { MaidMobileApp } from "@/components/admin/MaidMobileApp";
-import { StaffMobileHub } from "@/components/admin/StaffMobileHub";
 import {
   Sparkles, Clock, CheckCircle2, AlertCircle,
-  Coffee, ArrowRight, ClipboardCheck, Plus, UserPlus, Settings2, Edit3, MessageSquare, Archive, Calendar as CalendarIcon, X, Moon, LayoutDashboard, Smartphone, CheckSquare, Square, CheckCheck, Trash2, Loader2,
+  Coffee, ArrowRight, ClipboardCheck, Plus, UserPlus, Settings2, Edit3, MessageSquare, Archive, Calendar as CalendarIcon, X, Moon, CheckSquare, Square, CheckCheck, Trash2, Loader2,
   ChevronLeft
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 export default function GovernanceKanbanPage() {
-  const router = useRouter();
   const { currentProperty: property, loading: isLoading } = useProperty();
   const { userData } = useAuth();
 
@@ -37,7 +33,6 @@ export default function GovernanceKanbanPage() {
   const [maids, setMaids] = useState<Staff[]>([]);
   const [loadingInitial, setLoadingInitial] = useState(true);
 
-  const [govMode, setGovMode] = useState<'admin' | 'maid' | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchLoading, setBatchLoading] = useState(false);
   const [isChecklistOpen, setIsChecklistOpen] = useState(false);
@@ -112,43 +107,8 @@ export default function GovernanceKanbanPage() {
   }
 
   if (userData?.role === 'maid') {
-    return (
-      <StaffMobileHub
-        propertyId={property.id}
-        userData={userData}
-        renderTasks={() => (
-           <MaidMobileApp
-             propertyId={property.id}
-             userData={userData}
-             tasks={tasks}
-             cabins={cabins}
-           />
-        )}
-      />
-    );
-  }
-
-  // governance role — sem modo selecionado → redirecionar para a página principal
-  if (userData?.role === 'governance' && govMode === null) {
-    router.push('/admin/governance');
+    window.location.href = '/governanta';
     return null;
-  }
-
-  if (userData?.role === 'governance' && govMode === 'maid') {
-    return (
-      <StaffMobileHub
-        propertyId={property.id}
-        userData={userData}
-        renderTasks={() => (
-          <MaidMobileApp
-            propertyId={property.id}
-            userData={userData}
-            tasks={tasks}
-            cabins={cabins}
-          />
-        )}
-      />
-    );
   }
 
   const handleAssignTask = async (taskId: string, maidId: string) => {

@@ -26,12 +26,14 @@ export default function AdminLoginPage() {
    * Redirecionamento inteligente baseado no Cargo (Role-based Routing)
    */
   const getRedirectPath = (role: Staff['role']) => {
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
     switch (role) {
       case 'super_admin':
         return "/admin/core/properties";
       case 'governance':
-      case 'maid': // Camareira vai direto para o seu App Mobile de Governança
-        return "/admin/governance";
+        return isMobile ? "/governanta" : "/admin/governance/kanban";
+      case 'maid':
+        return "/governanta";
       case 'houseman':
         return "/admin/houseman";
       case 'maintenance':
