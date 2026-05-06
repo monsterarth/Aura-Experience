@@ -128,7 +128,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           if (mounted) setLoading(false);
         }
       }
-    }, 5000);
+    }, 2000);
 
     /**
      * onAuthStateChange: fonte de verdade para eventos contínuos.

@@ -54,6 +54,14 @@ export async function updateSession(request: NextRequest) {
     const pathname = request.nextUrl.pathname;
     const isAdminPage = pathname.startsWith('/admin') && !pathname.includes('/login');
     const isAdminApi = pathname.startsWith('/api/admin');
+    const isStaffApp = pathname.startsWith('/governanta') || pathname.startsWith('/maid') || pathname.startsWith('/admin/houseman') || pathname.startsWith('/admin/maintenance') || pathname.startsWith('/admin/kitchen');
+
+    // Proteger páginas de staff — redireciona para login se não autenticado
+    if (isStaffApp && !user) {
+        const url = request.nextUrl.clone();
+        url.pathname = '/admin/login';
+        return NextResponse.redirect(url);
+    }
 
     // Proteger páginas admin e API routes admin — redireciona/bloqueia se não autenticado
     if ((isAdminPage || isAdminApi) && !user) {

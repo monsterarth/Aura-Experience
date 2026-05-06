@@ -33,7 +33,7 @@ export default function AdminLoginPage() {
       case 'governance':
         return isMobile ? "/governanta" : "/admin/governance/kanban";
       case 'maid':
-        return "/governanta";
+        return "/maid";
       case 'houseman':
         return "/admin/houseman";
       case 'maintenance':
