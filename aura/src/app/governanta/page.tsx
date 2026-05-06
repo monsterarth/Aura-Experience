@@ -901,7 +901,7 @@ export default function GovernantaPage() {
         setStructures(structuresDict);
         setAllStructures(structuresData);
 
-        setMaids(staffData.filter(s => s.role === "maid" && s.active));
+        setMaids(staffData.filter(s => s.active && (s.role === "maid" || (s.secondaryRoles ?? []).includes("maid"))));
 
         unsub = HousekeepingService.listenToActiveTasks(property.id, setTasks);
       } catch {

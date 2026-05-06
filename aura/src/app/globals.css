@@ -87,6 +87,15 @@
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
+  /* Force browser to render native select/option dropdowns matching the page theme */
+  select {
+    color-scheme: light;
+    color: hsl(var(--foreground));
+    background-color: hsl(var(--background));
+  }
+  .dark select {
+    color-scheme: dark;
+  }
 }
 
 @layer components {
