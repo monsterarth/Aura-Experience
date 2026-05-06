@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
+import { RoleSwitcher } from "@/components/auth/RoleSwitcher";
 import { HousekeepingService } from "@/services/housekeeping-service";
 import { CabinService } from "@/services/cabin-service";
 import { StaffService } from "@/services/staff-service";
@@ -1073,6 +1074,9 @@ export default function GovernantaPage() {
             ))}
           </div>
         </div>
+
+        {/* Role switcher — só aparece se o usuário tem acessos adicionais */}
+        <RoleSwitcher />
 
         {/* ── Content ─────────────────────────────────────────────────────────── */}
         <div className="gov-scroll" style={{ flex: 1, padding: "0 16px" }}>

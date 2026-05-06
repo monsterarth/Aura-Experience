@@ -391,8 +391,13 @@ export async function PUT(request: Request) {
       }
     }
 
-    // Campos permitidos — role só chega aqui se passou nas guards acima
-    const allowedFields = ['fullName', 'phone', 'birthDate', 'hireDate', 'bio', 'profilePictureUrl', 'active', 'role', 'uiTheme', 'sidebarDefaultCollapsed'];
+    // secondaryRoles: mesmo guard de self-edit que role principal
+    if (isSelf && 'secondaryRoles' in updates) {
+      return NextResponse.json({ error: "Não pode alterar os próprios acessos adicionais." }, { status: 403 });
+    }
+
+    // Campos permitidos — role/secondaryRoles só chegam aqui se passaram nas guards acima
+    const allowedFields = ['fullName', 'phone', 'birthDate', 'hireDate', 'bio', 'profilePictureUrl', 'active', 'role', 'uiTheme', 'sidebarDefaultCollapsed', 'secondaryRoles'];
     const safeUpdates: Record<string, unknown> = {};
     for (const key of allowedFields) {
       if (key in updates) safeUpdates[key] = updates[key];

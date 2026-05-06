@@ -5,28 +5,34 @@ import { useAuth } from "@/context/AuthContext";
 import { UserRole } from "@/types/aura";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Loader2, ShieldAlert, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 
 interface RoleGuardProps {
   children: React.ReactNode;
   allowedRoles: UserRole[];
+  /** Rota para redirecionar se o cargo não bater. Padrão: /admin/login */
+  redirectTo?: string;
 }
 
-export const RoleGuard = ({ children, allowedRoles }: RoleGuardProps) => {
+export const RoleGuard = ({ children, allowedRoles, redirectTo = "/admin/login" }: RoleGuardProps) => {
   const { userData, loading } = useAuth();
   const router = useRouter();
   const [stuckTooLong, setStuckTooLong] = useState(false);
 
-  // Safety: se ficar preso em loading/sem userData por 15s, mostra tela de recovery
+  // Safety: se loading não resolver em 8s, mostra tela de recovery
   useEffect(() => {
     if (!loading && userData) { setStuckTooLong(false); return; }
-    const t = setTimeout(() => setStuckTooLong(true), 15000);
+    const t = setTimeout(() => setStuckTooLong(true), 8000);
     return () => clearTimeout(t);
   }, [loading, userData]);
 
-  // Enquanto auth resolve (loading ou userData ainda não carregou), mostra spinner.
-  // Não redirecionamos aqui — o middleware já protege rotas admin server-side,
-  // e o SIGNED_OUT handler no AuthContext redireciona quando a sessão expira client-side.
+  // Sessão resolveu mas não há usuário → redireciona para login
+  useEffect(() => {
+    if (!loading && !userData) {
+      router.replace("/admin/login");
+    }
+  }, [loading, userData, router]);
+
   if (loading || !userData) {
     if (stuckTooLong) {
       return (
@@ -58,25 +64,20 @@ export const RoleGuard = ({ children, allowedRoles }: RoleGuardProps) => {
     );
   }
 
-  // Se tem usuário mas cargo errado -> Mostra tela de bloqueio
-  if (!allowedRoles.includes(userData.role)) {
+  // Acesso permitido se role principal OU qualquer secondaryRole estiver na lista
+  const hasAccess =
+    allowedRoles.includes(userData.role) ||
+    (userData.secondaryRoles ?? []).some(r => allowedRoles.includes(r));
+
+  // Role não autorizado → redireciona para a rota configurada
+  if (!hasAccess) {
+    router.replace(redirectTo);
     return (
-      <div className="flex h-[80vh] flex-col items-center justify-center space-y-6 p-8 text-center animate-in zoom-in duration-300">
-        <div className="rounded-full bg-red-500/10 p-6 text-red-500 ring-1 ring-red-500/20">
-          <ShieldAlert size={64} />
+      <div className="flex h-screen w-full items-center justify-center bg-[#0a0a0a]">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="text-xs font-bold uppercase tracking-widest text-foreground/20">Redirecionando...</p>
         </div>
-        <div className="space-y-2">
-            <h2 className="text-3xl font-black text-foreground">Acesso Restrito</h2>
-            <p className="max-w-md text-foreground/40">
-            O seu cargo (<strong>{userData?.role}</strong>) não possui as credenciais de segurança necessárias para acessar esta área.
-            </p>
-        </div>
-        <button 
-            onClick={() => router.back()}
-            className="px-8 py-3 bg-white/5 hover:bg-white/10 text-foreground font-bold rounded-xl transition-all"
-        >
-            Voltar
-        </button>
       </div>
     );
   }

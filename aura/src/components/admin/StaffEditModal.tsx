@@ -74,6 +74,7 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
     setFormData({
       fullName: staff.fullName,
       role: staff.role,
+      secondaryRoles: staff.secondaryRoles ?? [],
       active: staff.active,
       phone: staff.phone || "",
       birthDate: staff.birthDate || "",
@@ -320,6 +321,36 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
                   </div>
                 </div>
               </div>
+
+              {canEditRole && (
+                <div className="space-y-2">
+                  <label className="text-xs font-bold uppercase text-muted-foreground">Acessos Adicionais</label>
+                  <p className="text-xs text-muted-foreground">Permitem ao funcionário acessar outras áreas além do cargo principal.</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["maid", "governance", "technician", "waiter", "porter", "houseman"] as UserRole[])
+                      .filter(r => r !== formData.role)
+                      .map(r => {
+                        const checked = (formData.secondaryRoles ?? []).includes(r);
+                        return (
+                          <label key={r} className="flex items-center gap-2 p-2 rounded-lg border border-border hover:bg-muted cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={e => {
+                                const next = e.target.checked
+                                  ? [...(formData.secondaryRoles ?? []), r]
+                                  : (formData.secondaryRoles ?? []).filter(x => x !== r);
+                                setFormData(prev => ({ ...prev, secondaryRoles: next }));
+                              }}
+                              className="w-4 h-4 text-primary bg-background border-border rounded focus:ring-primary focus:ring-offset-background"
+                            />
+                            <span className="text-sm">{roleLabels[r]}</span>
+                          </label>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-1">
                 <label className="text-xs font-bold uppercase text-muted-foreground">Biografia / Notas</label>

@@ -63,6 +63,37 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.redirect(url);
     }
 
+    // Proteger rotas de staff por role — server-side, antes de renderizar qualquer JS
+    if (isStaffApp && user) {
+        const { data: staffRow } = await supabaseAdmin
+            .from('staff')
+            .select('role, "secondaryRoles"')
+            .eq('id', user.id)
+            .maybeSingle();
+
+        const role = staffRow?.role as string | undefined;
+        const secondaryRoles: string[] = (staffRow as any)?.secondaryRoles ?? [];
+
+        const roleForRoute: Record<string, string[]> = {
+            '/maid': ['maid'],
+            '/governanta': ['governance'],
+        };
+
+        for (const [route, allowed] of Object.entries(roleForRoute)) {
+            if (pathname.startsWith(route)) {
+                const hasAccess = role && (
+                    allowed.includes(role) ||
+                    secondaryRoles.some(r => allowed.includes(r))
+                );
+                if (!hasAccess) {
+                    const url = request.nextUrl.clone();
+                    url.pathname = '/admin/login';
+                    return NextResponse.redirect(url);
+                }
+            }
+        }
+    }
+
     // Proteger páginas admin e API routes admin — redireciona/bloqueia se não autenticado
     if ((isAdminPage || isAdminApi) && !user) {
         if (isAdminApi) {

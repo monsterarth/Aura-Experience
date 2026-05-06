@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
+import { RoleSwitcher } from "@/components/auth/RoleSwitcher";
 import { HousekeepingService } from "@/services/housekeeping-service";
 import { CabinService } from "@/services/cabin-service";
 import { ConciergeService } from "@/services/concierge-service";
@@ -1656,6 +1657,9 @@ export default function MaidPage() {
               <span style={{ fontSize: 11, color: T.muted, fontWeight: 600 }}>Tempo real</span>
             </div>
           </div>
+
+          {/* Role switcher — só aparece se o usuário tem acessos adicionais */}
+          <RoleSwitcher />
 
           {/* Screens */}
           <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", position: "relative", zIndex: 1 }}>

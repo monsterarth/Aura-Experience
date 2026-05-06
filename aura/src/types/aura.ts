@@ -698,6 +698,7 @@ export interface Staff {
   hireDate?: string; // YYYY-MM-DD
   uiTheme?: 'dark' | 'light';
   sidebarDefaultCollapsed?: boolean;
+  secondaryRoles?: UserRole[];
 }
 
 // --- ESCALAS DE TRABALHO ---
