@@ -4,11 +4,13 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { RoleSwitcher } from "@/components/auth/RoleSwitcher";
+import { MinibarSheet } from "@/components/maid/MinibarSheet";
 import { HousekeepingService } from "@/services/housekeeping-service";
 import { CabinService } from "@/services/cabin-service";
 import { StaffService } from "@/services/staff-service";
 import { StructureService } from "@/services/structure-service";
-import { HousekeepingTask, Cabin, Staff, Structure } from "@/types/aura";
+import { StayService } from "@/services/stay-service";
+import { HousekeepingTask, Cabin, Staff, Structure, MinibarItem } from "@/types/aura";
 import { supabase } from "@/lib/supabase";
 import { createClientBrowserAuto } from "@/lib/supabase-browser";
 import { useRouter } from "next/navigation";
@@ -203,9 +205,9 @@ function StatusBadge({ status }: { status: HousekeepingTask["status"] }) {
 
 function TypeBadge({ type }: { type: HousekeepingTask["type"] }) {
   const map: Record<string, { label: string; color: string; bg: string }> = {
-    turnover: { label: "Turnover", color: T.v1, bg: "rgba(167,139,250,0.12)" },
-    daily:    { label: "Diária",   color: T.blue, bg: T.blueBg },
-    custom:   { label: "Custom",   color: T.amber, bg: T.amberBg },
+    turnover: { label: "Faxina de Troca",  color: T.v1, bg: "rgba(167,139,250,0.12)" },
+    daily:    { label: "Arrumação Diária", color: T.blue, bg: T.blueBg },
+    custom:   { label: "Personalizada",    color: T.amber, bg: T.amberBg },
   };
   const s = map[type] ?? map.custom;
   return (
@@ -519,7 +521,7 @@ function NewTaskSheet({
         <Label>Tipo</Label>
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
           {(["daily", "turnover", "custom"] as const).map(t => {
-            const labels = { daily: "Diária", turnover: "Turnover", custom: "Custom" };
+            const labels = { daily: "Arrumação Diária", turnover: "Faxina de Troca", custom: "Personalizada" };
             const on = taskType === t;
             return (
               <button key={t} onClick={() => setTaskType(t)} style={{
@@ -844,6 +846,9 @@ export default function GovernantaPage() {
 
   const [screen, setScreen] = useState<Screen>("dashboard");
 
+  const [minibarItems, setMinibarItems] = useState<MinibarItem[]>([]);
+  const [govMiniTarget, setGovMiniTarget] = useState<HousekeepingTask | null>(null);
+
   // Sheets
   const [conferTask, setConferTask] = useState<HousekeepingTask | null>(null);
   const [assignTask, setAssignTask] = useState<HousekeepingTask | null>(null);
@@ -878,11 +883,13 @@ export default function GovernantaPage() {
     const init = async () => {
       setLoading(true);
       try {
-        const [cabinsData, staffData, structuresData] = await Promise.all([
+        const [cabinsData, staffData, structuresData, { data: miniData }] = await Promise.all([
           CabinService.getCabinsByProperty(property.id),
           StaffService.getStaffByProperty(property.id),
           StructureService.getStructures(property.id),
+          supabase.from("minibar_items").select("*").eq("propertyId", property.id).eq("active", true).order("order", { ascending: true }),
         ]);
+        setMinibarItems((miniData || []) as MinibarItem[]);
 
         const cabinsDict: Record<string, Cabin> = {};
         cabinsData.forEach(c => { cabinsDict[c.id] = c; });
@@ -976,8 +983,31 @@ export default function GovernantaPage() {
     }
   };
 
+  const handleGovMiniSend = async (cart: Record<string, number>) => {
+    const task = govMiniTarget;
+    if (!task?.stayId || !property) return;
+    try {
+      await Promise.all(
+        Object.entries(cart).filter(([, q]) => q > 0).map(([itemId, qty]) => {
+          const item = minibarItems.find(m => m.id === itemId);
+          if (!item) return Promise.resolve();
+          return StayService.addFolioItemManual(
+            property.id, task.stayId!,
+            { description: item.name, quantity: qty, unitPrice: item.price, totalPrice: item.price * qty, category: "minibar", addedBy: userData?.id || "" },
+            userData?.id || "", userData?.fullName || "Governanta",
+          );
+        })
+      );
+      showToast("Frigobar lançado!");
+    } catch { showToast("Erro ao lançar frigobar.", T.red); throw new Error("folio_failed"); }
+  };
+
   // ── Derived ───────────────────────────────────────────────────────────────────
 
+  const checkoutTasks = tasks.filter(
+    t => t.type === "turnover" && !t.cabinChecked &&
+      (t.status === "pending" || t.status === "in_progress" || t.status === "waiting_conference")
+  );
   const conferenceTasks = tasks.filter(t => t.status === "waiting_conference");
   const pendingTasks    = tasks.filter(t => t.status === "pending" || t.status === "paused");
   const inProgressTasks = tasks.filter(t => t.status === "in_progress");
@@ -1105,6 +1135,29 @@ export default function GovernantaPage() {
               </div>
               <I n="chevr" s={18} c={T.v1} />
             </button>
+          )}
+
+          {/* Checkout conference section */}
+          {screen === "dashboard" && checkoutTasks.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.07em", textTransform: "uppercase", color: T.amber, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+                <Pulse size={6} color={T.amber} /> Conferências de Checkout
+              </div>
+              {checkoutTasks.map(t => (
+                <div key={t.id} style={{ background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 18, padding: 16, marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: T.amber }}>{getLocationName(t)}</div>
+                    <div style={{ fontSize: 12, color: T.amber, opacity: 0.7, marginTop: 2 }}>Faxina de Troca · Verificar cabana</div>
+                  </div>
+                  <button
+                    onClick={() => setGovMiniTarget(t)}
+                    style={{ padding: "10px 18px", background: T.amber, color: "#1a0c00", fontFamily: "inherit", fontSize: 13, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", border: "none", borderRadius: 12, cursor: "pointer", flexShrink: 0, boxShadow: "0 2px 12px rgba(245,158,11,0.4)" }}
+                  >
+                    Conferir
+                  </button>
+                </div>
+              ))}
+            </div>
           )}
 
           {/* Dashboard view */}
@@ -1297,6 +1350,22 @@ export default function GovernantaPage() {
             onClose={() => setShowNewTask(false)}
             onCreated={() => {}}
             showToast={showToast}
+          />
+        )}
+        {govMiniTarget && (
+          <MinibarSheet
+            cabinName={getLocationName(govMiniTarget)}
+            items={minibarItems}
+            onClose={() => setGovMiniTarget(null)}
+            onSend={handleGovMiniSend}
+            keyLocation={govMiniTarget.keyLocation ?? "unknown"}
+            stayId={govMiniTarget.stayId}
+            propertyId={property.id}
+            userId={userData?.id || ""}
+            userName={userData?.fullName || "Governanta"}
+            showToast={showToast}
+            taskId={govMiniTarget.id}
+            actorLabel="Governanta"
           />
         )}
 

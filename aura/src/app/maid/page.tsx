@@ -4,12 +4,12 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { RoleSwitcher } from "@/components/auth/RoleSwitcher";
+import { Sheet } from "@/components/maid/MinibarSheet";
 import { HousekeepingService } from "@/services/housekeeping-service";
 import { CabinService } from "@/services/cabin-service";
 import { ConciergeService } from "@/services/concierge-service";
-import { StayService } from "@/services/stay-service";
 import { supabase } from "@/lib/supabase";
-import { HousekeepingTask, Cabin, ConciergeItem, MinibarItem } from "@/types/aura";
+import { HousekeepingTask, Cabin, ConciergeItem } from "@/types/aura";
 
 type EnrichedTask = HousekeepingTask & { cabinName?: string };
 import { useRouter } from "next/navigation";
@@ -137,32 +137,6 @@ function Toast({ msg, color }: { msg: string; color: string }) {
   );
 }
 
-// ─── Bottom Sheet wrapper ─────────────────────────────────────────────────────
-
-function Sheet({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        position: "absolute", inset: 0, zIndex: 50,
-        background: "rgba(0,0,0,0.75)",
-        display: "flex", flexDirection: "column", justifyContent: "flex-end",
-        animation: "maid-fadein .2s ease", backdropFilter: "blur(4px)",
-      }}
-      onClick={e => e.target === e.currentTarget && onClose()}
-    >
-      <div style={{
-        background: "#0d1020", border: `1px solid ${T.border2}`,
-        borderRadius: "28px 28px 0 0", borderBottom: "none",
-        maxHeight: "92dvh", display: "flex", flexDirection: "column",
-        animation: "maid-slideup .28s cubic-bezier(.32,.72,0,1)",
-      }}>
-        <div style={{ width: 36, height: 4, borderRadius: 2, background: T.border2, margin: "12px auto 4px", flexShrink: 0 }} />
-        {children}
-      </div>
-    </div>
-  );
-}
-
 // ─── Icon component (subset) ─────────────────────────────────────────────────
 
 type IName = "home"|"coffee"|"sparkles"|"user"|"key"|"check"|"arrow"|"plus"|"minus"|"x"|"pkg"|"info"|"send"|"logout"|"edit"|"sun"|"clock"|"list"|"chevr"|"loader"|"camera"|"inbox"|"search";
@@ -200,455 +174,6 @@ function I({ n, s = 20, c = "currentColor", w = 1.8 }: { n: IName; s?: number; c
   );
 }
 
-// ─── Minibar Sheet ────────────────────────────────────────────────────────────
-
-function MinibarSheet({
-  cabinName, items, onClose, onSend,
-  keyLocation, stayId, propertyId, userId, userName, showToast,
-  loanedItems, taskId,
-}: {
-  cabinName: string;
-  items: MinibarItem[];
-  onClose: () => void;
-  onSend: (cart: Record<string, number>) => Promise<void>;
-  keyLocation?: "reception" | "cabin" | "unknown";
-  stayId?: string;
-  propertyId?: string;
-  userId?: string;
-  userName?: string;
-  showToast?: (msg: string, color?: string) => void;
-  loanedItems?: string;
-  taskId?: string;
-}) {
-  const [cart, setCart] = useState<Record<string, number>>({});
-  const [busy, setBusy] = useState(false);
-  // cart → key (if cabin) → lost → loaned (if loanedItems) → fin
-  const [phase, setPhase] = useState<"cart" | "key" | "lost" | "loaned" | "fin">("cart");
-  const [lostDesc, setLostDesc] = useState("");
-  const [lostPhoto, setLostPhoto] = useState<string | null>(null);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const [savingLost, setSavingLost] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Loaned items phase
-  const parsedLoaned = loanedItems
-    ? loanedItems.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean).map((label, i) => ({ id: String(i), label, checked: false }))
-    : [];
-  const [loanedChecks, setLoanedChecks] = useState<{ id: string; label: string; checked: boolean }[]>(parsedLoaned);
-  const [savingLoaned, setSavingLoaned] = useState(false);
-
-  const adj = (id: string, d: number) =>
-    setCart(p => { const n = { ...p }, v = Math.max(0, (p[id] ?? 0) + d); if (!v) delete n[id]; else n[id] = v; return n; });
-
-  const total = Object.entries(cart).reduce((s, [id, q]) => s + (items.find(m => m.id === id)?.price ?? 0) * q, 0);
-  const count = Object.values(cart).reduce((a, b) => a + b, 0);
-
-  const submitCart = async () => {
-    setBusy(true);
-    try {
-      await onSend(cart);
-      setBusy(false);
-      if (keyLocation === "cabin") {
-        setPhase("key");
-      } else {
-        setPhase("lost");
-      }
-    } catch {
-      setBusy(false);
-    }
-  };
-
-  const confirmKey = async (found: boolean) => {
-    if (!found && stayId && propertyId && userId) {
-      try {
-        await StayService.addFolioItemManual(
-          propertyId, stayId,
-          { description: "Chave não encontrada", quantity: 1, unitPrice: 0, totalPrice: 0, category: "services", addedBy: userId },
-          userId, userName ?? "Camareira",
-        );
-        showToast?.("Chave não encontrada registrada no fólio.", T.amber);
-      } catch { /* non-blocking */ }
-    }
-    setPhase("lost");
-  };
-
-  const compressImage = (file: File, maxPx = 1280, quality = 0.82): Promise<Blob> =>
-    new Promise((resolve, reject) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        const ratio = Math.min(1, maxPx / Math.max(img.width, img.height));
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.round(img.width * ratio);
-        canvas.height = Math.round(img.height * ratio);
-        canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob(b => b ? resolve(b) : reject(new Error("compress_failed")), "image/jpeg", quality);
-      };
-      img.onerror = reject;
-      img.src = url;
-    });
-
-  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploadingPhoto(true);
-    try {
-      const compressed = await compressImage(file);
-      const formData = new FormData();
-      formData.append("file", new File([compressed], "lost-item.jpg", { type: "image/jpeg" }));
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      if (!res.ok) throw new Error("upload_failed");
-      const { url } = await res.json();
-      setLostPhoto(url);
-    } catch {
-      showToast?.("Erro ao enviar foto.", T.red);
-    } finally {
-      setUploadingPhoto(false);
-    }
-  };
-
-  const finishAll = async () => {
-    if (taskId) {
-      try {
-        await supabase.from("housekeeping_tasks").update({ cabinChecked: true, updatedAt: new Date().toISOString() }).eq("id", taskId);
-      } catch { /* non-blocking */ }
-    }
-    setPhase("fin");
-    showToast?.("Conferência concluída!");
-    setTimeout(onClose, 700);
-  };
-
-  const submitLost = async (hasItems: boolean) => {
-    if (!hasItems) {
-      if (parsedLoaned.length > 0) { setPhase("loaned"); return; }
-      await finishAll();
-      return;
-    }
-    if (!lostDesc.trim()) return;
-    setSavingLost(true);
-    try {
-      await supabase.from("stays").update({
-        lostItemsDescription: lostDesc.trim(),
-        lostItemsPhoto: lostPhoto,
-        lostItemsReportedAt: new Date().toISOString(),
-        lostItemsReportedBy: userId,
-      }).eq("id", stayId ?? "");
-      showToast?.("Objetos esquecidos registrados!", T.amber);
-    } catch {
-      showToast?.("Erro ao registrar. Tente novamente.", T.red);
-    } finally {
-      setSavingLost(false);
-      if (parsedLoaned.length > 0) { setPhase("loaned"); }
-      else { await finishAll(); }
-    }
-  };
-
-  const submitLoaned = async () => {
-    setSavingLoaned(true);
-    try {
-      await supabase.from("stays").update({
-        loanedItemsChecked: true,
-        loanedItemsCheckedAt: new Date().toISOString(),
-      }).eq("id", stayId ?? "");
-    } catch { /* non-blocking */ }
-    finally {
-      setSavingLoaned(false);
-      await finishAll();
-    }
-  };
-
-  // ── Key step ────────────────────────────────────────────────────────────────
-  if (phase === "key") {
-    return (
-      <Sheet onClose={onClose}>
-        <div style={{ padding: "0 20px 14px", flexShrink: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 14, background: T.amberBg, border: `1px solid ${T.amberBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <I n="key" s={22} c={T.amber} />
-            </div>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 900 }}>Confirmar Chave</div>
-              <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{cabinName}</div>
-            </div>
-          </div>
-          <div style={{ fontSize: 14, color: T.text, fontWeight: 600, marginTop: 16, lineHeight: 1.5 }}>
-            A chave estava na acomodação?
-          </div>
-        </div>
-        <div className="maid-sheet-body" style={{ padding: "0 16px" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
-            <button onClick={() => confirmKey(true)} style={{ padding: "20px 16px", background: T.greenBg, border: `2px solid ${T.greenBorder}`, borderRadius: 18, cursor: "pointer", fontFamily: "inherit", color: T.green, textAlign: "left", display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(45,212,191,0.15)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <I n="check" s={22} c={T.green} w={2.5} />
-              </div>
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 900 }}>Sim, estava lá</div>
-                <div style={{ fontSize: 12, color: T.green, opacity: 0.7, marginTop: 2 }}>Chave encontrada na acomodação</div>
-              </div>
-            </button>
-            <button onClick={() => confirmKey(false)} style={{ padding: "20px 16px", background: T.redBg, border: `2px solid rgba(248,113,113,0.3)`, borderRadius: 18, cursor: "pointer", fontFamily: "inherit", color: T.red, textAlign: "left", display: "flex", alignItems: "center", gap: 14 }}>
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(248,113,113,0.12)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <I n="x" s={22} c={T.red} w={2.5} />
-              </div>
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 900 }}>Não encontramos</div>
-                <div style={{ fontSize: 12, color: T.red, opacity: 0.7, marginTop: 2 }}>Será registrado no fólio da estadia</div>
-              </div>
-            </button>
-          </div>
-          <div style={{ height: 40 }} />
-        </div>
-      </Sheet>
-    );
-  }
-
-  // ── Loaned items step ───────────────────────────────────────────────────────
-  if (phase === "loaned") {
-    const allChecked = loanedChecks.every(i => i.checked);
-    return (
-      <Sheet onClose={onClose}>
-        <div style={{ padding: "0 20px 14px", flexShrink: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 14, background: T.amberBg, border: `1px solid ${T.amberBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <I n="pkg" s={22} c={T.amber} />
-            </div>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 900 }}>Objetos Emprestados</div>
-              <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{cabinName}</div>
-            </div>
-          </div>
-          <div style={{ fontSize: 14, color: T.text, fontWeight: 600, marginTop: 16, lineHeight: 1.5 }}>
-            Confirme a devolução de cada item:
-          </div>
-        </div>
-        <div className="maid-sheet-body" style={{ padding: "0 16px" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
-            {loanedChecks.map(item => (
-              <div
-                key={item.id}
-                onClick={() => setLoanedChecks(p => p.map(i => i.id === item.id ? { ...i, checked: !i.checked } : i))}
-                style={{
-                  display: "flex", alignItems: "center", gap: 14, padding: 14, borderRadius: 14,
-                  border: `1px solid ${item.checked ? T.greenBorder : T.border}`,
-                  background: item.checked ? T.greenBg : T.glass,
-                  cursor: "pointer", transition: "all .15s", userSelect: "none",
-                }}
-              >
-                <div style={{
-                  width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
-                  border: `2px solid ${item.checked ? T.green : "rgba(255,255,255,0.15)"}`,
-                  background: item.checked ? T.green : "transparent",
-                  display: "flex", alignItems: "center", justifyContent: "center", transition: "all .15s",
-                }}>
-                  {item.checked && <I n="check" s={12} c="white" w={3} />}
-                </div>
-                <span style={{ fontSize: 14, fontWeight: 600, flex: 1, textDecoration: item.checked ? "line-through" : "none", opacity: item.checked ? 0.45 : 1, color: item.checked ? T.green : T.text }}>
-                  {item.label}
-                </span>
-              </div>
-            ))}
-          </div>
-          <div style={{ height: 40 }} />
-        </div>
-        <div style={{ padding: "12px 16px", borderTop: `1px solid ${T.border}`, background: "#0d1020", flexShrink: 0 }}>
-          <button
-            onClick={submitLoaned}
-            disabled={!allChecked || savingLoaned}
-            style={{
-              width: "100%", padding: 16,
-              background: allChecked ? T.greenG : T.glass,
-              color: allChecked ? "#021a17" : T.muted,
-              fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const,
-              border: "none", borderRadius: 16, cursor: allChecked && !savingLoaned ? "pointer" : "not-allowed",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              opacity: allChecked ? 1 : 0.4,
-              boxShadow: allChecked ? "0 4px 20px rgba(45,212,191,0.3)" : "none",
-            }}
-          >
-            {savingLoaned ? <I n="loader" s={17} c="#021a17" w={2} /> : <><I n="check" s={17} />Confirmar Devolução</>}
-          </button>
-        </div>
-      </Sheet>
-    );
-  }
-
-  // ── Lost items step ─────────────────────────────────────────────────────────
-  if (phase === "lost") {
-    return (
-      <Sheet onClose={onClose}>
-        <div style={{ padding: "0 20px 14px", flexShrink: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 14, background: T.blueBg, border: `1px solid ${T.blueBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <I n="search" s={22} c={T.blue} />
-            </div>
-            <div>
-              <div style={{ fontSize: 18, fontWeight: 900 }}>Objetos Esquecidos</div>
-              <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{cabinName}</div>
-            </div>
-          </div>
-          <div style={{ fontSize: 14, color: T.text, fontWeight: 600, marginTop: 16, lineHeight: 1.5 }}>
-            Encontrou algum objeto esquecido?
-          </div>
-        </div>
-        <div className="maid-sheet-body" style={{ padding: "0 16px" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
-            {/* Textarea for description */}
-            <textarea
-              placeholder="Descreva os objetos encontrados... (ex: óculos de sol, carregador, livro)"
-              value={lostDesc}
-              onChange={e => setLostDesc(e.target.value)}
-              rows={4}
-              style={{
-                width: "100%", background: T.glass2, border: `1px solid ${lostDesc ? T.blueBorder : T.border}`,
-                borderRadius: 16, padding: "14px 16px", color: T.text, fontSize: 14, fontFamily: "inherit",
-                resize: "none", outline: "none", lineHeight: 1.6, transition: "border-color .15s",
-              }}
-            />
-
-            {/* Photo upload */}
-            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handlePhotoChange} />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadingPhoto}
-              style={{
-                width: "100%", padding: "14px 16px", background: lostPhoto ? "rgba(96,165,250,0.12)" : T.glass,
-                border: `1px solid ${lostPhoto ? T.blueBorder : T.border}`, borderRadius: 16,
-                cursor: uploadingPhoto ? "wait" : "pointer", fontFamily: "inherit", color: lostPhoto ? T.blue : T.muted,
-                display: "flex", alignItems: "center", gap: 12, fontSize: 14, fontWeight: 600,
-              }}
-            >
-              {uploadingPhoto ? (
-                <><span style={{ display: "inline-flex", animation: "maid-spin 1s linear infinite" }}><I n="loader" s={18} c={T.blue} w={2} /></span> Enviando foto...</>
-              ) : lostPhoto ? (
-                <><I n="check" s={18} c={T.blue} /> Foto anexada — trocar</>
-              ) : (
-                <><I n="camera" s={18} c={T.muted} /> Tirar foto dos objetos</>
-              )}
-            </button>
-
-            {lostPhoto && (
-              <div style={{ borderRadius: 16, overflow: "hidden", border: `1px solid ${T.blueBorder}` }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={lostPhoto} alt="Objetos esquecidos" style={{ width: "100%", maxHeight: 200, objectFit: "cover", display: "block" }} />
-              </div>
-            )}
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 4 }}>
-              <button
-                onClick={() => submitLost(false)}
-                style={{ padding: "16px 12px", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 16, cursor: "pointer", fontFamily: "inherit", color: T.muted, fontSize: 14, fontWeight: 700 }}
-              >
-                Não encontrei
-              </button>
-              <button
-                onClick={() => submitLost(true)}
-                disabled={!lostDesc.trim() || savingLost}
-                style={{
-                  padding: "16px 12px", background: lostDesc.trim() ? T.grad : T.glass,
-                  border: `1px solid ${lostDesc.trim() ? "transparent" : T.border}`, borderRadius: 16,
-                  cursor: lostDesc.trim() && !savingLost ? "pointer" : "not-allowed", fontFamily: "inherit",
-                  color: lostDesc.trim() ? "#fff" : T.muted, fontSize: 14, fontWeight: 800,
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                  opacity: lostDesc.trim() ? 1 : 0.4,
-                }}
-              >
-                {savingLost ? <I n="loader" s={16} c="#fff" w={2} /> : <><I n="send" s={16} />Registrar</>}
-              </button>
-            </div>
-          </div>
-          <div style={{ height: 32 }} />
-        </div>
-      </Sheet>
-    );
-  }
-
-  // ── Cart step ───────────────────────────────────────────────────────────────
-  return (
-    <Sheet onClose={onClose}>
-      <div style={{ padding: "0 20px 14px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexShrink: 0 }}>
-        <div>
-          <div style={{ fontSize: 20, fontWeight: 900 }}>{cabinName}</div>
-          <div style={{ fontSize: 12, color: T.muted, marginTop: 3, fontWeight: 500 }}>Conferência da cabana</div>
-        </div>
-        <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
-          <I n="x" s={15} />
-        </button>
-      </div>
-
-      {/* Steps indicator */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 20px 14px", flexShrink: 0 }}>
-        {[
-          { label: "Frigobar", active: true },
-          { label: keyLocation === "cabin" ? "Chave" : null },
-          { label: "Achados" },
-          { label: parsedLoaned.length > 0 ? "Empréstimos" : null },
-        ].filter(s => s.label).map((s, i, arr) => (
-          <React.Fragment key={i}>
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <div style={{ width: 20, height: 20, borderRadius: "50%", background: s.active ? T.g1 : "rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 900, color: s.active ? "#fff" : T.muted }}>{i + 1}</div>
-              <span style={{ fontSize: 11, fontWeight: s.active ? 700 : 500, color: s.active ? T.text : T.muted }}>{s.label}</span>
-            </div>
-            {i < arr.length - 1 && <div style={{ flex: 1, height: 1, background: T.border }} />}
-          </React.Fragment>
-        ))}
-      </div>
-
-      <div className="maid-sheet-body" style={{ padding: "0 16px" }}>
-        {items.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "32px 0", color: T.muted }}>
-            <I n="inbox" s={36} c={T.muted} />
-            <div style={{ fontSize: 13, marginTop: 10 }}>Nenhum item no frigobar</div>
-          </div>
-        ) : items.map(item => {
-          const q = cart[item.id] ?? 0;
-          return (
-            <div key={item.id} style={{
-              display: "flex", alignItems: "center", gap: 10, padding: "12px",
-              borderRadius: 14, borderBottom: `1px solid ${T.border}`,
-              background: q > 0 ? "rgba(155,109,255,0.08)" : "transparent", transition: "background .15s",
-            }}>
-              <span style={{ flex: 1, fontSize: 14, fontWeight: q > 0 ? 700 : 400, color: q > 0 ? T.g1 : T.text }}>{item.name}</span>
-              <span style={{ fontSize: 11, color: T.muted, marginRight: 6 }}>R${item.price}</span>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <button onClick={() => adj(item.id, -1)} disabled={!q} style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${T.border}`, background: T.glass2, cursor: q ? "pointer" : "not-allowed", opacity: q ? 1 : 0.3, display: "flex", alignItems: "center", justifyContent: "center", color: T.text }}>
-                  <I n="minus" s={13} />
-                </button>
-                <span style={{ width: 18, textAlign: "center", fontWeight: 900, fontSize: 14 }}>{q}</span>
-                <button onClick={() => adj(item.id, 1)} style={{ width: 30, height: 30, borderRadius: 8, background: "linear-gradient(135deg,rgba(155,109,255,0.3),rgba(78,201,212,0.3))", border: "1px solid rgba(155,109,255,0.3)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: T.g1 }}>
-                  <I n="plus" s={13} />
-                </button>
-              </div>
-            </div>
-          );
-        })}
-        <div style={{ height: 100 }} />
-      </div>
-
-      <div style={{ padding: "12px 16px", borderTop: `1px solid ${T.border}`, background: "#0d1020", flexShrink: 0 }}>
-        {count > 0 && (
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, padding: "0 4px" }}>
-            <span style={{ fontSize: 13, color: T.muted, fontWeight: 600 }}>{count} item(s)</span>
-            <span style={{ fontSize: 14, fontWeight: 900, background: T.grad, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>R$ {total.toFixed(2)}</span>
-          </div>
-        )}
-        <button
-          onClick={submitCart}
-          disabled={busy}
-          style={{
-            width: "100%", padding: 16, background: T.grad, color: "#fff",
-            fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const,
-            border: "none", borderRadius: 16, cursor: busy ? "wait" : "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-            boxShadow: "0 4px 20px rgba(155,109,255,0.35)",
-          }}
-        >
-          {busy ? <I n="loader" s={17} c="#fff" w={2} /> : count > 0 ? <><I n="send" s={17} />Lançar e continuar</> : <><I n="arrow" s={17} />Sem consumo · Continuar</>}
-        </button>
-      </div>
-    </Sheet>
-  );
-}
 
 // ─── Replenish Sheet ──────────────────────────────────────────────────────────
 
@@ -764,6 +289,8 @@ function TaskSheet({
   const [maidItems, setMaidItems] = useState<ConciergeItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
   const [loadingChecklist, setLoadingChecklist] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [finishing, setFinishing] = useState(false);
 
   useEffect(() => {
     if (task.checklist.length > 0) return;
@@ -819,6 +346,20 @@ function TaskSheet({
     finally { setLoadingItems(false); }
   };
 
+  const handleFinish = async () => {
+    setFinishing(true);
+    try {
+      await HousekeepingService.finishTask(propertyId, task.id, task.checklist, "", userId, userName);
+      onClose();
+    } catch (e: any) {
+      if (e?.message === "CHECKLIST_INCOMPLETE") showToast("Marque ao menos um item antes de finalizar.", T.amber);
+      else showToast("Erro ao finalizar.", T.red);
+    } finally {
+      setFinishing(false);
+      setShowConfirm(false);
+    }
+  };
+
   const handleSendRep = async (entries: { itemId: string; qty: number }[]) => {
     if (!task.stayId) { showToast("Sem reserva vinculada.", "var(--red)"); return; }
     try {
@@ -844,7 +385,7 @@ function TaskSheet({
             <div>
               <div style={{ fontSize: 22, fontWeight: 900 }}>{task.cabinName || "Cabana"}</div>
               <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>
-                {task.type === "turnover" ? "Faxina Completa · Troca" : "Arrumação Diária"}
+                {task.type === "turnover" ? "Faxina de Troca" : "Arrumação Diária"}
               </div>
             </div>
             <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
@@ -942,20 +483,43 @@ function TaskSheet({
             })}
           </div>
 
-          {/* Reposição button */}
-          <button onClick={openRep} style={{ width: "100%", padding: "15px 16px", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 16, cursor: "pointer", color: T.text, display: "flex", alignItems: "center", gap: 12, fontFamily: "inherit", marginBottom: 20 }}>
-            <div style={{ width: 38, height: 38, borderRadius: 12, background: `linear-gradient(135deg,rgba(245,158,11,0.2),rgba(252,211,77,0.15))`, border: `1px solid ${T.amberBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <I n="pkg" s={18} c={T.amber} />
-            </div>
-            <div style={{ textAlign: "left" as const, flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>Solicitar Reposição</div>
-              <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>Cama · Toalhas · Amenidades · Frigobar</div>
-            </div>
-            <I n="chevr" s={16} c={T.muted} />
-          </button>
           <div style={{ height: 16 }} />
         </div>
+
+        {/* Fixed footer */}
+        <div style={{ padding: "12px 16px", borderTop: `1px solid ${T.border}`, background: "#0d1020", flexShrink: 0, display: "flex", gap: 10 }}>
+          <button onClick={openRep} style={{ flex: "0 0 auto", padding: "14px 16px", background: T.glass, border: `1px solid ${T.amberBorder}`, borderRadius: 16, cursor: "pointer", color: T.amber, display: "flex", alignItems: "center", gap: 8, fontFamily: "inherit", fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" as const }}>
+            <I n="pkg" s={16} c={T.amber} />
+            Reposição
+          </button>
+          <button
+            onClick={() => setShowConfirm(true)}
+            style={{ flex: 1, padding: 14, background: T.greenG, color: "#021a17", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(45,212,191,0.3)" }}
+          >
+            <I n="check" s={17} c="#021a17" w={2.5} /> Finalizar Faxina
+          </button>
+        </div>
       </Sheet>
+
+      {/* Confirm modal */}
+      {showConfirm && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 24 }}>
+          <div style={{ background: "#111827", border: `1px solid ${T.border2}`, borderRadius: 24, padding: 24, width: "100%", maxWidth: 340, boxShadow: "0 20px 60px rgba(0,0,0,0.7)" }}>
+            <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 6 }}>Finalizar esta faxina?</div>
+            <div style={{ fontSize: 13, color: T.muted, marginBottom: 20 }}>
+              {task.checklist.filter(c => c.checked).length}/{task.checklist.length} itens concluídos
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setShowConfirm(false)} style={{ flex: 1, padding: 14, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 14, cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 700, color: T.muted }}>
+                Cancelar
+              </button>
+              <button onClick={handleFinish} disabled={finishing} style={{ flex: 1, padding: 14, background: T.greenG, color: "#021a17", fontFamily: "inherit", fontSize: 14, fontWeight: 800, border: "none", borderRadius: 14, cursor: finishing ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                {finishing ? <I n="loader" s={17} c="#021a17" w={2} /> : <><I n="check" s={17} c="#021a17" w={2.5} /> Confirmar</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showRep && (
         <ReplenishSheet
@@ -973,12 +537,11 @@ function TaskSheet({
 // ─── Home screen ──────────────────────────────────────────────────────────────
 
 function HomeScreen({
-  tasks, checkouts, cabins, onNav, userName,
+  tasks, cabins, onNav, userName,
 }: {
   tasks: EnrichedTask[];
-  checkouts: { cabinName: string; stayId: string }[];
   cabins: Record<string, Cabin>;
-  onNav: (t: "home" | "checkouts" | "tasks" | "profile") => void;
+  onNav: (t: "home" | "tasks" | "profile") => void;
   userName: string;
 }) {
   const inProg = tasks.filter(t => t.status === "in_progress");
@@ -998,10 +561,9 @@ function HomeScreen({
       </div>
 
       {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 8, marginBottom: 20 }}>
         {[
           { label: "Ocupadas", val: all.filter(c => c.status === "occupied").length, color: T.blue, bg: T.blueBg, border: T.blueBorder },
-          { label: "Checkouts", val: checkouts.length, color: T.amber, bg: T.amberBg, border: T.amberBorder },
           { label: "Livres", val: all.filter(c => c.status === "available").length, color: T.green, bg: T.greenBg, border: T.greenBorder },
         ].map(s => (
           <div key={s.label} style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: 18, padding: "14px 10px", textAlign: "center" }}>
@@ -1038,22 +600,6 @@ function HomeScreen({
         </div>
       )}
 
-      {/* Checkouts CTA */}
-      {checkouts.length > 0 && (
-        <button onClick={() => onNav("checkouts")} style={{ width: "100%", textAlign: "left", cursor: "pointer", background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 20, padding: 16, marginBottom: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.amber, marginBottom: 4 }}>Checkouts aguardando</div>
-              <div style={{ fontSize: 26, fontWeight: 900, color: T.amber, textShadow: "0 0 20px rgba(245,158,11,.4)" }}>{checkouts.length} cabana{checkouts.length !== 1 ? "s" : ""}</div>
-              <div style={{ fontSize: 12, color: T.amber, opacity: 0.7, marginTop: 3 }}>Conferir cabana antes da faxina →</div>
-            </div>
-            <div style={{ width: 52, height: 52, borderRadius: 16, background: "rgba(245,158,11,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <I n="search" s={26} c={T.amber} />
-            </div>
-          </div>
-        </button>
-      )}
-
       {/* My tasks list */}
       <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.muted, marginBottom: 10 }}>Minhas faxinas de hoje</div>
       {tasks.length === 0 ? (
@@ -1080,133 +626,13 @@ function HomeScreen({
   );
 }
 
-// ─── Checkouts screen ─────────────────────────────────────────────────────────
-
-interface CheckoutEntry { cabinId: string; cabinName: string; cabinCategory: string; stayId: string; guestName: string; keyLocation: "reception" | "cabin" | "unknown"; loanedItems?: string; cabinChecked?: boolean; taskId?: string; }
-
-function CheckoutsScreen({
-  checkouts, minibarItems, showToast, propertyId, userId, userName,
-  onAssume,
-}: {
-  checkouts: CheckoutEntry[];
-  minibarItems: MinibarItem[];
-  showToast: (m: string, c?: string) => void;
-  propertyId: string; userId: string; userName: string;
-  onAssume: (entry: CheckoutEntry) => void;
-}) {
-  const [miniTarget, setMiniTarget] = useState<CheckoutEntry | null>(null);
-  const [assumed, setAssumed] = useState<Set<string>>(new Set());
-
-  const handleMiniSend = async (cart: Record<string, number>) => {
-    if (!miniTarget) return;
-    try {
-      await Promise.all(
-        Object.entries(cart).filter(([, q]) => q > 0).map(([itemId, qty]) => {
-          const item = minibarItems.find(m => m.id === itemId);
-          if (!item) return Promise.resolve();
-          return StayService.addFolioItemManual(
-            propertyId, miniTarget.stayId,
-            { description: item.name, quantity: qty, unitPrice: item.price, totalPrice: item.price * qty, category: "minibar", addedBy: userId },
-            userId, userName,
-          );
-        })
-      );
-    } catch { showToast("Erro ao lançar frigobar.", T.red); throw new Error("folio_failed"); }
-  };
-
-  return (
-    <>
-      <div className="maid-scroll" style={{ padding: "0 16px 20px" }}>
-        <div style={{ padding: "10px 0 20px" }}>
-          <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.3px" }}>Checkouts</div>
-          <div style={{ fontSize: 13, color: T.muted, marginTop: 5 }}>Confira o frigobar e objetos esquecidos antes da faxina.</div>
-        </div>
-
-        {checkouts.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "60px 0", color: T.muted }}>
-            <div style={{ width: 64, height: 64, borderRadius: 20, background: T.greenBg, border: `1px solid ${T.greenBorder}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-              <I n="check" s={32} c={T.green} />
-            </div>
-            <div style={{ fontSize: 16, fontWeight: 700 }}>Tudo em dia!</div>
-            <div style={{ fontSize: 13, marginTop: 6 }}>Nenhum checkout pendente.</div>
-          </div>
-        ) : checkouts.map(co => (
-          <div key={co.cabinId} style={{ marginBottom: 14 }}>
-            <GBorder>
-              <div style={{ background: "rgba(10,12,22,0.9)", borderRadius: 20, padding: 16 }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 24, fontWeight: 900 }}>{co.cabinName}</div>
-                    <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{co.cabinCategory} · {co.guestName}</div>
-                  </div>
-                  <Pill
-                    color={co.keyLocation === "reception" ? T.green : T.amber}
-                    bg={co.keyLocation === "reception" ? T.greenBg : T.amberBg}
-                    border={co.keyLocation === "reception" ? T.greenBorder : T.amberBorder}
-                  >
-                    <I n="key" s={9} />
-                    {co.keyLocation === "reception" ? "Recepção" : "Conferir"}
-                  </Pill>
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <button
-                    onClick={() => !co.cabinChecked && setMiniTarget(co)}
-                    disabled={co.cabinChecked}
-                    style={{
-                      padding: 16,
-                      background: co.cabinChecked ? T.greenG : T.grad,
-                      color: co.cabinChecked ? "#021a17" : "#fff",
-                      fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const,
-                      border: "none", borderRadius: 16, cursor: co.cabinChecked ? "default" : "pointer",
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                      boxShadow: co.cabinChecked ? "0 4px 20px rgba(45,212,191,0.35)" : "0 4px 20px rgba(155,109,255,0.35)",
-                    }}
-                  >
-                    <I n="check" s={16} /> {co.cabinChecked ? "Conferida" : "Conferir"}
-                  </button>
-                  <button
-                    disabled={assumed.has(co.cabinId)}
-                    onClick={() => { setAssumed(p => { const s = new Set(p); s.add(co.cabinId); return s; }); onAssume(co); showToast("Cabana assumida por você!"); }}
-                    style={{ padding: 15, background: T.glass2, color: T.text, fontFamily: "inherit", fontSize: 14, fontWeight: 700, letterSpacing: "0.02em", textTransform: "uppercase" as const, border: `1px solid ${T.border2}`, borderRadius: 16, cursor: assumed.has(co.cabinId) ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: assumed.has(co.cabinId) ? 0.5 : 1 }}
-                  >
-                    {assumed.has(co.cabinId) ? <><I n="check" s={15} />Assumida</> : "Assumir"}
-                  </button>
-                </div>
-              </div>
-            </GBorder>
-          </div>
-        ))}
-      </div>
-
-      {miniTarget && minibarItems.length > 0 && (
-        <MinibarSheet
-          cabinName={miniTarget.cabinName}
-          items={minibarItems}
-          onClose={() => setMiniTarget(null)}
-          onSend={handleMiniSend}
-          keyLocation={miniTarget.keyLocation}
-          stayId={miniTarget.stayId}
-          propertyId={propertyId}
-          userId={userId}
-          userName={userName}
-          showToast={showToast}
-          loanedItems={miniTarget.loanedItems}
-          taskId={miniTarget.taskId}
-        />
-      )}
-    </>
-  );
-}
-
 // ─── Faxinas screen ───────────────────────────────────────────────────────────
 
 function FaxinasScreen({
-  tasks, minibarItems, onStart, showToast, onToggle,
+  tasks, onStart, showToast, onToggle,
   propertyId, userId, userName, onChecklistLoaded,
 }: {
   tasks: EnrichedTask[];
-  minibarItems: MinibarItem[];
   onStart: (id: string) => void;
   showToast: (m: string, c?: string) => void;
   onToggle: (tid: string, cid: string) => void;
@@ -1214,30 +640,11 @@ function FaxinasScreen({
   onChecklistLoaded: (taskId: string, checklist: ChecklistItem[]) => void;
 }) {
   const [detail, setDetail] = useState<string | null>(null);
-  const [miniTarget, setMiniTarget] = useState<EnrichedTask | null>(null);
 
   const inProg = tasks.filter(t => t.status === "in_progress");
   const pending = tasks.filter(t => t.status === "pending");
   const waiting = tasks.filter(t => t.status === "waiting_conference");
   const fullTask = detail ? tasks.find(t => t.id === detail) ?? null : null;
-
-  const handleMiniSend = async (cart: Record<string, number>) => {
-    if (!miniTarget?.stayId) return;
-    try {
-      await Promise.all(
-        Object.entries(cart).filter(([, q]) => q > 0).map(([itemId, qty]) => {
-          const item = minibarItems.find(m => m.id === itemId);
-          if (!item) return Promise.resolve();
-          return StayService.addFolioItemManual(
-            propertyId, miniTarget.stayId!,
-            { description: item.name, quantity: qty, unitPrice: item.price, totalPrice: item.price * qty, category: "minibar", addedBy: userId },
-            userId, userName,
-          );
-        })
-      );
-      showToast("Frigobar lançado!");
-    } catch { showToast("Erro ao lançar frigobar.", T.red); }
-  };
 
   return (
     <>
@@ -1262,7 +669,7 @@ function FaxinasScreen({
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                       <div>
                         <div style={{ fontSize: 26, fontWeight: 900, color: T.green, textShadow: "0 0 24px rgba(45,212,191,0.4)" }}>{t.cabinName || "Cabana"}</div>
-                        <div style={{ fontSize: 12, color: T.green, opacity: 0.65, marginTop: 2 }}>{t.type === "turnover" ? "Faxina Completa" : "Arrumação Diária"}</div>
+                        <div style={{ fontSize: 12, color: T.green, opacity: 0.65, marginTop: 2 }}>{t.type === "turnover" ? "Faxina de Troca" : "Arrumação Diária"}</div>
                       </div>
                       <div style={{ textAlign: "right" as const }}>
                         <div style={{ fontSize: 13, fontWeight: 900, color: T.green }}>{elapsed(t.startedAt as string)}</div>
@@ -1272,12 +679,7 @@ function FaxinasScreen({
                     <div style={{ height: 6, borderRadius: 6, background: "rgba(255,255,255,0.07)", marginBottom: 14 }}>
                       <div style={{ height: "100%", borderRadius: 6, background: T.greenG, width: `${pct}%`, transition: "width .4s ease" }} />
                     </div>
-                    <div style={{ display: "grid", gridTemplateColumns: t.type === "turnover" ? "48px 1fr" : "1fr", gap: 8 }}>
-                      {t.type === "turnover" && (
-                        <button onClick={() => setMiniTarget(t)} style={{ height: 50, background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 14, cursor: "pointer", color: T.amber, display: "flex", alignItems: "center", justifyContent: "center" }} title="Conferir cabana">
-                          <I n="search" s={18} c={T.amber} />
-                        </button>
-                      )}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
                       <button onClick={() => setDetail(t.id)} style={{ padding: 16, background: T.greenG, color: "#021a17", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(45,212,191,0.3)" }}>
                         <I n="list" s={17} /> Ver Checklist
                       </button>
@@ -1298,7 +700,7 @@ function FaxinasScreen({
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
                   <div>
                     <div style={{ fontSize: 24, fontWeight: 900 }}>{t.cabinName || "Cabana"}</div>
-                    <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{t.type === "turnover" ? "Faxina Completa" : "Arrumação Diária"}</div>
+                    <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{t.type === "turnover" ? "Faxina de Troca" : "Arrumação Diária"}</div>
                   </div>
                   <Pill
                     color={t.keyLocation === "reception" ? T.green : T.muted}
@@ -1315,12 +717,7 @@ function FaxinasScreen({
                   ))}
                   {t.checklist.length > 3 && <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, background: T.glass3, color: T.muted, border: `1px solid ${T.border}` }}>+{t.checklist.length - 3} itens</span>}
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: t.type === "turnover" ? "48px 1fr" : "1fr", gap: 8 }}>
-                  {t.type === "turnover" && (
-                    <button onClick={() => setMiniTarget(t)} style={{ height: 52, background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 14, cursor: "pointer", color: T.amber, display: "flex", alignItems: "center", justifyContent: "center" }} title="Conferir cabana">
-                      <I n="search" s={18} c={T.amber} />
-                    </button>
-                  )}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
                   <button onClick={() => onStart(t.id)} style={{ padding: 16, background: T.grad, color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(155,109,255,0.35)" }}>
                     Iniciar <I n="arrow" s={18} />
                   </button>
@@ -1360,14 +757,6 @@ function FaxinasScreen({
           task={fullTask} onClose={() => setDetail(null)} onToggle={onToggle}
           showToast={showToast} propertyId={propertyId} userId={userId} userName={userName}
           onChecklistLoaded={onChecklistLoaded}
-        />
-      )}
-      {miniTarget && (
-        <MinibarSheet
-          cabinName={miniTarget.cabinName || "Cabana"}
-          items={minibarItems}
-          onClose={() => setMiniTarget(null)}
-          onSend={handleMiniSend}
         />
       )}
     </>
@@ -1451,7 +840,7 @@ function ProfileScreen({ userData, showToast, onLogout }: { userData: any; showT
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-type Tab = "home" | "checkouts" | "tasks" | "profile";
+type Tab = "home" | "tasks" | "profile";
 
 export default function MaidPage() {
   const { userData, loading: authLoading, userDataReady } = useAuth();
@@ -1461,8 +850,6 @@ export default function MaidPage() {
   const [tab, setTab] = useState<Tab>("home");
   const [tasks, setTasks] = useState<EnrichedTask[]>([]);
   const [cabins, setCabins] = useState<Record<string, Cabin>>({});
-  const [minibarItems, setMinibarItems] = useState<MinibarItem[]>([]);
-  const [checkouts, setCheckouts] = useState<CheckoutEntry[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; color: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1471,38 +858,6 @@ export default function MaidPage() {
     setToast({ msg, color });
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 2600);
-  }, []);
-
-  // Derive checkouts: turnover tasks + async fetch loanedItems from stays
-  const deriveCheckouts = useCallback(async (allTasks: EnrichedTask[], cabinMap: Record<string, Cabin>) => {
-    const turnoverPending = allTasks.filter(
-      t => t.type === "turnover" && (t.status === "pending" || t.status === "in_progress")
-    );
-    const cos: CheckoutEntry[] = turnoverPending
-      .filter(t => t.cabinId && cabinMap[t.cabinId])
-      .map(t => ({
-        cabinId: t.cabinId!,
-        stayId: t.stayId ?? "",
-        cabinName: cabinMap[t.cabinId!]?.name ?? t.cabinId!,
-        cabinCategory: cabinMap[t.cabinId!]?.category ?? "",
-        keyLocation: t.keyLocation ?? "unknown",
-        guestName: "Hóspede",
-        cabinChecked: t.cabinChecked ?? false,
-        taskId: t.id,
-      }));
-
-    // Fetch loanedItems from stays for each checkout
-    const stayIds = cos.map(c => c.stayId).filter(Boolean);
-    if (stayIds.length > 0) {
-      const { data: stays } = await supabase.from("stays").select("id,loanedItems").in("id", stayIds);
-      if (stays) {
-        const stayMap: Record<string, string | undefined> = {};
-        stays.forEach((s: any) => { stayMap[s.id] = s.loanedItems; });
-        cos.forEach(c => { c.loanedItems = stayMap[c.stayId]; });
-      }
-    }
-
-    setCheckouts(cos);
   }, []);
 
   // Auth guard: redirect to login when auth resolved and no user
@@ -1528,32 +883,22 @@ export default function MaidPage() {
     const init = async () => {
       setDataLoading(true);
       try {
-        const [cabinsData, { data: miniData }] = await Promise.all([
-          CabinService.getCabinsByProperty(property.id),
-          supabase.from("minibar_items").select("*").eq("propertyId", property.id).eq("active", true).order("order", { ascending: true }),
-        ]);
-
+        const cabinsData = await CabinService.getCabinsByProperty(property.id);
         const cabinMap: Record<string, Cabin> = {};
         cabinsData.forEach(c => { cabinMap[c.id] = c; });
         setCabins(cabinMap);
-        setMinibarItems((miniData || []) as MinibarItem[]);
 
         unsubscribe = HousekeepingService.listenToActiveTasks(property.id, allTasks => {
-          // Filter to this maid's tasks (or all if governance/admin)
           const myId = userData?.id;
           const myTasks = (userData?.role === "maid" && myId)
             ? allTasks.filter(t => t.assignedTo?.includes(myId) && t.status !== "completed" && t.status !== "cancelled")
             : allTasks.filter(t => t.status !== "completed" && t.status !== "cancelled");
 
-          // Enrich with cabin names
           const enriched: EnrichedTask[] = myTasks.map(t => ({
             ...t,
             cabinName: t.cabinId ? (cabinMap[t.cabinId]?.name ?? t.cabinId) : (t.customLocation ?? "Tarefa"),
           }));
           setTasks(enriched);
-
-          // Derive checkouts from the global task list (all maids can see these)
-          deriveCheckouts(allTasks, cabinMap);
         });
       } catch {
         showToast("Erro ao carregar dados.", T.red);
@@ -1564,7 +909,7 @@ export default function MaidPage() {
 
     init();
     return () => unsubscribe?.();
-  }, [property, userData?.id, userData?.role, deriveCheckouts, showToast]);
+  }, [property, userData?.id, userData?.role, showToast]);
 
   const handleStart = useCallback(async (taskId: string) => {
     if (!property || !userData) return;
@@ -1598,19 +943,6 @@ export default function MaidPage() {
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, checklist } : t));
   }, []);
 
-  const handleAssume = useCallback(async (entry: CheckoutEntry) => {
-    if (!property || !userData) return;
-    try {
-      const task = (await HousekeepingService.getActiveTasks(property.id)).find(
-        t => t.stayId === entry.stayId || t.cabinId === entry.cabinId
-      );
-      if (!task) return;
-      const existing = task.assignedTo || [];
-      const newAssignees = existing.includes(userData.id) ? existing : [...existing, userData.id];
-      await HousekeepingService.updateTask(property.id, task.id, { assignedTo: newAssignees }, userData.id, userData.fullName);
-    } catch { /* silently fail — toast already shown */ }
-  }, [property, userData]);
-
   const handleLogout = async () => {
     showToast("Saindo...");
     await supabase.auth.signOut();
@@ -1619,7 +951,6 @@ export default function MaidPage() {
 
   const navItems: { id: Tab; label: string; icon: IName; badge: number }[] = [
     { id: "home", label: "Início", icon: "home", badge: 0 },
-    { id: "checkouts", label: "Checkouts", icon: "coffee", badge: checkouts.length },
     { id: "tasks", label: "Faxinas", icon: "sparkles", badge: tasks.filter(t => t.status === "pending" || t.status === "in_progress").length },
     { id: "profile", label: "Perfil", icon: "user", badge: 0 },
   ];
@@ -1663,9 +994,8 @@ export default function MaidPage() {
 
           {/* Screens */}
           <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", position: "relative", zIndex: 1 }}>
-            {tab === "home" && <HomeScreen tasks={tasks} checkouts={checkouts} cabins={cabins} onNav={setTab} userName={userData?.fullName ?? "Camareira"} />}
-            {tab === "checkouts" && <CheckoutsScreen checkouts={checkouts} minibarItems={minibarItems} showToast={showToast} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onAssume={handleAssume} />}
-            {tab === "tasks" && <FaxinasScreen tasks={tasks} minibarItems={minibarItems} onStart={handleStart} showToast={showToast} onToggle={handleToggle} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onChecklistLoaded={handleChecklistLoaded} />}
+            {tab === "home" && <HomeScreen tasks={tasks} cabins={cabins} onNav={setTab} userName={userData?.fullName ?? "Camareira"} />}
+            {tab === "tasks" && <FaxinasScreen tasks={tasks} onStart={handleStart} showToast={showToast} onToggle={handleToggle} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onChecklistLoaded={handleChecklistLoaded} />}
             {tab === "profile" && <ProfileScreen userData={userData} showToast={showToast} onLogout={handleLogout} />}
           </div>
 
@@ -1673,7 +1003,7 @@ export default function MaidPage() {
           {toast && <Toast msg={toast.msg} color={toast.color} />}
 
           {/* Bottom nav */}
-          <nav style={{ background: T.glass2, borderTop: `1px solid ${T.border}`, backdropFilter: "blur(20px)", display: "grid", gridTemplateColumns: "repeat(4,1fr)", paddingBottom: "env(safe-area-inset-bottom,8px)", flexShrink: 0, position: "relative", zIndex: 10 }}>
+          <nav style={{ background: T.glass2, borderTop: `1px solid ${T.border}`, backdropFilter: "blur(20px)", display: "grid", gridTemplateColumns: "repeat(3,1fr)", paddingBottom: "env(safe-area-inset-bottom,8px)", flexShrink: 0, position: "relative", zIndex: 10 }}>
             {navItems.map(n => (
               <button key={n.id} onClick={() => setTab(n.id)} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3, padding: "10px 4px 8px", border: "none", background: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 10, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: tab === n.id ? T.g1 : T.muted, transition: "color .2s" }}>
                 <div style={{ position: "relative", padding: tab === n.id ? "6px" : 0, background: tab === n.id ? T.gradSoft : "none", borderRadius: tab === n.id ? 12 : 0, border: tab === n.id ? "1px solid rgba(155,109,255,0.3)" : "none" }}>
