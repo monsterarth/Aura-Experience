@@ -286,6 +286,7 @@ export interface HousekeepingTask {
 // Tabela: housekeeping_rules
 export type HousekeepingRuleTrigger =
   | 'on_checkout'        // Checkout de qualquer cabana → cria tarefa
+  | 'on_checkin_day'     // Check-in previsto para hoje → cria inspeção antes da entrada
   | 'active_stay_daily'  // Cabana com hóspede ativo → cria tarefa diariamente
   | 'stay_duration_days' // N dias de estadia contínua → cria tarefa mid-stay
   | 'fixed_interval_days'; // A cada N dias (independente de estadia) → cria tarefa

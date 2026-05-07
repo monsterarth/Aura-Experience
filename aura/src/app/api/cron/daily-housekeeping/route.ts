@@ -1,7 +1,7 @@
 // src/app/api/cron/daily-housekeeping/route.ts
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { applyDailyRules } from "@/lib/housekeeping-rule-engine";
+import { applyDailyRules, applyCheckinDayRules } from "@/lib/housekeeping-rule-engine";
 
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization');
@@ -17,6 +17,9 @@ export async function GET(req: Request) {
 
     for (const propData of (properties || [])) {
       const propertyId = propData.id;
+
+      // Inspeções de check-in previsto para hoje
+      tasksCreated += await applyCheckinDayRules(propertyId);
 
       const { data: activeStays } = await supabaseAdmin
         .from('stays')

@@ -177,6 +177,53 @@ export async function applyDailyRules(
   }
 }
 
+// Chamado pelo cron daily-housekeeping para cada propriedade.
+// Cria tarefas de inspeção para cabanas com check-in previsto hoje (regras 'on_checkin_day').
+export async function applyCheckinDayRules(propertyId: string) {
+  const rules = await getActiveRules(propertyId, 'on_checkin_day');
+  if (rules.length === 0) return 0;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = today.toISOString().split('T')[0];
+  const startOfDayISO = today.toISOString();
+  let created = 0;
+
+  // Estadias com check-in previsto para hoje e ainda não confirmadas (status: 'confirmed' ou 'pending')
+  const { data: arrivingStays } = await supabaseAdmin
+    .from('stays')
+    .select('id, cabinId')
+    .eq('propertyId', propertyId)
+    .in('status', ['confirmed', 'pending'])
+    .gte('checkIn', `${todayStr}T00:00:00`)
+    .lt('checkIn', `${todayStr}T23:59:59`);
+
+  for (const stay of (arrivingStays || [])) {
+    if (!stay.cabinId) continue;
+
+    for (const rule of rules) {
+      // Guard: não criar duas vezes no mesmo dia para essa regra+cabana
+      const { data: existing } = await supabaseAdmin
+        .from('housekeeping_tasks')
+        .select('id')
+        .eq('propertyId', propertyId)
+        .eq('cabinId', stay.cabinId)
+        .eq('ruleId', rule.id)
+        .gte('createdAt', startOfDayISO)
+        .maybeSingle();
+
+      if (existing) continue;
+
+      await supabaseAdmin.from('housekeeping_tasks').insert(
+        buildTaskPayload(rule, { cabinId: stay.cabinId, stayId: stay.id })
+      );
+      created++;
+    }
+  }
+
+  return created;
+}
+
 // Chamado pelo cron housekeeping-routines para regras de intervalo fixo.
 export async function applyFixedIntervalRules(propertyId: string) {
   const rules = await getActiveRules(propertyId, 'fixed_interval_days');
