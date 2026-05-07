@@ -291,6 +291,7 @@ function TaskSheet({
   const [loadingChecklist, setLoadingChecklist] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [upgrading, setUpgrading] = useState(false);
 
   useEffect(() => {
     if (task.checklist.length > 0) return;
@@ -373,6 +374,16 @@ function TaskSheet({
     } catch { showToast("Erro ao enviar solicitação.", T.red); }
   };
 
+  const handleUpgrade = async () => {
+    setUpgrading(true);
+    try {
+      await HousekeepingService.upgradeToLinenChange(propertyId, task.id, userId, userName);
+      showToast("Convertido para Troca de Roupa!");
+      onClose();
+    } catch { showToast("Erro ao converter tarefa.", T.red); }
+    finally { setUpgrading(false); }
+  };
+
   const done = task.checklist.filter(c => c.checked).length;
   const pct = Math.round(done / Math.max(task.checklist.length, 1) * 100);
   const C = 2 * Math.PI * 22;
@@ -385,7 +396,7 @@ function TaskSheet({
             <div>
               <div style={{ fontSize: 22, fontWeight: 900 }}>{task.cabinName || "Cabana"}</div>
               <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>
-                {task.type === "turnover" ? "Faxina de Troca" : "Arrumação Diária"}
+                {task.type === "turnover" ? "Faxina de Troca" : task.type === "linen_change" ? "Arr. c/ Troca de Roupa" : task.type === "inspection" ? "Conferência" : task.type === "custom" ? "Personalizada" : "Arrumação"}
               </div>
             </div>
             <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
@@ -487,16 +498,38 @@ function TaskSheet({
         </div>
 
         {/* Fixed footer */}
-        <div style={{ padding: "12px 16px", borderTop: `1px solid ${T.border}`, background: "#0d1020", flexShrink: 0, display: "flex", gap: 10 }}>
-          <button onClick={openRep} style={{ flex: "0 0 auto", padding: "14px 16px", background: T.glass, border: `1px solid ${T.amberBorder}`, borderRadius: 16, cursor: "pointer", color: T.amber, display: "flex", alignItems: "center", gap: 8, fontFamily: "inherit", fontSize: 13, fontWeight: 700, whiteSpace: "nowrap" as const }}>
-            <I n="pkg" s={16} c={T.amber} />
-            Reposição
-          </button>
+        <div style={{ padding: "12px 16px", borderTop: `1px solid ${T.border}`, background: "#0d1020", flexShrink: 0 }}>
+          {(task.type === "daily" || task.type === "linen_change") && task.status !== "completed" && task.status !== "waiting_conference" && (
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <button onClick={openRep} style={{ flex: "0 0 auto", padding: "11px 14px", background: T.glass, border: `1px solid ${T.amberBorder}`, borderRadius: 14, cursor: "pointer", color: T.amber, display: "flex", alignItems: "center", gap: 7, fontFamily: "inherit", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" as const }}>
+                <I n="pkg" s={15} c={T.amber} />
+                Reposição
+              </button>
+              {task.type === "daily" && (
+                <button
+                  onClick={handleUpgrade}
+                  disabled={upgrading}
+                  style={{ flex: 1, padding: "11px 14px", background: "rgba(45,212,191,0.1)", border: `1px solid rgba(45,212,191,0.3)`, borderRadius: 14, cursor: upgrading ? "wait" : "pointer", color: T.green, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, fontFamily: "inherit", fontSize: 12, fontWeight: 800, textTransform: "uppercase" as const, opacity: upgrading ? 0.5 : 1 }}
+                >
+                  <I n="sun" s={15} c={T.green} />
+                  Troca de Roupa
+                </button>
+              )}
+            </div>
+          )}
+          {!(task.type === "daily" || task.type === "linen_change") && task.status !== "completed" && task.status !== "waiting_conference" && (
+            <div style={{ marginBottom: 8 }}>
+              <button onClick={openRep} style={{ padding: "11px 14px", background: T.glass, border: `1px solid ${T.amberBorder}`, borderRadius: 14, cursor: "pointer", color: T.amber, display: "flex", alignItems: "center", gap: 7, fontFamily: "inherit", fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" as const }}>
+                <I n="pkg" s={15} c={T.amber} />
+                Reposição
+              </button>
+            </div>
+          )}
           <button
             onClick={() => setShowConfirm(true)}
-            style={{ flex: 1, padding: 14, background: T.greenG, color: "#021a17", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(45,212,191,0.3)" }}
+            style={{ width: "100%", padding: 14, background: T.greenG, color: "#021a17", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(45,212,191,0.3)" }}
           >
-            <I n="check" s={17} c="#021a17" w={2.5} /> Finalizar Faxina
+            <I n="check" s={17} c="#021a17" w={2.5} /> Finalizar
           </button>
         </div>
       </Sheet>
@@ -611,7 +644,7 @@ function HomeScreen({
           <div style={{ width: 10, height: 10, borderRadius: "50%", flexShrink: 0, background: t.status === "in_progress" ? T.led : t.status === "waiting_conference" ? T.amber : T.border2, boxShadow: t.status === "in_progress" ? `0 0 8px ${T.ledGlow}` : "none" }} />
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 800, fontSize: 15 }}>{t.cabinName || "Cabana"}</div>
-            <div style={{ fontSize: 12, color: T.muted, marginTop: 1 }}>{t.type === "turnover" ? "Faxina completa" : "Arrumação diária"}</div>
+            <div style={{ fontSize: 12, color: T.muted, marginTop: 1 }}>{t.type === "turnover" ? "Faxina de Troca" : t.type === "linen_change" ? "Arr. c/ Troca de Roupa" : t.type === "inspection" ? "Conferência" : t.type === "custom" ? "Personalizada" : "Arrumação"}</div>
           </div>
           <Pill
             color={t.status === "in_progress" ? T.green : t.status === "waiting_conference" ? T.amber : T.muted}
@@ -669,7 +702,7 @@ function FaxinasScreen({
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                       <div>
                         <div style={{ fontSize: 26, fontWeight: 900, color: T.green, textShadow: "0 0 24px rgba(45,212,191,0.4)" }}>{t.cabinName || "Cabana"}</div>
-                        <div style={{ fontSize: 12, color: T.green, opacity: 0.65, marginTop: 2 }}>{t.type === "turnover" ? "Faxina de Troca" : "Arrumação Diária"}</div>
+                        <div style={{ fontSize: 12, color: T.green, opacity: 0.65, marginTop: 2 }}>{t.type === "turnover" ? "Faxina de Troca" : t.type === "linen_change" ? "Arr. c/ Troca de Roupa" : t.type === "inspection" ? "Conferência" : t.type === "custom" ? "Personalizada" : "Arrumação"}</div>
                       </div>
                       <div style={{ textAlign: "right" as const }}>
                         <div style={{ fontSize: 13, fontWeight: 900, color: T.green }}>{elapsed(t.startedAt as string)}</div>
@@ -700,7 +733,7 @@ function FaxinasScreen({
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
                   <div>
                     <div style={{ fontSize: 24, fontWeight: 900 }}>{t.cabinName || "Cabana"}</div>
-                    <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{t.type === "turnover" ? "Faxina de Troca" : "Arrumação Diária"}</div>
+                    <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{t.type === "turnover" ? "Faxina de Troca" : t.type === "linen_change" ? "Arr. c/ Troca de Roupa" : t.type === "inspection" ? "Conferência" : t.type === "custom" ? "Personalizada" : "Arrumação"}</div>
                   </div>
                   <Pill
                     color={t.keyLocation === "reception" ? T.green : T.muted}
