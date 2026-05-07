@@ -733,6 +733,10 @@ export default function StayDetailPage() {
                   {locked ? <RV>{guestData.phone}</RV> : <FI value={guestData.phone} onChange={(e) => setGuestData({ ...guestData, phone: e.target.value })} />}
                 </div>
                 <div>
+                  <FL icon={Mail}>E-mail</FL>
+                  {locked ? <RV>{guestData.email}</RV> : <FI type="email" value={guestData.email} onChange={(e) => setGuestData({ ...guestData, email: e.target.value })} />}
+                </div>
+                <div>
                   <FL icon={MapPin}>CEP</FL>
                   {locked ? <RV mono>{guestData.address?.zipCode}</RV>
                     : <FI placeholder="00000-000" value={guestData.address?.zipCode}

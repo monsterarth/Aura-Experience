@@ -56,6 +56,7 @@ const translations = {
     other: "Outro",
     notInformed: "Não Informado",
     occupation: "Profissão *",
+    email: "E-mail *",
     companions: "Acompanhantes",
     adult: "Adulto",
     child: "Criança",
@@ -154,6 +155,7 @@ const translations = {
     other: "Other",
     notInformed: "Not Informed",
     occupation: "Occupation *",
+    email: "E-mail *",
     companions: "Companions",
     adult: "Adult",
     child: "Child",
@@ -252,6 +254,7 @@ const translations = {
     other: "Otro",
     notInformed: "No Informado",
     occupation: "Profesión *",
+    email: "Correo Electrónico *",
     companions: "Acompañantes",
     adult: "Adulto",
     child: "Niño",
@@ -594,6 +597,10 @@ export default function UnifiedPreCheckin() {
         else if (age < 18) errors.push(lang === 'en' ? 'Holder must be 18 or older' : lang === 'es' ? 'El titular debe tener 18 años o más' : 'O titular deve ter 18 anos ou mais');
       }
       if (!guest.occupation) errors.push(t.occupation);
+      if (!guest.email) errors.push(t.email);
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guest.email)) {
+        errors.push(lang === 'en' ? 'Invalid e-mail' : lang === 'es' ? 'Correo electrónico inválido' : 'E-mail inválido');
+      }
     }
     if (step === 2) {
       stay.additionalGuests?.forEach((g: any, index: number) => {
@@ -622,6 +629,7 @@ export default function UnifiedPreCheckin() {
         raca: guest.raca,
         occupation: guest.occupation,
         nationality: guest.nationality,
+        email: guest.email,
         preferredLanguage: lang
       },
       stayData: {} as Record<string, any>
@@ -1115,6 +1123,17 @@ export default function UnifiedPreCheckin() {
               onChange={e => setGuest({ ...guest, occupation: e.target.value })}
               className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 transition-colors text-sm font-medium"
               placeholder={t.occupation.replace(" *", "")}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-muted-foreground uppercase">{t.email}</label>
+            <input
+              type="email"
+              value={guest.email || ""}
+              onChange={e => setGuest({ ...guest, email: e.target.value })}
+              className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 transition-colors text-sm font-medium"
+              placeholder="seu@email.com"
             />
           </div>
         </section>
