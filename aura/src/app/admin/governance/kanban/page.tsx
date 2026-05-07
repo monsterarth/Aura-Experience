@@ -79,7 +79,7 @@ export default function GovernanceKanbanPage() {
         structuresData.forEach(s => structuresDict[s.id] = s);
         setStructures(structuresDict);
 
-        setMaids(staffData.filter(s => s.role === 'maid' && s.active));
+        setMaids(staffData.filter(s => s.active && (s.role === 'maid' || (s.secondaryRoles ?? []).includes('maid'))));
 
         unsubscribe = HousekeepingService.listenToActiveTasks(property.id, (realtimeTasks) => {
           setTasks(realtimeTasks);
