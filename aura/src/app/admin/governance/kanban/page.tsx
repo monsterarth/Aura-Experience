@@ -12,20 +12,21 @@ import { StaffService } from "@/services/staff-service";
 import { HousekeepingTask, Cabin, Staff, Structure } from "@/types/aura";
 import { HousekeepingChecklistModal } from "@/components/admin/HousekeepingChecklistModal";
 import { HousekeepingTaskManagerModal } from "@/components/admin/HousekeepingTaskManagerModal";
-import { HousekeepingRoutinesModal } from "@/components/admin/HousekeepingRoutinesModal";
+import { HousekeepingRulesModal } from "@/components/admin/HousekeepingRulesModal";
 import { ChecklistSettingsModal } from "@/components/admin/ChecklistSettingsModal";
 import { MinibarModal } from "@/components/admin/MinibarModal";
 import {
   Sparkles, Clock, CheckCircle2, AlertCircle,
   Coffee, ArrowRight, ClipboardCheck, Plus, UserPlus, Settings2, Edit3, MessageSquare, Archive, Calendar as CalendarIcon, X, Moon, CheckSquare, Square, CheckCheck, Trash2, Loader2,
-  ChevronLeft
+  ChevronLeft, RefreshCw
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { getTaskLabel, getTaskColorClass, showsMinibar, showsKeyLocation, canUpgradeToLinenChange } from "@/lib/task-ui";
 
 export default function GovernanceKanbanPage() {
   const { currentProperty: property, loading: isLoading } = useProperty();
-  const { userData } = useAuth();
+  const { userData, loading: authLoading } = useAuth();
 
   const [tasks, setTasks] = useState<HousekeepingTask[]>([]);
   const [cabins, setCabins] = useState<Record<string, Cabin>>({});
@@ -41,7 +42,7 @@ export default function GovernanceKanbanPage() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isManagerOpen, setIsManagerOpen] = useState(false);
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
-  const [isRoutinesOpen, setIsRoutinesOpen] = useState(false);
+  const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'pending' | 'in_progress' | 'conference'>('pending');
 
   const allVisibleIds = (tasks: HousekeepingTask[]) => tasks.map(t => t.id);
@@ -98,7 +99,7 @@ export default function GovernanceKanbanPage() {
     };
   }, [property]);
 
-  if (isLoading || loadingInitial) {
+  if (isLoading || authLoading || loadingInitial) {
     return <div className="flex h-[80vh] items-center justify-center w-full"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div></div>;
   }
 
@@ -127,6 +128,15 @@ export default function GovernanceKanbanPage() {
       toast.success("Limpeza iniciada! Cronômetro rodando.");
     } catch (e) {
       toast.error("Erro ao iniciar a tarefa.");
+    }
+  };
+
+  const handleUpgradeToLinenChange = async (taskId: string) => {
+    try {
+      await HousekeepingService.upgradeToLinenChange(property.id, taskId, userData?.id || "unknown", userData?.fullName || "Admin");
+      toast.success("Arrumação convertida em Troca de Roupa.");
+    } catch (e) {
+      toast.error("Erro ao converter tarefa.");
     }
   };
 
@@ -262,11 +272,11 @@ export default function GovernanceKanbanPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-start gap-2 min-w-0">
                     <div className="mt-0.5 shrink-0">
-                      {task.structureId ? <Sparkles size={14} className="text-purple-500" /> : task.type === 'turnover' ? <AlertCircle size={14} className="text-orange-500" /> : <Coffee size={14} className="text-blue-500" />}
+                      {task.structureId ? <Sparkles size={14} className="text-purple-500" /> : <span className={getTaskColorClass(task.type)}>{task.type === 'turnover' ? <AlertCircle size={14} /> : task.type === 'inspection' ? <ClipboardCheck size={14} /> : task.type === 'linen_change' ? <RefreshCw size={14} /> : <Coffee size={14} />}</span>}
                     </div>
                     <div className="min-w-0">
                       <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-0.5">
-                        {task.customLocation ? 'Local Específico' : task.structureId ? 'Limpeza de Estrutura' : task.type === 'turnover' ? 'Faxina de Troca' : 'Arrumação Diária'}
+                        {task.customLocation ? 'Local Específico' : task.structureId ? 'Limpeza de Estrutura' : getTaskLabel(task.type)}
                       </p>
                       <h4 className="font-bold text-base text-foreground leading-none truncate">
                         {task.customLocation || (task.structureId ? (structures[task.structureId]?.name || "Estrutura Excluída") : (cabins[task.cabinId!]?.name || "Cabana Excluída"))}
@@ -310,9 +320,14 @@ export default function GovernanceKanbanPage() {
                         </select>
                       </div>
                       <div className="flex gap-2">
-                        {task.type === 'turnover' && (
+                        {showsMinibar(task.type) && (
                           <button onClick={() => { setSelectedTask(task); setIsMinibarOpen(true); }} className="flex-1 py-2 bg-blue-500/10 text-blue-600 hover:bg-blue-600 hover:text-white text-[10px] font-bold uppercase rounded-lg transition-all flex justify-center items-center gap-1">
                             <Coffee size={12} /> Frigobar
+                          </button>
+                        )}
+                        {canUpgradeToLinenChange(task) && (
+                          <button onClick={() => handleUpgradeToLinenChange(task.id)} className="flex-1 py-2 bg-teal-500/10 text-teal-600 hover:bg-teal-600 hover:text-white text-[10px] font-bold uppercase rounded-lg transition-all flex justify-center items-center gap-1">
+                            <RefreshCw size={12} /> Troca
                           </button>
                         )}
                         <button
@@ -391,10 +406,10 @@ export default function GovernanceKanbanPage() {
                 <Settings2 size={14} /> Procedimentos
               </button>
               <button
-                onClick={() => setIsRoutinesOpen(true)}
+                onClick={() => setIsRulesOpen(true)}
                 className="px-4 py-2 bg-secondary text-foreground rounded-xl text-xs font-bold uppercase hover:bg-accent transition-all border border-border flex items-center gap-2 shadow-sm"
               >
-                <CalendarIcon size={14} /> Rotinas
+                <Sparkles size={14} /> Automação
               </button>
             </>
           )}
@@ -499,11 +514,11 @@ export default function GovernanceKanbanPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-start gap-2 min-w-0">
                       <div className="mt-0.5 shrink-0">
-                        {task.structureId ? <Sparkles size={14} className="text-purple-500" /> : task.type === 'turnover' ? <AlertCircle size={14} className="text-orange-500" /> : <Coffee size={14} className="text-blue-500" />}
+                        {task.structureId ? <Sparkles size={14} className="text-purple-500" /> : <span className={getTaskColorClass(task.type)}>{task.type === 'turnover' ? <AlertCircle size={14} /> : task.type === 'inspection' ? <ClipboardCheck size={14} /> : task.type === 'linen_change' ? <RefreshCw size={14} /> : <Coffee size={14} />}</span>}
                       </div>
                       <div className="min-w-0">
                         <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-0.5">
-                          {task.customLocation ? 'Local Específico' : task.structureId ? 'Limpeza de Estrutura' : task.type === 'turnover' ? 'Faxina de Troca' : 'Arrumação Diária'}
+                          {task.customLocation ? 'Local Específico' : task.structureId ? 'Limpeza de Estrutura' : getTaskLabel(task.type)}
                         </p>
                         <h4 className="font-bold text-base text-foreground leading-none truncate">
                           {task.customLocation || (task.structureId ? (structures[task.structureId]?.name || "Estrutura Excluída") : (cabins[task.cabinId!]?.name || "Cabana Excluída"))}
@@ -536,9 +551,14 @@ export default function GovernanceKanbanPage() {
                           </select>
                         </div>
                         <div className="flex gap-2">
-                          {task.type === 'turnover' && (
+                          {showsMinibar(task.type) && (
                             <button onClick={() => { setSelectedTask(task); setIsMinibarOpen(true); }} className="flex-1 py-2 bg-blue-500/10 text-blue-600 hover:bg-blue-600 hover:text-white text-[10px] font-bold uppercase rounded-lg transition-all flex justify-center items-center gap-1">
                               <Coffee size={12} /> Frigobar
+                            </button>
+                          )}
+                          {canUpgradeToLinenChange(task) && (
+                            <button onClick={() => handleUpgradeToLinenChange(task.id)} className="flex-1 py-2 bg-teal-500/10 text-teal-600 hover:bg-teal-600 hover:text-white text-[10px] font-bold uppercase rounded-lg transition-all flex justify-center items-center gap-1">
+                              <RefreshCw size={12} /> Troca
                             </button>
                           )}
                           <button onClick={() => handleStartTask(task.id)} disabled={task.status === 'paused' && !!task.paused_until && new Date(task.paused_until) > new Date()} className="flex-1 py-2 bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground text-[10px] font-bold uppercase rounded-lg transition-all flex justify-center items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed">
@@ -594,10 +614,10 @@ export default function GovernanceKanbanPage() {
                 ? new Date(skippedDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
                 : null;
               const guestFirstName = task.guestName?.split(' ')[0];
-              const typeLabel = task.type === 'turnover' ? 'Faxina de troca' : 'Arrumação diária';
+              const typeLabel = getTaskLabel(task.type);
               return (
                 <div key={task.id} className="bg-card border border-border rounded-xl p-3 flex items-center gap-3 min-w-[260px]">
-                  {task.type === 'turnover' ? <AlertCircle size={14} className="text-orange-500 shrink-0" /> : <Coffee size={14} className="text-blue-500 shrink-0" />}
+                  <span className={`shrink-0 ${getTaskColorClass(task.type)}`}>{task.type === 'turnover' ? <AlertCircle size={14} /> : task.type === 'inspection' ? <ClipboardCheck size={14} /> : task.type === 'linen_change' ? <RefreshCw size={14} /> : <Coffee size={14} />}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-black text-foreground leading-tight">
                       {cabin ? `${cabin.number} — ${guestFirstName || task.guestName || cabin.name}` : (guestFirstName || task.guestName || 'Cabana')}
@@ -620,7 +640,8 @@ export default function GovernanceKanbanPage() {
       )}
 
       <ChecklistSettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} propertyId={property.id} />
-      <HousekeepingRoutinesModal isOpen={isRoutinesOpen} onClose={() => setIsRoutinesOpen(false)} propertyId={property.id} cabins={cabins} structures={structures} maids={maids} />
+
+      <HousekeepingRulesModal isOpen={isRulesOpen} onClose={() => setIsRulesOpen(false)} propertyId={property.id} cabins={cabins} structures={structures} maids={maids} />
       <HousekeepingChecklistModal isOpen={isChecklistOpen} onClose={() => setIsChecklistOpen(false)} task={selectedTask} cabinName={selectedTask ? (selectedTask.structureId ? structures[selectedTask.structureId]?.name : cabins[selectedTask.cabinId || ""]?.name || "") : ""} onComplete={() => { }} />
       <MinibarModal isOpen={isMinibarOpen} onClose={() => setIsMinibarOpen(false)} task={selectedTask} cabinName={selectedTask ? (selectedTask.structureId ? structures[selectedTask.structureId]?.name : cabins[selectedTask.cabinId || ""]?.name || "") : ""} />
       <HousekeepingTaskManagerModal
@@ -661,13 +682,13 @@ export default function GovernanceKanbanPage() {
                     <div key={task.id} className="bg-card border border-border p-4 rounded-xl flex items-center justify-between gap-4">
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          {task.structureId ? <Sparkles size={12} className="text-purple-500" /> : task.type === 'turnover' ? <AlertCircle size={12} className="text-orange-500" /> : <Coffee size={12} className="text-blue-500" />}
+                          {task.structureId ? <Sparkles size={12} className="text-purple-500" /> : <span className={getTaskColorClass(task.type)}>{task.type === 'turnover' ? <AlertCircle size={12} /> : task.type === 'inspection' ? <ClipboardCheck size={12} /> : task.type === 'linen_change' ? <RefreshCw size={12} /> : <Coffee size={12} />}</span>}
                           <p className="font-bold text-sm">
                             {task.customLocation || (task.structureId ? (structures[task.structureId]?.name || "Estrutura") : (cabins[task.cabinId!]?.name || "Cabana"))}
                           </p>
                         </div>
                         <p className="text-xs text-muted-foreground uppercase tracking-widest font-bold">
-                          {task.structureId ? 'Estrutura' : task.type === 'turnover' ? 'Faxina de Troca' : 'Arrumação Diária'}
+                          {task.structureId ? 'Estrutura' : getTaskLabel(task.type)}
                         </p>
                         <div className="flex items-center gap-2 mt-3">
                           <span className="text-[10px] bg-green-500/10 text-green-600 px-2 py-0.5 rounded font-bold uppercase">Liberado</span>

@@ -3,6 +3,7 @@ import { Stay, Guest, Cabin, FolioItem, AutomationTriggerEvent, MessageTemplate 
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
 import { AutomationService } from "./automation-service";
+import { applyOnCheckout } from "@/lib/housekeeping-rule-engine";
 
 export const StayService = {
   async triggerAutomation(
@@ -266,6 +267,17 @@ export const StayService = {
     if (stayRes.error) throw new Error(`Falha ao atualizar a estadia: ${stayRes.error.message}`);
     if (guestRes.error) throw new Error(`Falha ao atualizar os dados do hóspede: ${guestRes.error.message}`);
 
+    await AuditService.log({
+      propertyId,
+      userId: stay.guestId,
+      userName: "Guest",
+      action: "PRE_CHECKIN",
+      entity: "STAY",
+      entityId: stayId,
+      details: "Pré check-in concluído pelo hóspede via portal.",
+      newData: { status: 'pre_checkin_done', ...stayUpdate }
+    });
+
     return finalAccessCode;
   },
 
@@ -472,19 +484,8 @@ export const StayService = {
       })
       .eq('id', cabinId);
 
-    // Create turnover
-    const newTaskId = uuidv4();
-    await supabase.from('housekeeping_tasks').insert({
-      id: newTaskId,
-      propertyId,
-      cabinId,
-      stayId,
-      type: 'turnover',
-      status: 'pending',
-      assignedTo: [],
-      checklist: [],
-      keyLocation,
-    });
+    // Cria tarefas conforme regras 'on_checkout' configuradas na propriedade
+    await applyOnCheckout(propertyId, cabinId, stayId, keyLocation);
 
     // Build human-readable checkout details
     let checkoutCabinLabel = cabinId;
@@ -505,7 +506,7 @@ export const StayService = {
       action: "CHECKOUT",
       entity: "STAY",
       entityId: stayId,
-      details: `Check-out da ${checkoutCabinLabel} realizado. Faxina de Troca gerada.`
+      details: `Check-out da ${checkoutCabinLabel} realizado. Regras de automação de governança aplicadas.`
     });
 
     await this.triggerAutomation(propertyId, stayId, 'checkout_thanks');

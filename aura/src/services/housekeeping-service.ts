@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { HousekeepingTask, HousekeepingRoutine } from "@/types/aura";
+import { HousekeepingTask, HousekeepingRule } from "@/types/aura";
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
 
@@ -144,8 +144,9 @@ export const HousekeepingService = {
       throw new Error('CHECKLIST_INCOMPLETE');
     }
 
-    // Atualiza status da tarefa para waiting_conference se for Turnover, se não, pula para Completed (Diária/Custom)
-    const newStatus = task.type === 'turnover' ? 'waiting_conference' : 'completed';
+    // turnover e inspection passam por conferência da governanta; os demais concluem direto
+    const NEEDS_CONFERENCE = ['turnover', 'inspection'];
+    const newStatus = NEEDS_CONFERENCE.includes(task.type) ? 'waiting_conference' : 'completed';
 
     await supabase.from('housekeeping_tasks')
       .update({
@@ -225,17 +226,36 @@ export const HousekeepingService = {
     });
   },
 
-  async getRoutines(propertyId: string): Promise<HousekeepingRoutine[]> {
+  async upgradeToLinenChange(propertyId: string, taskId: string, actorId: string, actorName: string) {
+    const now = new Date().toISOString();
+    const { error } = await supabase
+      .from('housekeeping_tasks')
+      .update({ type: 'linen_change', updatedAt: now })
+      .eq('id', taskId)
+      .eq('propertyId', propertyId)
+      .eq('type', 'daily'); // guard: só converte daily
+
+    if (error) throw error;
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "CABIN", entityId: taskId,
+      details: "Arrumação convertida em Arrumação com Troca pela equipe."
+    });
+  },
+
+  // --- REGRAS DE AUTOMAÇÃO ---
+
+  async getRules(propertyId: string): Promise<HousekeepingRule[]> {
     const { data, error } = await supabase
-      .from('housekeeping_routines')
+      .from('housekeeping_rules')
       .select('*')
       .eq('propertyId', propertyId)
       .order('createdAt', { ascending: true });
     if (error) throw error;
-    return (data || []) as HousekeepingRoutine[];
+    return (data || []) as HousekeepingRule[];
   },
 
-  async saveRoutine(propertyId: string, data: Partial<HousekeepingRoutine>, actorId: string, actorName: string): Promise<HousekeepingRoutine> {
+  async saveRule(propertyId: string, data: Partial<HousekeepingRule>, actorId: string, actorName: string): Promise<HousekeepingRule> {
     const isNew = !data.id;
     const now = new Date().toISOString();
     const payload = {
@@ -247,32 +267,39 @@ export const HousekeepingService = {
     };
 
     const { data: saved, error } = await supabase
-      .from('housekeeping_routines')
+      .from('housekeeping_rules')
       .upsert(payload, { onConflict: 'id' })
       .select()
       .single();
     if (error) throw error;
 
+    const triggerLabels: Record<string, string> = {
+      on_checkout: 'Checkout → Tarefa',
+      active_stay_daily: 'Estadia Ativa → Diária',
+      stay_duration_days: `${data.intervalDays} dias de estadia → Tarefa`,
+      fixed_interval_days: `A cada ${data.intervalDays} dias → Tarefa`,
+    };
+
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName,
       action: isNew ? "CREATE" : "UPDATE", entity: "CABIN", entityId: payload.id,
-      details: `Rotina de limpeza ${isNew ? 'criada' : 'editada'} (a cada ${data.intervalDays} dias).`
+      details: `Regra de automação ${isNew ? 'criada' : 'editada'}: ${triggerLabels[data.trigger || ''] || data.trigger}.`
     });
 
-    return saved as HousekeepingRoutine;
+    return saved as HousekeepingRule;
   },
 
-  async deleteRoutine(propertyId: string, routineId: string, actorId: string, actorName: string) {
+  async deleteRule(propertyId: string, ruleId: string, actorId: string, actorName: string) {
     const { error } = await supabase
-      .from('housekeeping_routines')
+      .from('housekeeping_rules')
       .delete()
-      .eq('id', routineId)
+      .eq('id', ruleId)
       .eq('propertyId', propertyId);
     if (error) throw error;
 
     await AuditService.log({
-      propertyId, userId: actorId, userName: actorName, action: "DELETE", entity: "CABIN", entityId: routineId,
-      details: "Rotina de limpeza excluída."
+      propertyId, userId: actorId, userName: actorName, action: "DELETE", entity: "CABIN", entityId: ruleId,
+      details: "Regra de automação de governança excluída."
     });
   }
 };

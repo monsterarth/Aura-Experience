@@ -251,7 +251,7 @@ export interface HousekeepingTask {
   structureId?: string; // Para Estruturas (Spas, Quadras, etc)
   unitId?: string; // Para uma unidade específica da estrutura
   stayId?: string; // Para limpezas diárias vinculadas a uma estadia ativa
-  type: 'turnover' | 'daily' | 'custom'; // Turnover = Faxina de Troca | Daily = Arrumação | Custom = Personalizada
+  type: 'turnover' | 'daily' | 'linen_change' | 'inspection' | 'custom';
   status: 'pending' | 'in_progress' | 'waiting_conference' | 'completed' | 'cancelled' | 'paused' | 'skipped';
   paused_until?: string; // ISO timestamp — DND
   skippedAt?: string;   // ISO timestamp — when it was skipped (DND)
@@ -272,7 +272,8 @@ export interface HousekeepingTask {
     checked: boolean;
   }[];
 
-  routineId?: string; // ID da rotina que gerou esta tarefa (se aplicável)
+  routineId?: string; // ID da rotina legada que gerou esta tarefa (se aplicável)
+  ruleId?: string;    // ID da regra de automação que gerou esta tarefa (novo sistema)
   customLocation?: string; // Local livre (ex: "Recepção", "Banheiro Social")
   keyLocation?: 'reception' | 'cabin' | 'unknown';
   cabinChecked?: boolean;         // true após a camareira concluir a conferência (frigobar + chave + achados + empréstimos)
@@ -281,21 +282,28 @@ export interface HousekeepingTask {
   updatedAt: Timestamp;
 }
 
-// --- ROTINAS DE LIMPEZA ---
-// Tabela: housekeeping_routines
-export interface HousekeepingRoutine {
+// --- REGRAS DE AUTOMAÇÃO DE GOVERNANÇA ---
+// Tabela: housekeeping_rules
+export type HousekeepingRuleTrigger =
+  | 'on_checkout'        // Checkout de qualquer cabana → cria tarefa
+  | 'active_stay_daily'  // Cabana com hóspede ativo → cria tarefa diariamente
+  | 'stay_duration_days' // N dias de estadia contínua → cria tarefa mid-stay
+  | 'fixed_interval_days'; // A cada N dias (independente de estadia) → cria tarefa
+
+export interface HousekeepingRule {
   id: string;
   propertyId: string;
-  cabinId?: string;
-  structureId?: string;
-  customLocation?: string; // Ex: "Recepção", "Banheiro Social"
-  type: 'daily' | 'custom';
-  intervalDays: number;
+  trigger: HousekeepingRuleTrigger;
+  taskType: 'turnover' | 'daily' | 'linen_change' | 'inspection' | 'custom';
+  intervalDays?: number; // Para 'stay_duration_days' e 'fixed_interval_days'
+  cabinId?: string;       // Só para 'fixed_interval_days'
+  structureId?: string;   // Só para 'fixed_interval_days'
+  customLocation?: string; // Só para 'fixed_interval_days'
   checklist: { id: string; label: string; checked: boolean }[];
   assignedTo: string[];
   observations?: string;
   active: boolean;
-  lastTriggeredAt?: string;
+  lastTriggeredAt?: string; // Para 'fixed_interval_days'
   createdAt: string;
   updatedAt: string;
 }
@@ -306,7 +314,7 @@ export interface ChecklistTemplate {
   id: string;
   propertyId: string;
   title: string; // Ex: "Limpeza Padrão - Praia 2 Dormitórios"
-  type: 'turnover' | 'daily' | 'inspection';
+  type: 'turnover' | 'daily' | 'linen_change' | 'inspection';
   items: {
     id: string; // Gerado via UUID
     label: string;
@@ -631,17 +639,22 @@ export interface AuditLog {
   userName: string;
   action:
   | 'CREATE' | 'UPDATE' | 'DELETE'
-  | 'MESSAGE_SENT' | 'MESSAGE_FAILED' | 'MESSAGE_RESENT'
-  | 'CHECKIN' | 'CHECKOUT'
+  | 'MESSAGE_SENT' | 'MESSAGE_FAILED' | 'MESSAGE_RESENT' | 'MESSAGE_MANUAL_SEND'
+  | 'CHECKIN' | 'CHECKOUT' | 'PRE_CHECKIN'
   | 'USER_CREATE' | 'USER_UPDATE'
   | 'CREATE_STAY' | 'COMPLETE_STAY' | 'STAY_GROUP_CREATE'
+  | 'CABIN_CREATED' | 'CABIN_UPDATED' | 'CABIN_DELETED'
+  | 'CONTACT_UPDATED' | 'CONTACT_DELETED' | 'CONTACT_PHONE_MIGRATED'
   | 'STRUCTURE_CREATED' | 'STRUCTURE_UPDATED' | 'STRUCTURE_DELETED'
   | 'STRUCTURE_BOOKING_CREATED' | 'STRUCTURE_BOOKING_STATUS_CHANGED'
   | 'EVENT_CREATED' | 'EVENT_UPDATED' | 'EVENT_DELETED' | 'EVENT_PUBLISHED'
   | 'CONCIERGE_REQUESTED' | 'CONCIERGE_DELIVERED' | 'CONCIERGE_RETURNED' | 'CONCIERGE_LOST'
   | 'FB_ORDER_CREATED' | 'FB_ORDER_STATUS_CHANGED'
+  | 'TEMPLATE_SAVED' | 'TEMPLATE_DELETED'
+  | 'AUTOMATION_SAVED' | 'AUTOMATION_TOGGLED'
+  | 'BREAKFAST_OPENED' | 'BREAKFAST_CHECKIN' | 'BREAKFAST_GUEST_LEFT'
   | 'REASSIGN_GUEST';
-  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER';
+  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER' | 'CONTACT' | 'AUTOMATION' | 'BREAKFAST';
   entityId: string;
   oldData?: any;
   newData?: any;
