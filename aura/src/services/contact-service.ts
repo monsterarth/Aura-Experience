@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { Contact, ContactContext, Stay, Cabin } from "@/types/aura";
+import { AuditService } from "./audit-service";
 
 function safeToDate(val: any): Date | null {
   if (!val) return null;
@@ -76,6 +77,18 @@ export class ContactService {
         }
       }
 
+      await AuditService.log({
+        propertyId,
+        userId: guestId ?? phoneId,
+        userName: normalizedName ?? phoneId,
+        action: "CONTACT_UPDATED",
+        entity: "CONTACT",
+        entityId: phoneId,
+        details: existing
+          ? `Contato ${normalizedName ?? phoneId} atualizado.`
+          : `Contato ${normalizedName ?? phoneId} criado.`
+      });
+
       return phoneId;
     } catch (error) {
       console.error("[ContactService] Erro ao sincronizar contato:", error);
@@ -132,6 +145,16 @@ export class ContactService {
       await this.upsertContact(propertyId, name, newPhone, true, guestId);
       await supabase.from('contacts').delete().eq('id', oldId).eq('propertyId', propertyId);
 
+      await AuditService.log({
+        propertyId,
+        userId: guestId ?? newId,
+        userName: name,
+        action: "CONTACT_PHONE_MIGRATED",
+        entity: "CONTACT",
+        entityId: newId,
+        details: `Telefone migrado de ${oldPhone} para ${newPhone}.`
+      });
+
       return true;
     } catch (error) {
       console.error("[ContactService] Erro ao migrar telefone:", error);
@@ -145,6 +168,20 @@ export class ContactService {
         .update({ ...data, updatedAt: new Date().toISOString() })
         .eq('id', phoneId)
         .eq('propertyId', propertyId);
+
+      if (!error) {
+        await AuditService.log({
+          propertyId,
+          userId: phoneId,
+          userName: data.name ?? phoneId,
+          action: "CONTACT_UPDATED",
+          entity: "CONTACT",
+          entityId: phoneId,
+          details: `Dados do contato ${data.name ?? phoneId} atualizados manualmente.`,
+          newData: data
+        });
+      }
+
       return !error;
     } catch {
       return false;
@@ -153,10 +190,28 @@ export class ContactService {
 
   static async deleteContact(propertyId: string, phoneId: string): Promise<boolean> {
     try {
+      const { data: contact } = await supabase.from('contacts')
+        .select('name')
+        .eq('id', phoneId)
+        .maybeSingle();
+
       const { error } = await supabase.from('contacts')
         .delete()
         .eq('id', phoneId)
         .eq('propertyId', propertyId);
+
+      if (!error) {
+        await AuditService.log({
+          propertyId,
+          userId: phoneId,
+          userName: contact?.name ?? phoneId,
+          action: "CONTACT_DELETED",
+          entity: "CONTACT",
+          entityId: phoneId,
+          details: `Contato ${contact?.name ?? phoneId} excluído.`
+        });
+      }
+
       return !error;
     } catch {
       return false;

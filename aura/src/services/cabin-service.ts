@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { Cabin } from "@/types/aura";
+import { AuditService } from "./audit-service";
 
 // Funções para conversão entre o banco real e a interface
 function deserializeCabin(row: any): Cabin {
@@ -58,20 +59,48 @@ export const CabinService = {
       throw error;
     }
 
+    await AuditService.log({
+      propertyId,
+      userId: "SYSTEM",
+      userName: "Admin",
+      action: cabin.id ? "CABIN_UPDATED" : "CABIN_CREATED",
+      entity: "CABIN",
+      entityId: id,
+      details: cabin.id
+        ? `Cabana ${finalName} (${id}) atualizada.`
+        : `Cabana ${finalName} (${id}) criada.`
+    });
+
     return id;
   },
 
   async deleteCabin(propertyId: string, cabinId: string) {
+    const { data: cabin } = await supabase
+      .from('cabins')
+      .select('name')
+      .eq('id', cabinId)
+      .maybeSingle();
+
     const { error } = await supabase
       .from('cabins')
       .delete()
       .eq('id', cabinId)
-      .eq('propertyId', propertyId); // segurança extra se n houver bypass de RLS
+      .eq('propertyId', propertyId);
 
     if (error) {
       console.error("Error deleting cabin from Supabase:", error);
       throw error;
     }
+
+    await AuditService.log({
+      propertyId,
+      userId: "SYSTEM",
+      userName: "Admin",
+      action: "CABIN_DELETED",
+      entity: "CABIN",
+      entityId: cabinId,
+      details: `Cabana ${cabin?.name ?? cabinId} excluída.`
+    });
   },
 
   async saveCabinsBatch(propertyId: string, baseCabin: Partial<Cabin>, numbers: string[]) {
@@ -97,6 +126,16 @@ export const CabinService = {
       console.error("Error saving cabins batch to Supabase:", error);
       throw error;
     }
+
+    await AuditService.log({
+      propertyId,
+      userId: "SYSTEM",
+      userName: "Admin",
+      action: "CABIN_CREATED",
+      entity: "CABIN",
+      entityId: propertyId,
+      details: `${payloads.length} cabana(s) criada(s) em lote: ${numbers.join(', ')}.`
+    });
 
     return payloads.map(p => p.id);
   }

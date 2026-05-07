@@ -34,6 +34,12 @@ export const GuestService = {
       updatedAt: new Date().toISOString()
     };
 
+    const { data: existing } = await supabase
+      .from('guests')
+      .select('id')
+      .eq('id', id)
+      .maybeSingle();
+
     const { error } = await supabase
       .from('guests')
       .upsert(payload, { onConflict: 'id' });
@@ -42,6 +48,18 @@ export const GuestService = {
       console.error("Error upserting guest:", error);
       throw error;
     }
+
+    await AuditService.log({
+      propertyId,
+      userId: id,
+      userName: payload.fullName ?? id,
+      action: existing ? "UPDATE" : "CREATE",
+      entity: "GUEST",
+      entityId: id,
+      details: existing
+        ? `Ficha do hóspede ${payload.fullName ?? id} atualizada.`
+        : `Hóspede ${payload.fullName ?? id} criado.`
+    });
 
     return id;
   },

@@ -79,5 +79,17 @@ export async function POST(req: Request) {
     .update({ status: "sent", messageIdApi: apiMessageId, attempts: (msg.attempts || 0) + 1, lastAttemptAt: new Date().toISOString(), errorMessage: null })
     .eq("id", messageId);
 
+  await supabaseAdmin.from("audit_logs").insert({
+    id: crypto.randomUUID(),
+    propertyId,
+    userId: auth.staff.id,
+    userName: auth.staff.fullName,
+    action: "MESSAGE_MANUAL_SEND",
+    entity: "MESSAGE",
+    entityId: messageId,
+    details: `Reenvio manual da mensagem ${messageId} para ${msg.to}.`,
+    timestamp: new Date().toISOString()
+  });
+
   return NextResponse.json({ success: true });
 }

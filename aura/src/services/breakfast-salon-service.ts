@@ -55,6 +55,17 @@ export const BreakfastSalonService = {
         .eq('id', existing.id)
         .select('*')
         .single();
+
+      await AuditService.log({
+        propertyId,
+        userId: "SYSTEM",
+        userName: actorName,
+        action: "BREAKFAST_OPENED",
+        entity: "BREAKFAST",
+        entityId: existing.id,
+        details: `Sessão de café da manhã reaberta por ${actorName}.`
+      });
+
       return data as BreakfastSession;
     }
 
@@ -72,6 +83,17 @@ export const BreakfastSalonService = {
       })
       .select('*')
       .single();
+
+    await AuditService.log({
+      propertyId,
+      userId: "SYSTEM",
+      userName: actorName,
+      action: "BREAKFAST_OPENED",
+      entity: "BREAKFAST",
+      entityId: id,
+      details: `Sessão de café da manhã do dia ${today} aberta por ${actorName}.`
+    });
+
     return data as BreakfastSession;
   },
 
@@ -96,11 +118,23 @@ export const BreakfastSalonService = {
     return (data || []) as BreakfastAttendance[];
   },
 
-  async checkInGuest(attendanceId: string): Promise<void> {
+  async checkInGuest(attendanceId: string, propertyId?: string, guestName?: string): Promise<void> {
     await supabase
       .from('breakfast_attendance')
       .update({ status: 'arrived', arrivedAt: new Date().toISOString() })
       .eq('id', attendanceId);
+
+    if (propertyId) {
+      await AuditService.log({
+        propertyId,
+        userId: "SYSTEM",
+        userName: "Admin",
+        action: "BREAKFAST_CHECKIN",
+        entity: "BREAKFAST",
+        entityId: attendanceId,
+        details: `Check-in no café da manhã: ${guestName ?? attendanceId}.`
+      });
+    }
   },
 
   async assignTable(attendanceId: string, tableId: string): Promise<void> {
@@ -117,11 +151,23 @@ export const BreakfastSalonService = {
       .eq('id', attendanceId);
   },
 
-  async guestLeft(attendanceId: string): Promise<void> {
+  async guestLeft(attendanceId: string, propertyId?: string, guestName?: string): Promise<void> {
     await supabase
       .from('breakfast_attendance')
       .update({ status: 'left', tableId: null, leftAt: new Date().toISOString() })
       .eq('id', attendanceId);
+
+    if (propertyId) {
+      await AuditService.log({
+        propertyId,
+        userId: "SYSTEM",
+        userName: "Admin",
+        action: "BREAKFAST_GUEST_LEFT",
+        entity: "BREAKFAST",
+        entityId: attendanceId,
+        details: `Hóspede ${guestName ?? attendanceId} saiu do café da manhã.`
+      });
+    }
   },
 
   async deactivateBreakfast(attendanceId: string): Promise<void> {

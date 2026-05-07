@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { Stay, MessageTemplate, WhatsAppMessage, AutomationTriggerEvent, Guest, Cabin, AutomationRule, Property } from "@/types/aura";
+import { AuditService } from "./audit-service";
 
 export class AutomationService {
   static async triggerStructureBookingAutomation(propertyId: string, stayId: string, structureName: string, date: string, startTime: string, templateId: string, cancellationReason?: string) {
@@ -279,6 +280,21 @@ export class AutomationService {
       }
 
       const { error } = await supabase.from('message_templates').upsert(payload);
+
+      if (!error) {
+        await AuditService.log({
+          propertyId,
+          userId: "SYSTEM",
+          userName: "Admin",
+          action: "TEMPLATE_SAVED",
+          entity: "AUTOMATION",
+          entityId: id,
+          details: templateData.id
+            ? `Template "${templateData.name}" atualizado.`
+            : `Template "${templateData.name}" criado.`
+        });
+      }
+
       return !error;
     } catch (error) {
       return false;
@@ -287,7 +303,26 @@ export class AutomationService {
 
   static async deleteTemplate(propertyId: string, templateId: string): Promise<boolean> {
     try {
+      const { data: template } = await supabase
+        .from('message_templates')
+        .select('name')
+        .eq('id', templateId)
+        .maybeSingle();
+
       const { error } = await supabase.from('message_templates').delete().eq('id', templateId).eq('propertyId', propertyId);
+
+      if (!error) {
+        await AuditService.log({
+          propertyId,
+          userId: "SYSTEM",
+          userName: "Admin",
+          action: "TEMPLATE_DELETED",
+          entity: "AUTOMATION",
+          entityId: templateId,
+          details: `Template "${template?.name ?? templateId}" excluído.`
+        });
+      }
+
       return !error;
     } catch (error) {
       return false;
@@ -355,6 +390,20 @@ export class AutomationService {
           return false;
         }
       }
+
+      const isToggle = Object.keys(data).length === 1 && 'active' in data;
+      await AuditService.log({
+        propertyId,
+        userId: "SYSTEM",
+        userName: "Admin",
+        action: isToggle ? "AUTOMATION_TOGGLED" : "AUTOMATION_SAVED",
+        entity: "AUTOMATION",
+        entityId: ruleId,
+        details: isToggle
+          ? `Regra de automação "${ruleId}" ${data.active ? 'ativada' : 'desativada'}.`
+          : `Regra de automação "${ruleId}" atualizada.`,
+        newData: data
+      });
 
       return true;
     } catch (error) {
