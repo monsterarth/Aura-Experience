@@ -66,8 +66,10 @@ export async function applyDailyRules(
   today.setHours(0, 0, 0, 0);
   const startOfDayISO = today.toISOString();
 
+  console.log(`[ENGINE] applyDailyRules — propertyId: ${propertyId}, stayId: ${stay.id}, startOfDayISO: ${startOfDayISO}`);
   // stay_duration_days — avaliado PRIMEIRO para que a supressão de daily funcione corretamente
   const durationRules = await getActiveRules(propertyId, 'stay_duration_days');
+  console.log(`[ENGINE] Estadia ${stay.id}: ${durationRules.length} regra(s) stay_duration_days encontrada(s)`);
   for (const rule of durationRules) {
     if (!rule.intervalDays || rule.intervalDays < 1) continue;
 
@@ -113,6 +115,7 @@ export async function applyDailyRules(
 
   // active_stay_daily — avaliado DEPOIS para respeitar supressão por linen_change gerada acima
   const dailyRules = await getActiveRules(propertyId, 'active_stay_daily');
+  console.log(`[ENGINE] Estadia ${stay.id}: ${dailyRules.length} regra(s) active_stay_daily encontrada(s)`);
   for (const rule of dailyRules) {
     // Supressão: se já existe linen_change hoje (gerada automaticamente ou convertida), não criar daily
     const { data: linenToday } = await supabaseAdmin
