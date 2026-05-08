@@ -96,11 +96,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
      * Hard timeout absoluto: garante que a página nunca trava no spinner.
      * Não pode ser cancelado por nenhum outro fluxo.
      */
-    const hardTimeout = setTimeout(() => {
-      if (mounted) {
-        console.warn("[Auth] Hard timeout — liberando loading forçado.");
-        setUserDataReady(true);
-        setLoading(false);
+    const hardTimeout = setTimeout(async () => {
+      if (mounted && !userDataRef.current) {
+        console.warn("[Auth] Hard timeout — sem dados de sessão, deslogando.");
+        await createClientBrowserAuto().auth.signOut();
+        if (typeof window !== 'undefined') {
+          window.location.href = '/admin/login';
+        }
       }
     }, 4000);
 
