@@ -93,42 +93,45 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       .catch(() => {}); // Silent — onAuthStateChange + safety timeout tratam o fallback
 
     /**
-     * Safety timeout: se INITIAL_SESSION e o fast-path falharem, tenta getUser().
+     * Hard timeout absoluto: garante que a página nunca trava no spinner.
+     * Não pode ser cancelado por nenhum outro fluxo.
+     */
+    const hardTimeout = setTimeout(() => {
+      if (mounted) {
+        console.warn("[Auth] Hard timeout — liberando loading forçado.");
+        setUserDataReady(true);
+        setLoading(false);
+      }
+    }, 4000);
+
+    /**
+     * Safety timeout: re-tenta o fast-path server-side se o INITIAL_SESSION
+     * não chegou em 1.5s (evita depender do browser lock do Supabase).
      */
     const safetyTimeout = setTimeout(async () => {
-      if (mounted && !initialSessionReceived.current && !userDataRef.current) {
-        console.warn("[Auth] Timeout — acionando fallback getUser().");
+      if (mounted && !userDataRef.current) {
+        console.warn("[Auth] Safety timeout — re-tentando fast-path.");
         initialSessionReceived.current = true;
-
         try {
-          const { data: { user: fallbackUser }, error } = await supabase.auth.getUser();
+          const res = await fetch('/api/admin/auth/me');
           if (!mounted || userDataRef.current) return;
-
-          if (error) {
-            const retry = await supabase.auth.getUser();
-            if (!mounted || userDataRef.current) return;
-            if (!retry.error && retry.data.user) {
-              setUser(retry.data.user);
-              const staff = await fetchStaffData(retry.data.user.id);
-              if (mounted) { setUserData(staff); setUserDataReady(true); }
-            } else {
-              if (mounted) { setUser(null); setUserData(null); setUserDataReady(true); }
+          if (res.ok) {
+            const data = await res.json();
+            if (mounted && data?.staff) {
+              userDataRef.current = data.staff;
+              setUserData(data.staff);
+              if (data.property) setInitialProperty(data.property);
             }
-          } else if (fallbackUser) {
-            setUser(fallbackUser);
-            const staff = await fetchStaffData(fallbackUser.id);
-            if (mounted) { setUserData(staff); setUserDataReady(true); }
-          } else {
-            if (mounted) { setUser(null); setUserData(null); setUserDataReady(true); }
           }
-        } catch (err) {
-          console.warn("[Auth] Exception no getUser fallback:", err);
-          if (mounted) setUserDataReady(true); // Libera mesmo em erro — evita loading infinito
-        } finally {
-          if (mounted) setLoading(false);
+        } catch { /* silencioso — hard timeout cobre */ }
+        finally {
+          if (mounted && !userDataRef.current) {
+            setUser(null); setUserData(null);
+          }
+          if (mounted) { setUserDataReady(true); setLoading(false); }
         }
       }
-    }, 2000);
+    }, 1500);
 
     /**
      * onAuthStateChange: fonte de verdade para eventos contínuos.
@@ -232,6 +235,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     return () => {
       mounted = false;
+      clearTimeout(hardTimeout);
       clearTimeout(safetyTimeout);
       authListener.subscription.unsubscribe();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
