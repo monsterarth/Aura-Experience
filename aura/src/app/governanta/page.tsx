@@ -10,7 +10,8 @@ import { CabinService } from "@/services/cabin-service";
 import { StaffService } from "@/services/staff-service";
 import { StructureService } from "@/services/structure-service";
 import { StayService } from "@/services/stay-service";
-import { HousekeepingTask, Cabin, Staff, Structure, MinibarItem } from "@/types/aura";
+import { HousekeepingTask, Cabin, Staff, Structure, MinibarItem, ConciergeItem } from "@/types/aura";
+import { ConciergeService } from "@/services/concierge-service";
 import { supabase } from "@/lib/supabase";
 import { createClientBrowserAuto } from "@/lib/supabase-browser";
 import { useRouter } from "next/navigation";
@@ -89,7 +90,7 @@ function todayLabel() {
 type IName =
   | "home" | "list" | "check" | "x" | "chevr" | "chevl" | "plus" | "user"
   | "sparkles" | "clock" | "alert" | "send" | "loader" | "assign" | "eye"
-  | "undo" | "checkall" | "logout" | "arrow" | "settings" | "refresh";
+  | "undo" | "checkall" | "logout" | "arrow" | "settings" | "refresh" | "minus";
 
 function I({ n, s = 20, c = "currentColor", w = 1.8 }: { n: IName; s?: number; c?: string; w?: number }) {
   const d: Record<IName, React.ReactNode> = {
@@ -114,6 +115,7 @@ function I({ n, s = 20, c = "currentColor", w = 1.8 }: { n: IName; s?: number; c
     arrow: <><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></>,
     settings: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></>,
     refresh: <><polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" /></>,
+    minus: <line x1="5" y1="12" x2="19" y2="12" />,
   };
   return (
     <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round">
@@ -224,16 +226,58 @@ function TypeBadge({ type }: { type: HousekeepingTask["type"] }) {
 // ─── Confirm Sheet ────────────────────────────────────────────────────────────
 
 function ConferSheet({
-  task, locationName, onClose, onApprove, onReject, busy,
+  task, locationName, propertyId, actorId, actorName, onClose, onApprove, onReject, busy,
 }: {
   task: HousekeepingTask;
   locationName: string;
+  propertyId: string;
+  actorId: string;
+  actorName: string;
   onClose: () => void;
-  onApprove: () => void;
+  onApprove: (obs: string, checklist: HousekeepingTask["checklist"]) => void;
   onReject: () => void;
   busy: boolean;
 }) {
   const [obs, setObs] = useState("");
+  const [checklist, setChecklist] = useState<HousekeepingTask["checklist"]>(task.checklist || []);
+  const [showRep, setShowRep] = useState(false);
+  const [repItems, setRepItems] = useState<ConciergeItem[]>([]);
+  const [loadingRep, setLoadingRep] = useState(false);
+
+  const toggleItem = (id: string) =>
+    setChecklist(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
+
+  const openRep = async () => {
+    setShowRep(true);
+    if (repItems.length > 0) return;
+    setLoadingRep(true);
+    try { setRepItems(await ConciergeService.getConciergeItemsForMaid(propertyId)); }
+    finally { setLoadingRep(false); }
+  };
+
+  const handleSendRep = async (entries: { itemId: string; qty: number }[]) => {
+    if (!task.stayId) return;
+    await Promise.all(entries.map(({ itemId, qty }) =>
+      ConciergeService.createRequest(
+        { propertyId, stayId: task.stayId!, cabinId: task.cabinId, itemId, quantity: qty, requestedBy: "maid", notes: "Solicitado pela governanta" },
+        actorId, actorName
+      )
+    ));
+  };
+
+  const checkedCount = checklist.filter(i => i.checked).length;
+
+  if (showRep) {
+    return (
+      <GovReplenishSheet
+        locationName={locationName}
+        repItems={repItems}
+        loading={loadingRep}
+        onClose={() => setShowRep(false)}
+        onSend={handleSendRep}
+      />
+    );
+  }
 
   return (
     <Sheet onClose={onClose}>
@@ -264,26 +308,58 @@ function ConferSheet({
           </div>
         </div>
 
-        {/* Checklist summary */}
-        {task.checklist?.length > 0 && (
+        {/* Checklist interativo */}
+        {checklist.length > 0 && (
           <div style={{ background: T.card2, border: `1px solid ${T.border}`, borderRadius: 16, padding: 16, marginBottom: 16 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
-              Checklist ({task.checklist.filter((i: any) => i.checked).length}/{task.checklist.length})
+              Checklist ({checkedCount}/{checklist.length})
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {task.checklist.slice(0, 8).map((item: any) => (
-                <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: item.checked ? T.green : T.muted }}>
-                  <div style={{ width: 16, height: 16, borderRadius: 5, border: `1.5px solid ${item.checked ? T.green : T.border2}`, background: item.checked ? T.greenBg : "transparent", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    {item.checked && <I n="check" s={10} c={T.green} />}
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {checklist.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => toggleItem(item.id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "8px 4px",
+                    background: "transparent", border: "none", cursor: "pointer",
+                    borderRadius: 10, textAlign: "left", width: "100%",
+                  }}
+                >
+                  <div style={{
+                    width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+                    border: `1.5px solid ${item.checked ? T.green : T.border2}`,
+                    background: item.checked ? T.greenBg : "transparent",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    transition: "all .15s",
+                  }}>
+                    {item.checked && <I n="check" s={11} c={T.green} />}
                   </div>
-                  <span style={{ flex: 1, textDecoration: item.checked ? "none" : "line-through", opacity: item.checked ? 1 : 0.5 }}>{item.label}</span>
-                </div>
+                  <span style={{
+                    flex: 1, fontSize: 13, color: item.checked ? T.text : T.muted,
+                    textDecoration: item.checked ? "none" : "line-through",
+                    opacity: item.checked ? 1 : 0.55, transition: "all .15s",
+                  }}>{item.label}</span>
+                </button>
               ))}
-              {task.checklist.length > 8 && (
-                <span style={{ fontSize: 11, color: T.muted }}>+{task.checklist.length - 8} itens</span>
-              )}
             </div>
           </div>
+        )}
+
+        {/* Solicitar reposição */}
+        {task.stayId && (
+          <button
+            onClick={openRep}
+            style={{
+              width: "100%", marginBottom: 16, padding: "13px 16px",
+              background: T.card2, border: `1px solid ${T.border}`,
+              borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
+              display: "flex", alignItems: "center", gap: 10, color: T.muted,
+            }}
+          >
+            <I n="refresh" s={16} c={T.amber} />
+            <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Solicitar reposição</span>
+            <I n="arrow" s={14} c={T.muted} />
+          </button>
         )}
 
         {/* Observations from maid */}
@@ -331,7 +407,7 @@ function ConferSheet({
         </button>
         <button
           disabled={busy}
-          onClick={onApprove}
+          onClick={() => onApprove(obs, checklist)}
           style={{
             flex: 1.5, padding: "15px 0", background: T.greenG, color: "#021a17",
             border: "none", borderRadius: 16, cursor: busy ? "not-allowed" : "pointer",
@@ -342,6 +418,100 @@ function ConferSheet({
         >
           {busy ? <I n="loader" s={16} c="#021a17" /> : <I n="check" s={16} c="#021a17" />}
           Liberar Cabana
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+// ─── Gov Replenish Sheet ──────────────────────────────────────────────────────
+
+function GovReplenishSheet({
+  locationName, repItems, loading: loadingItems, onClose, onSend,
+}: {
+  locationName: string;
+  repItems: ConciergeItem[];
+  loading: boolean;
+  onClose: () => void;
+  onSend: (items: { itemId: string; qty: number }[]) => Promise<void>;
+}) {
+  const [cart, setCart] = useState<Record<string, number>>({});
+  const [busy, setBusy] = useState(false);
+
+  const adj = (id: string, d: number) =>
+    setCart(p => { const n = { ...p }, v = Math.max(0, (p[id] ?? 0) + d); if (!v) delete n[id]; else n[id] = v; return n; });
+
+  const count = Object.values(cart).reduce((a, b) => a + b, 0);
+
+  const submit = async () => {
+    setBusy(true);
+    const entries = Object.entries(cart).filter(([, q]) => q > 0).map(([itemId, qty]) => ({ itemId, qty }));
+    await onSend(entries);
+    onClose();
+    setBusy(false);
+  };
+
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ padding: "0 20px 14px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexShrink: 0 }}>
+        <div>
+          <div style={{ fontSize: 20, fontWeight: 900 }}>{locationName}</div>
+          <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>Solicitar reposição</div>
+        </div>
+        <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
+          <I n="x" s={15} />
+        </button>
+      </div>
+
+      <div className="gov-sheet-body" style={{ padding: "0 16px" }}>
+        {loadingItems ? (
+          <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
+            <I n="loader" s={24} c={T.amber} w={2} />
+          </div>
+        ) : repItems.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "40px 0", fontSize: 13, color: T.muted }}>
+            Nenhum item de reposição configurado.<br />
+            <span style={{ opacity: 0.6, fontSize: 11 }}>Configure em Catálogo Concierge → Disponível para Camareira.</span>
+          </div>
+        ) : (
+          repItems.map(item => {
+            const q = cart[item.id] ?? 0;
+            return (
+              <div key={item.id} style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "12px",
+                borderRadius: 14, borderBottom: `1px solid ${T.border}`,
+                background: q > 0 ? "rgba(245,158,11,0.08)" : "transparent", transition: "background .15s",
+              }}>
+                <span style={{ flex: 1, fontSize: 14, fontWeight: q > 0 ? 700 : 400, color: q > 0 ? T.amber : T.text }}>{item.name}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <button onClick={() => adj(item.id, -1)} disabled={!q} style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${T.border}`, background: T.glass2, cursor: q ? "pointer" : "not-allowed", opacity: q ? 1 : 0.3, display: "flex", alignItems: "center", justifyContent: "center", color: T.text }}>
+                    <I n="minus" s={13} />
+                  </button>
+                  <span style={{ width: 18, textAlign: "center", fontWeight: 900, fontSize: 14 }}>{q}</span>
+                  <button onClick={() => adj(item.id, 1)} style={{ width: 30, height: 30, borderRadius: 8, background: `linear-gradient(135deg,${T.amberBg},rgba(252,211,77,0.15))`, border: `1px solid ${T.amberBorder}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: T.amber }}>
+                    <I n="plus" s={13} />
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+        <div style={{ height: 80 }} />
+      </div>
+
+      <div style={{ padding: "12px 16px", borderTop: `1px solid ${T.border}`, background: "#0d1020", flexShrink: 0 }}>
+        <button
+          disabled={!count || busy || loadingItems}
+          onClick={submit}
+          style={{
+            width: "100%", padding: 16, background: T.greenG, color: "#021a17",
+            fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const,
+            border: "none", borderRadius: 16, cursor: (!count || busy) ? "not-allowed" : "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            opacity: !count ? 0.4 : 1, boxShadow: "0 4px 20px rgba(45,212,191,0.3)",
+          }}
+        >
+          <I n="send" s={17} /> Solicitar {count > 0 ? `(${count})` : ""}
         </button>
       </div>
     </Sheet>
@@ -929,10 +1099,16 @@ export default function GovernantaPage() {
 
   // ── Actions ──────────────────────────────────────────────────────────────────
 
-  const handleApprove = async (task: HousekeepingTask, obs: string) => {
+  const handleApprove = async (task: HousekeepingTask, obs: string, checklist: HousekeepingTask["checklist"]) => {
     if (!property) return;
     setConferBusy(true);
     try {
+      // Persiste o checklist atualizado pela governanta antes de aprovar
+      if (checklist.length > 0) {
+        await supabase.from("housekeeping_tasks")
+          .update({ checklist, updatedAt: new Date().toISOString() })
+          .eq("id", task.id);
+      }
       await HousekeepingService.confirmTaskQuality(
         property.id, task.id, obs || "Aprovado", userData?.id || "", userData?.fullName || "Governanta"
       );
@@ -1326,8 +1502,11 @@ export default function GovernantaPage() {
           <ConferSheet
             task={conferTask}
             locationName={getLocationName(conferTask)}
+            propertyId={property?.id || ""}
+            actorId={userData?.id || ""}
+            actorName={userData?.fullName || "Governanta"}
             onClose={() => setConferTask(null)}
-            onApprove={() => handleApprove(conferTask, "")}
+            onApprove={(obs, checklist) => handleApprove(conferTask, obs, checklist)}
             onReject={() => handleReject(conferTask)}
             busy={conferBusy}
           />
