@@ -205,11 +205,12 @@ function StatusBadge({ status }: { status: HousekeepingTask["status"] }) {
 
 function TypeBadge({ type }: { type: HousekeepingTask["type"] }) {
   const map: Record<string, { label: string; color: string; bg: string }> = {
-    turnover:     { label: "Faxina de Troca",        color: T.v1,   bg: "rgba(167,139,250,0.12)" },
-    inspection:   { label: "Conferência",             color: T.v1,   bg: "rgba(167,139,250,0.12)" },
-    daily:        { label: "Arrumação",               color: T.blue, bg: T.blueBg },
-    linen_change: { label: "Arr. c/ Troca de Roupa", color: T.green, bg: T.greenBg },
-    custom:       { label: "Personalizada",           color: T.amber, bg: T.amberBg },
+    turnover:            { label: "Faxina de Troca",        color: T.v1,   bg: "rgba(167,139,250,0.12)" },
+    inspection_checkin:  { label: "Conf. de Entrada",       color: T.v1,   bg: "rgba(167,139,250,0.12)" },
+    inspection_checkout: { label: "Conf. de Saída",         color: T.v1,   bg: "rgba(167,139,250,0.12)" },
+    daily:               { label: "Arrumação",               color: T.blue, bg: T.blueBg },
+    linen_change:        { label: "Arr. c/ Troca de Roupa", color: T.green, bg: T.greenBg },
+    custom:              { label: "Personalizada",           color: T.amber, bg: T.amberBg },
   };
   const s = map[type] ?? map.custom;
   return (

@@ -251,7 +251,7 @@ export interface HousekeepingTask {
   structureId?: string; // Para Estruturas (Spas, Quadras, etc)
   unitId?: string; // Para uma unidade específica da estrutura
   stayId?: string; // Para limpezas diárias vinculadas a uma estadia ativa
-  type: 'turnover' | 'daily' | 'linen_change' | 'inspection' | 'custom';
+  type: 'turnover' | 'daily' | 'linen_change' | 'inspection_checkin' | 'inspection_checkout' | 'custom';
   status: 'pending' | 'in_progress' | 'waiting_conference' | 'completed' | 'cancelled' | 'paused' | 'skipped';
   paused_until?: string; // ISO timestamp — DND
   skippedAt?: string;   // ISO timestamp — when it was skipped (DND)
@@ -295,7 +295,7 @@ export interface HousekeepingRule {
   id: string;
   propertyId: string;
   trigger: HousekeepingRuleTrigger;
-  taskType: 'turnover' | 'daily' | 'linen_change' | 'inspection' | 'custom';
+  taskType: 'turnover' | 'daily' | 'linen_change' | 'inspection_checkin' | 'inspection_checkout' | 'custom';
   intervalDays?: number; // Para 'stay_duration_days' e 'fixed_interval_days'
   cabinId?: string;       // Só para 'fixed_interval_days'
   structureId?: string;   // Só para 'fixed_interval_days'
@@ -315,7 +315,7 @@ export interface ChecklistTemplate {
   id: string;
   propertyId: string;
   title: string; // Ex: "Limpeza Padrão - Praia 2 Dormitórios"
-  type: 'turnover' | 'daily' | 'linen_change' | 'inspection';
+  type: 'turnover' | 'daily' | 'linen_change' | 'inspection_checkin' | 'inspection_checkout' | 'custom';
   items: {
     id: string; // Gerado via UUID
     label: string;

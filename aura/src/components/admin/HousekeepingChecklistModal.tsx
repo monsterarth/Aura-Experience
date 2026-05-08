@@ -4,6 +4,7 @@
 import React, { useState, useEffect } from "react";
 import { X, CheckCircle2, Save, ClipboardCheck, AlertCircle } from "lucide-react";
 import { HousekeepingTask } from "@/types/aura";
+import { getTaskLabel } from "@/lib/task-ui";
 import { HousekeepingService } from "@/services/housekeeping-service";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -128,7 +129,7 @@ export function HousekeepingChecklistModal({ isOpen, onClose, task, cabinName, o
               Finalizar Limpeza
             </h2>
             <p className="text-xs text-muted-foreground mt-1 font-bold uppercase tracking-wider">
-              {cabinName} • {task.type === 'turnover' ? 'Faxina de Troca' : 'Arrumação Diária'}
+              {cabinName} • {getTaskLabel(task.type)}
             </p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-xl transition-colors">

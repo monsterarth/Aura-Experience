@@ -272,7 +272,7 @@ export default function GovernanceKanbanPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-start gap-2 min-w-0">
                     <div className="mt-0.5 shrink-0">
-                      {task.structureId ? <Sparkles size={14} className="text-purple-500" /> : <span className={getTaskColorClass(task.type)}>{task.type === 'turnover' ? <AlertCircle size={14} /> : task.type === 'inspection' ? <ClipboardCheck size={14} /> : task.type === 'linen_change' ? <RefreshCw size={14} /> : <Coffee size={14} />}</span>}
+                      {task.structureId ? <Sparkles size={14} className="text-purple-500" /> : <span className={getTaskColorClass(task.type)}>{task.type === 'turnover' ? <AlertCircle size={14} /> : (task.type === 'inspection_checkin' || task.type === 'inspection_checkout') ? <ClipboardCheck size={14} /> : task.type === 'linen_change' ? <RefreshCw size={14} /> : <Coffee size={14} />}</span>}
                     </div>
                     <div className="min-w-0">
                       <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-0.5">
@@ -514,7 +514,7 @@ export default function GovernanceKanbanPage() {
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-start gap-2 min-w-0">
                       <div className="mt-0.5 shrink-0">
-                        {task.structureId ? <Sparkles size={14} className="text-purple-500" /> : <span className={getTaskColorClass(task.type)}>{task.type === 'turnover' ? <AlertCircle size={14} /> : task.type === 'inspection' ? <ClipboardCheck size={14} /> : task.type === 'linen_change' ? <RefreshCw size={14} /> : <Coffee size={14} />}</span>}
+                        {task.structureId ? <Sparkles size={14} className="text-purple-500" /> : <span className={getTaskColorClass(task.type)}>{task.type === 'turnover' ? <AlertCircle size={14} /> : (task.type === 'inspection_checkin' || task.type === 'inspection_checkout') ? <ClipboardCheck size={14} /> : task.type === 'linen_change' ? <RefreshCw size={14} /> : <Coffee size={14} />}</span>}
                       </div>
                       <div className="min-w-0">
                         <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-0.5">
@@ -617,7 +617,7 @@ export default function GovernanceKanbanPage() {
               const typeLabel = getTaskLabel(task.type);
               return (
                 <div key={task.id} className="bg-card border border-border rounded-xl p-3 flex items-center gap-3 min-w-[260px]">
-                  <span className={`shrink-0 ${getTaskColorClass(task.type)}`}>{task.type === 'turnover' ? <AlertCircle size={14} /> : task.type === 'inspection' ? <ClipboardCheck size={14} /> : task.type === 'linen_change' ? <RefreshCw size={14} /> : <Coffee size={14} />}</span>
+                  <span className={`shrink-0 ${getTaskColorClass(task.type)}`}>{task.type === 'turnover' ? <AlertCircle size={14} /> : (task.type === 'inspection_checkin' || task.type === 'inspection_checkout') ? <ClipboardCheck size={14} /> : task.type === 'linen_change' ? <RefreshCw size={14} /> : <Coffee size={14} />}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-black text-foreground leading-tight">
                       {cabin ? `${cabin.number} — ${guestFirstName || task.guestName || cabin.name}` : (guestFirstName || task.guestName || 'Cabana')}
@@ -682,7 +682,7 @@ export default function GovernanceKanbanPage() {
                     <div key={task.id} className="bg-card border border-border p-4 rounded-xl flex items-center justify-between gap-4">
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          {task.structureId ? <Sparkles size={12} className="text-purple-500" /> : <span className={getTaskColorClass(task.type)}>{task.type === 'turnover' ? <AlertCircle size={12} /> : task.type === 'inspection' ? <ClipboardCheck size={12} /> : task.type === 'linen_change' ? <RefreshCw size={12} /> : <Coffee size={12} />}</span>}
+                          {task.structureId ? <Sparkles size={12} className="text-purple-500" /> : <span className={getTaskColorClass(task.type)}>{task.type === 'turnover' ? <AlertCircle size={12} /> : (task.type === 'inspection_checkin' || task.type === 'inspection_checkout') ? <ClipboardCheck size={12} /> : task.type === 'linen_change' ? <RefreshCw size={12} /> : <Coffee size={12} />}</span>}
                           <p className="font-bold text-sm">
                             {task.customLocation || (task.structureId ? (structures[task.structureId]?.name || "Estrutura") : (cabins[task.cabinId!]?.name || "Cabana"))}
                           </p>

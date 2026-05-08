@@ -10,6 +10,7 @@ import { CabinService } from "@/services/cabin-service";
 import { ConciergeService } from "@/services/concierge-service";
 import { supabase } from "@/lib/supabase";
 import { HousekeepingTask, Cabin, ConciergeItem } from "@/types/aura";
+import { getTaskLabel } from "@/lib/task-ui";
 
 type EnrichedTask = HousekeepingTask & { cabinName?: string };
 import { useRouter } from "next/navigation";
@@ -396,7 +397,7 @@ function TaskSheet({
             <div>
               <div style={{ fontSize: 22, fontWeight: 900 }}>{task.cabinName || "Cabana"}</div>
               <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>
-                {task.type === "turnover" ? "Faxina de Troca" : task.type === "linen_change" ? "Arr. c/ Troca de Roupa" : task.type === "inspection" ? "Conferência" : task.type === "custom" ? "Personalizada" : "Arrumação"}
+                {getTaskLabel(task.type)}
               </div>
             </div>
             <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
@@ -644,7 +645,7 @@ function HomeScreen({
           <div style={{ width: 10, height: 10, borderRadius: "50%", flexShrink: 0, background: t.status === "in_progress" ? T.led : t.status === "waiting_conference" ? T.amber : T.border2, boxShadow: t.status === "in_progress" ? `0 0 8px ${T.ledGlow}` : "none" }} />
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 800, fontSize: 15 }}>{t.cabinName || "Cabana"}</div>
-            <div style={{ fontSize: 12, color: T.muted, marginTop: 1 }}>{t.type === "turnover" ? "Faxina de Troca" : t.type === "linen_change" ? "Arr. c/ Troca de Roupa" : t.type === "inspection" ? "Conferência" : t.type === "custom" ? "Personalizada" : "Arrumação"}</div>
+            <div style={{ fontSize: 12, color: T.muted, marginTop: 1 }}>{getTaskLabel(t.type)}</div>
           </div>
           <Pill
             color={t.status === "in_progress" ? T.green : t.status === "waiting_conference" ? T.amber : T.muted}
@@ -702,7 +703,7 @@ function FaxinasScreen({
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                       <div>
                         <div style={{ fontSize: 26, fontWeight: 900, color: T.green, textShadow: "0 0 24px rgba(45,212,191,0.4)" }}>{t.cabinName || "Cabana"}</div>
-                        <div style={{ fontSize: 12, color: T.green, opacity: 0.65, marginTop: 2 }}>{t.type === "turnover" ? "Faxina de Troca" : t.type === "linen_change" ? "Arr. c/ Troca de Roupa" : t.type === "inspection" ? "Conferência" : t.type === "custom" ? "Personalizada" : "Arrumação"}</div>
+                        <div style={{ fontSize: 12, color: T.green, opacity: 0.65, marginTop: 2 }}>{getTaskLabel(t.type)}</div>
                       </div>
                       <div style={{ textAlign: "right" as const }}>
                         <div style={{ fontSize: 13, fontWeight: 900, color: T.green }}>{elapsed(t.startedAt as string)}</div>
@@ -733,7 +734,7 @@ function FaxinasScreen({
                 <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
                   <div>
                     <div style={{ fontSize: 24, fontWeight: 900 }}>{t.cabinName || "Cabana"}</div>
-                    <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{t.type === "turnover" ? "Faxina de Troca" : t.type === "linen_change" ? "Arr. c/ Troca de Roupa" : t.type === "inspection" ? "Conferência" : t.type === "custom" ? "Personalizada" : "Arrumação"}</div>
+                    <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{getTaskLabel(t.type)}</div>
                   </div>
                   <Pill
                     color={t.keyLocation === "reception" ? T.green : T.muted}

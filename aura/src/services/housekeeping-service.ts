@@ -145,7 +145,7 @@ export const HousekeepingService = {
     }
 
     // turnover e inspection passam por conferência da governanta; os demais concluem direto
-    const NEEDS_CONFERENCE = ['turnover', 'inspection'];
+    const NEEDS_CONFERENCE = ['turnover', 'inspection_checkin', 'inspection_checkout'];
     const newStatus = NEEDS_CONFERENCE.includes(task.type) ? 'waiting_conference' : 'completed';
 
     await supabase.from('housekeeping_tasks')

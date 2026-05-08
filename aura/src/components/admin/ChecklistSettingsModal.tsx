@@ -9,6 +9,17 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { v4 as uuidv4 } from "uuid";
 
+type TabType = 'turnover' | 'inspection_checkout' | 'inspection_checkin' | 'daily' | 'linen_change' | 'custom';
+
+const TABS: { type: TabType; label: string }[] = [
+  { type: 'turnover',            label: 'Faxina de Troca' },
+  { type: 'inspection_checkout', label: 'Conferência de Saída' },
+  { type: 'inspection_checkin',  label: 'Conferência de Entrada' },
+  { type: 'daily',               label: 'Arrumação Diária' },
+  { type: 'linen_change',        label: 'Arr. com Troca de Roupa' },
+  { type: 'custom',              label: 'Personalizada' },
+];
+
 interface ChecklistSettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -18,9 +29,8 @@ interface ChecklistSettingsModalProps {
 export function ChecklistSettingsModal({ isOpen, onClose, propertyId }: ChecklistSettingsModalProps) {
   const { userData } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'turnover' | 'daily'>('turnover');
+  const [activeTab, setActiveTab] = useState<TabType>('turnover');
 
-  // Estrutura do Template
   const [template, setTemplate] = useState<any>({
     id: "",
     type: 'turnover',
@@ -34,26 +44,24 @@ export function ChecklistSettingsModal({ isOpen, onClose, propertyId }: Checklis
     }
   }, [isOpen, propertyId, activeTab]);
 
-  const loadTemplate = async (type: 'turnover' | 'daily') => {
+  const loadTemplate = async (type: TabType) => {
     setLoading(true);
     try {
       const templates = await HousekeepingService.getChecklistTemplates(propertyId);
       const existing = templates.find((t: any) => t.type === type);
+      const tabLabel = TABS.find(t => t.type === type)?.label ?? type;
 
       if (existing) {
         setTemplate(existing);
       } else {
-        // Se não existir, inicia um vazio para criar
         setTemplate({
-          id: "", // Vazio para gerar um novo no backend
+          id: "",
           type,
-          title: type === 'turnover' ? "Faxina de Troca (Padrão)" : "Arrumação Diária (Padrão)",
-          items: [
-            { id: uuidv4(), label: "", required: true }
-          ]
+          title: `${tabLabel} (Padrão)`,
+          items: [{ id: uuidv4(), label: "", required: true }]
         });
       }
-    } catch (error) {
+    } catch {
       toast.error("Erro ao carregar os procedimentos.");
     } finally {
       setLoading(false);
@@ -61,28 +69,18 @@ export function ChecklistSettingsModal({ isOpen, onClose, propertyId }: Checklis
   };
 
   const addItem = () => {
-    setTemplate({
-      ...template,
-      items: [...template.items, { id: uuidv4(), label: "", required: true }]
-    });
+    setTemplate({ ...template, items: [...template.items, { id: uuidv4(), label: "", required: true }] });
   };
 
   const updateItem = (id: string, newLabel: string) => {
-    setTemplate({
-      ...template,
-      items: template.items.map((item: any) => item.id === id ? { ...item, label: newLabel } : item)
-    });
+    setTemplate({ ...template, items: template.items.map((item: any) => item.id === id ? { ...item, label: newLabel } : item) });
   };
 
   const removeItem = (id: string) => {
-    setTemplate({
-      ...template,
-      items: template.items.filter((item: any) => item.id !== id)
-    });
+    setTemplate({ ...template, items: template.items.filter((item: any) => item.id !== id) });
   };
 
   const handleSave = async () => {
-    // Filtra itens vazios antes de salvar
     const cleanItems = template.items.filter((i: any) => i.label.trim() !== "");
     if (cleanItems.length === 0) return toast.error("Adicione pelo menos um item válido.");
 
@@ -96,7 +94,7 @@ export function ChecklistSettingsModal({ isOpen, onClose, propertyId }: Checklis
       );
       toast.success("Procedimentos atualizados com sucesso!");
       onClose();
-    } catch (error) {
+    } catch {
       toast.error("Erro ao salvar procedimento.");
     } finally {
       setLoading(false);
@@ -117,7 +115,7 @@ export function ChecklistSettingsModal({ isOpen, onClose, propertyId }: Checklis
               Procedimentos de Limpeza
             </h2>
             <p className="text-xs text-muted-foreground mt-1">
-              Configure o que as camareiras verão no momento de limpar.
+              Configure o que a equipe verá no momento de executar cada tipo de tarefa.
             </p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-xl transition-colors">
@@ -126,19 +124,19 @@ export function ChecklistSettingsModal({ isOpen, onClose, propertyId }: Checklis
         </div>
 
         {/* TABS */}
-        <div className="flex border-b border-border bg-card px-6 pt-2 gap-4">
-          <button
-            onClick={() => setActiveTab('turnover')}
-            className={cn("py-3 text-xs font-bold uppercase tracking-widest border-b-2 transition-all", activeTab === 'turnover' ? "border-primary text-primary" : "border-transparent text-muted-foreground")}
-          >
-            Faxina de Troca (Check-out)
-          </button>
-          <button
-            onClick={() => setActiveTab('daily')}
-            className={cn("py-3 text-xs font-bold uppercase tracking-widest border-b-2 transition-all", activeTab === 'daily' ? "border-primary text-primary" : "border-transparent text-muted-foreground")}
-          >
-            Arrumação Diária
-          </button>
+        <div className="flex border-b border-border bg-card px-6 pt-2 gap-4 overflow-x-auto">
+          {TABS.map(tab => (
+            <button
+              key={tab.type}
+              onClick={() => setActiveTab(tab.type)}
+              className={cn(
+                "py-3 text-xs font-bold uppercase tracking-widest border-b-2 transition-all whitespace-nowrap shrink-0",
+                activeTab === tab.type ? "border-primary text-primary" : "border-transparent text-muted-foreground"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         {/* BODY */}
@@ -168,7 +166,7 @@ export function ChecklistSettingsModal({ isOpen, onClose, propertyId }: Checklis
                     <input
                       value={item.label}
                       onChange={(e) => updateItem(item.id, e.target.value)}
-                      placeholder="Ex: Trocar toalhas e lençóis..."
+                      placeholder="Ex: Verificar minibar..."
                       className="flex-1 bg-transparent text-sm outline-none text-foreground"
                       autoFocus={item.label === ""}
                     />
@@ -180,7 +178,7 @@ export function ChecklistSettingsModal({ isOpen, onClose, propertyId }: Checklis
 
                 {template.items.length === 0 && (
                   <div className="text-center py-10 border-2 border-dashed border-border rounded-xl text-muted-foreground text-sm">
-                    Nenhuma tarefa definida. A camareira não terá um checklist para preencher.
+                    Nenhuma tarefa definida. A equipe não terá checklist para preencher.
                   </div>
                 )}
               </div>
