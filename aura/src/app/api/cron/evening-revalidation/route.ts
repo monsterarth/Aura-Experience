@@ -3,6 +3,25 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { Stay, Guest, Cabin, AutomationRule, MessageTemplate, Property } from "@/types/aura";
 import { AutomationService } from "@/services/automation-service";
 
+async function writeCronLog(action: string, entityId: string, details: string, newData: object) {
+  try {
+    await supabaseAdmin.from('audit_logs').insert({
+      id: crypto.randomUUID(),
+      propertyId: 'system',
+      userId: 'cron',
+      userName: 'Sistema (Cron)',
+      action,
+      entity: 'CRON',
+      entityId,
+      details,
+      newData,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error('[Audit] Falha ao gravar log de cron:', e);
+  }
+}
+
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
@@ -11,6 +30,8 @@ export async function GET(request: Request) {
   if (process.env.NODE_ENV === 'production' && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const startedAt = new Date().toISOString();
 
   try {
     // Calculate tomorrow's date in BRT (UTC-3)
@@ -130,6 +151,13 @@ export async function GET(request: Request) {
       }
     }
 
+    const finishedAt = new Date().toISOString();
+    await writeCronLog(
+      'CRON_EVENING_REVALIDATION',
+      'evening-revalidation',
+      `${cancelledCount} mensagem(ns) cancelada(s), ${queuedCount} enfileirada(s)`,
+      { cancelledCount, queuedCount, startedAt, finishedAt, durationMs: new Date(finishedAt).getTime() - new Date(startedAt).getTime() }
+    );
     return NextResponse.json({
       success: true,
       cancelledCount,
@@ -137,6 +165,13 @@ export async function GET(request: Request) {
       message: `Revalidação vespertina concluída. ${cancelledCount} mensagens canceladas, ${queuedCount} enfileiradas.`
     });
   } catch (error: any) {
+    const finishedAt = new Date().toISOString();
+    await writeCronLog(
+      'CRON_EVENING_REVALIDATION',
+      'evening-revalidation',
+      `ERRO: ${error.message}`,
+      { startedAt, finishedAt, durationMs: new Date(finishedAt).getTime() - new Date(startedAt).getTime(), error: error.message }
+    );
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

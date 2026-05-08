@@ -2,6 +2,25 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { WhatsAppMessage } from "@/types/aura";
 
+async function writeCronLog(action: string, entityId: string, details: string, newData: object) {
+  try {
+    await supabaseAdmin.from('audit_logs').insert({
+      id: crypto.randomUUID(),
+      propertyId: 'system',
+      userId: 'cron',
+      userName: 'Sistema (Cron)',
+      action,
+      entity: 'CRON',
+      entityId,
+      details,
+      newData,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error('[Audit] Falha ao gravar log de cron:', e);
+  }
+}
+
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
@@ -12,6 +31,8 @@ export async function GET(request: Request) {
   if (process.env.NODE_ENV === "production" && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const startedAt = new Date().toISOString();
 
   try {
     const now = new Date();
@@ -28,6 +49,7 @@ export async function GET(request: Request) {
     if (fetchError) throw fetchError;
 
     if (!snapshot || snapshot.length === 0) {
+      await writeCronLog('CRON_PROCESS_MESSAGES', 'process-messages', 'Fila vazia', { processed: 0, sent: 0, failed: 0, leftInQueue: 0, startedAt, finishedAt: new Date().toISOString(), durationMs: 0 });
       return NextResponse.json({ success: true, processed: 0, message: "Fila vazia. Nenhuma ação necessária." });
     }
 
@@ -164,6 +186,13 @@ export async function GET(request: Request) {
       .eq("status", "pending")
       .lte("scheduledFor", timeLimit);
 
+    const finishedAt = new Date().toISOString();
+    await writeCronLog(
+      'CRON_PROCESS_MESSAGES',
+      'process-messages',
+      `${snapshot.length} mensagem(ns) processada(s): ${successCount} enviada(s), ${failCount} com falha/adiada(s)`,
+      { processed: snapshot.length, sent: successCount, failed: failCount, leftInQueue: count || 0, startedAt, finishedAt, durationMs: new Date(finishedAt).getTime() - new Date(startedAt).getTime() }
+    );
     return NextResponse.json({
       success: true,
       processed: snapshot.length,
@@ -173,6 +202,13 @@ export async function GET(request: Request) {
 
   } catch (error: any) {
     console.error("Erro no Processador da Fila (Cron):", error);
+    const finishedAt = new Date().toISOString();
+    await writeCronLog(
+      'CRON_PROCESS_MESSAGES',
+      'process-messages',
+      `ERRO: ${error.message}`,
+      { startedAt, finishedAt, durationMs: new Date(finishedAt).getTime() - new Date(startedAt).getTime(), error: error.message }
+    );
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

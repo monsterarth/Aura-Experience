@@ -7,11 +7,33 @@ import { ChatwootService } from "@/services/chatwoot-service";
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
+async function writeCronLog(action: string, entityId: string, details: string, newData: object) {
+  try {
+    await supabaseAdmin.from('audit_logs').insert({
+      id: crypto.randomUUID(),
+      propertyId: 'system',
+      userId: 'cron',
+      userName: 'Sistema (Cron)',
+      action,
+      entity: 'CRON',
+      entityId,
+      details,
+      newData,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error('[Audit] Falha ao gravar log de cron:', e);
+  }
+}
+
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization');
   if (process.env.NODE_ENV === 'production' && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const startedAt = new Date().toISOString();
+  const errors: string[] = [];
 
   try {
     const today = new Date();
@@ -131,10 +153,14 @@ export async function GET(request: Request) {
               }
             }
 
-            await AutomationService.queueMessage(
-              propertyId, stay.id, guest.phone, template, triggerToFire as any, guest, cabin, stay, delayToApply, property
-            );
-            queuedCount++;
+            try {
+              await AutomationService.queueMessage(
+                propertyId, stay.id, guest.phone, template, triggerToFire as any, guest, cabin, stay, delayToApply, property
+              );
+              queuedCount++;
+            } catch (queueErr: any) {
+              errors.push(`stay=${stay.id} trigger=${triggerToFire}: ${queueErr?.message ?? queueErr}`);
+            }
 
             // Gatilho Chatwoot 2: abre conversa proativa com ACF da estadia
             if (triggerToFire === 'pre_checkin_48h') {
@@ -161,8 +187,23 @@ export async function GET(request: Request) {
       }
     }
 
+    const finishedAt = new Date().toISOString();
+    const duration = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
+    await writeCronLog(
+      'CRON_DAILY_AUTOMATIONS',
+      'daily-automations',
+      `${queuedCount} mensagem(ns) enfileirada(s)${errors.length ? ` | ${errors.length} erro(s)` : ''}`,
+      { queuedCount, startedAt, finishedAt, durationMs: duration, errors }
+    );
     return NextResponse.json({ success: true, queuedCount, message: `Varredura concluída. ${queuedCount} mensagens enfileiradas.` });
   } catch (error: any) {
+    const finishedAt = new Date().toISOString();
+    await writeCronLog(
+      'CRON_DAILY_AUTOMATIONS',
+      'daily-automations',
+      `ERRO: ${error.message}`,
+      { startedAt, finishedAt, durationMs: new Date(finishedAt).getTime() - new Date(startedAt).getTime(), error: error.message }
+    );
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

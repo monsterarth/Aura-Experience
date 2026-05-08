@@ -3,6 +3,25 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { applyDailyRules, applyCheckinDayRules } from "@/lib/housekeeping-rule-engine";
 
+async function writeCronLog(action: string, entityId: string, details: string, newData: object) {
+  try {
+    await supabaseAdmin.from('audit_logs').insert({
+      id: crypto.randomUUID(),
+      propertyId: 'system',
+      userId: 'cron',
+      userName: 'Sistema (Cron)',
+      action,
+      entity: 'CRON',
+      entityId,
+      details,
+      newData,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error('[Audit] Falha ao gravar log de cron:', e);
+  }
+}
+
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
@@ -14,9 +33,13 @@ export async function GET(req: Request) {
 
   console.log("🤖 [CRON] Iniciando motor de Tarefas Diárias de Governança...");
 
+  const startedAt = new Date().toISOString();
+  const stayErrors: string[] = [];
+
   try {
     const { data: properties } = await supabaseAdmin.from('properties').select('id');
     let tasksCreated = 0;
+    let propertiesProcessed = 0;
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -68,20 +91,38 @@ export async function GET(req: Request) {
         try {
           await applyDailyRules(propertyId, stay);
         } catch (stayErr: any) {
-          console.error(`[CRON] ❌ Erro ao processar estadia ${stay.id}:`, stayErr?.message ?? stayErr);
+          const msg = stayErr?.message ?? String(stayErr);
+          console.error(`[CRON] ❌ Erro ao processar estadia ${stay.id}:`, msg);
+          stayErrors.push(`stay=${stay.id}: ${msg}`);
         }
         const after = await countTodayTasks(propertyId, today);
         const created = Math.max(0, after - before);
         tasksCreated += created;
         console.log(`[CRON] Estadia ${stay.id} (cabina ${stay.cabinId}): ${created} tarefa(s) criada(s)`);
       }
+      propertiesProcessed++;
     }
 
     console.log(`✅ [CRON] ${tasksCreated} novas tarefas geradas via regras.`);
+    const finishedAt = new Date().toISOString();
+    const duration = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
+    await writeCronLog(
+      'CRON_DAILY_HOUSEKEEPING',
+      'daily-housekeeping',
+      `${tasksCreated} tarefa(s) criada(s) em ${propertiesProcessed} propriedade(s)${stayErrors.length ? ` | ${stayErrors.length} erro(s)` : ''}`,
+      { tasksCreated, propertiesProcessed, startedAt, finishedAt, durationMs: duration, errors: stayErrors }
+    );
     return NextResponse.json({ success: true, tasksCreated });
 
   } catch (error: any) {
     console.error("❌ [CRON] Falha na rotina matinal de governança:", error);
+    const finishedAt = new Date().toISOString();
+    await writeCronLog(
+      'CRON_DAILY_HOUSEKEEPING',
+      'daily-housekeeping',
+      `ERRO: ${error.message}`,
+      { startedAt, finishedAt, durationMs: new Date(finishedAt).getTime() - new Date(startedAt).getTime(), error: error.message }
+    );
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
