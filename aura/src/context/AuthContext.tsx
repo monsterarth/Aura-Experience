@@ -79,25 +79,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
      * por até 10s. Esta chamada lê a sessão diretamente dos cookies no server,
      * sem nenhuma dependência do lock. Resultado: página renderiza em <500ms.
      */
-    fetch('/api/admin/auth/me')
-      .then(res => { if (!res.ok) throw new Error('auth-api'); return res.json(); })
-      .then(data => {
-        if (mounted && data?.staff && !userDataRef.current) {
-          userDataRef.current = data.staff; // Guard ref immediately — prevents INITIAL_SESSION race
-          setUserData(data.staff);
-          if (data.property) setInitialProperty(data.property);
-          setUserDataReady(true);
-          setLoading(false);
-        }
-      })
-      .catch(() => {}); // Silent — onAuthStateChange + safety timeout tratam o fallback
+    const isLoginPage = typeof window !== 'undefined' && window.location.pathname.includes('/admin/login');
+
+    // Fast-path: não chamar na página de login (middleware bloqueia com 401)
+    if (!isLoginPage) {
+      fetch('/api/admin/auth/me')
+        .then(res => { if (!res.ok) throw new Error('auth-api'); return res.json(); })
+        .then(data => {
+          if (mounted && data?.staff && !userDataRef.current) {
+            userDataRef.current = data.staff;
+            setUserData(data.staff);
+            if (data.property) setInitialProperty(data.property);
+            setUserDataReady(true);
+            setLoading(false);
+          }
+        })
+        .catch(() => {});
+    }
 
     /**
-     * Hard timeout absoluto: garante que a página nunca trava no spinner.
-     * Não pode ser cancelado por nenhum outro fluxo.
+     * Hard timeout: só age fora da página de login e só se userData nunca chegou.
+     * Redireciona para login para forçar nova autenticação.
      */
     const hardTimeout = setTimeout(() => {
-      if (!mounted || userDataRef.current) return;
+      if (!mounted || userDataRef.current || isLoginPage) return;
       console.warn("[Auth] Hard timeout — sem dados de sessão, redirecionando para login.");
       fetch('/api/auth/signout', { method: 'POST' })
         .catch(() => {})
@@ -111,27 +116,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
      * não chegou em 1.5s (evita depender do browser lock do Supabase).
      */
     const safetyTimeout = setTimeout(async () => {
-      if (mounted && !userDataRef.current) {
-        console.warn("[Auth] Safety timeout — re-tentando fast-path.");
-        initialSessionReceived.current = true;
-        try {
-          const res = await fetch('/api/admin/auth/me');
-          if (!mounted || userDataRef.current) return;
-          if (res.ok) {
-            const data = await res.json();
-            if (mounted && data?.staff) {
-              userDataRef.current = data.staff;
-              setUserData(data.staff);
-              if (data.property) setInitialProperty(data.property);
-            }
+      if (!mounted || userDataRef.current || isLoginPage) return;
+      console.warn("[Auth] Safety timeout — re-tentando fast-path.");
+      initialSessionReceived.current = true;
+      try {
+        const res = await fetch('/api/admin/auth/me');
+        if (!mounted || userDataRef.current) return;
+        if (res.ok) {
+          const data = await res.json();
+          if (mounted && data?.staff) {
+            userDataRef.current = data.staff;
+            setUserData(data.staff);
+            if (data.property) setInitialProperty(data.property);
           }
-        } catch { /* silencioso — hard timeout cobre */ }
-        finally {
-          if (mounted && !userDataRef.current) {
-            setUser(null); setUserData(null);
-          }
-          if (mounted) { setUserDataReady(true); setLoading(false); }
         }
+      } catch { /* silencioso — hard timeout cobre */ }
+      finally {
+        if (mounted && !userDataRef.current) { setUser(null); setUserData(null); }
+        if (mounted) { setUserDataReady(true); setLoading(false); }
       }
     }, 1500);
 
@@ -211,22 +213,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
      */
     const handleVisibilityChange = async () => {
       if (document.visibilityState !== 'visible' || !mounted) return;
+      if (window.location.pathname.includes('/admin/login')) return;
 
       try {
-        const { data: { user: refreshedUser }, error } = await supabase.auth.getUser();
-
+        // Usa o fast-path server-side para não competir com o browser lock
+        const res = await fetch('/api/admin/auth/me');
         if (!mounted) return;
-
-        if (error || !refreshedUser) {
+        if (!res.ok) {
           console.warn("[Auth] Sessão não encontrada no visibility change — mantendo cache.");
           return;
         }
-
-        setUser(refreshedUser);
-
-        if (refreshedUser.id !== userRef.current?.id || !userDataRef.current) {
-          const staff = await fetchStaffData(refreshedUser.id);
-          if (mounted && staff) setUserData(staff);
+        const data = await res.json();
+        if (!mounted || !data?.staff) return;
+        if (data.staff.id !== userDataRef.current?.id || !userDataRef.current) {
+          userDataRef.current = data.staff;
+          setUserData(data.staff);
         }
       } catch {
         console.warn("[Auth] Erro de rede no visibility change — mantendo cache.");
