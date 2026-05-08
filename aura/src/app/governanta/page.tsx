@@ -817,6 +817,9 @@ function NewTaskSheet({
   onCreated: () => void;
   showToast: (msg: string, color?: string) => void;
 }) {
+  const [mode, setMode] = useState<"cleaning" | "maintenance">("cleaning");
+
+  // ── Limpeza ──
   const [locType, setLocType] = useState<"cabin" | "structure" | "custom">("cabin");
   const [cabinId, setCabinId] = useState("");
   const [structureId, setStructureId] = useState("");
@@ -824,18 +827,33 @@ function NewTaskSheet({
   const [taskType, setTaskType] = useState<"daily" | "turnover" | "custom">("daily");
   const [assignedIds, setAssignedIds] = useState<string[]>([]);
   const [obs, setObs] = useState("");
+
+  // ── Manutenção ──
+  const [maintTitle, setMaintTitle] = useState("");
+  const [maintDesc, setMaintDesc] = useState("");
+  const [maintPriority, setMaintPriority] = useState<"low" | "medium" | "high" | "urgent">("medium");
+  const [maintLocType, setMaintLocType] = useState<"cabin" | "structure" | "custom">("cabin");
+  const [maintCabinId, setMaintCabinId] = useState("");
+  const [maintStructureId, setMaintStructureId] = useState("");
+  const [maintCustomLocation, setMaintCustomLocation] = useState("");
+
   const [busy, setBusy] = useState(false);
 
-  const toggleMaid = (id: string) => {
+  const toggleMaid = (id: string) =>
     setAssignedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  };
 
-  const canSubmit = (locType === "cabin" && cabinId) ||
+  const canSubmitCleaning = (locType === "cabin" && cabinId) ||
     (locType === "structure" && structureId) ||
     (locType === "custom" && customLocation.trim().length > 0);
 
-  const submit = async () => {
-    if (!canSubmit || busy) return;
+  const canSubmitMaint = maintTitle.trim().length > 0 && (
+    (maintLocType === "cabin" && maintCabinId) ||
+    (maintLocType === "structure" && maintStructureId) ||
+    (maintLocType === "custom" && maintCustomLocation.trim().length > 0)
+  );
+
+  const submitCleaning = async () => {
+    if (!canSubmitCleaning || busy) return;
     setBusy(true);
     try {
       await HousekeepingService.createTask(propertyId, {
@@ -860,11 +878,83 @@ function NewTaskSheet({
     }
   };
 
+  const submitMaint = async () => {
+    if (!canSubmitMaint || busy) return;
+    setBusy(true);
+    try {
+      await MaintenanceService.createTask(propertyId, {
+        title: maintTitle.trim(),
+        description: maintDesc.trim() || undefined,
+        priority: maintPriority,
+        cabinId: maintLocType === "cabin" ? maintCabinId : undefined,
+        structureId: maintLocType === "structure" ? maintStructureId : undefined,
+        customLocation: maintLocType === "custom" ? maintCustomLocation.trim() : undefined,
+        status: "pending",
+        assignedTo: [],
+        checklist: [],
+        isRecurring: false,
+      } as any, actorId, actorName);
+      showToast("Chamado aberto!", T.green);
+      onClose();
+    } catch {
+      showToast("Erro ao abrir chamado.", T.red);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const selectStyle = {
     width: "100%", background: T.card2, border: `1px solid ${T.border}`,
     borderRadius: 12, padding: "11px 14px", color: T.text, fontSize: 13,
     fontFamily: "inherit", outline: "none", appearance: "none" as const,
   };
+
+  const PRIORITIES: { value: "low" | "medium" | "high" | "urgent"; label: string; color: string }[] = [
+    { value: "low",    label: "Baixa",   color: T.muted },
+    { value: "medium", label: "Média",   color: T.blue },
+    { value: "high",   label: "Alta",    color: T.amber },
+    { value: "urgent", label: "Urgente", color: T.red },
+  ];
+
+  const LocPicker = ({ lt, setLt, cid, setCid, sid, setSid, cust, setCust }: {
+    lt: "cabin" | "structure" | "custom"; setLt: (v: "cabin" | "structure" | "custom") => void;
+    cid: string; setCid: (v: string) => void;
+    sid: string; setSid: (v: string) => void;
+    cust: string; setCust: (v: string) => void;
+  }) => (
+    <>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        {(["cabin", "structure", "custom"] as const).map(v => {
+          const labels = { cabin: "Cabana", structure: "Estrutura", custom: "Outro" };
+          const on = lt === v;
+          return (
+            <button key={v} onClick={() => setLt(v)} style={{
+              flex: 1, padding: "10px 0", borderRadius: 12, cursor: "pointer",
+              fontFamily: "inherit", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em",
+              background: on ? T.vSoft : T.card2, border: `1px solid ${on ? T.vBorder : T.border}`,
+              color: on ? T.v1 : T.muted,
+            }}>{labels[v]}</button>
+          );
+        })}
+      </div>
+      {lt === "cabin" && (
+        <select value={cid} onChange={e => setCid(e.target.value)} style={{ ...selectStyle, marginBottom: 16 }}>
+          <option value="">Selecione a cabana</option>
+          {cabins.map(c => <option key={c.id} value={c.id}>{c.name || `Cabana ${c.number}`}</option>)}
+        </select>
+      )}
+      {lt === "structure" && (
+        <select value={sid} onChange={e => setSid(e.target.value)} style={{ ...selectStyle, marginBottom: 16 }}>
+          <option value="">Selecione a estrutura</option>
+          {structures.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+      )}
+      {lt === "custom" && (
+        <input value={cust} onChange={e => setCust(e.target.value)} placeholder="Descreva o local..."
+          style={{ ...selectStyle, marginBottom: 16 }} />
+      )}
+    </>
+  );
 
   return (
     <Sheet onClose={onClose}>
@@ -875,125 +965,131 @@ function NewTaskSheet({
             <I n="x" s={16} />
           </button>
         </div>
+
+        {/* Mode toggle */}
+        <div style={{ display: "flex", gap: 8, marginTop: 14, background: T.card2, borderRadius: 14, padding: 4 }}>
+          {(["cleaning", "maintenance"] as const).map(m => {
+            const on = mode === m;
+            return (
+              <button key={m} onClick={() => setMode(m)} style={{
+                flex: 1, padding: "9px 0", borderRadius: 10, cursor: "pointer",
+                fontFamily: "inherit", fontSize: 12, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.04em",
+                background: on ? (m === "maintenance" ? T.redBg : T.vSoft) : "transparent",
+                border: `1px solid ${on ? (m === "maintenance" ? T.redBorder : T.vBorder) : "transparent"}`,
+                color: on ? (m === "maintenance" ? T.red : T.v1) : T.muted,
+                transition: "all .15s",
+              }}>
+                {m === "cleaning" ? "Limpeza" : "Manutenção"}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="gov-sheet-body" style={{ padding: "12px 20px 0" }}>
-        {/* Type */}
-        <Label>Tipo</Label>
-        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-          {(["daily", "turnover", "custom"] as const).map(t => {
-            const labels = { daily: "Arrumação Diária", turnover: "Faxina de Troca", custom: "Personalizada" };
-            const on = taskType === t;
-            return (
-              <button key={t} onClick={() => setTaskType(t)} style={{
-                flex: 1, padding: "10px 0", borderRadius: 12, cursor: "pointer",
-                fontFamily: "inherit", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em",
-                background: on ? T.vSoft : T.card2,
-                border: `1px solid ${on ? T.vBorder : T.border}`,
-                color: on ? T.v1 : T.muted,
-              }}>
-                {labels[t]}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Location type */}
-        <Label>Local</Label>
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          {(["cabin", "structure", "custom"] as const).map(lt => {
-            const labels = { cabin: "Cabana", structure: "Estrutura", custom: "Outro" };
-            const on = locType === lt;
-            return (
-              <button key={lt} onClick={() => setLocType(lt)} style={{
-                flex: 1, padding: "10px 0", borderRadius: 12, cursor: "pointer",
-                fontFamily: "inherit", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em",
-                background: on ? T.vSoft : T.card2,
-                border: `1px solid ${on ? T.vBorder : T.border}`,
-                color: on ? T.v1 : T.muted,
-              }}>
-                {labels[lt]}
-              </button>
-            );
-          })}
-        </div>
-
-        {locType === "cabin" && (
-          <select value={cabinId} onChange={e => setCabinId(e.target.value)} style={{ ...selectStyle, marginBottom: 16 }}>
-            <option value="">Selecione a cabana</option>
-            {cabins.map(c => <option key={c.id} value={c.id}>{c.name || `Cabana ${c.number}`}</option>)}
-          </select>
-        )}
-        {locType === "structure" && (
-          <select value={structureId} onChange={e => setStructureId(e.target.value)} style={{ ...selectStyle, marginBottom: 16 }}>
-            <option value="">Selecione a estrutura</option>
-            {structures.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        )}
-        {locType === "custom" && (
-          <input
-            value={customLocation}
-            onChange={e => setCustomLocation(e.target.value)}
-            placeholder="Descreva o local..."
-            style={{ ...selectStyle, marginBottom: 16 }}
-          />
-        )}
-
-        {/* Assign maids */}
-        {maids.length > 0 && (
+        {mode === "cleaning" ? (
           <>
-            <Label>Atribuir (opcional)</Label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-              {maids.map(m => {
-                const on = assignedIds.includes(m.id);
+            <Label>Tipo</Label>
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              {(["daily", "turnover", "custom"] as const).map(t => {
+                const labels = { daily: "Arrumação Diária", turnover: "Faxina de Troca", custom: "Personalizada" };
+                const on = taskType === t;
                 return (
-                  <button key={m.id} onClick={() => toggleMaid(m.id)} style={{
-                    padding: "7px 12px", borderRadius: 10, cursor: "pointer",
-                    fontFamily: "inherit", fontSize: 12, fontWeight: 700,
-                    background: on ? "rgba(167,139,250,0.15)" : T.card2,
-                    border: `1px solid ${on ? T.vBorder : T.border}`,
+                  <button key={t} onClick={() => setTaskType(t)} style={{
+                    flex: 1, padding: "10px 0", borderRadius: 12, cursor: "pointer",
+                    fontFamily: "inherit", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em",
+                    background: on ? T.vSoft : T.card2, border: `1px solid ${on ? T.vBorder : T.border}`,
                     color: on ? T.v1 : T.muted,
-                  }}>
-                    {m.fullName.split(" ")[0]}
-                  </button>
+                  }}>{labels[t]}</button>
                 );
               })}
             </div>
+
+            <Label>Local</Label>
+            <LocPicker lt={locType} setLt={setLocType} cid={cabinId} setCid={setCabinId}
+              sid={structureId} setSid={setStructureId} cust={customLocation} setCust={setCustomLocation} />
+
+            {maids.length > 0 && (
+              <>
+                <Label>Atribuir (opcional)</Label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                  {maids.map(m => {
+                    const on = assignedIds.includes(m.id);
+                    return (
+                      <button key={m.id} onClick={() => toggleMaid(m.id)} style={{
+                        padding: "7px 12px", borderRadius: 10, cursor: "pointer",
+                        fontFamily: "inherit", fontSize: 12, fontWeight: 700,
+                        background: on ? "rgba(167,139,250,0.15)" : T.card2,
+                        border: `1px solid ${on ? T.vBorder : T.border}`,
+                        color: on ? T.v1 : T.muted,
+                      }}>{m.fullName.split(" ")[0]}</button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            <Label>Observação (opcional)</Label>
+            <textarea value={obs} onChange={e => setObs(e.target.value)} placeholder="Instruções especiais..." rows={2}
+              style={{ width: "100%", background: T.card2, border: `1px solid ${T.border}`, borderRadius: 12, padding: "10px 14px", color: T.text, fontSize: 13, fontFamily: "inherit", resize: "none", outline: "none", marginBottom: 8 }} />
+          </>
+        ) : (
+          <>
+            <Label>Problema *</Label>
+            <input value={maintTitle} onChange={e => setMaintTitle(e.target.value)}
+              placeholder="Ex: Torneira com vazamento, AC sem funcionar..." autoFocus
+              style={{ ...selectStyle, marginBottom: 16, border: `1px solid ${maintTitle ? T.border2 : T.border}` }} />
+
+            <Label>Local</Label>
+            <LocPicker lt={maintLocType} setLt={setMaintLocType} cid={maintCabinId} setCid={setMaintCabinId}
+              sid={maintStructureId} setSid={setMaintStructureId} cust={maintCustomLocation} setCust={setMaintCustomLocation} />
+
+            <Label>Detalhes (opcional)</Label>
+            <textarea value={maintDesc} onChange={e => setMaintDesc(e.target.value)}
+              placeholder="Descreva onde está o problema e o que observou..." rows={3}
+              style={{ width: "100%", background: T.card2, border: `1px solid ${T.border}`, borderRadius: 12, padding: "10px 14px", color: T.text, fontSize: 13, fontFamily: "inherit", resize: "none", outline: "none", marginBottom: 16 }} />
+
+            <Label>Prioridade</Label>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              {PRIORITIES.map(p => (
+                <button key={p.value} onClick={() => setMaintPriority(p.value)} style={{
+                  flex: 1, padding: "9px 4px", borderRadius: 12, cursor: "pointer",
+                  fontFamily: "inherit", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em",
+                  background: maintPriority === p.value ? `${p.color}18` : T.card2,
+                  border: `1.5px solid ${maintPriority === p.value ? p.color : T.border}`,
+                  color: maintPriority === p.value ? p.color : T.muted, transition: "all .15s",
+                }}>{p.label}</button>
+              ))}
+            </div>
           </>
         )}
-
-        {/* Observations */}
-        <Label>Observação (opcional)</Label>
-        <textarea
-          value={obs}
-          onChange={e => setObs(e.target.value)}
-          placeholder="Instruções especiais..."
-          rows={2}
-          style={{
-            width: "100%", background: T.card2, border: `1px solid ${T.border}`,
-            borderRadius: 12, padding: "10px 14px", color: T.text, fontSize: 13,
-            fontFamily: "inherit", resize: "none", outline: "none", marginBottom: 8,
-          }}
-        />
         <div style={{ height: 8 }} />
       </div>
 
       <div style={{ padding: "12px 20px 24px", borderTop: `1px solid ${T.border}`, flexShrink: 0 }}>
-        <button
-          disabled={!canSubmit || busy}
-          onClick={submit}
-          style={{
+        {mode === "cleaning" ? (
+          <button disabled={!canSubmitCleaning || busy} onClick={submitCleaning} style={{
             width: "100%", padding: 16, background: T.vGrad, color: "#fff",
-            border: "none", borderRadius: 16, cursor: (!canSubmit || busy) ? "not-allowed" : "pointer",
+            border: "none", borderRadius: 16, cursor: (!canSubmitCleaning || busy) ? "not-allowed" : "pointer",
             fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-            opacity: (!canSubmit || busy) ? 0.4 : 1,
-            boxShadow: "0 4px 20px rgba(124,58,237,0.35)",
-          }}
-        >
-          {busy ? <I n="loader" s={16} /> : <I n="plus" s={16} />}
-          Criar Tarefa
-        </button>
+            opacity: (!canSubmitCleaning || busy) ? 0.4 : 1, boxShadow: "0 4px 20px rgba(124,58,237,0.35)",
+          }}>
+            {busy ? <I n="loader" s={16} /> : <I n="plus" s={16} />}
+            Criar Tarefa
+          </button>
+        ) : (
+          <button disabled={!canSubmitMaint || busy} onClick={submitMaint} style={{
+            width: "100%", padding: 16, background: T.greenG, color: "#021a17",
+            border: "none", borderRadius: 16, cursor: (!canSubmitMaint || busy) ? "not-allowed" : "pointer",
+            fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            opacity: (!canSubmitMaint || busy) ? 0.4 : 1, boxShadow: "0 4px 20px rgba(45,212,191,0.28)",
+          }}>
+            {busy ? <I n="loader" s={16} c="#021a17" /> : <I n="send" s={16} c="#021a17" />}
+            Abrir Chamado
+          </button>
+        )}
       </div>
     </Sheet>
   );
