@@ -150,7 +150,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             // Só busca staff se o fast-path ainda não resolveu
             if (!userDataRef.current) {
               const staff = await fetchStaffData(currentUser.id);
-              if (mounted && staff) { setUserData(staff); setUserDataReady(true); }
+              if (mounted) { setUserData(staff); setUserDataReady(true); }
             }
           } else if (!userDataRef.current) {
             setUser(null);
