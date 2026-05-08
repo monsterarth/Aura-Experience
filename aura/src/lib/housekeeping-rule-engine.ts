@@ -123,18 +123,24 @@ export async function applyDailyRules(
       .gte('createdAt', startOfDayISO)
       .maybeSingle();
 
-    if (linenToday) continue;
+    if (linenToday) {
+      console.log(`[ENGINE] Estadia ${stay.id}: suprimida por linen_change existente (${linenToday.id})`);
+      continue;
+    }
 
     const { data: existing } = await supabaseAdmin
       .from('housekeeping_tasks')
-      .select('id')
+      .select('id, createdAt, status')
       .eq('propertyId', propertyId)
       .eq('cabinId', stay.cabinId)
       .eq('ruleId', rule.id)
       .gte('createdAt', startOfDayISO)
       .maybeSingle();
 
-    if (existing) continue;
+    if (existing) {
+      console.log(`[ENGINE] Estadia ${stay.id}: guard bloqueou — tarefa ${existing.id} já existe (status: ${existing.status}, criada: ${existing.createdAt})`);
+      continue;
+    }
 
     // DND handling
     let taskStatus = 'pending';
