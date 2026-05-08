@@ -18,11 +18,26 @@ export async function GET(req: Request) {
     const { data: properties } = await supabaseAdmin.from('properties').select('id');
     let tasksCreated = 0;
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().split('T')[0];
+    console.log(`[CRON] Data de referência: ${todayStr} | Propriedades encontradas: ${(properties || []).length}`);
+
     for (const propData of (properties || [])) {
       const propertyId = propData.id;
 
+      // Contar regras ativas nesta propriedade
+      const { data: rules, count: rulesCount } = await supabaseAdmin
+        .from('housekeeping_rules')
+        .select('trigger, active', { count: 'exact' })
+        .eq('propertyId', propertyId)
+        .eq('active', true);
+      console.log(`[CRON] Propriedade ${propertyId}: ${rulesCount ?? 0} regra(s) ativa(s) — ${JSON.stringify((rules || []).map(r => r.trigger))}`);
+
       // Inspeções de check-in previsto para hoje
-      tasksCreated += await applyCheckinDayRules(propertyId);
+      const checkinCreated = await applyCheckinDayRules(propertyId);
+      tasksCreated += checkinCreated;
+      if (checkinCreated > 0) console.log(`[CRON] Prop ${propertyId}: ${checkinCreated} inspeção(ões) de check-in criada(s)`);
 
       const { data: activeStays } = await supabaseAdmin
         .from('stays')
@@ -30,20 +45,27 @@ export async function GET(req: Request) {
         .eq('propertyId', propertyId)
         .eq('status', 'active');
 
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      console.log(`[CRON] Prop ${propertyId}: ${(activeStays || []).length} estadia(s) ativa(s)`);
 
       for (const stay of (activeStays || [])) {
-        if (!stay.checkOut || !stay.cabinId) continue;
+        if (!stay.checkOut || !stay.cabinId) {
+          console.log(`[CRON] Estadia ${stay.id} ignorada (sem checkOut ou cabinId)`);
+          continue;
+        }
 
         const checkOutDate = new Date(stay.checkOut);
-        const isCheckingOutToday = checkOutDate.toISOString().split('T')[0] === today.toISOString().split('T')[0];
-        if (isCheckingOutToday) continue;
+        const isCheckingOutToday = checkOutDate.toISOString().split('T')[0] === todayStr;
+        if (isCheckingOutToday) {
+          console.log(`[CRON] Estadia ${stay.id} ignorada (checkout hoje)`);
+          continue;
+        }
 
         const before = await countTodayTasks(propertyId, today);
         await applyDailyRules(propertyId, stay);
         const after = await countTodayTasks(propertyId, today);
-        tasksCreated += Math.max(0, after - before);
+        const created = Math.max(0, after - before);
+        tasksCreated += created;
+        console.log(`[CRON] Estadia ${stay.id} (cabina ${stay.cabinId}): ${created} tarefa(s) criada(s)`);
       }
     }
 
