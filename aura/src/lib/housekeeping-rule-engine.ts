@@ -26,11 +26,12 @@ async function getActiveRules(propertyId: string, trigger: HousekeepingRule['tri
 
 function buildTaskPayload(rule: HousekeepingRule, overrides: Record<string, any>) {
   const now = new Date().toISOString();
+  const isInspection = rule.taskType === 'inspection_checkin' || rule.taskType === 'inspection_checkout';
   return {
     id: uuidv4(),
     propertyId: rule.propertyId,
     type: rule.taskType,
-    status: 'pending',
+    status: isInspection ? 'waiting_conference' : 'pending',
     assignedTo: rule.assignedTo || [],
     checklist: (rule.checklist || []).map(item => ({ ...item, checked: false })),
     observations: rule.observations || null,

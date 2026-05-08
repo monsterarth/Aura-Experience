@@ -38,11 +38,6 @@ export function getTaskBgClass(type: TaskType): string {
   }
 }
 
-// Tipos que requerem conferência da governanta antes de liberar
-export function needsConference(type: TaskType): boolean {
-  return type === 'turnover' || type === 'inspection_checkin' || type === 'inspection_checkout';
-}
-
 // Mostra botão de frigobar (conferência de consumo)
 export function showsMinibar(type: TaskType): boolean {
   return type === 'turnover' || type === 'inspection_checkout';
@@ -51,11 +46,6 @@ export function showsMinibar(type: TaskType): boolean {
 // Mostra badge de localização da chave
 export function showsKeyLocation(type: TaskType): boolean {
   return type === 'turnover' || type === 'inspection_checkout';
-}
-
-// Tarefa visível para camareiras (/maid) — inspeções são exclusivas da governanta (/governanta)
-export function visibleToMaid(type: TaskType): boolean {
-  return type !== 'inspection_checkin' && type !== 'inspection_checkout';
 }
 
 // Pode ser convertida em linen_change (upgrade manual)
