@@ -1327,8 +1327,8 @@ export default function GovernantaPage() {
 
   const handleLogout = async () => {
     showToast("Saindo...");
-    await createClientBrowserAuto().auth.signOut();
-    router.push("/admin/login");
+    await fetch('/api/auth/signout', { method: 'POST' }).catch(() => {});
+    window.location.href = '/admin/login';
   };
 
   // Load data

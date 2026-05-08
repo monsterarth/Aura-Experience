@@ -96,28 +96,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
      * Hard timeout absoluto: garante que a página nunca trava no spinner.
      * Não pode ser cancelado por nenhum outro fluxo.
      */
-    const hardTimeout = setTimeout(async () => {
+    const hardTimeout = setTimeout(() => {
       if (!mounted || userDataRef.current) return;
-      console.warn("[Auth] Hard timeout — verificando sessão via server.");
-      try {
-        const res = await fetch('/api/admin/auth/me');
-        if (!mounted || userDataRef.current) return;
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.staff) {
-            // Sessão válida — popula dados e libera
-            userDataRef.current = data.staff;
-            setUserData(data.staff);
-            if (data.property) setInitialProperty(data.property);
-            setUserDataReady(true);
-            setLoading(false);
-            return;
-          }
-        }
-      } catch { /* rede indisponível — desloga */ }
-      // Sem sessão válida confirmada — desloga
-      console.warn("[Auth] Hard timeout — sem sessão válida, deslogando.");
-      fetch('/api/admin/auth/signout', { method: 'POST' })
+      console.warn("[Auth] Hard timeout — sem dados de sessão, redirecionando para login.");
+      fetch('/api/auth/signout', { method: 'POST' })
         .catch(() => {})
         .finally(() => {
           if (typeof window !== 'undefined') window.location.href = '/admin/login';
