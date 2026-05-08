@@ -12,6 +12,7 @@ import { StructureService } from "@/services/structure-service";
 import { StayService } from "@/services/stay-service";
 import { HousekeepingTask, Cabin, Staff, Structure, MinibarItem, ConciergeItem } from "@/types/aura";
 import { ConciergeService } from "@/services/concierge-service";
+import { MaintenanceService } from "@/services/maintenance-service";
 import { supabase } from "@/lib/supabase";
 import { createClientBrowserAuto } from "@/lib/supabase-browser";
 import { useRouter } from "next/navigation";
@@ -243,6 +244,7 @@ function ConferSheet({
   const [showRep, setShowRep] = useState(false);
   const [repItems, setRepItems] = useState<ConciergeItem[]>([]);
   const [loadingRep, setLoadingRep] = useState(false);
+  const [showMaint, setShowMaint] = useState(false);
 
   const toggleItem = (id: string) =>
     setChecklist(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
@@ -275,6 +277,19 @@ function ConferSheet({
         loading={loadingRep}
         onClose={() => setShowRep(false)}
         onSend={handleSendRep}
+      />
+    );
+  }
+
+  if (showMaint) {
+    return (
+      <GovMaintenanceSheet
+        locationName={locationName}
+        task={task}
+        propertyId={propertyId}
+        actorId={actorId}
+        actorName={actorName}
+        onClose={() => setShowMaint(false)}
       />
     );
   }
@@ -345,22 +360,35 @@ function ConferSheet({
           </div>
         )}
 
-        {/* Solicitar reposição */}
-        {task.stayId && (
+        {/* Ações rápidas: reposição + manutenção */}
+        <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+          {task.stayId && (
+            <button
+              onClick={openRep}
+              style={{
+                flex: 1, padding: "13px 14px",
+                background: T.card2, border: `1px solid ${T.border}`,
+                borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
+                display: "flex", alignItems: "center", gap: 8,
+              }}
+            >
+              <I n="refresh" s={15} c={T.amber} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>Reposição</span>
+            </button>
+          )}
           <button
-            onClick={openRep}
+            onClick={() => setShowMaint(true)}
             style={{
-              width: "100%", marginBottom: 16, padding: "13px 16px",
+              flex: 1, padding: "13px 14px",
               background: T.card2, border: `1px solid ${T.border}`,
               borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
-              display: "flex", alignItems: "center", gap: 10, color: T.muted,
+              display: "flex", alignItems: "center", gap: 8,
             }}
           >
-            <I n="refresh" s={16} c={T.amber} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: T.text }}>Solicitar reposição</span>
-            <I n="arrow" s={14} c={T.muted} />
+            <I n="settings" s={15} c={T.red} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>Manutenção</span>
           </button>
-        )}
+        </div>
 
         {/* Observations from maid */}
         {task.observations && (
@@ -512,6 +540,166 @@ function GovReplenishSheet({
           }}
         >
           <I n="send" s={17} /> Solicitar {count > 0 ? `(${count})` : ""}
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+// ─── Gov Maintenance Sheet ────────────────────────────────────────────────────
+
+function GovMaintenanceSheet({
+  locationName, task, propertyId, actorId, actorName, onClose,
+}: {
+  locationName: string;
+  task: HousekeepingTask;
+  propertyId: string;
+  actorId: string;
+  actorName: string;
+  onClose: () => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [priority, setPriority] = useState<"low" | "medium" | "high" | "urgent">("medium");
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const PRIORITIES: { value: "low" | "medium" | "high" | "urgent"; label: string; color: string }[] = [
+    { value: "low",    label: "Baixa",   color: T.muted },
+    { value: "medium", label: "Média",   color: T.blue },
+    { value: "high",   label: "Alta",    color: T.amber },
+    { value: "urgent", label: "Urgente", color: T.red },
+  ];
+
+  const submit = async () => {
+    if (!title.trim() || busy) return;
+    setBusy(true);
+    try {
+      await MaintenanceService.createTask(propertyId, {
+        title: title.trim(),
+        description: description.trim() || undefined,
+        priority,
+        cabinId: task.cabinId,
+        structureId: task.structureId,
+        customLocation: !task.cabinId && !task.structureId ? locationName : undefined,
+        status: "pending",
+        assignedTo: [],
+        checklist: [],
+        isRecurring: false,
+      } as any, actorId, actorName);
+      setSent(true);
+    } catch {
+      // mantém o formulário aberto para tentar novamente
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (sent) {
+    return (
+      <Sheet onClose={onClose}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 24px", gap: 16 }}>
+          <div style={{ width: 56, height: 56, borderRadius: "50%", background: T.greenBg, border: `2px solid ${T.green}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <I n="check" s={24} c={T.green} />
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: T.text }}>Chamado aberto!</div>
+          <div style={{ fontSize: 13, color: T.muted, textAlign: "center" }}>A equipe de manutenção foi notificada.</div>
+          <button
+            onClick={onClose}
+            style={{ marginTop: 8, padding: "12px 32px", background: T.greenG, color: "#021a17", border: "none", borderRadius: 14, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 800 }}
+          >
+            Fechar
+          </button>
+        </div>
+      </Sheet>
+    );
+  }
+
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ padding: "20px 20px 8px", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 16, fontWeight: 800, color: T.text }}>Chamado de Manutenção</span>
+          <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
+            <I n="x" s={16} />
+          </button>
+        </div>
+        <p style={{ fontSize: 13, color: T.muted, marginTop: 6 }}>{locationName}</p>
+      </div>
+
+      <div className="gov-sheet-body" style={{ padding: "12px 20px 0" }}>
+        {/* Título */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Problema *</div>
+          <input
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            placeholder="Ex: Torneira com vazamento, AC sem funcionar..."
+            autoFocus
+            style={{
+              width: "100%", background: T.card2, border: `1px solid ${title ? T.border2 : T.border}`,
+              borderRadius: 12, padding: "11px 14px", color: T.text, fontSize: 13,
+              fontFamily: "inherit", outline: "none",
+            }}
+          />
+        </div>
+
+        {/* Descrição */}
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Detalhes (opcional)</div>
+          <textarea
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            placeholder="Descreva onde está o problema e o que observou..."
+            rows={3}
+            style={{
+              width: "100%", background: T.card2, border: `1px solid ${T.border}`,
+              borderRadius: 12, padding: "10px 14px", color: T.text, fontSize: 13,
+              fontFamily: "inherit", resize: "none", outline: "none",
+            }}
+          />
+        </div>
+
+        {/* Prioridade */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>Prioridade</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {PRIORITIES.map(p => (
+              <button
+                key={p.value}
+                onClick={() => setPriority(p.value)}
+                style={{
+                  flex: 1, padding: "9px 4px", borderRadius: 12, cursor: "pointer",
+                  fontFamily: "inherit", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em",
+                  background: priority === p.value ? `${p.color}18` : T.card2,
+                  border: `1.5px solid ${priority === p.value ? p.color : T.border}`,
+                  color: priority === p.value ? p.color : T.muted,
+                  transition: "all .15s",
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ height: 8 }} />
+      </div>
+
+      <div style={{ padding: "12px 20px 24px", borderTop: `1px solid ${T.border}`, flexShrink: 0 }}>
+        <button
+          disabled={!title.trim() || busy}
+          onClick={submit}
+          style={{
+            width: "100%", padding: "15px 0", background: T.greenG, color: "#021a17",
+            border: "none", borderRadius: 16, cursor: (!title.trim() || busy) ? "not-allowed" : "pointer",
+            fontFamily: "inherit", fontSize: 13, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            opacity: !title.trim() ? 0.4 : 1, boxShadow: "0 4px 20px rgba(45,212,191,0.28)",
+          }}
+        >
+          {busy ? <I n="loader" s={16} c="#021a17" /> : <I n="send" s={16} c="#021a17" />}
+          Abrir Chamado
         </button>
       </div>
     </Sheet>
