@@ -96,13 +96,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
      * Hard timeout absoluto: garante que a página nunca trava no spinner.
      * Não pode ser cancelado por nenhum outro fluxo.
      */
-    const hardTimeout = setTimeout(async () => {
+    const hardTimeout = setTimeout(() => {
       if (mounted && !userDataRef.current) {
         console.warn("[Auth] Hard timeout — sem dados de sessão, deslogando.");
-        await createClientBrowserAuto().auth.signOut();
-        if (typeof window !== 'undefined') {
-          window.location.href = '/admin/login';
-        }
+        // Não usa supabase.auth.signOut() — o lock pode estar travado.
+        // Limpa os cookies de sessão via API e redireciona.
+        fetch('/api/admin/auth/signout', { method: 'POST' })
+          .catch(() => {})
+          .finally(() => {
+            if (typeof window !== 'undefined') {
+              window.location.href = '/admin/login';
+            }
+          });
       }
     }, 4000);
 
