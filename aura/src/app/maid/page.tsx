@@ -829,11 +829,22 @@ function FaxinasScreen({
 
 // ─── Profile screen ───────────────────────────────────────────────────────────
 
+function tenure(iso?: string | null): string | null {
+  if (!iso) return null;
+  const months = Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24 * 30.44));
+  if (months < 1) return "menos de 1 mês";
+  if (months < 12) return `${months} ${months === 1 ? "mês" : "meses"}`;
+  const y = Math.floor(months / 12), m = months % 12;
+  return m > 0 ? `${y} ${y === 1 ? "ano" : "anos"} e ${m} ${m === 1 ? "mês" : "meses"}` : `${y} ${y === 1 ? "ano" : "anos"}`;
+}
+
 function ProfileScreen({ userData, showToast, onLogout }: { userData: any; showToast: (m: string, c?: string) => void; onLogout: () => void }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(userData?.fullName || "Camareira");
   const [todayShift, setTodayShift] = useState<string | null>(null);
   const initials = name.split(" ").slice(0, 2).map((w: string) => w[0] ?? "").join("").toUpperCase();
+  const photo: string | undefined = userData?.profilePictureUrl;
+  const tenureStr = tenure(userData?.hireDate);
 
   useEffect(() => {
     if (!userData?.id) return;
@@ -864,8 +875,11 @@ function ProfileScreen({ userData, showToast, onLogout }: { userData: any; showT
       <GBorder style={{ marginBottom: 16 }}>
         <div style={{ background: "rgba(10,12,22,0.95)", borderRadius: 20, padding: 20 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <div style={{ width: 66, height: 66, borderRadius: 22, flexShrink: 0, background: "linear-gradient(135deg,rgba(155,109,255,0.25),rgba(78,201,212,0.25))", border: "1px solid rgba(155,109,255,0.3)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 900 }}>
-              <span style={{ background: T.grad, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>{initials}</span>
+            <div style={{ width: 66, height: 66, borderRadius: 22, flexShrink: 0, border: "1px solid rgba(155,109,255,0.3)", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: 900, background: "linear-gradient(135deg,rgba(155,109,255,0.25),rgba(78,201,212,0.25))" }}>
+              {photo
+                ? <img src={photo} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                : <span style={{ background: T.grad, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>{initials}</span>
+              }
             </div>
             <div style={{ flex: 1 }}>
               {editing ? (
@@ -873,17 +887,44 @@ function ProfileScreen({ userData, showToast, onLogout }: { userData: any; showT
               ) : (
                 <div style={{ fontSize: 20, fontWeight: 900 }}>{name}</div>
               )}
-              <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>Camareira</div>
-              <Pill color={T.green} bg={T.greenBg} border={T.greenBorder}>Ativa hoje</Pill>
+              <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>Camareira</div>
+              {tenureStr && <div style={{ fontSize: 11, color: T.muted2, marginTop: 1 }}>Aqui há {tenureStr}</div>}
+              <div style={{ marginTop: 5 }}><Pill color={T.green} bg={T.greenBg} border={T.greenBorder}>Ativa hoje</Pill></div>
             </div>
             <button onClick={() => { if (editing) showToast("Perfil salvo!"); setEditing(e => !e); }} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 12, padding: 10, cursor: "pointer", color: T.muted }}>
               <I n={editing ? "check" : "edit"} s={17} c={editing ? T.green : T.muted} />
             </button>
           </div>
+          {userData?.bio && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${T.border}`, fontSize: 13, color: T.muted, lineHeight: 1.5 }}>
+              {userData.bio}
+            </div>
+          )}
         </div>
       </GBorder>
 
-      {/* Turno */}
+      {(userData?.email || userData?.phone) && (
+        <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 20, padding: "14px 16px", marginBottom: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.muted, marginBottom: 10 }}>Contato</div>
+          {userData.email && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: userData.phone ? 8 : 0 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 10, background: T.ledBg, border: `1px solid ${T.ledBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <I n="send" s={14} c={T.led} />
+              </div>
+              <span style={{ fontSize: 13, color: T.text }}>{userData.email}</span>
+            </div>
+          )}
+          {userData.phone && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 32, height: 32, borderRadius: 10, background: T.greenBg, border: `1px solid ${T.greenBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <I n="info" s={14} c={T.green} />
+              </div>
+              <span style={{ fontSize: 13, color: T.text }}>{userData.phone}</span>
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.muted, marginBottom: 10 }}>Turno hoje</div>
       <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 20, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
         <div style={{ width: 40, height: 40, borderRadius: 12, background: T.amberBg, border: `1px solid ${T.amberBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>

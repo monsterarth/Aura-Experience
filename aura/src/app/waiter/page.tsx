@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
+import { useRouter } from "next/navigation";
 import { BreakfastSalonService } from "@/services/breakfast-salon-service";
 import { supabase } from "@/lib/supabase";
 import { RoleGuard } from "@/components/auth/RoleGuard";
@@ -18,10 +19,10 @@ import { toast } from "sonner";
 import {
   Users, UtensilsCrossed, ChefHat, Search, Plus, X,
   LogIn, ArrowRight, LogOut, Coffee, Check, Loader2,
-  MoveRight, Ban, RotateCcw, UserPlus, Layers
+  MoveRight, Ban, RotateCcw, UserPlus, Layers, User, Mail, Phone
 } from "lucide-react";
 
-type WaiterTab = "lista" | "salao" | "cozinha";
+type WaiterTab = "lista" | "salao" | "cozinha" | "perfil";
 
 interface TableWithGuests extends BreakfastTable {
   attendances: BreakfastAttendance[];
@@ -328,9 +329,113 @@ function VisitorDialog({
   );
 }
 
+function tenureStr(iso?: string | null): string | null {
+  if (!iso) return null;
+  const months = Math.floor((Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24 * 30.44));
+  if (months < 1) return "menos de 1 mês";
+  if (months < 12) return `${months} ${months === 1 ? "mês" : "meses"}`;
+  const y = Math.floor(months / 12), m = months % 12;
+  return m > 0 ? `${y} ${y === 1 ? "ano" : "anos"} e ${m} ${m === 1 ? "mês" : "meses"}` : `${y} ${y === 1 ? "ano" : "anos"}`;
+}
+
+function WaiterProfileTab({ userData, onLogout }: { userData: any; onLogout: () => void }) {
+  const name = userData?.fullName || "Garçom";
+  const initials = name.split(" ").slice(0, 2).map((w: string) => w[0] ?? "").join("").toUpperCase();
+  const photo: string | undefined = userData?.profilePictureUrl;
+  const tenure = tenureStr(userData?.hireDate);
+  const [todayShift, setTodayShift] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!userData?.id) return;
+    const today = new Date();
+    const from = today.toISOString().split("T")[0];
+    const dow = today.getDay();
+    Promise.all([
+      fetch(`/api/admin/staff/schedules?staffId=${userData.id}`).then(r => r.json()),
+      fetch(`/api/admin/staff/schedule-overrides?staffId=${userData.id}&from=${from}&to=${from}`).then(r => r.json()),
+    ]).then(([schedules, overrides]) => {
+      const override = Array.isArray(overrides) ? overrides[0] : null;
+      if (override) {
+        if (!override.startTime) { setTodayShift("Folga"); return; }
+        setTodayShift(`${override.startTime.slice(0, 5)} às ${override.endTime?.slice(0, 5)}`);
+        return;
+      }
+      const base = Array.isArray(schedules) ? schedules.find((s: any) => s.dayOfWeek === dow && s.active) : null;
+      if (base) setTodayShift(`${base.startTime.slice(0, 5)} às ${base.endTime.slice(0, 5)}`);
+    }).catch(() => {});
+  }, [userData?.id]);
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <h2 className="text-2xl font-black text-foreground pt-2 pb-1">Meu Perfil</h2>
+
+      <div className="bg-secondary border border-white/5 rounded-2xl p-5">
+        <div className="flex items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl overflow-hidden flex-shrink-0 border border-primary/30 bg-primary/10 flex items-center justify-center text-2xl font-black">
+            {photo
+              ? <img src={photo} alt={name} className="w-full h-full object-cover" />
+              : <span className="text-primary">{initials}</span>
+            }
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-lg font-black text-foreground">{name}</p>
+            <p className="text-xs text-foreground/40 mt-0.5">Garçom</p>
+            {tenure && <p className="text-[11px] text-foreground/30 mt-0.5">Aqui há {tenure}</p>}
+            <span className="inline-flex mt-1.5 items-center text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">Ativo</span>
+          </div>
+        </div>
+        {userData?.bio && (
+          <p className="mt-4 pt-4 border-t border-white/5 text-sm text-foreground/50 leading-relaxed">{userData.bio}</p>
+        )}
+      </div>
+
+      {(userData?.email || userData?.phone) && (
+        <div className="bg-secondary border border-white/5 rounded-2xl p-4 space-y-3">
+          <p className="text-[10px] font-black uppercase tracking-widest text-foreground/30">Contato</p>
+          {userData.email && (
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center flex-shrink-0">
+                <Mail size={14} className="text-cyan-400" />
+              </div>
+              <span className="text-sm text-foreground">{userData.email}</span>
+            </div>
+          )}
+          {userData.phone && (
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center justify-center flex-shrink-0">
+                <Phone size={14} className="text-green-400" />
+              </div>
+              <span className="text-sm text-foreground">{userData.phone}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="bg-secondary border border-white/5 rounded-2xl p-4">
+        <p className="text-[10px] font-black uppercase tracking-widest text-foreground/30 mb-3">Turno hoje</p>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center flex-shrink-0">
+            <Coffee size={16} className="text-amber-400" />
+          </div>
+          <div>
+            <p className="font-bold text-sm text-foreground">{todayShift || "Sem escala definida"}</p>
+            <p className="text-[11px] text-foreground/30 mt-0.5 capitalize">{new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}</p>
+          </div>
+        </div>
+      </div>
+
+      <button onClick={onLogout}
+        className="w-full py-4 bg-red-500/10 text-red-400 text-sm font-black uppercase tracking-widest border border-red-500/20 rounded-2xl flex items-center justify-center gap-2">
+        <LogOut size={16} /> Sair do aplicativo
+      </button>
+    </div>
+  );
+}
+
 export default function WaiterPage() {
   const { userData } = useAuth();
   const { currentProperty: contextProperty } = useProperty();
+  const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<WaiterTab>("lista");
   const [session, setSession] = useState<BreakfastSession | null>(null);
@@ -667,6 +772,10 @@ export default function WaiterPage() {
                 })}
             </div>
           )}
+
+          {activeTab === "perfil" && (
+            <WaiterProfileTab userData={userData} onLogout={async () => { await supabase.auth.signOut(); router.push("/admin/login"); }} />
+          )}
         </div>
 
         <div className="border-t border-white/5 bg-background/95 backdrop-blur-sm">
@@ -675,6 +784,7 @@ export default function WaiterPage() {
               { tab: "lista", icon: Users, label: "Lista" },
               { tab: "salao", icon: UtensilsCrossed, label: "Salão" },
               { tab: "cozinha", icon: ChefHat, label: "Cozinha", badge: pendingOrdersCount },
+              { tab: "perfil", icon: User, label: "Perfil" },
             ] as any[]).map(({ tab, icon: Icon, label, badge }) => (
               <button key={tab} onClick={() => setActiveTab(tab as WaiterTab)}
                 className={cn("flex-1 flex flex-col items-center gap-1 py-3 relative transition-colors",
