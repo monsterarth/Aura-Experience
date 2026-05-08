@@ -213,7 +213,8 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
       // Usuário normal: usa SEMPRE seu propertyId do banco — nunca localStorage
       // (evita herdar property de sessão anterior de outro usuário)
       if (!ud) {
-        // userData ainda não chegou — aguarda próximo render
+        // userData não chegou — libera loading para não travar a página
+        setLoading(false);
         return;
       }
       if (ud.propertyId) {
