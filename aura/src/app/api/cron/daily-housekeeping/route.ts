@@ -26,13 +26,17 @@ export async function GET(req: Request) {
     for (const propData of (properties || [])) {
       const propertyId = propData.id;
 
-      // Contar regras ativas nesta propriedade
+      // Pular propriedades sem nenhuma regra ativa
       const { data: rules, count: rulesCount } = await supabaseAdmin
         .from('housekeeping_rules')
         .select('trigger, active', { count: 'exact' })
         .eq('propertyId', propertyId)
         .eq('active', true);
       console.log(`[CRON] Propriedade ${propertyId}: ${rulesCount ?? 0} regra(s) ativa(s) — ${JSON.stringify((rules || []).map(r => r.trigger))}`);
+      if (!rulesCount || rulesCount === 0) {
+        console.log(`[CRON] Prop ${propertyId}: sem regras ativas, pulando.`);
+        continue;
+      }
 
       // Inspeções de check-in previsto para hoje
       const checkinCreated = await applyCheckinDayRules(propertyId);
