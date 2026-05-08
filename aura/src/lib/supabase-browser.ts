@@ -21,8 +21,9 @@ async function lockWithStealRecovery<R>(name: string, _acquireTimeout: number, f
         return fn()
     }
 
+    // Tenta adquirir o lock normal em até 1s
     const abortController = new AbortController()
-    const timer = setTimeout(() => abortController.abort(), 3000)
+    const timer = setTimeout(() => abortController.abort(), 1000)
 
     try {
         return await navigator.locks.request(
@@ -32,14 +33,20 @@ async function lockWithStealRecovery<R>(name: string, _acquireTimeout: number, f
         ) as R
     } catch (e: any) {
         clearTimeout(timer)
+        // AbortError: lock não foi adquirido em 1s — tenta steal
+        // Qualquer outro erro (ex: DOMException no Android): executa sem lock
         if (e?.name === 'AbortError') {
-            return await navigator.locks.request(
-                name,
-                { mode: 'exclusive', steal: true },
-                () => fn()
-            ) as R
+            try {
+                return await navigator.locks.request(
+                    name,
+                    { mode: 'exclusive', steal: true },
+                    () => fn()
+                ) as R
+            } catch {
+                return fn()
+            }
         }
-        throw e
+        return fn()
     }
 }
 
@@ -67,8 +74,6 @@ export function createClientBrowser() {
             }
         }
     )
-
-    browserClient.auth.getSession().catch(() => {})
 
     return browserClient
 }
