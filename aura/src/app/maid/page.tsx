@@ -9,7 +9,7 @@ import { HousekeepingService } from "@/services/housekeeping-service";
 import { CabinService } from "@/services/cabin-service";
 import { ConciergeService } from "@/services/concierge-service";
 import { supabase } from "@/lib/supabase";
-import { HousekeepingTask, Cabin, ConciergeItem } from "@/types/aura";
+import { HousekeepingTask, Cabin, ConciergeItem, ConciergeRequest } from "@/types/aura";
 import { getTaskLabel } from "@/lib/task-ui";
 
 type EnrichedTask = HousekeepingTask & { cabinName?: string };
@@ -664,7 +664,7 @@ function HomeScreen({
 
 function FaxinasScreen({
   tasks, onStart, showToast, onToggle,
-  propertyId, userId, userName, onChecklistLoaded,
+  propertyId, userId, userName, onChecklistLoaded, repRequests,
 }: {
   tasks: EnrichedTask[];
   onStart: (id: string) => void;
@@ -672,6 +672,7 @@ function FaxinasScreen({
   onToggle: (tid: string, cid: string) => void;
   propertyId: string; userId: string; userName: string;
   onChecklistLoaded: (taskId: string, checklist: ChecklistItem[]) => void;
+  repRequests: ConciergeRequest[];
 }) {
   const [detail, setDetail] = useState<string | null>(null);
 
@@ -697,6 +698,9 @@ function FaxinasScreen({
             {inProg.map(t => {
               const done = t.checklist.filter(c => c.checked).length;
               const pct = Math.round(done / Math.max(t.checklist.length, 1) * 100);
+              const taskReps = repRequests
+                .filter(r => r.cabinId === t.cabinId)
+                .sort((a, b) => (a.status === 'in_progress' ? -1 : 1) - (b.status === 'in_progress' ? -1 : 1));
               return (
                 <GBorder key={t.id} style={{ marginBottom: 10 }}>
                   <div style={{ background: "rgba(45,212,191,0.05)", borderRadius: 20, padding: 16 }}>
@@ -710,9 +714,35 @@ function FaxinasScreen({
                         <div style={{ fontSize: 11, color: T.green, opacity: 0.6, marginTop: 2 }}>{done}/{t.checklist.length} ✓</div>
                       </div>
                     </div>
-                    <div style={{ height: 6, borderRadius: 6, background: "rgba(255,255,255,0.07)", marginBottom: 14 }}>
+                    <div style={{ height: 6, borderRadius: 6, background: "rgba(255,255,255,0.07)", marginBottom: taskReps.length > 0 ? 12 : 14 }}>
                       <div style={{ height: "100%", borderRadius: 6, background: T.greenG, width: `${pct}%`, transition: "width .4s ease" }} />
                     </div>
+                    {taskReps.length > 0 && (
+                      <div style={{ borderTop: `1px solid rgba(255,255,255,0.07)`, paddingTop: 10, marginBottom: 12 }}>
+                        <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.07em", textTransform: "uppercase" as const, color: T.muted, marginBottom: 7, display: "flex", alignItems: "center", gap: 5 }}>
+                          <I n="pkg" s={11} c={T.muted} /> Reposição
+                        </div>
+                        {taskReps.map(r => {
+                          const isOnWay = r.status === 'in_progress';
+                          const color = isOnWay ? T.blue : T.amber;
+                          const bg = isOnWay ? T.blueBg : T.amberBg;
+                          const border = isOnWay ? T.blueBorder : T.amberBorder;
+                          const itemLabel = r.item?.name ?? "Item";
+                          const statusLabel = isOnWay ? `${r.assignedName ?? 'Houseman'} a caminho` : "Aguardando houseman...";
+                          return (
+                            <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 10px", borderRadius: 10, background: bg, border: `1px solid ${border}`, marginBottom: 5 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                                <I n={isOnWay ? "arrow" : "clock"} s={12} c={color} />
+                                <span style={{ fontSize: 12, fontWeight: 700, color, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  {itemLabel} ×{r.quantity}
+                                </span>
+                              </div>
+                              <span style={{ fontSize: 11, color, opacity: 0.85, whiteSpace: "nowrap", flexShrink: 0 }}>{statusLabel}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                     <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
                       <button onClick={() => setDetail(t.id)} style={{ padding: 16, background: T.greenG, color: "#021a17", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(45,212,191,0.3)" }}>
                         <I n="list" s={17} /> Ver Checklist
@@ -887,6 +917,7 @@ export default function MaidPage() {
   const [dataLoading, setDataLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; color: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [repRequests, setRepRequests] = useState<ConciergeRequest[]>([]);
 
   const showToast = useCallback((msg: string, color = T.green) => {
     setToast({ msg, color });
@@ -944,6 +975,11 @@ export default function MaidPage() {
     init();
     return () => unsubscribe?.();
   }, [property, userData?.id, userData?.role, showToast]);
+
+  useEffect(() => {
+    if (!property?.id) return;
+    return ConciergeService.listenToPendingRequests(property.id, setRepRequests, 'maid');
+  }, [property?.id]);
 
   const handleStart = useCallback(async (taskId: string) => {
     if (!property || !userData) return;
@@ -1029,7 +1065,7 @@ export default function MaidPage() {
           {/* Screens */}
           <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", position: "relative", zIndex: 1 }}>
             {tab === "home" && <HomeScreen tasks={tasks} cabins={cabins} onNav={setTab} userName={userData?.fullName ?? "Camareira"} />}
-            {tab === "tasks" && <FaxinasScreen tasks={tasks} onStart={handleStart} showToast={showToast} onToggle={handleToggle} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onChecklistLoaded={handleChecklistLoaded} />}
+            {tab === "tasks" && <FaxinasScreen tasks={tasks} onStart={handleStart} showToast={showToast} onToggle={handleToggle} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onChecklistLoaded={handleChecklistLoaded} repRequests={repRequests} />}
             {tab === "profile" && <ProfileScreen userData={userData} showToast={showToast} onLogout={handleLogout} />}
           </div>
 
