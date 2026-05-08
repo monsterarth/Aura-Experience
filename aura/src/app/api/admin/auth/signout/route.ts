@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 
 export async function POST() {
     const cookieStore = await cookies();
+    const response = NextResponse.json({ ok: true });
 
     const supabase = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,9 +13,9 @@ export async function POST() {
             cookies: {
                 getAll: () => cookieStore.getAll(),
                 setAll: (cookiesToSet) => {
-                    cookiesToSet.forEach(({ name, value, options }) =>
-                        cookieStore.set(name, value, options)
-                    );
+                    cookiesToSet.forEach(({ name, value, options }) => {
+                        response.cookies.set(name, value, options);
+                    });
                 },
             },
         }
@@ -22,5 +23,12 @@ export async function POST() {
 
     await supabase.auth.signOut();
 
-    return NextResponse.json({ ok: true });
+    // Garante que todos os cookies de sessão do Supabase sejam apagados no browser
+    cookieStore.getAll().forEach(({ name }) => {
+        if (name.startsWith('sb-')) {
+            response.cookies.set(name, '', { maxAge: 0, path: '/' });
+        }
+    });
+
+    return response;
 }
