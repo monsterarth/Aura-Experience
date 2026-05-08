@@ -65,7 +65,11 @@ export async function GET(req: Request) {
         }
 
         const before = await countTodayTasks(propertyId, today);
-        await applyDailyRules(propertyId, stay);
+        try {
+          await applyDailyRules(propertyId, stay);
+        } catch (stayErr: any) {
+          console.error(`[CRON] ❌ Erro ao processar estadia ${stay.id}:`, stayErr?.message ?? stayErr);
+        }
         const after = await countTodayTasks(propertyId, today);
         const created = Math.max(0, after - before);
         tasksCreated += created;

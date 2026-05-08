@@ -71,6 +71,7 @@ export async function applyDailyRules(
   const durationRules = await getActiveRules(propertyId, 'stay_duration_days');
   console.log(`[ENGINE] Estadia ${stay.id}: ${durationRules.length} regra(s) stay_duration_days encontrada(s)`);
   for (const rule of durationRules) {
+    try {
     if (!rule.intervalDays || rule.intervalDays < 1) continue;
 
     // Usa a última linen_change da cabana como base de contagem (cobre upgrades manuais também)
@@ -111,6 +112,10 @@ export async function applyDailyRules(
     await supabaseAdmin.from('housekeeping_tasks').insert(
       buildTaskPayload(rule, { cabinId: stay.cabinId, stayId: stay.id })
     );
+    console.log(`[ENGINE] Estadia ${stay.id}: linen_change criada por stay_duration_days (ruleId: ${rule.id})`);
+    } catch (err: any) {
+      console.error(`[ENGINE] ❌ Erro em stay_duration_days para estadia ${stay.id}:`, err?.message ?? err);
+    }
   }
 
   // active_stay_daily — avaliado DEPOIS para respeitar supressão por linen_change gerada acima
@@ -173,7 +178,7 @@ export async function applyDailyRules(
       }
     }
 
-    await supabaseAdmin.from('housekeeping_tasks').insert(
+    const { error: insertErr } = await supabaseAdmin.from('housekeeping_tasks').insert(
       buildTaskPayload(rule, {
         cabinId: stay.cabinId,
         stayId: stay.id,
@@ -183,6 +188,11 @@ export async function applyDailyRules(
         ...(guestName ? { guestName } : {}),
       })
     );
+    if (insertErr) {
+      console.error(`[ENGINE] ❌ Erro ao inserir active_stay_daily para estadia ${stay.id}:`, insertErr.message);
+    } else {
+      console.log(`[ENGINE] ✅ active_stay_daily criada para estadia ${stay.id} (status: ${taskStatus})`);
+    }
   }
 }
 
