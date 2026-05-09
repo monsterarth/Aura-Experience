@@ -186,6 +186,7 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
     }
 
     // Property já carregada nesta sessão — libera loading (sem re-fetch)
+    // Guard contra re-execuções por TOKEN_REFRESHED ou mudanças de userData
     if (loadedRef.current) {
       setLoading(false);
       return;
@@ -197,9 +198,7 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
       return;
     }
 
-    // Lê userData via ref para não tornar userData uma dependência do efeito
-    // (userData muda várias vezes durante o ciclo de vida da sessão)
-    const ud = userDataRef.current;
+    const ud = userData;
     const superAdmin = ud?.role === 'super_admin';
     const savedId = typeof window !== 'undefined' ? localStorage.getItem(PROPERTY_ID_KEY) : null;
 
@@ -223,7 +222,7 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, userDataReady, initialProperty, initialSlug]);
+  }, [authLoading, userDataReady, initialProperty, initialSlug, userData]);
 
   return (
     <PropertyContext.Provider value={{
