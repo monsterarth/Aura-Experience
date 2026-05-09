@@ -49,7 +49,6 @@ export async function GET(request: Request) {
     if (fetchError) throw fetchError;
 
     if (!snapshot || snapshot.length === 0) {
-      await writeCronLog('CRON_PROCESS_MESSAGES', 'process-messages', 'Fila vazia', { processed: 0, sent: 0, failed: 0, leftInQueue: 0, startedAt, finishedAt: new Date().toISOString(), durationMs: 0 });
       return NextResponse.json({ success: true, processed: 0, message: "Fila vazia. Nenhuma ação necessária." });
     }
 
