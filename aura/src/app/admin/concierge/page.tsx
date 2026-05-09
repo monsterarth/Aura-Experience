@@ -265,7 +265,7 @@ export default function AdminConciergePage() {
     setLoadingCatalog(true);
     try {
       const [{ data: itemData }, { data: groupData }] = await Promise.all([
-        supabase.from('concierge_items').select('*, group:concierge_groups(*)').eq('propertyId', property.id).order('order', { ascending: true }),
+        supabase.from('concierge_items').select('*, group:concierge_groups(*)').eq('propertyId', property.id).eq('deleted', false).order('order', { ascending: true }),
         supabase.from('concierge_groups').select('*').eq('propertyId', property.id).eq('active', true).order('order', { ascending: true }),
       ]);
       setItems((itemData || []) as ConciergeItem[]);
