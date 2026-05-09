@@ -96,7 +96,7 @@ function Toast({ msg, color }: { msg: string; color: string }) {
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
-type IName = "home"|"pkg"|"user"|"check"|"x"|"logout"|"sun"|"clock"|"bell"|"arrow"|"wrench"|"chevr";
+type IName = "home"|"pkg"|"user"|"check"|"x"|"logout"|"sun"|"clock"|"bell"|"arrow"|"wrench"|"chevr"|"send"|"info";
 
 function I({ n, s = 20, c = "currentColor", w = 1.8 }: { n: IName; s?: number; c?: string; w?: number }) {
   const d: Record<IName, React.ReactNode> = {
@@ -112,6 +112,8 @@ function I({ n, s = 20, c = "currentColor", w = 1.8 }: { n: IName; s?: number; c
     arrow: <><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></>,
     wrench: <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>,
     chevr: <polyline points="9 18 15 12 9 6"/>,
+    send: <><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></>,
+    info: <><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></>,
   };
   return (
     <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round">

@@ -125,7 +125,7 @@ function Sheet({ onClose, children }: { onClose: () => void; children: React.Rea
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
-type IName = "home"|"wrench"|"user"|"check"|"arrow"|"x"|"info"|"logout"|"sun"|"clock"|"play"|"alert"|"photo"|"list"|"chevr"|"loader";
+type IName = "home"|"wrench"|"user"|"check"|"arrow"|"x"|"info"|"logout"|"sun"|"clock"|"play"|"alert"|"photo"|"list"|"chevr"|"loader"|"send";
 
 function I({ n, s = 20, c = "currentColor", w = 1.8 }: { n: IName; s?: number; c?: string; w?: number }) {
   const d: Record<IName, React.ReactNode> = {
@@ -145,6 +145,7 @@ function I({ n, s = 20, c = "currentColor", w = 1.8 }: { n: IName; s?: number; c
     list: <><rect x="3" y="5" width="18" height="2" rx="1"/><rect x="3" y="11" width="18" height="2" rx="1"/><rect x="3" y="17" width="12" height="2" rx="1"/></>,
     chevr: <polyline points="9 18 15 12 9 6"/>,
     loader: <path d="M21 12a9 9 0 11-6.219-8.56"/>,
+    send: <><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></>,
   };
   return (
     <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round">
