@@ -7,6 +7,8 @@ import { ConciergeService } from "@/services/concierge-service";
 import { ConciergeRequest } from "@/types/aura";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
+import { ScrapWall } from "@/components/admin/profile/ScrapWall";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -406,19 +408,20 @@ function ProfileScreen({ userData, onLogout }: { userData: any; onLogout: () => 
     if (!userData?.id) return;
     const today = new Date();
     const from = today.toISOString().split('T')[0];
-    const dow = today.getDay();
     Promise.all([
       fetch(`/api/admin/staff/schedules?staffId=${userData.id}`).then(r => r.json()),
       fetch(`/api/admin/staff/schedule-overrides?staffId=${userData.id}&from=${from}&to=${from}`).then(r => r.json()),
-    ]).then(([schedules, overrides]) => {
-      const override = Array.isArray(overrides) ? overrides[0] : null;
-      if (override) {
-        if (!override.startTime) { setTodayShift("Folga"); return; }
-        setTodayShift(`${override.startTime.slice(0, 5)} às ${override.endTime?.slice(0, 5)}`);
-        return;
-      }
-      const base = Array.isArray(schedules) ? schedules.find((s: any) => s.dayOfWeek === dow && s.active) : null;
-      if (base) setTodayShift(`${base.startTime.slice(0, 5)} às ${base.endTime.slice(0, 5)}`);
+      fetch(`/api/admin/staff/schedule-checkpoints?staffId=${userData.id}`).then(r => r.json()),
+    ]).then(([schedules, overrides, checkpoints]) => {
+      const result = resolveEffectiveDaySchedule(
+        userData,
+        Array.isArray(schedules) ? schedules : [],
+        Array.isArray(overrides) ? overrides : [],
+        today,
+        Array.isArray(checkpoints) ? checkpoints : []
+      );
+      if (!result.isWork) { setTodayShift("Folga"); return; }
+      if (result.startTime) setTodayShift(`${result.startTime} às ${result.endTime ?? ""}`);
     }).catch(() => {});
   }, [userData?.id]);
 
@@ -484,6 +487,12 @@ function ProfileScreen({ userData, onLogout }: { userData: any; onLogout: () => 
           <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{todayLabel()}</div>
         </div>
       </div>
+
+      {userData?.id && userData?.propertyId && (
+        <div style={{ marginBottom: 20 }}>
+          <ScrapWall profileStaffId={userData.id} isOwnProfile={true} propertyId={userData.propertyId} />
+        </div>
+      )}
 
       <button onClick={onLogout} style={{ width: "100%", padding: 15, background: "rgba(248,113,113,0.08)", color: T.red, fontFamily: "inherit", fontSize: 14, fontWeight: 700, letterSpacing: "0.02em", textTransform: "uppercase" as const, border: `1px solid rgba(248,113,113,0.2)`, borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
         <I n="logout" s={18} c={T.red} /> Sair do aplicativo

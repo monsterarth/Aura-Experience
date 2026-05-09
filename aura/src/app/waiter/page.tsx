@@ -16,6 +16,8 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
+import { ScrapWall } from "@/components/admin/profile/ScrapWall";
 import {
   Users, UtensilsCrossed, ChefHat, Search, Plus, X,
   LogIn, ArrowRight, LogOut, Coffee, Check, Loader2,
@@ -349,19 +351,20 @@ function WaiterProfileTab({ userData, onLogout }: { userData: any; onLogout: () 
     if (!userData?.id) return;
     const today = new Date();
     const from = today.toISOString().split("T")[0];
-    const dow = today.getDay();
     Promise.all([
       fetch(`/api/admin/staff/schedules?staffId=${userData.id}`).then(r => r.json()),
       fetch(`/api/admin/staff/schedule-overrides?staffId=${userData.id}&from=${from}&to=${from}`).then(r => r.json()),
-    ]).then(([schedules, overrides]) => {
-      const override = Array.isArray(overrides) ? overrides[0] : null;
-      if (override) {
-        if (!override.startTime) { setTodayShift("Folga"); return; }
-        setTodayShift(`${override.startTime.slice(0, 5)} às ${override.endTime?.slice(0, 5)}`);
-        return;
-      }
-      const base = Array.isArray(schedules) ? schedules.find((s: any) => s.dayOfWeek === dow && s.active) : null;
-      if (base) setTodayShift(`${base.startTime.slice(0, 5)} às ${base.endTime.slice(0, 5)}`);
+      fetch(`/api/admin/staff/schedule-checkpoints?staffId=${userData.id}`).then(r => r.json()),
+    ]).then(([schedules, overrides, checkpoints]) => {
+      const result = resolveEffectiveDaySchedule(
+        userData,
+        Array.isArray(schedules) ? schedules : [],
+        Array.isArray(overrides) ? overrides : [],
+        today,
+        Array.isArray(checkpoints) ? checkpoints : []
+      );
+      if (!result.isWork) { setTodayShift("Folga"); return; }
+      if (result.startTime) setTodayShift(`${result.startTime} às ${result.endTime ?? ""}`);
     }).catch(() => {});
   }, [userData?.id]);
 
@@ -423,6 +426,10 @@ function WaiterProfileTab({ userData, onLogout }: { userData: any; onLogout: () 
           </div>
         </div>
       </div>
+
+      {userData?.id && userData?.propertyId && (
+        <ScrapWall profileStaffId={userData.id} isOwnProfile={true} propertyId={userData.propertyId} />
+      )}
 
       <button onClick={onLogout}
         className="w-full py-4 bg-red-500/10 text-red-400 text-sm font-black uppercase tracking-widest border border-red-500/20 rounded-2xl flex items-center justify-center gap-2">
