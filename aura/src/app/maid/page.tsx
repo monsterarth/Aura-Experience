@@ -228,13 +228,13 @@ function ReplenishSheet({
   return (
     <Sheet onClose={onClose}>
       {/* Header */}
-      <div style={{ padding: "0 20px 14px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexShrink: 0 }}>
+      <div style={{ padding: "4px 16px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 900 }}>{cabinName}</div>
           <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>Solicitar reposição</div>
         </div>
-        <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
-          <I n="x" s={15} />
+        <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border2}`, borderRadius: 12, padding: "10px 12px", cursor: "pointer", color: T.text, display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700 }}>
+          <I n="x" s={15} /> Fechar
         </button>
       </div>
 
