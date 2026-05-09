@@ -390,6 +390,16 @@ export default function AdminConciergePage() {
     } catch { toast.error('Erro ao atualizar item.'); }
   };
 
+  const handleDeleteItem = async (item: ConciergeItem) => {
+    if (!property || !userData) return;
+    if (!confirm(`Excluir "${item.name}"? Esta ação é irreversível.`)) return;
+    try {
+      await ConciergeService.deleteItem(property.id, item.id, userData.id, userData.fullName);
+      toast.success('Item excluído.');
+      await loadCatalog();
+    } catch { toast.error('Erro ao excluir item.'); }
+  };
+
   // ─── Guards ───────────────────────────────────────────────────────────────
 
   if (propLoading) return (
@@ -721,6 +731,7 @@ export default function AdminConciergePage() {
                         item={item}
                         onEdit={() => openEdit(item)}
                         onToggleActive={() => handleToggleActive(item)}
+                        onDelete={() => handleDeleteItem(item)}
                         onRequest={() => { setNewItemPreset(item); setShowNew(true); }}
                       />
                     ))}
@@ -966,10 +977,11 @@ function DetailPanel({ req, onClose, onAction }: {
 
 // ─── CatalogCard ──────────────────────────────────────────────────────────────
 
-function CatalogCard({ item, onEdit, onToggleActive, onRequest }: {
+function CatalogCard({ item, onEdit, onToggleActive, onDelete, onRequest }: {
   item: ConciergeItem;
   onEdit: () => void;
   onToggleActive: () => void;
+  onDelete: () => void;
   onRequest: () => void;
 }) {
   const isLoan = item.category === 'loan';
@@ -1019,6 +1031,9 @@ function CatalogCard({ item, onEdit, onToggleActive, onRequest }: {
           </button>
           <button onClick={onEdit} style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)' }}>
             <Edit2 size={13} />
+          </button>
+          <button onClick={onDelete} title="Excluir item" style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid rgba(248,113,113,0.2)', background: 'rgba(248,113,113,0.06)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f87171' }}>
+            <Trash2 size={13} />
           </button>
         </div>
       </div>
