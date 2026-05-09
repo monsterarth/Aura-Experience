@@ -137,6 +137,15 @@ function todayLabel() {
   return new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
 }
 
+function groupByCabin(reqs: ConciergeRequest[]): Map<string, ConciergeRequest[]> {
+  const map = new Map<string, ConciergeRequest[]>();
+  for (const r of reqs) {
+    const key = r.cabinId ?? r.cabinName ?? "sem-cabana";
+    map.set(key, [...(map.get(key) ?? []), r]);
+  }
+  return map;
+}
+
 // ─── Request Card ─────────────────────────────────────────────────────────────
 
 function RequestCard({
@@ -232,6 +241,184 @@ function RequestCard({
   );
 }
 
+// ─── Cabin Group Card ─────────────────────────────────────────────────────────
+
+function CabinGroup({
+  reqs, userId, onAssign, onDeliver, actionLoading,
+}: {
+  reqs: ConciergeRequest[];
+  userId: string;
+  onAssign: (ids: string[]) => void;
+  onDeliver: (ids: string[]) => void;
+  actionLoading: Record<string, boolean>;
+}) {
+  const status = reqs[0]?.status ?? "pending";
+  const isPending = status === "pending";
+  const isInProgress = status === "in_progress";
+  const fromMaid = reqs.every(r => r.requestedBy === "maid");
+  const cabinLabel = reqs[0]?.cabinName || "—";
+  const oldestCreatedAt = reqs.reduce((oldest, r) =>
+    new Date(r.createdAt as string) < new Date(oldest) ? (r.createdAt as string) : oldest,
+    reqs[0]?.createdAt as string
+  );
+  const assignedName = reqs.find(r => r.assignedName)?.assignedName;
+  const isMine = reqs.some(r => r.assignedTo === userId);
+  const isAnyLoading = reqs.some(r => actionLoading[r.id]);
+
+  const accentColor = isPending ? T.orange : T.blue;
+  const accentBg = isPending ? T.orangeBg : T.blueBg;
+  const accentBorder = isPending ? T.orangeBorder : T.blueBorder;
+
+  const [checkedIds, setCheckedIds] = React.useState<Set<string>>(() =>
+    new Set(reqs.map(r => r.id))
+  );
+
+  // sync when reqs change (e.g. new item added to same cabin)
+  React.useEffect(() => {
+    if (isInProgress) {
+      setCheckedIds(prev => {
+        const next = new Set(prev);
+        reqs.forEach(r => { if (!next.has(r.id)) next.add(r.id); });
+        return next;
+      });
+    }
+  }, [reqs.length, isInProgress]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleCheck = (id: string) => {
+    setCheckedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const checkedCount = Array.from(checkedIds).filter(id => reqs.some(r => r.id === id)).length;
+
+  return (
+    <div style={{
+      borderRadius: 20, border: `2px solid ${accentBorder}`, background: accentBg,
+      padding: 16, marginBottom: 12, animation: "hm-fadein .2s ease",
+    }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 14 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+            <I n={fromMaid ? "wrench" : "user"} s={11} c={accentColor} />
+            <span style={{ fontSize: 13, fontWeight: 900, color: accentColor, letterSpacing: "0.04em", textTransform: "uppercase" as const }}>
+              {cabinLabel}
+            </span>
+            <span style={{ fontSize: 10, fontWeight: 700, background: accentBg, border: `1px solid ${accentBorder}`, color: accentColor, padding: "1px 6px", borderRadius: 999 }}>
+              {fromMaid ? "Camareira" : "Hóspede"}
+            </span>
+          </div>
+          {isInProgress && assignedName && (
+            <div style={{ fontSize: 11, color: T.blue, display: "flex", alignItems: "center", gap: 4 }}>
+              <I n="user" s={11} c={T.blue} />
+              {isMine ? "Você assumiu" : `Assumido por ${assignedName}`}
+            </div>
+          )}
+        </div>
+        <div style={{ fontSize: 11, color: T.muted, display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+          <I n="clock" s={11} c={T.muted} />
+          {timeElapsed(oldestCreatedAt)}
+        </div>
+      </div>
+
+      {/* Item list */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
+        {reqs.map(r => {
+          const checked = checkedIds.has(r.id);
+          return (
+            <div
+              key={r.id}
+              onClick={isInProgress ? () => toggleCheck(r.id) : undefined}
+              style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "10px 12px",
+                borderRadius: 12,
+                background: checked || isPending ? "rgba(255,255,255,0.04)" : "transparent",
+                border: `1px solid ${checked || isPending ? accentBorder : "rgba(255,255,255,0.06)"}`,
+                cursor: isInProgress ? "pointer" : "default",
+                opacity: isInProgress && !checked ? 0.45 : 1,
+                transition: "opacity .15s, background .15s",
+              }}
+            >
+              {isInProgress && (
+                <div style={{
+                  width: 18, height: 18, borderRadius: 6, border: `2px solid ${checked ? T.blue : "rgba(255,255,255,0.2)"}`,
+                  background: checked ? T.blue : "transparent", flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  transition: "background .15s, border-color .15s",
+                }}>
+                  {checked && <I n="check" s={11} c="#021a17" w={3} />}
+                </div>
+              )}
+              <span style={{ fontSize: 16, fontWeight: 800, color: T.text, flex: 1, lineHeight: 1.2 }}>
+                {r.quantity}× {r.item?.name || r.itemId}
+              </span>
+              {r.notes && r.notes !== "Solicitado pela camareira" && (
+                <span style={{ fontSize: 11, color: T.muted, fontStyle: "italic" }}>&ldquo;{r.notes}&rdquo;</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Footer count */}
+      {isInProgress && (
+        <div style={{ fontSize: 11, color: T.muted, marginBottom: 10, textAlign: "right" as const }}>
+          {checkedCount}/{reqs.length} selecionados
+        </div>
+      )}
+
+      {/* Action button */}
+      {isPending && (
+        <button
+          onClick={() => onAssign(reqs.map(r => r.id))}
+          disabled={isAnyLoading}
+          style={{
+            width: "100%", padding: "14px 16px", background: "transparent", border: `2px solid ${T.orange}`,
+            borderRadius: 14, color: T.orange, fontFamily: "inherit", fontSize: 13, fontWeight: 800,
+            textTransform: "uppercase" as const, letterSpacing: "0.04em", cursor: isAnyLoading ? "not-allowed" : "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: isAnyLoading ? 0.5 : 1,
+          }}
+        >
+          {isAnyLoading
+            ? <><div style={{ width: 14, height: 14, border: `2px solid ${T.orange}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" }} />Assumindo...</>
+            : <><I n="user" s={16} c={T.orange} w={2.5} /> Assumir Pedidos ({reqs.length})</>
+          }
+        </button>
+      )}
+
+      {isInProgress && (
+        <button
+          onClick={() => {
+            const ids = reqs.filter(r => checkedIds.has(r.id)).map(r => r.id);
+            if (ids.length > 0) onDeliver(ids);
+          }}
+          disabled={isAnyLoading || checkedCount === 0}
+          style={{
+            width: "100%", padding: "14px 16px", background: checkedCount > 0 ? T.greenG : "transparent",
+            border: checkedCount > 0 ? "none" : `2px solid rgba(45,212,191,0.3)`,
+            borderRadius: 14, color: checkedCount > 0 ? "#021a17" : T.green, fontFamily: "inherit", fontSize: 13, fontWeight: 800,
+            textTransform: "uppercase" as const, letterSpacing: "0.04em",
+            cursor: (isAnyLoading || checkedCount === 0) ? "not-allowed" : "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            opacity: isAnyLoading ? 0.5 : checkedCount === 0 ? 0.4 : 1,
+            boxShadow: checkedCount > 0 ? "0 4px 20px rgba(45,212,191,0.3)" : "none",
+            transition: "background .2s, box-shadow .2s",
+          }}
+        >
+          {isAnyLoading
+            ? <><div style={{ width: 14, height: 14, border: "2px solid #021a17", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" }} />Confirmando...</>
+            : <><I n="check" s={16} c={checkedCount > 0 ? "#021a17" : T.green} w={2.5} /> Confirmar Entrega ({checkedCount})</>
+          }
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ─── Requests screen ──────────────────────────────────────────────────────────
 
 function RequestsScreen({
@@ -240,12 +427,15 @@ function RequestsScreen({
   requests: ConciergeRequest[];
   done: ConciergeRequest[];
   userId: string;
-  onAssign: (id: string) => void;
-  onDeliver: (id: string) => void;
+  onAssign: (ids: string[]) => void;
+  onDeliver: (ids: string[]) => void;
   actionLoading: Record<string, boolean>;
 }) {
   const pending = requests.filter(r => r.status === "pending");
   const inProgress = requests.filter(r => r.status === "in_progress");
+  const groupedPending = groupByCabin(pending);
+  const groupedInProgress = groupByCabin(inProgress);
+  const groupedDone = groupByCabin(done);
 
   return (
     <div className="hm-scroll" style={{ padding: "0 16px 24px" }}>
@@ -260,26 +450,26 @@ function RequestsScreen({
         </div>
       </div>
 
-      {pending.length > 0 && (
+      {groupedPending.size > 0 && (
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.orange, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.orange, animation: "hm-pulse 1.5s infinite" }} />
             Novos pedidos
           </div>
-          {pending.map(r => (
-            <RequestCard key={r.id} req={r} userId={userId} onAssign={onAssign} onDeliver={onDeliver} loading={!!actionLoading[r.id]} />
+          {Array.from(groupedPending.entries()).map(([key, reqs]) => (
+            <CabinGroup key={key} reqs={reqs} userId={userId} onAssign={onAssign} onDeliver={onDeliver} actionLoading={actionLoading} />
           ))}
         </div>
       )}
 
-      {inProgress.length > 0 && (
+      {groupedInProgress.size > 0 && (
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.blue, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
             <Pulse size={6} />
             Em andamento
           </div>
-          {inProgress.map(r => (
-            <RequestCard key={r.id} req={r} userId={userId} onAssign={onAssign} onDeliver={onDeliver} loading={!!actionLoading[r.id]} />
+          {Array.from(groupedInProgress.entries()).map(([key, reqs]) => (
+            <CabinGroup key={key} reqs={reqs} userId={userId} onAssign={onAssign} onDeliver={onDeliver} actionLoading={actionLoading} />
           ))}
         </div>
       )}
@@ -294,18 +484,22 @@ function RequestsScreen({
         </div>
       )}
 
-      {done.length > 0 && (
+      {groupedDone.size > 0 && (
         <div>
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.muted, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
             <I n="check" s={11} c={T.green} w={2.5} /> Entregues esta sessão
           </div>
-          {done.map(r => (
-            <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 14px", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 14, marginBottom: 8, opacity: 0.7 }}>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 700 }}>{r.quantity}× {r.item?.name || r.itemId}</div>
-                <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{r.cabinName || "—"}</div>
+          {Array.from(groupedDone.entries()).map(([key, reqs]) => (
+            <div key={key} style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 16, marginBottom: 10, padding: "12px 14px", opacity: 0.7 }}>
+              <div style={{ fontSize: 12, fontWeight: 900, color: T.green, letterSpacing: "0.04em", textTransform: "uppercase" as const, marginBottom: 8 }}>
+                {reqs[0]?.cabinName || "—"}
               </div>
-              <Pill color={T.green} bg={T.greenBg} border={T.greenBorder}>Entregue</Pill>
+              {reqs.map(r => (
+                <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingBottom: 6 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>{r.quantity}× {r.item?.name || r.itemId}</div>
+                  <Pill color={T.green} bg={T.greenBg} border={T.greenBorder}>Entregue</Pill>
+                </div>
+              ))}
             </div>
           ))}
         </div>
@@ -359,12 +553,12 @@ function HomeScreen({ requests, done, userName, onNav }: {
               <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.orange, animation: "hm-pulse 1.5s infinite" }} />
               {pending.length} pedido{pending.length !== 1 ? "s" : ""} aguardando
             </div>
-            {pending.slice(0, 2).map(r => (
-              <div key={r.id} style={{ fontSize: 14, fontWeight: 700, color: T.orange, marginBottom: 4 }}>
-                {r.quantity}× {r.item?.name || r.itemId} — {r.cabinName}
+            {Array.from(groupByCabin(pending).entries()).slice(0, 2).map(([key, reqs]) => (
+              <div key={key} style={{ fontSize: 14, fontWeight: 700, color: T.orange, marginBottom: 4 }}>
+                {reqs[0]?.cabinName || "—"} — {reqs.length} {reqs.length === 1 ? "item" : "itens"}
               </div>
             ))}
-            {pending.length > 2 && <div style={{ fontSize: 12, color: T.orange, opacity: 0.7 }}>+{pending.length - 2} outros</div>}
+            {groupByCabin(pending).size > 2 && <div style={{ fontSize: 12, color: T.orange, opacity: 0.7 }}>+{groupByCabin(pending).size - 2} acomodações</div>}
             <button
               onClick={() => onNav("requests")}
               style={{ marginTop: 12, padding: "10px 18px", background: T.orangeBg, border: `1px solid ${T.orangeBorder}`, borderRadius: 12, color: T.orange, fontFamily: "inherit", fontWeight: 700, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
@@ -548,26 +742,26 @@ export default function HousemanPage() {
     prevCountRef.current = pendingCount;
   }, [requests]);
 
-  const handleAssign = useCallback(async (reqId: string) => {
+  const handleAssign = useCallback(async (reqIds: string[]) => {
     if (!property || !userData) return;
-    setActionLoading(p => ({ ...p, [reqId]: true }));
+    setActionLoading(p => Object.fromEntries([...Object.entries(p), ...reqIds.map(id => [id, true])]));
     try {
-      await ConciergeService.assignRequest(property.id, reqId, userData.id, userData.fullName);
-      showToast("Pedido assumido!");
+      await Promise.all(reqIds.map(id => ConciergeService.assignRequest(property.id, id, userData.id, userData.fullName)));
+      showToast(reqIds.length === 1 ? "Pedido assumido!" : `${reqIds.length} pedidos assumidos!`);
     } catch { showToast("Erro ao assumir pedido.", T.red); }
-    finally { setActionLoading(p => ({ ...p, [reqId]: false })); }
+    finally { setActionLoading(p => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, reqIds.includes(k) ? false : v]))); }
   }, [property, userData, showToast]);
 
-  const handleDeliver = useCallback(async (reqId: string) => {
+  const handleDeliver = useCallback(async (reqIds: string[]) => {
     if (!property || !userData) return;
-    setActionLoading(p => ({ ...p, [reqId]: true }));
+    setActionLoading(p => Object.fromEntries([...Object.entries(p), ...reqIds.map(id => [id, true])]));
     try {
-      const req = requests.find(r => r.id === reqId);
-      await ConciergeService.deliverRequest(property.id, reqId, userData.id, userData.fullName);
-      if (req) setDone(prev => [{ ...req, status: "delivered" } as ConciergeRequest, ...prev]);
-      showToast("Entrega confirmada!");
+      await Promise.all(reqIds.map(id => ConciergeService.deliverRequest(property.id, id, userData.id, userData.fullName)));
+      const delivered = requests.filter(r => reqIds.includes(r.id));
+      if (delivered.length > 0) setDone(prev => [...delivered.map(r => ({ ...r, status: "delivered" } as ConciergeRequest)), ...prev]);
+      showToast(reqIds.length === 1 ? "Entrega confirmada!" : `${reqIds.length} itens entregues!`);
     } catch { showToast("Erro ao confirmar entrega.", T.red); }
-    finally { setActionLoading(p => ({ ...p, [reqId]: false })); }
+    finally { setActionLoading(p => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, reqIds.includes(k) ? false : v]))); }
   }, [property, userData, requests, showToast]);
 
   const handleLogout = async () => {
