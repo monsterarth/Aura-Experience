@@ -1209,11 +1209,9 @@ export default function MaidPage() {
             </div>
           </div>
 
-          {/* Role switcher — só aparece se o usuário tem acessos adicionais */}
-          <RoleSwitcher />
-
-          {/* Screens */}
+          {/* Screens — RoleSwitcher fica dentro para que sheets absolutas o cubram */}
           <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", position: "relative", zIndex: 1 }}>
+            <RoleSwitcher />
             {tab === "home" && <HomeScreen tasks={tasks} cabins={cabins} onNav={setTab} userName={userData?.fullName ?? "Camareira"} />}
             {tab === "tasks" && <FaxinasScreen tasks={tasks} onStart={handleStart} showToast={showToast} onToggle={handleToggle} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onChecklistLoaded={handleChecklistLoaded} repRequests={repRequests} />}
             {tab === "profile" && <ProfileScreen userData={userData} showToast={showToast} onLogout={handleLogout} />}
