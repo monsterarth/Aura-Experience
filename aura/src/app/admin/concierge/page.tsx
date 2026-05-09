@@ -168,6 +168,11 @@ export default function AdminConciergePage() {
   const [form, setForm] = useState<ItemForm>(defaultForm);
   const [saving, setSaving] = useState(false);
 
+  // ── Archive state ──
+  const [archivedItems, setArchivedItems] = useState<ConciergeItem[]>([]);
+  const [showArchive, setShowArchive] = useState(false);
+  const [loadingArchive, setLoadingArchive] = useState(false);
+
   // ── Group management state ──
   const [showGroupForm, setShowGroupForm] = useState(false);
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
@@ -392,12 +397,31 @@ export default function AdminConciergePage() {
 
   const handleDeleteItem = async (item: ConciergeItem) => {
     if (!property || !userData) return;
-    if (!confirm(`Excluir "${item.name}"? Esta ação é irreversível.`)) return;
+    if (!confirm(`Arquivar "${item.name}"? O item ficará oculto mas pode ser restaurado.`)) return;
     try {
       await ConciergeService.deleteItem(property.id, item.id, userData.id, userData.fullName);
-      toast.success('Item excluído.');
+      toast.success('Item arquivado.');
       await loadCatalog();
-    } catch { toast.error('Erro ao excluir item.'); }
+    } catch { toast.error('Erro ao arquivar item.'); }
+  };
+
+  const handleRestoreItem = async (item: ConciergeItem) => {
+    if (!property || !userData) return;
+    try {
+      await ConciergeService.restoreItem(property.id, item.id, userData.id, userData.fullName);
+      toast.success('Item restaurado.');
+      await loadArchive();
+      await loadCatalog();
+    } catch { toast.error('Erro ao restaurar item.'); }
+  };
+
+  const loadArchive = async () => {
+    if (!property) return;
+    setLoadingArchive(true);
+    try {
+      const data = await ConciergeService.getArchivedItems(property.id);
+      setArchivedItems(data);
+    } finally { setLoadingArchive(false); }
   };
 
   // ─── Guards ───────────────────────────────────────────────────────────────
@@ -686,6 +710,9 @@ export default function AdminConciergePage() {
               <button onClick={openNewGroup} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 9, border: '1px solid rgba(155,109,255,0.22)', background: 'rgba(155,109,255,0.08)', cursor: 'pointer', color: '#9b6dff', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>
                 <Layers size={13} /> Novo Grupo
               </button>
+              <button onClick={() => { setShowArchive(p => !p); if (!showArchive) loadArchive(); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 9, border: `1px solid ${showArchive ? 'rgba(248,113,113,0.35)' : 'rgba(248,113,113,0.15)'}`, background: showArchive ? 'rgba(248,113,113,0.1)' : 'rgba(248,113,113,0.04)', cursor: 'pointer', color: '#f87171', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>
+                <Trash2 size={13} /> Arquivo
+              </button>
             </div>
 
             {/* Groups strip */}
@@ -738,6 +765,47 @@ export default function AdminConciergePage() {
                   </div>
                 </div>
               ))
+            )}
+
+            {/* ── Arquivo ── */}
+            {showArchive && (
+              <div style={{ marginTop: 32, borderTop: '1px solid rgba(248,113,113,0.15)', paddingTop: 24 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                  <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Trash2 size={13} style={{ color: '#f87171' }} />
+                  </div>
+                  <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: '#f87171' }}>Arquivo</span>
+                  <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 800, background: 'rgba(248,113,113,0.08)', color: '#f87171', border: '1px solid rgba(248,113,113,0.22)' }}>{archivedItems.length} itens</span>
+                  <span style={{ fontSize: 11, color: 'rgba(238,240,248,0.3)', marginLeft: 4 }}>Itens arquivados ficam ocultos do catálogo e do portal</span>
+                </div>
+                {loadingArchive ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px 0' }}>
+                    <Loader2 size={18} className="animate-spin" style={{ color: 'rgba(238,240,248,0.3)' }} />
+                  </div>
+                ) : archivedItems.length === 0 ? (
+                  <div style={{ padding: '24px', borderRadius: 14, border: '1px dashed rgba(248,113,113,0.15)', textAlign: 'center', color: 'rgba(238,240,248,0.3)', fontSize: 13 }}>Nenhum item arquivado.</div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {archivedItems.map(item => {
+                      const icon = resolveItemIcon(item);
+                      return (
+                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#1c1c1c', border: '1px solid rgba(248,113,113,0.1)', borderRadius: 12, opacity: 0.7 }}>
+                          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 20 }}>
+                            {icon.kind === 'emoji' ? icon.value : <Package size={16} style={{ color: 'rgba(238,240,248,0.3)' }} />}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: 'rgba(238,240,248,0.55)', textDecoration: 'line-through' }}>{item.name}</div>
+                            <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.3)', marginTop: 2 }}>{item.group?.name ?? 'Sem grupo'} · {item.category === 'loan' ? 'Empréstimo' : 'Consumo'}</div>
+                          </div>
+                          <button onClick={() => handleRestoreItem(item)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 9, border: '1px solid rgba(45,212,191,0.25)', background: 'rgba(45,212,191,0.07)', cursor: 'pointer', color: '#2dd4bf', fontSize: 12, fontWeight: 700, fontFamily: 'inherit', flexShrink: 0 }}>
+                            <RotateCcw size={12} /> Restaurar
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}

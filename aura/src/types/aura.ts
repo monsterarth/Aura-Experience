@@ -1018,6 +1018,7 @@ export interface ConciergeItem {
   stock_qty?: number | null;
   image_url?: string;
   active: boolean;
+  deleted?: boolean;
   availableForGuest: boolean;
   availableForMaid: boolean;
   order?: number;

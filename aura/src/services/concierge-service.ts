@@ -88,7 +88,7 @@ export const ConciergeService = {
       .from('concierge_items')
       .select('*, group:concierge_groups(*)')
       .eq('propertyId', propertyId)
-      .eq('active', true)
+      .eq('deleted', false)
       .order('order', { ascending: true });
     return (data || []) as ConciergeItem[];
   },
@@ -99,6 +99,7 @@ export const ConciergeService = {
       .select('*, group:concierge_groups(*)')
       .eq('propertyId', propertyId)
       .eq('active', true)
+      .eq('deleted', false)
       .eq('availableForGuest', true)
       .order('order', { ascending: true });
     return (data || []) as ConciergeItem[];
@@ -110,8 +111,19 @@ export const ConciergeService = {
       .select('*, group:concierge_groups(*)')
       .eq('propertyId', propertyId)
       .eq('active', true)
+      .eq('deleted', false)
       .eq('availableForMaid', true)
       .order('order', { ascending: true });
+    return (data || []) as ConciergeItem[];
+  },
+
+  async getArchivedItems(propertyId: string): Promise<ConciergeItem[]> {
+    const { data } = await supabase
+      .from('concierge_items')
+      .select('*, group:concierge_groups(*)')
+      .eq('propertyId', propertyId)
+      .eq('deleted', true)
+      .order('updatedAt', { ascending: false });
     return (data || []) as ConciergeItem[];
   },
 
@@ -172,13 +184,37 @@ export const ConciergeService = {
     actorId: string,
     actorName: string
   ): Promise<void> {
-    // Soft delete
-    await this.updateItem(propertyId, itemId, { active: false }, actorId, actorName);
+    const { error } = await supabase
+      .from('concierge_items')
+      .update({ deleted: true, active: false, updatedAt: new Date().toISOString() })
+      .eq('id', itemId)
+      .eq('propertyId', propertyId);
+    if (error) throw error;
 
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName,
       action: 'DELETE', entity: 'CONCIERGE', entityId: itemId,
-      details: `Item de concierge desativado: ${itemId}`,
+      details: `Item de concierge arquivado: ${itemId}`,
+    });
+  },
+
+  async restoreItem(
+    propertyId: string,
+    itemId: string,
+    actorId: string,
+    actorName: string
+  ): Promise<void> {
+    const { error } = await supabase
+      .from('concierge_items')
+      .update({ deleted: false, active: true, updatedAt: new Date().toISOString() })
+      .eq('id', itemId)
+      .eq('propertyId', propertyId);
+    if (error) throw error;
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName,
+      action: 'UPDATE', entity: 'CONCIERGE', entityId: itemId,
+      details: `Item de concierge restaurado do arquivo: ${itemId}`,
     });
   },
 
