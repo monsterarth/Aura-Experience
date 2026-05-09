@@ -191,6 +191,8 @@ function ReplenishSheet({
 }) {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
+  const [search, setSearch] = useState("");
+  const [activeGroup, setActiveGroup] = useState<string | null>(null);
 
   const adj = (id: string, d: number) =>
     setCart(p => { const n = { ...p }, v = Math.max(0, (p[id] ?? 0) + d); if (!v) delete n[id]; else n[id] = v; return n; });
@@ -204,8 +206,28 @@ function ReplenishSheet({
     onClose();
   };
 
+  // Build ordered group list from items
+  const groups = React.useMemo(() => {
+    const seen = new Map<string, { id: string; name: string; icon?: string; color?: string; order?: number }>();
+    for (const item of maidItems) {
+      if (item.group && !seen.has(item.group.id)) seen.set(item.group.id, item.group);
+    }
+    return Array.from(seen.values()).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }, [maidItems]);
+
+  const filtered = React.useMemo(() => {
+    let items = maidItems;
+    if (activeGroup) items = items.filter(i => i.groupId === activeGroup);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      items = items.filter(i => i.name.toLowerCase().includes(q));
+    }
+    return items;
+  }, [maidItems, activeGroup, search]);
+
   return (
     <Sheet onClose={onClose}>
+      {/* Header */}
       <div style={{ padding: "0 20px 14px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 900 }}>{cabinName}</div>
@@ -215,6 +237,78 @@ function ReplenishSheet({
           <I n="x" s={15} />
         </button>
       </div>
+
+      {/* Search + group filters */}
+      {!loadingItems && maidItems.length > 0 && (
+        <div style={{ padding: "0 16px 12px", flexShrink: 0 }}>
+          {/* Search */}
+          <div style={{ position: "relative", marginBottom: 10 }}>
+            <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none", color: T.muted }}>
+              <I n="search" s={15} />
+            </div>
+            <input
+              type="text"
+              placeholder="Buscar item..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{
+                width: "100%", padding: "10px 12px 10px 36px",
+                background: T.glass2, border: `1px solid ${T.border2}`,
+                borderRadius: 12, color: T.text, fontSize: 14, fontFamily: "inherit",
+                outline: "none", boxSizing: "border-box",
+              }}
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: T.muted, padding: 4 }}
+              >
+                <I n="x" s={13} />
+              </button>
+            )}
+          </div>
+
+          {/* Group chips */}
+          {groups.length > 0 && (
+            <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 2, scrollbarWidth: "none" }}>
+              <button
+                onClick={() => setActiveGroup(null)}
+                style={{
+                  flexShrink: 0, padding: "6px 14px", borderRadius: 999, fontSize: 12, fontWeight: 700,
+                  border: `1px solid ${activeGroup === null ? T.g1 : T.border}`,
+                  background: activeGroup === null ? "rgba(155,109,255,0.18)" : T.glass,
+                  color: activeGroup === null ? T.g1 : T.muted,
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                Todos
+              </button>
+              {groups.map(g => {
+                const active = activeGroup === g.id;
+                const emoji = g.icon && !g.icon.startsWith("http") ? g.icon : undefined;
+                const groupColor = g.color ?? T.g1;
+                return (
+                  <button
+                    key={g.id}
+                    onClick={() => setActiveGroup(active ? null : g.id)}
+                    style={{
+                      flexShrink: 0, padding: "6px 14px", borderRadius: 999, fontSize: 12, fontWeight: 700,
+                      border: `1px solid ${active ? groupColor : T.border}`,
+                      background: active ? `${groupColor}25` : T.glass,
+                      color: active ? groupColor : T.muted,
+                      cursor: "pointer", fontFamily: "inherit",
+                      display: "flex", alignItems: "center", gap: 5,
+                    }}
+                  >
+                    {emoji && <span style={{ fontSize: 13 }}>{emoji}</span>}
+                    {g.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="maid-sheet-body" style={{ padding: "0 16px" }}>
         {loadingItems ? (
@@ -226,15 +320,21 @@ function ReplenishSheet({
             Nenhum item de reposição configurado.<br />
             <span style={{ opacity: 0.6, fontSize: 11 }}>Configure em Catálogo Concierge → Disponível para Camareira.</span>
           </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "40px 0", fontSize: 13, color: T.muted }}>
+            Nenhum item encontrado.
+          </div>
         ) : (
-          maidItems.map(item => {
+          filtered.map(item => {
             const q = cart[item.id] ?? 0;
+            const emoji = item.image_url?.startsWith("emoji:") ? item.image_url.slice(6) : undefined;
             return (
               <div key={item.id} style={{
-                display: "flex", alignItems: "center", gap: 10, padding: "12px",
+                display: "flex", alignItems: "center", gap: 10, padding: "11px 12px",
                 borderRadius: 14, borderBottom: `1px solid ${T.border}`,
                 background: q > 0 ? "rgba(245,158,11,0.08)" : "transparent", transition: "background .15s",
               }}>
+                {emoji && <span style={{ fontSize: 18, flexShrink: 0 }}>{emoji}</span>}
                 <span style={{ flex: 1, fontSize: 14, fontWeight: q > 0 ? 700 : 400, color: q > 0 ? T.amber : T.text }}>{item.name}</span>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <button onClick={() => adj(item.id, -1)} disabled={!q} style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${T.border}`, background: T.glass2, cursor: q ? "pointer" : "not-allowed", opacity: q ? 1 : 0.3, display: "flex", alignItems: "center", justifyContent: "center", color: T.text }}>
