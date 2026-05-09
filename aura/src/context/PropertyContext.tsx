@@ -185,16 +185,9 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
       return;
     }
 
-    // Property já carregada nesta sessão — libera loading e atualiza em background
+    // Property já carregada nesta sessão — libera loading (sem re-fetch)
     if (loadedRef.current) {
       setLoading(false);
-      // Refresh silencioso usando o ID da property em memória (não localStorage)
-      const currentId = propertyRef.current?.id;
-      if (currentId) {
-        supabase.from('properties').select('*').eq('id', currentId).single()
-          .then((res: { data: Property | null }) => { if (res.data) handleSetProperty(res.data); })
-          .catch(() => { /* silencioso */ });
-      }
       return;
     }
 
@@ -204,8 +197,9 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
       return;
     }
 
-    const ud = userData;
-    // Deriva superAdmin diretamente do userData para evitar lag de render
+    // Lê userData via ref para não tornar userData uma dependência do efeito
+    // (userData muda várias vezes durante o ciclo de vida da sessão)
+    const ud = userDataRef.current;
     const superAdmin = ud?.role === 'super_admin';
     const savedId = typeof window !== 'undefined' ? localStorage.getItem(PROPERTY_ID_KEY) : null;
 
@@ -229,7 +223,7 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, userDataReady, initialProperty, initialSlug, userData, isSuperAdmin]);
+  }, [authLoading, userDataReady, initialProperty, initialSlug]);
 
   return (
     <PropertyContext.Provider value={{
