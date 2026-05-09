@@ -1,9 +1,83 @@
 import { supabase } from "@/lib/supabase";
-import { ConciergeItem, ConciergeRequest } from "@/types/aura";
+import { ConciergeGroup, ConciergeItem, ConciergeRequest } from "@/types/aura";
 import { AuditService } from "./audit-service";
 import { StayService } from "./stay-service";
 
 export const ConciergeService = {
+
+  // ==========================================
+  // GROUPS
+  // ==========================================
+
+  async getGroups(propertyId: string): Promise<ConciergeGroup[]> {
+    const { data } = await supabase
+      .from('concierge_groups')
+      .select('*')
+      .eq('propertyId', propertyId)
+      .eq('active', true)
+      .order('order', { ascending: true });
+    return (data || []) as ConciergeGroup[];
+  },
+
+  async createGroup(
+    propertyId: string,
+    data: Omit<ConciergeGroup, 'id' | 'propertyId' | 'createdAt' | 'updatedAt'>,
+    actorId: string,
+    actorName: string
+  ): Promise<ConciergeGroup> {
+    const now = new Date().toISOString();
+    const payload = { ...data, id: crypto.randomUUID(), propertyId, createdAt: now, updatedAt: now };
+    const { data: created, error } = await supabase
+      .from('concierge_groups')
+      .insert(payload)
+      .select()
+      .single();
+    if (error) throw error;
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName,
+      action: 'CREATE', entity: 'CONCIERGE', entityId: created.id,
+      details: `Grupo de concierge criado: ${data.name}`,
+    });
+
+    return created as ConciergeGroup;
+  },
+
+  async updateGroup(
+    propertyId: string,
+    groupId: string,
+    data: Partial<Omit<ConciergeGroup, 'id' | 'propertyId' | 'createdAt'>>,
+    actorId: string,
+    actorName: string
+  ): Promise<void> {
+    const { error } = await supabase
+      .from('concierge_groups')
+      .update({ ...data, updatedAt: new Date().toISOString() })
+      .eq('id', groupId)
+      .eq('propertyId', propertyId);
+    if (error) throw error;
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName,
+      action: 'UPDATE', entity: 'CONCIERGE', entityId: groupId,
+      details: `Grupo de concierge atualizado: ${groupId}`,
+    });
+  },
+
+  async deleteGroup(
+    propertyId: string,
+    groupId: string,
+    actorId: string,
+    actorName: string
+  ): Promise<void> {
+    await this.updateGroup(propertyId, groupId, { active: false }, actorId, actorName);
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName,
+      action: 'DELETE', entity: 'CONCIERGE', entityId: groupId,
+      details: `Grupo de concierge desativado: ${groupId}`,
+    });
+  },
 
   // ==========================================
   // CATALOG
@@ -12,7 +86,7 @@ export const ConciergeService = {
   async getConciergeItems(propertyId: string): Promise<ConciergeItem[]> {
     const { data } = await supabase
       .from('concierge_items')
-      .select('*')
+      .select('*, group:concierge_groups(*)')
       .eq('propertyId', propertyId)
       .eq('active', true)
       .order('order', { ascending: true });
@@ -22,7 +96,7 @@ export const ConciergeService = {
   async getConciergeItemsForGuest(propertyId: string): Promise<ConciergeItem[]> {
     const { data } = await supabase
       .from('concierge_items')
-      .select('*')
+      .select('*, group:concierge_groups(*)')
       .eq('propertyId', propertyId)
       .eq('active', true)
       .eq('availableForGuest', true)
@@ -33,7 +107,7 @@ export const ConciergeService = {
   async getConciergeItemsForMaid(propertyId: string): Promise<ConciergeItem[]> {
     const { data } = await supabase
       .from('concierge_items')
-      .select('*')
+      .select('*, group:concierge_groups(*)')
       .eq('propertyId', propertyId)
       .eq('active', true)
       .eq('availableForMaid', true)
@@ -217,6 +291,34 @@ export const ConciergeService = {
     actorId: string,
     actorName: string
   ): Promise<ConciergeRequest> {
+    // Stock check
+    const { data: itemData } = await supabase
+      .from('concierge_items')
+      .select('*')
+      .eq('id', data.itemId)
+      .single();
+    const item = itemData as ConciergeItem | null;
+
+    if (item && item.stock_qty != null) {
+      if (item.category === 'loan') {
+        // Count active loans (pending + in_progress + delivered but not returned/lost)
+        const { count } = await supabase
+          .from('concierge_requests')
+          .select('quantity', { count: 'exact', head: false })
+          .eq('itemId', data.itemId)
+          .in('status', ['pending', 'in_progress', 'delivered']);
+        const activeCount = count ?? 0;
+        if (activeCount + data.quantity > item.stock_qty) {
+          throw new Error('insufficient_stock');
+        }
+      } else {
+        // consumption: check raw stock
+        if (item.stock_qty < data.quantity) {
+          throw new Error('insufficient_stock');
+        }
+      }
+    }
+
     const now = new Date().toISOString();
     const payload = {
       ...data,
@@ -238,7 +340,7 @@ export const ConciergeService = {
     let auditUserName = actorName;
     let auditDetails = `Pedido de concierge: qty=${data.quantity}`;
     try {
-      const [{ data: itemData }, cabinRes, stayRes] = await Promise.all([
+      const [{ data: itemNameData }, cabinRes, stayRes] = await Promise.all([
         supabase.from('concierge_items').select('name').eq('id', data.itemId).single(),
         data.cabinId
           ? supabase.from('cabins').select('number').eq('id', data.cabinId).single()
@@ -247,7 +349,7 @@ export const ConciergeService = {
           ? supabase.from('stays').select('guestId').eq('id', data.stayId).single()
           : Promise.resolve({ data: null }),
       ]);
-      const itemName = itemData?.name || data.itemId;
+      const itemName = itemNameData?.name || data.itemId;
       auditDetails = `Pedido de concierge: ${data.quantity}x ${itemName}`;
       if (cabinRes.data && stayRes.data) {
         const { data: guestData } = await supabase
@@ -296,12 +398,12 @@ export const ConciergeService = {
       .single();
     if (reqErr || !req) throw new Error('Request not found');
 
-    const { data: itemData } = await supabase
+    const { data: itemRow } = await supabase
       .from('concierge_items')
       .select('*')
       .eq('id', req.itemId)
       .single();
-    const item = itemData as ConciergeItem;
+    const item = itemRow as ConciergeItem;
     let totalPrice = 0;
 
     // 2. Calculate total_price
@@ -319,7 +421,15 @@ export const ConciergeService = {
       .eq('id', requestId);
     if (updErr) throw updErr;
 
-    // 4. Charge folio if applicable
+    // 4. Decrement stock for consumption items
+    if (item.category === 'consumption' && item.stock_qty != null) {
+      await supabase
+        .from('concierge_items')
+        .update({ stock_qty: Math.max(0, item.stock_qty - req.quantity), updatedAt: new Date().toISOString() })
+        .eq('id', item.id);
+    }
+
+    // 5. Charge folio if applicable
     if (totalPrice > 0) {
       await StayService.addFolioItemManual(
         propertyId,
@@ -337,7 +447,7 @@ export const ConciergeService = {
       );
     }
 
-    // 5. Audit
+    // 6. Audit
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName,
       action: 'CONCIERGE_DELIVERED', entity: 'CONCIERGE', entityId: requestId,
@@ -378,12 +488,12 @@ export const ConciergeService = {
       .single();
     if (reqErr || !req) throw new Error('Request not found');
 
-    const { data: itemData } = await supabase
+    const { data: itemRow } = await supabase
       .from('concierge_items')
       .select('*')
       .eq('id', req.itemId)
       .single();
-    const item = itemData as ConciergeItem;
+    const item = itemRow as ConciergeItem;
 
     // 2. Update status
     const { error: updErr } = await supabase
@@ -392,7 +502,15 @@ export const ConciergeService = {
       .eq('id', requestId);
     if (updErr) throw updErr;
 
-    // 3. Charge loss_price if defined
+    // 3. Permanently reduce stock for loan items (lost item doesn't return)
+    if (item.category === 'loan' && item.stock_qty != null) {
+      await supabase
+        .from('concierge_items')
+        .update({ stock_qty: Math.max(0, item.stock_qty - req.quantity), updatedAt: new Date().toISOString() })
+        .eq('id', item.id);
+    }
+
+    // 4. Charge loss_price if defined
     if (item.loss_price && item.loss_price > 0) {
       const lossTotal = item.loss_price * req.quantity;
       await StayService.addFolioItemManual(
@@ -411,7 +529,7 @@ export const ConciergeService = {
       );
     }
 
-    // 4. Audit
+    // 5. Audit
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName,
       action: 'CONCIERGE_LOST', entity: 'CONCIERGE', entityId: requestId,

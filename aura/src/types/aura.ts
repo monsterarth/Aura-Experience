@@ -988,6 +988,20 @@ export interface SystemBug {
 export type ConciergeCategory = 'consumption' | 'loan';
 export type ConciergeRequestStatus = 'pending' | 'in_progress' | 'delivered' | 'returned' | 'lost';
 
+export interface ConciergeGroup {
+  id: string;
+  propertyId: string;
+  name: string;
+  name_en?: string;
+  name_es?: string;
+  icon?: string;
+  color?: string;
+  order?: number;
+  active: boolean;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
 export interface ConciergeItem {
   id: string;
   propertyId: string;
@@ -1001,11 +1015,14 @@ export interface ConciergeItem {
   price: number;
   loss_price?: number;
   included_qty: number;
+  stock_qty?: number | null;
   image_url?: string;
   active: boolean;
   availableForGuest: boolean;
   availableForMaid: boolean;
   order?: number;
+  groupId?: string;
+  group?: ConciergeGroup;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

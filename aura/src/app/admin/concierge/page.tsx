@@ -6,7 +6,7 @@ import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { ConciergeService } from "@/services/concierge-service";
 import { StayService } from "@/services/stay-service";
-import { ConciergeRequest, ConciergeItem, ConciergeCategory } from "@/types/aura";
+import { ConciergeRequest, ConciergeItem, ConciergeCategory, ConciergeGroup } from "@/types/aura";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import EmojiPicker from "emoji-picker-react";
 import {
@@ -14,7 +14,7 @@ import {
   Package, AlertTriangle, Clock, Pin, Eye, X, Save, Plus,
   User, Wrench, ChevronLeft, ChevronRight, TrendingUp,
   Calendar, Search, Filter, Edit2, EyeOff, Sparkles,
-  Gift, ListOrdered, BookOpen
+  Gift, ListOrdered, BookOpen, Layers, Trash2, Palette
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -39,6 +39,13 @@ interface ItemForm {
   image_url: string; active: boolean;
   availableForGuest: boolean; availableForMaid: boolean;
   order: string;
+  groupId: string;
+  stock_qty: string;
+  stock_unlimited: boolean;
+}
+
+interface GroupForm {
+  name: string; icon: string; color: string; order: string;
 }
 
 const defaultForm: ItemForm = {
@@ -49,7 +56,12 @@ const defaultForm: ItemForm = {
   image_url: '', active: true,
   availableForGuest: true, availableForMaid: false,
   order: '0',
+  groupId: '',
+  stock_qty: '',
+  stock_unlimited: true,
 };
+
+const defaultGroupForm: GroupForm = { name: '', icon: '📦', color: '#9b6dff', order: '0' };
 
 // ─── Emoji helpers ────────────────────────────────────────────────────────────
 
@@ -148,12 +160,19 @@ export default function AdminConciergePage() {
 
   // ── Catalog state ──
   const [items, setItems] = useState<ConciergeItem[]>([]);
+  const [groups, setGroups] = useState<ConciergeGroup[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [catalogAccess, setCatalogAccess] = useState<'all' | 'guest' | 'maid' | 'both'>('all');
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ItemForm>(defaultForm);
   const [saving, setSaving] = useState(false);
+
+  // ── Group management state ──
+  const [showGroupForm, setShowGroupForm] = useState(false);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [groupForm, setGroupForm] = useState<GroupForm>(defaultGroupForm);
+  const [savingGroup, setSavingGroup] = useState(false);
 
   // ── New request modal ──
   const [showNew, setShowNew] = useState(false);
@@ -240,12 +259,12 @@ export default function AdminConciergePage() {
     if (!property) return;
     setLoadingCatalog(true);
     try {
-      const { data } = await supabase
-        .from('concierge_items')
-        .select('*')
-        .eq('propertyId', property.id)
-        .order('order', { ascending: true });
-      setItems((data || []) as ConciergeItem[]);
+      const [{ data: itemData }, { data: groupData }] = await Promise.all([
+        supabase.from('concierge_items').select('*, group:concierge_groups(*)').eq('propertyId', property.id).order('order', { ascending: true }),
+        supabase.from('concierge_groups').select('*').eq('propertyId', property.id).eq('active', true).order('order', { ascending: true }),
+      ]);
+      setItems((itemData || []) as ConciergeItem[]);
+      setGroups((groupData || []) as ConciergeGroup[]);
     } finally {
       setLoadingCatalog(false);
     }
@@ -283,6 +302,7 @@ export default function AdminConciergePage() {
   const openNew = () => { setForm(defaultForm); setEditingId(null); setShowForm(true); };
 
   const openEdit = (item: ConciergeItem) => {
+    const isUnlimited = item.stock_qty == null;
     setForm({
       name: item.name, name_en: item.name_en || '', name_es: item.name_es || '',
       description: item.description || '', description_en: item.description_en || '', description_es: item.description_es || '',
@@ -291,9 +311,45 @@ export default function AdminConciergePage() {
       included_qty: String(item.included_qty), image_url: item.image_url || '',
       active: item.active, availableForGuest: item.availableForGuest ?? true,
       availableForMaid: item.availableForMaid ?? false, order: String(item.order ?? 0),
+      groupId: item.groupId || '',
+      stock_qty: isUnlimited ? '' : String(item.stock_qty),
+      stock_unlimited: isUnlimited,
     });
     setEditingId(item.id);
     setShowForm(true);
+  };
+
+  const openNewGroup = () => { setGroupForm(defaultGroupForm); setEditingGroupId(null); setShowGroupForm(true); };
+  const openEditGroup = (g: ConciergeGroup) => {
+    setGroupForm({ name: g.name, icon: g.icon || '📦', color: g.color || '#9b6dff', order: String(g.order ?? 0) });
+    setEditingGroupId(g.id);
+    setShowGroupForm(true);
+  };
+
+  const handleSaveGroup = async () => {
+    if (!property || !userData || !groupForm.name.trim()) { toast.error('Nome é obrigatório.'); return; }
+    setSavingGroup(true);
+    try {
+      const payload = { name: groupForm.name.trim(), icon: groupForm.icon, color: groupForm.color, order: parseInt(groupForm.order) || 0, active: true };
+      if (editingGroupId) {
+        await ConciergeService.updateGroup(property.id, editingGroupId, payload, userData.id, userData.fullName);
+        toast.success('Grupo atualizado.');
+      } else {
+        await ConciergeService.createGroup(property.id, payload, userData.id, userData.fullName);
+        toast.success('Grupo criado.');
+      }
+      setShowGroupForm(false); setEditingGroupId(null); await loadCatalog();
+    } catch (err: any) { toast.error(err?.message || 'Erro ao salvar grupo.'); }
+    finally { setSavingGroup(false); }
+  };
+
+  const handleDeleteGroup = async (groupId: string) => {
+    if (!property || !userData) return;
+    try {
+      await ConciergeService.deleteGroup(property.id, groupId, userData.id, userData.fullName);
+      toast.success('Grupo removido.');
+      await loadCatalog();
+    } catch { toast.error('Erro ao remover grupo.'); }
   };
 
   const handleSave = async () => {
@@ -309,6 +365,8 @@ export default function AdminConciergePage() {
         included_qty: parseInt(form.included_qty) || 0, image_url: form.image_url || undefined,
         active: form.active, availableForGuest: form.availableForGuest, availableForMaid: form.availableForMaid,
         order: parseInt(form.order) || 0,
+        groupId: form.groupId || undefined,
+        stock_qty: form.stock_unlimited ? null : (parseInt(form.stock_qty) || null),
       };
       if (editingId) {
         await ConciergeService.updateItem(property.id, editingId, payload, userData.id, userData.fullName);
@@ -362,14 +420,21 @@ export default function AdminConciergePage() {
   const todayDeliveredRevenue = history.filter(r => r.status === 'delivered').reduce((s, r) => s + (r.total_price || 0), 0);
   const todayDeliveredCount = history.filter(r => r.status === 'delivered').length;
 
-  const filteredCatalog = (cat: ConciergeCategory) => items.filter(item => {
-    if (item.category !== cat) return false;
+  const filteredItems = items.filter(item => {
     if (catalogAccess === 'all') return true;
-    if (!item.active) return true; // inactive items always show in admin
+    if (!item.active) return true;
     if (catalogAccess === 'guest') return item.availableForGuest;
     if (catalogAccess === 'maid') return item.availableForMaid;
     return item.availableForGuest && item.availableForMaid;
   });
+
+  // Group items by concierge_groups; ungrouped items at the end
+  const itemsByGroup: Array<{ group: ConciergeGroup | null; items: ConciergeItem[] }> = [
+    ...groups.map(g => ({ group: g, items: filteredItems.filter(i => i.groupId === g.id) })).filter(s => s.items.length > 0),
+    ...(filteredItems.filter(i => !i.groupId).length > 0
+      ? [{ group: null, items: filteredItems.filter(i => !i.groupId) }]
+      : []),
+  ];
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -592,7 +657,7 @@ export default function AdminConciergePage() {
         {/* ── CATALOG TAB ───────────────────────────────────────────── */}
         {tab === 'catalog' && (
           <div style={{ maxWidth: 960, margin: '0 auto' }}>
-            {/* Access filter */}
+            {/* Toolbar: access filter + group manager toggle */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase', color: 'rgba(238,240,248,0.42)', marginRight: 4 }}>Visível para:</span>
               {([
@@ -607,49 +672,61 @@ export default function AdminConciergePage() {
                   transition: 'all .15s',
                 }}>{f.label}</button>
               ))}
-              <span style={{ marginLeft: 'auto', fontSize: 12, color: 'rgba(238,240,248,0.42)' }}>
-                {items.filter(item => catalogAccess === 'all' || !item.active || (catalogAccess === 'guest' && item.availableForGuest) || (catalogAccess === 'maid' && item.availableForMaid) || (catalogAccess === 'both' && item.availableForGuest && item.availableForMaid)).length} itens
-              </span>
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: 'rgba(238,240,248,0.42)' }}>{filteredItems.length} itens</span>
+              <button onClick={openNewGroup} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 9, border: '1px solid rgba(155,109,255,0.22)', background: 'rgba(155,109,255,0.08)', cursor: 'pointer', color: '#9b6dff', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>
+                <Layers size={13} /> Novo Grupo
+              </button>
             </div>
+
+            {/* Groups strip */}
+            {groups.length > 0 && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+                {groups.map(g => (
+                  <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px 5px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.1)', fontSize: 12, fontWeight: 700, color: '#eef0f8' }}>
+                    <span style={{ fontSize: 15 }}>{g.icon}</span>
+                    <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</span>
+                    <button onClick={() => openEditGroup(g)} style={{ width: 20, height: 20, borderRadius: 5, border: 'none', background: 'rgba(255,255,255,0.06)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)' }}>
+                      <Edit2 size={10} />
+                    </button>
+                    <button onClick={() => handleDeleteGroup(g.id)} style={{ width: 20, height: 20, borderRadius: 5, border: 'none', background: 'rgba(248,113,113,0.08)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f87171' }}>
+                      <Trash2 size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {loadingCatalog ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 0' }}>
                 <Loader2 size={20} className="animate-spin" style={{ color: 'rgba(238,240,248,0.42)' }} />
               </div>
+            ) : itemsByGroup.length === 0 ? (
+              <div style={{ padding: '48px 0', textAlign: 'center', color: 'rgba(238,240,248,0.42)', fontSize: 13 }}>Nenhum item cadastrado.</div>
             ) : (
-              (['loan', 'consumption'] as ConciergeCategory[]).map(cat => {
-                const catItems = filteredCatalog(cat);
-                const allCatItems = items.filter(i => i.category === cat);
-                return (
-                  <div key={cat} style={{ marginBottom: 28 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                      <div style={{ width: 28, height: 28, borderRadius: 8, background: cat === 'loan' ? 'rgba(96,165,250,0.08)' : 'rgba(155,109,255,0.08)', border: `1px solid ${cat === 'loan' ? 'rgba(96,165,250,0.22)' : 'rgba(155,109,255,0.22)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        {cat === 'loan' ? <Package size={13} style={{ color: '#60a5fa' }} /> : <ShoppingBag size={13} style={{ color: '#9b6dff' }} />}
-                      </div>
-                      <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: 'rgba(238,240,248,0.42)' }}>{cat === 'loan' ? 'Empréstimos' : 'Consumo'}</span>
-                      <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', background: cat === 'loan' ? 'rgba(96,165,250,0.08)' : 'rgba(155,109,255,0.08)', color: cat === 'loan' ? '#60a5fa' : '#9b6dff', border: `1px solid ${cat === 'loan' ? 'rgba(96,165,250,0.22)' : 'rgba(155,109,255,0.22)'}` }}>{catItems.length} itens</span>
+              itemsByGroup.map(({ group, items: groupItems }) => (
+                <div key={group?.id ?? '__ungrouped'} style={{ marginBottom: 28 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <div style={{ width: 28, height: 28, borderRadius: 8, background: group?.color ? `${group.color}18` : 'rgba(255,255,255,0.05)', border: `1px solid ${group?.color ? `${group.color}35` : 'rgba(255,255,255,0.1)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15 }}>
+                      {group?.icon ?? <Layers size={13} style={{ color: 'rgba(238,240,248,0.42)' }} />}
                     </div>
-
-                    {catItems.length === 0 ? (
-                      <div style={{ padding: '24px', borderRadius: 14, border: '1px dashed rgba(255,255,255,0.07)', textAlign: 'center', color: 'rgba(238,240,248,0.42)', fontSize: 13 }}>
-                        {allCatItems.length === 0 ? 'Nenhum item cadastrado.' : 'Nenhum item visível com esse filtro.'}
-                      </div>
-                    ) : (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(210px,1fr))', gap: 10 }}>
-                        {catItems.map(item => (
-                          <CatalogCard
-                            key={item.id}
-                            item={item}
-                            onEdit={() => openEdit(item)}
-                            onToggleActive={() => handleToggleActive(item)}
-                            onRequest={() => { setNewItemPreset(item); setShowNew(true); }}
-                          />
-                        ))}
-                      </div>
-                    )}
+                    <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: group?.color ?? 'rgba(238,240,248,0.42)' }}>
+                      {group?.name ?? 'Sem grupo'}
+                    </span>
+                    <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', background: 'rgba(255,255,255,0.04)', color: 'rgba(238,240,248,0.35)', border: '1px solid rgba(255,255,255,0.07)' }}>{groupItems.length} itens</span>
                   </div>
-                );
-              })
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(210px,1fr))', gap: 10 }}>
+                    {groupItems.map(item => (
+                      <CatalogCard
+                        key={item.id}
+                        item={item}
+                        onEdit={() => openEdit(item)}
+                        onToggleActive={() => handleToggleActive(item)}
+                        onRequest={() => { setNewItemPreset(item); setShowNew(true); }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))
             )}
           </div>
         )}
@@ -681,8 +758,18 @@ export default function AdminConciergePage() {
       {showForm && (
         <CatalogFormModal
           form={form} setForm={setForm} editingId={editingId} saving={saving}
+          groups={groups}
           onClose={() => { setShowForm(false); setEditingId(null); }}
           onSave={handleSave}
+        />
+      )}
+
+      {/* ── Group form modal ──────────────────────────────────────────────── */}
+      {showGroupForm && (
+        <GroupFormModal
+          form={groupForm} setForm={setGroupForm} editingId={editingGroupId} saving={savingGroup}
+          onClose={() => { setShowGroupForm(false); setEditingGroupId(null); }}
+          onSave={handleSaveGroup}
         />
       )}
     </div>
@@ -1253,11 +1340,12 @@ function NewRequestModal({ preset, onClose }: {
 
 type LangTab = 'pt' | 'en' | 'es';
 
-function CatalogFormModal({ form, setForm, editingId, saving, onClose, onSave }: {
+function CatalogFormModal({ form, setForm, editingId, saving, groups, onClose, onSave }: {
   form: ItemForm;
   setForm: React.Dispatch<React.SetStateAction<ItemForm>>;
   editingId: string | null;
   saving: boolean;
+  groups: ConciergeGroup[];
   onClose: () => void;
   onSave: () => void;
 }) {
@@ -1644,6 +1732,62 @@ function CatalogFormModal({ form, setForm, editingId, saving, onClose, onSave }:
             )}
           </div>
 
+          {/* ── Grupo ── */}
+          {groups.length > 0 && (
+            <div>
+              <div style={sectionLabel}>Grupo</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '9px 12px' }}>
+                <Layers size={13} style={{ color: 'rgba(238,240,248,0.42)', flexShrink: 0 }} />
+                <select
+                  value={form.groupId}
+                  onChange={e => setForm(prev => ({ ...prev, groupId: e.target.value }))}
+                  style={{ background: 'transparent', border: 'none', color: '#eef0f8', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, outline: 'none', width: '100%', cursor: 'pointer' }}
+                >
+                  <option value="" style={{ background: '#161824', color: 'rgba(238,240,248,0.5)' }}>— Sem grupo —</option>
+                  {groups.map(g => (
+                    <option key={g.id} value={g.id} style={{ background: '#161824', color: '#eef0f8' }}>
+                      {g.icon} {g.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
+          {/* ── Estoque ── */}
+          <div>
+            <div style={sectionLabel}>Estoque</div>
+            <button
+              onClick={() => setForm(prev => ({ ...prev, stock_unlimited: !prev.stock_unlimited, stock_qty: '' }))}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 12, cursor: 'pointer', width: '100%', fontFamily: 'inherit', textAlign: 'left', marginBottom: form.stock_unlimited ? 0 : 10, background: form.stock_unlimited ? 'rgba(45,212,191,0.06)' : 'rgba(255,255,255,0.035)', border: `1px solid ${form.stock_unlimited ? 'rgba(45,212,191,0.25)' : 'rgba(255,255,255,0.07)'}`, transition: 'all .15s' }}
+            >
+              <div style={{ width: 20, height: 20, borderRadius: 6, background: form.stock_unlimited ? '#2dd4bf' : 'transparent', border: `2px solid ${form.stock_unlimited ? '#2dd4bf' : 'rgba(255,255,255,0.2)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .15s' }}>
+                {form.stock_unlimited && <div style={{ width: 8, height: 8, borderRadius: 2, background: '#fff' }} />}
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: form.stock_unlimited ? '#2dd4bf' : '#eef0f8' }}>Ilimitado</div>
+                <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', marginTop: 1 }}>Sem controle de estoque para este item</div>
+              </div>
+            </button>
+            {!form.stock_unlimited && (
+              <div>
+                <label style={labelSt}>Quantidade em estoque</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button onClick={() => setForm(prev => ({ ...prev, stock_qty: String(Math.max(0, parseInt(prev.stock_qty || '0') - 1)) }))}
+                    style={{ width: 34, height: 37, borderRadius: 9, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontSize: 18, color: '#eef0f8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>−</button>
+                  <input type="number" min="0" value={form.stock_qty} onChange={e => setForm(prev => ({ ...prev, stock_qty: e.target.value }))}
+                    placeholder="0" style={{ ...inputSt, textAlign: 'center', padding: '9px 4px' }}
+                    onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
+                  <button onClick={() => setForm(prev => ({ ...prev, stock_qty: String(parseInt(prev.stock_qty || '0') + 1) }))}
+                    style={{ width: 34, height: 37, borderRadius: 9, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontSize: 18, color: '#eef0f8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>+</button>
+                </div>
+                <div style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)', marginTop: 4, lineHeight: 1.4 }}>
+                  {form.category === 'loan' ? 'Máx. de unidades em circulação simultânea.' : 'Unidades disponíveis; decrementado a cada entrega.'}
+                </div>
+              </div>
+            )}
+          </div>
+
         </div>
 
         {/* ── Footer ── */}
@@ -1670,6 +1814,108 @@ function CatalogFormModal({ form, setForm, editingId, saving, onClose, onSave }:
           }}>
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
             {editingId ? 'Salvar Alterações' : 'Criar Item'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── GroupFormModal ───────────────────────────────────────────────────────────
+
+function GroupFormModal({ form, setForm, editingId, saving, onClose, onSave }: {
+  form: GroupForm;
+  setForm: React.Dispatch<React.SetStateAction<GroupForm>>;
+  editingId: string | null;
+  saving: boolean;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const emojiRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!emojiOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (emojiRef.current && !emojiRef.current.contains(e.target as Node)) setEmojiOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [emojiOpen]);
+
+  const inputSt: React.CSSProperties = {
+    background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: 10, padding: '9px 12px', color: '#eef0f8', fontFamily: 'inherit',
+    fontSize: 13, outline: 'none', width: '100%', transition: 'border-color .15s',
+  };
+  const canSave = form.name.trim().length > 0;
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', backdropFilter: 'blur(8px)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: '#0b0e18', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 24, width: 420, display: 'flex', flexDirection: 'column', boxShadow: '0 32px 100px rgba(0,0,0,.8)', animation: 'concierge-fade-in .2s ease' }}>
+        {/* Header */}
+        <div style={{ padding: '22px 24px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 11, background: 'rgba(155,109,255,0.12)', border: '1px solid rgba(155,109,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Layers size={17} style={{ color: '#9b6dff' }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 16, fontWeight: 900, color: '#eef0f8' }}>{editingId ? 'Editar Grupo' : 'Novo Grupo'}</div>
+            <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', marginTop: 2 }}>Grupos organizam os itens do catálogo</div>
+          </div>
+          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)' }}>
+            <X size={13} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Emoji + Nome */}
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+            <div ref={emojiRef} style={{ position: 'relative', flexShrink: 0 }}>
+              <button onClick={() => setEmojiOpen(p => !p)} style={{ width: 56, height: 56, borderRadius: 16, background: 'rgba(155,109,255,0.1)', border: '2px solid rgba(155,109,255,0.25)', cursor: 'pointer', fontSize: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {form.icon}
+              </button>
+              {emojiOpen && (
+                <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 90, animation: 'concierge-fade-in .15s ease' }}>
+                  <EmojiPicker onEmojiClick={d => { setForm(prev => ({ ...prev, icon: d.emoji })); setEmojiOpen(false); }} theme={'dark' as any} skinTonesDisabled searchPlaceholder="Buscar…" width={300} height={340} previewConfig={{ showPreview: false }} />
+                </div>
+              )}
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase' as const, color: 'rgba(238,240,248,0.42)', marginBottom: 5, display: 'block' }}>Nome do Grupo <span style={{ color: '#f87171' }}>*</span></label>
+              <input value={form.name} onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Ex: Lavanderia" style={inputSt} onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
+            </div>
+          </div>
+
+          {/* Cor + Ordem */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase' as const, color: 'rgba(238,240,248,0.42)', marginBottom: 5, display: 'block' }}>Cor do grupo</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '7px 12px' }}>
+                <Palette size={13} style={{ color: 'rgba(238,240,248,0.42)', flexShrink: 0 }} />
+                <input type="color" value={form.color} onChange={e => setForm(prev => ({ ...prev, color: e.target.value }))} style={{ width: 28, height: 28, border: 'none', background: 'none', cursor: 'pointer', padding: 0, borderRadius: 6 }} />
+                <span style={{ fontSize: 12, color: 'rgba(238,240,248,0.55)', fontFamily: 'monospace' }}>{form.color}</span>
+              </div>
+            </div>
+            <div>
+              <label style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase' as const, color: 'rgba(238,240,248,0.42)', marginBottom: 5, display: 'block' }}>Ordem</label>
+              <input type="number" min="0" value={form.order} onChange={e => setForm(prev => ({ ...prev, order: e.target.value }))} style={inputSt} onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
+            </div>
+          </div>
+
+          {/* Preview */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, background: form.color ? `${form.color}12` : 'rgba(255,255,255,0.035)', border: `1px solid ${form.color ? `${form.color}30` : 'rgba(255,255,255,0.07)'}` }}>
+            <span style={{ fontSize: 18 }}>{form.icon}</span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: form.color || '#eef0f8' }}>{form.name || 'Nome do grupo'}</span>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '14px 24px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: '10px', borderRadius: 11, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: 'rgba(238,240,248,0.42)' }}>Cancelar</button>
+          <button onClick={onSave} disabled={!canSave || saving} style={{ flex: 2, padding: '10px', borderRadius: 11, border: 'none', cursor: canSave && !saving ? 'pointer' : 'default', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, color: '#fff', background: canSave ? 'linear-gradient(135deg,#9b6dff,#4ec9d4)' : 'rgba(155,109,255,0.3)', opacity: saving ? 0.7 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            {editingId ? 'Salvar' : 'Criar Grupo'}
           </button>
         </div>
       </div>
