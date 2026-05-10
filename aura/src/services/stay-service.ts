@@ -3,7 +3,6 @@ import { Stay, Guest, Cabin, FolioItem, AutomationTriggerEvent, MessageTemplate 
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
 import { AutomationService } from "./automation-service";
-import { applyOnCheckout } from "@/lib/housekeeping-rule-engine";
 
 export const StayService = {
   async triggerAutomation(
@@ -450,68 +449,15 @@ export const StayService = {
     actorName: string,
     keyLocation: 'reception' | 'cabin' | 'unknown' = 'unknown'
   ) {
-    const { data: stay } = await supabase.from('stays').select('cabinId, guestId').eq('id', stayId).single();
-    const cabinId = stay?.cabinId;
-    if (!cabinId) throw new Error("Acomodação não encontrada na reserva.");
-
-    // Update daily tasks to cancelled
-    await supabase.from('housekeeping_tasks')
-      .update({
-        status: 'cancelled',
-        observations: 'Cancelada automaticamente por Check-out (Substituída por Faxina de Troca).',
-        updatedAt: new Date().toISOString()
-      })
-      .eq('propertyId', propertyId)
-      .eq('cabinId', cabinId)
-      .eq('type', 'daily')
-      .eq('status', 'pending');
-
-    // Finish stay
-    await supabase.from('stays')
-      .update({
-        status: 'finished',
-        checkOutActual: new Date().toISOString(),
-        keyLocation,
-        updatedAt: new Date().toISOString()
-      })
-      .eq('id', stayId);
-
-    // Free up cabin
-    await supabase.from('cabins')
-      .update({
-        status: 'cleaning',
-        currentStayId: null
-      })
-      .eq('id', cabinId);
-
-    // Cria tarefas conforme regras 'on_checkout' configuradas na propriedade
-    await applyOnCheckout(propertyId, cabinId, stayId, keyLocation);
-
-    // Build human-readable checkout details
-    let checkoutCabinLabel = cabinId;
-    try {
-      const [{ data: cabinData }, { data: guestData }] = await Promise.all([
-        supabase.from('cabins').select('number').eq('id', cabinId).single(),
-        stay.guestId ? supabase.from('guests').select('fullName').eq('id', stay.guestId).single() : Promise.resolve({ data: null }),
-      ]);
-      const cabinNum = cabinData?.number || cabinId;
-      const firstName = guestData?.fullName?.split(' ')[0] || '';
-      checkoutCabinLabel = firstName ? `cabana ${cabinNum} - ${firstName}` : `cabana ${cabinNum}`;
-    } catch { /* silent */ }
-
-    await AuditService.log({
-      propertyId,
-      userId: actorId,
-      userName: actorName,
-      action: "CHECKOUT",
-      entity: "STAY",
-      entityId: stayId,
-      details: `Check-out da ${checkoutCabinLabel} realizado. Regras de automação de governança aplicadas.`
+    const res = await fetch(`/api/admin/stays/${stayId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'checkout', propertyId, actorId, actorName, keyLocation }),
     });
-
-    await this.triggerAutomation(propertyId, stayId, 'checkout_thanks');
-    await this.triggerAutomation(propertyId, stayId, 'nps_survey');
-
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body?.error ?? 'checkout-failed');
+    }
     return { success: true };
   },
 
