@@ -211,7 +211,7 @@ export default function AdminConciergePage() {
     if (!property) return;
     const unsub = ConciergeService.listenToPendingRequests(property.id, (reqs) => {
       setRawOpen(reqs);
-    }, 'guest');
+    });
     return unsub;
   }, [property]);
 
