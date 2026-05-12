@@ -7,6 +7,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { WhatsAppMessage, Contact, ContactContext, MessageTemplate } from "@/types/aura";
 import { ContactService } from "@/services/contact-service";
+import { useAuth } from "@/context/AuthContext";
 import { AutomationService } from "@/services/automation-service";
 import { Button } from "@/components/ui/button";
 import {
@@ -95,6 +96,7 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
   const theme = (messengerColor && COLOR_THEME_MAP[messengerColor]) ? COLOR_THEME_MAP[messengerColor] : DEFAULT_THEME;
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { userData: authUser } = useAuth();
   const urlPhone = searchParams.get('phone');
 
   // Estados Base
@@ -534,7 +536,7 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
 
       toast.success("WhatsApp validado!", { id: toastId });
 
-      await ContactService.upsertContact(propertyId, newContactData.name, cleanPhone, false);
+      await ContactService.upsertContact(propertyId, newContactData.name, cleanPhone, false, undefined, authUser?.id, authUser?.fullName);
       setIsNewContactOpen(false);
       setSelectedPhone(cleanPhone);
       setNewContactData({ name: "", phone: "" });

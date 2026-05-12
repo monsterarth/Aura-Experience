@@ -354,7 +354,7 @@ function GuestHubContent() {
                 termsAccepted: true
             };
 
-            await StayService.updateStayData(stay.propertyId, stay.id, { automationFlags: newFlags }, stay.guestId || 'system', 'Guest');
+            await StayService.acceptGuestTerms(stay.propertyId, stay.id, stay.guestId || 'system', "Hóspede", stay.automationFlags || {});
 
             // Update local state to trigger the dashboard view
             setStay({ ...stay, automationFlags: newFlags });

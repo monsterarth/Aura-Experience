@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { Guest, Stay, Cabin, MessageTemplate } from "@/types/aura";
 import { ContactService } from "@/services/contact-service";
+import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -55,6 +56,7 @@ function resolveVariables(body: string, guest: Guest, stay: Stay, cabin?: Cabin 
 
 export function GuestContactModal({ propertyId, guest, stay, cabin, onClose }: GuestContactModalProps) {
   const router = useRouter();
+  const { userData: authUser } = useAuth();
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -115,7 +117,7 @@ export function GuestContactModal({ propertyId, guest, stay, cabin, onClose }: G
     setSending(true);
 
     try {
-      await ContactService.upsertContact(propertyId, guest.fullName, cleanPhone, true, guest.id);
+      await ContactService.upsertContact(propertyId, guest.fullName, cleanPhone, true, guest.id, authUser?.id, authUser?.fullName);
 
       const messageId = crypto.randomUUID();
       const isoNow = new Date().toISOString();

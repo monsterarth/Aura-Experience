@@ -1,6 +1,7 @@
 'use server';
 
 import { supabaseAdmin } from "@/lib/supabase";
+import { AuditService } from "@/services/audit-service";
 
 /**
  * Submit a concierge request from the guest portal.
@@ -64,6 +65,16 @@ export async function submitConciergeRequest(
   if (insertError) {
     return { success: false, error: 'Erro ao criar pedido.' };
   }
+
+  await AuditService.log({
+    propertyId: stay.propertyId,
+    userId: stayId,
+    userName: "Hóspede",
+    action: "CONCIERGE_REQUESTED",
+    entity: "CONCIERGE",
+    entityId: crypto.randomUUID(),
+    details: `Pedido de concierge enviado pelo hóspede via portal. Item: ${itemId}. Quantidade: ${quantity}.`
+  });
 
   return { success: true };
 }

@@ -13,7 +13,7 @@ export class ContactService {
     return phone.replace(/\D/g, '');
   }
 
-  static async upsertContact(propertyId: string, name: string, phone: string, isGuest: boolean = false, guestId?: string): Promise<string | null> {
+  static async upsertContact(propertyId: string, name: string, phone: string, isGuest: boolean = false, guestId?: string, actorId?: string, actorName?: string): Promise<string | null> {
     try {
       if (!phone) return null;
       const phoneId = this.formatPhoneId(phone);
@@ -79,8 +79,8 @@ export class ContactService {
 
       await AuditService.log({
         propertyId,
-        userId: guestId ?? phoneId,
-        userName: normalizedName ?? phoneId,
+        userId: actorId ?? guestId ?? phoneId,
+        userName: actorName ?? normalizedName ?? phoneId,
         action: "CONTACT_UPDATED",
         entity: "CONTACT",
         entityId: phoneId,

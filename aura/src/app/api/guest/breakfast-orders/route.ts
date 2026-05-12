@@ -3,6 +3,7 @@
 // Usa supabaseAdmin para contornar RLS — o hóspede é anônimo (sem sessão).
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { AuditService } from "@/services/audit-service";
 
 function mapOrder(d: any) {
     return {
@@ -162,6 +163,16 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
 
+        await AuditService.log({
+            propertyId,
+            userId: stayId,
+            userName: "Hóspede",
+            action: "FB_ORDER_CREATED",
+            entity: "FB_ORDER",
+            entityId: id,
+            details: `Pedido de café da manhã criado pelo hóspede. Modalidade: ${modality}. Data: ${deliveryDate}. ${items?.length ?? 0} item(ns).`
+        });
+
         return NextResponse.json({ id }, { status: 201 });
     } catch (err) {
         console.error("[guest/breakfast-orders POST] Unexpected error:", err);
@@ -221,6 +232,16 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
 
+        await AuditService.log({
+            propertyId,
+            userId: stayId,
+            userName: "Hóspede",
+            action: "FB_ORDER_STATUS_CHANGED",
+            entity: "FB_ORDER",
+            entityId: orderId,
+            details: `Pedido de café da manhã atualizado pelo hóspede. ${items?.length ?? 0} item(ns).`
+        });
+
         return NextResponse.json({ success: true });
     } catch (err) {
         console.error("[guest/breakfast-orders PATCH] Unexpected error:", err);
@@ -276,6 +297,16 @@ export async function DELETE(request: NextRequest) {
         if (error) {
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
+
+        await AuditService.log({
+            propertyId,
+            userId: stayId,
+            userName: "Hóspede",
+            action: "FB_ORDER_STATUS_CHANGED",
+            entity: "FB_ORDER",
+            entityId: orderId,
+            details: `Pedido de café da manhã cancelado pelo hóspede.`
+        });
 
         return NextResponse.json({ success: true });
     } catch (err) {

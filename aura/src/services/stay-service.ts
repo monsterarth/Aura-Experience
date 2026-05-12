@@ -249,7 +249,7 @@ export const StayService = {
       await AuditService.log({
         propertyId,
         userId: stay.guestId,
-        userName: "Guest",
+        userName: (guestUpdate.fullName as string) || "Hóspede",
         action: "UPDATE",
         entity: "STAY",
         entityId: stayId,
@@ -269,7 +269,7 @@ export const StayService = {
     await AuditService.log({
       propertyId,
       userId: stay.guestId,
-      userName: "Guest",
+      userName: (guestUpdate.fullName as string) || "Hóspede",
       action: "PRE_CHECKIN",
       entity: "STAY",
       entityId: stayId,
@@ -278,6 +278,19 @@ export const StayService = {
     });
 
     return finalAccessCode;
+  },
+
+  async acceptGuestTerms(propertyId: string, stayId: string, guestId: string, guestName: string, automationFlags: Record<string, unknown>): Promise<void> {
+    await supabase.from('stays').update({ automationFlags: { ...automationFlags, termsAccepted: true }, updatedAt: new Date().toISOString() }).eq('id', stayId);
+    await AuditService.log({
+      propertyId,
+      userId: guestId,
+      userName: guestName || "Hóspede",
+      action: "UPDATE",
+      entity: "STAY",
+      entityId: stayId,
+      details: "Termos e condições aceitos pelo hóspede via portal."
+    });
   },
 
   async getStaysByAccessCode(accessCode: string) {

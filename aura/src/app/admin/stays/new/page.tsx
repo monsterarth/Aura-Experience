@@ -219,7 +219,9 @@ function NewStayPageContent() {
         guestData.fullName,
         finalPhone,
         true, // isGuest
-        savedGuestId
+        savedGuestId,
+        userData.id,
+        userData.fullName
       );
 
       // 5. FINALMENTE, CRIA A ESTADIA
