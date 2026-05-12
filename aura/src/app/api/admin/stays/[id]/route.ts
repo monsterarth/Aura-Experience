@@ -4,7 +4,7 @@ import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { AuditService } from '@/services/audit-service';
 import { applyOnCheckout } from '@/lib/housekeeping-rule-engine';
-import { StayService } from '@/services/stay-service';
+import { AutomationService } from '@/services/automation-service';
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
     const auth = await requireAuth(['super_admin', 'admin', 'reception', 'governance', 'manager']);
@@ -103,11 +103,15 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         details: `Check-out da ${checkoutCabinLabel} realizado. Regras de automação de governança aplicadas.`,
     });
 
-    // Trigger post-checkout automations
-    await Promise.allSettled([
-        StayService.triggerAutomation(propertyId, stayId, 'checkout_thanks'),
-        StayService.triggerAutomation(propertyId, stayId, 'nps_survey'),
+    // Trigger post-checkout automations (server-side via supabaseAdmin — RLS-safe)
+    const [checkoutResult, npsResult] = await Promise.allSettled([
+        AutomationService.triggerAutomationAdmin(propertyId, stayId, 'checkout_thanks'),
+        AutomationService.triggerAutomationAdmin(propertyId, stayId, 'nps_survey'),
     ]);
+    console.log('[Checkout] automations:', {
+        checkout_thanks: checkoutResult.status === 'fulfilled' ? checkoutResult.value : checkoutResult.reason,
+        nps_survey: npsResult.status === 'fulfilled' ? npsResult.value : npsResult.reason,
+    });
 
     return NextResponse.json({ success: true });
 }

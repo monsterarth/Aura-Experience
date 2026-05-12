@@ -1,4 +1,5 @@
-import { supabase } from "@/lib/supabase";
+import { supabase, supabaseAdmin } from "@/lib/supabase";
+import { SupabaseClient } from "@supabase/supabase-js";
 import { Stay, MessageTemplate, WhatsAppMessage, AutomationTriggerEvent, Guest, Cabin, AutomationRule, Property } from "@/types/aura";
 import { AuditService } from "./audit-service";
 
@@ -114,7 +115,8 @@ export class AutomationService {
     cabin?: Cabin,
     stay?: Stay,
     delayMinutes: number = 0,
-    property?: Property
+    property?: Property,
+    dbClient?: SupabaseClient
   ): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
       const body = this.getBodyForLanguage(template, guest.preferredLanguage);
@@ -158,7 +160,8 @@ export class AutomationService {
         createdAt: new Date().toISOString()
       };
 
-      const { error } = await supabase.from('messages').insert(queuedMessage);
+      const db = dbClient ?? supabase;
+      const { error } = await db.from('messages').insert(queuedMessage);
       if (error) throw error;
 
       return { success: true, messageId };
@@ -409,6 +412,54 @@ export class AutomationService {
     } catch (error) {
       console.error("updateRule exception:", error);
       return false;
+    }
+  }
+
+  // Variante server-side de triggerAutomation: usa supabaseAdmin para contornar RLS.
+  // Deve ser chamada APENAS de API routes / contexto server-side.
+  static async triggerAutomationAdmin(
+    propertyId: string,
+    stayId: string,
+    triggerEvent: AutomationTriggerEvent
+  ): Promise<{ queued: boolean; reason?: string }> {
+    try {
+      if (!supabaseAdmin) return { queued: false, reason: 'no_admin_client' };
+
+      const { data: rule } = await supabaseAdmin
+        .from('automation_rules').select('*')
+        .eq('propertyId', propertyId).eq('triggerEvent', triggerEvent).single();
+
+      if (!rule || !rule.active) return { queued: false, reason: 'rule_inactive' };
+
+      const { data: template } = await supabaseAdmin
+        .from('message_templates').select('*')
+        .eq('propertyId', propertyId).eq('id', rule.templateId).single();
+
+      if (!template) return { queued: false, reason: 'template_missing' };
+
+      const { data: stay } = await supabaseAdmin.from('stays').select('*').eq('id', stayId).single();
+      if (!stay) return { queued: false, reason: 'stay_not_found' };
+
+      const { data: guest } = await supabaseAdmin.from('guests').select('*').eq('id', stay.guestId).single();
+      if (!guest?.phone) return { queued: false, reason: 'guest_no_phone' };
+
+      let cabin: Cabin | undefined = undefined;
+      if (stay.cabinId) {
+        const { data: c } = await supabaseAdmin.from('cabins').select('*').eq('id', stay.cabinId).single();
+        if (c) cabin = c as Cabin;
+      }
+
+      const result = await this.queueMessage(
+        propertyId, stayId, guest.phone,
+        template as MessageTemplate, triggerEvent,
+        guest as Guest, cabin, stay as Stay,
+        rule.delayMinutes || 0, undefined, supabaseAdmin
+      );
+
+      return result.success ? { queued: true } : { queued: false, reason: 'queue_error' };
+    } catch (error) {
+      console.error(`[triggerAutomationAdmin] Erro no gatilho ${triggerEvent}:`, error);
+      return { queued: false, reason: 'exception' };
     }
   }
 }
