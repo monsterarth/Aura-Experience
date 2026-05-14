@@ -79,6 +79,16 @@ export async function GET(request: Request) {
       await supabaseAdmin.from("messages").update({ status: "processing", updatedAt: new Date().toISOString() }).eq("id", msg.id);
 
       try {
+        // Re-check: se a mensagem foi cancelada entre o fetch e o update, abortar
+        const { data: freshMsg } = await supabaseAdmin
+          .from("messages")
+          .select("status")
+          .eq("id", msg.id)
+          .single();
+        if (!freshMsg || freshMsg.status !== "processing") {
+          continue;
+        }
+
         const { data: propertyDoc } = await supabaseAdmin
           .from("properties")
           .select("settings")
