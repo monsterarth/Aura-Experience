@@ -155,7 +155,7 @@ export async function GET(request: Request) {
 
             try {
               await AutomationService.queueMessage(
-                propertyId, stay.id, guest.phone, template, triggerToFire as any, guest, cabin, stay, delayToApply, property
+                propertyId, stay.id, guest.phone, template, triggerToFire as any, guest, cabin, stay, delayToApply, property, supabaseAdmin
               );
               queuedCount++;
             } catch (queueErr: any) {

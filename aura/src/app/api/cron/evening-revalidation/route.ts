@@ -64,7 +64,9 @@ export async function GET(request: Request) {
           .eq('id', msg.stayId)
           .maybeSingle();
 
-        if (!stayData || stayData.checkOut !== tomorrowStr) {
+        // Compare only date portion — checkOut is stored as ISO timestamp
+        const stayCheckOutDate = stayData?.checkOut ? stayData.checkOut.slice(0, 10) : null;
+        if (!stayCheckOutDate || stayCheckOutDate !== tomorrowStr) {
           await AutomationService.cancelMessage(msg.propertyId, msg.id);
           cancelledCount++;
         }
@@ -85,7 +87,7 @@ export async function GET(request: Request) {
         .from('automation_rules')
         .select('*')
         .eq('propertyId', propertyId)
-        .eq('id', 'pre_checkout')
+        .eq('triggerEvent', 'pre_checkout')
         .eq('active', true)
         .maybeSingle();
 
@@ -145,7 +147,7 @@ export async function GET(request: Request) {
         }
 
         await AutomationService.queueMessage(
-          propertyId, stay.id, guest.phone, template, 'pre_checkout', guest, cabin, stay, 30, property
+          propertyId, stay.id, guest.phone, template, 'pre_checkout', guest, cabin, stay, 30, property, supabaseAdmin
         );
         queuedCount++;
       }
