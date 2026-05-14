@@ -72,7 +72,14 @@ export default function AutomationsQueuePage() {
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    // Polling a cada 30s para capturar updates feitos pelo cron via service role,
+    // que não disparam o Realtime no browser quando RLS está desabilitado na tabela.
+    const pollInterval = setInterval(fetchMessages, 30_000);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(pollInterval);
+    };
   }, [property?.id, fetchMessages]);
 
   // Clear selection when switching tabs
