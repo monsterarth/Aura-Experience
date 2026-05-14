@@ -35,6 +35,15 @@ export async function GET(request: Request) {
   const startedAt = new Date().toISOString();
 
   try {
+    // Recovery: mensagens presas em "processing" por mais de 3 minutos voltam para "pending"
+    const stuckThreshold = new Date();
+    stuckThreshold.setMinutes(stuckThreshold.getMinutes() - 3);
+    await supabaseAdmin
+      .from("messages")
+      .update({ status: "pending" })
+      .eq("status", "processing")
+      .lt("updatedAt", stuckThreshold.toISOString());
+
     const now = new Date();
     now.setMinutes(now.getMinutes() + 1);
     const timeLimit = now.toISOString();
@@ -58,7 +67,7 @@ export async function GET(request: Request) {
     for (const msgDoc of snapshot) {
       const msg = msgDoc as any as WhatsAppMessage;
 
-      await supabaseAdmin.from("messages").update({ status: "processing" }).eq("id", msg.id);
+      await supabaseAdmin.from("messages").update({ status: "processing", updatedAt: new Date().toISOString() }).eq("id", msg.id);
 
       try {
         const { data: propertyDoc } = await supabaseAdmin
