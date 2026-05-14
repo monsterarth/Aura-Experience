@@ -14,7 +14,7 @@ export default function StructuresPage() {
     const { userData } = useAuth();
 
     const [structures, setStructures] = useState<Structure[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingStructure, setEditingStructure] = useState<Structure | null>(null);

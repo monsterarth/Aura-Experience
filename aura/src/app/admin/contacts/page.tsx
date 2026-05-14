@@ -19,7 +19,7 @@ export default function ContactsPage() {
   const router = useRouter();
 
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [filter, setFilter] = useState<'all' | 'guests' | 'others'>('all');
 
@@ -34,9 +34,12 @@ export default function ContactsPage() {
   const fetchContacts = async () => {
     if (!property?.id) return;
     setLoading(true);
-    const data = await ContactService.listContacts(property.id);
-    setContacts(data);
-    setLoading(false);
+    try {
+      const data = await ContactService.listContacts(property.id);
+      setContacts(data);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { fetchContacts(); }, [property?.id]);

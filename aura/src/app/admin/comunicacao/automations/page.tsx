@@ -13,7 +13,7 @@ import {
 export default function AutomationsQueuePage() {
   const { currentProperty: property } = useProperty();
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'pending' | 'sent' | 'failed' | 'cancelled'>('pending');
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -51,6 +51,7 @@ export default function AutomationsQueuePage() {
   useEffect(() => {
     if (!property?.id) return;
 
+    setLoading(true);
     fetchMessages();
 
     const channel = supabase.channel('automations_queue')
