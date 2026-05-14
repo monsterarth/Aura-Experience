@@ -53,8 +53,6 @@ export async function GET(request: Request) {
 
       const rules = rulesSnap.map(d => d as any as AutomationRule).filter(r => r.active && r.templateId);
 
-      console.log(`[daily-automations] propertyId=${propertyId} rulesTotal=${rulesSnap.length} rulesActive=${rules.length} ruleIds=${rules.map(r => r.id).join(',')}`);
-
       if (rules.length === 0) continue;
 
       const activeRules = rules.reduce((acc, rule) => {
@@ -75,7 +73,6 @@ export async function GET(request: Request) {
         .eq("propertyId", propertyId)
         .in("status", ["pending", "pre_checkin_done", "active"]);
 
-      console.log(`[daily-automations] propertyId=${propertyId} staysFound=${staysSnap?.length ?? 0} today=${today.toISOString()}`);
       if (!staysSnap) continue;
 
       for (const stayDoc of staysSnap) {
@@ -91,8 +88,6 @@ export async function GET(request: Request) {
 
         const diffDaysIn = Math.round((checkInDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
         const diffDaysOut = Math.round((checkOutDate.getTime() - today.getTime()) / (1000 * 3600 * 24));
-
-        console.log(`[daily-automations] stay=${stay.id} status=${stay.status} diffDaysIn=${diffDaysIn} diffDaysOut=${diffDaysOut} send48h=${stay.automationFlags?.send48h} send24h=${stay.automationFlags?.send24h} preCheckinSent=${stay.automationFlags?.preCheckinSent} has48hRule=${!!activeRules['pre_checkin_48h']} has24hRule=${!!activeRules['pre_checkin_24h']}`);
 
         let triggerToFire: string | null = null;
         let flagToUpdate: string | null = null;
