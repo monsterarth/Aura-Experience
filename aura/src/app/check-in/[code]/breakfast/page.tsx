@@ -492,7 +492,7 @@ function BreakfastWizard() {
         } catch (error: any) {
             console.error(error);
             if (error?.message?.startsWith('ORDER_WINDOW_CLOSED')) {
-                const parts = error.message.split(':');
+                const parts = error.message.split('|');
                 const msg = lang === 'en'
                     ? `Orders are accepted between ${parts[1]} and ${parts[2]}.`
                     : lang === 'es'

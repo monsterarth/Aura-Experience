@@ -107,10 +107,10 @@ export async function POST(request: NextRequest) {
             const delivery = prop?.settings?.fbSettings?.breakfast?.delivery;
             if (delivery?.orderWindowStart && delivery?.orderWindowEnd) {
                 const now = new Date();
-                const hhmm = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+                const hhmm = now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false }).replace(/^24/, '00');
                 if (hhmm < delivery.orderWindowStart || hhmm > delivery.orderWindowEnd) {
                     return NextResponse.json(
-                        { error: `ORDER_WINDOW_CLOSED:${delivery.orderWindowStart}:${delivery.orderWindowEnd}` },
+                        { error: `ORDER_WINDOW_CLOSED|${delivery.orderWindowStart}|${delivery.orderWindowEnd}` },
                         { status: 400 }
                     );
                 }
