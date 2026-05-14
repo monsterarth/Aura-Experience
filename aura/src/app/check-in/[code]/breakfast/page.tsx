@@ -174,6 +174,7 @@ function BreakfastWizard() {
     const [existingOrder, setExistingOrder] = useState<FBOrder | null>(null);
     const [windowOpen, setWindowOpen] = useState(true);
     const [windowConfig, setWindowConfig] = useState<{ start: string; end: string } | null>(null);
+    const [submitError, setSubmitError] = useState<string | null>(null);
 
     // Buffet a-la-carte states
     const [buffetAttendance, setBuffetAttendance] = useState<BreakfastAttendance | null | undefined>(undefined);
@@ -399,10 +400,27 @@ function BreakfastWizard() {
     const submitOrder = async () => {
         if (!stay || !property || !deliveryTime) return;
         if (selections.length === 0) {
-            toast.error("Você não selecionou nenhum item.");
+            setSubmitError(lang === 'en' ? 'No items selected.' : lang === 'es' ? 'No hay ítems seleccionados.' : 'Você não selecionou nenhum item.');
             return;
         }
 
+        // Verificar janela de horário no cliente antes de chamar a API
+        if (windowConfig && !existingOrder) {
+            const now = new Date();
+            const hhmm = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+            if (hhmm < windowConfig.start || hhmm > windowConfig.end) {
+                setSubmitError(
+                    lang === 'en'
+                        ? `Orders are accepted between ${windowConfig.start} and ${windowConfig.end}.`
+                        : lang === 'es'
+                        ? `Los pedidos se aceptan entre las ${windowConfig.start} y las ${windowConfig.end}.`
+                        : `Pedidos são aceitos entre ${windowConfig.start} e ${windowConfig.end}.`
+                );
+                return;
+            }
+        }
+
+        setSubmitError(null);
         setSaving(true);
         try {
             const orderItems = selections.map(s => {
@@ -475,11 +493,16 @@ function BreakfastWizard() {
             console.error(error);
             if (error?.message?.startsWith('ORDER_WINDOW_CLOSED')) {
                 const parts = error.message.split(':');
-                toast.error(`Pedidos de café só são aceitos entre ${parts[1]} e ${parts[2]}.`);
+                const msg = lang === 'en'
+                    ? `Orders are accepted between ${parts[1]} and ${parts[2]}.`
+                    : lang === 'es'
+                    ? `Los pedidos se aceptan entre las ${parts[1]} y las ${parts[2]}.`
+                    : `Pedidos são aceitos entre ${parts[1]} e ${parts[2]}.`;
+                setSubmitError(msg);
             } else if (error?.message?.startsWith('ORDER_EXISTS')) {
-                toast.error("Você já tem um pedido para amanhã. Recarregue a página para editar.");
+                setSubmitError(lang === 'en' ? 'You already have an order for tomorrow. Reload to edit.' : lang === 'es' ? 'Ya tienes un pedido para mañana. Recarga para editarlo.' : 'Você já tem um pedido para amanhã. Recarregue a página para editar.');
             } else {
-                toast.error("Erro ao enviar pedido.");
+                setSubmitError(lang === 'en' ? 'Failed to send order. Please try again.' : lang === 'es' ? 'Error al enviar el pedido. Inténtalo de nuevo.' : 'Erro ao enviar pedido. Tente novamente.');
             }
         } finally {
             setSaving(false);
@@ -1368,14 +1391,22 @@ function BreakfastWizard() {
                                 </button>
                             )}
                             {step === 2 && (
-                                <button
-                                    onClick={submitOrder}
-                                    disabled={saving}
-                                    className="w-full py-4 bg-green-500 text-white rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-green-500/20 hover:bg-green-600 transition-all disabled:opacity-50 disabled:shadow-none"
-                                >
-                                    {saving ? <Loader2 size={24} className="animate-spin" /> : <CheckCircle2 size={24} />}
-                                    <span>{t.confirm}</span>
-                                </button>
+                                <div className="space-y-3">
+                                    {submitError && (
+                                        <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
+                                            <AlertCircle size={16} className="text-red-400 shrink-0 mt-0.5" />
+                                            <p className="text-sm text-red-300 leading-snug">{submitError}</p>
+                                        </div>
+                                    )}
+                                    <button
+                                        onClick={submitOrder}
+                                        disabled={saving}
+                                        className="w-full py-4 bg-green-500 text-white rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl shadow-green-500/20 hover:bg-green-600 transition-all disabled:opacity-50 disabled:shadow-none"
+                                    >
+                                        {saving ? <Loader2 size={24} className="animate-spin" /> : <CheckCircle2 size={24} />}
+                                        <span>{t.confirm}</span>
+                                    </button>
+                                </div>
                             )}
                         </div>
                     </div>
