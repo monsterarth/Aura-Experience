@@ -107,7 +107,10 @@ export async function POST(request: NextRequest) {
             const delivery = prop?.settings?.fbSettings?.breakfast?.delivery;
             if (delivery?.orderWindowStart && delivery?.orderWindowEnd) {
                 const now = new Date();
-                const hhmm = now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false }).replace(/^24/, '00');
+                const brtParts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(now);
+                const brtH = brtParts.find(p => p.type === 'hour')?.value ?? '00';
+                const brtM = brtParts.find(p => p.type === 'minute')?.value ?? '00';
+                const hhmm = `${brtH.padStart(2, '0').replace('24', '00')}:${brtM.padStart(2, '0')}`;
                 if (hhmm < delivery.orderWindowStart || hhmm > delivery.orderWindowEnd) {
                     return NextResponse.json(
                         { error: `ORDER_WINDOW_CLOSED|${delivery.orderWindowStart}|${delivery.orderWindowEnd}` },
