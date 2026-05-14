@@ -35,14 +35,23 @@ export async function GET(request: Request) {
   const startedAt = new Date().toISOString();
 
   try {
-    // Recovery: mensagens presas em "processing" por mais de 3 minutos voltam para "pending"
+    // Recovery: mensagens presas em "processing" por mais de 3 minutos SEM confirmação
+    // da Evolution API (messageIdApi nulo) voltam para "pending" para reenvio.
+    // Mensagens com messageIdApi preenchido já foram enviadas — marcamos como "sent".
     const stuckThreshold = new Date();
     stuckThreshold.setMinutes(stuckThreshold.getMinutes() - 3);
     await supabaseAdmin
       .from("messages")
+      .update({ status: "sent" })
+      .eq("status", "processing")
+      .lt("updatedAt", stuckThreshold.toISOString())
+      .not("messageIdApi", "is", null);
+    await supabaseAdmin
+      .from("messages")
       .update({ status: "pending" })
       .eq("status", "processing")
-      .lt("updatedAt", stuckThreshold.toISOString());
+      .lt("updatedAt", stuckThreshold.toISOString())
+      .is("messageIdApi", null);
 
     const now = new Date();
     now.setMinutes(now.getMinutes() + 1);
