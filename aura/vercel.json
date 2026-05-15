@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/process-messages",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 * * * *"
     },
     {
       "path": "/api/cron/daily-automations",
