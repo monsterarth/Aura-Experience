@@ -21,7 +21,7 @@ export async function POST() {
         }
     );
 
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: 'local' });
 
     // Garante que todos os cookies de sessão do Supabase sejam apagados no browser
     cookieStore.getAll().forEach(({ name }) => {
