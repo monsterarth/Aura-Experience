@@ -76,7 +76,14 @@ export async function GET(request: Request) {
     for (const msgDoc of snapshot) {
       const msg = msgDoc as any as WhatsAppMessage;
 
-      await supabaseAdmin.from("messages").update({ status: "processing", updatedAt: new Date().toISOString() }).eq("id", msg.id);
+      const { error: markErr } = await supabaseAdmin
+        .from("messages")
+        .update({ status: "processing", updatedAt: new Date().toISOString() })
+        .eq("id", msg.id);
+      if (markErr) {
+        console.error(`[Cron] Falha ao marcar mensagem ${msg.id} como processing:`, markErr.message);
+        continue;
+      }
 
       try {
         // Re-check: se a mensagem foi cancelada entre o fetch e o update, abortar

@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { AuditLog } from "@/types/aura";
-import { Search, Filter, Clock, RefreshCw, ChevronDown, FileText } from "lucide-react";
+import { Search, Filter, Clock, RefreshCw, ChevronDown, FileText, Bot } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -93,6 +93,7 @@ export default function AuditLogsPage() {
   const [endDate, setEndDate] = useState(today.toISOString().split('T')[0]);
   const [entity, setEntity] = useState("");
   const [search, setSearch] = useState("");
+  const [hideCron, setHideCron] = useState(true);
 
   const buildUrl = useCallback((off: number) => {
     const params = new URLSearchParams({
@@ -103,8 +104,9 @@ export default function AuditLogsPage() {
     if (search) params.set('search', search);
     if (startDate) params.set('startDate', startDate);
     if (endDate) params.set('endDate', endDate);
+    if (hideCron) params.set('excludePrefix', 'CRON_');
     return `/api/admin/audit-logs?${params.toString()}`;
-  }, [entity, search, startDate, endDate]);
+  }, [entity, search, startDate, endDate, hideCron]);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -209,6 +211,20 @@ export default function AuditLogsPage() {
               className="bg-transparent text-sm outline-none"
             />
           </div>
+
+          {/* Hide cron toggle */}
+          <button
+            onClick={() => setHideCron(v => !v)}
+            className={cn(
+              "flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-bold border transition-all",
+              hideCron
+                ? "bg-card border-border text-muted-foreground hover:text-foreground"
+                : "bg-amber-500/10 border-amber-500/30 text-amber-600"
+            )}
+          >
+            <Bot size={14} />
+            {hideCron ? "Ocultar cron" : "Mostrar cron"}
+          </button>
         </div>
 
         {/* Results count */}

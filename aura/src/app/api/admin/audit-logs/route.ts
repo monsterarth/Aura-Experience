@@ -41,6 +41,8 @@ export async function GET(request: NextRequest) {
     if (userId) query = query.eq('userId', userId);
     if (entity) query = query.eq('entity', entity);
     if (action) query = query.eq('action', action);
+    const excludePrefix = searchParams.get('excludePrefix') || '';
+    if (excludePrefix) query = query.not('action', 'like', `${excludePrefix}%`);
     if (search) {
         query = query.or(`userName.ilike.%${search}%,details.ilike.%${search}%`);
     }
