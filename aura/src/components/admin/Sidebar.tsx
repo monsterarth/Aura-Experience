@@ -531,14 +531,8 @@ export const Sidebar = () => {
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
-    try {
-      const supabase = createClientBrowser();
-      await supabase.auth.signOut();
-    } catch (e) {
-      console.error("Erro ao sair", e);
-    } finally {
-      window.location.href = "/admin/login";
-    }
+    await fetch('/api/auth/signout', { method: 'POST' }).catch(() => {});
+    window.location.href = '/admin/login';
   };
 
   const isLoginPage = pathname === "/admin/login";
