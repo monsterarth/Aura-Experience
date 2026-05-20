@@ -80,6 +80,7 @@ export async function applyDailyRules(
       .from('housekeeping_tasks')
       .select('createdAt')
       .eq('cabinId', stay.cabinId)
+      .eq('stayId', stay.id)
       .eq('type', 'linen_change')
       .order('createdAt', { ascending: false })
       .limit(1)
