@@ -264,11 +264,9 @@ function ConferSheet({
   };
 
   const handleSendRep = async (entries: { itemId: string; qty: number }[]) => {
-    // Se não há reserva ativa, a reposição é operacional (estoque de limpeza) — sem cobrança ao hóspede
-    if (!task.stayId) return;
     await Promise.all(entries.map(({ itemId, qty }) =>
       ConciergeService.createRequest(
-        { propertyId, stayId: task.stayId!, cabinId: task.cabinId, itemId, quantity: qty, requestedBy: "maid", notes: "Solicitado pela governanta" },
+        { propertyId, stayId: task.stayId, cabinId: task.cabinId, itemId, quantity: qty, requestedBy: "maid", notes: "Solicitado pela governanta" },
         actorId, actorName
       )
     ));
@@ -379,9 +377,7 @@ function ConferSheet({
             }}
           >
             <I n="refresh" s={15} c={T.amber} />
-            <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>
-              {task.stayId ? "Reposição" : "Reposição (sem reserva)"}
-            </span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>Reposição</span>
           </button>
           <button
             onClick={() => setShowMaint(true)}
