@@ -373,6 +373,7 @@ export interface MaintenanceTask {
   cabinId?: string; // If applicable to a cabin
   structureId?: string; // If applicable to a structure
   unitId?: string; // If applicable to a specific unit of a structure
+  customLocation?: string; // Free-form location (e.g., "Recepção", "Área da Piscina")
   stayId?: string; // If applicable during a specific stay
 
   blocksCabin?: boolean; // Determines if this task blocks the cabin from being rented

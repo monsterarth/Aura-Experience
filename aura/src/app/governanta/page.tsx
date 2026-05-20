@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { RoleSwitcher } from "@/components/auth/RoleSwitcher";
 import { MinibarSheet } from "@/components/maid/MinibarSheet";
+import { HousekeepingTaskManagerModal } from "@/components/admin/HousekeepingTaskManagerModal";
 import { HousekeepingService } from "@/services/housekeeping-service";
 import { CabinService } from "@/services/cabin-service";
 import { StaffService } from "@/services/staff-service";
@@ -263,6 +264,7 @@ function ConferSheet({
   };
 
   const handleSendRep = async (entries: { itemId: string; qty: number }[]) => {
+    // Se não há reserva ativa, a reposição é operacional (estoque de limpeza) — sem cobrança ao hóspede
     if (!task.stayId) return;
     await Promise.all(entries.map(({ itemId, qty }) =>
       ConciergeService.createRequest(
@@ -367,20 +369,20 @@ function ConferSheet({
 
         {/* Ações rápidas: reposição + manutenção */}
         <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-          {task.stayId && (
-            <button
-              onClick={openRep}
-              style={{
-                flex: 1, padding: "13px 14px",
-                background: T.card2, border: `1px solid ${T.border}`,
-                borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
-                display: "flex", alignItems: "center", gap: 8,
-              }}
-            >
-              <I n="refresh" s={15} c={T.amber} />
-              <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>Reposição</span>
-            </button>
-          )}
+          <button
+            onClick={openRep}
+            style={{
+              flex: 1, padding: "13px 14px",
+              background: T.card2, border: `1px solid ${T.border}`,
+              borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
+              display: "flex", alignItems: "center", gap: 8,
+            }}
+          >
+            <I n="refresh" s={15} c={T.amber} />
+            <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>
+              {task.stayId ? "Reposição" : "Reposição (sem reserva)"}
+            </span>
+          </button>
           <button
             onClick={() => setShowMaint(true)}
             style={{
@@ -807,6 +809,59 @@ function AssignSheet({
   );
 }
 
+// ─── Shared style for select/input fields ─────────────────────────────────────
+
+const selectStyle = {
+  width: "100%", background: T.card2, border: `1px solid ${T.border}`,
+  borderRadius: 12, padding: "11px 14px", color: T.text, fontSize: 13,
+  fontFamily: "inherit", outline: "none", appearance: "none" as const,
+};
+
+// ─── Location Picker (module-level to avoid keyboard-close bug on re-render) ──
+
+function LocPicker({ lt, setLt, cid, setCid, sid, setSid, cust, setCust, cabins, structures }: {
+  lt: "cabin" | "structure" | "custom"; setLt: (v: "cabin" | "structure" | "custom") => void;
+  cid: string; setCid: (v: string) => void;
+  sid: string; setSid: (v: string) => void;
+  cust: string; setCust: (v: string) => void;
+  cabins: Cabin[]; structures: Structure[];
+}) {
+  return (
+    <>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        {(["cabin", "structure", "custom"] as const).map(v => {
+          const labels = { cabin: "Cabana", structure: "Estrutura", custom: "Outro" };
+          const on = lt === v;
+          return (
+            <button key={v} onClick={() => setLt(v)} style={{
+              flex: 1, padding: "10px 0", borderRadius: 12, cursor: "pointer",
+              fontFamily: "inherit", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em",
+              background: on ? T.vSoft : T.card2, border: `1px solid ${on ? T.vBorder : T.border}`,
+              color: on ? T.v1 : T.muted,
+            }}>{labels[v]}</button>
+          );
+        })}
+      </div>
+      {lt === "cabin" && (
+        <select value={cid} onChange={e => setCid(e.target.value)} style={{ ...selectStyle, marginBottom: 16 }}>
+          <option value="">Selecione a cabana</option>
+          {cabins.map(c => <option key={c.id} value={c.id}>{c.name || `Cabana ${c.number}`}</option>)}
+        </select>
+      )}
+      {lt === "structure" && (
+        <select value={sid} onChange={e => setSid(e.target.value)} style={{ ...selectStyle, marginBottom: 16 }}>
+          <option value="">Selecione a estrutura</option>
+          {structures.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+      )}
+      {lt === "custom" && (
+        <input value={cust} onChange={e => setCust(e.target.value)} placeholder="Descreva o local..."
+          style={{ ...selectStyle, marginBottom: 16 }} />
+      )}
+    </>
+  );
+}
+
 // ─── New Task Sheet ────────────────────────────────────────────────────────────
 
 function NewTaskSheet({
@@ -832,6 +887,7 @@ function NewTaskSheet({
   const [taskType, setTaskType] = useState<"daily" | "turnover" | "custom">("daily");
   const [assignedIds, setAssignedIds] = useState<string[]>([]);
   const [obs, setObs] = useState("");
+  const [customChecklist, setCustomChecklist] = useState<{ id: string; label: string; checked: boolean }[]>([]);
 
   // ── Manutenção ──
   const [maintTitle, setMaintTitle] = useState("");
@@ -869,7 +925,7 @@ function NewTaskSheet({
         customLocation: locType === "custom" ? customLocation.trim() : undefined,
         assignedTo: assignedIds,
         observations: obs || undefined,
-        checklist: [],
+        checklist: taskType === "custom" ? customChecklist : [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }, actorId, actorName);
@@ -908,58 +964,12 @@ function NewTaskSheet({
     }
   };
 
-  const selectStyle = {
-    width: "100%", background: T.card2, border: `1px solid ${T.border}`,
-    borderRadius: 12, padding: "11px 14px", color: T.text, fontSize: 13,
-    fontFamily: "inherit", outline: "none", appearance: "none" as const,
-  };
-
   const PRIORITIES: { value: "low" | "medium" | "high" | "urgent"; label: string; color: string }[] = [
     { value: "low",    label: "Baixa",   color: T.muted },
     { value: "medium", label: "Média",   color: T.blue },
     { value: "high",   label: "Alta",    color: T.amber },
     { value: "urgent", label: "Urgente", color: T.red },
   ];
-
-  const LocPicker = ({ lt, setLt, cid, setCid, sid, setSid, cust, setCust }: {
-    lt: "cabin" | "structure" | "custom"; setLt: (v: "cabin" | "structure" | "custom") => void;
-    cid: string; setCid: (v: string) => void;
-    sid: string; setSid: (v: string) => void;
-    cust: string; setCust: (v: string) => void;
-  }) => (
-    <>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        {(["cabin", "structure", "custom"] as const).map(v => {
-          const labels = { cabin: "Cabana", structure: "Estrutura", custom: "Outro" };
-          const on = lt === v;
-          return (
-            <button key={v} onClick={() => setLt(v)} style={{
-              flex: 1, padding: "10px 0", borderRadius: 12, cursor: "pointer",
-              fontFamily: "inherit", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em",
-              background: on ? T.vSoft : T.card2, border: `1px solid ${on ? T.vBorder : T.border}`,
-              color: on ? T.v1 : T.muted,
-            }}>{labels[v]}</button>
-          );
-        })}
-      </div>
-      {lt === "cabin" && (
-        <select value={cid} onChange={e => setCid(e.target.value)} style={{ ...selectStyle, marginBottom: 16 }}>
-          <option value="">Selecione a cabana</option>
-          {cabins.map(c => <option key={c.id} value={c.id}>{c.name || `Cabana ${c.number}`}</option>)}
-        </select>
-      )}
-      {lt === "structure" && (
-        <select value={sid} onChange={e => setSid(e.target.value)} style={{ ...selectStyle, marginBottom: 16 }}>
-          <option value="">Selecione a estrutura</option>
-          {structures.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-      )}
-      {lt === "custom" && (
-        <input value={cust} onChange={e => setCust(e.target.value)} placeholder="Descreva o local..."
-          style={{ ...selectStyle, marginBottom: 16 }} />
-      )}
-    </>
-  );
 
   return (
     <Sheet onClose={onClose}>
@@ -1012,7 +1022,8 @@ function NewTaskSheet({
 
             <Label>Local</Label>
             <LocPicker lt={locType} setLt={setLocType} cid={cabinId} setCid={setCabinId}
-              sid={structureId} setSid={setStructureId} cust={customLocation} setCust={setCustomLocation} />
+              sid={structureId} setSid={setStructureId} cust={customLocation} setCust={setCustomLocation}
+              cabins={cabins} structures={structures} />
 
             {maids.length > 0 && (
               <>
@@ -1034,6 +1045,38 @@ function NewTaskSheet({
               </>
             )}
 
+            {taskType === "custom" && (
+              <>
+                <Label>Procedimentos (opcional)</Label>
+                <div style={{ marginBottom: 8 }}>
+                  {customChecklist.map(item => (
+                    <div key={item.id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+                      <input
+                        value={item.label}
+                        onChange={e => setCustomChecklist(prev => prev.map(i => i.id === item.id ? { ...i, label: e.target.value } : i))}
+                        placeholder="Ex: Higienizar tapetes..."
+                        style={{ ...selectStyle, flex: 1 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setCustomChecklist(prev => prev.filter(i => i.id !== item.id))}
+                        style={{ padding: "10px 12px", background: T.redBg, border: `1px solid ${T.redBorder}`, borderRadius: 10, cursor: "pointer", color: T.red, flexShrink: 0 }}
+                      >
+                        <I n="x" s={14} c={T.red} />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setCustomChecklist(prev => [...prev, { id: crypto.randomUUID(), label: "", checked: false }])}
+                    style={{ width: "100%", padding: "10px 0", background: T.card2, border: `1px solid ${T.border}`, borderRadius: 12, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700, color: T.muted, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 8 }}
+                  >
+                    <I n="plus" s={14} c={T.muted} /> Adicionar Item
+                  </button>
+                </div>
+              </>
+            )}
+
             <Label>Observação (opcional)</Label>
             <textarea value={obs} onChange={e => setObs(e.target.value)} placeholder="Instruções especiais..." rows={2}
               style={{ width: "100%", background: T.card2, border: `1px solid ${T.border}`, borderRadius: 12, padding: "10px 14px", color: T.text, fontSize: 13, fontFamily: "inherit", resize: "none", outline: "none", marginBottom: 8 }} />
@@ -1047,7 +1090,8 @@ function NewTaskSheet({
 
             <Label>Local</Label>
             <LocPicker lt={maintLocType} setLt={setMaintLocType} cid={maintCabinId} setCid={setMaintCabinId}
-              sid={maintStructureId} setSid={setMaintStructureId} cust={maintCustomLocation} setCust={setMaintCustomLocation} />
+              sid={maintStructureId} setSid={setMaintStructureId} cust={maintCustomLocation} setCust={setMaintCustomLocation}
+              cabins={cabins} structures={structures} />
 
             <Label>Detalhes (opcional)</Label>
             <textarea value={maintDesc} onChange={e => setMaintDesc(e.target.value)}
@@ -1111,7 +1155,7 @@ function Label({ children }: { children: React.ReactNode }) {
 // ─── Task Card ────────────────────────────────────────────────────────────────
 
 function TaskCard({
-  task, locationName, maids, onConfer, onAssign, onCancel,
+  task, locationName, maids, onConfer, onAssign, onCancel, onEdit,
 }: {
   task: HousekeepingTask;
   locationName: string;
@@ -1119,6 +1163,7 @@ function TaskCard({
   onConfer?: () => void;
   onAssign?: () => void;
   onCancel?: () => void;
+  onEdit?: () => void;
 }) {
   const assignedArray = Array.isArray(task.assignedTo) ? task.assignedTo : [];
   const assignedNames = assignedArray.length > 0
@@ -1178,6 +1223,18 @@ function TaskCard({
 
       {/* Actions */}
       <div style={{ display: "flex", gap: 8 }}>
+        {onEdit && (
+          <button
+            onClick={onEdit}
+            style={{
+              padding: "11px 12px", background: T.card2, color: T.muted,
+              border: `1px solid ${T.border}`, borderRadius: 12, cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <I n="settings" s={14} c={T.muted} />
+          </button>
+        )}
         {isConference && onConfer && (
           <button
             onClick={onConfer}
@@ -1365,6 +1422,7 @@ export default function GovernantaPage() {
   // Sheets
   const [conferTask, setConferTask] = useState<HousekeepingTask | null>(null);
   const [assignTask, setAssignTask] = useState<HousekeepingTask | null>(null);
+  const [editTask, setEditTask] = useState<HousekeepingTask | null>(null);
   const [showNewTask, setShowNewTask] = useState(false);
 
   // Busy states
@@ -1689,6 +1747,7 @@ export default function GovernantaPage() {
                     <TaskCard key={t.id} task={t} locationName={getLocationName(t)} maids={maids}
                       onAssign={() => setAssignTask(t)}
                       onCancel={() => handleCancel(t)}
+                      onEdit={() => setEditTask(t)}
                     />
                   ))}
                 </Section>
@@ -1701,6 +1760,7 @@ export default function GovernantaPage() {
                     <TaskCard key={t.id} task={t} locationName={getLocationName(t)} maids={maids}
                       onAssign={() => setAssignTask(t)}
                       onCancel={() => handleCancel(t)}
+                      onEdit={() => setEditTask(t)}
                     />
                   ))}
                 </Section>
@@ -1739,6 +1799,7 @@ export default function GovernantaPage() {
                     {conferenceTasks.map(t => (
                       <TaskCard key={t.id} task={t} locationName={getLocationName(t)} maids={maids}
                         onConfer={() => setConferTask(t)}
+                        onEdit={() => setEditTask(t)}
                       />
                     ))}
                   </>
@@ -1773,6 +1834,7 @@ export default function GovernantaPage() {
                           <TaskCard key={t.id} task={t} locationName={getLocationName(t)} maids={maids}
                             onConfer={status === "waiting_conference" ? () => setConferTask(t) : undefined}
                             onAssign={status !== "waiting_conference" && status !== "completed" ? () => setAssignTask(t) : undefined}
+                            onEdit={() => setEditTask(t)}
                           />
                         ))}
                       </Section>
@@ -1838,19 +1900,22 @@ export default function GovernantaPage() {
         </div>
 
         {/* ── Sheets ──────────────────────────────────────────────────────────── */}
-        {conferTask && (
-          <ConferSheet
-            task={conferTask}
-            locationName={getLocationName(conferTask)}
-            propertyId={property?.id || ""}
-            actorId={userData?.id || ""}
-            actorName={userData?.fullName || "Governanta"}
-            onClose={() => setConferTask(null)}
-            onApprove={(obs, checklist) => handleApprove(conferTask, obs, checklist)}
-            onReject={() => handleReject(conferTask)}
-            busy={conferBusy}
-          />
-        )}
+        {conferTask && (() => {
+          const augmented = { ...conferTask, stayId: conferTask.stayId || (conferTask.cabinId ? cabins[conferTask.cabinId]?.currentStayId : undefined) };
+          return (
+            <ConferSheet
+              task={augmented}
+              locationName={getLocationName(conferTask)}
+              propertyId={property?.id || ""}
+              actorId={userData?.id || ""}
+              actorName={userData?.fullName || "Governanta"}
+              onClose={() => setConferTask(null)}
+              onApprove={(obs, checklist) => handleApprove(conferTask, obs, checklist)}
+              onReject={() => handleReject(conferTask)}
+              busy={conferBusy}
+            />
+          );
+        })()}
         {assignTask && (
           <AssignSheet
             task={assignTask}
@@ -1894,6 +1959,17 @@ export default function GovernantaPage() {
         {/* ── Toast ───────────────────────────────────────────────────────────── */}
         {toast && <GovToast msg={toast.msg} color={toast.color} />}
       </div>
+
+      {/* ── Edit Task Modal ─────────────────────────────────────────────────── */}
+      <HousekeepingTaskManagerModal
+        isOpen={!!editTask}
+        onClose={() => setEditTask(null)}
+        propertyId={property.id}
+        task={editTask}
+        cabins={cabins}
+        structures={structures}
+        maids={maids}
+      />
     </>
   );
 }

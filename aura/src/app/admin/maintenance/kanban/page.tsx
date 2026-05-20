@@ -124,6 +124,7 @@ export default function MaintenanceKanbanPage() {
                 )}
                 {task.cabinId && <p className="text-xs font-bold text-primary mt-2">📍 {cabins[task.cabinId]?.name || "Cabana Desconhecida"}</p>}
                 {task.structureId && <p className="text-xs font-bold text-primary mt-2">📍 {structures[task.structureId]?.name || "Estrutura"} {task.unitId && (structures[task.structureId]?.units?.find(u => u.id === task.unitId)?.name ? ` (${structures[task.structureId]?.units?.find(u => u.id === task.unitId)?.name})` : '')}</p>}
+                {task.customLocation && <p className="text-xs font-bold text-primary mt-2">📍 {task.customLocation}</p>}
 
                 <div className="w-full space-y-2 pt-4 border-t border-border">
                     {task.status === 'pending' ? (
@@ -277,6 +278,7 @@ export default function MaintenanceKanbanPage() {
                                     )}
                                     {task.cabinId && <p className="text-xs font-bold text-primary mt-2">📍 {cabins[task.cabinId]?.name || "Cabana"}</p>}
                                     {task.structureId && <p className="text-xs font-bold text-primary mt-2">📍 {structures[task.structureId]?.name || "Estrutura"}</p>}
+                                    {task.customLocation && <p className="text-xs font-bold text-primary mt-2">📍 {task.customLocation}</p>}
                                 </div>
                                 <div className="space-y-2">
                                     {task.status === 'pending' ? (
