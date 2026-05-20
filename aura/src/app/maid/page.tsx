@@ -394,6 +394,7 @@ function TaskSheet({
   const [loadingChecklist, setLoadingChecklist] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [pausing, setPausing] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
 
   useEffect(() => {
@@ -462,6 +463,15 @@ function TaskSheet({
       setFinishing(false);
       setShowConfirm(false);
     }
+  };
+
+  const handlePause = async () => {
+    setPausing(true);
+    try {
+      await HousekeepingService.pauseTask(propertyId, task.id, userId, userName);
+      onClose();
+    } catch { showToast("Erro ao pausar tarefa.", T.red); }
+    finally { setPausing(false); }
   };
 
   const handleSendRep = async (entries: { itemId: string; qty: number }[]) => {
@@ -627,12 +637,24 @@ function TaskSheet({
               </button>
             </div>
           )}
-          <button
-            onClick={() => setShowConfirm(true)}
-            style={{ width: "100%", padding: 14, background: T.greenG, color: "#021a17", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(45,212,191,0.3)" }}
-          >
-            <I n="check" s={17} c="#021a17" w={2.5} /> Finalizar
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            {task.status === "in_progress" && (
+              <button
+                onClick={handlePause}
+                disabled={pausing}
+                style={{ flex: "0 0 auto", padding: "14px 16px", background: T.glass, border: `1px solid ${T.amberBorder}`, borderRadius: 16, cursor: pausing ? "wait" : "pointer", color: T.amber, display: "flex", alignItems: "center", gap: 7, fontFamily: "inherit", fontSize: 13, fontWeight: 700, opacity: pausing ? 0.5 : 1 }}
+              >
+                {pausing ? <I n="loader" s={16} c={T.amber} w={2} /> : <I n="clock" s={16} c={T.amber} />}
+                Pausar
+              </button>
+            )}
+            <button
+              onClick={() => setShowConfirm(true)}
+              style={{ flex: 1, padding: 14, background: T.greenG, color: "#021a17", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(45,212,191,0.3)" }}
+            >
+              <I n="check" s={17} c="#021a17" w={2.5} /> Finalizar
+            </button>
+          </div>
         </div>
       </Sheet>
 
