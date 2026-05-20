@@ -1,7 +1,7 @@
 // src/app/admin/governance/page.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
@@ -15,10 +15,374 @@ import { PropertyMapGrid, ActiveStayInfo } from "@/components/admin/PropertyMapG
 import {
   Sparkles, CheckCircle2, AlertCircle,
   ClipboardCheck, Moon, LayoutDashboard,
-  Timer, Users, ArrowRight
+  Timer, Users, ArrowRight, FileText, Printer, X,
+  LogIn, LogOut, BedDouble, Minus
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
+// -------------------------------------------------------
+// RELATÓRIO MODAL
+// -------------------------------------------------------
+
+const TASK_TYPE_LABELS: Record<string, string> = {
+  turnover: 'Faxina completa',
+  daily: 'Diária',
+  linen_change: 'Arrumação c/ troca',
+  inspection_checkin: 'Inspeção c/in',
+  inspection_checkout: 'Inspeção c/out',
+  custom: 'Personalizada',
+};
+
+const CABIN_STATUS_LABELS: Record<string, string> = {
+  available: 'Disponível',
+  occupied: 'Ocupada',
+  cleaning: 'Em limpeza',
+  maintenance: 'Manutenção',
+};
+
+interface ReportArrival {
+  cabinId: string;
+  guestName: string;
+  checkIn: string;
+  checkOut: string;
+}
+
+function GovernanceReportModal({
+  propertyName,
+  cabins,
+  tasks,
+  maids,
+  activeStays,
+  reportArrivals,
+  onClose,
+}: {
+  propertyName: string;
+  cabins: Record<string, Cabin>;
+  tasks: HousekeepingTask[];
+  maids: Staff[];
+  activeStays: ActiveStayInfo[];
+  reportArrivals: ReportArrival[];
+  onClose: () => void;
+}) {
+  const now = new Date();
+  const todayStr = now.toDateString();
+  const dateLabel = now.toLocaleDateString('pt-BR', {
+    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
+  });
+  const timeLabel = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+  const sortedCabins = Object.values(cabins).sort((a, b) =>
+    a.number.localeCompare(b.number, undefined, { numeric: true })
+  );
+
+  function getLastCleaning(cabinId: string): string {
+    const completed = tasks
+      .filter(t => t.cabinId === cabinId && t.status === 'completed' && t.finishedAt)
+      .sort((a, b) =>
+        new Date(b.finishedAt as string).getTime() - new Date(a.finishedAt as string).getTime()
+      );
+    if (!completed.length) return '—';
+    const task = completed[0];
+    const names = (task.assignedTo || [])
+      .map(id => maids.find(m => m.id === id)?.fullName?.split(' ')[0])
+      .filter(Boolean).join(', ') || '—';
+    const date = new Date(task.finishedAt as string).toLocaleDateString('pt-BR', {
+      day: '2-digit', month: '2-digit',
+    });
+    return `${names} · ${date}`;
+  }
+
+  function getActiveTaskType(cabinId: string): string | null {
+    const priority = ['turnover', 'inspection_checkin', 'inspection_checkout', 'linen_change', 'daily', 'custom'];
+    const active = tasks
+      .filter(t => t.cabinId === cabinId && ['pending', 'in_progress', 'waiting_conference', 'paused'].includes(t.status))
+      .sort((a, b) => priority.indexOf(a.type) - priority.indexOf(b.type));
+    return active.length ? active[0].type : null;
+  }
+
+  function getStayInfo(cabinId: string): { guestName: string; checkIn: string; checkOut: string } | null {
+    const active = activeStays.find(s => s.cabinId === cabinId);
+    if (active) return { guestName: active.guestName, checkIn: active.checkIn, checkOut: active.checkOut };
+    const arrival = reportArrivals.find(a => a.cabinId === cabinId);
+    if (arrival) return { guestName: arrival.guestName, checkIn: arrival.checkIn, checkOut: arrival.checkOut };
+    return null;
+  }
+
+  const fmt = (d?: string) =>
+    d ? new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '—';
+
+  // Cabins arriving today (active already checked-in today OR confirmed arrivals)
+  const arrivalCabinIds = new Set([
+    ...activeStays
+      .filter(s => s.checkIn && new Date(s.checkIn).toDateString() === todayStr)
+      .map(s => s.cabinId),
+    ...reportArrivals
+      .filter(a => new Date(a.checkIn).toDateString() === todayStr)
+      .map(a => a.cabinId),
+  ]);
+
+  // Cabins checking out today
+  const checkoutCabinIds = new Set(
+    activeStays
+      .filter(s => new Date(s.checkOut).toDateString() === todayStr)
+      .map(s => s.cabinId)
+  );
+
+  const entriesToday = sortedCabins.filter(c => arrivalCabinIds.has(c.id));
+  // Checkout cabins that are NOT also arrival cabins (same-day turnover)
+  const checkoutsToday = sortedCabins.filter(c => checkoutCabinIds.has(c.id) && !arrivalCabinIds.has(c.id));
+  // Occupied cabins with no arrival/departure today
+  const occupiedDaily = sortedCabins.filter(c =>
+    activeStays.some(s => s.cabinId === c.id) &&
+    !arrivalCabinIds.has(c.id) &&
+    !checkoutCabinIds.has(c.id)
+  );
+
+  function CabinTableRow({ cabin, highlight }: { cabin: Cabin; highlight?: string }) {
+    const stay = getStayInfo(cabin.id);
+    const taskType = getActiveTaskType(cabin.id);
+    const lastClean = getLastCleaning(cabin.id);
+
+    return (
+      <tr className={cn(
+        "border-b border-border/20 text-sm",
+        highlight === 'entry' && "bg-emerald-500/5",
+        highlight === 'checkout' && "bg-orange-500/5",
+        highlight === 'daily' && "bg-blue-500/5",
+      )}>
+        <td className="py-2 px-3 font-bold whitespace-nowrap">
+          {cabin.number ? `Cabana ${cabin.number}` : cabin.name}
+        </td>
+        <td className="py-2 px-3 text-xs text-muted-foreground whitespace-nowrap">
+          {cabin.category || '—'}
+        </td>
+        <td className="py-2 px-3 text-xs whitespace-nowrap">
+          <span className={cn(
+            "font-semibold",
+            cabin.status === 'available' && "text-emerald-400",
+            cabin.status === 'occupied' && "text-blue-400",
+            cabin.status === 'cleaning' && "text-orange-400",
+            cabin.status === 'maintenance' && "text-red-400",
+          )}>
+            {CABIN_STATUS_LABELS[cabin.status] ?? cabin.status}
+          </span>
+        </td>
+        <td className="py-2 px-3 text-xs whitespace-nowrap">
+          {taskType
+            ? <span className="text-yellow-400 font-semibold">{TASK_TYPE_LABELS[taskType]}</span>
+            : <span className="text-muted-foreground">—</span>
+          }
+        </td>
+        <td className="py-2 px-3 text-xs max-w-[140px] truncate">
+          {stay?.guestName ?? <span className="text-muted-foreground">—</span>}
+        </td>
+        <td className="py-2 px-3 text-xs font-mono text-muted-foreground whitespace-nowrap">
+          {fmt(stay?.checkIn)}
+        </td>
+        <td className="py-2 px-3 text-xs font-mono text-muted-foreground whitespace-nowrap">
+          {fmt(stay?.checkOut)}
+        </td>
+        <td className="py-2 px-3 text-xs text-muted-foreground whitespace-nowrap">
+          {lastClean}
+        </td>
+      </tr>
+    );
+  }
+
+  function SectionTable({ title, cabinList, highlight, emptyMsg }: {
+    title: React.ReactNode;
+    cabinList: Cabin[];
+    highlight?: string;
+    emptyMsg: string;
+  }) {
+    return (
+      <div className="space-y-2">
+        <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{title}</h3>
+        {cabinList.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic px-1">{emptyMsg}</p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-border/30">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-border/30 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <th className="py-2 px-3 font-bold">Cabana</th>
+                  <th className="py-2 px-3 font-bold">Categoria</th>
+                  <th className="py-2 px-3 font-bold">Estado</th>
+                  <th className="py-2 px-3 font-bold">Tarefa</th>
+                  <th className="py-2 px-3 font-bold">Hóspede</th>
+                  <th className="py-2 px-3 font-bold">C/In</th>
+                  <th className="py-2 px-3 font-bold">C/Out</th>
+                  <th className="py-2 px-3 font-bold">Última limpeza</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cabinList.map(cabin => (
+                  <CabinTableRow key={cabin.id} cabin={cabin} highlight={highlight} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Print styles: hide everything except the report */}
+      <style>{`
+        @media print {
+          body > * { visibility: hidden !important; }
+          #gv-report-root, #gv-report-root * { visibility: visible !important; }
+          #gv-report-root { position: fixed; inset: 0; overflow: auto; background: white; color: black; }
+          .no-print { display: none !important; }
+          td, th { border-color: #ccc !important; color: black !important; }
+          .text-muted-foreground { color: #555 !important; }
+          table { border: 1px solid #ccc; }
+        }
+      `}</style>
+
+      {/* Backdrop */}
+      <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm no-print" onClick={onClose} />
+
+      {/* Modal */}
+      <div
+        id="gv-report-root"
+        className="fixed inset-0 z-50 overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="min-h-full flex flex-col">
+          <div className="bg-background border-b border-border px-6 py-4 flex items-center justify-between sticky top-0 z-10 no-print">
+            <div className="flex items-center gap-2 text-sm font-bold">
+              <FileText size={16} className="text-primary" />
+              Relatório de Governança
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => window.print()}
+                className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-bold hover:opacity-90 transition"
+              >
+                <Printer size={14} />
+                Imprimir / Salvar PDF
+              </button>
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-muted rounded-xl transition"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 bg-background px-6 py-6 max-w-6xl w-full mx-auto space-y-8">
+            {/* Header do relatório */}
+            <div className="space-y-1">
+              <h1 className="text-2xl font-black tracking-tight">Relatório de Governança</h1>
+              <p className="text-sm text-muted-foreground capitalize">{propertyName} · {dateLabel} · {timeLabel}</p>
+            </div>
+
+            {/* Cards de resumo */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-card border border-emerald-500/20 rounded-2xl p-4 space-y-1">
+                <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
+                  <LogIn size={13} />
+                  Entradas Hoje
+                </div>
+                <p className="text-3xl font-black text-emerald-400">{entriesToday.length}</p>
+                <p className="text-[10px] text-muted-foreground">revisão pré-chegada</p>
+              </div>
+              <div className="bg-card border border-orange-500/20 rounded-2xl p-4 space-y-1">
+                <div className="flex items-center gap-2 text-orange-400 text-xs font-bold uppercase tracking-wider">
+                  <LogOut size={13} />
+                  Check-outs
+                </div>
+                <p className="text-3xl font-black text-orange-400">{checkoutsToday.length}</p>
+                <p className="text-[10px] text-muted-foreground">faxina completa</p>
+              </div>
+              <div className="bg-card border border-blue-500/20 rounded-2xl p-4 space-y-1">
+                <div className="flex items-center gap-2 text-blue-400 text-xs font-bold uppercase tracking-wider">
+                  <BedDouble size={13} />
+                  Ocupadas
+                </div>
+                <p className="text-3xl font-black text-blue-400">{occupiedDaily.length}</p>
+                <p className="text-[10px] text-muted-foreground">limpeza diária</p>
+              </div>
+            </div>
+
+            {/* Seção: Entradas hoje */}
+            <SectionTable
+              title={<span className="flex items-center gap-2"><LogIn size={12} className="text-emerald-400" /> Entradas Hoje — Revisão pré-chegada</span>}
+              cabinList={entriesToday}
+              highlight="entry"
+              emptyMsg="Nenhuma entrada prevista para hoje."
+            />
+
+            {/* Seção: Check-outs */}
+            <SectionTable
+              title={<span className="flex items-center gap-2"><LogOut size={12} className="text-orange-400" /> Check-outs — Faxina completa</span>}
+              cabinList={checkoutsToday}
+              highlight="checkout"
+              emptyMsg="Nenhum check-out previsto para hoje."
+            />
+
+            {/* Seção: Ocupadas / Diária */}
+            <SectionTable
+              title={<span className="flex items-center gap-2"><BedDouble size={12} className="text-blue-400" /> Ocupadas — Limpeza diária</span>}
+              cabinList={occupiedDaily}
+              highlight="daily"
+              emptyMsg="Nenhuma cabana ocupada com limpeza diária hoje."
+            />
+
+            {/* Relatório completo */}
+            <div className="space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                <Minus size={10} />
+                Relatório Completo — Todas as Cabanas
+              </h3>
+              <div className="overflow-x-auto rounded-xl border border-border/30">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-border/30 text-[10px] uppercase tracking-wider text-muted-foreground">
+                      <th className="py-2 px-3 font-bold">Cabana</th>
+                      <th className="py-2 px-3 font-bold">Categoria</th>
+                      <th className="py-2 px-3 font-bold">Estado</th>
+                      <th className="py-2 px-3 font-bold">Tarefa atual</th>
+                      <th className="py-2 px-3 font-bold">Hóspede</th>
+                      <th className="py-2 px-3 font-bold">C/In</th>
+                      <th className="py-2 px-3 font-bold">C/Out</th>
+                      <th className="py-2 px-3 font-bold">Última limpeza</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedCabins.map(cabin => {
+                      const highlight = arrivalCabinIds.has(cabin.id)
+                        ? 'entry'
+                        : checkoutCabinIds.has(cabin.id)
+                        ? 'checkout'
+                        : activeStays.some(s => s.cabinId === cabin.id)
+                        ? 'daily'
+                        : undefined;
+                      return <CabinTableRow key={cabin.id} cabin={cabin} highlight={highlight} />;
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <p className="text-[10px] text-muted-foreground pb-8">
+              Gerado em {dateLabel} às {timeLabel} · Sistema Aura Experience
+            </p>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// -------------------------------------------------------
+// PÁGINA PRINCIPAL
+// -------------------------------------------------------
 
 export default function GovernancePage() {
   const { currentProperty: property, loading: isLoading } = useProperty();
@@ -33,6 +397,11 @@ export default function GovernancePage() {
   const [activeStays, setActiveStays] = useState<ActiveStayInfo[]>([]);
   const [staysLoading, setStaysLoading] = useState(true);
 
+  // Report state
+  const [showReport, setShowReport] = useState(false);
+  const [reportArrivals, setReportArrivals] = useState<{ cabinId: string; guestName: string; checkIn: string; checkOut: string }[]>([]);
+  const [reportLoading, setReportLoading] = useState(false);
+
   useEffect(() => {
     if (!property) return;
 
@@ -43,7 +412,7 @@ export default function GovernancePage() {
       try {
         const { data: staysData } = await supabase
           .from('stays')
-          .select('id, cabinId, hasPet, checkOut, guestId')
+          .select('id, cabinId, hasPet, checkIn, checkOut, guestId')
           .eq('propertyId', property.id)
           .eq('status', 'active');
 
@@ -62,6 +431,7 @@ export default function GovernancePage() {
           id: s.id,
           cabinId: s.cabinId,
           hasPet: s.hasPet ?? false,
+          checkIn: s.checkIn,
           checkOut: s.checkOut,
           guestName: guestMap[s.guestId] ?? 'Hóspede',
         })));
@@ -108,6 +478,44 @@ export default function GovernancePage() {
     return () => {
       if (unsubscribe) unsubscribe();
     };
+  }, [property]);
+
+  const openReport = useCallback(async () => {
+    if (!property) return;
+    setReportLoading(true);
+    try {
+      const todayISO = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      const { data: arrivalsData } = await supabase
+        .from('stays')
+        .select('id, cabinId, checkIn, checkOut, guestId')
+        .eq('propertyId', property.id)
+        .gte('checkIn', todayISO)
+        .lte('checkIn', `${todayISO}T23:59:59`)
+        .neq('status', 'cancelled');
+
+      const rows = arrivalsData || [];
+      const guestIds = Array.from(new Set(rows.map((s: any) => s.guestId).filter(Boolean))) as string[];
+      let guestMap: Record<string, string> = {};
+      if (guestIds.length > 0) {
+        const { data: guestsData } = await supabase
+          .from('guests')
+          .select('id, fullName')
+          .in('id', guestIds);
+        (guestsData || []).forEach((g: any) => { guestMap[g.id] = g.fullName; });
+      }
+
+      setReportArrivals(rows.map((s: any) => ({
+        cabinId: s.cabinId,
+        guestName: guestMap[s.guestId] ?? 'Hóspede',
+        checkIn: s.checkIn,
+        checkOut: s.checkOut,
+      })));
+    } catch {
+      toast.error("Erro ao gerar relatório.");
+    } finally {
+      setReportLoading(false);
+      setShowReport(true);
+    }
   }, [property]);
 
   if (isLoading || loadingInitial) {
@@ -159,6 +567,17 @@ export default function GovernancePage() {
           <h1 className="text-2xl font-bold tracking-tight">Mapa da Pousada</h1>
           <p className="text-sm text-muted-foreground mt-1">Visão geral das cabanas, limpeza e hóspedes em tempo real.</p>
         </div>
+        <button
+          onClick={openReport}
+          disabled={reportLoading}
+          className="flex items-center gap-2 px-4 py-2.5 bg-secondary border border-border rounded-xl text-xs font-bold hover:bg-accent transition-all disabled:opacity-60"
+        >
+          {reportLoading
+            ? <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            : <FileText size={14} />
+          }
+          Relatório
+        </button>
       </div>
 
       {/* PAINEL DE COMANDO */}
@@ -282,6 +701,19 @@ export default function GovernancePage() {
         Ver Kanban de Tarefas
         <ArrowRight size={14} />
       </Link>
+
+      {/* RELATÓRIO MODAL */}
+      {showReport && (
+        <GovernanceReportModal
+          propertyName={property.name}
+          cabins={cabins}
+          tasks={tasks}
+          maids={maids}
+          activeStays={activeStays}
+          reportArrivals={reportArrivals}
+          onClose={() => setShowReport(false)}
+        />
+      )}
     </div>
   );
 }

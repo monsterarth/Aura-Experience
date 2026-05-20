@@ -16,6 +16,7 @@ export interface ActiveStayInfo {
   id: string;
   cabinId: string;
   hasPet: boolean;
+  checkIn: string;
   checkOut: string;
   guestName: string;
 }
