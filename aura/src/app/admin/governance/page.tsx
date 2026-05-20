@@ -235,11 +235,37 @@ function GovernanceReportModal({
         @media print {
           body > * { visibility: hidden !important; }
           #gv-report-root, #gv-report-root * { visibility: visible !important; }
-          #gv-report-root { position: fixed; inset: 0; overflow: auto; background: white; color: black; }
+          #gv-report-root {
+            position: fixed; inset: 0; overflow: auto;
+            background: white !important; color: black !important;
+          }
           .no-print { display: none !important; }
-          td, th { border-color: #ccc !important; color: black !important; }
-          .text-muted-foreground { color: #555 !important; }
-          table { border: 1px solid #ccc; }
+
+          /* Força fundo branco e texto preto em todos os elementos */
+          #gv-report-root * {
+            background: transparent !important;
+            background-color: transparent !important;
+            color: black !important;
+            border-color: #999 !important;
+            box-shadow: none !important;
+            text-decoration: none !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+
+          /* Tabelas com bordas visíveis */
+          #gv-report-root table { border: 1px solid #999 !important; border-collapse: collapse !important; }
+          #gv-report-root th, #gv-report-root td { border: 1px solid #bbb !important; padding: 4px 8px !important; }
+          #gv-report-root thead tr { background: #eee !important; }
+          #gv-report-root thead tr * { background: #eee !important; font-weight: bold !important; }
+
+          /* Cards de resumo com borda */
+          #gv-report-root [class*="rounded"] { border: 1px solid #999 !important; }
+
+          /* Quebra de página controlada */
+          #gv-report-root h3 { page-break-before: auto; }
+          #gv-report-root table { page-break-inside: auto; }
+          #gv-report-root tr { page-break-inside: avoid; }
         }
       `}</style>
 
