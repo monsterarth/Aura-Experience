@@ -465,11 +465,10 @@ function TaskSheet({
   };
 
   const handleSendRep = async (entries: { itemId: string; qty: number }[]) => {
-    if (!task.stayId) { showToast("Sem reserva vinculada.", "var(--red)"); return; }
     try {
       await Promise.all(entries.map(({ itemId, qty }) =>
         ConciergeService.createRequest(
-          { propertyId, stayId: task.stayId!, cabinId: task.cabinId, itemId, quantity: qty, requestedBy: "maid", notes: "Solicitado pela camareira" },
+          { propertyId, stayId: task.stayId, cabinId: task.cabinId, itemId, quantity: qty, requestedBy: "maid", notes: "Solicitado pela camareira" },
           userId, userName
         )
       ));
