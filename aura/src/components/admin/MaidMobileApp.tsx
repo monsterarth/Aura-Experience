@@ -96,10 +96,6 @@ function TaskDetailsPanel({ task, cabins, propertyId, userData }: { task: Housek
   };
 
   const handleSubmitReposicao = async () => {
-    if (!task.stayId) {
-      toast.error("Tarefa sem reserva vinculada — não é possível solicitar reposição.");
-      return;
-    }
     const entries = Object.entries(cart).filter(([, qty]) => qty > 0);
     if (entries.length === 0) {
       toast.info("Selecione ao menos um item.");
@@ -109,7 +105,7 @@ function TaskDetailsPanel({ task, cabins, propertyId, userData }: { task: Housek
     try {
       await Promise.all(entries.map(([itemId, qty]) =>
         ConciergeService.createRequest(
-          { propertyId, stayId: task.stayId!, cabinId: task.cabinId || undefined, itemId, quantity: qty, requestedBy: 'maid', notes: 'Solicitado pela camareira' },
+          { propertyId, stayId: task.stayId, cabinId: task.cabinId || undefined, itemId, quantity: qty, requestedBy: 'maid', notes: 'Solicitado pela camareira' },
           userData?.id || 'SYSTEM',
           userData?.fullName || 'Camareira'
         )
