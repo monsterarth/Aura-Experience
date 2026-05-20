@@ -135,6 +135,47 @@ export const HousekeepingService = {
     });
   },
 
+  async pauseTask(propertyId: string, taskId: string, actorId: string, actorName: string) {
+    await supabase.from('housekeeping_tasks')
+      .update({
+        status: 'pending',
+        pausedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      })
+      .eq('id', taskId);
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "CABIN", entityId: taskId,
+      details: "Pausou a tarefa de limpeza."
+    });
+  },
+
+  async resumeTask(propertyId: string, taskId: string, actorId: string, actorName: string) {
+    const { data: task } = await supabase.from('housekeeping_tasks')
+      .select('pausedAt, totalPausedDuration, assignedTo').eq('id', taskId).single();
+    if (!task) return;
+
+    const pausedMs = task.pausedAt ? Date.now() - new Date(task.pausedAt).getTime() : 0;
+    const accumulated = (task.totalPausedDuration || 0) + Math.floor(pausedMs / 1000);
+    const currentAssignees = task.assignedTo || [];
+    const newAssignees = Array.from(new Set([...currentAssignees, actorId]));
+
+    await supabase.from('housekeeping_tasks')
+      .update({
+        status: 'in_progress',
+        pausedAt: null,
+        totalPausedDuration: accumulated,
+        assignedTo: newAssignees,
+        updatedAt: new Date().toISOString()
+      })
+      .eq('id', taskId);
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "CABIN", entityId: taskId,
+      details: "Retomou a tarefa de limpeza."
+    });
+  },
+
   async finishTask(propertyId: string, taskId: string, checklist: any[], observations: string, actorId: string, actorName: string) {
     const { data: task } = await supabase.from('housekeeping_tasks').select('*').eq('id', taskId).single();
     if (!task) throw new Error("Tarefa não encontrada.");

@@ -71,9 +71,9 @@ const T = {
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 
-function elapsed(iso?: string | null): string | null {
+function elapsed(iso?: string | null, totalPausedSec = 0): string | null {
   if (!iso) return null;
-  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  const m = Math.floor((Date.now() - new Date(iso).getTime() - totalPausedSec * 1000) / 60000);
   if (m < 1) return "agora";
   return m < 60 ? `${m}min` : `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}min` : ""}`;
 }
@@ -536,7 +536,7 @@ function TaskSheet({
                 </Pill>
                 {task.status === "in_progress" && task.startedAt && (
                   <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: T.green }}>
-                    <I n="clock" s={11} c={T.green} /> {elapsed(task.startedAt as string)}
+                    <I n="clock" s={11} c={T.green} /> {elapsed(task.startedAt as string, task.totalPausedDuration)}
                   </span>
                 )}
               </div>
@@ -721,7 +721,7 @@ function HomeScreen({
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                     <Pulse />
                     <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase" as const, letterSpacing: ".06em", color: T.green }}>Limpando agora</span>
-                    {t.startedAt && <span style={{ marginLeft: "auto", fontSize: 12, color: T.green, fontWeight: 700 }}>{elapsed(t.startedAt as string)}</span>}
+                    {t.startedAt && <span style={{ marginLeft: "auto", fontSize: 12, color: T.green, fontWeight: 700 }}>{elapsed(t.startedAt as string, t.totalPausedDuration)}</span>}
                   </div>
                   <div style={{ fontSize: 26, fontWeight: 900, marginBottom: 4 }}>{t.cabinName || "Cabana"}</div>
                   <div style={{ fontSize: 12, color: T.muted, marginBottom: 10 }}>{done}/{t.checklist.length} itens</div>
@@ -811,7 +811,7 @@ function FaxinasScreen({
                         <div style={{ fontSize: 12, color: T.green, opacity: 0.65, marginTop: 2 }}>{getTaskLabel(t.type)}</div>
                       </div>
                       <div style={{ textAlign: "right" as const }}>
-                        <div style={{ fontSize: 13, fontWeight: 900, color: T.green }}>{elapsed(t.startedAt as string)}</div>
+                        <div style={{ fontSize: 13, fontWeight: 900, color: T.green }}>{elapsed(t.startedAt as string, t.totalPausedDuration)}</div>
                         <div style={{ fontSize: 11, color: T.green, opacity: 0.6, marginTop: 2 }}>{done}/{t.checklist.length} ✓</div>
                       </div>
                     </div>
@@ -884,7 +884,7 @@ function FaxinasScreen({
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
                   <button onClick={() => onStart(t.id)} style={{ padding: 16, background: T.grad, color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(155,109,255,0.35)" }}>
-                    Iniciar <I n="arrow" s={18} />
+                    {t.startedAt ? "Retomar" : "Iniciar"} <I n="arrow" s={18} />
                   </button>
                 </div>
               </div>
@@ -1067,6 +1067,7 @@ export default function MaidPage() {
   const [toast, setToast] = useState<{ msg: string; color: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [repRequests, setRepRequests] = useState<ConciergeRequest[]>([]);
+  const [pauseConfirm, setPauseConfirm] = useState<{ currentTaskId: string; newTaskId: string } | null>(null);
 
   const showToast = useCallback((msg: string, color = T.green) => {
     setToast({ msg, color });
@@ -1132,11 +1133,37 @@ export default function MaidPage() {
 
   const handleStart = useCallback(async (taskId: string) => {
     if (!property || !userData) return;
+    const activeTask = tasks.find(t => t.status === "in_progress");
+    if (activeTask && activeTask.id !== taskId) {
+      setPauseConfirm({ currentTaskId: activeTask.id, newTaskId: taskId });
+      return;
+    }
     try {
-      await HousekeepingService.startTask(property.id, taskId, userData.id, userData.fullName);
-      showToast("Limpeza iniciada! Cronômetro rodando.");
+      const task = tasks.find(t => t.id === taskId);
+      if (task?.startedAt) {
+        await HousekeepingService.resumeTask(property.id, taskId, userData.id, userData.fullName);
+        showToast("Limpeza retomada! Cronômetro continuando.");
+      } else {
+        await HousekeepingService.startTask(property.id, taskId, userData.id, userData.fullName);
+        showToast("Limpeza iniciada! Cronômetro rodando.");
+      }
     } catch { showToast("Erro ao iniciar tarefa.", T.red); }
-  }, [property, userData, showToast]);
+  }, [property, userData, tasks, showToast]);
+
+  const handlePauseAndStart = useCallback(async () => {
+    if (!pauseConfirm || !property || !userData) return;
+    try {
+      await HousekeepingService.pauseTask(property.id, pauseConfirm.currentTaskId, userData.id, userData.fullName);
+      const newTask = tasks.find(t => t.id === pauseConfirm.newTaskId);
+      if (newTask?.startedAt) {
+        await HousekeepingService.resumeTask(property.id, pauseConfirm.newTaskId, userData.id, userData.fullName);
+      } else {
+        await HousekeepingService.startTask(property.id, pauseConfirm.newTaskId, userData.id, userData.fullName);
+      }
+      showToast("Tarefa anterior pausada. Nova limpeza iniciada!");
+    } catch { showToast("Erro ao trocar tarefa.", T.red); }
+    finally { setPauseConfirm(null); }
+  }, [pauseConfirm, property, userData, tasks, showToast]);
 
   const handleToggle = useCallback(async (taskId: string, itemId: string) => {
     // Optimistic
@@ -1214,6 +1241,32 @@ export default function MaidPage() {
             {tab === "tasks" && <FaxinasScreen tasks={tasks} onStart={handleStart} showToast={showToast} onToggle={handleToggle} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onChecklistLoaded={handleChecklistLoaded} repRequests={repRequests} />}
             {tab === "profile" && <ProfileScreen userData={userData} showToast={showToast} onLogout={handleLogout} />}
           </div>
+
+          {/* Pause confirm modal */}
+          {pauseConfirm && (
+            <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 24 }}>
+              <div style={{ background: "#111827", border: `1px solid ${T.border2}`, borderRadius: 24, padding: 24, width: "100%", maxWidth: 340, boxShadow: "0 20px 60px rgba(0,0,0,0.7)" }}>
+                <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 8, color: T.text }}>Você já tem uma faxina ativa</div>
+                <div style={{ fontSize: 13, color: T.muted, marginBottom: 20, lineHeight: 1.5 }}>
+                  Deseja pausar a faxina atual e iniciar esta? O cronômetro será pausado e retomará de onde parou.
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button
+                    onClick={() => setPauseConfirm(null)}
+                    style={{ flex: 1, padding: 14, background: T.glass, border: `1px solid ${T.border2}`, borderRadius: 14, cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 700, color: T.muted }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handlePauseAndStart}
+                    style={{ flex: 1, padding: 14, background: T.greenG, color: "#021a17", fontFamily: "inherit", fontSize: 14, fontWeight: 800, border: "none", borderRadius: 14, cursor: "pointer" }}
+                  >
+                    Pausar e iniciar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Toast */}
           {toast && <Toast msg={toast.msg} color={toast.color} />}

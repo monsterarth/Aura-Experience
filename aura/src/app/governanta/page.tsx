@@ -1419,6 +1419,7 @@ export default function GovernantaPage() {
   const [conferTask, setConferTask] = useState<HousekeepingTask | null>(null);
   const [assignTask, setAssignTask] = useState<HousekeepingTask | null>(null);
   const [editTask, setEditTask] = useState<HousekeepingTask | null>(null);
+  const [cancelConfirmTask, setCancelConfirmTask] = useState<HousekeepingTask | null>(null);
   const [showNewTask, setShowNewTask] = useState(false);
 
   // Busy states
@@ -1545,14 +1546,17 @@ export default function GovernantaPage() {
     }
   };
 
-  const handleCancel = async (task: HousekeepingTask) => {
-    if (!property) return;
-    if (!confirm("Cancelar esta tarefa?")) return;
+  const handleCancel = (task: HousekeepingTask) => setCancelConfirmTask(task);
+
+  const doCancel = async () => {
+    if (!property || !cancelConfirmTask) return;
     try {
-      await HousekeepingService.updateTask(property.id, task.id, { status: "cancelled" }, userData?.id || "", userData?.fullName || "Governanta");
+      await HousekeepingService.updateTask(property.id, cancelConfirmTask.id, { status: "cancelled" }, userData?.id || "", userData?.fullName || "Governanta");
       showToast("Tarefa cancelada.", T.muted);
     } catch {
       showToast("Erro ao cancelar.", T.red);
+    } finally {
+      setCancelConfirmTask(null);
     }
   };
 
@@ -1956,16 +1960,44 @@ export default function GovernantaPage() {
         {toast && <GovToast msg={toast.msg} color={toast.color} />}
       </div>
 
+      {/* ── Cancel Confirm Modal ────────────────────────────────────────────── */}
+      {cancelConfirmTask && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 24 }}>
+          <div style={{ background: "#111827", border: `1px solid ${T.border2}`, borderRadius: 24, padding: 24, width: "100%", maxWidth: 340, boxShadow: "0 20px 60px rgba(0,0,0,0.7)" }}>
+            <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 8, color: T.text }}>Remover esta tarefa?</div>
+            <div style={{ fontSize: 13, color: T.muted, marginBottom: 20, lineHeight: 1.5 }}>
+              A tarefa de limpeza será marcada como cancelada e removida do quadro.
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => setCancelConfirmTask(null)}
+                style={{ flex: 1, padding: 14, background: T.glass, border: `1px solid ${T.border2}`, borderRadius: 14, cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 700, color: T.muted }}
+              >
+                Não, manter
+              </button>
+              <button
+                onClick={doCancel}
+                style={{ flex: 1, padding: 14, background: T.redBg, color: T.red, fontFamily: "inherit", fontSize: 14, fontWeight: 800, border: `1px solid ${T.redBorder}`, borderRadius: 14, cursor: "pointer" }}
+              >
+                Sim, remover
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Edit Task Modal ─────────────────────────────────────────────────── */}
-      <HousekeepingTaskManagerModal
-        isOpen={!!editTask}
-        onClose={() => setEditTask(null)}
-        propertyId={property.id}
-        task={editTask}
-        cabins={cabins}
-        structures={structures}
-        maids={maids}
-      />
+      <div className="dark">
+        <HousekeepingTaskManagerModal
+          isOpen={!!editTask}
+          onClose={() => setEditTask(null)}
+          propertyId={property.id}
+          task={editTask}
+          cabins={cabins}
+          structures={structures}
+          maids={maids}
+        />
+      </div>
     </>
   );
 }

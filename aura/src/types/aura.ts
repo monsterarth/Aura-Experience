@@ -264,6 +264,8 @@ export interface HousekeepingTask {
   // Controle de Tempo (Cronômetro)
   startedAt?: Timestamp;
   finishedAt?: Timestamp;
+  pausedAt?: Timestamp;           // ISO timestamp do último pause
+  totalPausedDuration?: number;   // Tempo total pausado em segundos (acumulado)
 
   // Checklist Copiado do Padrão da Propriedade no momento da criação
   checklist: {
