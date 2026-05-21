@@ -107,17 +107,36 @@ function GovernanceReportModal({
     return active.length ? active[0].type : null;
   }
 
-  function getStayInfo(cabinId: string): {
+  type StayInfo = {
     guestName: string; checkIn: string; checkOut: string;
     hasPet?: boolean;
     counts?: { adults: number; children: number; babies: number };
     areaConfigs?: { areaId: string; configIndex: number }[];
-  } | null {
+  };
+
+  function fromActive(s: ActiveStayInfo): StayInfo {
+    return { guestName: s.guestName, checkIn: s.checkIn, checkOut: s.checkOut, hasPet: s.hasPet, counts: s.counts, areaConfigs: s.areaConfigs };
+  }
+  function fromArrival(a: ReportArrival): StayInfo {
+    return { guestName: a.guestName, checkIn: a.checkIn, checkOut: a.checkOut, hasPet: a.hasPet, counts: a.counts, areaConfigs: a.areaConfigs };
+  }
+
+  // preferSource: 'arrival' = mostrar hóspede que entra | 'departure' = mostrar hóspede que sai
+  function getStayInfo(cabinId: string, preferSource?: 'arrival' | 'departure'): StayInfo | null {
     const active = activeStays.find(s => s.cabinId === cabinId);
-    if (active) return { guestName: active.guestName, checkIn: active.checkIn, checkOut: active.checkOut, hasPet: active.hasPet, counts: active.counts, areaConfigs: active.areaConfigs };
     const arrival = reportArrivals.find(a => a.cabinId === cabinId);
-    if (arrival) return { guestName: arrival.guestName, checkIn: arrival.checkIn, checkOut: arrival.checkOut, hasPet: arrival.hasPet, counts: arrival.counts, areaConfigs: arrival.areaConfigs };
-    return null;
+    if (preferSource === 'arrival') {
+      return arrival ? fromArrival(arrival) : active ? fromActive(active) : null;
+    }
+    if (preferSource === 'departure') {
+      return active ? fromActive(active) : arrival ? fromArrival(arrival) : null;
+    }
+    // Default: se a estadia ativa termina na data do relatório e há chegada, prefere chegada
+    if (active && arrival) {
+      const rd = new Date(todayStr); // já é a data do relatório
+      if (new Date(active.checkOut).toDateString() === todayStr) return fromArrival(arrival);
+    }
+    return active ? fromActive(active) : arrival ? fromArrival(arrival) : null;
   }
 
   function fmtACF(counts?: { adults: number; children: number; babies: number }): string {
@@ -150,8 +169,8 @@ function GovernanceReportModal({
   );
 
   const entriesToday = sortedCabins.filter(c => arrivalCabinIds.has(c.id));
-  // Checkout cabins that are NOT also arrival cabins (same-day turnover)
-  const checkoutsToday = sortedCabins.filter(c => checkoutCabinIds.has(c.id) && !arrivalCabinIds.has(c.id));
+  // Todas as saídas — incluindo same-day turnover (aparece em ambas as seções)
+  const checkoutsToday = sortedCabins.filter(c => checkoutCabinIds.has(c.id));
   // Occupied cabins with no arrival/departure today
   const occupiedDaily = sortedCabins.filter(c =>
     activeStays.some(s => s.cabinId === c.id) &&
@@ -159,8 +178,8 @@ function GovernanceReportModal({
     !checkoutCabinIds.has(c.id)
   );
 
-  function CabinTableRow({ cabin, highlight, showSetup }: { cabin: Cabin; highlight?: string; showSetup?: boolean }) {
-    const stay = getStayInfo(cabin.id);
+  function CabinTableRow({ cabin, highlight, showSetup, preferSource }: { cabin: Cabin; highlight?: string; showSetup?: boolean; preferSource?: 'arrival' | 'departure' }) {
+    const stay = getStayInfo(cabin.id, preferSource);
     const taskType = getActiveTaskType(cabin.id);
     const lastClean = getLastCleaning(cabin.id);
     const acf = fmtACF(stay?.counts);
@@ -217,7 +236,7 @@ function GovernanceReportModal({
           <td className="py-2 px-3 text-xs font-mono whitespace-nowrap text-muted-foreground">{acf}</td>
           <td className="py-2 px-3 text-xs font-mono text-muted-foreground whitespace-nowrap">{fmt(stay?.checkIn)}</td>
           <td className="py-2 px-3 text-xs font-mono text-muted-foreground whitespace-nowrap">{fmt(stay?.checkOut)}</td>
-          <td className="py-2 px-3 text-xs text-muted-foreground whitespace-nowrap">{lastClean}</td>
+          <td className="py-2 px-3 text-xs text-muted-foreground">{lastClean}</td>
         </tr>
         {setupAreas && (
           <tr className={cn("gv-setup-row border-b border-border/20", rowBg)}>
@@ -231,7 +250,7 @@ function GovernanceReportModal({
                     <span className="font-semibold text-foreground/70">{area.name}:</span>
                     {beds.map(b => b.label).join(' + ') || '—'}
                     {isNonStandard && (
-                      <span className="text-[9px] bg-orange-500/15 text-orange-400 px-1 rounded font-bold">
+                      <span className="print:hidden text-[9px] bg-orange-500/15 text-orange-400 px-1 rounded font-bold">
                         opção {configIdx + 1}
                       </span>
                     )}
@@ -245,12 +264,13 @@ function GovernanceReportModal({
     );
   }
 
-  function SectionTable({ title, cabinList, highlight, emptyMsg, showSetup }: {
+  function SectionTable({ title, cabinList, highlight, emptyMsg, showSetup, preferSource }: {
     title: React.ReactNode;
     cabinList: Cabin[];
     highlight?: string;
     emptyMsg: string;
     showSetup?: boolean;
+    preferSource?: 'arrival' | 'departure';
   }) {
     return (
       <div className="space-y-2">
@@ -274,7 +294,7 @@ function GovernanceReportModal({
               </thead>
               <tbody>
                 {cabinList.map(cabin => (
-                  <CabinTableRow key={cabin.id} cabin={cabin} highlight={highlight} showSetup={showSetup} />
+                  <CabinTableRow key={cabin.id} cabin={cabin} highlight={highlight} showSetup={showSetup} preferSource={preferSource} />
                 ))}
               </tbody>
             </table>
@@ -323,24 +343,29 @@ function GovernanceReportModal({
 
           /* Conteúdo sem max-width e padding reduzido */
           #gv-report-root .gv-content {
-            padding: 8px 12px !important;
+            padding: 6px 10px !important;
             max-width: 100% !important;
           }
-          /* Reduz espaçamento entre seções (space-y usa margin-top) */
-          #gv-report-root .gv-content > * + * { margin-top: 7px !important; }
+          /* Reduz espaçamento entre seções */
+          #gv-report-root .gv-content > * + * { margin-top: 5px !important; }
 
           /* Tabelas */
           #gv-report-root table { border: 1px solid #999 !important; border-collapse: collapse !important; width: 100% !important; }
-          #gv-report-root th, #gv-report-root td { border: 1px solid #ccc !important; padding: 2px 4px !important; font-size: 9px !important; }
+          #gv-report-root th, #gv-report-root td { border: 1px solid #ccc !important; padding: 1.5px 3px !important; font-size: 8px !important; line-height: 1.3 !important; }
           #gv-report-root thead tr { background: #eee !important; }
           #gv-report-root thead tr * { background: #eee !important; font-weight: bold !important; }
 
           /* Sub-linha de montagem */
-          #gv-report-root .gv-setup-row td { border-top: none !important; padding: 1px 4px 3px !important; font-size: 8.5px !important; }
+          #gv-report-root .gv-setup-row td { border-top: none !important; padding: 0px 3px 2px !important; font-size: 7.5px !important; }
 
           /* Tipografia compacta */
-          #gv-report-root h1 { font-size: 13px !important; margin: 0 0 1px !important; }
-          #gv-report-root h3 { font-size: 8.5px !important; margin: 4px 0 2px !important; }
+          #gv-report-root h1 { font-size: 11px !important; margin: 0 0 0px !important; }
+          #gv-report-root p.gv-subtitle { font-size: 8px !important; margin: 0 !important; }
+          #gv-report-root h3 { font-size: 8px !important; margin: 3px 0 2px !important; }
+
+          /* Hero compacto de impressão */
+          #gv-report-root .gv-print-hero { margin-bottom: 4px !important; }
+          #gv-report-root .gv-print-hero p { line-height: 1.1 !important; }
 
           /* Quebras de página */
           #gv-report-root table { page-break-inside: auto; }
@@ -382,73 +407,72 @@ function GovernanceReportModal({
 
           <div className="gv-content flex-1 bg-background px-6 py-6 max-w-6xl w-full mx-auto space-y-8">
             {/* Header do relatório */}
-            <div className="space-y-1">
-              <h1 className="text-2xl font-black tracking-tight">Relatório de Governança</h1>
-              <p className="text-sm text-muted-foreground capitalize">{propertyName} · {dateLabel} · {timeLabel}</p>
+            <div className="space-y-0.5">
+              <h1 className="text-xl font-black tracking-tight">Relatório de Governança</h1>
+              <p className="gv-subtitle text-xs text-muted-foreground capitalize">{propertyName} · {dateLabel} · {timeLabel}</p>
             </div>
 
             {/* Cards de resumo — visíveis na tela */}
-            <div className="grid grid-cols-3 gap-4 print:hidden">
-              <div className="bg-card border border-emerald-500/20 rounded-2xl p-4 space-y-1">
-                <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
-                  <LogIn size={13} />
-                  Entradas Hoje
+            <div className="grid grid-cols-3 gap-3 print:hidden">
+              <div className="bg-card border border-emerald-500/20 rounded-2xl p-3 space-y-0.5">
+                <div className="flex items-center gap-1.5 text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
+                  <LogIn size={11} /> Entradas
                 </div>
-                <p className="text-3xl font-black text-emerald-400">{entriesToday.length}</p>
-                <p className="text-[10px] text-muted-foreground">revisão pré-chegada</p>
+                <p className="text-2xl font-black text-emerald-400">{entriesToday.length}</p>
+                <p className="text-[9px] text-muted-foreground">revisão pré-chegada</p>
               </div>
-              <div className="bg-card border border-orange-500/20 rounded-2xl p-4 space-y-1">
-                <div className="flex items-center gap-2 text-orange-400 text-xs font-bold uppercase tracking-wider">
-                  <LogOut size={13} />
-                  Check-outs
+              <div className="bg-card border border-orange-500/20 rounded-2xl p-3 space-y-0.5">
+                <div className="flex items-center gap-1.5 text-orange-400 text-[10px] font-bold uppercase tracking-wider">
+                  <LogOut size={11} /> Saídas
                 </div>
-                <p className="text-3xl font-black text-orange-400">{checkoutsToday.length}</p>
-                <p className="text-[10px] text-muted-foreground">faxina completa</p>
+                <p className="text-2xl font-black text-orange-400">{checkoutsToday.length}</p>
+                <p className="text-[9px] text-muted-foreground">faxina completa</p>
               </div>
-              <div className="bg-card border border-blue-500/20 rounded-2xl p-4 space-y-1">
-                <div className="flex items-center gap-2 text-blue-400 text-xs font-bold uppercase tracking-wider">
-                  <BedDouble size={13} />
-                  Ocupadas
+              <div className="bg-card border border-blue-500/20 rounded-2xl p-3 space-y-0.5">
+                <div className="flex items-center gap-1.5 text-blue-400 text-[10px] font-bold uppercase tracking-wider">
+                  <BedDouble size={11} /> Ocupadas
                 </div>
-                <p className="text-3xl font-black text-blue-400">{occupiedDaily.length}</p>
-                <p className="text-[10px] text-muted-foreground">limpeza diária</p>
+                <p className="text-2xl font-black text-blue-400">{occupiedDaily.length}</p>
+                <p className="text-[9px] text-muted-foreground">limpeza diária</p>
               </div>
             </div>
 
             {/* Resumo compacto — só na impressão */}
-            <div className="hidden print:flex gap-0 border border-gray-400 divide-x divide-gray-400 text-black mb-2">
-              <div className="flex-1 px-3 py-1.5 text-center">
-                <p className="text-[8px] font-bold uppercase tracking-wider">Entradas Hoje</p>
-                <p className="text-xl font-black leading-tight">{entriesToday.length}</p>
-                <p className="text-[8px]">revisão pré-chegada</p>
+            <div className="gv-print-hero hidden print:flex gap-0 border border-gray-400 divide-x divide-gray-400 text-black">
+              <div className="flex-1 px-2 py-1 text-center">
+                <p className="text-[7px] font-bold uppercase tracking-wider">Entradas</p>
+                <p className="text-sm font-black">{entriesToday.length}</p>
+                <p className="text-[7px]">pré-chegada</p>
               </div>
-              <div className="flex-1 px-3 py-1.5 text-center">
-                <p className="text-[8px] font-bold uppercase tracking-wider">Check-outs</p>
-                <p className="text-xl font-black leading-tight">{checkoutsToday.length}</p>
-                <p className="text-[8px]">faxina completa</p>
+              <div className="flex-1 px-2 py-1 text-center">
+                <p className="text-[7px] font-bold uppercase tracking-wider">Saídas</p>
+                <p className="text-sm font-black">{checkoutsToday.length}</p>
+                <p className="text-[7px]">faxina completa</p>
               </div>
-              <div className="flex-1 px-3 py-1.5 text-center">
-                <p className="text-[8px] font-bold uppercase tracking-wider">Ocupadas</p>
-                <p className="text-xl font-black leading-tight">{occupiedDaily.length}</p>
-                <p className="text-[8px]">limpeza diária</p>
+              <div className="flex-1 px-2 py-1 text-center">
+                <p className="text-[7px] font-bold uppercase tracking-wider">Ocupadas</p>
+                <p className="text-sm font-black">{occupiedDaily.length}</p>
+                <p className="text-[7px]">limpeza diária</p>
               </div>
             </div>
 
-            {/* Seção: Entradas hoje */}
+            {/* Seção: Entradas */}
             <SectionTable
-              title={<span className="flex items-center gap-2"><LogIn size={12} className="text-emerald-400" /> Entradas Hoje — Revisão pré-chegada</span>}
+              title={<span className="flex items-center gap-2"><LogIn size={12} className="text-emerald-400" /> Entradas — Revisão pré-chegada</span>}
               cabinList={entriesToday}
               highlight="entry"
-              emptyMsg="Nenhuma entrada prevista para hoje."
+              emptyMsg="Nenhuma entrada prevista."
               showSetup
+              preferSource="arrival"
             />
 
-            {/* Seção: Check-outs */}
+            {/* Seção: Saídas */}
             <SectionTable
-              title={<span className="flex items-center gap-2"><LogOut size={12} className="text-orange-400" /> Check-outs — Faxina completa</span>}
+              title={<span className="flex items-center gap-2"><LogOut size={12} className="text-orange-400" /> Saídas — Faxina completa</span>}
               cabinList={checkoutsToday}
               highlight="checkout"
-              emptyMsg="Nenhum check-out previsto para hoje."
+              emptyMsg="Nenhuma saída prevista."
+              preferSource="departure"
             />
 
             {/* Seção: Ocupadas / Diária */}
@@ -456,7 +480,7 @@ function GovernanceReportModal({
               title={<span className="flex items-center gap-2"><BedDouble size={12} className="text-blue-400" /> Ocupadas — Limpeza diária</span>}
               cabinList={occupiedDaily}
               highlight="daily"
-              emptyMsg="Nenhuma cabana ocupada com limpeza diária hoje."
+              emptyMsg="Nenhuma cabana ocupada com limpeza diária."
             />
 
             {/* Relatório completo */}
