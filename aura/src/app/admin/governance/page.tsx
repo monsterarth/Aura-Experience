@@ -235,35 +235,67 @@ function GovernanceReportModal({
         @media print {
           body > * { visibility: hidden !important; }
           #gv-report-root, #gv-report-root * { visibility: visible !important; }
+
+          /* Libera o fluxo normal para múltiplas páginas */
           #gv-report-root {
-            position: fixed; inset: 0; overflow: auto;
-            background: white !important; color: black !important;
+            position: static !important;
+            overflow: visible !important;
+            height: auto !important;
+            width: 100% !important;
+            background: white !important;
+            color: black !important;
           }
+
+          /* Oculta chrome do modal na impressão */
           .no-print { display: none !important; }
 
-          /* Força fundo branco e texto preto em todos os elementos */
+          /* Força fundo branco e texto preto */
           #gv-report-root * {
             background: transparent !important;
             background-color: transparent !important;
             color: black !important;
             border-color: #999 !important;
             box-shadow: none !important;
-            text-decoration: none !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
           }
 
-          /* Tabelas com bordas visíveis */
-          #gv-report-root table { border: 1px solid #999 !important; border-collapse: collapse !important; }
-          #gv-report-root th, #gv-report-root td { border: 1px solid #bbb !important; padding: 4px 8px !important; }
+          /* Reduz espaçamento geral do conteúdo */
+          #gv-report-root .gv-content {
+            padding: 16px !important;
+            gap: 12px !important;
+            max-width: 100% !important;
+          }
+          #gv-report-root .gv-section { margin-bottom: 12px !important; }
+
+          /* Cards de resumo: compactos em linha */
+          #gv-report-root .gv-summary-grid {
+            display: flex !important;
+            gap: 8px !important;
+            margin-bottom: 12px !important;
+          }
+          #gv-report-root .gv-summary-card {
+            flex: 1 !important;
+            padding: 6px 10px !important;
+            border: 1px solid #999 !important;
+          }
+          #gv-report-root .gv-summary-number {
+            font-size: 20px !important;
+            line-height: 1.2 !important;
+          }
+          #gv-report-root .gv-summary-label {
+            font-size: 9px !important;
+          }
+
+          /* Tabelas */
+          #gv-report-root table { border: 1px solid #999 !important; border-collapse: collapse !important; width: 100% !important; }
+          #gv-report-root th, #gv-report-root td { border: 1px solid #bbb !important; padding: 3px 6px !important; font-size: 10px !important; }
           #gv-report-root thead tr { background: #eee !important; }
           #gv-report-root thead tr * { background: #eee !important; font-weight: bold !important; }
 
-          /* Cards de resumo com borda */
-          #gv-report-root [class*="rounded"] { border: 1px solid #999 !important; }
-
-          /* Quebra de página controlada */
-          #gv-report-root h3 { page-break-before: auto; }
+          /* Quebra de página */
+          #gv-report-root h1 { font-size: 16px !important; margin-bottom: 2px !important; }
+          #gv-report-root h3 { font-size: 10px !important; page-break-before: auto; margin: 8px 0 4px !important; }
           #gv-report-root table { page-break-inside: auto; }
           #gv-report-root tr { page-break-inside: avoid; }
         }
@@ -275,10 +307,10 @@ function GovernanceReportModal({
       {/* Modal */}
       <div
         id="gv-report-root"
-        className="fixed inset-0 z-50 overflow-y-auto"
+        className="fixed inset-0 z-50 overflow-y-auto print:static print:overflow-visible print:inset-auto"
         onClick={e => e.stopPropagation()}
       >
-        <div className="min-h-full flex flex-col">
+        <div className="min-h-full flex flex-col print:block print:min-h-0">
           <div className="bg-background border-b border-border px-6 py-4 flex items-center justify-between sticky top-0 z-10 no-print">
             <div className="flex items-center gap-2 text-sm font-bold">
               <FileText size={16} className="text-primary" />
@@ -301,7 +333,7 @@ function GovernanceReportModal({
             </div>
           </div>
 
-          <div className="flex-1 bg-background px-6 py-6 max-w-6xl w-full mx-auto space-y-8">
+          <div className="gv-content flex-1 bg-background px-6 py-6 max-w-6xl w-full mx-auto space-y-8">
             {/* Header do relatório */}
             <div className="space-y-1">
               <h1 className="text-2xl font-black tracking-tight">Relatório de Governança</h1>
@@ -309,29 +341,29 @@ function GovernanceReportModal({
             </div>
 
             {/* Cards de resumo */}
-            <div className="grid grid-cols-3 gap-4">
-              <div className="bg-card border border-emerald-500/20 rounded-2xl p-4 space-y-1">
-                <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
+            <div className="gv-summary-grid grid grid-cols-3 gap-4">
+              <div className="gv-summary-card bg-card border border-emerald-500/20 rounded-2xl p-4 space-y-1">
+                <div className="gv-summary-label flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
                   <LogIn size={13} />
                   Entradas Hoje
                 </div>
-                <p className="text-3xl font-black text-emerald-400">{entriesToday.length}</p>
+                <p className="gv-summary-number text-3xl font-black text-emerald-400">{entriesToday.length}</p>
                 <p className="text-[10px] text-muted-foreground">revisão pré-chegada</p>
               </div>
-              <div className="bg-card border border-orange-500/20 rounded-2xl p-4 space-y-1">
-                <div className="flex items-center gap-2 text-orange-400 text-xs font-bold uppercase tracking-wider">
+              <div className="gv-summary-card bg-card border border-orange-500/20 rounded-2xl p-4 space-y-1">
+                <div className="gv-summary-label flex items-center gap-2 text-orange-400 text-xs font-bold uppercase tracking-wider">
                   <LogOut size={13} />
                   Check-outs
                 </div>
-                <p className="text-3xl font-black text-orange-400">{checkoutsToday.length}</p>
+                <p className="gv-summary-number text-3xl font-black text-orange-400">{checkoutsToday.length}</p>
                 <p className="text-[10px] text-muted-foreground">faxina completa</p>
               </div>
-              <div className="bg-card border border-blue-500/20 rounded-2xl p-4 space-y-1">
-                <div className="flex items-center gap-2 text-blue-400 text-xs font-bold uppercase tracking-wider">
+              <div className="gv-summary-card bg-card border border-blue-500/20 rounded-2xl p-4 space-y-1">
+                <div className="gv-summary-label flex items-center gap-2 text-blue-400 text-xs font-bold uppercase tracking-wider">
                   <BedDouble size={13} />
                   Ocupadas
                 </div>
-                <p className="text-3xl font-black text-blue-400">{occupiedDaily.length}</p>
+                <p className="gv-summary-number text-3xl font-black text-blue-400">{occupiedDaily.length}</p>
                 <p className="text-[10px] text-muted-foreground">limpeza diária</p>
               </div>
             </div>
