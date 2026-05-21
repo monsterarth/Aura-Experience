@@ -49,6 +49,7 @@ interface ReportArrival {
   checkOut: string;
   hasPet?: boolean;
   counts?: { adults: number; children: number; babies: number };
+  areaConfigs?: { areaId: string; configIndex: number }[];
 }
 
 function GovernanceReportModal({
@@ -106,12 +107,14 @@ function GovernanceReportModal({
 
   function getStayInfo(cabinId: string): {
     guestName: string; checkIn: string; checkOut: string;
-    hasPet?: boolean; counts?: { adults: number; children: number; babies: number };
+    hasPet?: boolean;
+    counts?: { adults: number; children: number; babies: number };
+    areaConfigs?: { areaId: string; configIndex: number }[];
   } | null {
     const active = activeStays.find(s => s.cabinId === cabinId);
-    if (active) return { guestName: active.guestName, checkIn: active.checkIn, checkOut: active.checkOut, hasPet: active.hasPet, counts: active.counts };
+    if (active) return { guestName: active.guestName, checkIn: active.checkIn, checkOut: active.checkOut, hasPet: active.hasPet, counts: active.counts, areaConfigs: active.areaConfigs };
     const arrival = reportArrivals.find(a => a.cabinId === cabinId);
-    if (arrival) return { guestName: arrival.guestName, checkIn: arrival.checkIn, checkOut: arrival.checkOut, hasPet: arrival.hasPet, counts: arrival.counts };
+    if (arrival) return { guestName: arrival.guestName, checkIn: arrival.checkIn, checkOut: arrival.checkOut, hasPet: arrival.hasPet, counts: arrival.counts, areaConfigs: arrival.areaConfigs };
     return null;
   }
 
@@ -154,72 +157,98 @@ function GovernanceReportModal({
     !checkoutCabinIds.has(c.id)
   );
 
-  function CabinTableRow({ cabin, highlight }: { cabin: Cabin; highlight?: string }) {
+  function CabinTableRow({ cabin, highlight, showSetup }: { cabin: Cabin; highlight?: string; showSetup?: boolean }) {
     const stay = getStayInfo(cabin.id);
     const taskType = getActiveTaskType(cabin.id);
     const lastClean = getLastCleaning(cabin.id);
     const acf = fmtACF(stay?.counts);
 
+    const rowBg = cn(
+      "border-b border-border/20 text-sm",
+      highlight === 'entry' && "bg-emerald-500/5",
+      highlight === 'checkout' && "bg-orange-500/5",
+      highlight === 'daily' && "bg-blue-500/5",
+    );
+
+    const setupAreas = showSetup && cabin.layout?.length
+      ? cabin.layout.map(area => {
+          const configIdx = stay?.areaConfigs?.find(c => c.areaId === area.id)?.configIndex ?? 0;
+          const beds = area.configs[configIdx] ?? area.configs[0] ?? [];
+          return { area, configIdx, beds, isNonStandard: configIdx > 0 };
+        })
+      : null;
+
     return (
-      <tr className={cn(
-        "border-b border-border/20 text-sm",
-        highlight === 'entry' && "bg-emerald-500/5",
-        highlight === 'checkout' && "bg-orange-500/5",
-        highlight === 'daily' && "bg-blue-500/5",
-      )}>
-        {/* Cabana + Categoria mesclados */}
-        <td className="py-2 px-3 whitespace-nowrap">
-          <span className="font-bold">{cabin.number || cabin.name}</span>
-          {cabin.category && (
-            <span className="text-xs text-muted-foreground font-normal"> · {cabin.category}</span>
-          )}
-        </td>
-        <td className="py-2 px-3 text-xs whitespace-nowrap">
-          <span className={cn(
-            "font-semibold",
-            cabin.status === 'available' && "text-emerald-400",
-            cabin.status === 'occupied' && "text-blue-400",
-            cabin.status === 'cleaning' && "text-orange-400",
-            cabin.status === 'maintenance' && "text-red-400",
-          )}>
-            {CABIN_STATUS_LABELS[cabin.status] ?? cabin.status}
-          </span>
-        </td>
-        <td className="py-2 px-3 text-xs whitespace-nowrap">
-          {taskType
-            ? <span className="text-yellow-400 font-semibold">{TASK_TYPE_LABELS[taskType]}</span>
-            : <span className="text-muted-foreground">—</span>
-          }
-        </td>
-        <td className="py-2 px-3 text-xs max-w-[130px] truncate">
-          {stay ? (
-            <span className="flex items-center gap-1">
-              <span className="truncate">{stay.guestName}</span>
-              {stay.hasPet && <PawPrint size={10} className="text-amber-500 shrink-0" />}
+      <>
+        <tr className={rowBg}>
+          <td className="py-2 px-3 whitespace-nowrap">
+            <span className="font-bold">{cabin.number || cabin.name}</span>
+            {cabin.category && (
+              <span className="text-xs text-muted-foreground font-normal"> · {cabin.category}</span>
+            )}
+          </td>
+          <td className="py-2 px-3 text-xs whitespace-nowrap">
+            <span className={cn(
+              "font-semibold",
+              cabin.status === 'available' && "text-emerald-400",
+              cabin.status === 'occupied' && "text-blue-400",
+              cabin.status === 'cleaning' && "text-orange-400",
+              cabin.status === 'maintenance' && "text-red-400",
+            )}>
+              {CABIN_STATUS_LABELS[cabin.status] ?? cabin.status}
             </span>
-          ) : <span className="text-muted-foreground">—</span>}
-        </td>
-        <td className="py-2 px-3 text-xs font-mono whitespace-nowrap text-muted-foreground">
-          {acf}
-        </td>
-        <td className="py-2 px-3 text-xs font-mono text-muted-foreground whitespace-nowrap">
-          {fmt(stay?.checkIn)}
-        </td>
-        <td className="py-2 px-3 text-xs font-mono text-muted-foreground whitespace-nowrap">
-          {fmt(stay?.checkOut)}
-        </td>
-        <td className="py-2 px-3 text-xs text-muted-foreground whitespace-nowrap">
-          {lastClean}
-        </td>
-      </tr>
+          </td>
+          <td className="py-2 px-3 text-xs whitespace-nowrap">
+            {taskType
+              ? <span className="text-yellow-400 font-semibold">{TASK_TYPE_LABELS[taskType]}</span>
+              : <span className="text-muted-foreground">—</span>
+            }
+          </td>
+          <td className="py-2 px-3 text-xs max-w-[130px] truncate">
+            {stay ? (
+              <span className="flex items-center gap-1">
+                <span className="truncate">{stay.guestName}</span>
+                {stay.hasPet && <PawPrint size={10} className="text-amber-500 shrink-0" />}
+              </span>
+            ) : <span className="text-muted-foreground">—</span>}
+          </td>
+          <td className="py-2 px-3 text-xs font-mono whitespace-nowrap text-muted-foreground">{acf}</td>
+          <td className="py-2 px-3 text-xs font-mono text-muted-foreground whitespace-nowrap">{fmt(stay?.checkIn)}</td>
+          <td className="py-2 px-3 text-xs font-mono text-muted-foreground whitespace-nowrap">{fmt(stay?.checkOut)}</td>
+          <td className="py-2 px-3 text-xs text-muted-foreground whitespace-nowrap">{lastClean}</td>
+        </tr>
+        {setupAreas && (
+          <tr className={cn("gv-setup-row border-b border-border/20", rowBg)}>
+            <td colSpan={8} className="px-3 pb-2 pt-0">
+              <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[10px] pl-1 border-l-2 border-border/40 ml-1">
+                {setupAreas.map(({ area, configIdx, beds, isNonStandard }) => (
+                  <span key={area.id} className={cn(
+                    "flex items-center gap-1",
+                    isNonStandard ? "text-orange-400 font-bold" : "text-muted-foreground"
+                  )}>
+                    <span className="font-semibold text-foreground/70">{area.name}:</span>
+                    {beds.map(b => b.label).join(' + ') || '—'}
+                    {isNonStandard && (
+                      <span className="text-[9px] bg-orange-500/15 text-orange-400 px-1 rounded font-bold">
+                        opção {configIdx + 1}
+                      </span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            </td>
+          </tr>
+        )}
+      </>
     );
   }
 
-  function SectionTable({ title, cabinList, highlight, emptyMsg }: {
+  function SectionTable({ title, cabinList, highlight, emptyMsg, showSetup }: {
     title: React.ReactNode;
     cabinList: Cabin[];
     highlight?: string;
     emptyMsg: string;
+    showSetup?: boolean;
   }) {
     return (
       <div className="space-y-2">
@@ -243,7 +272,7 @@ function GovernanceReportModal({
               </thead>
               <tbody>
                 {cabinList.map(cabin => (
-                  <CabinTableRow key={cabin.id} cabin={cabin} highlight={highlight} />
+                  <CabinTableRow key={cabin.id} cabin={cabin} highlight={highlight} showSetup={showSetup} />
                 ))}
               </tbody>
             </table>
@@ -292,21 +321,24 @@ function GovernanceReportModal({
 
           /* Conteúdo sem max-width e padding reduzido */
           #gv-report-root .gv-content {
-            padding: 12px 16px !important;
+            padding: 8px 12px !important;
             max-width: 100% !important;
           }
           /* Reduz espaçamento entre seções (space-y usa margin-top) */
-          #gv-report-root .gv-content > * + * { margin-top: 12px !important; }
+          #gv-report-root .gv-content > * + * { margin-top: 7px !important; }
 
           /* Tabelas */
           #gv-report-root table { border: 1px solid #999 !important; border-collapse: collapse !important; width: 100% !important; }
-          #gv-report-root th, #gv-report-root td { border: 1px solid #bbb !important; padding: 3px 6px !important; font-size: 10px !important; }
+          #gv-report-root th, #gv-report-root td { border: 1px solid #ccc !important; padding: 2px 4px !important; font-size: 9px !important; }
           #gv-report-root thead tr { background: #eee !important; }
           #gv-report-root thead tr * { background: #eee !important; font-weight: bold !important; }
 
+          /* Sub-linha de montagem */
+          #gv-report-root .gv-setup-row td { border-top: none !important; padding: 1px 4px 3px !important; font-size: 8.5px !important; }
+
           /* Tipografia compacta */
-          #gv-report-root h1 { font-size: 15px !important; margin: 0 0 2px !important; }
-          #gv-report-root h3 { font-size: 9px !important; margin: 6px 0 3px !important; }
+          #gv-report-root h1 { font-size: 13px !important; margin: 0 0 1px !important; }
+          #gv-report-root h3 { font-size: 8.5px !important; margin: 4px 0 2px !important; }
 
           /* Quebras de página */
           #gv-report-root table { page-break-inside: auto; }
@@ -406,6 +438,7 @@ function GovernanceReportModal({
               cabinList={entriesToday}
               highlight="entry"
               emptyMsg="Nenhuma entrada prevista para hoje."
+              showSetup
             />
 
             {/* Seção: Check-outs */}
@@ -500,7 +533,7 @@ export default function GovernancePage() {
       try {
         const { data: staysData } = await supabase
           .from('stays')
-          .select('id, cabinId, hasPet, checkIn, checkOut, guestId, counts')
+          .select('id, cabinId, hasPet, checkIn, checkOut, guestId, counts, areaConfigs')
           .eq('propertyId', property.id)
           .eq('status', 'active');
 
@@ -523,6 +556,7 @@ export default function GovernancePage() {
           checkOut: s.checkOut,
           guestName: guestMap[s.guestId] ?? 'Hóspede',
           counts: s.counts ?? undefined,
+          areaConfigs: s.areaConfigs ?? undefined,
         })));
       } catch {
         // silently fail — not critical
@@ -576,7 +610,7 @@ export default function GovernancePage() {
       const todayISO = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
       const { data: arrivalsData } = await supabase
         .from('stays')
-        .select('id, cabinId, checkIn, checkOut, guestId, counts, hasPet')
+        .select('id, cabinId, checkIn, checkOut, guestId, counts, hasPet, areaConfigs')
         .eq('propertyId', property.id)
         .gte('checkIn', todayISO)
         .lte('checkIn', `${todayISO}T23:59:59`)
@@ -600,6 +634,7 @@ export default function GovernancePage() {
         checkOut: s.checkOut,
         hasPet: s.hasPet ?? false,
         counts: s.counts ?? undefined,
+        areaConfigs: s.areaConfigs ?? undefined,
       })));
     } catch {
       toast.error("Erro ao gerar relatório.");
