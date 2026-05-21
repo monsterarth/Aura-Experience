@@ -7,10 +7,6 @@ import Link from "next/link";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { HousekeepingService } from "@/services/housekeeping-service";
-import { CabinService } from "@/services/cabin-service";
-import { StructureService } from "@/services/structure-service";
-import { StaffService } from "@/services/staff-service";
-import { supabase } from "@/lib/supabase";
 import { HousekeepingTask, Cabin, Staff, Structure } from "@/types/aura";
 import { PropertyMapGrid, ActiveStayInfo } from "@/components/admin/PropertyMapGrid";
 import {
@@ -572,76 +568,38 @@ export default function GovernancePage() {
 
     let unsubscribe: () => void;
 
-    const fetchActiveStays = async () => {
+    const loadInit = async () => {
+      setLoadingInitial(true);
       setStaysLoading(true);
       try {
-        const { data: staysData } = await supabase
-          .from('stays')
-          .select('id, cabinId, hasPet, checkIn, checkOut, guestId, counts, areaConfigs, expectedArrivalTime')
-          .eq('propertyId', property.id)
-          .eq('status', 'active');
-
-        const rows = staysData || [];
-        const guestIds = Array.from(new Set(rows.map((s: any) => s.guestId).filter(Boolean))) as string[];
-        let guestMap: Record<string, string> = {};
-        if (guestIds.length > 0) {
-          const { data: guestsData } = await supabase
-            .from('guests')
-            .select('id, fullName')
-            .in('id', guestIds);
-          (guestsData || []).forEach((g: any) => { guestMap[g.id] = g.fullName; });
-        }
-
-        setActiveStays(rows.map((s: any) => ({
-          id: s.id,
-          cabinId: s.cabinId,
-          hasPet: s.hasPet ?? false,
-          checkIn: s.checkIn,
-          checkOut: s.checkOut,
-          guestName: guestMap[s.guestId] ?? 'Hóspede',
-          counts: s.counts ?? undefined,
-          areaConfigs: s.areaConfigs ?? undefined,
-          expectedArrivalTime: s.expectedArrivalTime ?? undefined,
-        })));
-      } catch {
-        // silently fail — not critical
-      } finally {
-        setStaysLoading(false);
-      }
-    };
-
-    const init = async () => {
-      setLoadingInitial(true);
-      try {
-        const [cabinsData, staffData, structuresData] = await Promise.all([
-          CabinService.getCabinsByProperty(property.id),
-          StaffService.getStaffByProperty(property.id),
-          StructureService.getStructures(property.id)
-        ]);
+        const params = new URLSearchParams({ propertyId: property.id });
+        const res = await fetch(`/api/admin/governance/init?${params}`);
+        if (!res.ok) throw new Error('fetch-error');
+        const data = await res.json();
 
         const cabinsDict: Record<string, Cabin> = {};
-        cabinsData.forEach(c => cabinsDict[c.id] = c);
+        (data.cabins || []).forEach((c: Cabin) => { cabinsDict[c.id] = c; });
         setCabins(cabinsDict);
 
         const structuresDict: Record<string, Structure> = {};
-        structuresData.forEach(s => structuresDict[s.id] = s);
+        (data.structures || []).forEach((s: Structure) => { structuresDict[s.id] = s; });
         setStructures(structuresDict);
 
-        setMaids(staffData.filter(s => s.role === 'maid' && s.active));
+        setMaids((data.staff || []).filter((s: Staff) => s.role === 'maid' && s.active));
+        setActiveStays(data.activeStays || []);
 
         unsubscribe = HousekeepingService.listenToActiveTasks(property.id, (realtimeTasks) => {
           setTasks(realtimeTasks);
         });
-
       } catch (error) {
         toast.error("Erro ao conectar base de governança.");
       } finally {
         setLoadingInitial(false);
+        setStaysLoading(false);
       }
     };
 
-    init();
-    fetchActiveStays();
+    loadInit();
 
     return () => {
       if (unsubscribe) unsubscribe();
@@ -656,36 +614,12 @@ export default function GovernancePage() {
     date.setHours(0, 0, 0, 0);
     setReportDate(date);
     try {
-      const dateISO = date.toISOString().split('T')[0]; // YYYY-MM-DD
-      const { data: arrivalsData } = await supabase
-        .from('stays')
-        .select('id, cabinId, checkIn, checkOut, guestId, counts, hasPet, areaConfigs, expectedArrivalTime')
-        .eq('propertyId', property.id)
-        .gte('checkIn', dateISO)
-        .lte('checkIn', `${dateISO}T23:59:59`)
-        .neq('status', 'cancelled');
-
-      const rows = arrivalsData || [];
-      const guestIds = Array.from(new Set(rows.map((s: any) => s.guestId).filter(Boolean))) as string[];
-      let guestMap: Record<string, string> = {};
-      if (guestIds.length > 0) {
-        const { data: guestsData } = await supabase
-          .from('guests')
-          .select('id, fullName')
-          .in('id', guestIds);
-        (guestsData || []).forEach((g: any) => { guestMap[g.id] = g.fullName; });
-      }
-
-      setReportArrivals(rows.map((s: any) => ({
-        cabinId: s.cabinId,
-        guestName: guestMap[s.guestId] ?? 'Hóspede',
-        checkIn: s.checkIn,
-        checkOut: s.checkOut,
-        hasPet: s.hasPet ?? false,
-        counts: s.counts ?? undefined,
-        areaConfigs: s.areaConfigs ?? undefined,
-        expectedArrivalTime: s.expectedArrivalTime ?? undefined,
-      })));
+      const dateISO = date.toISOString().split('T')[0];
+      const params = new URLSearchParams({ propertyId: property.id, date: dateISO });
+      const res = await fetch(`/api/admin/governance/report?${params}`);
+      if (!res.ok) throw new Error('fetch-error');
+      const data = await res.json();
+      setReportArrivals(data.arrivals || []);
     } catch {
       toast.error("Erro ao gerar relatório.");
     } finally {

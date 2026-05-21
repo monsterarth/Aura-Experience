@@ -5,7 +5,6 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { ConciergeService } from "@/services/concierge-service";
-import { StayService } from "@/services/stay-service";
 import { ConciergeRequest, ConciergeItem, ConciergeCategory, ConciergeGroup } from "@/types/aura";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import EmojiPicker from "emoji-picker-react";
@@ -19,7 +18,6 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
-import { supabase } from "@/lib/supabase";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -235,20 +233,12 @@ export default function AdminConciergePage() {
     try {
       const d = new Date();
       d.setDate(d.getDate() + historyOffset);
-      const dayStart = new Date(d); dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(d); dayEnd.setHours(23, 59, 59, 999);
-
-      const { data } = await supabase
-        .from('concierge_requests')
-        .select('*')
-        .eq('propertyId', property.id)
-        .not('status', 'in', '("pending","in_progress")')
-        .gte('createdAt', dayStart.toISOString())
-        .lte('createdAt', dayEnd.toISOString())
-        .order('createdAt', { ascending: false });
-
-      const enriched = await ConciergeService._enrichRequests(data || []);
-      setHistory(enriched);
+      const dateISO = d.toISOString().split('T')[0];
+      const params = new URLSearchParams({ propertyId: property.id, date: dateISO });
+      const res = await fetch(`/api/admin/concierge/history?${params}`);
+      if (!res.ok) throw new Error('fetch-error');
+      const data = await res.json();
+      setHistory(data.requests || []);
     } finally {
       setLoadingHistory(false);
     }
@@ -264,12 +254,14 @@ export default function AdminConciergePage() {
     if (!property) return;
     setLoadingCatalog(true);
     try {
-      const [{ data: itemData }, { data: groupData }] = await Promise.all([
-        supabase.from('concierge_items').select('*, group:concierge_groups(*)').eq('propertyId', property.id).eq('deleted', false).order('order', { ascending: true }),
-        supabase.from('concierge_groups').select('*').eq('propertyId', property.id).eq('active', true).order('order', { ascending: true }),
-      ]);
-      setItems((itemData || []) as ConciergeItem[]);
-      setGroups((groupData || []) as ConciergeGroup[]);
+      const params = new URLSearchParams({ propertyId: property.id });
+      const res = await fetch(`/api/admin/concierge/catalog?${params}`);
+      if (!res.ok) throw new Error('fetch-error');
+      const data = await res.json();
+      setItems((data.items || []) as ConciergeItem[]);
+      setGroups((data.groups || []) as ConciergeGroup[]);
+    } catch {
+      toast.error('Erro ao carregar catálogo.');
     } finally {
       setLoadingCatalog(false);
     }
@@ -1156,27 +1148,17 @@ function NewRequestModal({ preset, onClose }: {
     if (!property) return;
     (async () => {
       try {
-        const [activeStays, { data: cabinData }, { data: itemData }] = await Promise.all([
-          StayService.getStaysByStatus(property.id, ['active', 'pending', 'pre_checkin_done']),
-          supabase.from('cabins').select('id, name').eq('propertyId', property.id).order('name', { ascending: true }),
-          supabase.from('concierge_items').select('*').eq('propertyId', property.id).eq('active', true).order('order', { ascending: true }),
-        ]);
+        const params = new URLSearchParams({ propertyId: property.id });
+        const res = await fetch(`/api/admin/concierge/new-request-data?${params}`);
+        if (!res.ok) throw new Error('fetch-error');
+        const data = await res.json();
 
-        const stayByCabinId = new Map<string, { stayId: string; guestName: string }>();
-        for (const s of activeStays as any[]) {
-          if (s.cabinId) stayByCabinId.set(s.cabinId, { stayId: s.id, guestName: s.guestName || '—' });
-        }
-
-        const opts: CabinOption[] = (cabinData || []).map((c: any) => {
-          const match = stayByCabinId.get(c.id);
-          return { id: c.id, name: c.name, stayId: match?.stayId, guestName: match?.guestName };
-        });
-
+        const opts: CabinOption[] = data.cabins || [];
         setCabins(opts);
-        const firstWithStay = opts.find(c => !!c.stayId);
+        const firstWithStay = opts.find((c: CabinOption) => !!c.stayId);
         setSelectedCabinId(firstWithStay?.id || opts[0]?.id || '');
 
-        const items = (itemData || []) as ConciergeItem[];
+        const items = (data.items || []) as ConciergeItem[];
         setCatalogItems(items);
         if (!preset?.id && items.length > 0) setItemId(items[0].id);
       } finally {
