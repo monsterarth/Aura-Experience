@@ -59,6 +59,7 @@ function GovernanceReportModal({
   maids,
   activeStays,
   reportArrivals,
+  reportDate,
   onClose,
 }: {
   propertyName: string;
@@ -67,11 +68,12 @@ function GovernanceReportModal({
   maids: Staff[];
   activeStays: ActiveStayInfo[];
   reportArrivals: ReportArrival[];
+  reportDate: Date;
   onClose: () => void;
 }) {
   const now = new Date();
-  const todayStr = now.toDateString();
-  const dateLabel = now.toLocaleDateString('pt-BR', {
+  const todayStr = reportDate.toDateString();
+  const dateLabel = reportDate.toLocaleDateString('pt-BR', {
     weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
   });
   const timeLabel = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -520,7 +522,8 @@ export default function GovernancePage() {
 
   // Report state
   const [showReport, setShowReport] = useState(false);
-  const [reportArrivals, setReportArrivals] = useState<{ cabinId: string; guestName: string; checkIn: string; checkOut: string }[]>([]);
+  const [reportArrivals, setReportArrivals] = useState<ReportArrival[]>([]);
+  const [reportDate, setReportDate] = useState<Date>(new Date());
   const [reportLoading, setReportLoading] = useState(false);
 
   useEffect(() => {
@@ -603,17 +606,21 @@ export default function GovernancePage() {
     };
   }, [property]);
 
-  const openReport = useCallback(async () => {
+  const openReport = useCallback(async (offset: 0 | 1 = 0) => {
     if (!property) return;
     setReportLoading(true);
+    const date = new Date();
+    date.setDate(date.getDate() + offset);
+    date.setHours(0, 0, 0, 0);
+    setReportDate(date);
     try {
-      const todayISO = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      const dateISO = date.toISOString().split('T')[0]; // YYYY-MM-DD
       const { data: arrivalsData } = await supabase
         .from('stays')
         .select('id, cabinId, checkIn, checkOut, guestId, counts, hasPet, areaConfigs')
         .eq('propertyId', property.id)
-        .gte('checkIn', todayISO)
-        .lte('checkIn', `${todayISO}T23:59:59`)
+        .gte('checkIn', dateISO)
+        .lte('checkIn', `${dateISO}T23:59:59`)
         .neq('status', 'cancelled');
 
       const rows = arrivalsData || [];
@@ -693,17 +700,26 @@ export default function GovernancePage() {
           <h1 className="text-2xl font-bold tracking-tight">Mapa da Pousada</h1>
           <p className="text-sm text-muted-foreground mt-1">Visão geral das cabanas, limpeza e hóspedes em tempo real.</p>
         </div>
-        <button
-          onClick={openReport}
-          disabled={reportLoading}
-          className="flex items-center gap-2 px-4 py-2.5 bg-secondary border border-border rounded-xl text-xs font-bold hover:bg-accent transition-all disabled:opacity-60"
-        >
-          {reportLoading
-            ? <div className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
-            : <FileText size={14} />
-          }
-          Relatório
-        </button>
+        <div className="flex items-center gap-1">
+          {reportLoading && (
+            <div className="w-3.5 h-3.5 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin mr-1" />
+          )}
+          <button
+            onClick={() => openReport(0)}
+            disabled={reportLoading}
+            className="flex items-center gap-1.5 px-3 py-2 bg-secondary border border-border rounded-l-xl text-xs font-bold hover:bg-accent transition-all disabled:opacity-60"
+          >
+            <FileText size={13} />
+            Hoje
+          </button>
+          <button
+            onClick={() => openReport(1)}
+            disabled={reportLoading}
+            className="flex items-center gap-1.5 px-3 py-2 bg-secondary border border-border border-l-0 rounded-r-xl text-xs font-bold hover:bg-accent transition-all disabled:opacity-60"
+          >
+            Amanhã
+          </button>
+        </div>
       </div>
 
       {/* PAINEL DE COMANDO */}
@@ -837,6 +853,7 @@ export default function GovernancePage() {
           maids={maids}
           activeStays={activeStays}
           reportArrivals={reportArrivals}
+          reportDate={reportDate}
           onClose={() => setShowReport(false)}
         />
       )}
