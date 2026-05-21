@@ -180,7 +180,7 @@ function GovernanceReportModal({
     !checkoutCabinIds.has(c.id)
   );
 
-  function CabinTableRow({ cabin, highlight, showSetup, preferSource }: { cabin: Cabin; highlight?: string; showSetup?: boolean; preferSource?: 'arrival' | 'departure' }) {
+  function CabinTableRow({ cabin, highlight, showSetup, preferSource, section }: { cabin: Cabin; highlight?: string; showSetup?: boolean; preferSource?: 'arrival' | 'departure'; section?: 'entry' | 'departure' | 'daily' }) {
     const stay = getStayInfo(cabin.id, preferSource);
     const taskType = getActiveTaskType(cabin.id);
     const lastClean = getLastCleaning(cabin.id);
@@ -200,6 +200,7 @@ function GovernanceReportModal({
           return { area, configIdx, beds, isNonStandard: configIdx > 0 };
         })
       : null;
+    const colCount = section === 'departure' ? 7 : 8;
 
     return (
       <>
@@ -237,17 +238,19 @@ function GovernanceReportModal({
           </td>
           <td className="py-2 px-3 text-xs font-mono whitespace-nowrap text-muted-foreground">{acf}</td>
           <td className="py-2 px-3 text-xs font-mono text-muted-foreground whitespace-nowrap">
-            <span>{fmt(stay?.checkIn)}</span>
-            {stay?.expectedArrivalTime && (
-              <span className="ml-1 font-bold text-emerald-400">{stay.expectedArrivalTime}</span>
-            )}
+            {section === 'entry' && stay?.expectedArrivalTime
+              ? <span className="font-bold text-emerald-400">{stay.expectedArrivalTime}</span>
+              : <span>{fmt(stay?.checkIn)}</span>
+            }
           </td>
-          <td className="py-2 px-3 text-xs font-mono text-muted-foreground whitespace-nowrap">{fmt(stay?.checkOut)}</td>
+          {section !== 'departure' && (
+            <td className="py-2 px-3 text-xs font-mono text-muted-foreground whitespace-nowrap">{fmt(stay?.checkOut)}</td>
+          )}
           <td className="py-2 px-3 text-xs text-muted-foreground">{lastClean}</td>
         </tr>
         {setupAreas && (
           <tr className={cn("gv-setup-row border-b border-border/20", rowBg)}>
-            <td colSpan={8} className="px-3 pb-2 pt-0">
+            <td colSpan={colCount} className="px-3 pb-2 pt-0">
               <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[10px] pl-1 border-l-2 border-border/40 ml-1">
                 {setupAreas.map(({ area, configIdx, beds, isNonStandard }) => (
                   <span key={area.id} className={cn(
@@ -271,13 +274,14 @@ function GovernanceReportModal({
     );
   }
 
-  function SectionTable({ title, cabinList, highlight, emptyMsg, showSetup, preferSource }: {
+  function SectionTable({ title, cabinList, highlight, emptyMsg, showSetup, preferSource, section }: {
     title: React.ReactNode;
     cabinList: Cabin[];
     highlight?: string;
     emptyMsg: string;
     showSetup?: boolean;
     preferSource?: 'arrival' | 'departure';
+    section?: 'entry' | 'departure' | 'daily';
   }) {
     return (
       <div className="space-y-2">
@@ -294,14 +298,14 @@ function GovernanceReportModal({
                   <th className="py-2 px-3 font-bold">Tarefa</th>
                   <th className="py-2 px-3 font-bold">Hóspede</th>
                   <th className="py-2 px-3 font-bold">A/C/F</th>
-                  <th className="py-2 px-3 font-bold">C/In</th>
-                  <th className="py-2 px-3 font-bold">C/Out</th>
+                  <th className="py-2 px-3 font-bold">{section === 'entry' ? 'Chegada' : 'C/In'}</th>
+                  {section !== 'departure' && <th className="py-2 px-3 font-bold">C/Out</th>}
                   <th className="py-2 px-3 font-bold">Última limpeza</th>
                 </tr>
               </thead>
               <tbody>
                 {cabinList.map(cabin => (
-                  <CabinTableRow key={cabin.id} cabin={cabin} highlight={highlight} showSetup={showSetup} preferSource={preferSource} />
+                  <CabinTableRow key={cabin.id} cabin={cabin} highlight={highlight} showSetup={showSetup} preferSource={preferSource} section={section} />
                 ))}
               </tbody>
             </table>
@@ -471,6 +475,7 @@ function GovernanceReportModal({
               emptyMsg="Nenhuma entrada prevista."
               showSetup
               preferSource="arrival"
+              section="entry"
             />
 
             {/* Seção: Saídas */}
@@ -480,6 +485,7 @@ function GovernanceReportModal({
               highlight="checkout"
               emptyMsg="Nenhuma saída prevista."
               preferSource="departure"
+              section="departure"
             />
 
             {/* Seção: Ocupadas / Diária */}
@@ -488,6 +494,7 @@ function GovernanceReportModal({
               cabinList={occupiedDaily}
               highlight="daily"
               emptyMsg="Nenhuma cabana ocupada com limpeza diária."
+              section="daily"
             />
 
             {/* Relatório completo */}
