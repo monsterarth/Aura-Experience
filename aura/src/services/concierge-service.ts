@@ -491,6 +491,19 @@ export const ConciergeService = {
     });
   },
 
+  async notDeliverRequest(
+    propertyId: string,
+    requestId: string,
+    reason: string
+  ): Promise<void> {
+    const { error } = await supabase
+      .from('concierge_requests')
+      .update({ status: 'not_delivered', notDeliveredReason: reason, updatedAt: new Date().toISOString() })
+      .eq('id', requestId)
+      .eq('propertyId', propertyId);
+    if (error) throw error;
+  },
+
   async returnRequest(
     propertyId: string,
     requestId: string,

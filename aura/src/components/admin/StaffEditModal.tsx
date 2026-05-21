@@ -20,6 +20,7 @@ type Tab = "profile" | "security" | "delete";
 const roleLabels: Record<string, string> = {
   super_admin: "Super Admin",
   admin: "Administrador",
+  manager: "Gerente / RH",
   reception: "Recepção",
   governance: "Governanta (Gestão)",
   maid: "Camareira (Mobile)",
@@ -301,6 +302,7 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
                         <optgroup label="Governança">
                           <option value="governance">Governanta (Gestão)</option>
                           <option value="maid">Camareira (Mobile)</option>
+                          <option value="houseman">Mensageiro (Mobile)</option>
                         </optgroup>
                         <optgroup label="Manutenção">
                           <option value="maintenance">Coordenador de Manutenção</option>

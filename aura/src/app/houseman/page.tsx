@@ -244,12 +244,13 @@ function RequestCard({
 // ─── Cabin Group Card ─────────────────────────────────────────────────────────
 
 function CabinGroup({
-  reqs, userId, onAssign, onDeliver, actionLoading,
+  reqs, userId, onAssign, onDeliver, onNotDeliver, actionLoading,
 }: {
   reqs: ConciergeRequest[];
   userId: string;
   onAssign: (ids: string[]) => void;
   onDeliver: (ids: string[]) => void;
+  onNotDeliver: (ids: string[], reason: string) => void;
   actionLoading: Record<string, boolean>;
 }) {
   const status = reqs[0]?.status ?? "pending";
@@ -272,6 +273,9 @@ function CabinGroup({
   const [checkedIds, setCheckedIds] = React.useState<Set<string>>(() =>
     new Set(reqs.map(r => r.id))
   );
+  const [showReasonPicker, setShowReasonPicker] = React.useState(false);
+  const [pickerReason, setPickerReason] = React.useState("");
+  const [otherText, setOtherText] = React.useState("");
 
   // sync when reqs change (e.g. new item added to same cabin)
   React.useEffect(() => {
@@ -293,6 +297,7 @@ function CabinGroup({
   };
 
   const checkedCount = Array.from(checkedIds).filter(id => reqs.some(r => r.id === id)).length;
+  const uncheckedIds = reqs.filter(r => !checkedIds.has(r.id)).map(r => r.id);
 
   return (
     <div style={{
@@ -415,6 +420,90 @@ function CabinGroup({
           }
         </button>
       )}
+
+      {isInProgress && uncheckedIds.length > 0 && !showReasonPicker && (
+        <button
+          onClick={() => setShowReasonPicker(true)}
+          disabled={isAnyLoading}
+          style={{
+            width: "100%", marginTop: 8, padding: "12px 16px", background: "transparent",
+            border: `1.5px solid rgba(248,113,113,0.4)`,
+            borderRadius: 14, color: T.red, fontFamily: "inherit", fontSize: 12, fontWeight: 800,
+            textTransform: "uppercase" as const, letterSpacing: "0.04em",
+            cursor: isAnyLoading ? "not-allowed" : "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            opacity: isAnyLoading ? 0.5 : 1,
+          }}
+        >
+          <I n="x" s={14} c={T.red} w={2.5} /> Não Entreguei ({uncheckedIds.length})
+        </button>
+      )}
+
+      {isInProgress && showReasonPicker && (
+        <div style={{ marginTop: 10, background: "rgba(248,113,113,0.06)", border: `1.5px solid rgba(248,113,113,0.3)`, borderRadius: 14, padding: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: T.red, letterSpacing: "0.06em", textTransform: "uppercase" as const, marginBottom: 10 }}>
+            Motivo — {uncheckedIds.length} item{uncheckedIds.length !== 1 ? "s" : ""} não entregue{uncheckedIds.length !== 1 ? "s" : ""}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column" as const, gap: 6, marginBottom: 10 }}>
+            {(["Sem estoque", "Cancelado", "Outro"] as const).map(r => (
+              <button
+                key={r}
+                onClick={() => { setPickerReason(r); if (r !== "Outro") setOtherText(""); }}
+                style={{
+                  padding: "9px 12px", borderRadius: 10,
+                  border: `1.5px solid ${pickerReason === r ? "rgba(248,113,113,0.7)" : "rgba(255,255,255,0.1)"}`,
+                  background: pickerReason === r ? "rgba(248,113,113,0.15)" : "transparent",
+                  color: pickerReason === r ? T.red : T.muted, fontFamily: "inherit", fontSize: 13, fontWeight: 700,
+                  textAlign: "left" as const, cursor: "pointer", transition: "all .15s",
+                }}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+          {pickerReason === "Outro" && (
+            <input
+              value={otherText}
+              onChange={e => setOtherText(e.target.value)}
+              placeholder="Descreve o motivo..."
+              style={{
+                width: "100%", padding: "9px 12px", marginBottom: 10,
+                background: "rgba(255,255,255,0.05)", border: `1px solid rgba(255,255,255,0.15)`,
+                borderRadius: 10, color: T.text, fontFamily: "inherit", fontSize: 13, outline: "none",
+              }}
+            />
+          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => { setShowReasonPicker(false); setPickerReason(""); setOtherText(""); }}
+              style={{ flex: 1, padding: "10px", background: "transparent", border: `1px solid rgba(255,255,255,0.1)`, borderRadius: 10, color: T.muted, fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={() => {
+                const reason = pickerReason === "Outro" ? (otherText.trim() || "Outro") : pickerReason;
+                if (!reason) return;
+                onNotDeliver(uncheckedIds, reason);
+                setShowReasonPicker(false);
+                setPickerReason("");
+                setOtherText("");
+              }}
+              disabled={!pickerReason || (pickerReason === "Outro" && !otherText.trim()) || isAnyLoading}
+              style={{
+                flex: 2, padding: "10px",
+                background: "rgba(248,113,113,0.15)", border: `1.5px solid rgba(248,113,113,0.5)`,
+                borderRadius: 10, color: T.red, fontFamily: "inherit", fontSize: 12, fontWeight: 800,
+                cursor: (!pickerReason || (pickerReason === "Outro" && !otherText.trim())) ? "not-allowed" : "pointer",
+                opacity: (!pickerReason || (pickerReason === "Outro" && !otherText.trim())) ? 0.5 : 1,
+                textTransform: "uppercase" as const, letterSpacing: "0.04em",
+              }}
+            >
+              Confirmar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -422,13 +511,14 @@ function CabinGroup({
 // ─── Requests screen ──────────────────────────────────────────────────────────
 
 function RequestsScreen({
-  requests, done, userId, onAssign, onDeliver, actionLoading,
+  requests, done, userId, onAssign, onDeliver, onNotDeliver, actionLoading,
 }: {
   requests: ConciergeRequest[];
   done: ConciergeRequest[];
   userId: string;
   onAssign: (ids: string[]) => void;
   onDeliver: (ids: string[]) => void;
+  onNotDeliver: (ids: string[], reason: string) => void;
   actionLoading: Record<string, boolean>;
 }) {
   const pending = requests.filter(r => r.status === "pending");
@@ -457,7 +547,7 @@ function RequestsScreen({
             Novos pedidos
           </div>
           {Array.from(groupedPending.entries()).map(([key, reqs]) => (
-            <CabinGroup key={key} reqs={reqs} userId={userId} onAssign={onAssign} onDeliver={onDeliver} actionLoading={actionLoading} />
+            <CabinGroup key={key} reqs={reqs} userId={userId} onAssign={onAssign} onDeliver={onDeliver} onNotDeliver={onNotDeliver} actionLoading={actionLoading} />
           ))}
         </div>
       )}
@@ -469,7 +559,7 @@ function RequestsScreen({
             Em andamento
           </div>
           {Array.from(groupedInProgress.entries()).map(([key, reqs]) => (
-            <CabinGroup key={key} reqs={reqs} userId={userId} onAssign={onAssign} onDeliver={onDeliver} actionLoading={actionLoading} />
+            <CabinGroup key={key} reqs={reqs} userId={userId} onAssign={onAssign} onDeliver={onDeliver} onNotDeliver={onNotDeliver} actionLoading={actionLoading} />
           ))}
         </div>
       )}
@@ -497,7 +587,10 @@ function RequestsScreen({
               {reqs.map(r => (
                 <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingBottom: 6 }}>
                   <div style={{ fontSize: 14, fontWeight: 700 }}>{r.quantity}× {r.item?.name || r.itemId}</div>
-                  <Pill color={T.green} bg={T.greenBg} border={T.greenBorder}>Entregue</Pill>
+                  {r.status === "not_delivered"
+                    ? <Pill color={T.red} bg={T.redBg} border="rgba(248,113,113,0.3)">{r.notDeliveredReason || "Não Entregue"}</Pill>
+                    : <Pill color={T.green} bg={T.greenBg} border={T.greenBorder}>Entregue</Pill>
+                  }
                 </div>
               ))}
             </div>
@@ -764,6 +857,18 @@ export default function HousemanPage() {
     finally { setActionLoading(p => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, reqIds.includes(k) ? false : v]))); }
   }, [property, userData, requests, showToast]);
 
+  const handleNotDeliver = useCallback(async (reqIds: string[], reason: string) => {
+    if (!property || !userData) return;
+    setActionLoading(p => Object.fromEntries([...Object.entries(p), ...reqIds.map(id => [id, true])]));
+    try {
+      await Promise.all(reqIds.map(id => ConciergeService.notDeliverRequest(property.id, id, reason)));
+      const notDelivered = requests.filter(r => reqIds.includes(r.id));
+      if (notDelivered.length > 0) setDone(prev => [...notDelivered.map(r => ({ ...r, status: "not_delivered", notDeliveredReason: reason } as ConciergeRequest)), ...prev]);
+      showToast(reqIds.length === 1 ? "Pedido marcado como não entregue." : `${reqIds.length} itens não entregues.`, T.amber);
+    } catch { showToast("Erro ao registar.", T.red); }
+    finally { setActionLoading(p => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, reqIds.includes(k) ? false : v]))); }
+  }, [property, userData, requests, showToast]);
+
   const handleLogout = async () => {
     showToast("Saindo...");
     await supabase.auth.signOut();
@@ -819,7 +924,7 @@ export default function HousemanPage() {
 
           <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", position: "relative", zIndex: 1 }}>
             {tab === "home" && <HomeScreen requests={requests} done={done} userName={userData?.fullName ?? "Mensageiro"} onNav={setTab} />}
-            {tab === "requests" && <RequestsScreen requests={requests} done={done} userId={userData?.id ?? ""} onAssign={handleAssign} onDeliver={handleDeliver} actionLoading={actionLoading} />}
+            {tab === "requests" && <RequestsScreen requests={requests} done={done} userId={userData?.id ?? ""} onAssign={handleAssign} onDeliver={handleDeliver} onNotDeliver={handleNotDeliver} actionLoading={actionLoading} />}
             {tab === "profile" && <ProfileScreen userData={userData} onLogout={handleLogout} />}
           </div>
 

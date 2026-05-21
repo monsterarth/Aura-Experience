@@ -989,7 +989,7 @@ export interface SystemBug {
 // ==========================================
 
 export type ConciergeCategory = 'consumption' | 'loan';
-export type ConciergeRequestStatus = 'pending' | 'in_progress' | 'delivered' | 'returned' | 'lost';
+export type ConciergeRequestStatus = 'pending' | 'in_progress' | 'delivered' | 'returned' | 'lost' | 'not_delivered';
 
 export interface ConciergeGroup {
   id: string;
@@ -1070,6 +1070,7 @@ export interface ConciergeRequest {
   assignedName?: string;
   total_price?: number;
   notes?: string;
+  notDeliveredReason?: string;
   urgent?: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
