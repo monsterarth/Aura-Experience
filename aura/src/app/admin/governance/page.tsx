@@ -50,6 +50,7 @@ interface ReportArrival {
   hasPet?: boolean;
   counts?: { adults: number; children: number; babies: number };
   areaConfigs?: { areaId: string; configIndex: number }[];
+  expectedArrivalTime?: string;
 }
 
 function GovernanceReportModal({
@@ -112,13 +113,14 @@ function GovernanceReportModal({
     hasPet?: boolean;
     counts?: { adults: number; children: number; babies: number };
     areaConfigs?: { areaId: string; configIndex: number }[];
+    expectedArrivalTime?: string;
   };
 
   function fromActive(s: ActiveStayInfo): StayInfo {
-    return { guestName: s.guestName, checkIn: s.checkIn, checkOut: s.checkOut, hasPet: s.hasPet, counts: s.counts, areaConfigs: s.areaConfigs };
+    return { guestName: s.guestName, checkIn: s.checkIn, checkOut: s.checkOut, hasPet: s.hasPet, counts: s.counts, areaConfigs: s.areaConfigs, expectedArrivalTime: s.expectedArrivalTime };
   }
   function fromArrival(a: ReportArrival): StayInfo {
-    return { guestName: a.guestName, checkIn: a.checkIn, checkOut: a.checkOut, hasPet: a.hasPet, counts: a.counts, areaConfigs: a.areaConfigs };
+    return { guestName: a.guestName, checkIn: a.checkIn, checkOut: a.checkOut, hasPet: a.hasPet, counts: a.counts, areaConfigs: a.areaConfigs, expectedArrivalTime: a.expectedArrivalTime };
   }
 
   // preferSource: 'arrival' = mostrar hóspede que entra | 'departure' = mostrar hóspede que sai
@@ -234,7 +236,12 @@ function GovernanceReportModal({
             ) : <span className="text-muted-foreground">—</span>}
           </td>
           <td className="py-2 px-3 text-xs font-mono whitespace-nowrap text-muted-foreground">{acf}</td>
-          <td className="py-2 px-3 text-xs font-mono text-muted-foreground whitespace-nowrap">{fmt(stay?.checkIn)}</td>
+          <td className="py-2 px-3 text-xs font-mono text-muted-foreground whitespace-nowrap">
+            <span>{fmt(stay?.checkIn)}</span>
+            {stay?.expectedArrivalTime && (
+              <span className="ml-1 font-bold text-emerald-400">{stay.expectedArrivalTime}</span>
+            )}
+          </td>
           <td className="py-2 px-3 text-xs font-mono text-muted-foreground whitespace-nowrap">{fmt(stay?.checkOut)}</td>
           <td className="py-2 px-3 text-xs text-muted-foreground">{lastClean}</td>
         </tr>
@@ -560,7 +567,7 @@ export default function GovernancePage() {
       try {
         const { data: staysData } = await supabase
           .from('stays')
-          .select('id, cabinId, hasPet, checkIn, checkOut, guestId, counts, areaConfigs')
+          .select('id, cabinId, hasPet, checkIn, checkOut, guestId, counts, areaConfigs, expectedArrivalTime')
           .eq('propertyId', property.id)
           .eq('status', 'active');
 
@@ -584,6 +591,7 @@ export default function GovernancePage() {
           guestName: guestMap[s.guestId] ?? 'Hóspede',
           counts: s.counts ?? undefined,
           areaConfigs: s.areaConfigs ?? undefined,
+          expectedArrivalTime: s.expectedArrivalTime ?? undefined,
         })));
       } catch {
         // silently fail — not critical
@@ -641,7 +649,7 @@ export default function GovernancePage() {
       const dateISO = date.toISOString().split('T')[0]; // YYYY-MM-DD
       const { data: arrivalsData } = await supabase
         .from('stays')
-        .select('id, cabinId, checkIn, checkOut, guestId, counts, hasPet, areaConfigs')
+        .select('id, cabinId, checkIn, checkOut, guestId, counts, hasPet, areaConfigs, expectedArrivalTime')
         .eq('propertyId', property.id)
         .gte('checkIn', dateISO)
         .lte('checkIn', `${dateISO}T23:59:59`)
@@ -666,6 +674,7 @@ export default function GovernancePage() {
         hasPet: s.hasPet ?? false,
         counts: s.counts ?? undefined,
         areaConfigs: s.areaConfigs ?? undefined,
+        expectedArrivalTime: s.expectedArrivalTime ?? undefined,
       })));
     } catch {
       toast.error("Erro ao gerar relatório.");
