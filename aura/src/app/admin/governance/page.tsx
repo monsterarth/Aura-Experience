@@ -404,7 +404,7 @@ function GovernanceReportModal({
             <div className="space-y-2">
               <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
                 <Minus size={10} />
-                Relatório Completo — Todas as Cabanas
+                Demais Cabanas — Disponíveis / Manutenção
               </h3>
               <div className="overflow-x-auto rounded-xl border border-border/30">
                 <table className="w-full text-left border-collapse">
@@ -421,16 +421,12 @@ function GovernanceReportModal({
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedCabins.map(cabin => {
-                      const highlight = arrivalCabinIds.has(cabin.id)
-                        ? 'entry'
-                        : checkoutCabinIds.has(cabin.id)
-                        ? 'checkout'
-                        : activeStays.some(s => s.cabinId === cabin.id)
-                        ? 'daily'
-                        : undefined;
-                      return <CabinTableRow key={cabin.id} cabin={cabin} highlight={highlight} />;
-                    })}
+                    {sortedCabins
+                      .filter(c => !arrivalCabinIds.has(c.id) && !checkoutCabinIds.has(c.id) && !occupiedDaily.some(o => o.id === c.id))
+                      .map(cabin => (
+                        <CabinTableRow key={cabin.id} cabin={cabin} />
+                      ))
+                    }
                   </tbody>
                 </table>
               </div>
