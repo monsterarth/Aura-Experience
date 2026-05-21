@@ -379,8 +379,11 @@ function GovernanceReportModal({
           #gv-report-root .gv-print-hero p { line-height: 1.1 !important; }
 
           /* Quebras de página */
+          @page { margin-bottom: 18mm; }
           #gv-report-root table { page-break-inside: auto; }
           #gv-report-root tr { page-break-inside: avoid; }
+          /* Mantém linha de montagem colada à linha da cabana */
+          #gv-report-root .gv-setup-row { page-break-before: avoid; }
         }
       `}</style>
 
