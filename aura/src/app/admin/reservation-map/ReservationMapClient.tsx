@@ -5,9 +5,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { supabase } from "@/lib/supabase";
-import { CabinService } from "@/services/cabin-service";
 import { StayService } from "@/services/stay-service";
-import { StaffService } from "@/services/staff-service";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { StayDetailsModal } from "@/components/admin/StayDetailsModal";
 import { MaintenanceTaskManagerModal } from "@/components/admin/maintenance/MaintenanceTaskManagerModal";
@@ -197,74 +195,22 @@ export default function ReservationMapClient() {
         }
         setLoading(true);
         try {
-            const [cabinsData, staysData, maintenanceData, hkData, staffData] = await Promise.all([
-                CabinService.getCabinsByProperty(contextProperty.id),
-                // Load stays that overlap with our visible window
-                (async () => {
-                    const windowStart = startDate.toISOString();
-                    const windowEnd = addDays(startDate, VISIBLE_DAYS).toISOString();
+            const windowStart = startDate.toISOString();
+            const windowEnd = addDays(startDate, VISIBLE_DAYS).toISOString();
+            const params = new URLSearchParams({
+                propertyId: contextProperty.id,
+                windowStart,
+                windowEnd,
+            });
+            const res = await fetch(`/api/admin/reservation-map/data?${params}`);
+            if (!res.ok) throw new Error('fetch-error');
+            const data = await res.json();
 
-                    const { data, error } = await supabase
-                        .from('stays')
-                        .select('*')
-                        .eq('propertyId', contextProperty.id)
-                        .in('status', ['pending', 'pre_checkin_done', 'active', 'finished'])
-                        .lte('checkIn', windowEnd)
-                        .gte('checkOut', windowStart);
-
-                    if (error) {
-                        console.error("Error loading stays for map:", error);
-                        // Fallback: load all non-archived stays
-                        const allStays = await StayService.getStaysByStatus(contextProperty.id, ['pending', 'pre_checkin_done', 'active', 'finished']);
-                        return allStays as StayWithGuest[];
-                    }
-
-                    const stays = data || [];
-                    const guestIds = Array.from(new Set(stays.map((s: any) => s.guestId).filter(Boolean))) as string[];
-                    let guestMap: Record<string, string> = {};
-                    if (guestIds.length > 0) {
-                        try {
-                            const res = await fetch('/api/admin/guests/names', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ ids: guestIds }),
-                            });
-                            if (res.ok) guestMap = await res.json();
-                        } catch { /* silent — map stays empty, names show as "Hóspede" */ }
-                    }
-
-                    return stays.map((s: any) => ({
-                        ...s,
-                        guestName: guestMap[s.guestId] || "Hóspede"
-                    })) as StayWithGuest[];
-                })(),
-                // Maintenance tasks for cabins
-                (async () => {
-                    const { data } = await supabase
-                        .from('maintenance_tasks')
-                        .select('*')
-                        .eq('propertyId', contextProperty.id)
-                        .not('cabinId', 'is', null)
-                        .in('status', ['pending', 'in_progress']);
-                    return (data || []) as MaintenanceTask[];
-                })(),
-                // Housekeeping tasks
-                (async () => {
-                    const { data } = await supabase
-                        .from('housekeeping_tasks')
-                        .select('*')
-                        .eq('propertyId', contextProperty.id)
-                        .in('status', ['pending', 'in_progress', 'waiting_conference']);
-                    return (data || []) as HousekeepingTask[];
-                })(),
-                StaffService.getStaffByProperty(contextProperty.id)
-            ]);
-
-            setCabins(cabinsData);
-            setStays(staysData);
-            setMaintenanceTasks(maintenanceData);
-            setHousekeepingTasks(hkData);
-            setStaff(staffData);
+            setCabins(data.cabins ?? []);
+            setStays(data.stays ?? []);
+            setMaintenanceTasks(data.maintenanceTasks ?? []);
+            setHousekeepingTasks(data.housekeepingTasks ?? []);
+            setStaff(data.staff ?? []);
         } catch (error) {
             console.error("Error loading reservation map data:", error);
             toast.error("Erro ao carregar dados do mapa.");

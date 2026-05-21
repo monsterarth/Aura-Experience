@@ -16,11 +16,8 @@ import { useProperty } from "@/context/PropertyContext";
 import { supabase } from "@/lib/supabase";
 import { HousekeepingService } from "@/services/housekeeping-service";
 import { ConciergeService } from "@/services/concierge-service";
-import { StructureService } from "@/services/structure-service";
 import { fbService } from "@/services/fb-service";
-import { StayService } from "@/services/stay-service";
-import { HousekeepingTask, ConciergeRequest, FBOrder, StructureBooking, Structure, Cabin, Staff } from "@/types/aura";
-import { StaffService } from "@/services/staff-service";
+import { HousekeepingTask, ConciergeRequest, FBOrder, StructureBooking, Structure, Cabin } from "@/types/aura";
 import { toast } from "sonner";
 
 export default function ReceptionDashboard() {
@@ -44,8 +41,7 @@ export default function ReceptionDashboard() {
 
     // Estruturas
     const [structures, setStructures] = useState<Structure[]>([]);
-    const [structureBookings, setStructureBookings] = useState<StructureBooking[]>([]);
-    const [bookingCabinNames, setBookingCabinNames] = useState<Record<string, string>>({});
+    const [structureBookings, setStructureBookings] = useState<(StructureBooking & { bookingCabinName?: string | null })[]>([]);
 
     // Alertas
     const [detractors, setDetractors] = useState<any[]>([]);
@@ -54,9 +50,8 @@ export default function ReceptionDashboard() {
     // Concierge (realtime)
     const [pendingRequests, setPendingRequests] = useState<ConciergeRequest[]>([]);
 
-    // F&B
-    const [breakfastOrders, setBreakfastOrders] = useState<FBOrder[]>([]);
-    const [orderCabinNames, setOrderCabinNames] = useState<Record<string, string>>({});
+    // F&B — cabinName já embutido no objeto pelo API route
+    const [breakfastOrders, setBreakfastOrders] = useState<(FBOrder & { cabinName?: string })[]>([]);
 
     // Clock
     useEffect(() => {
@@ -98,140 +93,8 @@ export default function ReceptionDashboard() {
     }
 
     // ==========================================
-    // DATA LOADERS
+    // DATA LOADER — single API call, sem queries diretas no browser
     // ==========================================
-
-    async function loadCabins() {
-        const { data } = await supabase.from('cabins').select('id, name, status').eq('propertyId', property!.id);
-        const result = (data || []) as Cabin[];
-        setCabins(result);
-        return result;
-    }
-
-    async function loadStats() {
-        const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-        const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
-
-        const [checkinsDone, checkinsTotal, checkoutsDone, checkoutsTotal, occupiedRes, totalCabinsRes, walkInsRes] = await Promise.all([
-            // Check-ins feitos hoje (active)
-            supabase.from('stays').select('id', { count: 'exact', head: true })
-                .eq('propertyId', property!.id)
-                .gte('checkIn', todayStart.toISOString()).lte('checkIn', todayEnd.toISOString())
-                .eq('status', 'active'),
-            // Check-ins esperados hoje (pending + pre_checkin_done + active)
-            supabase.from('stays').select('id', { count: 'exact', head: true })
-                .eq('propertyId', property!.id)
-                .gte('checkIn', todayStart.toISOString()).lte('checkIn', todayEnd.toISOString())
-                .in('status', ['pending', 'pre_checkin_done', 'active']),
-            // Check-outs feitos hoje (checked_out / finished)
-            supabase.from('stays').select('id', { count: 'exact', head: true })
-                .eq('propertyId', property!.id)
-                .gte('checkOut', todayStart.toISOString()).lte('checkOut', todayEnd.toISOString())
-                .in('status', ['checked_out', 'finished', 'archived']),
-            // Check-outs esperados hoje (active + checked_out/finished)
-            supabase.from('stays').select('id', { count: 'exact', head: true })
-                .eq('propertyId', property!.id)
-                .gte('checkOut', todayStart.toISOString()).lte('checkOut', todayEnd.toISOString())
-                .in('status', ['active', 'checked_out', 'finished', 'archived']),
-            // Cabanas ocupadas (active stays)
-            supabase.from('stays').select('id', { count: 'exact', head: true })
-                .eq('propertyId', property!.id)
-                .eq('status', 'active'),
-            // Total de cabanas
-            supabase.from('cabins').select('id', { count: 'exact', head: true })
-                .eq('propertyId', property!.id),
-            // Cabanas com chegada hoje (não disponíveis para walk-in)
-            supabase.from('stays').select('cabinId')
-                .eq('propertyId', property!.id)
-                .gte('checkIn', todayStart.toISOString()).lte('checkIn', todayEnd.toISOString())
-                .in('status', ['pending', 'pre_checkin_done', 'active'])
-                .not('cabinId', 'is', null),
-        ]);
-        const arrivingCabinIds = new Set((walkInsRes.data || []).map((s: any) => s.cabinId));
-        const availableCabins = (await supabase.from('cabins').select('id').eq('propertyId', property!.id).eq('status', 'available')).data || [];
-        const walkInCount = availableCabins.filter((c: any) => !arrivingCabinIds.has(c.id)).length;
-        setStats({
-            checkinsDone: checkinsDone.count || 0,
-            checkinsTotal: checkinsTotal.count || 0,
-            checkoutsDone: checkoutsDone.count || 0,
-            checkoutsTotal: checkoutsTotal.count || 0,
-            occupiedCabins: occupiedRes.count || 0,
-            totalCabins: totalCabinsRes.count || 0,
-            walkIns: walkInCount,
-        });
-    }
-
-    async function loadStructures(cabinsData: Cabin[]) {
-        const today = new Date().toISOString().split('T')[0];
-        const [structs, bookings] = await Promise.all([
-            StructureService.getStructures(property!.id),
-            StructureService.getAllBookingsByDate(property!.id, today),
-        ]);
-        setStructures(structs);
-        const active = bookings.filter(b => !['cancelled', 'rejected'].includes(b.status));
-        setStructureBookings(active);
-
-        const nameMap: Record<string, string> = {};
-        await Promise.all(active.filter(b => b.stayId).map(async b => {
-            const { data: stay } = await supabase.from('stays').select('cabinId').eq('id', b.stayId!).single();
-            if (stay?.cabinId) {
-                const cabin = cabinsData.find(c => c.id === stay.cabinId);
-                if (cabin) nameMap[b.id] = cabin.name;
-            }
-        }));
-        setBookingCabinNames(nameMap);
-    }
-
-    async function loadAlerts(cabinsData: Cabin[]) {
-        const since48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-        const [surveyRes, msgRes] = await Promise.all([
-            supabase.from('survey_responses').select('id, stayId, metrics, createdAt')
-                .eq('propertyId', property!.id).gte('createdAt', since48h).order('createdAt', { ascending: false }),
-            supabase.from('messages').select('id, triggerEvent, to, createdAt')
-                .eq('propertyId', property!.id).eq('status', 'failed')
-                .gte('createdAt', since48h).order('createdAt', { ascending: false }).limit(5),
-        ]);
-
-        const detractorList = (surveyRes.data || []).filter((r: any) => r.metrics?.isDetractor === true);
-        const enriched = await Promise.all(detractorList.slice(0, 5).map(async (r: any) => {
-            const { data: stay } = await supabase.from('stays').select('cabinId').eq('id', r.stayId).maybeSingle();
-            const cabin = stay?.cabinId ? cabinsData.find(c => c.id === stay.cabinId) : null;
-            return { ...r, cabinName: cabin?.name || 'Hóspede' };
-        }));
-
-        setDetractors(enriched);
-        setMsgFailures(msgRes.data || []);
-    }
-
-    async function loadBreakfast() {
-        // Busca pedidos de hoje + amanhã para cobrir pedidos feitos antecipadamente
-        const today = new Date().toISOString().split('T')[0];
-        const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-        const tomorrowStr = tomorrow.toISOString().split('T')[0];
-
-        const [todayOrders, tomorrowOrders] = await Promise.all([
-            fbService.getOrders(property!.id, { date: today, type: 'breakfast' }),
-            fbService.getOrders(property!.id, { date: tomorrowStr, type: 'breakfast' }),
-        ]);
-
-        const allOrders = [...todayOrders, ...tomorrowOrders];
-        const active = allOrders.filter(o => o.status !== 'cancelled');
-        // Ordenar por data de entrega e depois horário
-        active.sort((a, b) => {
-            const dateA = (a.deliveryDate ?? '') + (a.deliveryTime ?? '');
-            const dateB = (b.deliveryDate ?? '') + (b.deliveryTime ?? '');
-            return dateA.localeCompare(dateB);
-        });
-        setBreakfastOrders(active);
-
-        const cabinMap: Record<string, string> = {};
-        await Promise.all(active.filter(o => o.stayId).map(async o => {
-            if (cabinMap[o.stayId!]) return;
-            const info = await StayService.getStayWithGuestAndCabin(property!.id, o.stayId!);
-            if (info?.cabin) cabinMap[o.stayId!] = info.cabin.name;
-        }));
-        setOrderCabinNames(cabinMap);
-    }
 
     async function handleBreakfastModeToggle(mode: 'delivery' | 'buffet') {
         setBreakfastMode(mode);
@@ -242,37 +105,43 @@ export default function ReceptionDashboard() {
         }
     }
 
-    async function loadInitialData() {
-        if (!property) return;
-        setLoading(true);
+    async function loadDashboard(silent = false) {
+        if (!property?.id) return;
+        if (!silent) setLoading(true);
         try {
-            const [cabinsData, staffList] = await Promise.all([loadCabins(), StaffService.getStaffByProperty(property!.id)]);
+            const params = new URLSearchParams({ propertyId: property.id });
+            const res = await fetch(`/api/admin/reception/dashboard?${params}`);
+            if (!res.ok) throw new Error('fetch-error');
+            const data = await res.json();
+
+            setStats(data.stats);
+            setCabins(data.cabins ?? []);
             const map: Record<string, string> = {};
-            staffList.forEach((s: Staff) => { map[s.id] = s.fullName; });
+            (data.staff ?? []).forEach((s: any) => { map[s.id] = s.fullName; });
             setStaffMap(map);
-            await Promise.all([
-                loadStats(),
-                loadStructures(cabinsData),
-                loadAlerts(cabinsData),
-                loadBreakfast(),
-            ]);
+            setStructures(data.structures ?? []);
+            setStructureBookings(data.structureBookings ?? []);
+            setDetractors(data.detractors ?? []);
+            setMsgFailures(data.msgFailures ?? []);
+            setBreakfastOrders(data.breakfastOrders ?? []);
         } catch {
             toast.error('Erro ao carregar dados da recepção.');
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     }
 
     useEffect(() => {
         if (!property?.id) return;
-        loadInitialData();
+        loadDashboard();
 
         const unsubHK = HousekeepingService.listenToActiveTasks(property.id, setHkTasks);
         const unsubConcierge = ConciergeService.listenToPendingRequests(property.id, setPendingRequests);
 
+        // Realtime: stays mudam → recarrega stats + estruturas silenciosamente
         const staysChannel = supabase.channel(`reception_stays_${property.id}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'stays',
-                filter: `propertyId=eq.${property.id}` }, loadStats)
+                filter: `propertyId=eq.${property.id}` }, () => loadDashboard(true))
             .subscribe();
 
         return () => { unsubHK(); unsubConcierge(); supabase.removeChannel(staysChannel); };
@@ -292,7 +161,7 @@ export default function ReceptionDashboard() {
     const nowHHMM = currentTime.toTimeString().slice(0, 5);
     const structureAgenda = structureBookings.map(b => {
         const structure = structures.find(s => s.id === b.structureId);
-        const guestLabel = bookingCabinNames[b.id] || b.guestName || '—';
+        const guestLabel = b.bookingCabinName || b.guestName || '—';
         let displayStatus: 'in_use' | 'upcoming' | 'freed';
         if (b.status === 'completed') displayStatus = 'freed';
         else if (b.startTime <= nowHHMM && nowHHMM < b.endTime) displayStatus = 'in_use';
@@ -647,7 +516,7 @@ export default function ReceptionDashboard() {
                                 <div key={order.id} className="bg-muted border border-border rounded-2xl p-3 flex flex-col gap-2">
                                     <div className="flex justify-between items-center">
                                         <span className="font-bold text-sm text-amber-100">
-                                            {orderCabinNames[order.stayId!] ?? 'Cabana'}
+                                            {order.cabinName ?? 'Cabana'}
                                         </span>
                                         <div className="flex items-center gap-2">
                                             {!isToday && (

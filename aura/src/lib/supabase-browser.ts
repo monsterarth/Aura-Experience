@@ -21,9 +21,9 @@ async function lockWithStealRecovery<R>(name: string, _acquireTimeout: number, f
         return fn()
     }
 
-    // Tenta adquirir o lock normal em até 1s
+    // Tenta adquirir o lock normal em até 3s (padrão do @supabase/auth-js ≥2.98)
     const abortController = new AbortController()
-    const timer = setTimeout(() => abortController.abort(), 1000)
+    const timer = setTimeout(() => abortController.abort(), 3000)
 
     try {
         return await navigator.locks.request(
