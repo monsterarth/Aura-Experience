@@ -17,6 +17,10 @@ No test framework is configured. Use `pnpm build` to catch type errors.
 
 **Stack**: Next.js 14 App Router · Supabase (Postgres + Auth + Realtime) · TypeScript · Tailwind CSS · Zustand · Sonner (toasts) · Vercel Blob (file uploads)
 
+### Roles
+
+`UserRole` (defined in `src/types/aura.ts`): `super_admin` · `admin` · `manager` · `reception` · `governance` · `maid` · `maintenance` · `technician` · `kitchen` · `waiter` · `porter` · `houseman` · `marketing`
+
 ### Key conventions
 
 - **All types** live in `src/types/aura.ts` — add new interfaces there, not in local files.
@@ -31,11 +35,11 @@ No test framework is configured. Use `pnpm build` to catch type errors.
 Every admin page is a `"use client"` component that calls:
 
 ```typescript
-const { user, userRole } = useAuth();          // src/context/AuthContext.tsx
-const { property, theme } = useProperty();     // src/context/PropertyContext.tsx
+const { userData, isAdmin, isSuperAdmin } = useAuth();  // src/context/AuthContext.tsx
+const { property, theme } = useProperty();              // src/context/PropertyContext.tsx
 ```
 
-`useAuth()` provides session + role. `useProperty()` provides the active property + its dynamic theme. Role-based UI gating uses the `<RoleGuard>` component in `src/components/auth/`.
+`useAuth()` returns `userData` (a `Staff` object with `.role`), plus `isAdmin`/`isSuperAdmin` booleans. `useProperty()` provides the active property + its dynamic theme. Role-based UI gating uses the `<RoleGuard>` component in `src/components/auth/`.
 
 ### Supabase clients — use the right one
 
@@ -60,7 +64,37 @@ Never call `createClient()` from `@supabase/supabase-js` directly.
 - Route: `src/app/api/admin/<module>/route.ts`
 - Always validate the session server-side before returning data
 - Use `supabaseAdmin` (service role) for data queries that need to bypass RLS
-- Helper: `src/lib/api-auth.ts` for shared auth utilities
+- Use `requireAuth` + `isAuthError` from `src/lib/api-auth.ts`:
+
+```typescript
+const auth = await requireAuth(['admin', 'manager']);
+if (isAuthError(auth)) return auth;
+// auth.staff.role, auth.staff.propertyId are now available
+```
+
+### Cron jobs
+
+Routes under `src/app/api/cron/` are triggered by Vercel Cron: `daily-housekeeping`, `daily-automations`, `process-messages`, `housekeeping-routines`, `maintenance`, `breakfast-attendance`, `evening-revalidation`.
+
+### Mobile / field-staff apps
+
+Separate Next.js route groups for operational mobile use (not under `/admin`):
+
+| Route | Role |
+|---|---|
+| `src/app/governanta/` | `governance` |
+| `src/app/maid/` | `maid` |
+| `src/app/waiter/` | `waiter` |
+| `src/app/houseman/` | `houseman` |
+| `src/app/maintenance/` | `maintenance` / `technician` |
+
+These pages use API routes (not the admin pattern) and each has its own `layout.tsx` with auth guards.
+
+**RoleGuard convention for mobile layouts**: always include `"super_admin"`, `"admin"`, and `"manager"` alongside the role-specific role so that managers can access field-staff pages without being blocked:
+
+```typescript
+<RoleGuard allowedRoles={["governance", "super_admin", "admin", "manager"]} redirectTo="/admin/login">
+```
 
 ### Guest portal
 

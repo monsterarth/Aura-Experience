@@ -28,7 +28,11 @@
       "Bash(tar xf *)",
       "Bash(gunzip -c \"C:\\\\Users\\\\arthu\\\\.claude\\\\projects\\\\c--Aura-Experience-aura\\\\b282cb1d-ec85-4edb-9ed4-53dbf6b7c1a9\\\\tool-results\\\\webfetch-1776958468346-vb0nqh.bin\")",
       "Bash(xargs grep *)",
-      "Bash(pnpm dev *)"
+      "Bash(pnpm dev *)",
+      "Bash(git stash *)",
+      "Bash(git -C c:/Aura-Experience/aura status)",
+      "Bash(git -C c:/Aura-Experience/aura diff src/app/admin/concierge/page.tsx)",
+      "Bash(git -C c:/Aura-Experience/aura log --oneline -5)"
     ]
   }
 }
