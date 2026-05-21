@@ -17,7 +17,7 @@ import {
   Sparkles, CheckCircle2, AlertCircle,
   ClipboardCheck, Moon, LayoutDashboard,
   Timer, Users, ArrowRight, FileText, Printer, X,
-  LogIn, LogOut, BedDouble, Minus
+  LogIn, LogOut, BedDouble, Minus, PawPrint
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -47,6 +47,8 @@ interface ReportArrival {
   guestName: string;
   checkIn: string;
   checkOut: string;
+  hasPet?: boolean;
+  counts?: { adults: number; children: number; babies: number };
 }
 
 function GovernanceReportModal({
@@ -102,12 +104,24 @@ function GovernanceReportModal({
     return active.length ? active[0].type : null;
   }
 
-  function getStayInfo(cabinId: string): { guestName: string; checkIn: string; checkOut: string } | null {
+  function getStayInfo(cabinId: string): {
+    guestName: string; checkIn: string; checkOut: string;
+    hasPet?: boolean; counts?: { adults: number; children: number; babies: number };
+  } | null {
     const active = activeStays.find(s => s.cabinId === cabinId);
-    if (active) return { guestName: active.guestName, checkIn: active.checkIn, checkOut: active.checkOut };
+    if (active) return { guestName: active.guestName, checkIn: active.checkIn, checkOut: active.checkOut, hasPet: active.hasPet, counts: active.counts };
     const arrival = reportArrivals.find(a => a.cabinId === cabinId);
-    if (arrival) return { guestName: arrival.guestName, checkIn: arrival.checkIn, checkOut: arrival.checkOut };
+    if (arrival) return { guestName: arrival.guestName, checkIn: arrival.checkIn, checkOut: arrival.checkOut, hasPet: arrival.hasPet, counts: arrival.counts };
     return null;
+  }
+
+  function fmtACF(counts?: { adults: number; children: number; babies: number }): string {
+    if (!counts) return '—';
+    const parts: string[] = [];
+    if (counts.adults) parts.push(`${counts.adults}A`);
+    if (counts.children) parts.push(`${counts.children}C`);
+    if (counts.babies) parts.push(`${counts.babies}F`);
+    return parts.join(' ') || '—';
   }
 
   const fmt = (d?: string) =>
@@ -144,6 +158,7 @@ function GovernanceReportModal({
     const stay = getStayInfo(cabin.id);
     const taskType = getActiveTaskType(cabin.id);
     const lastClean = getLastCleaning(cabin.id);
+    const acf = fmtACF(stay?.counts);
 
     return (
       <tr className={cn(
@@ -152,11 +167,12 @@ function GovernanceReportModal({
         highlight === 'checkout' && "bg-orange-500/5",
         highlight === 'daily' && "bg-blue-500/5",
       )}>
-        <td className="py-2 px-3 font-bold whitespace-nowrap">
-          {cabin.number ? `Cabana ${cabin.number}` : cabin.name}
-        </td>
-        <td className="py-2 px-3 text-xs text-muted-foreground whitespace-nowrap">
-          {cabin.category || '—'}
+        {/* Cabana + Categoria mesclados */}
+        <td className="py-2 px-3 whitespace-nowrap">
+          <span className="font-bold">{cabin.number || cabin.name}</span>
+          {cabin.category && (
+            <span className="text-xs text-muted-foreground font-normal"> · {cabin.category}</span>
+          )}
         </td>
         <td className="py-2 px-3 text-xs whitespace-nowrap">
           <span className={cn(
@@ -175,8 +191,16 @@ function GovernanceReportModal({
             : <span className="text-muted-foreground">—</span>
           }
         </td>
-        <td className="py-2 px-3 text-xs max-w-[140px] truncate">
-          {stay?.guestName ?? <span className="text-muted-foreground">—</span>}
+        <td className="py-2 px-3 text-xs max-w-[130px] truncate">
+          {stay ? (
+            <span className="flex items-center gap-1">
+              <span className="truncate">{stay.guestName}</span>
+              {stay.hasPet && <PawPrint size={10} className="text-amber-500 shrink-0" />}
+            </span>
+          ) : <span className="text-muted-foreground">—</span>}
+        </td>
+        <td className="py-2 px-3 text-xs font-mono whitespace-nowrap text-muted-foreground">
+          {acf}
         </td>
         <td className="py-2 px-3 text-xs font-mono text-muted-foreground whitespace-nowrap">
           {fmt(stay?.checkIn)}
@@ -208,10 +232,10 @@ function GovernanceReportModal({
               <thead>
                 <tr className="border-b border-border/30 text-[10px] uppercase tracking-wider text-muted-foreground">
                   <th className="py-2 px-3 font-bold">Cabana</th>
-                  <th className="py-2 px-3 font-bold">Categoria</th>
                   <th className="py-2 px-3 font-bold">Estado</th>
                   <th className="py-2 px-3 font-bold">Tarefa</th>
                   <th className="py-2 px-3 font-bold">Hóspede</th>
+                  <th className="py-2 px-3 font-bold">A/C/F</th>
                   <th className="py-2 px-3 font-bold">C/In</th>
                   <th className="py-2 px-3 font-bold">C/Out</th>
                   <th className="py-2 px-3 font-bold">Última limpeza</th>
@@ -411,10 +435,10 @@ function GovernanceReportModal({
                   <thead>
                     <tr className="border-b border-border/30 text-[10px] uppercase tracking-wider text-muted-foreground">
                       <th className="py-2 px-3 font-bold">Cabana</th>
-                      <th className="py-2 px-3 font-bold">Categoria</th>
                       <th className="py-2 px-3 font-bold">Estado</th>
                       <th className="py-2 px-3 font-bold">Tarefa atual</th>
                       <th className="py-2 px-3 font-bold">Hóspede</th>
+                      <th className="py-2 px-3 font-bold">A/C/F</th>
                       <th className="py-2 px-3 font-bold">C/In</th>
                       <th className="py-2 px-3 font-bold">C/Out</th>
                       <th className="py-2 px-3 font-bold">Última limpeza</th>
@@ -476,7 +500,7 @@ export default function GovernancePage() {
       try {
         const { data: staysData } = await supabase
           .from('stays')
-          .select('id, cabinId, hasPet, checkIn, checkOut, guestId')
+          .select('id, cabinId, hasPet, checkIn, checkOut, guestId, counts')
           .eq('propertyId', property.id)
           .eq('status', 'active');
 
@@ -498,6 +522,7 @@ export default function GovernancePage() {
           checkIn: s.checkIn,
           checkOut: s.checkOut,
           guestName: guestMap[s.guestId] ?? 'Hóspede',
+          counts: s.counts ?? undefined,
         })));
       } catch {
         // silently fail — not critical
@@ -551,7 +576,7 @@ export default function GovernancePage() {
       const todayISO = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
       const { data: arrivalsData } = await supabase
         .from('stays')
-        .select('id, cabinId, checkIn, checkOut, guestId')
+        .select('id, cabinId, checkIn, checkOut, guestId, counts, hasPet')
         .eq('propertyId', property.id)
         .gte('checkIn', todayISO)
         .lte('checkIn', `${todayISO}T23:59:59`)
@@ -573,6 +598,8 @@ export default function GovernancePage() {
         guestName: guestMap[s.guestId] ?? 'Hóspede',
         checkIn: s.checkIn,
         checkOut: s.checkOut,
+        hasPet: s.hasPet ?? false,
+        counts: s.counts ?? undefined,
       })));
     } catch {
       toast.error("Erro ao gerar relatório.");

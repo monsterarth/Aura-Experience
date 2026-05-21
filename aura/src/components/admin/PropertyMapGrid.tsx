@@ -19,6 +19,7 @@ export interface ActiveStayInfo {
   checkIn: string;
   checkOut: string;
   guestName: string;
+  counts?: { adults: number; children: number; babies: number };
 }
 
 type CabinHKState =
