@@ -236,12 +236,13 @@ function GovernanceReportModal({
           body > * { visibility: hidden !important; }
           #gv-report-root, #gv-report-root * { visibility: visible !important; }
 
-          /* Libera o fluxo normal para múltiplas páginas */
+          /* Posiciona no topo, cresce livremente em múltiplas páginas */
+          html, body { height: auto !important; overflow: visible !important; }
           #gv-report-root {
-            position: static !important;
-            overflow: visible !important;
+            position: absolute !important;
+            top: 0 !important; left: 0 !important; right: 0 !important;
             height: auto !important;
-            width: 100% !important;
+            overflow: visible !important;
             background: white !important;
             color: black !important;
           }
