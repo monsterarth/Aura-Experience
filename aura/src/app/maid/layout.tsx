@@ -8,7 +8,7 @@ export default function MaidLayout({ children }: { children: React.ReactNode }) 
   return (
     <AuthProvider>
       <PropertyProvider>
-        <RoleGuard allowedRoles={["maid"]} redirectTo="/admin/login">
+        <RoleGuard allowedRoles={["maid", "super_admin", "admin", "manager"]} redirectTo="/admin/login">
           {children}
         </RoleGuard>
       </PropertyProvider>

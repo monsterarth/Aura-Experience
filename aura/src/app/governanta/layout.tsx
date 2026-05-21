@@ -8,7 +8,7 @@ export default function GovernantaLayout({ children }: { children: React.ReactNo
   return (
     <AuthProvider>
       <PropertyProvider>
-        <RoleGuard allowedRoles={["governance"]} redirectTo="/admin/login">
+        <RoleGuard allowedRoles={["governance", "super_admin", "admin", "manager"]} redirectTo="/admin/login">
           {children}
         </RoleGuard>
       </PropertyProvider>
