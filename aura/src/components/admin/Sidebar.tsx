@@ -125,7 +125,7 @@ type NavGroup = {
 const PAINEL_CHILDREN: SubItem[] = [
   { id: "painel_plataforma", label: "Plataforma",  href: "/admin/core/dashboard",      roles: ["super_admin"] },
   { id: "painel_recepcao",   label: "Recepção",    href: "/admin/reception",            roles: ["super_admin", "admin", "manager"] },
-  { id: "painel_gov",        label: "Governança",  href: "/admin/governance",           roles: ["super_admin", "admin", "manager"] },
+  { id: "painel_gov",        label: "Governança",  href: "/admin/governance",           roles: ["super_admin", "admin", "manager", "reception", "governance"] },
   { id: "painel_manut",      label: "Manutenção",  href: "/admin/maintenance",          roles: ["super_admin", "admin", "manager"] },
   { id: "painel_kds",        label: "Cozinha/KDS", href: "/admin/cafe-salao/kds",       roles: ["super_admin", "admin"] },
   { id: "painel_aval",       label: "Avaliações",  href: "/admin/surveys/responses",    roles: ["super_admin", "admin", "manager"] },
