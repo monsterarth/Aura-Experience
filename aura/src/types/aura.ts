@@ -277,6 +277,7 @@ export interface HousekeepingTask {
   routineId?: string; // ID da rotina legada que gerou esta tarefa (se aplicável)
   ruleId?: string;    // ID da regra de automação que gerou esta tarefa (novo sistema)
   customLocation?: string; // Local livre (ex: "Recepção", "Banheiro Social")
+  needsConference?: boolean; // Para tarefas custom: exige conferência da governanta antes de concluir
   keyLocation?: 'reception' | 'cabin' | 'unknown';
   cabinChecked?: boolean;         // true após a camareira concluir a conferência (frigobar + chave + achados + empréstimos)
   observations?: string;

@@ -51,6 +51,7 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
           structureId: task.structureId || '',
           unitId: task.unitId || '',
           customLocation: task.customLocation || '',
+          needsConference: task.needsConference ?? false,
           assignedTo: task.assignedTo || [],
           observations: task.observations || ''
         });
@@ -261,6 +262,20 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
 
           {formData.type === 'custom' && (
             <div className="space-y-4 pt-4 border-t border-border">
+              <button
+                type="button"
+                onClick={() => setFormData(prev => ({ ...prev, needsConference: !prev.needsConference }))}
+                className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-colors ${formData.needsConference ? 'bg-primary/10 border-primary/40' : 'bg-secondary/20 border-border'}`}
+              >
+                <div className="text-left">
+                  <p className="text-sm font-bold text-foreground">Requer conferência da governança</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">A tarefa irá para revisão antes de ser concluída.</p>
+                </div>
+                <div className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${formData.needsConference ? 'bg-primary' : 'bg-secondary'}`}>
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${formData.needsConference ? 'translate-x-5' : 'translate-x-0'}`} />
+                </div>
+              </button>
+
               <div className="flex justify-between items-center bg-secondary/20 p-4 border border-border rounded-2xl">
                 <div>
                   <h4 className="text-sm font-bold text-foreground">Procedimentos da Limpeza Personalizada</h4>

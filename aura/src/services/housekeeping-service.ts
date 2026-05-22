@@ -185,9 +185,11 @@ export const HousekeepingService = {
       throw new Error('CHECKLIST_INCOMPLETE');
     }
 
-    // turnover e inspection passam por conferência da governanta; os demais concluem direto
-    const NEEDS_CONFERENCE = ['turnover', 'inspection_checkin', 'inspection_checkout'];
-    const newStatus = NEEDS_CONFERENCE.includes(task.type) ? 'waiting_conference' : 'completed';
+    // daily e linen_change concluem direto; turnover/inspection sempre conferência; custom depende do flag
+    const requiresConference =
+      ['turnover', 'inspection_checkin', 'inspection_checkout'].includes(task.type) ||
+      (task.type === 'custom' && task.needsConference === true);
+    const newStatus = requiresConference ? 'waiting_conference' : 'completed';
 
     await supabase.from('housekeeping_tasks')
       .update({
@@ -199,7 +201,7 @@ export const HousekeepingService = {
       })
       .eq('id', taskId);
 
-    // Se concluiu Diária ou Custom, respeita hóspede in-house
+    // daily e linen_change concluídas liberam a cabana imediatamente
     if (newStatus === 'completed') {
       if (task.cabinId) {
         const { data: cabin } = await supabase.from('cabins').select('currentStayId').eq('id', task.cabinId).single();

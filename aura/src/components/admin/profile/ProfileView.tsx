@@ -212,6 +212,12 @@ export function ProfileView({ staffId, isOwnProfile }: Props) {
   const roleMeta = getRoleMeta(staff.role);
   const days = daysSince(staff.hireDate);
 
+  const canEditPhoto =
+    isOwnProfile ||
+    authUser?.role === "super_admin" ||
+    (authUser?.role === "admin" && staff.role !== "super_admin") ||
+    (authUser?.role === "manager" && staff.role !== "super_admin" && staff.role !== "admin");
+
   return (
     <div className="max-w-3xl mx-auto space-y-4">
 
@@ -242,7 +248,7 @@ export function ProfileView({ staffId, isOwnProfile }: Props) {
               className="relative flex-shrink-0 w-20 h-20 rounded-2xl overflow-hidden border-[3px] border-card shadow-lg"
               style={{ outline: `2px solid ${roleMeta.color}44` }}
             >
-              {isOwnProfile ? (
+              {canEditPhoto ? (
                 <ImageUpload
                   value={staff.profilePictureUrl ?? undefined}
                   onUploadSuccess={handlePhotoUpload}
