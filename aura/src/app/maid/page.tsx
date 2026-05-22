@@ -1280,7 +1280,9 @@ export default function MaidPage() {
     const init = async () => {
       setDataLoading(true);
       try {
-        const cabinsData = await CabinService.getCabinsByProperty(property.id);
+        // Timeout de 6s: evita que uma query lenta de cabines trave a tela de loading
+        const timeout = new Promise<Cabin[]>(resolve => setTimeout(() => resolve([]), 6000));
+        const cabinsData = await Promise.race([CabinService.getCabinsByProperty(property.id), timeout]);
         const cabinMap: Record<string, Cabin> = {};
         cabinsData.forEach(c => { cabinMap[c.id] = c; });
         setCabins(cabinMap);

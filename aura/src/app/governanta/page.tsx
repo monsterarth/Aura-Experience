@@ -1451,12 +1451,20 @@ export default function GovernantaPage() {
     const init = async () => {
       setLoading(true);
       try {
-        const [cabinsData, staffData, structuresData, { data: miniData }] = await Promise.all([
-          CabinService.getCabinsByProperty(property.id),
-          StaffService.getStaffByProperty(property.id),
-          StructureService.getStructures(property.id),
-          supabase.from("minibar_items").select("*").eq("propertyId", property.id).eq("active", true).order("order", { ascending: true }),
+        // Timeout de 6s: se alguma das queries travar, libera o loading com dados parciais/vazios
+        const withTimeout = <T,>(p: Promise<T>, fallback: T) =>
+          Promise.race([p, new Promise<T>(resolve => setTimeout(() => resolve(fallback), 6000))]);
+
+        const [cabinsData, staffData, structuresData, miniResult] = await Promise.all([
+          withTimeout(CabinService.getCabinsByProperty(property.id), []),
+          withTimeout(StaffService.getStaffByProperty(property.id), []),
+          withTimeout(StructureService.getStructures(property.id), []),
+          withTimeout(
+            supabase.from("minibar_items").select("*").eq("propertyId", property.id).eq("active", true).order("order", { ascending: true }),
+            { data: [] }
+          ),
         ]);
+        const { data: miniData } = miniResult as { data: any[] | null };
         setMinibarItems((miniData || []) as MinibarItem[]);
 
         const cabinsDict: Record<string, Cabin> = {};

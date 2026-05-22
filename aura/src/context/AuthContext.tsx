@@ -34,21 +34,39 @@ const AuthContext = createContext<AuthContextType>({
   refreshUserData: async () => {},
 });
 
+// Cache de userData no sessionStorage para reload instantâneo (F5 não mostra loading)
+const USER_CACHE_KEY = 'aura-user-cache';
+function readCachedStaff(): Staff | null {
+  if (typeof window === 'undefined') return null;
+  try { const r = sessionStorage.getItem(USER_CACHE_KEY); return r ? JSON.parse(r) as Staff : null; }
+  catch { return null; }
+}
+function writeCachedStaff(staff: Staff | null) {
+  if (typeof window === 'undefined') return;
+  try { staff ? sessionStorage.setItem(USER_CACHE_KEY, JSON.stringify(staff)) : sessionStorage.removeItem(USER_CACHE_KEY); }
+  catch {}
+}
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+  const cachedStaff = readCachedStaff();
+
   const [user, setUser] = useState<SupabaseUser | null>(null);
-  const [userData, setUserData] = useState<Staff | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [userDataReady, setUserDataReady] = useState(false);
+  const [userData, setUserData] = useState<Staff | null>(cachedStaff);
+  const [loading, setLoading] = useState(!cachedStaff);     // false se há cache → sem loading screen no F5
+  const [userDataReady, setUserDataReady] = useState(!!cachedStaff);
   const [initialProperty, setInitialProperty] = useState<any | null>(null);
   const [impersonating, setImpersonating] = useState<ImpersonatingState | null>(null);
 
   // Refs para evitar closures stale no visibility handler e onAuthStateChange
   const userRef = useRef<SupabaseUser | null>(null);
-  const userDataRef = useRef<Staff | null>(null);
+  const userDataRef = useRef<Staff | null>(cachedStaff);
   const isLoggingOut = useRef(false);
   const initialSessionReceived = useRef(false);
 
   const supabase = createClientBrowserAuto();
+
+  // Mantém cache em sincronia com o estado — escrita automática ao setar userData
+  useEffect(() => { writeCachedStaff(userData); }, [userData]);
 
   // Sync refs com state
   useEffect(() => { userRef.current = user; }, [user]);
@@ -170,7 +188,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setUser(currentUser);
             // Só busca staff se o fast-path ainda não resolveu
             if (!userDataRef.current) {
-              const staff = await fetchStaffData(currentUser.id);
+              // Timeout de 4s: se o DB travar, o finally do INITIAL_SESSION ainda chama setLoading(false)
+              const staffTimeout = new Promise<null>(resolve => setTimeout(() => resolve(null), 4000));
+              const staff = await Promise.race([fetchStaffData(currentUser.id), staffTimeout]);
               if (mounted) { setUserData(staff); setUserDataReady(true); }
             }
           } else if (!userDataRef.current) {
@@ -187,10 +207,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setUser(null);
           setUserData(null);
 
-          // Limpa cache de property para o próximo usuário não herdar a sessão anterior
+          // Limpa todos os caches para o próximo usuário não herdar a sessão anterior
           if (typeof window !== 'undefined') {
             localStorage.removeItem('aura-property-cache');
             localStorage.removeItem('aura-active-property');
+            sessionStorage.removeItem(USER_CACHE_KEY);
           }
 
           if (typeof window !== 'undefined' &&
