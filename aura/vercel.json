@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/daily-housekeeping",
-      "schedule": "0 20 * * *"
+      "schedule": "10 20 * * *"
     },
     {
       "path": "/api/cron/breakfast-attendance",
