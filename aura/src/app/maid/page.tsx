@@ -31,7 +31,7 @@ const STYLE = `
 @keyframes maid-pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.4;transform:scale(.8);}}
 @keyframes maid-fadein{from{opacity:0}to{opacity:1}}
 @keyframes maid-slideup{from{transform:translateY(100%)}to{transform:translateY(0)}}
-@keyframes maid-toast{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes maid-toast{from{transform:translateY(-16px);opacity:0}to{transform:translateY(0);opacity:1}}
 @keyframes maid-spin{to{transform:rotate(360deg)}}
 `;
 
@@ -128,7 +128,7 @@ function Pulse({ size = 8 }: { size?: number }) {
 function Toast({ msg, color }: { msg: string; color: string }) {
   return (
     <div style={{
-      position: "absolute", bottom: 88, left: 16, right: 16,
+      position: "absolute", top: 70, left: 16, right: 16,
       background: "#111827", color: T.text, border: `1px solid ${T.border2}`,
       borderRadius: 16, padding: "14px 16px", fontSize: 13, fontWeight: 600,
       display: "flex", alignItems: "center", gap: 10, zIndex: 200,
