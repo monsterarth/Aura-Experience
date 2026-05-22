@@ -83,7 +83,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     // Fast-path: não chamar na página de login (middleware bloqueia com 401)
     if (!isLoginPage) {
-      fetch('/api/admin/auth/me')
+      const fastPathController = new AbortController();
+      setTimeout(() => fastPathController.abort(), 3000); // 3s — safety timeout cobre o restante
+      fetch('/api/admin/auth/me', { signal: fastPathController.signal })
         .then(res => { if (!res.ok) throw new Error('auth-api'); return res.json(); })
         .then(data => {
           if (!mounted || !data?.staff) return;
@@ -124,7 +126,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       console.warn("[Auth] Safety timeout — re-tentando fast-path.");
       initialSessionReceived.current = true;
       try {
-        const res = await fetch('/api/admin/auth/me');
+        // Timeout de 2.5s no fetch: se o middleware travar (ex: supabase.auth.getUser lento),
+        // o finally abaixo ainda executa e libera o loading em vez de ficar preso para sempre.
+        const controller = new AbortController();
+        const abortTimer = setTimeout(() => controller.abort(), 2500);
+        const res = await fetch('/api/admin/auth/me', { signal: controller.signal });
+        clearTimeout(abortTimer);
         if (!mounted) return;
         if (res.ok) {
           const data = await res.json();
