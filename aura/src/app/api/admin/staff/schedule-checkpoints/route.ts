@@ -9,7 +9,7 @@ import { requireAuth, isAuthError } from "@/lib/api-auth";
  * - ?staffId=&from=&to=     → checkpoints no intervalo de datas
  */
 export async function GET(request: Request) {
-  const auth = await requireAuth(['super_admin', 'admin', 'manager', 'reception', 'governance', 'kitchen', 'maintenance', 'marketing']);
+  const auth = await requireAuth(['super_admin', 'admin', 'manager', 'reception', 'governance', 'kitchen', 'maintenance', 'marketing', 'maid', 'houseman', 'waiter', 'porter', 'technician']);
   if (isAuthError(auth)) return auth;
 
   const { searchParams } = new URL(request.url);
