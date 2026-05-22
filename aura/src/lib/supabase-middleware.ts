@@ -77,6 +77,9 @@ export async function updateSession(request: NextRequest) {
         const roleForRoute: Record<string, string[]> = {
             '/maid': ['maid'],
             '/governanta': ['governance'],
+            '/waiter': ['waiter'],
+            '/houseman': ['houseman'],
+            '/maintenance': ['maintenance', 'technician'],
         };
 
         for (const [route, allowed] of Object.entries(roleForRoute)) {
@@ -94,6 +97,17 @@ export async function updateSession(request: NextRequest) {
         }
     }
 
+    // Mapa de roles móveis para as suas apps
+    const mobileRoleApp: Record<string, string> = {
+        maid: '/maid',
+        governance: '/governanta',
+        waiter: '/waiter',
+        houseman: '/houseman',
+        maintenance: '/maintenance',
+        technician: '/maintenance',
+        porter: '/porter',
+    };
+
     // Proteger páginas admin e API routes admin — redireciona/bloqueia se não autenticado
     if ((isAdminPage || isAdminApi) && !user) {
         if (isAdminApi) {
@@ -105,11 +119,32 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.redirect(url)
     }
 
+    // Roles móveis não devem aceder rotas admin — redireciona para a sua app
+    if (isAdminPage && user) {
+        const { data: staffRow } = await supabaseAdmin
+            .from('staff')
+            .select('role')
+            .eq('id', user.id)
+            .maybeSingle();
+        const role = staffRow?.role as string | undefined;
+        if (role && mobileRoleApp[role]) {
+            const url = request.nextUrl.clone();
+            url.pathname = mobileRoleApp[role];
+            return NextResponse.redirect(url);
+        }
+    }
+
     // Redirect to dashboard if logged in and on login page
     if (pathname.includes('/admin/login') && user) {
-        const url = request.nextUrl.clone()
-        url.pathname = '/admin/stays'
-        return NextResponse.redirect(url)
+        const { data: staffRow } = await supabaseAdmin
+            .from('staff')
+            .select('role')
+            .eq('id', user.id)
+            .maybeSingle();
+        const role = staffRow?.role as string | undefined;
+        const url = request.nextUrl.clone();
+        url.pathname = (role && mobileRoleApp[role]) ? mobileRoleApp[role] : '/admin/stays';
+        return NextResponse.redirect(url);
     }
 
     // Prevent 304 caching for admin pages — garante que cookies de auth
