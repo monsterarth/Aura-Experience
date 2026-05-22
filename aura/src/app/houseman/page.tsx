@@ -883,12 +883,34 @@ export default function HousemanPage() {
     { id: "profile", label: "Perfil", icon: "user", badge: 0 },
   ];
 
-  if (authLoading || !userDataReady || propertyLoading) {
+  const isLoadingScreen = authLoading || !userDataReady || propertyLoading;
+  const [showEscape, setShowEscape] = useState(false);
+  useEffect(() => {
+    if (!isLoadingScreen) { setShowEscape(false); return; }
+    const t = setTimeout(() => setShowEscape(true), 15000);
+    return () => clearTimeout(t);
+  }, [isLoadingScreen]);
+
+  if (isLoadingScreen) {
     return (
       <div style={{ minHeight: "100dvh", display: "flex", alignItems: "center", justifyContent: "center", background: T.bg, color: T.text, flexDirection: "column", gap: 16, fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif" }}>
         <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
         <div style={{ width: 40, height: 40, borderRadius: "50%", border: `3px solid rgba(155,109,255,0.3)`, borderTopColor: T.g1, animation: "spin 1s linear infinite" }} />
         <div style={{ fontSize: 13, opacity: 0.6 }}>Carregando...</div>
+        {showEscape && (
+          <button
+            onClick={() => {
+              const ctrl = new AbortController();
+              setTimeout(() => ctrl.abort(), 3000);
+              fetch('/api/auth/signout', { method: 'POST', signal: ctrl.signal })
+                .catch(() => {})
+                .finally(() => { window.location.href = '/admin/login'; });
+            }}
+            style={{ marginTop: 8, padding: "12px 28px", background: "rgba(248,113,113,0.1)", color: "#f87171", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 14, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+          >
+            Sair
+          </button>
+        )}
       </div>
     );
   }

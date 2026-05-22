@@ -1598,10 +1598,32 @@ export default function GovernantaPage() {
 
   // ── Guards ────────────────────────────────────────────────────────────────────
 
-  if (propLoading || loading) {
+  const isLoadingScreen = propLoading || loading;
+  const [showEscape, setShowEscape] = useState(false);
+  useEffect(() => {
+    if (!isLoadingScreen) { setShowEscape(false); return; }
+    const t = setTimeout(() => setShowEscape(true), 15000);
+    return () => clearTimeout(t);
+  }, [isLoadingScreen]);
+
+  if (isLoadingScreen) {
     return (
-      <div style={{ height: "100dvh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ height: "100dvh", background: T.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif" }}>
         <div style={{ width: 36, height: 36, borderRadius: "50%", border: `3px solid ${T.v1}`, borderTopColor: "transparent", animation: "gov-spin 0.8s linear infinite" }} />
+        {showEscape && (
+          <button
+            onClick={() => {
+              const ctrl = new AbortController();
+              setTimeout(() => ctrl.abort(), 3000);
+              fetch('/api/auth/signout', { method: 'POST', signal: ctrl.signal })
+                .catch(() => {})
+                .finally(() => { window.location.href = '/admin/login'; });
+            }}
+            style={{ marginTop: 8, padding: "12px 28px", background: "rgba(248,113,113,0.1)", color: "#f87171", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 14, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+          >
+            Sair
+          </button>
+        )}
       </div>
     );
   }
