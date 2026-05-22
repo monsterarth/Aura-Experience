@@ -898,12 +898,18 @@ function FaxinasScreen({
                     {t.keyLocation === "reception" ? "Recepção" : "Cabana"}
                   </Pill>
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 4, marginBottom: 14 }}>
+                <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 4, marginBottom: t.observations ? 10 : 14 }}>
                   {t.checklist.slice(0, 3).map(c => (
                     <span key={c.id} style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, background: T.glass3, color: T.muted, border: `1px solid ${T.border}` }}>{c.label}</span>
                   ))}
                   {t.checklist.length > 3 && <span style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, background: T.glass3, color: T.muted, border: `1px solid ${T.border}` }}>+{t.checklist.length - 3} itens</span>}
                 </div>
+                {t.observations && (
+                  <div style={{ display: "flex", gap: 8, alignItems: "flex-start", background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 12, padding: "10px 12px", marginBottom: 14 }}>
+                    <I n="info" s={14} c={T.amber} />
+                    <span style={{ fontSize: 13, color: T.amber, lineHeight: 1.45, fontWeight: 600 }}>{t.observations}</span>
+                  </div>
+                )}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
                   <button onClick={() => onStart(t.id)} style={{ padding: 16, background: T.grad, color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(155,109,255,0.35)" }}>
                     {t.startedAt ? "Retomar" : "Iniciar"} <I n="arrow" s={18} />
