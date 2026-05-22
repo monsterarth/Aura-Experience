@@ -145,7 +145,7 @@ export default function AuditLogsPage() {
   const hasMore = logs.length < total;
 
   return (
-    <RoleGuard allowedRoles={["super_admin", "admin"]}>
+    <RoleGuard allowedRoles={["super_admin", "admin", "manager"]}>
       <div className="p-4 md:p-8 max-w-[1400px] mx-auto space-y-6 animate-in fade-in duration-500">
 
         {/* Header */}
