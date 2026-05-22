@@ -133,12 +133,16 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
     setLoading(true);
     setError(null);
     try {
-      const { data, error } = await supabase
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('TIMEOUT')), 5000)
+      );
+      const queryPromise = supabase
         .from('properties')
         .select('*')
         .eq('slug', slug)
         .limit(1)
         .single();
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
       if (error || !data) throw new Error('Propriedade não encontrada.');
       handleSetProperty(data as Property);
     } catch (err: any) {
@@ -148,16 +152,21 @@ export const PropertyProvider = ({ children, initialSlug }: { children: ReactNod
     }
   }, [handleSetProperty]);
 
-  // Busca por ID — com fallback para cache se Supabase falhar
+  // Busca por ID — com fallback para cache se Supabase falhar ou demorar demais
   const fetchPropertyById = useCallback(async (id: string) => {
     setLoading(true);
     setError(null);
     try {
-      const { data, error } = await supabase
+      // Timeout de 5s: em redes móveis instáveis a query pode travar indefinidamente
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('TIMEOUT')), 5000)
+      );
+      const queryPromise = supabase
         .from('properties')
         .select('*')
         .eq('id', id)
         .single();
+      const { data, error } = await Promise.race([queryPromise, timeoutPromise]);
       if (error || !data) throw new Error('Propriedade não encontrada.');
       handleSetProperty(data as Property);
     } catch (err: any) {

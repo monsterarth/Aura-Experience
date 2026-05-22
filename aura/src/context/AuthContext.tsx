@@ -86,10 +86,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       fetch('/api/admin/auth/me')
         .then(res => { if (!res.ok) throw new Error('auth-api'); return res.json(); })
         .then(data => {
-          if (mounted && data?.staff && !userDataRef.current) {
+          if (!mounted || !data?.staff) return;
+          // Captura a property independentemente de quem ganhou a corrida (INITIAL_SESSION vs fast-path)
+          // Sem isso, quando o INITIAL_SESSION dispara antes da resposta da API (idle + token expirado),
+          // o initialProperty nunca é definido e o PropertyContext cai no caminho lento.
+          if (data.property) setInitialProperty(data.property);
+          if (!userDataRef.current) {
             userDataRef.current = data.staff;
             setUserData(data.staff);
-            if (data.property) setInitialProperty(data.property);
             setUserDataReady(true);
             setLoading(false);
           }
@@ -121,13 +125,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       initialSessionReceived.current = true;
       try {
         const res = await fetch('/api/admin/auth/me');
-        if (!mounted || userDataRef.current) return;
+        if (!mounted) return;
         if (res.ok) {
           const data = await res.json();
           if (mounted && data?.staff) {
-            userDataRef.current = data.staff;
-            setUserData(data.staff);
+            // Sempre captura a property — mesmo que INITIAL_SESSION já tenha definido userData
             if (data.property) setInitialProperty(data.property);
+            if (!userDataRef.current) {
+              userDataRef.current = data.staff;
+              setUserData(data.staff);
+            }
           }
         }
       } catch { /* silencioso — hard timeout cobre */ }
