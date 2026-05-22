@@ -1409,6 +1409,13 @@ export default function GovernantaPage() {
   const [allCabins, setAllCabins] = useState<Cabin[]>([]);
   const [allStructures, setAllStructures] = useState<Structure[]>([]);
   const [loading, setLoading] = useState(true);
+  const [cabinStays, setCabinStays] = useState<Record<string, {
+    guestName: string;
+    checkIn: string;
+    checkOut: string;
+    status: string;
+    expectedArrivalTime?: string | null;
+  }>>({});
 
   const [screen, setScreen] = useState<Screen>("dashboard");
 
@@ -1496,6 +1503,28 @@ export default function GovernantaPage() {
         cabinsData.forEach(c => { cabinsDict[c.id] = c; });
         setCabins(cabinsDict);
         setAllCabins(cabinsData);
+
+        // Load active/upcoming stays for occupancy info on cabin cards
+        const todayStr = new Date().toISOString().split('T')[0];
+        const { data: staysRaw } = await supabase
+          .from('stays')
+          .select('id, cabinId, checkIn, checkOut, status, expectedArrivalTime, guests(fullName)')
+          .eq('propertyId', property.id)
+          .in('status', ['active', 'pending', 'pre_checkin_done'])
+          .gte('checkOut', todayStr);
+        const staysMap: Record<string, { guestName: string; checkIn: string; checkOut: string; status: string; expectedArrivalTime?: string | null }> = {};
+        (staysRaw ?? []).forEach((stay: any) => {
+          if (stay.cabinId) {
+            staysMap[stay.cabinId] = {
+              guestName: (stay.guests as any)?.fullName ?? "",
+              checkIn: stay.checkIn,
+              checkOut: stay.checkOut,
+              status: stay.status,
+              expectedArrivalTime: stay.expectedArrivalTime ?? null,
+            };
+          }
+        });
+        setCabinStays(staysMap);
 
         const structuresDict: Record<string, Structure> = {};
         structuresData.forEach(s => { structuresDict[s.id] = s; });
@@ -1913,13 +1942,38 @@ export default function GovernantaPage() {
                           custom:              "Personalizada",
                         };
 
+                        // Occupancy info
+                        const occ = cabinStays[cabin.id];
+                        const todayDate = new Date().toISOString().split('T')[0];
+                        const checkOutDate = occ?.checkOut?.split('T')[0] ?? occ?.checkOut ?? "";
+                        const checkInDate = occ?.checkIn?.split('T')[0] ?? occ?.checkIn ?? "";
+                        const isCheckoutToday = checkOutDate === todayDate;
+                        const isCheckinToday = checkInDate === todayDate;
+                        const occLabel = occ
+                          ? occ.status === 'active'
+                            ? isCheckoutToday
+                              ? { text: "Saindo hoje", color: T.amber }
+                              : { text: "Hospedado",   color: T.blue }
+                            : isCheckinToday
+                              ? { text: "Check-in hoje", color: T.green }
+                              : { text: "Chegando",      color: T.muted }
+                          : null;
+                        const fmtDate = (d: string) => {
+                          if (!d) return "";
+                          const [y, m, day] = (d.split('T')[0]).split('-');
+                          return `${day}/${m}/${y}`;
+                        };
+                        const arrivalStr = occ?.expectedArrivalTime
+                          ? occ.expectedArrivalTime.slice(0, 5)
+                          : fmtDate(checkInDate);
+
                         return (
                           <button
                             key={cabin.id}
                             onClick={() => openCabinHistory(cabin)}
                             style={{
                               width: "100%", textAlign: "left", cursor: "pointer", fontFamily: "inherit",
-                              background: T.card2, border: `1px solid ${T.border}`, borderRadius: 16,
+                              background: T.card2, border: `1px solid ${occ ? (isCheckoutToday ? T.amberBorder : isCheckinToday ? T.greenBorder : T.border) : T.border}`, borderRadius: 16,
                               padding: "14px 16px", display: "flex", alignItems: "center", gap: 14,
                               transition: "border-color .15s",
                             }}
@@ -1933,7 +1987,7 @@ export default function GovernantaPage() {
                             }} />
 
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                                 <span style={{ fontSize: 14, fontWeight: 800, color: T.text }}>{cabin.name || `Cabana ${cabin.number}`}</span>
                                 <span style={{
                                   fontSize: 10, fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase",
@@ -1946,6 +2000,35 @@ export default function GovernantaPage() {
                                 <div style={{ fontSize: 11, color: T.muted, marginTop: 3, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                                   <span>{typeLabels[topTask.type] ?? topTask.type}</span>
                                   {assignedNames && <span>· {assignedNames}</span>}
+                                </div>
+                              )}
+                              {occ && (
+                                <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                  {occLabel && (
+                                    <span style={{
+                                      fontSize: 10, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase",
+                                      padding: "2px 7px", borderRadius: 6,
+                                      color: occLabel.color,
+                                      background: occLabel.color === T.amber ? T.amberBg : occLabel.color === T.blue ? T.blueBg : occLabel.color === T.green ? T.greenBg : T.glass2,
+                                    }}>{occLabel.text}</span>
+                                  )}
+                                  {occ.guestName && (
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                      {occ.guestName}
+                                    </span>
+                                  )}
+                                  {occ.status === 'active' && checkOutDate && (
+                                    <span style={{ fontSize: 11, color: T.muted, marginLeft: "auto" }}>
+                                      saída {fmtDate(checkOutDate)}
+                                    </span>
+                                  )}
+                                  {(occ.status === 'pending' || occ.status === 'pre_checkin_done') && (
+                                    <span style={{ fontSize: 11, color: T.muted, marginLeft: "auto" }}>
+                                      {isCheckinToday && occ.expectedArrivalTime
+                                        ? `às ${arrivalStr}`
+                                        : `entrada ${fmtDate(checkInDate)}`}
+                                    </span>
+                                  )}
                                 </div>
                               )}
                             </div>
