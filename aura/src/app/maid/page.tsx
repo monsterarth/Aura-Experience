@@ -1016,6 +1016,7 @@ function ProfileScreen({
   onLogout: () => void;
   propertyId: string;
 }) {
+  const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(userData?.fullName || "Camareira");
   const [todayShift, setTodayShift] = useState<string | null>(null);
@@ -1189,9 +1190,10 @@ function ProfileScreen({
                 const roleLabel = ROLE_LABELS[m.role] ?? m.role;
                 const initials = m.fullName.split(" ").slice(0, 2).map(w => w[0] ?? "").join("").toUpperCase();
                 return (
-                  <div key={m.id} style={{
+                  <div key={m.id} onClick={() => router.push(`/equipe/${m.id}`)} style={{
                     display: "flex", alignItems: "center", gap: 10, padding: "10px",
                     background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 14,
+                    cursor: "pointer",
                   }}>
                     <div style={{
                       width: 36, height: 36, borderRadius: 12, flexShrink: 0,
@@ -1220,7 +1222,7 @@ function ProfileScreen({
 
       {userData?.id && userData?.propertyId && (
         <div style={{ marginBottom: 20 }}>
-          <ScrapWall profileStaffId={userData.id} isOwnProfile={true} propertyId={userData.propertyId} />
+          <ScrapWall profileStaffId={userData.id} isOwnProfile={true} propertyId={userData.propertyId} allowRecipientPicker={true} />
         </div>
       )}
 
@@ -1413,7 +1415,7 @@ export default function MaidPage() {
     <>
       <style>{STYLE}</style>
 
-      <div className="maid-shell" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100dvh", background: T.bg }}>
+      <div className="dark maid-shell" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100dvh", background: T.bg }}>
         <div style={{ width: "100%", maxWidth: 430, height: "100dvh", background: T.bg, color: T.text, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
 
           {/* Ambient orbs */}

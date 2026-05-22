@@ -428,7 +428,7 @@ function WaiterProfileTab({ userData, onLogout }: { userData: any; onLogout: () 
       </div>
 
       {userData?.id && userData?.propertyId && (
-        <ScrapWall profileStaffId={userData.id} isOwnProfile={true} propertyId={userData.propertyId} />
+        <ScrapWall profileStaffId={userData.id} isOwnProfile={true} propertyId={userData.propertyId} allowRecipientPicker={true} />
       )}
 
       <button onClick={onLogout}
@@ -539,7 +539,7 @@ export default function WaiterPage() {
 
   return (
     <RoleGuard allowedRoles={["super_admin", "admin", "reception", "kitchen", "waiter"]}>
-      <div className="flex flex-col h-screen bg-background max-w-md mx-auto">
+      <div className="dark flex flex-col h-screen bg-background max-w-md mx-auto">
 
         <div className="px-4 pt-5 pb-3 border-b border-white/5">
           <div className="flex items-center justify-between">

@@ -1382,7 +1382,7 @@ function ProfileScreen({ userData, onLogout }: { userData: any; onLogout: () => 
 
       {userData?.id && userData?.propertyId && (
         <div style={{ marginBottom: 20 }}>
-          <ScrapWall profileStaffId={userData.id} isOwnProfile={true} propertyId={userData.propertyId} />
+          <ScrapWall profileStaffId={userData.id} isOwnProfile={true} propertyId={userData.propertyId} allowRecipientPicker={true} />
         </div>
       )}
 
@@ -1624,7 +1624,7 @@ export default function GovernantaPage() {
   return (
     <>
       <style>{STYLE}</style>
-      <div className="gov-shell" style={{
+      <div className="dark gov-shell" style={{
         height: "100dvh", background: T.bg, color: T.text,
         display: "flex", flexDirection: "column", position: "relative", overflow: "hidden",
         maxWidth: 480, margin: "0 auto",

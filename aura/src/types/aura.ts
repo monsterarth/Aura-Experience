@@ -1196,9 +1196,11 @@ export interface StaffScrap {
   toStaffId: string;
   propertyId: string;
   message: string;
+  parentId?: string | null;
   createdAt: Timestamp;
   fromStaff?: Pick<Staff, 'id' | 'fullName' | 'role' | 'profilePictureUrl' | 'messengerColor'>;
   reactions?: StaffScrapReaction[];
+  replies?: StaffScrap[];
 }
 
 export interface StaffScrapReaction {

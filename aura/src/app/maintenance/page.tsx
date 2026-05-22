@@ -674,7 +674,7 @@ function ProfileScreen({ userData, showToast, onLogout }: { userData: any; showT
 
       {userData?.id && userData?.propertyId && (
         <div style={{ marginBottom: 20 }}>
-          <ScrapWall profileStaffId={userData.id} isOwnProfile={true} propertyId={userData.propertyId} />
+          <ScrapWall profileStaffId={userData.id} isOwnProfile={true} propertyId={userData.propertyId} allowRecipientPicker={true} />
         </div>
       )}
 
@@ -789,7 +789,7 @@ export default function MaintenancePage() {
   return (
     <>
       <style>{STYLE}</style>
-      <div className="mx-shell" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100dvh", background: T.bg }}>
+      <div className="dark mx-shell" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100dvh", background: T.bg }}>
         <div style={{ width: "100%", maxWidth: 430, height: "100dvh", background: T.bg, color: T.text, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
 
           <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0, background: "radial-gradient(ellipse 280px 220px at 10% 5%,rgba(155,109,255,0.12) 0%,transparent 70%),radial-gradient(ellipse 200px 160px at 90% 80%,rgba(78,201,212,0.09) 0%,transparent 70%)" }} />

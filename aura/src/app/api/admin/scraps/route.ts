@@ -35,11 +35,17 @@ export async function GET(request: Request) {
   const { data: scraps, error } = await supabaseAdmin!
     .from('staff_scraps')
     .select(`
-      id, fromStaffId, toStaffId, propertyId, message, createdAt,
+      id, fromStaffId, toStaffId, propertyId, message, parentId, createdAt,
       fromStaff:staff!staff_scraps_fromStaffId_fkey(id, fullName, role, profilePictureUrl, messengerColor),
-      reactions:staff_scrap_reactions(id, scrapId, staffId, emoji, createdAt)
+      reactions:staff_scrap_reactions(id, scrapId, staffId, emoji, createdAt),
+      replies:staff_scraps!parentId(
+        id, fromStaffId, toStaffId, propertyId, message, parentId, createdAt,
+        fromStaff:staff!staff_scraps_fromStaffId_fkey(id, fullName, role, profilePictureUrl, messengerColor),
+        reactions:staff_scrap_reactions(id, scrapId, staffId, emoji, createdAt)
+      )
     `)
     .eq('toStaffId', toStaffId)
+    .is('parentId', null)
     .order('createdAt', { ascending: false })
     .range(offset, offset + LIMIT - 1);
 
@@ -60,9 +66,9 @@ export async function POST(request: Request) {
   if (isAuthError(auth)) return auth;
 
   const body = await request.json();
-  const { toStaffId, message } = body as { toStaffId: string; message: string };
+  const { toStaffId: rawToStaffId, message, parentId } = body as { toStaffId: string; message: string; parentId?: string | null };
 
-  if (!toStaffId || !message?.trim()) {
+  if (!rawToStaffId || !message?.trim()) {
     return NextResponse.json({ error: 'toStaffId e message são obrigatórios.' }, { status: 400 });
   }
 
@@ -70,11 +76,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Mensagem não pode ter mais de 1000 caracteres.' }, { status: 400 });
   }
 
+  // When replying, inherit toStaffId from the parent scrap to stay on the same wall
+  let resolvedToStaffId = rawToStaffId;
+  if (parentId) {
+    const { data: parent } = await supabaseAdmin!
+      .from('staff_scraps')
+      .select('toStaffId, propertyId')
+      .eq('id', parentId)
+      .single();
+    if (!parent || parent.propertyId !== auth.staff.propertyId) {
+      return NextResponse.json({ error: 'Recado pai não encontrado.' }, { status: 404 });
+    }
+    resolvedToStaffId = parent.toStaffId;
+  }
+
   // Verify target is in the same property
   const { data: target } = await supabaseAdmin!
     .from('staff')
     .select('id, propertyId')
-    .eq('id', toStaffId)
+    .eq('id', resolvedToStaffId)
     .single();
 
   if (!target || target.propertyId !== auth.staff.propertyId) {
@@ -85,12 +105,13 @@ export async function POST(request: Request) {
     .from('staff_scraps')
     .insert({
       fromStaffId: auth.staff.id,
-      toStaffId,
+      toStaffId: resolvedToStaffId,
       propertyId: auth.staff.propertyId,
       message: message.trim(),
+      parentId: parentId ?? null,
     })
     .select(`
-      id, fromStaffId, toStaffId, propertyId, message, createdAt,
+      id, fromStaffId, toStaffId, propertyId, message, parentId, createdAt,
       fromStaff:staff!staff_scraps_fromStaffId_fkey(id, fullName, role, profilePictureUrl, messengerColor)
     `)
     .single();
