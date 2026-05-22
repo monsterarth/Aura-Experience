@@ -256,6 +256,8 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
             >
               <option value="turnover">Faxina Completa (Troca)</option>
               <option value="daily">Arrumação Diária</option>
+              <option value="linen_change">Arrumação com Troca de Toalha</option>
+              <option value="inspection_checkin">Revisão de Quarto</option>
               <option value="custom">Limpeza Personalizada</option>
             </select>
           </div>
