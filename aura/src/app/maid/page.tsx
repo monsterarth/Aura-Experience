@@ -1222,7 +1222,7 @@ function ProfileScreen({
 
       {userData?.id && userData?.propertyId && (
         <div style={{ marginBottom: 20 }}>
-          <ScrapWall profileStaffId={userData.id} isOwnProfile={true} propertyId={userData.propertyId} allowRecipientPicker={true} />
+          <ScrapWall profileStaffId={userData.id} isOwnProfile={true} propertyId={userData.propertyId} allowRecipientPicker={true} profileBasePath="/equipe" />
         </div>
       )}
 

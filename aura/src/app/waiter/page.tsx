@@ -428,7 +428,7 @@ function WaiterProfileTab({ userData, onLogout }: { userData: any; onLogout: () 
       </div>
 
       {userData?.id && userData?.propertyId && (
-        <ScrapWall profileStaffId={userData.id} isOwnProfile={true} propertyId={userData.propertyId} allowRecipientPicker={true} />
+        <ScrapWall profileStaffId={userData.id} isOwnProfile={true} propertyId={userData.propertyId} allowRecipientPicker={true} profileBasePath="/equipe" />
       )}
 
       <button onClick={onLogout}

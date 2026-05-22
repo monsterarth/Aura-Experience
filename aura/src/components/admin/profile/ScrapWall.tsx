@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import { MessageCircle, Send, Trash2, Loader2, ChevronDown, CornerDownRight } from "lucide-react";
 import { toast } from "sonner";
+import Link from "next/link";
 
 const EMOJI_PRESETS = ["❤️", "😂", "👏", "🙌", "🔥", "😮", "😢", "👀"];
 
@@ -41,6 +42,7 @@ interface Props {
   isOwnProfile: boolean;
   propertyId: string;
   allowRecipientPicker?: boolean;
+  profileBasePath?: string;
 }
 
 interface ScrapItemProps {
@@ -51,9 +53,10 @@ interface ScrapItemProps {
   onReply: (parentId: string, message: string) => Promise<void>;
   deletingId: string | null;
   submitting: boolean;
+  profileBasePath: string;
 }
 
-function ScrapItem({ scrap, userData, onDelete, onReact, onReply, deletingId, submitting }: ScrapItemProps) {
+function ScrapItem({ scrap, userData, onDelete, onReact, onReply, deletingId, submitting, profileBasePath }: ScrapItemProps) {
   const [replyOpen, setReplyOpen] = useState(false);
   const [replyText, setReplyText] = useState("");
 
@@ -82,27 +85,32 @@ function ScrapItem({ scrap, userData, onDelete, onReact, onReply, deletingId, su
   return (
     <div className="flex gap-3 px-5 py-4 border-b border-border last:border-b-0">
       {/* Avatar */}
-      <div
-        className="w-9 h-9 rounded-xl flex-shrink-0 flex items-center justify-center text-xs font-black overflow-hidden"
-        style={{
-          background: "linear-gradient(135deg,rgba(155,109,255,0.12),rgba(78,201,212,0.12))",
-          border: `1px solid ${fromRole.color}44`,
-          color: fromRole.color,
-        }}
-      >
-        {from?.profilePictureUrl ? (
-          <img src={from.profilePictureUrl} alt="" className="w-full h-full object-cover rounded-xl" />
-        ) : (
-          getInitials(from?.fullName ?? "?")
-        )}
-      </div>
+      <Link href={from?.id ? `${profileBasePath}/${from.id}` : "#"} className="flex-shrink-0">
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-xs font-black overflow-hidden hover:opacity-80 transition-opacity"
+          style={{
+            background: "linear-gradient(135deg,rgba(155,109,255,0.12),rgba(78,201,212,0.12))",
+            border: `1px solid ${fromRole.color}44`,
+            color: fromRole.color,
+          }}
+        >
+          {from?.profilePictureUrl ? (
+            <img src={from.profilePictureUrl} alt="" className="w-full h-full object-cover rounded-xl" />
+          ) : (
+            getInitials(from?.fullName ?? "?")
+          )}
+        </div>
+      </Link>
 
       <div className="flex-1 min-w-0">
         {/* Header row */}
         <div className="flex items-center gap-2 flex-wrap mb-1.5">
-          <span className="text-[13px] font-extrabold text-foreground">
+          <Link
+            href={from?.id ? `${profileBasePath}/${from.id}` : "#"}
+            className="text-[13px] font-extrabold text-foreground hover:underline"
+          >
             {from?.fullName ?? "Funcionário"}
-          </span>
+          </Link>
           <span
             className="text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-full"
             style={{
@@ -214,21 +222,23 @@ function ScrapItem({ scrap, userData, onDelete, onReact, onReply, deletingId, su
                 userData?.role === "super_admin";
               return (
                 <div key={reply.id} className="flex gap-2">
-                  <div
-                    className="w-7 h-7 rounded-lg flex-shrink-0 flex items-center justify-center text-[10px] font-black overflow-hidden"
-                    style={{
-                      background: `${replyRole.color}18`,
-                      border: `1px solid ${replyRole.color}44`,
-                      color: replyRole.color,
-                    }}
-                  >
-                    {replyFrom?.profilePictureUrl
-                      ? <img src={replyFrom.profilePictureUrl} alt="" className="w-full h-full object-cover rounded-lg" />
-                      : getInitials(replyFrom?.fullName ?? "?")}
-                  </div>
+                  <Link href={replyFrom?.id ? `${profileBasePath}/${replyFrom.id}` : "#"} className="flex-shrink-0">
+                    <div
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black overflow-hidden hover:opacity-80 transition-opacity"
+                      style={{
+                        background: `${replyRole.color}18`,
+                        border: `1px solid ${replyRole.color}44`,
+                        color: replyRole.color,
+                      }}
+                    >
+                      {replyFrom?.profilePictureUrl
+                        ? <img src={replyFrom.profilePictureUrl} alt="" className="w-full h-full object-cover rounded-lg" />
+                        : getInitials(replyFrom?.fullName ?? "?")}
+                    </div>
+                  </Link>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="text-[12px] font-extrabold text-foreground">{replyFrom?.fullName ?? "Funcionário"}</span>
+                      <Link href={replyFrom?.id ? `${profileBasePath}/${replyFrom.id}` : "#"} className="text-[12px] font-extrabold text-foreground hover:underline">{replyFrom?.fullName ?? "Funcionário"}</Link>
                       <span className="text-[10px] text-muted-foreground">{timeAgo(reply.createdAt as string)}</span>
                       {canDeleteReply && (
                         <button
@@ -252,7 +262,7 @@ function ScrapItem({ scrap, userData, onDelete, onReact, onReply, deletingId, su
   );
 }
 
-export function ScrapWall({ profileStaffId, isOwnProfile, propertyId, allowRecipientPicker = false }: Props) {
+export function ScrapWall({ profileStaffId, isOwnProfile, propertyId, allowRecipientPicker = false, profileBasePath = "/admin/perfil" }: Props) {
   const { userData } = useAuth();
   const [scraps, setScraps] = useState<StaffScrap[]>([]);
   const [loading, setLoading] = useState(true);
@@ -480,6 +490,7 @@ export function ScrapWall({ profileStaffId, isOwnProfile, propertyId, allowRecip
               onReply={handleReply}
               deletingId={deletingId}
               submitting={submitting}
+              profileBasePath={profileBasePath}
             />
           ))
         )}

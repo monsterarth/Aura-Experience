@@ -69,9 +69,10 @@ const SCHEDULE_LABELS: Record<string, string> = {
 interface Props {
   staffId: string;
   isOwnProfile: boolean;
+  profileBasePath?: string;
 }
 
-export function ProfileView({ staffId, isOwnProfile }: Props) {
+export function ProfileView({ staffId, isOwnProfile, profileBasePath = "/admin/perfil" }: Props) {
   const { userData: authUser, refreshUserData } = useAuth();
   const [staff, setStaff] = useState<Staff | null>(null);
   const [loading, setLoading] = useState(true);
@@ -459,6 +460,7 @@ export function ProfileView({ staffId, isOwnProfile }: Props) {
           profileStaffId={staff.id}
           isOwnProfile={isOwnProfile}
           propertyId={staff.propertyId}
+          profileBasePath={profileBasePath}
         />
       )}
     </div>

@@ -16,7 +16,7 @@ export default function EquipeProfilePage({ params }: { params: { staffId: strin
         <ArrowLeft size={16} />
         Voltar
       </button>
-      <ProfileView staffId={params.staffId} isOwnProfile={false} />
+      <ProfileView staffId={params.staffId} isOwnProfile={false} profileBasePath="/equipe" />
     </div>
   );
 }
