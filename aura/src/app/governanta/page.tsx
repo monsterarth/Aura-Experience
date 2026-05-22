@@ -1426,6 +1426,31 @@ export default function GovernantaPage() {
   const [conferBusy, setConferBusy] = useState(false);
   const [assignBusy, setAssignBusy] = useState(false);
 
+  // Cabin history
+  const [selectedCabin, setSelectedCabin] = useState<Cabin | null>(null);
+  const [cabinHistory, setCabinHistory] = useState<HousekeepingTask[]>([]);
+  const [cabinHistoryLoading, setCabinHistoryLoading] = useState(false);
+
+  const openCabinHistory = useCallback(async (cabin: Cabin) => {
+    setSelectedCabin(cabin);
+    setCabinHistory([]);
+    setCabinHistoryLoading(true);
+    try {
+      const { data } = await supabase
+        .from("housekeeping_tasks")
+        .select("*")
+        .eq("cabinId", cabin.id)
+        .eq("propertyId", cabin.propertyId)
+        .order("createdAt", { ascending: false })
+        .limit(40);
+      setCabinHistory((data ?? []) as HousekeepingTask[]);
+    } catch {
+      // silently fail — history is optional
+    } finally {
+      setCabinHistoryLoading(false);
+    }
+  }, []);
+
   // Toast
   const [toast, setToast] = useState<{ msg: string; color: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1839,40 +1864,181 @@ export default function GovernantaPage() {
             </>
           )}
 
-          {/* All tasks view */}
+          {/* Cabins view */}
           {screen === "all" && (
             <>
               <div style={{ paddingTop: 16 }}>
-                {tasks.filter(t => t.status !== "cancelled").length === 0 ? (
+                {/* Header */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, paddingLeft: 2 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: T.muted }}>
+                    Acomodações · {allCabins.length}
+                  </span>
+                </div>
+
+                {allCabins.length === 0 ? (
                   <div style={{ textAlign: "center", padding: "48px 24px" }}>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: T.muted }}>Sem tarefas</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: T.muted }}>Sem acomodações</div>
                   </div>
                 ) : (
-                  (["waiting_conference", "in_progress", "pending", "paused", "completed"] as const).map(status => {
-                    const filtered = tasks.filter(t => t.status === status);
-                    if (filtered.length === 0) return null;
-                    const labels: Record<string, string> = {
-                      waiting_conference: "Aguardando Conferência",
-                      in_progress: "Em Serviço",
-                      pending: "Pendentes",
-                      paused: "Pausadas",
-                      completed: "Concluídas",
-                    };
-                    return (
-                      <Section key={status} title={labels[status]} color={T.muted} count={filtered.length}>
-                        {filtered.map(t => (
-                          <TaskCard key={t.id} task={t} locationName={getLocationName(t)} maids={maids}
-                            onConfer={status === "waiting_conference" ? () => setConferTask(t) : undefined}
-                            onAssign={status !== "waiting_conference" && status !== "completed" ? () => setAssignTask(t) : undefined}
-                            onEdit={() => setEditTask(t)}
-                          />
-                        ))}
-                      </Section>
-                    );
-                  })
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {allCabins
+                      .slice()
+                      .sort((a, b) => (a.number ?? "").localeCompare(b.number ?? "", "pt", { numeric: true }))
+                      .map(cabin => {
+                        const activeTasks = tasks.filter(t => t.cabinId === cabin.id && t.status !== "cancelled");
+                        const priority = ["waiting_conference", "in_progress", "pending", "paused", "completed"];
+                        const topTask = activeTasks.sort((a, b) => priority.indexOf(a.status) - priority.indexOf(b.status))[0];
+
+                        const statusInfo = topTask ? {
+                          waiting_conference: { label: "Conferência",  color: T.v1,    bg: "rgba(167,139,250,0.12)", border: T.vBorder },
+                          in_progress:        { label: "Em serviço",   color: T.blue,  bg: T.blueBg,                border: T.blueBorder },
+                          pending:            { label: "Pendente",     color: T.amber, bg: T.amberBg,               border: T.amberBorder },
+                          paused:             { label: "Pausada",      color: T.muted, bg: T.glass2,                border: T.border },
+                          completed:          { label: "Concluída",    color: T.green, bg: T.greenBg,               border: T.greenBorder },
+                          skipped:            { label: "Pulada",       color: T.muted, bg: T.glass2,                border: T.border },
+                          cancelled:          { label: "Cancelada",    color: T.red,   bg: T.redBg,                 border: T.redBorder },
+                        }[topTask.status] ?? { label: "Pendente", color: T.amber, bg: T.amberBg, border: T.amberBorder }
+                        : { label: "Limpa",          color: T.green, bg: T.greenBg,               border: T.greenBorder };
+
+                        const assignedNames = topTask?.assignedTo
+                          ?.map(id => maids.find(m => m.id === id)?.fullName.split(" ")[0])
+                          .filter(Boolean).join(", ");
+
+                        const typeLabels: Record<string, string> = {
+                          turnover:            "Faxina de Troca",
+                          daily:               "Arrumação",
+                          linen_change:        "Troca de Roupa",
+                          inspection_checkin:  "Conf. Entrada",
+                          inspection_checkout: "Conf. Saída",
+                          custom:              "Personalizada",
+                        };
+
+                        return (
+                          <button
+                            key={cabin.id}
+                            onClick={() => openCabinHistory(cabin)}
+                            style={{
+                              width: "100%", textAlign: "left", cursor: "pointer", fontFamily: "inherit",
+                              background: T.card2, border: `1px solid ${T.border}`, borderRadius: 16,
+                              padding: "14px 16px", display: "flex", alignItems: "center", gap: 14,
+                              transition: "border-color .15s",
+                            }}
+                          >
+                            {/* Status dot */}
+                            <div style={{
+                              width: 10, height: 10, borderRadius: "50%", flexShrink: 0,
+                              background: statusInfo.color,
+                              boxShadow: topTask && ["in_progress", "waiting_conference"].includes(topTask.status)
+                                ? `0 0 8px ${statusInfo.color}` : "none",
+                            }} />
+
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <span style={{ fontSize: 14, fontWeight: 800, color: T.text }}>{cabin.name || `Cabana ${cabin.number}`}</span>
+                                <span style={{
+                                  fontSize: 10, fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase",
+                                  padding: "2px 7px", borderRadius: 999,
+                                  color: statusInfo.color, background: statusInfo.bg, border: `1px solid ${statusInfo.border}`,
+                                  flexShrink: 0,
+                                }}>{statusInfo.label}</span>
+                              </div>
+                              {topTask && (
+                                <div style={{ fontSize: 11, color: T.muted, marginTop: 3, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                                  <span>{typeLabels[topTask.type] ?? topTask.type}</span>
+                                  {assignedNames && <span>· {assignedNames}</span>}
+                                </div>
+                              )}
+                            </div>
+
+                            <I n="chevr" s={16} c={T.muted} />
+                          </button>
+                        );
+                      })}
+                  </div>
                 )}
               </div>
               <div style={{ height: 100 }} />
+
+              {/* Cabin history sheet */}
+              {selectedCabin && (
+                <Sheet onClose={() => setSelectedCabin(null)}>
+                  <div style={{ padding: "16px 20px 8px", flexShrink: 0, display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 16, fontWeight: 900, color: T.text }}>{selectedCabin.name || `Cabana ${selectedCabin.number}`}</div>
+                      <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>Histórico de tarefas</div>
+                    </div>
+                    <button onClick={() => setSelectedCabin(null)} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
+                      <I n="x" s={16} />
+                    </button>
+                  </div>
+
+                  <div className="gov-sheet-body" style={{ padding: "0 16px 24px" }}>
+                    {cabinHistoryLoading ? (
+                      <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
+                        <div style={{ width: 28, height: 28, borderRadius: "50%", border: `2px solid ${T.vBorder}`, borderTopColor: T.v1, animation: "gov-spin 0.8s linear infinite" }} />
+                      </div>
+                    ) : cabinHistory.length === 0 ? (
+                      <div style={{ textAlign: "center", padding: "40px 0", color: T.muted }}>
+                        <div style={{ fontSize: 14, fontWeight: 700 }}>Sem histórico</div>
+                        <div style={{ fontSize: 12, marginTop: 4 }}>Nenhuma tarefa encontrada para esta cabana.</div>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 8 }}>
+                        {cabinHistory.map(task => {
+                          const typeLabels: Record<string, string> = {
+                            turnover:            "Faxina de Troca",
+                            daily:               "Arrumação",
+                            linen_change:        "Troca de Roupa",
+                            inspection_checkin:  "Conf. Entrada",
+                            inspection_checkout: "Conf. Saída",
+                            custom:              task.customLocation ? `Custom: ${task.customLocation}` : "Personalizada",
+                          };
+                          const statusMap: Record<string, { label: string; color: string }> = {
+                            completed:          { label: "Concluída",   color: T.green },
+                            waiting_conference: { label: "Conferência", color: T.v1 },
+                            in_progress:        { label: "Em serviço",  color: T.blue },
+                            pending:            { label: "Pendente",    color: T.amber },
+                            paused:             { label: "Pausada",     color: T.muted },
+                            skipped:            { label: "Pulada",      color: T.muted },
+                            cancelled:          { label: "Cancelada",   color: T.red },
+                          };
+                          const st = statusMap[task.status] ?? { label: task.status, color: T.muted };
+                          const assignedNames = (task.assignedTo ?? [])
+                            .map(id => maids.find(m => m.id === id)?.fullName.split(" ")[0])
+                            .filter(Boolean).join(", ");
+                          const dateStr = task.createdAt
+                            ? new Date(task.createdAt as string).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })
+                            : "";
+                          const timeStr = task.finishedAt
+                            ? `Concluída às ${new Date(task.finishedAt as string).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                            : task.startedAt
+                            ? `Iniciada às ${new Date(task.startedAt as string).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                            : "";
+
+                          return (
+                            <div key={task.id} style={{
+                              background: T.card2, border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 14px",
+                            }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                                <span style={{ fontSize: 13, fontWeight: 800, color: T.text }}>{typeLabels[task.type] ?? task.type}</span>
+                                <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase", padding: "2px 7px", borderRadius: 999, color: st.color, background: `${st.color}18`, border: `1px solid ${st.color}33`, flexShrink: 0 }}>{st.label}</span>
+                              </div>
+                              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                                {dateStr && <span style={{ fontSize: 11, color: T.muted }}>{dateStr}</span>}
+                                {timeStr && <span style={{ fontSize: 11, color: T.muted }}>{timeStr}</span>}
+                                {assignedNames && <span style={{ fontSize: 11, color: T.muted }}>· {assignedNames}</span>}
+                              </div>
+                              {task.observations && (
+                                <div style={{ fontSize: 12, color: T.muted, marginTop: 6, fontStyle: "italic" }}>&quot;{task.observations}&quot;</div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </Sheet>
+              )}
             </>
           )}
 
