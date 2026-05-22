@@ -44,10 +44,11 @@ export async function GET(req: Request) {
     // Executa às 17h BRT (20h UTC): gera tarefas para o dia seguinte
     const runDay = new Date();
     runDay.setHours(0, 0, 0, 0);                       // início do dia de execução (UTC) — usado para guards de dedup
+    const runDayStr = runDay.toISOString().split('T')[0];
     const targetDay = new Date(runDay);
     targetDay.setDate(runDay.getDate() + 1);            // amanhã — dia para o qual as tarefas são geradas
     const targetDayStr = targetDay.toISOString().split('T')[0];
-    console.log(`[CRON] Tarefas para: ${targetDayStr} (execução: ${runDay.toISOString().split('T')[0]}) | Propriedades: ${(properties || []).length}`);
+    console.log(`[CRON] Tarefas para: ${targetDayStr} (execução: ${runDayStr}) | Propriedades: ${(properties || []).length}`);
 
     for (const propData of (properties || [])) {
       const propertyId = propData.id;
@@ -69,13 +70,15 @@ export async function GET(req: Request) {
       tasksCreated += checkinCreated;
       if (checkinCreated > 0) console.log(`[CRON] Prop ${propertyId}: ${checkinCreated} inspeção(ões) de check-in criada(s)`);
 
+      // Inclui estadias activas + estadias confirmadas cujo check-in já devia ter acontecido hoje
+      // (check-in atrasado): o hóspede vai chegar, as tarefas de amanhã precisam de ser geradas já.
       const { data: activeStays } = await supabaseAdmin
         .from('stays')
         .select('*')
         .eq('propertyId', propertyId)
-        .eq('status', 'active');
+        .or(`status.eq.active,and(status.eq.confirmed,checkIn.lte.${runDayStr}T23:59:59)`);
 
-      console.log(`[CRON] Prop ${propertyId}: ${(activeStays || []).length} estadia(s) ativa(s)`);
+      console.log(`[CRON] Prop ${propertyId}: ${(activeStays || []).length} estadia(s) a processar (activas + check-ins atrasados)`);
 
       for (const stay of (activeStays || [])) {
         if (!stay.checkOut || !stay.cabinId) {
