@@ -1508,23 +1508,35 @@ export default function GovernantaPage() {
         const todayStr = new Date().toISOString().split('T')[0];
         const { data: staysRaw } = await supabase
           .from('stays')
-          .select('id, cabinId, checkIn, checkOut, status, expectedArrivalTime, guests(fullName)')
+          .select('id, cabinId, checkIn, checkOut, status, expectedArrivalTime, guestId')
           .eq('propertyId', property.id)
           .in('status', ['active', 'pending', 'pre_checkin_done'])
+          .not('cabinId', 'is', null)
           .gte('checkOut', todayStr);
-        const staysMap: Record<string, { guestName: string; checkIn: string; checkOut: string; status: string; expectedArrivalTime?: string | null }> = {};
-        (staysRaw ?? []).forEach((stay: any) => {
-          if (stay.cabinId) {
-            staysMap[stay.cabinId] = {
-              guestName: (stay.guests as any)?.fullName ?? "",
-              checkIn: stay.checkIn,
-              checkOut: stay.checkOut,
-              status: stay.status,
-              expectedArrivalTime: stay.expectedArrivalTime ?? null,
-            };
-          }
-        });
-        setCabinStays(staysMap);
+
+        if (staysRaw && staysRaw.length > 0) {
+          const guestIds = Array.from(new Set(staysRaw.map((s: any) => s.guestId).filter(Boolean))) as string[];
+          const { data: guestsRaw } = await supabase
+            .from('guests')
+            .select('id, fullName')
+            .in('id', guestIds);
+          const guestMap: Record<string, string> = {};
+          (guestsRaw ?? []).forEach((g: any) => { guestMap[g.id] = g.fullName; });
+
+          const staysMap: Record<string, { guestName: string; checkIn: string; checkOut: string; status: string; expectedArrivalTime?: string | null }> = {};
+          staysRaw.forEach((stay: any) => {
+            if (stay.cabinId) {
+              staysMap[stay.cabinId] = {
+                guestName: guestMap[stay.guestId] ?? "",
+                checkIn: stay.checkIn,
+                checkOut: stay.checkOut,
+                status: stay.status,
+                expectedArrivalTime: stay.expectedArrivalTime ?? null,
+              };
+            }
+          });
+          setCabinStays(staysMap);
+        }
 
         const structuresDict: Record<string, Structure> = {};
         structuresData.forEach(s => { structuresDict[s.id] = s; });
