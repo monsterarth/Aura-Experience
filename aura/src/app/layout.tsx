@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 
@@ -10,6 +10,16 @@ const description =
 export const metadata: Metadata = {
   title: { default: "Aura", template: "%s | Aura" },
   description,
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Aura",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-capable": "yes",
+  },
   openGraph: {
     title: "Aura — Gestão Inteligente para Pousadas",
     description,
@@ -23,6 +33,14 @@ export const metadata: Metadata = {
     title: "Aura",
     description,
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#9b6dff",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({
