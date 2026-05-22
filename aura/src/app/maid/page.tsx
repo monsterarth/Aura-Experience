@@ -1401,7 +1401,15 @@ export default function MaidPage() {
         <div style={{ fontSize: 13, opacity: 0.6 }}>Carregando...</div>
         {showEscape && (
           <button
-            onClick={handleLogout}
+            onClick={() => {
+              // Logout de emergência: não usa o browser Supabase client (pode estar travado).
+              // Chama a rota server-side que limpa os cookies sb- e força navegação hard.
+              const ctrl = new AbortController();
+              setTimeout(() => ctrl.abort(), 3000);
+              fetch('/api/auth/signout', { method: 'POST', signal: ctrl.signal })
+                .catch(() => {})
+                .finally(() => { window.location.href = '/admin/login'; });
+            }}
             style={{ marginTop: 8, padding: "12px 28px", background: "rgba(248,113,113,0.1)", color: "#f87171", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 14, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
           >
             Sair
