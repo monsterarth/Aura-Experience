@@ -225,12 +225,13 @@ export async function applyCheckinDayRules(propertyId: string, targetDate?: Date
   const startOfDayISO = guardStart.toISOString();
   let created = 0;
 
-  // Estadias com check-in previsto para o dia-alvo e ainda não confirmadas (status: 'confirmed' ou 'pending')
+  // Estadias com check-in previsto para o dia-alvo ainda não activas
+  // ('pending' = só criada; 'pre_checkin_done' = hóspede preencheu o pré-check-in)
   const { data: arrivingStays } = await supabaseAdmin
     .from('stays')
     .select('id, cabinId')
     .eq('propertyId', propertyId)
-    .in('status', ['confirmed', 'pending'])
+    .in('status', ['pending', 'pre_checkin_done'])
     .gte('checkIn', `${targetStr}T00:00:00`)
     .lt('checkIn', `${targetStr}T23:59:59`);
 

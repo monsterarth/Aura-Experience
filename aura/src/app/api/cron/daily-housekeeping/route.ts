@@ -70,13 +70,14 @@ export async function GET(req: Request) {
       tasksCreated += checkinCreated;
       if (checkinCreated > 0) console.log(`[CRON] Prop ${propertyId}: ${checkinCreated} inspeção(ões) de check-in criada(s)`);
 
-      // Inclui estadias activas + estadias confirmadas cujo check-in já devia ter acontecido hoje
-      // (check-in atrasado): o hóspede vai chegar, as tarefas de amanhã precisam de ser geradas já.
+      // Inclui estadias activas + estadias com check-in atrasado (pending ou pre_checkin_done
+      // cujo checkIn já devia ter acontecido hoje). O hóspede vai chegar; as tarefas de amanhã
+      // precisam ser geradas agora.
       const { data: activeStays } = await supabaseAdmin
         .from('stays')
         .select('*')
         .eq('propertyId', propertyId)
-        .or(`status.eq.active,and(status.eq.confirmed,checkIn.lte.${runDayStr}T23:59:59)`);
+        .or(`status.eq.active,and(status.in.(pending,pre_checkin_done),checkIn.lte.${runDayStr}T23:59:59)`);
 
       console.log(`[CRON] Prop ${propertyId}: ${(activeStays || []).length} estadia(s) a processar (activas + check-ins atrasados)`);
 
