@@ -59,15 +59,23 @@ export async function applyOnCheckout(
 
 // Chamado pelo cron daily-housekeeping para cada estadia ativa.
 // Avalia regras 'active_stay_daily' e 'stay_duration_days'.
+// targetDate: data para a qual as tarefas devem ser geradas (padrão = hoje).
 export async function applyDailyRules(
   propertyId: string,
-  stay: { id: string; cabinId: string; checkIn: string; checkOut: string; dnd_enabled?: boolean; dnd_until?: string; guestId?: string }
+  stay: { id: string; cabinId: string; checkIn: string; checkOut: string; dnd_enabled?: boolean; dnd_until?: string; guestId?: string },
+  targetDate?: Date
 ) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const startOfDayISO = today.toISOString();
+  // Dia para o qual as tarefas são geradas (pode ser "amanhã" quando chamado pelo cron das 17h)
+  const target = targetDate ? new Date(targetDate) : new Date();
+  target.setHours(0, 0, 0, 0);
 
-  console.log(`[ENGINE] applyDailyRules — propertyId: ${propertyId}, stayId: ${stay.id}, startOfDayISO: ${startOfDayISO}`);
+  // Janela de deduplicação: início do dia de execução real (UTC), independente do targetDate.
+  // Evita criar duplicatas se o cron for acionado mais de uma vez no mesmo dia.
+  const guardStart = new Date();
+  guardStart.setHours(0, 0, 0, 0);
+  const startOfDayISO = guardStart.toISOString();
+
+  console.log(`[ENGINE] applyDailyRules — propertyId: ${propertyId}, stayId: ${stay.id}, target: ${target.toISOString().split('T')[0]}, guardISO: ${startOfDayISO}`);
   // stay_duration_days — avaliado PRIMEIRO para que a supressão de daily funcione corretamente
   const durationRules = await getActiveRules(propertyId, 'stay_duration_days');
   console.log(`[ENGINE] Estadia ${stay.id}: ${durationRules.length} regra(s) stay_duration_days encontrada(s)`);
@@ -96,7 +104,7 @@ export async function applyDailyRules(
       referenceDate.setHours(0, 0, 0, 0);
     }
 
-    const daysSinceReference = Math.floor((today.getTime() - referenceDate.getTime()) / 86_400_000);
+    const daysSinceReference = Math.floor((target.getTime() - referenceDate.getTime()) / 86_400_000);
     if (daysSinceReference < rule.intervalDays) continue;
 
     // Guard: não criar duas vezes no mesmo dia para essa regra+estadia
@@ -158,11 +166,12 @@ export async function applyDailyRules(
     let skippedAt: string | null = null;
     let guestName: string | null = null;
 
-    const isDndActive = stay.dnd_enabled && stay.dnd_until && new Date(stay.dnd_until) > new Date();
+    // DND: verificar se estará activo no início do dia-alvo (e não apenas agora)
+    const isDndActive = stay.dnd_enabled && stay.dnd_until && new Date(stay.dnd_until) > target;
     if (isDndActive) {
       const govEndTime = await getGovEndTime(propertyId);
       const [endH, endM] = govEndTime.split(':').map(Number);
-      const todayGovEnd = new Date(today);
+      const todayGovEnd = new Date(target);
       todayGovEnd.setHours(endH, endM, 0, 0);
 
       const dndUntil = new Date(stay.dnd_until!);
@@ -199,25 +208,31 @@ export async function applyDailyRules(
 }
 
 // Chamado pelo cron daily-housekeeping para cada propriedade.
-// Cria tarefas de inspeção para cabanas com check-in previsto hoje (regras 'on_checkin_day').
-export async function applyCheckinDayRules(propertyId: string) {
+// Cria tarefas de inspeção para cabanas com check-in previsto no dia-alvo (regras 'on_checkin_day').
+// targetDate: data dos check-ins a processar (padrão = hoje).
+export async function applyCheckinDayRules(propertyId: string, targetDate?: Date) {
   const rules = await getActiveRules(propertyId, 'on_checkin_day');
   if (rules.length === 0) return 0;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayStr = today.toISOString().split('T')[0];
-  const startOfDayISO = today.toISOString();
+  // Dia-alvo para check-ins
+  const target = targetDate ? new Date(targetDate) : new Date();
+  target.setHours(0, 0, 0, 0);
+  const targetStr = target.toISOString().split('T')[0];
+
+  // Guard de dedup baseado no dia de execução real
+  const guardStart = new Date();
+  guardStart.setHours(0, 0, 0, 0);
+  const startOfDayISO = guardStart.toISOString();
   let created = 0;
 
-  // Estadias com check-in previsto para hoje e ainda não confirmadas (status: 'confirmed' ou 'pending')
+  // Estadias com check-in previsto para o dia-alvo e ainda não confirmadas (status: 'confirmed' ou 'pending')
   const { data: arrivingStays } = await supabaseAdmin
     .from('stays')
     .select('id, cabinId')
     .eq('propertyId', propertyId)
     .in('status', ['confirmed', 'pending'])
-    .gte('checkIn', `${todayStr}T00:00:00`)
-    .lt('checkIn', `${todayStr}T23:59:59`);
+    .gte('checkIn', `${targetStr}T00:00:00`)
+    .lt('checkIn', `${targetStr}T23:59:59`);
 
   for (const stay of (arrivingStays || [])) {
     if (!stay.cabinId) continue;

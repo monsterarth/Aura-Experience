@@ -41,10 +41,13 @@ export async function GET(req: Request) {
     let tasksCreated = 0;
     let propertiesProcessed = 0;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().split('T')[0];
-    console.log(`[CRON] Data de referência: ${todayStr} | Propriedades encontradas: ${(properties || []).length}`);
+    // Executa às 17h BRT (20h UTC): gera tarefas para o dia seguinte
+    const runDay = new Date();
+    runDay.setHours(0, 0, 0, 0);                       // início do dia de execução (UTC) — usado para guards de dedup
+    const targetDay = new Date(runDay);
+    targetDay.setDate(runDay.getDate() + 1);            // amanhã — dia para o qual as tarefas são geradas
+    const targetDayStr = targetDay.toISOString().split('T')[0];
+    console.log(`[CRON] Tarefas para: ${targetDayStr} (execução: ${runDay.toISOString().split('T')[0]}) | Propriedades: ${(properties || []).length}`);
 
     for (const propData of (properties || [])) {
       const propertyId = propData.id;
@@ -61,8 +64,8 @@ export async function GET(req: Request) {
         continue;
       }
 
-      // Inspeções de check-in previsto para hoje
-      const checkinCreated = await applyCheckinDayRules(propertyId);
+      // Inspeções de check-in previsto para amanhã
+      const checkinCreated = await applyCheckinDayRules(propertyId, targetDay);
       tasksCreated += checkinCreated;
       if (checkinCreated > 0) console.log(`[CRON] Prop ${propertyId}: ${checkinCreated} inspeção(ões) de check-in criada(s)`);
 
@@ -81,21 +84,21 @@ export async function GET(req: Request) {
         }
 
         const checkOutDate = new Date(stay.checkOut);
-        const isCheckingOutToday = checkOutDate.toISOString().split('T')[0] === todayStr;
-        if (isCheckingOutToday) {
-          console.log(`[CRON] Estadia ${stay.id} ignorada (checkout hoje)`);
+        const isCheckingOutOnTargetDay = checkOutDate.toISOString().split('T')[0] === targetDayStr;
+        if (isCheckingOutOnTargetDay) {
+          console.log(`[CRON] Estadia ${stay.id} ignorada (checkout no dia alvo: ${targetDayStr})`);
           continue;
         }
 
-        const before = await countTodayTasks(propertyId, today);
+        const before = await countTodayTasks(propertyId, runDay);
         try {
-          await applyDailyRules(propertyId, stay);
+          await applyDailyRules(propertyId, stay, targetDay);
         } catch (stayErr: any) {
           const msg = stayErr?.message ?? String(stayErr);
           console.error(`[CRON] ❌ Erro ao processar estadia ${stay.id}:`, msg);
           stayErrors.push(`stay=${stay.id}: ${msg}`);
         }
-        const after = await countTodayTasks(propertyId, today);
+        const after = await countTodayTasks(propertyId, runDay);
         const created = Math.max(0, after - before);
         tasksCreated += created;
         console.log(`[CRON] Estadia ${stay.id} (cabina ${stay.cabinId}): ${created} tarefa(s) criada(s)`);
