@@ -8,8 +8,9 @@ import { Sheet } from "@/components/maid/MinibarSheet";
 import { HousekeepingService } from "@/services/housekeeping-service";
 import { CabinService } from "@/services/cabin-service";
 import { ConciergeService } from "@/services/concierge-service";
+import { StaffService } from "@/services/staff-service";
 import { supabase } from "@/lib/supabase";
-import { HousekeepingTask, Cabin, ConciergeItem, ConciergeRequest } from "@/types/aura";
+import { HousekeepingTask, Cabin, ConciergeItem, ConciergeRequest, Staff } from "@/types/aura";
 import { getTaskLabel } from "@/lib/task-ui";
 import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
 import { ScrapWall } from "@/components/admin/profile/ScrapWall";
@@ -142,7 +143,7 @@ function Toast({ msg, color }: { msg: string; color: string }) {
 
 // ─── Icon component (subset) ─────────────────────────────────────────────────
 
-type IName = "home"|"coffee"|"sparkles"|"user"|"key"|"check"|"arrow"|"plus"|"minus"|"x"|"pkg"|"info"|"send"|"logout"|"edit"|"sun"|"clock"|"list"|"chevr"|"loader"|"camera"|"inbox"|"search";
+type IName = "home"|"coffee"|"sparkles"|"user"|"key"|"check"|"arrow"|"plus"|"minus"|"x"|"pkg"|"info"|"send"|"logout"|"edit"|"sun"|"clock"|"list"|"chevr"|"loader"|"camera"|"inbox"|"search"|"users"|"cal"|"smile"|"msg";
 
 function I({ n, s = 20, c = "currentColor", w = 1.8 }: { n: IName; s?: number; c?: string; w?: number }) {
   const d: Record<IName, React.ReactNode> = {
@@ -169,6 +170,10 @@ function I({ n, s = 20, c = "currentColor", w = 1.8 }: { n: IName; s?: number; c
     camera: <><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></>,
     inbox: <><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></>,
     search: <><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>,
+    users: <><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></>,
+    cal: <><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></>,
+    smile: <><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></>,
+    msg: <><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></>,
   };
   return (
     <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round">
@@ -956,6 +961,22 @@ function FaxinasScreen({
   );
 }
 
+// ─── Role metadata ────────────────────────────────────────────────────────────
+
+const ROLE_COLORS: Record<string, string> = {
+  governance: "#c084fc", reception: "#2dd4bf", maid: "#4ec9d4",
+  technician: "#f59e0b", houseman: "#a3e635", manager: "#9b6dff",
+  super_admin: "#9b6dff", admin: "#9b6dff", marketing: "#f472b6",
+  porter: "#60a5fa", kitchen: "#fb923c", waiter: "#34d399",
+};
+
+const ROLE_LABELS: Record<string, string> = {
+  governance: "Governança", reception: "Recepção", maid: "Camareira",
+  technician: "Manutenção", houseman: "Houseman", manager: "Gerente",
+  super_admin: "Super Admin", admin: "Admin", marketing: "Marketing",
+  porter: "Porteiro", kitchen: "Cozinha", waiter: "Garçom",
+};
+
 // ─── Profile screen ───────────────────────────────────────────────────────────
 
 function tenure(iso?: string | null): string | null {
@@ -967,10 +988,39 @@ function tenure(iso?: string | null): string | null {
   return m > 0 ? `${y} ${y === 1 ? "ano" : "anos"} e ${m} ${m === 1 ? "mês" : "meses"}` : `${y} ${y === 1 ? "ano" : "anos"}`;
 }
 
-function ProfileScreen({ userData, showToast, onLogout }: { userData: any; showToast: (m: string, c?: string) => void; onLogout: () => void }) {
+type WeekDay = { dow: string; date: number; month: number; work: boolean; time?: string; today: boolean };
+
+function getWeekDays(today: Date): WeekDay[] {
+  const dayOfWeek = today.getDay(); // 0=Sun, 1=Mon...
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - ((dayOfWeek + 6) % 7));
+  const DOW_LABELS = ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"];
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return {
+      dow: DOW_LABELS[i],
+      date: d.getDate(),
+      month: d.getMonth(),
+      work: false,
+      today: d.toDateString() === today.toDateString(),
+    };
+  });
+}
+
+function ProfileScreen({
+  userData, showToast, onLogout, propertyId,
+}: {
+  userData: any;
+  showToast: (m: string, c?: string) => void;
+  onLogout: () => void;
+  propertyId: string;
+}) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(userData?.fullName || "Camareira");
   const [todayShift, setTodayShift] = useState<string | null>(null);
+  const [weekDays, setWeekDays] = useState<WeekDay[]>([]);
+  const [teamMembers, setTeamMembers] = useState<Staff[]>([]);
   const initials = name.split(" ").slice(0, 2).map((w: string) => w[0] ?? "").join("").toUpperCase();
   const photo: string | undefined = userData?.profilePictureUrl;
   const tenureStr = tenure(userData?.hireDate);
@@ -979,22 +1029,45 @@ function ProfileScreen({ userData, showToast, onLogout }: { userData: any; showT
     if (!userData?.id) return;
     const today = new Date();
     const from = today.toISOString().split('T')[0];
+    // Compute week range for overrides
+    const dayOfWeek = today.getDay();
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - ((dayOfWeek + 6) % 7));
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const weekFrom = monday.toISOString().split('T')[0];
+    const weekTo = sunday.toISOString().split('T')[0];
+
     Promise.all([
       fetch(`/api/admin/staff/schedules?staffId=${userData.id}`).then(r => r.json()),
-      fetch(`/api/admin/staff/schedule-overrides?staffId=${userData.id}&from=${from}&to=${from}`).then(r => r.json()),
+      fetch(`/api/admin/staff/schedule-overrides?staffId=${userData.id}&from=${weekFrom}&to=${weekTo}`).then(r => r.json()),
       fetch(`/api/admin/staff/schedule-checkpoints?staffId=${userData.id}`).then(r => r.json()),
     ]).then(([schedules, overrides, checkpoints]) => {
-      const result = resolveEffectiveDaySchedule(
-        userData,
-        Array.isArray(schedules) ? schedules : [],
-        Array.isArray(overrides) ? overrides : [],
-        today,
-        Array.isArray(checkpoints) ? checkpoints : []
-      );
-      if (!result.isWork) { setTodayShift("Folga"); return; }
-      if (result.startTime) setTodayShift(`${result.startTime} às ${result.endTime ?? ""}`);
+      const sch = Array.isArray(schedules) ? schedules : [];
+      const ov = Array.isArray(overrides) ? overrides : [];
+      const cp = Array.isArray(checkpoints) ? checkpoints : [];
+
+      // Today's shift
+      const todayResult = resolveEffectiveDaySchedule(userData, sch, ov, today, cp);
+      if (!todayResult.isWork) { setTodayShift("Folga"); }
+      else if (todayResult.startTime) setTodayShift(`${todayResult.startTime} às ${todayResult.endTime ?? ""}`);
+
+      // Weekly grid
+      const days = getWeekDays(today).map(d => {
+        const dayDate = new Date(today.getFullYear(), d.month, d.date);
+        const result = resolveEffectiveDaySchedule(userData, sch, ov, dayDate, cp);
+        return { ...d, work: result.isWork, time: result.startTime ?? undefined };
+      });
+      setWeekDays(days);
     }).catch(() => {});
-  }, [userData?.id]);
+  }, [userData?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!propertyId) return;
+    StaffService.getStaffByProperty(propertyId)
+      .then(staff => setTeamMembers(staff.filter(s => s.active)))
+      .catch(() => {});
+  }, [propertyId]);
 
   return (
     <div className="maid-scroll" style={{ padding: "0 16px 24px" }}>
@@ -1065,6 +1138,85 @@ function ProfileScreen({ userData, showToast, onLogout }: { userData: any; showT
           <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{todayLabel()}</div>
         </div>
       </div>
+
+      {/* Minha Semana — weekly schedule grid */}
+      {weekDays.length > 0 && (
+        <>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.muted, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+            <I n="cal" s={13} c={T.muted} /> Minha Semana
+          </div>
+          <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 20, padding: "14px 12px", marginBottom: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4 }}>
+              {weekDays.map((d, i) => (
+                <div key={i} style={{
+                  borderRadius: 12,
+                  border: d.today ? `1.5px solid rgba(155,109,255,0.55)` : `1px solid ${T.border}`,
+                  background: d.today ? T.gradSoft : d.work ? "rgba(78,201,212,0.05)" : T.glass,
+                  padding: "8px 2px 6px",
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+                  position: "relative", minHeight: 74,
+                }}>
+                  {d.today && (
+                    <div style={{ position: "absolute", top: -1, left: "50%", transform: "translateX(-50%)", width: 18, height: 3, borderRadius: 999, background: T.grad }} />
+                  )}
+                  <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.08em", color: d.today ? T.g1 : T.muted }}>{d.dow}</span>
+                  <span style={{ fontSize: 15, fontWeight: 900, lineHeight: 1, color: d.today ? T.g1 : T.text }}>{d.date}</span>
+                  {d.work ? (
+                    <>
+                      <div style={{ width: 18, height: 3, borderRadius: 999, background: T.grad, marginTop: 2 }} />
+                      {d.time && <span style={{ fontSize: 9, fontWeight: 700, color: T.g2, marginTop: 1 }}>{d.time}</span>}
+                    </>
+                  ) : (
+                    <span style={{ fontSize: 9, fontWeight: 600, color: T.muted, marginTop: 6 }}>folga</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Equipe — team grid */}
+      {teamMembers.length > 0 && (
+        <>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.muted, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+            <I n="users" s={13} c={T.muted} /> Equipe · {teamMembers.length} colegas
+          </div>
+          <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 20, padding: "14px 12px", marginBottom: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {teamMembers.map(m => {
+                const roleColor = ROLE_COLORS[m.role] ?? T.g2;
+                const roleLabel = ROLE_LABELS[m.role] ?? m.role;
+                const initials = m.fullName.split(" ").slice(0, 2).map(w => w[0] ?? "").join("").toUpperCase();
+                return (
+                  <div key={m.id} style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "10px",
+                    background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 14,
+                  }}>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 12, flexShrink: 0,
+                      background: `${roleColor}18`, border: `1px solid ${roleColor}35`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 12, fontWeight: 900, color: roleColor,
+                      overflow: "hidden",
+                    }}>
+                      {m.profilePictureUrl
+                        ? <img src={m.profilePictureUrl} alt={m.fullName} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        : initials}
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, lineHeight: 1.1, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>
+                        {m.fullName.split(" ")[0]}
+                      </div>
+                      <div style={{ fontSize: 10, fontWeight: 700, marginTop: 3, color: roleColor, letterSpacing: "0.02em" }}>{roleLabel}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
 
       {userData?.id && userData?.propertyId && (
         <div style={{ marginBottom: 20 }}>
@@ -1226,7 +1378,7 @@ export default function MaidPage() {
   const navItems: { id: Tab; label: string; icon: IName; badge: number }[] = [
     { id: "home", label: "Início", icon: "home", badge: 0 },
     { id: "tasks", label: "Faxinas", icon: "sparkles", badge: tasks.filter(t => t.status === "pending" || t.status === "in_progress").length },
-    { id: "profile", label: "Perfil", icon: "user", badge: 0 },
+    { id: "profile", label: "Equipe", icon: "users", badge: 0 },
   ];
 
   const isBootstrapping = authLoading || !userDataReady || propertyLoading;
@@ -1267,7 +1419,7 @@ export default function MaidPage() {
             <RoleSwitcher />
             {tab === "home" && <HomeScreen tasks={tasks} cabins={cabins} onNav={setTab} userName={userData?.fullName ?? "Camareira"} />}
             {tab === "tasks" && <FaxinasScreen tasks={tasks} onStart={handleStart} showToast={showToast} onToggle={handleToggle} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onChecklistLoaded={handleChecklistLoaded} repRequests={repRequests} />}
-            {tab === "profile" && <ProfileScreen userData={userData} showToast={showToast} onLogout={handleLogout} />}
+            {tab === "profile" && <ProfileScreen userData={userData} showToast={showToast} onLogout={handleLogout} propertyId={property?.id ?? ""} />}
           </div>
 
           {/* Pause confirm modal */}
