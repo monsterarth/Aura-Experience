@@ -1961,14 +1961,21 @@ export default function GovernantaPage() {
                         const checkInDate = occ?.checkIn?.split('T')[0] ?? occ?.checkIn ?? "";
                         const isCheckoutToday = checkOutDate === todayDate;
                         const isCheckinToday = checkInDate === todayDate;
+                        const arrivalTimePassed = isCheckinToday && !!occ?.expectedArrivalTime && (() => {
+                          const [h, m] = occ.expectedArrivalTime!.split(':').map(Number);
+                          const now = new Date();
+                          return now.getHours() > h || (now.getHours() === h && now.getMinutes() >= m);
+                        })();
                         const occLabel = occ
                           ? occ.status === 'active'
                             ? isCheckoutToday
-                              ? { text: "Saindo hoje", color: T.amber }
-                              : { text: "Hospedado",   color: T.blue }
+                              ? { text: "Saindo hoje",      color: T.amber }
+                              : { text: "Hospedado",        color: T.blue }
                             : isCheckinToday
-                              ? { text: "Check-in hoje", color: T.green }
-                              : { text: "Chegando",      color: T.muted }
+                              ? arrivalTimePassed
+                                ? { text: "Check-in atrasado", color: T.red }
+                                : { text: "Check-in hoje",     color: T.green }
+                              : { text: "Chegando",            color: T.muted }
                           : null;
                         const fmtDate = (d: string) => {
                           if (!d) return "";
@@ -2021,7 +2028,7 @@ export default function GovernantaPage() {
                                       fontSize: 10, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase",
                                       padding: "2px 7px", borderRadius: 6,
                                       color: occLabel.color,
-                                      background: occLabel.color === T.amber ? T.amberBg : occLabel.color === T.blue ? T.blueBg : occLabel.color === T.green ? T.greenBg : T.glass2,
+                                      background: occLabel.color === T.amber ? T.amberBg : occLabel.color === T.blue ? T.blueBg : occLabel.color === T.green ? T.greenBg : occLabel.color === T.red ? T.redBg : T.glass2,
                                     }}>{occLabel.text}</span>
                                   )}
                                   {occ.guestName && (
