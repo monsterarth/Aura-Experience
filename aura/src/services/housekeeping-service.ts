@@ -150,6 +150,18 @@ export const HousekeepingService = {
     });
   },
 
+  async skipTask(propertyId: string, taskId: string, actorId: string, actorName: string) {
+    const now = new Date().toISOString();
+    await supabase.from('housekeeping_tasks')
+      .update({ status: 'skipped', skippedAt: now, updatedAt: now })
+      .eq('id', taskId);
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "CABIN", entityId: taskId,
+      details: "Camareira registrou que o hóspede pediu para não limpar."
+    });
+  },
+
   async resumeTask(propertyId: string, taskId: string, actorId: string, actorName: string) {
     const { data: task } = await supabase.from('housekeeping_tasks')
       .select('pausedAt, totalPausedDuration, assignedTo').eq('id', taskId).single();

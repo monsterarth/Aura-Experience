@@ -793,12 +793,13 @@ function HomeScreen({
 // ─── Faxinas screen ───────────────────────────────────────────────────────────
 
 function FaxinasScreen({
-  tasks, onStart, showToast, onToggle,
+  tasks, onStart, onSkip, showToast, onToggle,
   propertyId, userId, userName, onChecklistLoaded, repRequests,
   startingTaskId,
 }: {
   tasks: EnrichedTask[];
   onStart: (id: string) => void;
+  onSkip: (id: string) => void;
   showToast: (m: string, c?: string) => void;
   onToggle: (tid: string, cid: string) => void;
   propertyId: string; userId: string; userName: string;
@@ -919,7 +920,10 @@ function FaxinasScreen({
                     <span style={{ fontSize: 13, color: T.amber, lineHeight: 1.45, fontWeight: 600 }}>{t.observations}</span>
                   </div>
                 )}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 8 }}>
+                  <button onClick={() => onSkip(t.id)} style={{ padding: "16px 18px", background: T.amberBg, border: `1px solid ${T.amberBorder}`, color: T.amber, fontFamily: "inherit", fontSize: 13, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase" as const, borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    <I n="x" s={15} c={T.amber} /> Pular
+                  </button>
                   <button onClick={() => onStart(t.id)} disabled={startingTaskId === t.id} style={{ padding: 16, background: T.grad, color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: startingTaskId === t.id ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(155,109,255,0.35)", opacity: startingTaskId === t.id ? 0.7 : 1 }}>
                     {startingTaskId === t.id ? <><I n="loader" s={18} c="#fff" w={2} /> Iniciando...</> : <>{t.startedAt ? "Retomar" : "Iniciar"} <I n="arrow" s={18} /></>}
                   </button>
@@ -1257,6 +1261,8 @@ export default function MaidPage() {
   const startingRef = useRef(false);
   const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
   const [pauseStartBusy, setPauseStartBusy] = useState(false);
+  const [skipConfirmTaskId, setSkipConfirmTaskId] = useState<string | null>(null);
+  const [skipBusy, setSkipBusy] = useState(false);
   const logoutRef = useRef(false);
 
   const showToast = useCallback((msg: string, color = T.green) => {
@@ -1370,6 +1376,18 @@ export default function MaidPage() {
     }
   }, [pauseConfirm, property, userData, tasks, showToast, pauseStartBusy]);
 
+  const handleSkip = useCallback(async () => {
+    if (!skipConfirmTaskId || !property || !userData || skipBusy) return;
+    setSkipBusy(true);
+    try {
+      await HousekeepingService.skipTask(property.id, skipConfirmTaskId, userData.id, userData.fullName);
+      setTasks(prev => prev.filter(t => t.id !== skipConfirmTaskId));
+      showToast("Registrado — hóspede pediu para não limpar.");
+      setSkipConfirmTaskId(null);
+    } catch { showToast("Erro ao pular tarefa.", T.red); }
+    finally { setSkipBusy(false); }
+  }, [skipConfirmTaskId, property, userData, skipBusy, showToast]);
+
   const handleToggle = useCallback(async (taskId: string, itemId: string) => {
     // Optimistic
     setTasks(prev => prev.map(t =>
@@ -1468,7 +1486,7 @@ export default function MaidPage() {
             </div>
             <RoleSwitcher />
             {tab === "home" && <HomeScreen tasks={tasks} cabins={cabins} onNav={setTab} userName={userData?.fullName ?? "Camareira"} />}
-            {tab === "tasks" && <FaxinasScreen tasks={tasks} onStart={handleStart} showToast={showToast} onToggle={handleToggle} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onChecklistLoaded={handleChecklistLoaded} repRequests={repRequests} startingTaskId={startingTaskId} />}
+            {tab === "tasks" && <FaxinasScreen tasks={tasks} onStart={handleStart} onSkip={setSkipConfirmTaskId} showToast={showToast} onToggle={handleToggle} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onChecklistLoaded={handleChecklistLoaded} repRequests={repRequests} startingTaskId={startingTaskId} />}
             {tab === "profile" && <ProfileScreen userData={userData} showToast={showToast} onLogout={handleLogout} propertyId={property?.id ?? ""} />}
           </div>
 
@@ -1493,6 +1511,38 @@ export default function MaidPage() {
                     style={{ flex: 1, padding: 14, background: T.greenG, color: "#021a17", fontFamily: "inherit", fontSize: 14, fontWeight: 800, border: "none", borderRadius: 14, cursor: pauseStartBusy ? "wait" : "pointer", opacity: pauseStartBusy ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
                   >
                     {pauseStartBusy ? <I n="loader" s={16} c="#021a17" w={2} /> : "Pausar e iniciar"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Skip confirm modal */}
+          {skipConfirmTaskId && (
+            <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 24 }}>
+              <div style={{ background: "#111827", border: `1px solid ${T.border2}`, borderRadius: 24, padding: 24, width: "100%", maxWidth: 340, boxShadow: "0 20px 60px rgba(0,0,0,0.7)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 14, background: T.amberBg, border: `1px solid ${T.amberBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <I n="x" s={20} c={T.amber} />
+                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 900, color: T.text }}>Pular limpeza?</div>
+                </div>
+                <div style={{ fontSize: 13, color: T.muted, marginBottom: 20, lineHeight: 1.5 }}>
+                  O hóspede pediu para não limpar?
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button
+                    onClick={() => setSkipConfirmTaskId(null)}
+                    style={{ flex: 1, padding: 14, background: T.glass, border: `1px solid ${T.border2}`, borderRadius: 14, cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 700, color: T.muted }}
+                  >
+                    Não
+                  </button>
+                  <button
+                    onClick={handleSkip}
+                    disabled={skipBusy}
+                    style={{ flex: 1, padding: 14, background: "linear-gradient(135deg,#f59e0b,#d97706)", color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 800, border: "none", borderRadius: 14, cursor: skipBusy ? "wait" : "pointer", opacity: skipBusy ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                  >
+                    {skipBusy ? <I n="loader" s={16} c="#fff" w={2} /> : "Sim, pular"}
                   </button>
                 </div>
               </div>
