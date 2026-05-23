@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
         }
 
         const [cabinsRes, staysRes, maintenanceRes, hkRes, staffRes] = await Promise.all([
-            supabaseAdmin.from('cabins').select('*').eq('propertyId', propertyId),
+            supabaseAdmin.from('cabins').select('*').eq('propertyId', propertyId).order('name'),
             staysQuery,
             supabaseAdmin.from('maintenance_tasks').select('*')
                 .eq('propertyId', propertyId)

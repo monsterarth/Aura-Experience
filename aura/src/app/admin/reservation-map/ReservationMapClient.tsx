@@ -261,7 +261,7 @@ export default function ReservationMapClient() {
                 { event: '*', schema: 'public', table: 'housekeeping_tasks', filter: `propertyId=eq.${contextProperty.id}` },
                 () => loadData()
             )
-            .subscribe((status) => { if (status === 'SUBSCRIBED') subscribed = true; });
+            .subscribe((status: string) => { if (status === 'SUBSCRIBED') subscribed = true; });
 
         return () => { safeRemoveChannel(channel, subscribed); };
     }, [contextProperty?.id, loadData]);
@@ -616,6 +616,13 @@ export default function ReservationMapClient() {
         return housekeepingTasks.find(t => t.cabinId === cabinId && t.status !== 'completed' && t.status !== 'cancelled') || null;
     };
 
+    const sortedCabins = useMemo(() =>
+        [...cabins].sort((a, b) =>
+            a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+        ),
+        [cabins]
+    );
+
     const unassignedStays = useMemo(() =>
         stays.filter(s => !s.cabinId && ['pending', 'pre_checkin_done'].includes(s.status)),
         [stays]
@@ -762,7 +769,7 @@ export default function ReservationMapClient() {
                                     </div>
                                 )}
                                 {/* Cabin rows */}
-                                {cabins.map((cabin) => (
+                                {sortedCabins.map((cabin) => (
                                     <div
                                         key={cabin.id}
                                         className={cn(
@@ -889,7 +896,7 @@ export default function ReservationMapClient() {
                                     )}
 
                                     {/* Cabin Rows with Stay Bars */}
-                                    {cabins.map((cabin) => {
+                                    {sortedCabins.map((cabin) => {
                                         const cabinSegments = getSegmentsForCabin(cabin.id);
                                         const cabinMaintenance = getMaintenanceForCabin(cabin.id);
 
