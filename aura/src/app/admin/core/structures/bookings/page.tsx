@@ -91,7 +91,7 @@ export default function StructureBookingsPage() {
                 { event: '*', schema: 'public', table: 'structure_bookings', filter: `propertyId=eq.${currentProperty.id}` },
                 () => fetchData()
             )
-            .subscribe((status) => { if (status === 'SUBSCRIBED') subscribed = true; });
+            .subscribe((status: string) => { if (status === 'SUBSCRIBED') subscribed = true; });
 
         return () => { safeRemoveChannel(channel, subscribed); };
     }, [currentProperty, fetchData]);

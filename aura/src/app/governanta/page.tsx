@@ -1406,7 +1406,7 @@ function ProfileScreen({ userData, onLogout }: { userData: any; onLogout: () => 
 type Screen = "dashboard" | "conference" | "all" | "profile";
 
 export default function GovernantaPage() {
-  const { userData, authConfirmed } = useAuth();
+  const { userData, authConfirmed, tokenReady } = useAuth();
   const { currentProperty: property, loading: propLoading } = useProperty();
   const router = useRouter();
 
@@ -1489,7 +1489,10 @@ export default function GovernantaPage() {
   // Load data
   useEffect(() => {
     if (!propLoading && !property) { setLoading(false); return; }
-    if (!property || !authConfirmed) return;
+    // tokenReady (set apenas por INITIAL_SESSION/TOKEN_REFRESHED) garante token renovado.
+    // Usar em vez de authConfirmed evita retorno vazio das queries quando o token
+    // está expirado após idle — authConfirmed pode ser setado antes do refresh terminar.
+    if (!property || !tokenReady) return;
     let unsub: () => void;
 
     const init = async () => {
@@ -1567,7 +1570,7 @@ export default function GovernantaPage() {
 
     init();
     return () => { if (unsub) unsub(); };
-  }, [property, propLoading, showToast, authConfirmed]);
+  }, [property, propLoading, showToast, tokenReady]);
 
   function getLocationName(task: HousekeepingTask): string {
     if (task.cabinId && cabins[task.cabinId]) {

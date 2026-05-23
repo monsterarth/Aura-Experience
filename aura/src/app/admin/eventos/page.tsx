@@ -168,7 +168,7 @@ export default function EventosPage() {
     const channel = supabase
       .channel("admin-events-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "events", filter: `propertyId=eq.${property.id}` }, () => loadEvents())
-      .subscribe((status) => { if (status === 'SUBSCRIBED') subscribed = true; });
+      .subscribe((status: string) => { if (status === 'SUBSCRIBED') subscribed = true; });
     return () => { safeRemoveChannel(channel, subscribed); };
   }, [property?.id, loadEvents]);
 

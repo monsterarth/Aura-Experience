@@ -143,7 +143,7 @@ export default function ReceptionDashboard() {
         const staysChannel = supabase.channel(`reception_stays_${property.id}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'stays',
                 filter: `propertyId=eq.${property.id}` }, () => loadDashboard(true))
-            .subscribe((status) => { if (status === 'SUBSCRIBED') staysSubscribed = true; });
+            .subscribe((status: string) => { if (status === 'SUBSCRIBED') staysSubscribed = true; });
 
         return () => { unsubHK(); unsubConcierge(); safeRemoveChannel(staysChannel, staysSubscribed); };
     }, [property?.id]);

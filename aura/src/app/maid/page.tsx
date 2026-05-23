@@ -1246,7 +1246,7 @@ function ProfileScreen({
 type Tab = "home" | "tasks" | "profile";
 
 export default function MaidPage() {
-  const { userData, loading: authLoading, userDataReady, authConfirmed } = useAuth();
+  const { userData, loading: authLoading, userDataReady, authConfirmed, tokenReady } = useAuth();
   const { currentProperty: property, loading: propertyLoading } = useProperty();
   const router = useRouter();
 
@@ -1287,10 +1287,11 @@ export default function MaidPage() {
   }, [authLoading, userDataReady, propertyLoading, property]);
 
   useEffect(() => {
-    // authConfirmed garante que o browser Supabase client tem token válido antes de
-    // iniciar queries de dados e a subscription realtime — sem isso, com sessionStorage
-    // cache o init() disparava antes do INITIAL_SESSION e ficava preso no lock de auth
-    if (!property || !authConfirmed) return;
+    // tokenReady (set apenas por INITIAL_SESSION ou TOKEN_REFRESHED) garante que o
+    // browser Supabase client completou o refresh do token. Usar tokenReady em vez de
+    // authConfirmed evita retorno vazio de getActiveTasks quando o access token ainda
+    // está expirado (authConfirmed pode vir do fast-path antes do refresh terminar).
+    if (!property || !tokenReady) return;
 
     let unsubscribe: (() => void) | undefined;
 
@@ -1325,7 +1326,7 @@ export default function MaidPage() {
 
     init();
     return () => unsubscribe?.();
-  }, [property, userData?.id, userData?.role, showToast, authConfirmed]);
+  }, [property, userData?.id, userData?.role, showToast, tokenReady]);
 
   useEffect(() => {
     if (!property?.id) return;
@@ -1426,6 +1427,8 @@ export default function MaidPage() {
     { id: "profile", label: "Equipe", icon: "users", badge: 0 },
   ];
 
+  // dataLoading começa true e só vai para false quando init() termina.
+  // init() é gateado em tokenReady — portanto o spinner mostra naturalmente até o token estar pronto.
   const isBootstrapping = authLoading || !userDataReady || propertyLoading;
   const loading = isBootstrapping || dataLoading;
 

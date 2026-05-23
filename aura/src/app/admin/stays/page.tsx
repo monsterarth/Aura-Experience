@@ -95,7 +95,7 @@ export default function StaysPage() {
         { event: '*', schema: 'public', table: 'stays', filter: `propertyId=eq.${contextProperty.id}` },
         () => loadStays()
       )
-      .subscribe((status) => { if (status === 'SUBSCRIBED') subscribed = true; });
+      .subscribe((status: string) => { if (status === 'SUBSCRIBED') subscribed = true; });
 
     return () => { safeRemoveChannel(channel, subscribed); };
   }, [contextProperty?.id, loadStays]);

@@ -477,7 +477,7 @@ export default function CafeSalaoPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'breakfast_tables', filter: `propertyId=eq.${propertyId}` }, loadData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'breakfast_visitors', filter: `propertyId=eq.${propertyId}` }, loadData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fb_orders', filter: `property_id=eq.${propertyId}` }, loadData)
-      .subscribe((status) => { if (status === 'SUBSCRIBED') subscribed = true; });
+      .subscribe((status: string) => { if (status === 'SUBSCRIBED') subscribed = true; });
     return () => { safeRemoveChannel(channel, subscribed); };
   }, [propertyId, loadData]);
 

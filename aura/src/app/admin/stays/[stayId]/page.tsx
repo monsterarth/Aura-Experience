@@ -217,7 +217,7 @@ export default function StayDetailPage() {
     let subscribed = false;
     const ch = supabase.channel(`folio_page_${stayId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "folio_items", filter: `stayId=eq.${stayId}` }, loadFolio)
-      .subscribe((status) => { if (status === 'SUBSCRIBED') subscribed = true; });
+      .subscribe((status: string) => { if (status === 'SUBSCRIBED') subscribed = true; });
     return () => { safeRemoveChannel(ch, subscribed); };
   }, [stayId, loadFolio]);
 

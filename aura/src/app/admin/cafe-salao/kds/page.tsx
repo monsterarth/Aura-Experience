@@ -150,7 +150,7 @@ export default function KdsPage() {
     let subscribed = false;
     const channel = supabase.channel(`kds_${propertyId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fb_orders', filter: `property_id=eq.${propertyId}` }, loadData)
-      .subscribe((status) => { if (status === 'SUBSCRIBED') subscribed = true; });
+      .subscribe((status: string) => { if (status === 'SUBSCRIBED') subscribed = true; });
     return () => { safeRemoveChannel(channel, subscribed); };
   }, [propertyId, loadData]);
 

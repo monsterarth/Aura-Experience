@@ -57,7 +57,7 @@ export const HousekeepingService = {
         { event: '*', schema: 'public', table: 'housekeeping_tasks', filter: `propertyId=eq.${propertyId}` },
         () => { fetchInitial(); }
       )
-      .subscribe((status) => {
+      .subscribe((status: string) => {
         if (status === 'SUBSCRIBED') subscribed = true;
       });
 

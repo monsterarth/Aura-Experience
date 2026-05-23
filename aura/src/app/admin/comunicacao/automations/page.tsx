@@ -72,7 +72,7 @@ export default function AutomationsQueuePage() {
         const inserted = payload.new as any;
         if (inserted.isAutomated) setMessages(prev => [inserted, ...prev]);
       })
-      .subscribe((status) => { if (status === 'SUBSCRIBED') subscribed = true; });
+      .subscribe((status: string) => { if (status === 'SUBSCRIBED') subscribed = true; });
 
     // Polling a cada 30s para capturar updates feitos pelo cron via service role,
     // que não disparam o Realtime no browser quando RLS está desabilitado na tabela.

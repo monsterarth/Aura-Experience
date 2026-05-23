@@ -14,9 +14,14 @@ interface AuthContextType {
   isSuperAdmin: boolean;
   initialProperty: any | null;
   userDataReady: boolean;
-  /** true quando o browser Supabase client foi validado (INITIAL_SESSION ou fast-path confirmado).
-   *  Usar como gate para queries de dados — o cliente tem token válido a partir daqui. */
+  /** true depois que fast-path ou safety-timeout confirmou auth (token pode ainda estar expirado).
+   *  Usar para remover loading screens — NÃO usar como gate para queries Supabase browser client. */
   authConfirmed: boolean;
+  /** true SOMENTE após INITIAL_SESSION ou TOKEN_REFRESHED do browser Supabase client.
+   *  Garante que o access token foi renovado e está válido para queries autenticadas.
+   *  Usar como gate para init() em páginas mobile (maid, governanta, etc.) — evita retorno
+   *  vazio por RLS quando o token está expirado após idle e ainda não foi renovado. */
+  tokenReady: boolean;
   impersonating: ImpersonatingState | null;
   startImpersonation: (target: Staff) => void;
   stopImpersonation: () => void;
@@ -32,6 +37,7 @@ const AuthContext = createContext<AuthContextType>({
   initialProperty: null,
   userDataReady: false,
   authConfirmed: false,
+  tokenReady: false,
   impersonating: null,
   startImpersonation: () => {},
   stopImpersonation: () => {},
@@ -62,13 +68,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [userDataReady, setUserDataReady] = useState(false);
   const [initialProperty, setInitialProperty] = useState<any | null>(null);
   const [impersonating, setImpersonating] = useState<ImpersonatingState | null>(null);
-  // authConfirmed: true somente após validação real (INITIAL_SESSION ou fast-path).
-  // Mesmo com cache, inicia false — garante que queries de dados só rodam com token válido.
+  // authConfirmed: true após fast-path ou safety-timeout (rápido, para UI).
+  // Mesmo com cache, inicia false.
   const [authConfirmed, setAuthConfirmed] = useState(false);
+  // tokenReady: true SOMENTE após INITIAL_SESSION ou TOKEN_REFRESHED
+  // (garante que o access token do browser client está renovado e válido para queries via RLS).
+  const [tokenReady, setTokenReady] = useState(false);
 
   // Refs para evitar closures stale no visibility handler e onAuthStateChange
   const userRef = useRef<SupabaseUser | null>(null);
   const userDataRef = useRef<Staff | null>(null);
+  const tokenReadyRef = useRef(false);
   const isLoggingOut = useRef(false);
   const initialSessionReceived = useRef(false);
 
@@ -94,6 +104,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // Sync refs com state
   useEffect(() => { userRef.current = user; }, [user]);
   useEffect(() => { userDataRef.current = userData; }, [userData]);
+  useEffect(() => { tokenReadyRef.current = tokenReady; }, [tokenReady]);
 
   /**
    * Busca os dados do staff vinculado ao user autenticado.
@@ -160,16 +171,30 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }, 4000);
 
     /**
-     * Safety timeout: re-tenta o fast-path server-side se o INITIAL_SESSION
-     * não chegou em 1.5s (evita depender do browser lock do Supabase).
+     * Safety timeout: garante que authConfirmed seja definido mesmo quando o cache
+     * está quente (userDataRef populado) e o fast-path falhou ou o INITIAL_SESSION
+     * está lento (lock contention após navegação idle entre páginas mobile).
+     *
+     * BUG CORRIGIDO: a versão anterior tinha `|| userDataRef.current` no early-return,
+     * o que fazia o timeout sair sem setar authConfirmed quando havia cache — deixando
+     * `loading = true` para sempre se fast-path + INITIAL_SESSION falhassem.
      */
     const safetyTimeout = setTimeout(async () => {
-      if (!mounted || userDataRef.current || isLoginPage) return;
-      console.warn("[Auth] Safety timeout — re-tentando fast-path.");
+      if (!mounted || isLoginPage) return; // Removido: userDataRef.current (ver comentário acima)
       initialSessionReceived.current = true;
+
+      if (userDataRef.current) {
+        // Cache hit — userData já disponível, não precisa refetch.
+        // Apenas garante que authConfirmed/loading são setados caso o fast-path tenha falhado.
+        // tokenReady NÃO é setado aqui — só INITIAL_SESSION garante token renovado.
+        if (mounted) { setAuthConfirmed(true); setUserDataReady(true); setLoading(false); }
+        return;
+      }
+
+      // Cache miss — re-tenta o fast-path server-side
+      console.warn("[Auth] Safety timeout — re-tentando fast-path.");
       try {
-        // Timeout de 2.5s no fetch: se o middleware travar (ex: supabase.auth.getUser lento),
-        // o finally abaixo ainda executa e libera o loading em vez de ficar preso para sempre.
+        // Timeout de 2.5s: se middleware travar, o finally ainda libera o loading
         const controller = new AbortController();
         const abortTimer = setTimeout(() => controller.abort(), 2500);
         const res = await fetch('/api/admin/auth/me', { signal: controller.signal });
@@ -178,7 +203,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (res.ok) {
           const data = await res.json();
           if (mounted && data?.staff) {
-            // Sempre captura a property — mesmo que INITIAL_SESSION já tenha definido userData
             if (data.property) setInitialProperty(data.property);
             if (!userDataRef.current) {
               userDataRef.current = data.staff;
@@ -223,7 +247,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             if (mounted) setUserDataReady(true); // unauthenticated — signal ready
           }
 
-          if (mounted) { setAuthConfirmed(true); setLoading(false); } // INITIAL_SESSION — browser client pronto
+          // INITIAL_SESSION confirma que o browser client completou o token refresh.
+          // tokenReady = true sinaliza que queries via RLS podem executar com token válido.
+          if (mounted) { setAuthConfirmed(true); setTokenReady(true); setLoading(false); }
           return;
         }
 
@@ -250,6 +276,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
           if (currentUser) {
             setUser(currentUser);
+            // TOKEN_REFRESHED garante token válido — sinaliza tokenReady se ainda não estava
+            if (!tokenReadyRef.current && mounted) setTokenReady(true);
             if (currentUser.id !== userRef.current?.id || !userDataRef.current) {
               const staff = await fetchStaffData(currentUser.id);
               if (mounted && staff) { setUserData(staff); setUserDataReady(true); }
@@ -332,6 +360,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     initialProperty,
     userDataReady,
     authConfirmed,
+    tokenReady,
     impersonating,
     startImpersonation,
     stopImpersonation,
