@@ -1398,7 +1398,7 @@ function ProfileScreen({ userData, onLogout }: { userData: any; onLogout: () => 
 type Screen = "dashboard" | "conference" | "all" | "profile";
 
 export default function GovernantaPage() {
-  const { userData } = useAuth();
+  const { userData, authConfirmed } = useAuth();
   const { currentProperty: property, loading: propLoading } = useProperty();
   const router = useRouter();
 
@@ -1477,7 +1477,7 @@ export default function GovernantaPage() {
   // Load data
   useEffect(() => {
     if (!propLoading && !property) { setLoading(false); return; }
-    if (!property) return;
+    if (!property || !authConfirmed) return;
     let unsub: () => void;
 
     const init = async () => {
@@ -1555,7 +1555,7 @@ export default function GovernantaPage() {
 
     init();
     return () => { if (unsub) unsub(); };
-  }, [property, propLoading, showToast]);
+  }, [property, propLoading, showToast, authConfirmed]);
 
   function getLocationName(task: HousekeepingTask): string {
     if (task.cabinId && cabins[task.cabinId]) {

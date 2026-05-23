@@ -14,6 +14,9 @@ interface AuthContextType {
   isSuperAdmin: boolean;
   initialProperty: any | null;
   userDataReady: boolean;
+  /** true quando o browser Supabase client foi validado (INITIAL_SESSION ou fast-path confirmado).
+   *  Usar como gate para queries de dados — o cliente tem token válido a partir daqui. */
+  authConfirmed: boolean;
   impersonating: ImpersonatingState | null;
   startImpersonation: (target: Staff) => void;
   stopImpersonation: () => void;
@@ -28,6 +31,7 @@ const AuthContext = createContext<AuthContextType>({
   isSuperAdmin: false,
   initialProperty: null,
   userDataReady: false,
+  authConfirmed: false,
   impersonating: null,
   startImpersonation: () => {},
   stopImpersonation: () => {},
@@ -56,6 +60,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [userDataReady, setUserDataReady] = useState(!!cachedStaff);
   const [initialProperty, setInitialProperty] = useState<any | null>(null);
   const [impersonating, setImpersonating] = useState<ImpersonatingState | null>(null);
+  // authConfirmed: true somente após validação real (INITIAL_SESSION ou fast-path).
+  // Mesmo com cache, inicia false — garante que queries de dados só rodam com token válido.
+  const [authConfirmed, setAuthConfirmed] = useState(false);
 
   // Refs para evitar closures stale no visibility handler e onAuthStateChange
   const userRef = useRef<SupabaseUser | null>(null);
@@ -111,6 +118,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           // Sem isso, quando o INITIAL_SESSION dispara antes da resposta da API (idle + token expirado),
           // o initialProperty nunca é definido e o PropertyContext cai no caminho lento.
           if (data.property) setInitialProperty(data.property);
+          if (mounted) setAuthConfirmed(true); // fast-path validou — token do browser está pronto
           if (!userDataRef.current) {
             userDataRef.current = data.staff;
             setUserData(data.staff);
@@ -165,7 +173,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       } catch { /* silencioso — hard timeout cobre */ }
       finally {
         if (mounted && !userDataRef.current) { setUser(null); setUserData(null); }
-        if (mounted) { setUserDataReady(true); setLoading(false); }
+        if (mounted) { setAuthConfirmed(true); setUserDataReady(true); setLoading(false); }
       }
     }, 1500);
 
@@ -199,7 +207,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             if (mounted) setUserDataReady(true); // unauthenticated — signal ready
           }
 
-          if (mounted) setLoading(false);
+          if (mounted) { setAuthConfirmed(true); setLoading(false); } // INITIAL_SESSION — browser client pronto
           return;
         }
 
@@ -307,6 +315,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     isSuperAdmin: effectiveUserData?.role === 'super_admin',
     initialProperty,
     userDataReady,
+    authConfirmed,
     impersonating,
     startImpersonation,
     stopImpersonation,

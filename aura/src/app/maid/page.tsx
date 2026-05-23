@@ -1238,7 +1238,7 @@ function ProfileScreen({
 type Tab = "home" | "tasks" | "profile";
 
 export default function MaidPage() {
-  const { userData, loading: authLoading, userDataReady } = useAuth();
+  const { userData, loading: authLoading, userDataReady, authConfirmed } = useAuth();
   const { currentProperty: property, loading: propertyLoading } = useProperty();
   const router = useRouter();
 
@@ -1273,7 +1273,10 @@ export default function MaidPage() {
   }, [authLoading, userDataReady, propertyLoading, property]);
 
   useEffect(() => {
-    if (!property) return;
+    // authConfirmed garante que o browser Supabase client tem token válido antes de
+    // iniciar queries de dados e a subscription realtime — sem isso, com sessionStorage
+    // cache o init() disparava antes do INITIAL_SESSION e ficava preso no lock de auth
+    if (!property || !authConfirmed) return;
 
     let unsubscribe: (() => void) | undefined;
 
@@ -1308,7 +1311,7 @@ export default function MaidPage() {
 
     init();
     return () => unsubscribe?.();
-  }, [property, userData?.id, userData?.role, showToast]);
+  }, [property, userData?.id, userData?.role, showToast, authConfirmed]);
 
   useEffect(() => {
     if (!property?.id) return;

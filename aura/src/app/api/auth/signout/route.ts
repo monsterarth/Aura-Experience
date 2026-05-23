@@ -22,14 +22,19 @@ export async function POST() {
         }
     );
 
-    await supabase.auth.signOut({ scope: 'local' });
-
-    // Apaga todos os cookies de sessão do Supabase no browser
+    // Limpa os cookies ANTES do await — garante que mesmo se signOut travar,
+    // os cookies sb- já foram apagados na resposta e o middleware não redireciona de volta
     cookieStore.getAll().forEach(({ name }) => {
         if (name.startsWith('sb-')) {
             response.cookies.set(name, '', { maxAge: 0, path: '/' });
         }
     });
+
+    // Revoga no Supabase Auth (best-effort, 2s timeout — não bloqueia a resposta)
+    await Promise.race([
+        supabase.auth.signOut({ scope: 'local' }),
+        new Promise<void>(resolve => setTimeout(resolve, 2000)),
+    ]).catch(() => {});
 
     return response;
 }
