@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useProperty } from "@/context/PropertyContext";
-import { supabase } from "@/lib/supabase";
+import { supabase, safeRemoveChannel } from "@/lib/supabase";
 import { WhatsAppMessage } from "@/types/aura";
 import { AutomationService } from "@/services/automation-service";
 import { Button } from "@/components/ui/button";
@@ -54,6 +54,7 @@ export default function AutomationsQueuePage() {
     setLoading(true);
     fetchMessages();
 
+    let subscribed = false;
     const channel = supabase.channel('automations_queue')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages', filter: `propertyId=eq.${property.id}` }, (payload: any) => {
         const updated = payload.new as any;
@@ -71,14 +72,14 @@ export default function AutomationsQueuePage() {
         const inserted = payload.new as any;
         if (inserted.isAutomated) setMessages(prev => [inserted, ...prev]);
       })
-      .subscribe();
+      .subscribe((status) => { if (status === 'SUBSCRIBED') subscribed = true; });
 
     // Polling a cada 30s para capturar updates feitos pelo cron via service role,
     // que não disparam o Realtime no browser quando RLS está desabilitado na tabela.
     const pollInterval = setInterval(fetchMessages, 30_000);
 
     return () => {
-      supabase.removeChannel(channel);
+      safeRemoveChannel(channel, subscribed);
       clearInterval(pollInterval);
     };
   }, [property?.id, fetchMessages]);

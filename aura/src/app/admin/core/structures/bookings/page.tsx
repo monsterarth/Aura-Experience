@@ -10,7 +10,7 @@ import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { Structure, StructureBooking, TimeSlot, Stay } from "@/types/aura";
 import { StayService } from "@/services/stay-service";
-import { supabase } from "@/lib/supabase";
+import { supabase, safeRemoveChannel } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
 type ModalState = {
@@ -85,14 +85,15 @@ export default function StructureBookingsPage() {
     useEffect(() => {
         if (!currentProperty) return;
 
+        let subscribed = false;
         const channel = supabase.channel(`bookings_${currentProperty.id}`)
             .on('postgres_changes',
                 { event: '*', schema: 'public', table: 'structure_bookings', filter: `propertyId=eq.${currentProperty.id}` },
                 () => fetchData()
             )
-            .subscribe();
+            .subscribe((status) => { if (status === 'SUBSCRIBED') subscribed = true; });
 
-        return () => { supabase.removeChannel(channel); };
+        return () => { safeRemoveChannel(channel, subscribed); };
     }, [currentProperty, fetchData]);
 
     // fetchData is now defined above as a useCallback

@@ -47,16 +47,29 @@ export const HousekeepingService = {
     // Safety net: cobre DELETEs perdidos por RLS e reconexões de canal
     const intervalId = setInterval(fetchInitial, 15_000);
 
+    // Rastreia se o canal chegou a subscrever — usado no cleanup para evitar
+    // fechar o WebSocket enquanto ainda está em CONNECTING (browser warning:
+    // "WebSocket is closed before the connection is established").
+    let subscribed = false;
+
     const channel = supabase.channel(`hk_tasks_${propertyId}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'housekeeping_tasks', filter: `propertyId=eq.${propertyId}` },
         () => { fetchInitial(); }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') subscribed = true;
+      });
 
     return () => {
       clearInterval(intervalId);
-      supabase.removeChannel(channel);
+      if (subscribed) {
+        // Canal conectado: remoção limpa (fecha o join + socket se não há mais canais)
+        supabase.removeChannel(channel);
+      } else {
+        // Canal ainda conectando: cancela o join sem fechar o socket → sem browser warning
+        channel.unsubscribe().catch(() => {});
+      }
     };
   },
 

@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { RealtimeChannel } from '@supabase/supabase-js';
 import { createClientBrowserAuto } from './supabase-browser';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -59,4 +60,32 @@ export const supabaseAdmin = globalForSupabase.supabaseAdmin ?? createAdminClien
 
 if (typeof window === 'undefined' && process.env.NODE_ENV !== 'production' && supabaseAdmin) {
     globalForSupabase.supabaseAdmin = supabaseAdmin;
+}
+
+/**
+ * Remove a Supabase Realtime channel safely.
+ *
+ * Calling supabase.removeChannel() on a channel that's still connecting (WebSocket
+ * readyState = CONNECTING) triggers a browser-level error:
+ * "WebSocket is closed before the connection is established".
+ *
+ * This utility tracks subscription status and uses the appropriate teardown:
+ * - Already subscribed ('joined') → supabase.removeChannel() (clean disconnect)
+ * - Still connecting ('joining') → channel.unsubscribe() (cancels the join without
+ *   closing the socket, so no browser warning)
+ *
+ * Usage: replace `return () => { supabase.removeChannel(ch); }` with
+ *        `return safeRemoveChannel(ch, subscribed)`
+ *
+ * Track subscribed via the .subscribe() status callback:
+ *   let subscribed = false;
+ *   channel.subscribe(status => { if (status === 'SUBSCRIBED') subscribed = true; });
+ *   return () => safeRemoveChannel(channel, subscribed);
+ */
+export function safeRemoveChannel(channel: RealtimeChannel, subscribed: boolean): void {
+    if (subscribed) {
+        supabase.removeChannel(channel);
+    } else {
+        channel.unsubscribe().catch(() => {});
+    }
 }

@@ -5,7 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { EventService } from "@/services/event-service";
 import { Event, EventType, EventStatus, EventCategory } from "@/types/aura";
-import { supabase } from "@/lib/supabase";
+import { supabase, safeRemoveChannel } from "@/lib/supabase";
 import { format, addMonths, subMonths, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
@@ -164,11 +164,12 @@ export default function EventosPage() {
   // Realtime subscription
   useEffect(() => {
     if (!property?.id) return;
+    let subscribed = false;
     const channel = supabase
       .channel("admin-events-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "events", filter: `propertyId=eq.${property.id}` }, () => loadEvents())
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+      .subscribe((status) => { if (status === 'SUBSCRIBED') subscribed = true; });
+    return () => { safeRemoveChannel(channel, subscribed); };
   }, [property?.id, loadEvents]);
 
   // ==========================================

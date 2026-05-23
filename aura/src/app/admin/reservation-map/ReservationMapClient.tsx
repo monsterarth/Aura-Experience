@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
-import { supabase } from "@/lib/supabase";
+import { supabase, safeRemoveChannel } from "@/lib/supabase";
 import { StayService } from "@/services/stay-service";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { StayDetailsModal } from "@/components/admin/StayDetailsModal";
@@ -243,6 +243,7 @@ export default function ReservationMapClient() {
     useEffect(() => {
         if (!contextProperty?.id) return;
 
+        let subscribed = false;
         const channel = supabase.channel(`reservation_map_${contextProperty.id}`)
             .on('postgres_changes',
                 { event: '*', schema: 'public', table: 'stays', filter: `propertyId=eq.${contextProperty.id}` },
@@ -260,9 +261,9 @@ export default function ReservationMapClient() {
                 { event: '*', schema: 'public', table: 'housekeeping_tasks', filter: `propertyId=eq.${contextProperty.id}` },
                 () => loadData()
             )
-            .subscribe();
+            .subscribe((status) => { if (status === 'SUBSCRIBED') subscribed = true; });
 
-        return () => { supabase.removeChannel(channel); };
+        return () => { safeRemoveChannel(channel, subscribed); };
     }, [contextProperty?.id, loadData]);
 
     // ==========================================

@@ -13,7 +13,7 @@ import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
-import { supabase } from "@/lib/supabase";
+import { supabase, safeRemoveChannel } from "@/lib/supabase";
 import { HousekeepingService } from "@/services/housekeeping-service";
 import { ConciergeService } from "@/services/concierge-service";
 import { fbService } from "@/services/fb-service";
@@ -139,12 +139,13 @@ export default function ReceptionDashboard() {
         const unsubConcierge = ConciergeService.listenToPendingRequests(property.id, setPendingRequests);
 
         // Realtime: stays mudam → recarrega stats + estruturas silenciosamente
+        let staysSubscribed = false;
         const staysChannel = supabase.channel(`reception_stays_${property.id}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'stays',
                 filter: `propertyId=eq.${property.id}` }, () => loadDashboard(true))
-            .subscribe();
+            .subscribe((status) => { if (status === 'SUBSCRIBED') staysSubscribed = true; });
 
-        return () => { unsubHK(); unsubConcierge(); supabase.removeChannel(staysChannel); };
+        return () => { unsubHK(); unsubConcierge(); safeRemoveChannel(staysChannel, staysSubscribed); };
     }, [property?.id]);
 
     // ==========================================

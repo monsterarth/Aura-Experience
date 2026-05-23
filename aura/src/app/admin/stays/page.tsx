@@ -7,7 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { StayService } from "@/services/stay-service";
 import { chatwootSyncOnCheckIn, chatwootSyncOnCancelled } from "@/app/actions/chatwoot-actions";
-import { supabase } from "@/lib/supabase";
+import { supabase, safeRemoveChannel } from "@/lib/supabase";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import {
   Calendar, Search, Loader2, AlertCircle,
@@ -89,14 +89,15 @@ export default function StaysPage() {
   useEffect(() => {
     if (!contextProperty?.id) return;
 
+    let subscribed = false;
     const channel = supabase.channel(`stays_${contextProperty.id}`)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'stays', filter: `propertyId=eq.${contextProperty.id}` },
         () => loadStays()
       )
-      .subscribe();
+      .subscribe((status) => { if (status === 'SUBSCRIBED') subscribed = true; });
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { safeRemoveChannel(channel, subscribed); };
   }, [contextProperty?.id, loadStays]);
 
   // --- Handlers ---

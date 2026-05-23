@@ -23,7 +23,7 @@ import { CabinService } from "@/services/cabin-service";
 import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import { sanitizeDocumentForFnrh, validateCPF } from "@/lib/utils-checkin";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabase";
+import { supabase, safeRemoveChannel } from "@/lib/supabase";
 import { Stay, Guest, Cabin, FolioItem } from "@/types/aura";
 
 // ─── Primitivos de display ────────────────────────────────────────────────
@@ -214,10 +214,11 @@ export default function StayDetailPage() {
 
   useEffect(() => {
     if (!stayId) return;
+    let subscribed = false;
     const ch = supabase.channel(`folio_page_${stayId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "folio_items", filter: `stayId=eq.${stayId}` }, loadFolio)
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
+      .subscribe((status) => { if (status === 'SUBSCRIBED') subscribed = true; });
+    return () => { safeRemoveChannel(ch, subscribed); };
   }, [stayId, loadFolio]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────

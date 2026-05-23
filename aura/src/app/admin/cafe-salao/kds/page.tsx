@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { BreakfastSalonService } from "@/services/breakfast-salon-service";
-import { supabase } from "@/lib/supabase";
+import { supabase, safeRemoveChannel } from "@/lib/supabase";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { BreakfastSession, BreakfastTable, FBOrder } from "@/types/aura";
 import { cn } from "@/lib/utils";
@@ -147,10 +147,11 @@ export default function KdsPage() {
   // Realtime
   useEffect(() => {
     if (!propertyId) return;
+    let subscribed = false;
     const channel = supabase.channel(`kds_${propertyId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fb_orders', filter: `property_id=eq.${propertyId}` }, loadData)
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+      .subscribe((status) => { if (status === 'SUBSCRIBED') subscribed = true; });
+    return () => { safeRemoveChannel(channel, subscribed); };
   }, [propertyId, loadData]);
 
   const handleAccept = async (orderId: string) => {
