@@ -52,12 +52,14 @@ function writeCachedStaff(staff: Staff | null) {
 }
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const cachedStaff = readCachedStaff();
-
+  // Todos os initializers usam valores server-safe (null / true / false).
+  // Ler sessionStorage aqui causaria hydration mismatch (#418 / #423) porque o
+  // server sempre retorna null mas o client pode ter cache — React detecta a
+  // diferença e destrói o HTML SSR. O cache é aplicado num useEffect (client-only).
   const [user, setUser] = useState<SupabaseUser | null>(null);
-  const [userData, setUserData] = useState<Staff | null>(cachedStaff);
-  const [loading, setLoading] = useState(!cachedStaff);     // false se há cache → sem loading screen no F5
-  const [userDataReady, setUserDataReady] = useState(!!cachedStaff);
+  const [userData, setUserData] = useState<Staff | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [userDataReady, setUserDataReady] = useState(false);
   const [initialProperty, setInitialProperty] = useState<any | null>(null);
   const [impersonating, setImpersonating] = useState<ImpersonatingState | null>(null);
   // authConfirmed: true somente após validação real (INITIAL_SESSION ou fast-path).
@@ -66,11 +68,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Refs para evitar closures stale no visibility handler e onAuthStateChange
   const userRef = useRef<SupabaseUser | null>(null);
-  const userDataRef = useRef<Staff | null>(cachedStaff);
+  const userDataRef = useRef<Staff | null>(null);
   const isLoggingOut = useRef(false);
   const initialSessionReceived = useRef(false);
 
   const supabase = createClientBrowserAuto();
+
+  // ── Cache hydration (client-only) ──────────────────────────────────────────
+  // Roda uma única vez após o mount (nunca durante SSR) → sem hydration mismatch.
+  // Deve vir ANTES do useEffect principal para que userDataRef já esteja populado
+  // quando os callbacks do fast-path / safety-timeout checarem userDataRef.current.
+  useEffect(() => {
+    const cached = readCachedStaff();
+    if (cached) {
+      userDataRef.current = cached;
+      setUserData(cached);
+      setUserDataReady(true);
+      setLoading(false);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Mantém cache em sincronia com o estado — escrita automática ao setar userData
   useEffect(() => { writeCachedStaff(userData); }, [userData]);
