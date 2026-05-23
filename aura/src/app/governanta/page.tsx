@@ -882,7 +882,7 @@ function NewTaskSheet({
   const [cabinId, setCabinId] = useState("");
   const [structureId, setStructureId] = useState("");
   const [customLocation, setCustomLocation] = useState("");
-  const [taskType, setTaskType] = useState<"daily" | "turnover" | "custom">("daily");
+  const [taskType, setTaskType] = useState<"daily" | "turnover" | "linen_change" | "inspection_checkin" | "inspection_checkout" | "custom">("daily");
   const [assignedIds, setAssignedIds] = useState<string[]>([]);
   const [obs, setObs] = useState("");
   const [customChecklist, setCustomChecklist] = useState<{ id: string; label: string; checked: boolean }[]>([]);
@@ -1003,17 +1003,23 @@ function NewTaskSheet({
         {mode === "cleaning" ? (
           <>
             <Label>Tipo</Label>
-            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-              {(["daily", "turnover", "custom"] as const).map(t => {
-                const labels = { daily: "Arrumação Diária", turnover: "Faxina de Troca", custom: "Personalizada" };
-                const on = taskType === t;
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
+              {([
+                { value: "daily",               label: "Arrumação" },
+                { value: "linen_change",         label: "Arr. c/ Troca" },
+                { value: "turnover",             label: "Faxina de Troca" },
+                { value: "inspection_checkin",   label: "Conf. Entrada" },
+                { value: "inspection_checkout",  label: "Conf. Saída" },
+                { value: "custom",               label: "Personalizada" },
+              ] as const).map(({ value, label }) => {
+                const on = taskType === value;
                 return (
-                  <button key={t} onClick={() => setTaskType(t)} style={{
-                    flex: 1, padding: "10px 0", borderRadius: 12, cursor: "pointer",
-                    fontFamily: "inherit", fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em",
+                  <button key={value} onClick={() => setTaskType(value)} style={{
+                    padding: "10px 4px", borderRadius: 12, cursor: "pointer",
+                    fontFamily: "inherit", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em",
                     background: on ? T.vSoft : T.card2, border: `1px solid ${on ? T.vBorder : T.border}`,
-                    color: on ? T.v1 : T.muted,
-                  }}>{labels[t]}</button>
+                    color: on ? T.v1 : T.muted, lineHeight: 1.3, textAlign: "center",
+                  }}>{label}</button>
                 );
               })}
             </div>
