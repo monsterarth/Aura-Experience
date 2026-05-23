@@ -35,6 +35,7 @@ const STYLE = `
 @keyframes gov-slideup{from{transform:translateY(100%)}to{transform:translateY(0)}}
 @keyframes gov-toast{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
 @keyframes gov-spin{to{transform:rotate(360deg)}}
+.gov-shell button:not([disabled]):active{opacity:.7;transform:scale(.97);}
 `;
 
 // ─── Tokens ───────────────────────────────────────────────────────────────────
@@ -125,7 +126,8 @@ function I({ n, s = 20, c = "currentColor", w = 1.8 }: { n: IName; s?: number; c
     minus: <line x1="5" y1="12" x2="19" y2="12" />,
   };
   return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round">
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round"
+      style={n === "loader" ? { animation: "gov-spin 0.8s linear infinite" } : undefined}>
       {d[n]}
     </svg>
   );
@@ -1432,6 +1434,7 @@ export default function GovernantaPage() {
   // Busy states
   const [conferBusy, setConferBusy] = useState(false);
   const [assignBusy, setAssignBusy] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
 
   // Cabin history
   const [selectedCabin, setSelectedCabin] = useState<Cabin | null>(null);
@@ -1461,6 +1464,7 @@ export default function GovernantaPage() {
   // Toast
   const [toast, setToast] = useState<{ msg: string; color: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const logoutRef = useRef(false);
 
   const showToast = useCallback((msg: string, color = T.green) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -1469,6 +1473,8 @@ export default function GovernantaPage() {
   }, []);
 
   const handleLogout = async () => {
+    if (logoutRef.current) return;
+    logoutRef.current = true;
     showToast("Saindo...");
     await fetch('/api/auth/signout', { method: 'POST' }).catch(() => {});
     window.location.href = '/admin/login';
@@ -1623,7 +1629,8 @@ export default function GovernantaPage() {
   const handleCancel = (task: HousekeepingTask) => setCancelConfirmTask(task);
 
   const doCancel = async () => {
-    if (!property || !cancelConfirmTask) return;
+    if (!property || !cancelConfirmTask || cancelBusy) return;
+    setCancelBusy(true);
     try {
       await HousekeepingService.updateTask(property.id, cancelConfirmTask.id, { status: "cancelled" }, userData?.id || "", userData?.fullName || "Governanta");
       showToast("Tarefa cancelada.", T.muted);
@@ -1631,6 +1638,7 @@ export default function GovernantaPage() {
       showToast("Erro ao cancelar.", T.red);
     } finally {
       setCancelConfirmTask(null);
+      setCancelBusy(false);
     }
   };
 
@@ -2275,9 +2283,10 @@ export default function GovernantaPage() {
               </button>
               <button
                 onClick={doCancel}
-                style={{ flex: 1, padding: 14, background: T.redBg, color: T.red, fontFamily: "inherit", fontSize: 14, fontWeight: 800, border: `1px solid ${T.redBorder}`, borderRadius: 14, cursor: "pointer" }}
+                disabled={cancelBusy}
+                style={{ flex: 1, padding: 14, background: T.redBg, color: T.red, fontFamily: "inherit", fontSize: 14, fontWeight: 800, border: `1px solid ${T.redBorder}`, borderRadius: 14, cursor: cancelBusy ? "wait" : "pointer", opacity: cancelBusy ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
               >
-                Sim, remover
+                {cancelBusy ? <I n="loader" s={16} c={T.red} /> : "Sim, remover"}
               </button>
             </div>
           </div>

@@ -33,6 +33,7 @@ const STYLE = `
 @keyframes maid-slideup{from{transform:translateY(100%)}to{transform:translateY(0)}}
 @keyframes maid-toast{from{transform:translateY(-16px);opacity:0}to{transform:translateY(0);opacity:1}}
 @keyframes maid-spin{to{transform:rotate(360deg)}}
+.maid-shell button:not([disabled]):active{opacity:.7;transform:scale(.97);}
 `;
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -176,7 +177,8 @@ function I({ n, s = 20, c = "currentColor", w = 1.8 }: { n: IName; s?: number; c
     msg: <><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></>,
   };
   return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round">
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round"
+      style={n === "loader" ? { animation: "maid-spin 0.8s linear infinite" } : undefined}>
       {d[n]}
     </svg>
   );
@@ -793,6 +795,7 @@ function HomeScreen({
 function FaxinasScreen({
   tasks, onStart, showToast, onToggle,
   propertyId, userId, userName, onChecklistLoaded, repRequests,
+  startingTaskId,
 }: {
   tasks: EnrichedTask[];
   onStart: (id: string) => void;
@@ -801,6 +804,7 @@ function FaxinasScreen({
   propertyId: string; userId: string; userName: string;
   onChecklistLoaded: (taskId: string, checklist: ChecklistItem[]) => void;
   repRequests: ConciergeRequest[];
+  startingTaskId: string | null;
 }) {
   const [detail, setDetail] = useState<string | null>(null);
 
@@ -916,8 +920,8 @@ function FaxinasScreen({
                   </div>
                 )}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
-                  <button onClick={() => onStart(t.id)} style={{ padding: 16, background: T.grad, color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(155,109,255,0.35)" }}>
-                    {t.startedAt ? "Retomar" : "Iniciar"} <I n="arrow" s={18} />
+                  <button onClick={() => onStart(t.id)} disabled={startingTaskId === t.id} style={{ padding: 16, background: T.grad, color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: startingTaskId === t.id ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(155,109,255,0.35)", opacity: startingTaskId === t.id ? 0.7 : 1 }}>
+                    {startingTaskId === t.id ? <><I n="loader" s={18} c="#fff" w={2} /> Iniciando...</> : <>{t.startedAt ? "Retomar" : "Iniciar"} <I n="arrow" s={18} /></>}
                   </button>
                 </div>
               </div>
@@ -1250,6 +1254,10 @@ export default function MaidPage() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [repRequests, setRepRequests] = useState<ConciergeRequest[]>([]);
   const [pauseConfirm, setPauseConfirm] = useState<{ currentTaskId: string; newTaskId: string } | null>(null);
+  const startingRef = useRef(false);
+  const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
+  const [pauseStartBusy, setPauseStartBusy] = useState(false);
+  const logoutRef = useRef(false);
 
   const showToast = useCallback((msg: string, color = T.green) => {
     setToast({ msg, color });
@@ -1319,12 +1327,14 @@ export default function MaidPage() {
   }, [property?.id]);
 
   const handleStart = useCallback(async (taskId: string) => {
-    if (!property || !userData) return;
+    if (!property || !userData || startingRef.current) return;
     const activeTask = tasks.find(t => t.status === "in_progress");
     if (activeTask && activeTask.id !== taskId) {
       setPauseConfirm({ currentTaskId: activeTask.id, newTaskId: taskId });
       return;
     }
+    startingRef.current = true;
+    setStartingTaskId(taskId);
     try {
       const task = tasks.find(t => t.id === taskId);
       if (task?.startedAt) {
@@ -1335,10 +1345,15 @@ export default function MaidPage() {
         showToast("Limpeza iniciada! Cronômetro rodando.");
       }
     } catch { showToast("Erro ao iniciar tarefa.", T.red); }
+    finally {
+      startingRef.current = false;
+      setStartingTaskId(null);
+    }
   }, [property, userData, tasks, showToast]);
 
   const handlePauseAndStart = useCallback(async () => {
-    if (!pauseConfirm || !property || !userData) return;
+    if (!pauseConfirm || !property || !userData || pauseStartBusy) return;
+    setPauseStartBusy(true);
     try {
       await HousekeepingService.pauseTask(property.id, pauseConfirm.currentTaskId, userData.id, userData.fullName);
       const newTask = tasks.find(t => t.id === pauseConfirm.newTaskId);
@@ -1349,8 +1364,11 @@ export default function MaidPage() {
       }
       showToast("Tarefa anterior pausada. Nova limpeza iniciada!");
     } catch { showToast("Erro ao trocar tarefa.", T.red); }
-    finally { setPauseConfirm(null); }
-  }, [pauseConfirm, property, userData, tasks, showToast]);
+    finally {
+      setPauseConfirm(null);
+      setPauseStartBusy(false);
+    }
+  }, [pauseConfirm, property, userData, tasks, showToast, pauseStartBusy]);
 
   const handleToggle = useCallback(async (taskId: string, itemId: string) => {
     // Optimistic
@@ -1377,6 +1395,8 @@ export default function MaidPage() {
   }, []);
 
   const handleLogout = async () => {
+    if (logoutRef.current) return;
+    logoutRef.current = true;
     showToast("Saindo...");
     await supabase.auth.signOut();
     router.push("/admin/login");
@@ -1448,7 +1468,7 @@ export default function MaidPage() {
             </div>
             <RoleSwitcher />
             {tab === "home" && <HomeScreen tasks={tasks} cabins={cabins} onNav={setTab} userName={userData?.fullName ?? "Camareira"} />}
-            {tab === "tasks" && <FaxinasScreen tasks={tasks} onStart={handleStart} showToast={showToast} onToggle={handleToggle} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onChecklistLoaded={handleChecklistLoaded} repRequests={repRequests} />}
+            {tab === "tasks" && <FaxinasScreen tasks={tasks} onStart={handleStart} showToast={showToast} onToggle={handleToggle} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onChecklistLoaded={handleChecklistLoaded} repRequests={repRequests} startingTaskId={startingTaskId} />}
             {tab === "profile" && <ProfileScreen userData={userData} showToast={showToast} onLogout={handleLogout} propertyId={property?.id ?? ""} />}
           </div>
 
@@ -1469,9 +1489,10 @@ export default function MaidPage() {
                   </button>
                   <button
                     onClick={handlePauseAndStart}
-                    style={{ flex: 1, padding: 14, background: T.greenG, color: "#021a17", fontFamily: "inherit", fontSize: 14, fontWeight: 800, border: "none", borderRadius: 14, cursor: "pointer" }}
+                    disabled={pauseStartBusy}
+                    style={{ flex: 1, padding: 14, background: T.greenG, color: "#021a17", fontFamily: "inherit", fontSize: 14, fontWeight: 800, border: "none", borderRadius: 14, cursor: pauseStartBusy ? "wait" : "pointer", opacity: pauseStartBusy ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
                   >
-                    Pausar e iniciar
+                    {pauseStartBusy ? <I n="loader" s={16} c="#021a17" w={2} /> : "Pausar e iniciar"}
                   </button>
                 </div>
               </div>
