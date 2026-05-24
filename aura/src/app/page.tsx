@@ -28,6 +28,7 @@ import {
   Clock,
   TrendingUp,
   Layers,
+  History,
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
@@ -124,6 +125,23 @@ const valueProps = [
     desc: "Todas as equipes sincronizadas via Supabase Realtime, 24/7.",
   },
 ];
+
+const changelog: Array<{ version: string; title: string; date: string; type: string }> = [
+  { version: "v2.5", title: "Portal multilíngue PT/EN/ES", date: "22 mai", type: "feature" },
+  { version: "v2.4", title: "Módulo de Eventos ao vivo", date: "15 mai", type: "feature" },
+  { version: "v2.3", title: "App Garçom com QR Code", date: "08 mai", type: "feature" },
+  { version: "v2.2", title: "Calendário unificado", date: "01 mai", type: "improvement" },
+  { version: "v2.1", title: "Check-in digital do hóspede", date: "24 abr", type: "feature" },
+  { version: "v2.0", title: "Governança em tempo real", date: "10 abr", type: "feature" },
+  { version: "v1.9", title: "App Manutenção & Técnica", date: "28 mar", type: "feature" },
+  { version: "v1.8", title: "IA Generativa com Gemini", date: "15 mar", type: "feature" },
+];
+
+const changelogColors: Record<string, { bg: string; border: string; text: string }> = {
+  feature:     { bg: "rgba(0,191,255,0.08)",    border: "rgba(0,191,255,0.25)",    text: "#00BFFF" },
+  improvement: { bg: "rgba(167,139,250,0.08)",  border: "rgba(167,139,250,0.25)",  text: "#a78bfa" },
+  fix:         { bg: "rgba(16,185,129,0.08)",   border: "rgba(16,185,129,0.25)",   text: "#10b981" },
+};
 
 /* ─── page ────────────────────────────────────────────────────── */
 
@@ -390,6 +408,50 @@ export default function AuraLandingPage() {
               </span>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ══════════════════════════════════════════════════════════
+          CHANGELOG STRIP
+      ══════════════════════════════════════════════════════════ */}
+      <section className="py-4 border-b border-white/5 overflow-hidden bg-[#111111]">
+        {/* label + link */}
+        <div className="flex items-center gap-3 px-6 max-w-7xl mx-auto mb-3">
+          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-gray-600 shrink-0">
+            <History size={11} />
+            <span>Atualizações Recentes</span>
+          </div>
+          <div className="flex-1 h-px bg-white/5" />
+          <Link
+            href="/changelog"
+            className="text-[11px] text-[#00BFFF] hover:text-white transition-colors flex items-center gap-1 shrink-0 font-medium"
+          >
+            Ver histórico completo <ChevronRight size={11} />
+          </Link>
+        </div>
+
+        {/* marquee track */}
+        <div className="relative overflow-hidden">
+          <div className="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-[#111111] to-transparent z-10 pointer-events-none" />
+          <div className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-[#111111] to-transparent z-10 pointer-events-none" />
+          <div className="animate-marquee">
+            {[...changelog, ...changelog].map(({ version, title, date, type }, i) => {
+              const c = changelogColors[type] ?? changelogColors.feature;
+              return (
+                <div key={i} className="inline-flex items-center gap-2 mx-4 shrink-0">
+                  <span
+                    className="text-[10px] font-bold px-2 py-0.5 rounded-full border"
+                    style={{ backgroundColor: c.bg, borderColor: c.border, color: c.text }}
+                  >
+                    {version}
+                  </span>
+                  <span className="text-xs text-gray-400 whitespace-nowrap">{title}</span>
+                  <span className="text-[10px] text-gray-600 font-mono whitespace-nowrap">{date}</span>
+                  <span className="text-gray-700 mx-1 select-none">·</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </section>
 
@@ -1076,6 +1138,9 @@ export default function AuraLandingPage() {
                   <a href="#valores" className="block hover:text-gray-300 transition-colors">
                     Por que Aura
                   </a>
+                  <Link href="/changelog" className="block hover:text-gray-300 transition-colors">
+                    Changelog
+                  </Link>
                 </div>
               </div>
               <div>
