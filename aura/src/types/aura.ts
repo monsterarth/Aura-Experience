@@ -1210,3 +1210,29 @@ export interface StaffScrapReaction {
   emoji: string;
   createdAt: Timestamp;
 }
+
+// --- CHANGELOG ---
+
+export type ChangelogStatus    = 'draft' | 'published';
+export type ChangelogEntryType = 'feature' | 'improvement' | 'fix';
+
+export interface Changelog {
+  id:        string;
+  version:   string;
+  label:     string;
+  date:      string;
+  status:    ChangelogStatus;
+  highlight: string | null;
+  createdAt: string;
+  updatedAt: string;
+  entries?:  ChangelogEntry[];
+}
+
+export interface ChangelogEntry {
+  id:          string;
+  changelogId: string;
+  type:        ChangelogEntryType;
+  text:        string;
+  sortOrder:   number;
+  createdAt:   string;
+}

@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
+import { getLatestChangelogEntries } from "@/services/changelog-service";
 
 export const metadata: Metadata = {
   title: "Aura — Plataforma Operacional para Pousadas e Hotéis Boutique",
@@ -145,7 +146,10 @@ const changelogColors: Record<string, { bg: string; border: string; text: string
 
 /* ─── page ────────────────────────────────────────────────────── */
 
-export default function AuraLandingPage() {
+export const dynamic = "force-dynamic";
+
+export default async function AuraLandingPage() {
+  const liveChangelog = await getLatestChangelogEntries(16).catch(() => []);
   return (
     <div className="min-h-screen bg-[#141414] text-white font-sans selection:bg-[#00BFFF]/30 overflow-x-hidden">
       {/* ══════════════════════════════════════════════════════════
@@ -434,24 +438,32 @@ export default function AuraLandingPage() {
         <div className="relative overflow-hidden">
           <div className="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-[#111111] to-transparent z-10 pointer-events-none" />
           <div className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-[#111111] to-transparent z-10 pointer-events-none" />
-          <div className="animate-marquee">
-            {[...changelog, ...changelog].map(({ version, title, date, type }, i) => {
-              const c = changelogColors[type] ?? changelogColors.feature;
-              return (
-                <div key={i} className="inline-flex items-center gap-2 mx-4 shrink-0">
-                  <span
-                    className="text-[10px] font-bold px-2 py-0.5 rounded-full border"
-                    style={{ backgroundColor: c.bg, borderColor: c.border, color: c.text }}
-                  >
-                    {version}
-                  </span>
-                  <span className="text-xs text-gray-400 whitespace-nowrap">{title}</span>
-                  <span className="text-[10px] text-gray-600 font-mono whitespace-nowrap">{date}</span>
-                  <span className="text-gray-700 mx-1 select-none">·</span>
-                </div>
-              );
-            })}
-          </div>
+          {(() => {
+            // Use live DB data if available, otherwise fall back to static
+            const stripItems = liveChangelog.length > 0
+              ? liveChangelog.map(e => ({ version: e.version, title: e.text, date: "", type: e.type }))
+              : changelog;
+            return (
+              <div className="animate-marquee">
+                {[...stripItems, ...stripItems].map(({ version, title, date, type }, i) => {
+                  const c = changelogColors[type] ?? changelogColors.feature;
+                  return (
+                    <div key={i} className="inline-flex items-center gap-2 mx-4 shrink-0">
+                      <span
+                        className="text-[10px] font-bold px-2 py-0.5 rounded-full border"
+                        style={{ backgroundColor: c.bg, borderColor: c.border, color: c.text }}
+                      >
+                        {version}
+                      </span>
+                      <span className="text-xs text-gray-400 whitespace-nowrap">{title}</span>
+                      {date && <span className="text-[10px] text-gray-600 font-mono whitespace-nowrap">{date}</span>}
+                      <span className="text-gray-700 mx-1 select-none">·</span>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       </section>
 

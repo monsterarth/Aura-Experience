@@ -18,7 +18,7 @@ import {
   CalendarDays, UserSearch,
   ClipboardCheck, Map, Gift, Flag, Phone,
   LayoutGrid, RefrigeratorIcon, LayoutTemplate,
-  UserCircle2, Smartphone, Heart,
+  UserCircle2, Smartphone, Heart, History,
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import Image from "next/image";
@@ -226,6 +226,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "automacoes",  label: "Automações",        icon: Bot,           href: "/admin/comunicacao/automations/settings", roles: ["super_admin","admin"] },
       { id: "config",      label: "Configurações",     icon: Settings,      href: "/admin/core/properties",                  roles: ["super_admin","admin"], requireProperty: true },
       { id: "props",       label: "Propriedades",      icon: Globe,         href: "/admin/core/properties",                  roles: ["super_admin"], exactMatch: true },
+      { id: "changelog",   label: "Changelog",         icon: History,       href: "/admin/changelog",                        roles: ["super_admin"] },
     ],
   },
 ];
