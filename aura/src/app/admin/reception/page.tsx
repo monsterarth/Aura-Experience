@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
     Users, LogIn, LogOut, Clock, Calendar,
@@ -46,6 +46,12 @@ export default function ReceptionDashboard() {
     // Alertas
     const [detractors, setDetractors] = useState<any[]>([]);
     const [msgFailures, setMsgFailures] = useState<any[]>([]);
+
+    // Chegadas do dia — usadas para notificar quando a governanta libera uma cabana
+    type TodayArrival = { cabinId: string; cabinName: string; guestName: string };
+    const [todayArrivals, setTodayArrivals] = useState<TodayArrival[]>([]);
+    // Ref espelha o state para ser acessível dentro do callback Realtime sem stale closure
+    const todayArrivalsRef = useRef<TodayArrival[]>([]);
 
     // Concierge (realtime)
     const [pendingRequests, setPendingRequests] = useState<ConciergeRequest[]>([]);
@@ -124,6 +130,9 @@ export default function ReceptionDashboard() {
             setDetractors(data.detractors ?? []);
             setMsgFailures(data.msgFailures ?? []);
             setBreakfastOrders(data.breakfastOrders ?? []);
+            const arrivals: TodayArrival[] = data.todayArrivals ?? [];
+            setTodayArrivals(arrivals);
+            todayArrivalsRef.current = arrivals;
         } catch {
             toast.error('Erro ao carregar dados da recepção.');
         } finally {
@@ -138,14 +147,38 @@ export default function ReceptionDashboard() {
         const unsubHK = HousekeepingService.listenToActiveTasks(property.id, setHkTasks);
         const unsubConcierge = ConciergeService.listenToPendingRequests(property.id, setPendingRequests);
 
-        // Realtime: stays mudam → recarrega stats + estruturas silenciosamente
+        // Realtime: stays mudam → recarrega stats + lista de chegadas do dia silenciosamente
         let staysSubscribed = false;
         const staysChannel = supabase.channel(`reception_stays_${property.id}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'stays',
                 filter: `propertyId=eq.${property.id}` }, () => loadDashboard(true))
             .subscribe((status: string) => { if (status === 'SUBSCRIBED') staysSubscribed = true; });
 
-        return () => { unsubHK(); unsubConcierge(); safeRemoveChannel(staysChannel, staysSubscribed); };
+        // Realtime: cabanas mudam status → notifica recepção quando governanta libera
+        // uma cabana que tem check-in hoje
+        let cabinsSubscribed = false;
+        const cabinsChannel = supabase.channel(`reception_cabins_${property.id}`)
+            .on('postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'cabins', filter: `propertyId=eq.${property.id}` },
+                (payload: any) => {
+                    const updated = payload.new as Cabin;
+                    if (updated.status !== 'available') return;
+                    const arrival = todayArrivalsRef.current.find(a => a.cabinId === updated.id);
+                    if (!arrival) return;
+                    toast.success(`${arrival.cabinName} liberada pela governanta 🛎️`, {
+                        description: `${arrival.guestName} pode fazer check-in agora.`,
+                        duration: 12000,
+                    });
+                }
+            )
+            .subscribe((status: string) => { if (status === 'SUBSCRIBED') cabinsSubscribed = true; });
+
+        return () => {
+            unsubHK();
+            unsubConcierge();
+            safeRemoveChannel(staysChannel, staysSubscribed);
+            safeRemoveChannel(cabinsChannel, cabinsSubscribed);
+        };
     }, [property?.id]);
 
     // ==========================================

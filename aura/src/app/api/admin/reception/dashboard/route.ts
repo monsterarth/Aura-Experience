@@ -39,6 +39,7 @@ export async function GET(request: NextRequest) {
             msgRes,
             breakfastTodayRes,
             breakfastTomorrowRes,
+            todayArrivalsRes,
         ] = await Promise.all([
             supabaseAdmin.from('cabins').select('id, name, status').eq('propertyId', propertyId),
             supabaseAdmin.from('staff').select('id, fullName').eq('propertyId', propertyId),
@@ -98,6 +99,13 @@ export async function GET(request: NextRequest) {
             supabaseAdmin.from('fb_orders').select('*')
                 .eq('property_id', propertyId).eq('type', 'breakfast').eq('delivery_date', tomorrowStr)
                 .neq('status', 'cancelled'),
+            // Chegadas de hoje ainda pendentes — usadas pela recepção para notificar
+            // quando a governanta libera uma cabana com check-in no dia
+            supabaseAdmin.from('stays').select('cabinId, guestId')
+                .eq('propertyId', propertyId)
+                .gte('checkIn', todayStart.toISOString()).lte('checkIn', todayEnd.toISOString())
+                .in('status', ['pending', 'pre_checkin_done'])
+                .not('cabinId', 'is', null),
         ]);
 
         const cabins: any[] = cabinsRes.data || [];
@@ -182,6 +190,21 @@ export async function GET(request: NextRequest) {
                 : (o.cabin_name ?? 'Cabana'),
         }));
 
+        // Chegadas do dia — resolve nomes de hóspedes em lote para notificação da recepção
+        const arrivalsRaw: any[] = todayArrivalsRes.data ?? [];
+        const arrivalGuestIds = Array.from(new Set(arrivalsRaw.filter(s => s.guestId).map(s => s.guestId as string)));
+        const arrivalGuestMap: Record<string, string> = {};
+        if (arrivalGuestIds.length > 0) {
+            const { data: guestRows } = await supabaseAdmin
+                .from('guests').select('id, fullName').in('id', arrivalGuestIds);
+            (guestRows ?? []).forEach((g: any) => { arrivalGuestMap[g.id] = g.fullName; });
+        }
+        const todayArrivals = arrivalsRaw.map((s: any) => ({
+            cabinId:   s.cabinId,
+            cabinName: cabinNameMap[s.cabinId] ?? 'Cabana',
+            guestName: s.guestId ? (arrivalGuestMap[s.guestId] ?? 'Hóspede') : 'Hóspede',
+        }));
+
         return NextResponse.json({
             stats,
             cabins,
@@ -191,6 +214,7 @@ export async function GET(request: NextRequest) {
             detractors,
             msgFailures: msgRes.data ?? [],
             breakfastOrders,
+            todayArrivals,
         });
     } catch (error) {
         console.error('[reception/dashboard]', error);
