@@ -1413,12 +1413,18 @@ export default function MaidPage() {
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, checklist } : t));
   }, []);
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     if (logoutRef.current) return;
     logoutRef.current = true;
     showToast("Saindo...");
-    await supabase.auth.signOut();
-    router.push("/admin/login");
+    // Usa rota server-side para garantir limpeza dos cookies sb- mesmo quando o
+    // token local está expirado e supabase.auth.signOut() falharia silenciosamente,
+    // deixando o cookie stale que o middleware usa para redirecionar de volta ao app.
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 4000);
+    fetch('/api/auth/signout', { method: 'POST', signal: ctrl.signal })
+      .catch(() => {})
+      .finally(() => { window.location.href = '/admin/login'; });
   };
 
   const navItems: { id: Tab; label: string; icon: IName; badge: number }[] = [

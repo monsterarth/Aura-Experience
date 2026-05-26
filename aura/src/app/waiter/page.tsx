@@ -781,7 +781,13 @@ export default function WaiterPage() {
           )}
 
           {activeTab === "perfil" && (
-            <WaiterProfileTab userData={userData} onLogout={async () => { await supabase.auth.signOut(); router.push("/admin/login"); }} />
+            <WaiterProfileTab userData={userData} onLogout={() => {
+                const ctrl = new AbortController();
+                setTimeout(() => ctrl.abort(), 4000);
+                fetch('/api/auth/signout', { method: 'POST', signal: ctrl.signal })
+                  .catch(() => {})
+                  .finally(() => { window.location.href = '/admin/login'; });
+              }} />
           )}
         </div>
 

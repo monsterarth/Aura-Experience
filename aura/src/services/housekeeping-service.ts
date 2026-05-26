@@ -22,7 +22,7 @@ export const HousekeepingService = {
     if (error) throw error;
   },
 
-  async getActiveTasks(propertyId: string): Promise<HousekeepingTask[]> {
+  async getActiveTasks(propertyId: string): Promise<HousekeepingTask[] | null> {
     const { data, error } = await supabase
       .from('housekeeping_tasks')
       .select('*')
@@ -30,8 +30,11 @@ export const HousekeepingService = {
       .neq('status', 'cancelled');
 
     if (error) {
+      // Retorna null (não []) para que listenToActiveTasks preserve
+      // o quadro anterior em vez de apagá-lo em caso de erro de rede
+      // ou sessão brevemente inválida.
       console.error("Error fetching active tasks:", error);
-      return [];
+      return null;
     }
     return data as HousekeepingTask[];
   },
@@ -39,7 +42,8 @@ export const HousekeepingService = {
   listenToActiveTasks(propertyId: string, callback: (tasks: HousekeepingTask[]) => void) {
     const fetchInitial = async () => {
       const tasks = await this.getActiveTasks(propertyId);
-      callback(tasks);
+      // null = erro na query → preserva o quadro atual, não apaga as tarefas
+      if (tasks !== null) callback(tasks);
     };
 
     fetchInitial();

@@ -869,10 +869,13 @@ export default function HousemanPage() {
     finally { setActionLoading(p => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, reqIds.includes(k) ? false : v]))); }
   }, [property, userData, requests, showToast]);
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     showToast("Saindo...");
-    await supabase.auth.signOut();
-    router.push("/admin/login");
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 4000);
+    fetch('/api/auth/signout', { method: 'POST', signal: ctrl.signal })
+      .catch(() => {})
+      .finally(() => { window.location.href = '/admin/login'; });
   };
 
   const pendingCount = requests.filter(r => r.status === "pending").length;

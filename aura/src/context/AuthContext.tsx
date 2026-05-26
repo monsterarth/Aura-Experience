@@ -241,14 +241,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               const staff = await Promise.race([fetchStaffData(currentUser.id), staffTimeout]);
               if (mounted) { setUserData(staff); setUserDataReady(true); }
             }
-          } else if (!userDataRef.current) {
+          } else {
+            // Sem sessão válida (token expirado ou refresh falhou).
+            // Limpa estado independentemente do cache local — se deixarmos userData do
+            // cache e setarmos tokenReady=true, as queries via RLS retornam vazio porque
+            // o browser client não tem token, causando o "quadro limpo" falso.
             setUser(null);
             setUserData(null);
-            if (mounted) setUserDataReady(true); // unauthenticated — signal ready
+            if (mounted) { setUserDataReady(true); setAuthConfirmed(true); setLoading(false); }
+            // NÃO seta tokenReady — sem sessão válida, init() das páginas mobile não deve rodar.
+            if (!isLoginPage) {
+              // Hard-redirect via server-side para garantir limpeza dos cookies sb-
+              fetch('/api/auth/signout', { method: 'POST' }).catch(() => {}).finally(() => {
+                if (typeof window !== 'undefined') window.location.href = '/admin/login';
+              });
+            }
+            return;
           }
 
-          // INITIAL_SESSION confirma que o browser client completou o token refresh.
-          // tokenReady = true sinaliza que queries via RLS podem executar com token válido.
+          // currentUser definido — browser client tem token válido, queries por RLS podem prosseguir.
           if (mounted) { setAuthConfirmed(true); setTokenReady(true); setLoading(false); }
           return;
         }

@@ -762,10 +762,13 @@ export default function MaintenancePage() {
     } catch { showToast("Erro ao iniciar tarefa.", T.red); }
   }, [property, userData, showToast]);
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     showToast("Saindo...");
-    await supabase.auth.signOut();
-    router.push("/admin/login");
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 4000);
+    fetch('/api/auth/signout', { method: 'POST', signal: ctrl.signal })
+      .catch(() => {})
+      .finally(() => { window.location.href = '/admin/login'; });
   };
 
   const navItems: { id: Tab; label: string; icon: IName; badge: number }[] = [
