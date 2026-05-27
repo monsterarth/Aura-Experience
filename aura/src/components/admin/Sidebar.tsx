@@ -81,7 +81,7 @@ const T_LIGHT_OVERRIDE = {
 const ROLE_META: Record<string, { label: string; short: string; color: string; badge: string; badgeBg: string; badgeBorder: string }> = {
   super_admin: { label: "Super Admin",      short: "SA", color: T.g1,     badge: "Super Admin", badgeBg: "rgba(155,109,255,0.12)", badgeBorder: "rgba(155,109,255,0.28)" },
   admin:       { label: "Administrador",    short: "AD", color: T.g2,     badge: "Admin",       badgeBg: "rgba(78,201,212,0.12)",  badgeBorder: "rgba(78,201,212,0.28)"  },
-  hr:          { label: "Gestão",           short: "GT", color: T.blue,   badge: "Gestão",      badgeBg: T.blueBg,                 badgeBorder: T.blueBorder             },
+  manager:     { label: "Gestão",           short: "GT", color: T.blue,   badge: "Gestão",      badgeBg: T.blueBg,                 badgeBorder: T.blueBorder             },
   reception:   { label: "Recepção",         short: "RC", color: T.green,  badge: "Recepção",    badgeBg: T.greenBg,                badgeBorder: T.greenBorder            },
   governance:  { label: "Governança",       short: "GV", color: T.violet, badge: "Governança",  badgeBg: T.violetBg,               badgeBorder: T.violetBorder           },
   kitchen:     { label: "Cozinha",          short: "CZ", color: T.orange, badge: "Cozinha",     badgeBg: T.orangeBg,               badgeBorder: "rgba(251,146,60,0.25)"  },
@@ -124,9 +124,9 @@ type NavGroup = {
 // ─── Painel sub-items (dropdowns por cargo) ───────────────────────────────────
 const PAINEL_CHILDREN: SubItem[] = [
   { id: "painel_plataforma", label: "Plataforma",  href: "/admin/core/dashboard",      roles: ["super_admin"] },
-  { id: "painel_recepcao",   label: "Recepção",    href: "/admin/reception",            roles: ["super_admin", "admin", "manager", "hr"] },
-  { id: "painel_gov",        label: "Governança",  href: "/admin/governance",           roles: ["super_admin", "admin", "manager", "hr", "reception", "governance"] },
-  { id: "painel_marketing",  label: "Marketing",   href: "/admin/surveys/responses",    roles: ["super_admin", "admin", "manager", "hr"] },
+  { id: "painel_recepcao",   label: "Recepção",    href: "/admin/reception",            roles: ["super_admin", "admin", "manager"] },
+  { id: "painel_gov",        label: "Governança",  href: "/admin/governance",           roles: ["super_admin", "admin", "manager", "reception", "governance"] },
+  { id: "painel_marketing",  label: "Marketing",   href: "/admin/surveys/responses",    roles: ["super_admin", "admin", "manager"] },
   { id: "painel_manut",      label: "Manutenção",  href: "/admin/maintenance",          roles: ["super_admin", "admin", "manager"] },
   { id: "painel_kds",        label: "Cozinha/KDS", href: "/admin/cafe-salao/kds",       roles: ["super_admin", "admin"] },
   { id: "painel_aval",       label: "Avaliações",  href: "/admin/surveys/responses",    roles: ["super_admin", "admin", "manager"] },
@@ -141,7 +141,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         id: "painel", label: "Painel", icon: LayoutGrid,
-        href: "/admin/dashboard", roles: ["super_admin","admin","manager","hr","reception","governance","maintenance","kitchen","marketing"],
+        href: "/admin/dashboard", roles: ["super_admin","admin","manager","reception","governance","maintenance","kitchen","marketing"],
         children: PAINEL_CHILDREN,
       },
       {
@@ -178,8 +178,8 @@ const NAV_GROUPS: NavGroup[] = [
     id: "operacoes",
     label: "Operações",
     items: [
-      { id: "manutencao",  label: "Manutenção",  icon: Wrench,       href: "/admin/maintenance/kanban",          roles: ["super_admin","admin","maintenance","manager","hr"] },
-      { id: "governanca",  label: "Governança",  icon: Sparkles,     href: "/admin/governance/kanban",           roles: ["super_admin","admin","governance","manager","hr","reception"] },
+      { id: "manutencao",  label: "Manutenção",  icon: Wrench,       href: "/admin/maintenance/kanban",          roles: ["super_admin","admin","maintenance","manager"] },
+      { id: "governanca",  label: "Governança",  icon: Sparkles,     href: "/admin/governance/kanban",           roles: ["super_admin","admin","governance","manager","reception"] },
       { id: "concierge",   label: "Concierge",   icon: Gift,         href: "/admin/concierge",                   roles: ["super_admin","admin","reception","manager"] },
       { id: "pedidos_fb",  label: "Pedidos F&B", icon: Coffee,       href: "/admin/food-and-beverage/orders",    roles: ["super_admin","admin","reception","kitchen","manager"] },
     ],
