@@ -261,6 +261,10 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins }: MaidMobil
   const [selectedTask, setSelectedTask] = useState<HousekeepingTask | null>(null);
   const [expandedGuide, setExpandedGuide] = useState<string | null>(null);
   const [openDetails, setOpenDetails] = useState<string | null>(null);
+  const [busyTaskIds, setBusyTaskIds] = useState<Set<string>>(new Set());
+
+  const setBusy = (id: string) => setBusyTaskIds(prev => new Set(Array.from(prev).concat(id)));
+  const clearBusy = (id: string) => setBusyTaskIds(prev => { const n = new Set(Array.from(prev)); n.delete(id); return n; });
 
   const toggleGuide = (taskId: string) => setExpandedGuide(prev => prev === taskId ? null : taskId);
   const toggleDetails = (taskId: string) => setOpenDetails(prev => prev === taskId ? null : taskId);
@@ -276,15 +280,21 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins }: MaidMobil
   const globalPendingTurnovers = tasks.filter(t => t.status === 'pending' && t.type === 'turnover' && !t.assignedTo?.includes(userData?.id));
 
   const handleStart = async (taskId: string) => {
+    if (busyTaskIds.has(taskId)) return;
+    setBusy(taskId);
     try {
       await HousekeepingService.startTask(propertyId, taskId, userData.id, userData.fullName);
       toast.success("Limpeza iniciada.");
     } catch (e) {
       toast.error("Erro ao iniciar a tarefa.");
+    } finally {
+      clearBusy(taskId);
     }
   };
 
   const handleAssignToMe = async (taskId: string) => {
+    if (busyTaskIds.has(taskId)) return;
+    setBusy(taskId);
     try {
       const task = tasks.find(t => t.id === taskId);
       if (!task) return;
@@ -298,6 +308,8 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins }: MaidMobil
       toast.success("Você assumiu esta tarefa!");
     } catch (e) {
       toast.error("Erro ao assumir a tarefa.");
+    } finally {
+      clearBusy(taskId);
     }
   };
 
@@ -362,9 +374,10 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins }: MaidMobil
                   </button>
                   <button
                     onClick={() => handleAssignToMe(task.id)}
-                    className="py-3 px-4 bg-background text-foreground font-black text-xs uppercase rounded-xl border border-border hover:bg-secondary active:scale-95 transition-transform"
+                    disabled={busyTaskIds.has(task.id)}
+                    className="py-3 px-4 bg-background text-foreground font-black text-xs uppercase rounded-xl border border-border hover:bg-secondary active:scale-95 transition-transform disabled:opacity-60 disabled:pointer-events-none"
                   >
-                    Assumir
+                    {busyTaskIds.has(task.id) ? <Loader2 size={14} className="animate-spin" /> : 'Assumir'}
                   </button>
                 </div>
               </div>
@@ -515,9 +528,12 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins }: MaidMobil
                       )}
                       <button
                         onClick={() => handleStart(task.id)}
-                        className="flex-1 py-3 bg-primary text-primary-foreground font-black text-sm uppercase rounded-xl active:scale-95 transition-transform flex justify-center items-center gap-2"
+                        disabled={busyTaskIds.has(task.id)}
+                        className="flex-1 py-3 bg-primary text-primary-foreground font-black text-sm uppercase rounded-xl active:scale-95 transition-transform flex justify-center items-center gap-2 disabled:opacity-60 disabled:pointer-events-none"
                       >
-                        Iniciar <ArrowRight size={18} />
+                        {busyTaskIds.has(task.id)
+                          ? <Loader2 size={18} className="animate-spin" />
+                          : <>Iniciar <ArrowRight size={18} /></>}
                       </button>
                     </div>
                   </div>
