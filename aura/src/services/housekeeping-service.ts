@@ -3,6 +3,38 @@ import { HousekeepingTask, HousekeepingRule } from "@/types/aura";
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
 
+// ─── Log helpers ─────────────────────────────────────────────────────────────
+
+const TASK_TYPE_LABELS: Record<string, string> = {
+  turnover: 'virada',
+  daily: 'arrumação diária',
+  linen_change: 'troca de roupa de cama',
+  inspection_checkin: 'inspeção pré check-in',
+  inspection_checkout: 'inspeção pós checkout',
+  custom: 'tarefa especial',
+};
+
+const TASK_STATUS_LABELS: Record<string, string> = {
+  waiting_conference: 'Aguardando conferência',
+  completed: 'Concluído',
+  in_progress: 'Em progresso',
+  pending: 'Pendente',
+  cancelled: 'Cancelado',
+  skipped: 'DND (hóspede pediu)',
+};
+
+async function resolveLocationName(cabinId?: string, structureId?: string, customLocation?: string): Promise<string> {
+  if (cabinId) {
+    const { data } = await supabase.from('cabins').select('name').eq('id', cabinId).single();
+    if (data?.name) return data.name;
+  }
+  if (structureId) {
+    const { data } = await supabase.from('structures').select('name').eq('id', structureId).single();
+    if (data?.name) return data.name;
+  }
+  return customLocation || 'local não especificado';
+}
+
 export const HousekeepingService = {
   async getChecklistTemplates(propertyId: string) {
     const { data } = await supabase.from('checklists').select('*').eq('propertyId', propertyId);
@@ -90,48 +122,68 @@ export const HousekeepingService = {
 
     await supabase.from('housekeeping_tasks').insert(payload);
 
+    const locationName = await resolveLocationName(data.cabinId, data.structureId, data.customLocation);
+    const typeLabel = TASK_TYPE_LABELS[data.type || ''] || data.type || 'limpeza';
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "CREATE", entity: "CABIN", entityId: taskId,
-      details: `Tarefa de limpeza (${data.type}) criada manualmente.`
+      details: `Tarefa de ${typeLabel} criada em ${locationName}.`
     });
   },
 
   async updateTask(propertyId: string, taskId: string, updates: Partial<HousekeepingTask>, actorId: string, actorName: string) {
+    const { data: task } = await supabase.from('housekeeping_tasks')
+      .select('cabinId, structureId, customLocation, type').eq('id', taskId).single();
+
     await supabase.from('housekeeping_tasks')
       .update({ ...updates, updatedAt: new Date().toISOString() })
       .eq('id', taskId);
 
+    const locationName = await resolveLocationName(task?.cabinId, task?.structureId, task?.customLocation);
+    const typeLabel = TASK_TYPE_LABELS[task?.type || ''] || 'limpeza';
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "CABIN", entityId: taskId,
-      details: "Tarefa de limpeza editada pela gestão."
+      details: `Tarefa de ${typeLabel} em ${locationName} editada pela gestão.`
     });
   },
 
   async deleteTask(propertyId: string, taskId: string, actorId: string, actorName: string) {
+    const { data: task } = await supabase.from('housekeeping_tasks')
+      .select('cabinId, structureId, customLocation, type').eq('id', taskId).single();
+
     await supabase.from('housekeeping_tasks').delete().eq('id', taskId).eq('propertyId', propertyId);
 
+    const locationName = await resolveLocationName(task?.cabinId, task?.structureId, task?.customLocation);
+    const typeLabel = TASK_TYPE_LABELS[task?.type || ''] || 'limpeza';
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "DELETE", entity: "CABIN", entityId: taskId,
-      details: "Tarefa de limpeza deletada manualmente."
+      details: `Tarefa de ${typeLabel} em ${locationName} excluída.`
     });
   },
 
   async assignTask(propertyId: string, taskId: string, maidIds: string[], actorId: string, actorName: string) {
+    const [{ data: task }, { data: staffRows }] = await Promise.all([
+      supabase.from('housekeeping_tasks').select('cabinId, structureId, customLocation, type').eq('id', taskId).single(),
+      supabase.from('staff').select('id, fullName').in('id', maidIds),
+    ]);
+
     await supabase.from('housekeeping_tasks')
-      .update({
-        assignedTo: maidIds,
-        updatedAt: new Date().toISOString()
-      })
+      .update({ assignedTo: maidIds, updatedAt: new Date().toISOString() })
       .eq('id', taskId);
 
+    const locationName = await resolveLocationName(task?.cabinId, task?.structureId, task?.customLocation);
+    const typeLabel = TASK_TYPE_LABELS[task?.type || ''] || 'limpeza';
+    const maidNames = maidIds
+      .map(id => staffRows?.find((s: { id: string; fullName: string }) => s.id === id)?.fullName?.split(' ')[0])
+      .filter(Boolean).join(', ') || `${maidIds.length} camareira(s)`;
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "CABIN", entityId: taskId,
-      details: `Tarefa delegada para ${maidIds.length} camareira(s).`
+      details: `Tarefa de ${typeLabel} em ${locationName} delegada para: ${maidNames}.`
     });
   },
 
   async startTask(propertyId: string, taskId: string, assignedToId: string, actorName: string) {
-    const { data: task } = await supabase.from('housekeeping_tasks').select('assignedTo').eq('id', taskId).single();
+    const { data: task } = await supabase.from('housekeeping_tasks')
+      .select('assignedTo, cabinId, structureId, customLocation, type').eq('id', taskId).single();
     if (!task) return;
 
     const currentAssignees = task.assignedTo || [];
@@ -146,13 +198,18 @@ export const HousekeepingService = {
       })
       .eq('id', taskId);
 
+    const locationName = await resolveLocationName(task.cabinId, task.structureId, task.customLocation);
+    const typeLabel = TASK_TYPE_LABELS[task.type] || 'limpeza';
     await AuditService.log({
       propertyId, userId: assignedToId, userName: actorName, action: "UPDATE", entity: "CABIN", entityId: taskId,
-      details: "Iniciou o serviço de limpeza local."
+      details: `Iniciou ${typeLabel} em ${locationName}.`
     });
   },
 
   async pauseTask(propertyId: string, taskId: string, actorId: string, actorName: string) {
+    const { data: task } = await supabase.from('housekeeping_tasks')
+      .select('cabinId, structureId, customLocation, type').eq('id', taskId).single();
+
     await supabase.from('housekeeping_tasks')
       .update({
         status: 'pending',
@@ -161,27 +218,33 @@ export const HousekeepingService = {
       })
       .eq('id', taskId);
 
+    const locationName = await resolveLocationName(task?.cabinId, task?.structureId, task?.customLocation);
+    const typeLabel = TASK_TYPE_LABELS[task?.type || ''] || 'limpeza';
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "CABIN", entityId: taskId,
-      details: "Pausou a tarefa de limpeza."
+      details: `Pausou ${typeLabel} em ${locationName}.`
     });
   },
 
   async skipTask(propertyId: string, taskId: string, actorId: string, actorName: string) {
+    const { data: task } = await supabase.from('housekeeping_tasks')
+      .select('cabinId, structureId, customLocation, type').eq('id', taskId).single();
+
     const now = new Date().toISOString();
     await supabase.from('housekeeping_tasks')
       .update({ status: 'skipped', skippedAt: now, updatedAt: now })
       .eq('id', taskId);
 
+    const locationName = await resolveLocationName(task?.cabinId, task?.structureId, task?.customLocation);
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "CABIN", entityId: taskId,
-      details: "Camareira registrou que o hóspede pediu para não limpar."
+      details: `Registrou DND em ${locationName} — hóspede pediu para não limpar.`
     });
   },
 
   async resumeTask(propertyId: string, taskId: string, actorId: string, actorName: string) {
     const { data: task } = await supabase.from('housekeeping_tasks')
-      .select('pausedAt, totalPausedDuration, assignedTo').eq('id', taskId).single();
+      .select('pausedAt, totalPausedDuration, assignedTo, cabinId, structureId, customLocation, type').eq('id', taskId).single();
     if (!task) return;
 
     const pausedMs = task.pausedAt ? Date.now() - new Date(task.pausedAt).getTime() : 0;
@@ -199,9 +262,11 @@ export const HousekeepingService = {
       })
       .eq('id', taskId);
 
+    const locationName = await resolveLocationName(task?.cabinId, task?.structureId, task?.customLocation);
+    const typeLabel = TASK_TYPE_LABELS[task?.type || ''] || 'limpeza';
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "CABIN", entityId: taskId,
-      details: "Retomou a tarefa de limpeza."
+      details: `Retomou ${typeLabel} em ${locationName}.`
     });
   },
 
@@ -241,9 +306,12 @@ export const HousekeepingService = {
       }
     }
 
+    const locationName = await resolveLocationName(task.cabinId, task.structureId, task.customLocation);
+    const typeLabel = TASK_TYPE_LABELS[task.type] || 'limpeza';
+    const statusLabel = TASK_STATUS_LABELS[newStatus] || newStatus;
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "CABIN", entityId: taskId,
-      details: `Marcou serviço como feito. Novo status: ${newStatus}.`
+      details: `Concluiu ${typeLabel} em ${locationName}. ${statusLabel}.`
     });
   },
 
@@ -268,9 +336,10 @@ export const HousekeepingService = {
       await supabase.from('structures').update({ status: 'available' }).eq('id', task.structureId);
     }
 
+    const locationName = await resolveLocationName(task.cabinId, task.structureId, task.customLocation);
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "CABIN", entityId: taskId,
-      details: `Governanta aprovou e liberou a acomodação (${task.cabinId || task.structureId}). Obs: ${observations}`
+      details: `Governanta aprovou e liberou ${locationName}.${observations ? ` Obs: ${observations}` : ''}`
     });
   },
 
@@ -292,13 +361,17 @@ export const HousekeepingService = {
       await supabase.from('structures').update({ status: 'cleaning' }).eq('id', task.structureId);
     }
 
+    const locationName = await resolveLocationName(task.cabinId, task.structureId, task.customLocation);
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "CABIN", entityId: taskId,
-      details: `Governança REJEITOU a limpeza. Retornou para camareira. Motivo: ${reason}`
+      details: `Governança REJEITOU a limpeza de ${locationName}. Retornou para camareira. Motivo: ${reason}`
     });
   },
 
   async upgradeToLinenChange(propertyId: string, taskId: string, actorId: string, actorName: string) {
+    const { data: task } = await supabase.from('housekeeping_tasks')
+      .select('cabinId, structureId, customLocation').eq('id', taskId).single();
+
     const now = new Date().toISOString();
     const { error } = await supabase
       .from('housekeeping_tasks')
@@ -309,9 +382,10 @@ export const HousekeepingService = {
 
     if (error) throw error;
 
+    const locationName = await resolveLocationName(task?.cabinId, task?.structureId, task?.customLocation);
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "CABIN", entityId: taskId,
-      details: "Arrumação convertida em Arrumação com Troca pela equipe."
+      details: `Arrumação em ${locationName} convertida para troca de roupa de cama.`
     });
   },
 

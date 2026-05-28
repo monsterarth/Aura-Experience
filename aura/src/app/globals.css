@@ -89,12 +89,13 @@
   }
   /* Force browser to render native select/option dropdowns matching the page theme */
   select {
-    color-scheme: light;
+    color-scheme: light dark;
     color: hsl(var(--foreground));
-    background-color: hsl(var(--background));
+    background-color: hsl(var(--card));
   }
-  .dark select {
-    color-scheme: dark;
+  select option {
+    background-color: hsl(var(--card));
+    color: hsl(var(--card-foreground));
   }
 }
 
