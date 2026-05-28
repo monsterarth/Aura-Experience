@@ -211,7 +211,7 @@ function NewStayPageContent() {
         preferredLanguage: guestData.preferredLanguage,
         birthDate: "", gender: "Outro", occupation: "", allergies: [],
         address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", country: "Brasil" }
-      });
+      }, userData?.id, userData?.fullName);
 
       // 4. INJETA NA AGENDA IMEDIATAMENTE (Para a Central de Comunicação)
       await ContactService.upsertContact(

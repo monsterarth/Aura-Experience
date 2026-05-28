@@ -346,7 +346,7 @@ function GuestDetailPanel({
         newPhone &&
         ContactService.formatPhoneId(newPhone) !== ContactService.formatPhoneId(oldPhone);
 
-      await GuestService.upsertGuest(propertyId, formData as any);
+      await GuestService.upsertGuest(propertyId, formData as any, actorId, actorName);
 
       if (phoneChanged) {
         const existingContact = await ContactService.findByPhone(propertyId, newPhone);
@@ -831,7 +831,7 @@ function NewGuestPanel({
     setSaving(true);
     try {
       const guestPayload = { ...formData, id: GuestService.normalizeDocument(formData.document.number) };
-      const id = await GuestService.upsertGuest(propertyId, guestPayload as any);
+      const id = await GuestService.upsertGuest(propertyId, guestPayload as any, actorId, actorName);
       const created = { ...formData, id, updatedAt: new Date().toISOString() } as Guest;
       toast.success("Hóspede criado com sucesso.");
       onCreated(created);

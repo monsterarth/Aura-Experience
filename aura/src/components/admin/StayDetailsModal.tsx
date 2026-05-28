@@ -387,7 +387,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
       const ops: Promise<any>[] = [
         StayService.updateStayData(stay.propertyId, stay.id, fnrhStayPayload, userData?.id || "ADMIN", userData?.fullName || "Recepção"),
-        GuestService.upsertGuest(stay.propertyId, fnrhGuestPayload as Guest)
+        GuestService.upsertGuest(stay.propertyId, fnrhGuestPayload as Guest, userData?.id || "ADMIN", userData?.fullName || "Recepção")
       ];
 
       // Handle unassign (remove cabin)

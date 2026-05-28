@@ -2,12 +2,19 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { AuditLog } from "@/types/aura";
-import { Search, Filter, Clock, RefreshCw, ChevronDown, FileText, Bot } from "lucide-react";
+import { Search, Filter, Clock, RefreshCw, ChevronDown, FileText, Bot, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+
+// ─── Deep-link map: entity → admin route ────────────────────────────────────
+const ENTITY_LINKS: Partial<Record<string, string>> = {
+  FB_ORDER: '/admin/food-and-beverage/orders',
+  CONCIERGE: '/admin/concierge',
+};
 
 // ─── Action label map ─────────────────────────────────────────────────────────
 
@@ -287,7 +294,17 @@ export default function AuditLogsPage() {
                         </span>
                       </td>
                       <td className="p-4 max-w-md">
-                        <p className="text-sm text-foreground/80">{log.details}</p>
+                        {ENTITY_LINKS[log.entity] ? (
+                          <Link
+                            href={ENTITY_LINKS[log.entity]!}
+                            className="group inline-flex items-start gap-1.5 text-sm text-foreground/80 hover:text-primary transition-colors"
+                          >
+                            <span>{log.details}</span>
+                            <ExternalLink size={12} className="shrink-0 mt-0.5 opacity-0 group-hover:opacity-60 transition-opacity" />
+                          </Link>
+                        ) : (
+                          <p className="text-sm text-foreground/80">{log.details}</p>
+                        )}
                       </td>
                     </tr>
                   ))

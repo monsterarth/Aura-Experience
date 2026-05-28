@@ -21,7 +21,7 @@ export const GuestService = {
     return data as Guest;
   },
 
-  async upsertGuest(propertyId: string, guestData: Omit<Guest, "updatedAt">) {
+  async upsertGuest(propertyId: string, guestData: Omit<Guest, "updatedAt">, actorId?: string, actorName?: string) {
     const id = this.normalizeDocument(guestData.id);
 
     const payload = {
@@ -51,8 +51,8 @@ export const GuestService = {
 
     await AuditService.log({
       propertyId,
-      userId: id,
-      userName: payload.fullName ?? id,
+      userId: actorId || id,
+      userName: actorName || payload.fullName || id,
       action: existing ? "UPDATE" : "CREATE",
       entity: "GUEST",
       entityId: id,

@@ -483,11 +483,25 @@ export const ConciergeService = {
       );
     }
 
-    // 6. Audit
+    // 6. Audit — enriquecer com nome do item, hóspede e cabana
+    let guestLabel = '';
+    try {
+      const { data: stay } = await supabase.from('stays').select('guestId, cabinId').eq('id', req.stayId).single();
+      if (stay) {
+        const [{ data: guest }, { data: cabin }] = await Promise.all([
+          stay.guestId ? supabase.from('guests').select('fullName').eq('id', stay.guestId).single() : Promise.resolve({ data: null }),
+          stay.cabinId ? supabase.from('cabins').select('name').eq('id', stay.cabinId).single() : Promise.resolve({ data: null }),
+        ]);
+        const who = guest?.fullName?.split(' ')[0] || '';
+        const where = cabin?.name || '';
+        if (who || where) guestLabel = ` (${[who, where].filter(Boolean).join(' — ')})`;
+      }
+    } catch { /* não bloqueia a entrega */ }
+
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName,
       action: 'CONCIERGE_DELIVERED', entity: 'CONCIERGE', entityId: requestId,
-      details: `Pedido entregue. Cobrado: R$${totalPrice.toFixed(2)}`,
+      details: `Entregou "${item.name}"${guestLabel}. Cobrado: R$${totalPrice.toFixed(2)}`,
     });
   },
 

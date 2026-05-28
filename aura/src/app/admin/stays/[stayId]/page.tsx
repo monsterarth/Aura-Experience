@@ -259,7 +259,7 @@ export default function StayDetailPage() {
       };
       const ops: Promise<any>[] = [
         StayService.updateStayData(propertyId!, stay.id, stayPayload, userData?.id || "ADMIN", userData?.fullName || "Recepção"),
-        GuestService.upsertGuest(propertyId!, guestPayload as Guest),
+        GuestService.upsertGuest(propertyId!, guestPayload as Guest, userData?.id || "ADMIN", userData?.fullName || "Recepção"),
       ];
       if (newCabinId && disposition)               ops.push(StayService.transferCabin(propertyId!, stay.id, newCabinId, disposition, userData?.id || "ADMIN", userData?.fullName || "Recepção"));
       else if (newCabinId && stay.status !== "active") ops.push(StayService.transferCabin(propertyId!, stay.id, newCabinId, "available", userData?.id || "ADMIN", userData?.fullName || "Recepção"));

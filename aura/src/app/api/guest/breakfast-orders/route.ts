@@ -166,14 +166,30 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
 
+        // Busca nome do hóspede e cabana para enriquecer o log
+        let guestDisplayName = 'Hóspede';
+        let cabinLabel = '';
+        try {
+            const { data: stayRow } = await supabaseAdmin
+                .from('stays').select('guestId, cabinId').eq('id', stayId).single();
+            if (stayRow?.guestId) {
+                const [{ data: guestRow }, { data: cabinRow }] = await Promise.all([
+                    supabaseAdmin.from('guests').select('fullName').eq('id', stayRow.guestId).maybeSingle(),
+                    stayRow.cabinId ? supabaseAdmin.from('cabins').select('name').eq('id', stayRow.cabinId).maybeSingle() : Promise.resolve({ data: null }),
+                ]);
+                if (guestRow?.fullName) guestDisplayName = guestRow.fullName;
+                if (cabinRow?.name) cabinLabel = ` — ${cabinRow.name}`;
+            }
+        } catch { /* não bloqueia o pedido se o enriquecimento falhar */ }
+
         await AuditService.log({
             propertyId,
             userId: stayId,
-            userName: "Hóspede",
+            userName: guestDisplayName,
             action: "FB_ORDER_CREATED",
             entity: "FB_ORDER",
             entityId: id,
-            details: `Pedido de café da manhã criado pelo hóspede. Modalidade: ${modality}. Data: ${deliveryDate}. ${items?.length ?? 0} item(ns).`
+            details: `Pedido de café da manhã criado pelo hóspede${cabinLabel}. ${items?.length ?? 0} item(ns). Modalidade: ${modality}. Data: ${deliveryDate}.`
         });
 
         return NextResponse.json({ id }, { status: 201 });
