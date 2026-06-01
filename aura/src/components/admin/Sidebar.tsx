@@ -513,7 +513,13 @@ export const Sidebar = () => {
 
   const commitHash = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || "dev";
   const shortHash = commitHash.substring(0, 7);
-  const appVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0";
+  const [appVersion, setAppVersion] = useState<string>("...");
+  useEffect(() => {
+    fetch("/api/changelog/latest-version")
+      .then(r => r.json())
+      .then(d => { if (d.version) setAppVersion(`v${d.version}`); })
+      .catch(() => setAppVersion("—"));
+  }, []);
 
   useEffect(() => { setIsOpen(false); }, [pathname]);
 

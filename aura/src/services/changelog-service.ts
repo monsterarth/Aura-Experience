@@ -23,6 +23,20 @@ export async function getPublishedChangelogs(): Promise<Changelog[]> {
   return (data ?? []).map(sortEntries);
 }
 
+/** Latest published version string — for the footer. */
+export async function getLatestPublishedVersion(): Promise<string | null> {
+  if (!supabaseAdmin) return null;
+  const { data, error } = await supabaseAdmin
+    .from('changelogs')
+    .select('version')
+    .eq('status', 'published')
+    .order('date', { ascending: false })
+    .limit(1)
+    .single();
+  if (error) return null;
+  return data?.version ?? null;
+}
+
 /** Latest N published entries (flattened) — for the landing strip. */
 export async function getLatestChangelogEntries(limit = 16): Promise<
   (ChangelogEntry & { version: string })[]
