@@ -80,11 +80,12 @@ const HK_BADGE: Record<CabinHKState, { label: string; className: string; Icon: R
 // CABIN CARD
 // -------------------------------------------------------
 
-function CabinCard({ cabin, hkState, activeStay, staysLoading }: {
+function CabinCard({ cabin, hkState, activeStay, staysLoading, onClick }: {
   cabin: Cabin;
   hkState: CabinHKState;
   activeStay?: ActiveStayInfo;
   staysLoading?: boolean;
+  onClick?: () => void;
 }) {
   const statusKey = (cabin.status ?? 'available') as keyof typeof CABIN_STATUS_CONFIG;
   const cfg = CABIN_STATUS_CONFIG[statusKey] ?? CABIN_STATUS_CONFIG.available;
@@ -101,7 +102,13 @@ function CabinCard({ cabin, hkState, activeStay, staysLoading }: {
   const subtitle = cabin.category ?? null;
 
   return (
-    <div className="bg-card border border-border rounded-2xl p-4 flex flex-col gap-3 transition-all hover:border-border/80 hover:shadow-md hover:shadow-black/20">
+    <div
+      onClick={onClick}
+      className={cn(
+        "bg-card border border-border rounded-2xl p-4 flex flex-col gap-3 transition-all hover:border-border/80 hover:shadow-md hover:shadow-black/20",
+        onClick && "cursor-pointer hover:border-primary/30"
+      )}
+    >
 
       {/* Linha superior: dot de status + número + pet */}
       <div className="flex items-start justify-between gap-2">
@@ -166,9 +173,10 @@ interface PropertyMapGridProps {
   tasks: HousekeepingTask[];
   activeStays: ActiveStayInfo[];
   staysLoading?: boolean;
+  onCabinClick?: (cabin: Cabin) => void;
 }
 
-export function PropertyMapGrid({ cabins, tasks, activeStays, staysLoading }: PropertyMapGridProps) {
+export function PropertyMapGrid({ cabins, tasks, activeStays, staysLoading, onCabinClick }: PropertyMapGridProps) {
   const cabinCards = useMemo(() => {
     return Object.values(cabins)
       .sort((a, b) => a.number.localeCompare(b.number, undefined, { numeric: true }))
@@ -223,6 +231,7 @@ export function PropertyMapGrid({ cabins, tasks, activeStays, staysLoading }: Pr
             hkState={hkState}
             activeStay={activeStay}
             staysLoading={staysLoading}
+            onClick={onCabinClick ? () => onCabinClick(cabin) : undefined}
           />
         ))}
       </div>

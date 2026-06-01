@@ -13,8 +13,9 @@ import {
   Sparkles, CheckCircle2, AlertCircle,
   ClipboardCheck, Moon, LayoutDashboard,
   Timer, Users, ArrowRight, FileText, Printer, X,
-  LogIn, LogOut, BedDouble, Minus, PawPrint
+  LogIn, LogOut, BedDouble, Minus, PawPrint, History, Loader2
 } from "lucide-react";
+import { createClientBrowserAuto } from "@/lib/supabase-browser";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -557,6 +558,28 @@ export default function GovernancePage() {
   const [activeStays, setActiveStays] = useState<ActiveStayInfo[]>([]);
   const [staysLoading, setStaysLoading] = useState(true);
 
+  // Cabin history
+  const [historycabin, setHistoryCabin] = useState<Cabin | null>(null);
+  const [cabinHistory, setCabinHistory] = useState<HousekeepingTask[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const openCabinHistory = useCallback(async (cabin: Cabin) => {
+    setHistoryCabin(cabin);
+    setCabinHistory([]);
+    setHistoryLoading(true);
+    try {
+      const supabase = createClientBrowserAuto();
+      const { data } = await supabase
+        .from("housekeeping_tasks")
+        .select("*")
+        .eq("cabinId", cabin.id)
+        .order("createdAt", { ascending: false })
+        .limit(40);
+      setCabinHistory((data ?? []) as HousekeepingTask[]);
+    } catch { /* silently fail */ }
+    finally { setHistoryLoading(false); }
+  }, []);
+
   // Report state
   const [showReport, setShowReport] = useState(false);
   const [reportArrivals, setReportArrivals] = useState<ReportArrival[]>([]);
@@ -809,6 +832,7 @@ export default function GovernancePage() {
         tasks={tasks}
         activeStays={activeStays}
         staysLoading={staysLoading}
+        onCabinClick={openCabinHistory}
       />
 
       {/* CTA → Kanban */}
@@ -820,6 +844,93 @@ export default function GovernancePage() {
         Ver Kanban de Tarefas
         <ArrowRight size={14} />
       </Link>
+
+      {/* HISTÓRICO DE FAXINAS */}
+      {historycabin && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setHistoryCabin(null)}>
+          <div
+            className="w-full max-w-lg max-h-[80vh] flex flex-col rounded-2xl border border-border bg-card shadow-2xl overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-border shrink-0">
+              <History size={16} className="text-primary" />
+              <div className="flex-1 min-w-0">
+                <p className="font-black text-sm text-foreground">{historycabin.number ? `Cabana ${historycabin.number}` : historycabin.name}</p>
+                <p className="text-[11px] text-muted-foreground">Histórico de tarefas</p>
+              </div>
+              <button onClick={() => setHistoryCabin(null)} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {historyLoading ? (
+                <div className="flex items-center justify-center py-16">
+                  <Loader2 size={24} className="animate-spin text-muted-foreground" />
+                </div>
+              ) : cabinHistory.length === 0 ? (
+                <div className="text-center py-16 text-muted-foreground">
+                  <p className="text-sm font-bold">Sem histórico</p>
+                  <p className="text-xs mt-1">Nenhuma tarefa encontrada para esta cabana.</p>
+                </div>
+              ) : (
+                cabinHistory.map(task => {
+                  const typeLabels: Record<string, string> = {
+                    turnover:            "Faxina de Troca",
+                    daily:               "Arrumação",
+                    linen_change:        "Troca de Roupa",
+                    inspection_checkin:  "Conf. Entrada",
+                    inspection_checkout: "Conf. Saída",
+                    custom:              task.customLocation ? `Custom: ${task.customLocation}` : "Personalizada",
+                    awaiting_checkout:   "Pré-Faxina",
+                  };
+                  const statusStyles: Record<string, { label: string; className: string }> = {
+                    completed:          { label: "Concluída",   className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25" },
+                    waiting_conference: { label: "Conferência", className: "bg-amber-500/15 text-amber-400 border-amber-500/25"   },
+                    in_progress:        { label: "Em serviço",  className: "bg-blue-500/15 text-blue-400 border-blue-500/25"       },
+                    pending:            { label: "Pendente",    className: "bg-orange-500/15 text-orange-400 border-orange-500/25" },
+                    paused:             { label: "Pausada",     className: "bg-zinc-500/15 text-zinc-400 border-zinc-500/25"       },
+                    skipped:            { label: "Pulada",      className: "bg-zinc-500/15 text-zinc-400 border-zinc-500/25"       },
+                    cancelled:          { label: "Cancelada",   className: "bg-red-500/15 text-red-400 border-red-500/25"          },
+                    awaiting_checkout:  { label: "Ag. Checkout",className: "bg-amber-500/15 text-amber-400 border-amber-500/25"   },
+                  };
+                  const st = statusStyles[task.status] ?? { label: task.status, className: "bg-zinc-500/15 text-zinc-400 border-zinc-500/25" };
+                  const assignedNames = (task.assignedTo ?? [])
+                    .map((id: string) => maids.find(m => m.id === id)?.fullName.split(" ")[0])
+                    .filter(Boolean).join(", ");
+                  const dateStr = task.createdAt
+                    ? new Date(task.createdAt as string).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })
+                    : "";
+                  const timeStr = task.finishedAt
+                    ? `Concluída às ${new Date(task.finishedAt as string).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                    : task.startedAt
+                    ? `Iniciada às ${new Date(task.startedAt as string).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                    : "";
+
+                  return (
+                    <div key={task.id} className="rounded-xl border border-border bg-secondary/30 p-3">
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <span className="text-sm font-bold text-foreground">{typeLabels[task.type] ?? task.type}</span>
+                        <span className={cn("text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border", st.className)}>{st.label}</span>
+                      </div>
+                      <div className="flex gap-3 flex-wrap">
+                        {dateStr && <span className="text-[11px] text-muted-foreground">{dateStr}</span>}
+                        {timeStr && <span className="text-[11px] text-muted-foreground">{timeStr}</span>}
+                        {assignedNames && <span className="text-[11px] text-muted-foreground">· {assignedNames}</span>}
+                      </div>
+                      {task.observations && (
+                        <p className="text-xs text-muted-foreground mt-1.5 italic">&quot;{task.observations}&quot;</p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* RELATÓRIO MODAL */}
       {showReport && (
