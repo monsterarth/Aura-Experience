@@ -1700,7 +1700,8 @@ export default function GovernantaPage() {
   if (isLoadingScreen) {
     return (
       <div style={{ height: "100dvh", background: T.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif" }}>
-        <div style={{ width: 36, height: 36, borderRadius: "50%", border: `3px solid ${T.v1}`, borderTopColor: "transparent", animation: "gov-spin 0.8s linear infinite" }} />
+        <style>{`@keyframes gov-spin{to{transform:rotate(360deg)}}`}</style>
+        <div style={{ width: 36, height: 36, borderRadius: "50%", border: `3px solid rgba(139,92,246,0.25)`, borderTopColor: T.v1, animation: "gov-spin 0.8s linear infinite" }} />
         {showEscape && (
           <button
             onClick={() => {

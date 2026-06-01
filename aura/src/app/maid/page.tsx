@@ -33,7 +33,9 @@ const STYLE = `
 @keyframes maid-slideup{from{transform:translateY(100%)}to{transform:translateY(0)}}
 @keyframes maid-toast{from{transform:translateY(-16px);opacity:0}to{transform:translateY(0);opacity:1}}
 @keyframes maid-spin{to{transform:rotate(360deg)}}
+.maid-shell button{touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
 .maid-shell button:not([disabled]):active{opacity:.7;transform:scale(.97);}
+.maid-shell button[disabled]{pointer-events:none;}
 `;
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -403,6 +405,9 @@ function TaskSheet({
   const [finishing, setFinishing] = useState(false);
   const [pausing, setPausing] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
+  const pausingRef = useRef(false);
+  const upgradingRef = useRef(false);
+  const finishingRef = useRef(false);
 
   useEffect(() => {
     if (task.checklist.length > 0) return;
@@ -459,6 +464,8 @@ function TaskSheet({
   };
 
   const handleFinish = async () => {
+    if (finishingRef.current) return;
+    finishingRef.current = true;
     setFinishing(true);
     try {
       await HousekeepingService.finishTask(propertyId, task.id, task.checklist, "", userId, userName);
@@ -467,18 +474,21 @@ function TaskSheet({
       if (e?.message === "CHECKLIST_INCOMPLETE") showToast("Marque ao menos um item antes de finalizar.", T.amber);
       else showToast("Erro ao finalizar.", T.red);
     } finally {
+      finishingRef.current = false;
       setFinishing(false);
       setShowConfirm(false);
     }
   };
 
   const handlePause = async () => {
+    if (pausingRef.current) return;
+    pausingRef.current = true;
     setPausing(true);
     try {
       await HousekeepingService.pauseTask(propertyId, task.id, userId, userName);
       onClose();
     } catch { showToast("Erro ao pausar tarefa.", T.red); }
-    finally { setPausing(false); }
+    finally { pausingRef.current = false; setPausing(false); }
   };
 
   const handleSendRep = async (entries: { itemId: string; qty: number }[]) => {
@@ -494,13 +504,15 @@ function TaskSheet({
   };
 
   const handleUpgrade = async () => {
+    if (upgradingRef.current) return;
+    upgradingRef.current = true;
     setUpgrading(true);
     try {
       await HousekeepingService.upgradeToLinenChange(propertyId, task.id, userId, userName);
       showToast("Convertido para Troca de Roupa!");
       onClose();
     } catch { showToast("Erro ao converter tarefa.", T.red); }
-    finally { setUpgrading(false); }
+    finally { upgradingRef.current = false; setUpgrading(false); }
   };
 
   const done = task.checklist.filter(c => c.checked).length;
@@ -626,7 +638,7 @@ function TaskSheet({
               </button>
               {task.type === "daily" && (
                 <button
-                  onClick={handleUpgrade}
+                  onPointerDown={(e) => { e.preventDefault(); handleUpgrade(); }}
                   disabled={upgrading}
                   style={{ flex: 1, padding: "11px 14px", background: "rgba(45,212,191,0.1)", border: `1px solid rgba(45,212,191,0.3)`, borderRadius: 14, cursor: upgrading ? "wait" : "pointer", color: T.green, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, fontFamily: "inherit", fontSize: 12, fontWeight: 800, textTransform: "uppercase" as const, opacity: upgrading ? 0.5 : 1 }}
                 >
@@ -647,8 +659,8 @@ function TaskSheet({
           <div style={{ display: "flex", gap: 8 }}>
             {task.status === "in_progress" && (
               <button
-                onClick={handlePause}
-                disabled={pausing}
+                onPointerDown={(e) => { e.preventDefault(); handlePause(); }}
+                disabled={pausing || finishing}
                 style={{ flex: "0 0 auto", padding: "14px 16px", background: T.glass, border: `1px solid ${T.amberBorder}`, borderRadius: 16, cursor: pausing ? "wait" : "pointer", color: T.amber, display: "flex", alignItems: "center", gap: 7, fontFamily: "inherit", fontSize: 13, fontWeight: 700, opacity: pausing ? 0.5 : 1 }}
               >
                 {pausing ? <I n="loader" s={16} c={T.amber} w={2} /> : <I n="clock" s={16} c={T.amber} />}
@@ -656,7 +668,8 @@ function TaskSheet({
               </button>
             )}
             <button
-              onClick={() => setShowConfirm(true)}
+              onPointerDown={(e) => { e.preventDefault(); if (!finishing && !pausing) setShowConfirm(true); }}
+              disabled={finishing || pausing}
               style={{ flex: 1, padding: 14, background: T.greenG, color: "#021a17", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(45,212,191,0.3)" }}
             >
               <I n="check" s={17} c="#021a17" w={2.5} /> Finalizar
@@ -677,7 +690,7 @@ function TaskSheet({
               <button onClick={() => setShowConfirm(false)} style={{ flex: 1, padding: 14, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 14, cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 700, color: T.muted }}>
                 Cancelar
               </button>
-              <button onClick={handleFinish} disabled={finishing} style={{ flex: 1, padding: 14, background: T.greenG, color: "#021a17", fontFamily: "inherit", fontSize: 14, fontWeight: 800, border: "none", borderRadius: 14, cursor: finishing ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              <button onPointerDown={(e) => { e.preventDefault(); handleFinish(); }} disabled={finishing} style={{ flex: 1, padding: 14, background: T.greenG, color: "#021a17", fontFamily: "inherit", fontSize: 14, fontWeight: 800, border: "none", borderRadius: 14, cursor: finishing ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
                 {finishing ? <I n="loader" s={17} c="#021a17" w={2} /> : <><I n="check" s={17} c="#021a17" w={2.5} /> Confirmar</>}
               </button>
             </div>
@@ -921,10 +934,18 @@ function FaxinasScreen({
                   </div>
                 )}
                 <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 8 }}>
-                  <button onClick={() => onSkip(t.id)} style={{ padding: "16px 18px", background: T.amberBg, border: `1px solid ${T.amberBorder}`, color: T.amber, fontFamily: "inherit", fontSize: 13, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase" as const, borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                  <button
+                    onPointerDown={(e) => { e.preventDefault(); if (!startingTaskId) onSkip(t.id); }}
+                    disabled={startingTaskId !== null}
+                    style={{ padding: "16px 18px", background: T.amberBg, border: `1px solid ${T.amberBorder}`, color: T.amber, fontFamily: "inherit", fontSize: 13, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase" as const, borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: startingTaskId ? 0.4 : 1 }}
+                  >
                     <I n="x" s={15} c={T.amber} /> Pular
                   </button>
-                  <button onClick={() => onStart(t.id)} disabled={startingTaskId === t.id} style={{ padding: 16, background: T.grad, color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: startingTaskId === t.id ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(155,109,255,0.35)", opacity: startingTaskId === t.id ? 0.7 : 1 }}>
+                  <button
+                    onPointerDown={(e) => { e.preventDefault(); onStart(t.id); }}
+                    disabled={startingTaskId !== null}
+                    style={{ padding: 16, background: T.grad, color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: startingTaskId ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(155,109,255,0.35)", opacity: startingTaskId ? 0.7 : 1 }}
+                  >
                     {startingTaskId === t.id ? <><I n="loader" s={18} c="#fff" w={2} /> Iniciando...</> : <>{t.startedAt ? "Retomar" : "Iniciar"} <I n="arrow" s={18} /></>}
                   </button>
                 </div>
