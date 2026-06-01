@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, Plus, Edit3, Trash2, Zap, LogOut, Sun, Clock, RefreshCw, AlertTriangle, LogIn } from "lucide-react";
+import { X, Plus, Edit3, Trash2, Zap, LogOut, Sun, Clock, RefreshCw, AlertTriangle, LogIn, CalendarCheck } from "lucide-react";
 import { HousekeepingRule, HousekeepingRuleTrigger, Cabin, Staff, Structure } from "@/types/aura";
 import { HousekeepingService } from "@/services/housekeeping-service";
 import { useAuth } from "@/context/AuthContext";
@@ -61,6 +61,15 @@ const TRIGGER_OPTIONS: { value: HousekeepingRuleTrigger; label: string; descript
     hasInterval: true,
     hasLocation: true,
   },
+  {
+    value: 'on_checkout_day',
+    label: 'Dia do Checkout',
+    description: 'Cabanas com checkout amanhã — pré-faxina de troca já delegável à camareira',
+    icon: <CalendarCheck size={14} />,
+    hasInterval: false,
+    hasLocation: false,
+    fixedTaskType: 'turnover',
+  },
 ];
 
 const TASK_TYPE_OPTIONS: { value: HousekeepingRule['taskType']; label: string }[] = [
@@ -76,6 +85,7 @@ function defaultTaskTypeForTrigger(trigger: HousekeepingRuleTrigger): Housekeepi
   switch (trigger) {
     case 'on_checkout':        return 'turnover';
     case 'on_checkin_day':     return 'inspection_checkin';
+    case 'on_checkout_day':    return 'turnover';
     case 'active_stay_daily':  return 'daily';
     case 'stay_duration_days': return 'linen_change';
     case 'fixed_interval_days': return 'custom';
@@ -96,10 +106,11 @@ function emptyForm(): Partial<HousekeepingRule> {
 
 function triggerIconColor(trigger: HousekeepingRuleTrigger) {
   switch (trigger) {
-    case 'on_checkout':        return 'text-orange-400';
-    case 'on_checkin_day':     return 'text-green-400';
-    case 'active_stay_daily':  return 'text-blue-400';
-    case 'stay_duration_days': return 'text-purple-400';
+    case 'on_checkout':         return 'text-orange-400';
+    case 'on_checkin_day':      return 'text-green-400';
+    case 'on_checkout_day':     return 'text-amber-400';
+    case 'active_stay_daily':   return 'text-blue-400';
+    case 'stay_duration_days':  return 'text-purple-400';
     case 'fixed_interval_days': return 'text-teal-400';
   }
 }
@@ -108,7 +119,8 @@ function ruleDescription(rule: HousekeepingRule, cabins: Record<string, Cabin>, 
   const taskLabel = TASK_TYPE_OPTIONS.find(t => t.value === rule.taskType)?.label || rule.taskType;
   switch (rule.trigger) {
     case 'on_checkout':    return `Checkout → ${taskLabel}`;
-    case 'on_checkin_day': return `Dia de check-in → ${taskLabel}`;
+    case 'on_checkin_day':  return `Dia de check-in → ${taskLabel}`;
+    case 'on_checkout_day': return `Dia de checkout → Pré-faxina de troca`;
     case 'active_stay_daily': return `Estadia ativa → ${taskLabel} todo dia`;
     case 'stay_duration_days': return `Após ${rule.intervalDays} dia(s) de estadia → ${taskLabel}`;
     case 'fixed_interval_days': {

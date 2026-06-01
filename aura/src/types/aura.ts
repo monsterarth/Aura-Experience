@@ -252,7 +252,7 @@ export interface HousekeepingTask {
   unitId?: string; // Para uma unidade específica da estrutura
   stayId?: string; // Para limpezas diárias vinculadas a uma estadia ativa
   type: 'turnover' | 'daily' | 'linen_change' | 'inspection_checkin' | 'inspection_checkout' | 'custom';
-  status: 'pending' | 'in_progress' | 'waiting_conference' | 'completed' | 'cancelled' | 'paused' | 'skipped';
+  status: 'pending' | 'in_progress' | 'waiting_conference' | 'completed' | 'cancelled' | 'paused' | 'skipped' | 'awaiting_checkout';
   paused_until?: string; // ISO timestamp — DND
   skippedAt?: string;   // ISO timestamp — when it was skipped (DND)
   guestName?: string;   // Denormalized guest name at time of skip
@@ -292,7 +292,8 @@ export type HousekeepingRuleTrigger =
   | 'on_checkin_day'     // Check-in previsto para hoje → cria inspeção antes da entrada
   | 'active_stay_daily'  // Cabana com hóspede ativo → cria tarefa diariamente
   | 'stay_duration_days' // N dias de estadia contínua → cria tarefa mid-stay
-  | 'fixed_interval_days'; // A cada N dias (independente de estadia) → cria tarefa
+  | 'fixed_interval_days'  // A cada N dias (independente de estadia) → cria tarefa
+  | 'on_checkout_day';    // Checkout previsto para amanhã → cria pré-faxina de troca já delegável
 
 export interface HousekeepingRule {
   id: string;

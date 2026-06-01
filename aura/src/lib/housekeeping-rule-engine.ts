@@ -43,12 +43,32 @@ function buildTaskPayload(rule: HousekeepingRule, overrides: Record<string, any>
 }
 
 // Chamado pelo stay-service no checkout. Cria as tarefas conforme regras 'on_checkout'.
+// Se já existir uma pré-faxina 'awaiting_checkout' para esta estadia (gerada pelo cron),
+// transiciona ela para 'pending' em vez de criar duplicata.
 export async function applyOnCheckout(
   propertyId: string,
   cabinId: string,
   stayId: string,
   keyLocation: 'reception' | 'cabin' | 'unknown'
 ) {
+  // Transicionar pré-faxinas awaiting_checkout para pending
+  const { data: preTasks } = await supabaseAdmin
+    .from('housekeeping_tasks')
+    .select('id')
+    .eq('stayId', stayId)
+    .eq('status', 'awaiting_checkout');
+
+  if (preTasks && preTasks.length > 0) {
+    const now = new Date().toISOString();
+    await supabaseAdmin
+      .from('housekeeping_tasks')
+      .update({ status: 'pending', keyLocation, updatedAt: now })
+      .eq('stayId', stayId)
+      .eq('status', 'awaiting_checkout');
+    return;
+  }
+
+  // Nenhuma pré-faxina encontrada — criar normalmente (checkout no mesmo dia)
   const rules = await getActiveRules(propertyId, 'on_checkout');
   for (const rule of rules) {
     await supabaseAdmin.from('housekeeping_tasks').insert(
@@ -253,6 +273,65 @@ export async function applyCheckinDayRules(propertyId: string, targetDate?: Date
 
       await supabaseAdmin.from('housekeeping_tasks').insert(
         buildTaskPayload(rule, { cabinId: stay.cabinId, stayId: stay.id })
+      );
+      created++;
+    }
+  }
+
+  return created;
+}
+
+// Chamado pelo cron daily-housekeeping para cada propriedade.
+// Cria pré-faxinas de troca para cabanas com checkout previsto no dia-alvo (regras 'on_checkout_day').
+// As tarefas são criadas com status 'awaiting_checkout' — visíveis e delegáveis, mas bloqueadas para início.
+// targetDate: data dos checkouts a processar (padrão = amanhã).
+export async function applyCheckoutDayRules(propertyId: string, targetDate?: Date) {
+  const rules = await getActiveRules(propertyId, 'on_checkout_day');
+  if (rules.length === 0) return 0;
+
+  const target = targetDate ? new Date(targetDate) : (() => {
+    const t = new Date();
+    t.setDate(t.getDate() + 1);
+    return t;
+  })();
+  target.setHours(0, 0, 0, 0);
+  const targetStr = target.toISOString().split('T')[0];
+
+  const guardStart = new Date();
+  guardStart.setHours(0, 0, 0, 0);
+  const startOfDayISO = guardStart.toISOString();
+  let created = 0;
+
+  const { data: checkingOutStays } = await supabaseAdmin
+    .from('stays')
+    .select('id, cabinId')
+    .eq('propertyId', propertyId)
+    .eq('status', 'active')
+    .gte('checkOut', `${targetStr}T00:00:00`)
+    .lt('checkOut', `${targetStr}T23:59:59`);
+
+  for (const stay of (checkingOutStays || [])) {
+    if (!stay.cabinId) continue;
+
+    for (const rule of rules) {
+      const { data: existing } = await supabaseAdmin
+        .from('housekeeping_tasks')
+        .select('id')
+        .eq('propertyId', propertyId)
+        .eq('stayId', stay.id)
+        .eq('ruleId', rule.id)
+        .gte('createdAt', startOfDayISO)
+        .maybeSingle();
+
+      if (existing) continue;
+
+      await supabaseAdmin.from('housekeeping_tasks').insert(
+        buildTaskPayload(rule, {
+          cabinId: stay.cabinId,
+          stayId: stay.id,
+          status: 'awaiting_checkout',
+          keyLocation: 'unknown',
+        })
       );
       created++;
     }

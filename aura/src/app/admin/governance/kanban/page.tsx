@@ -18,7 +18,7 @@ import { MinibarModal } from "@/components/admin/MinibarModal";
 import {
   Sparkles, Clock, CheckCircle2, AlertCircle,
   Coffee, ArrowRight, ClipboardCheck, Plus, UserPlus, Settings2, Edit3, MessageSquare, Archive, Calendar as CalendarIcon, X, Moon, CheckSquare, Square, CheckCheck, Trash2, Loader2,
-  ChevronLeft, RefreshCw
+  ChevronLeft, RefreshCw, CalendarCheck, Lock
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -220,6 +220,7 @@ export default function GovernanceKanbanPage() {
   const waitingTasks = tasks.filter(t => t.status === 'waiting_conference');
   const completedTasks = tasks.filter(t => t.status === 'completed');
   const skippedTasks = tasks.filter(t => t.status === 'skipped');
+  const awaitingCheckoutTasks = tasks.filter(t => t.status === 'awaiting_checkout');
 
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -631,6 +632,44 @@ export default function GovernanceKanbanPage() {
                     className="shrink-0 text-[9px] bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-400 px-2 py-1 rounded font-bold uppercase transition-colors"
                   >
                     Arquivar
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Pré-faxinas aguardando checkout */}
+      {awaitingCheckoutTasks.length > 0 && (
+        <div className="border border-amber-500/30 bg-amber-500/5 rounded-2xl p-4 space-y-3">
+          <h3 className="text-xs font-black uppercase tracking-widest text-amber-600 flex items-center gap-2">
+            <CalendarCheck size={14} /> Pré-Faxinas — Aguardando Checkout ({awaitingCheckoutTasks.length})
+          </h3>
+          <p className="text-[10px] text-amber-600/70 font-medium">
+            Tarefas para checkouts previstos amanhã. Já podem ser delegadas — a camareira poderá iniciar assim que o hóspede fizer checkout.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {awaitingCheckoutTasks.map(task => {
+              const cabin = cabins[task.cabinId!];
+              const safeAssigned = Array.isArray(task.assignedTo) ? task.assignedTo : [];
+              const assignedNames = safeAssigned.map(id => maids.find(m => m.id === id)?.fullName.split(' ')[0]).filter(Boolean).join(', ');
+              return (
+                <div key={task.id} className="bg-card border border-amber-500/20 rounded-xl p-3 flex items-center gap-3 min-w-[260px]">
+                  <Lock size={14} className="shrink-0 text-amber-500" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-black text-foreground leading-tight">
+                      {cabin ? `${cabin.number} — ${cabin.name}` : 'Cabana'}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-0.5">
+                      Faxina de Troca{assignedNames ? ` · ${assignedNames}` : ' · Sem camareira'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => { setSelectedTask(task); setIsManagerOpen(true); }}
+                    className="shrink-0 text-[9px] bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 px-2 py-1 rounded font-bold uppercase transition-colors flex items-center gap-1"
+                  >
+                    <UserPlus size={10} /> Atribuir
                   </button>
                 </div>
               );

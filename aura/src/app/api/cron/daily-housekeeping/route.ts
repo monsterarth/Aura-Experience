@@ -1,7 +1,7 @@
 // src/app/api/cron/daily-housekeeping/route.ts
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { applyDailyRules, applyCheckinDayRules } from "@/lib/housekeeping-rule-engine";
+import { applyDailyRules, applyCheckinDayRules, applyCheckoutDayRules } from "@/lib/housekeeping-rule-engine";
 
 async function writeCronLog(action: string, entityId: string, details: string, newData: object) {
   try {
@@ -69,6 +69,11 @@ export async function GET(req: Request) {
       const checkinCreated = await applyCheckinDayRules(propertyId, targetDay);
       tasksCreated += checkinCreated;
       if (checkinCreated > 0) console.log(`[CRON] Prop ${propertyId}: ${checkinCreated} inspeção(ões) de check-in criada(s)`);
+
+      // Pré-faxinas de troca para checkouts previstos para amanhã
+      const preCheckoutCreated = await applyCheckoutDayRules(propertyId, targetDay);
+      tasksCreated += preCheckoutCreated;
+      if (preCheckoutCreated > 0) console.log(`[CRON] Prop ${propertyId}: ${preCheckoutCreated} pré-faxina(s) de checkout criada(s)`);
 
       // Inclui estadias activas + check-ins de HOJE ainda não efectuados (pending/pre_checkin_done
       // com checkIn = hoje). Cobre chegadas tardias após as 17h: as tarefas de amanhã são geradas

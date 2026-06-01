@@ -199,7 +199,8 @@ function StatusBadge({ status }: { status: HousekeepingTask["status"] }) {
     completed:          { label: "Concluído",   color: T.green,  bg: T.greenBg,  border: T.greenBorder },
     paused:             { label: "Pausado",     color: T.muted,  bg: T.glass2,   border: T.border },
     skipped:            { label: "Pulado",      color: T.muted,  bg: T.glass2,   border: T.border },
-    cancelled:          { label: "Cancelado",   color: T.red,    bg: T.redBg,    border: T.redBorder },
+    cancelled:          { label: "Cancelado",      color: T.red,    bg: T.redBg,    border: T.redBorder },
+    awaiting_checkout:  { label: "Ag. Checkout",   color: T.amber,  bg: T.amberBg,  border: T.amberBorder },
   };
   const s = map[status] ?? map.pending;
   return (
@@ -1677,6 +1678,7 @@ export default function GovernantaPage() {
       (t.status === "pending" || t.status === "in_progress" || t.status === "waiting_conference")
   );
   const conferenceTasks = tasks.filter(t => t.status === "waiting_conference");
+  const awaitingCheckoutTasks = tasks.filter(t => t.status === "awaiting_checkout");
   const pendingTasks    = tasks.filter(t => t.status === "pending" || t.status === "paused");
   const inProgressTasks = tasks.filter(t => t.status === "in_progress");
   const completedToday  = tasks.filter(t => {
@@ -1867,6 +1869,18 @@ export default function GovernantaPage() {
                 </Section>
               )}
 
+              {/* Awaiting checkout section */}
+              {awaitingCheckoutTasks.length > 0 && (
+                <Section title="Pré-Faxinas — Ag. Checkout" color={T.amber} count={awaitingCheckoutTasks.length}>
+                  {awaitingCheckoutTasks.map(t => (
+                    <TaskCard key={t.id} task={t} locationName={getLocationName(t)} maids={maids}
+                      onAssign={() => setAssignTask(t)}
+                      onEdit={() => setEditTask(t)}
+                    />
+                  ))}
+                </Section>
+              )}
+
               {/* Pending section */}
               {pendingTasks.length > 0 && (
                 <Section title="Pendentes" color={T.amber} count={pendingTasks.length}>
@@ -1956,6 +1970,7 @@ export default function GovernantaPage() {
                           completed:          { label: "Concluída",    color: T.green, bg: T.greenBg,               border: T.greenBorder },
                           skipped:            { label: "Pulada",       color: T.muted, bg: T.glass2,                border: T.border },
                           cancelled:          { label: "Cancelada",    color: T.red,   bg: T.redBg,                 border: T.redBorder },
+                          awaiting_checkout:  { label: "Ag. Checkout", color: T.amber, bg: T.amberBg,               border: T.amberBorder },
                         }[topTask.status] ?? { label: "Pendente", color: T.amber, bg: T.amberBg, border: T.amberBorder }
                         : { label: "Limpa",          color: T.green, bg: T.greenBg,               border: T.greenBorder };
 

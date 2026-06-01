@@ -901,6 +901,31 @@ function FaxinasScreen({
           </div>
         )}
 
+        {/* Awaiting checkout — bloqueadas */}
+        {tasks.filter(t => t.status === "awaiting_checkout").length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.muted, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+              <I n="clock" s={11} c={T.muted} /> Aguardando checkout
+            </div>
+            {tasks.filter(t => t.status === "awaiting_checkout").map(t => (
+              <div key={t.id} style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 20, marginBottom: 10, padding: 16, opacity: 0.65 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 24, fontWeight: 900 }}>{t.cabinName || "Cabana"}</div>
+                    <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>{getTaskLabel(t.type)}</div>
+                  </div>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={T.muted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                </div>
+                <div style={{ fontSize: 12, color: T.muted, padding: "8px 12px", borderRadius: 10, background: "rgba(255,255,255,0.04)", border: `1px solid ${T.border}` }}>
+                  Aguardando o hóspede fazer checkout para iniciar
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Pending */}
         {pending.length > 0 && (
           <div style={{ marginBottom: 24 }}>
