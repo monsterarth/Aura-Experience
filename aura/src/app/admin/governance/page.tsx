@@ -559,23 +559,28 @@ export default function GovernancePage() {
   const [staysLoading, setStaysLoading] = useState(true);
 
   // Cabin history
-  const [historycabin, setHistoryCabin] = useState<Cabin | null>(null);
-  const [cabinHistory, setCabinHistory] = useState<HousekeepingTask[]>([]);
+  type HistoryTarget =
+    | { kind: 'cabin';     item: Cabin }
+    | { kind: 'structure'; item: Structure };
+
+  const [historyTarget, setHistoryTarget] = useState<HistoryTarget | null>(null);
+  const [historyTasks,  setHistoryTasks]  = useState<HousekeepingTask[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  const openCabinHistory = useCallback(async (cabin: Cabin) => {
-    setHistoryCabin(cabin);
-    setCabinHistory([]);
+  const openHistory = useCallback(async (target: HistoryTarget) => {
+    setHistoryTarget(target);
+    setHistoryTasks([]);
     setHistoryLoading(true);
     try {
       const supabase = createClientBrowserAuto();
+      const col = target.kind === 'cabin' ? 'cabinId' : 'structureId';
       const { data } = await supabase
         .from("housekeeping_tasks")
         .select("*")
-        .eq("cabinId", cabin.id)
+        .eq(col, target.item.id)
         .order("createdAt", { ascending: false })
         .limit(40);
-      setCabinHistory((data ?? []) as HousekeepingTask[]);
+      setHistoryTasks((data ?? []) as HousekeepingTask[]);
     } catch { /* silently fail */ }
     finally { setHistoryLoading(false); }
   }, []);
@@ -832,8 +837,62 @@ export default function GovernancePage() {
         tasks={tasks}
         activeStays={activeStays}
         staysLoading={staysLoading}
-        onCabinClick={openCabinHistory}
+        onCabinClick={cabin => openHistory({ kind: 'cabin', item: cabin })}
       />
+
+      {/* ESTRUTURAS */}
+      {Object.keys(structures).length > 0 && (() => {
+        const structureList = Object.values(structures).sort((a, b) => a.name.localeCompare(b.name));
+        const STATUS_CFG: Record<string, { dot: string; label: string; labelColor: string }> = {
+          available:   { dot: 'bg-emerald-500', label: 'Disponível',  labelColor: 'text-emerald-400' },
+          occupied:    { dot: 'bg-blue-500',    label: 'Ocupada',     labelColor: 'text-blue-400'    },
+          cleaning:    { dot: 'bg-orange-500',  label: 'Limpeza',     labelColor: 'text-orange-400'  },
+          maintenance: { dot: 'bg-red-500',     label: 'Manutenção',  labelColor: 'text-red-400'     },
+        };
+        return (
+          <div className="space-y-3">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Estruturas</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
+              {structureList.map(s => {
+                const cfg = STATUS_CFG[s.status] ?? STATUS_CFG.available;
+                const activeTask = tasks.find(t => t.structureId === s.id && ['pending','in_progress','waiting_conference','paused','awaiting_checkout'].includes(t.status));
+                const HK_BADGE_S: Record<string, { label: string; className: string }> = {
+                  waiting_conference: { label: 'Conferência',   className: 'bg-amber-500/15 text-amber-400'  },
+                  in_progress:        { label: 'Em limpeza',    className: 'bg-blue-500/15 text-blue-400'    },
+                  pending:            { label: 'Limpeza pend.', className: 'bg-orange-500/15 text-orange-400'},
+                  paused:             { label: 'Pausada',       className: 'bg-zinc-500/15 text-zinc-400'    },
+                  awaiting_checkout:  { label: 'Ag. saída',     className: 'bg-amber-500/15 text-amber-400'  },
+                };
+                const hkBadge = activeTask ? HK_BADGE_S[activeTask.status] : null;
+                return (
+                  <div
+                    key={s.id}
+                    onClick={() => openHistory({ kind: 'structure', item: s })}
+                    className="bg-card border border-border rounded-2xl p-4 flex flex-col gap-3 cursor-pointer transition-all hover:border-primary/30 hover:shadow-md hover:shadow-black/20"
+                  >
+                    <div className="flex items-start gap-2 min-w-0">
+                      <div className={cn("w-2 h-2 rounded-full shrink-0 mt-1", cfg.dot)} />
+                      <p className="font-black text-base leading-tight text-foreground truncate">{s.name}</p>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <span className={cn("text-[10px] font-bold uppercase tracking-wider", cfg.labelColor)}>{cfg.label}</span>
+                      {hkBadge && (
+                        <div className={cn("flex items-center gap-1.5 text-[10px] font-semibold px-2 py-1 rounded-md w-fit", hkBadge.className)}>
+                          <Sparkles size={10} />
+                          {hkBadge.label}
+                        </div>
+                      )}
+                    </div>
+                    {s.category && (
+                      <p className="text-[10px] text-muted-foreground -mt-1">{s.category}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* CTA → Kanban */}
       <Link
@@ -845,92 +904,97 @@ export default function GovernancePage() {
         <ArrowRight size={14} />
       </Link>
 
-      {/* HISTÓRICO DE FAXINAS */}
-      {historycabin && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setHistoryCabin(null)}>
-          <div
-            className="w-full max-w-lg max-h-[80vh] flex flex-col rounded-2xl border border-border bg-card shadow-2xl overflow-hidden"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center gap-3 px-5 py-4 border-b border-border shrink-0">
-              <History size={16} className="text-primary" />
-              <div className="flex-1 min-w-0">
-                <p className="font-black text-sm text-foreground">{historycabin.number ? `Cabana ${historycabin.number}` : historycabin.name}</p>
-                <p className="text-[11px] text-muted-foreground">Histórico de tarefas</p>
+      {/* HISTÓRICO DE TAREFAS (cabanas e estruturas) */}
+      {historyTarget && (() => {
+        const title = historyTarget.kind === 'cabin'
+          ? (historyTarget.item.number ? `Cabana ${historyTarget.item.number}` : historyTarget.item.name)
+          : historyTarget.item.name;
+        const typeLabels: Record<string, string> = {
+          turnover:            "Faxina de Troca",
+          daily:               "Arrumação",
+          linen_change:        "Troca de Roupa",
+          inspection_checkin:  "Conf. Entrada",
+          inspection_checkout: "Conf. Saída",
+          custom:              "Personalizada",
+          awaiting_checkout:   "Pré-Faxina",
+        };
+        const statusStyles: Record<string, { label: string; className: string }> = {
+          completed:          { label: "Concluída",    className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25" },
+          waiting_conference: { label: "Conferência",  className: "bg-amber-500/15 text-amber-400 border-amber-500/25"      },
+          in_progress:        { label: "Em serviço",   className: "bg-blue-500/15 text-blue-400 border-blue-500/25"         },
+          pending:            { label: "Pendente",     className: "bg-orange-500/15 text-orange-400 border-orange-500/25"   },
+          paused:             { label: "Pausada",      className: "bg-zinc-500/15 text-zinc-400 border-zinc-500/25"         },
+          skipped:            { label: "Pulada",       className: "bg-zinc-500/15 text-zinc-400 border-zinc-500/25"         },
+          cancelled:          { label: "Cancelada",    className: "bg-red-500/15 text-red-400 border-red-500/25"            },
+          awaiting_checkout:  { label: "Ag. Checkout", className: "bg-amber-500/15 text-amber-400 border-amber-500/25"      },
+        };
+        return (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setHistoryTarget(null)}>
+            <div
+              className="w-full max-w-lg max-h-[80vh] flex flex-col rounded-2xl border border-border bg-card shadow-2xl overflow-hidden"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 px-5 py-4 border-b border-border shrink-0">
+                <History size={16} className="text-primary" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-black text-sm text-foreground">{title}</p>
+                  <p className="text-[11px] text-muted-foreground">Histórico de tarefas</p>
+                </div>
+                <button onClick={() => setHistoryTarget(null)} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+                  <X size={15} />
+                </button>
               </div>
-              <button onClick={() => setHistoryCabin(null)} className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
-                <X size={15} />
-              </button>
-            </div>
 
-            {/* Body */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              {historyLoading ? (
-                <div className="flex items-center justify-center py-16">
-                  <Loader2 size={24} className="animate-spin text-muted-foreground" />
-                </div>
-              ) : cabinHistory.length === 0 ? (
-                <div className="text-center py-16 text-muted-foreground">
-                  <p className="text-sm font-bold">Sem histórico</p>
-                  <p className="text-xs mt-1">Nenhuma tarefa encontrada para esta cabana.</p>
-                </div>
-              ) : (
-                cabinHistory.map(task => {
-                  const typeLabels: Record<string, string> = {
-                    turnover:            "Faxina de Troca",
-                    daily:               "Arrumação",
-                    linen_change:        "Troca de Roupa",
-                    inspection_checkin:  "Conf. Entrada",
-                    inspection_checkout: "Conf. Saída",
-                    custom:              task.customLocation ? `Custom: ${task.customLocation}` : "Personalizada",
-                    awaiting_checkout:   "Pré-Faxina",
-                  };
-                  const statusStyles: Record<string, { label: string; className: string }> = {
-                    completed:          { label: "Concluída",   className: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25" },
-                    waiting_conference: { label: "Conferência", className: "bg-amber-500/15 text-amber-400 border-amber-500/25"   },
-                    in_progress:        { label: "Em serviço",  className: "bg-blue-500/15 text-blue-400 border-blue-500/25"       },
-                    pending:            { label: "Pendente",    className: "bg-orange-500/15 text-orange-400 border-orange-500/25" },
-                    paused:             { label: "Pausada",     className: "bg-zinc-500/15 text-zinc-400 border-zinc-500/25"       },
-                    skipped:            { label: "Pulada",      className: "bg-zinc-500/15 text-zinc-400 border-zinc-500/25"       },
-                    cancelled:          { label: "Cancelada",   className: "bg-red-500/15 text-red-400 border-red-500/25"          },
-                    awaiting_checkout:  { label: "Ag. Checkout",className: "bg-amber-500/15 text-amber-400 border-amber-500/25"   },
-                  };
-                  const st = statusStyles[task.status] ?? { label: task.status, className: "bg-zinc-500/15 text-zinc-400 border-zinc-500/25" };
-                  const assignedNames = (task.assignedTo ?? [])
-                    .map((id: string) => maids.find(m => m.id === id)?.fullName.split(" ")[0])
-                    .filter(Boolean).join(", ");
-                  const dateStr = task.createdAt
-                    ? new Date(task.createdAt as string).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })
-                    : "";
-                  const timeStr = task.finishedAt
-                    ? `Concluída às ${new Date(task.finishedAt as string).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
-                    : task.startedAt
-                    ? `Iniciada às ${new Date(task.startedAt as string).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
-                    : "";
-
-                  return (
-                    <div key={task.id} className="rounded-xl border border-border bg-secondary/30 p-3">
-                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                        <span className="text-sm font-bold text-foreground">{typeLabels[task.type] ?? task.type}</span>
-                        <span className={cn("text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border", st.className)}>{st.label}</span>
+              <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {historyLoading ? (
+                  <div className="flex items-center justify-center py-16">
+                    <Loader2 size={24} className="animate-spin text-muted-foreground" />
+                  </div>
+                ) : historyTasks.length === 0 ? (
+                  <div className="text-center py-16 text-muted-foreground">
+                    <p className="text-sm font-bold">Sem histórico</p>
+                    <p className="text-xs mt-1">Nenhuma tarefa encontrada.</p>
+                  </div>
+                ) : (
+                  historyTasks.map(task => {
+                    const st = statusStyles[task.status] ?? { label: task.status, className: "bg-zinc-500/15 text-zinc-400 border-zinc-500/25" };
+                    const assignedNames = (task.assignedTo ?? [])
+                      .map((id: string) => maids.find(m => m.id === id)?.fullName.split(" ")[0])
+                      .filter(Boolean).join(", ");
+                    const dateStr = task.createdAt
+                      ? new Date(task.createdAt as string).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })
+                      : "";
+                    const timeStr = task.finishedAt
+                      ? `Concluída às ${new Date(task.finishedAt as string).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                      : task.startedAt
+                      ? `Iniciada às ${new Date(task.startedAt as string).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                      : "";
+                    const typeLabel = task.type === 'custom' && task.customLocation
+                      ? `Custom: ${task.customLocation}`
+                      : (typeLabels[task.type] ?? task.type);
+                    return (
+                      <div key={task.id} className="rounded-xl border border-border bg-secondary/30 p-3">
+                        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                          <span className="text-sm font-bold text-foreground">{typeLabel}</span>
+                          <span className={cn("text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border", st.className)}>{st.label}</span>
+                        </div>
+                        <div className="flex gap-3 flex-wrap">
+                          {dateStr && <span className="text-[11px] text-muted-foreground">{dateStr}</span>}
+                          {timeStr && <span className="text-[11px] text-muted-foreground">{timeStr}</span>}
+                          {assignedNames && <span className="text-[11px] text-muted-foreground">· {assignedNames}</span>}
+                        </div>
+                        {task.observations && (
+                          <p className="text-xs text-muted-foreground mt-1.5 italic">&quot;{task.observations}&quot;</p>
+                        )}
                       </div>
-                      <div className="flex gap-3 flex-wrap">
-                        {dateStr && <span className="text-[11px] text-muted-foreground">{dateStr}</span>}
-                        {timeStr && <span className="text-[11px] text-muted-foreground">{timeStr}</span>}
-                        {assignedNames && <span className="text-[11px] text-muted-foreground">· {assignedNames}</span>}
-                      </div>
-                      {task.observations && (
-                        <p className="text-xs text-muted-foreground mt-1.5 italic">&quot;{task.observations}&quot;</p>
-                      )}
-                    </div>
-                  );
-                })
-              )}
+                    );
+                  })
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* RELATÓRIO MODAL */}
       {showReport && (
