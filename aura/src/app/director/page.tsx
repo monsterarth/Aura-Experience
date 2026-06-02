@@ -167,7 +167,7 @@ type DashData = {
   }[];
   upcomingEvents: UpcomingEvent[];
   recentSurveys: {
-    id: string; guestName: string; npsScore: number | null;
+    id: string; guestName: string; cabinName: string; npsScore: number | null;
     averageRating: number | null; categoryRatings: Record<string, number>;
     isDetractor: boolean; createdAt: string; comments: string[];
   }[];
@@ -530,7 +530,9 @@ function ReviewCard({ s }: { s: DashData["recentSurveys"][0] }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{s.guestName}</div>
-          <div style={{ fontSize: 11, color: T.muted }}>{dateStr}</div>
+          <div style={{ fontSize: 11, color: T.muted }}>
+            {dateStr}{s.cabinName ? <span style={{ marginLeft: 4, color: T.g1, fontWeight: 600 }}>· {s.cabinName}</span> : null}
+          </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
           {nps != null && (

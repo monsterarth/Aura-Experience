@@ -298,13 +298,31 @@ export async function GET(request: NextRequest) {
         // Busca nomes via stays
         const stayIds = Array.from(new Set(surveys.map((r: any) => r.stayId).filter(Boolean)));
         const { data: staysData } = await supabaseAdmin
-          .from('stays').select('id, guestName')
+          .from('stays').select('id, guestId, cabinId')
           .in('id', stayIds);
-        const nameMap: Record<string, string> = {};
-        (staysData ?? []).forEach((s: any) => { if (s.id) nameMap[s.id] = s.guestName ?? "Hóspede"; });
+
+        // Busca nomes de hóspedes e cabanas em paralelo
+        const guestIds = Array.from(new Set((staysData ?? []).map((s: any) => s.guestId).filter(Boolean)));
+        const cabinIds = Array.from(new Set((staysData ?? []).map((s: any) => s.cabinId).filter(Boolean)));
+        const [guestsRes2, cabinsRes2] = await Promise.all([
+          guestIds.length ? supabaseAdmin.from('guests').select('id, fullName').in('id', guestIds) : { data: [] },
+          cabinIds.length ? supabaseAdmin.from('cabins').select('id, name').in('id', cabinIds) : { data: [] },
+        ]);
+        const guestNameMap: Record<string, string> = {};
+        (guestsRes2.data ?? []).forEach((g: any) => { guestNameMap[g.id] = g.fullName; });
+        const cabinNameMap: Record<string, string> = {};
+        (cabinsRes2.data ?? []).forEach((c: any) => { cabinNameMap[c.id] = c.name; });
+        const stayInfoMap: Record<string, { guestName: string; cabinName: string }> = {};
+        (staysData ?? []).forEach((s: any) => {
+          stayInfoMap[s.id] = {
+            guestName: guestNameMap[s.guestId] ?? "Hóspede",
+            cabinName: cabinNameMap[s.cabinId] ?? "",
+          };
+        });
         return surveys.map((r: any) => ({
           id: r.id,
-          guestName: nameMap[r.stayId] ?? "Hóspede",
+          guestName: stayInfoMap[r.stayId]?.guestName ?? "Hóspede",
+          cabinName: stayInfoMap[r.stayId]?.cabinName ?? "",
           npsScore: (r.metrics as any)?.npsScore ?? null,
           averageRating: (r.metrics as any)?.averageRating ?? null,
           categoryRatings: (r.metrics as any)?.categoryRatings ?? {},
