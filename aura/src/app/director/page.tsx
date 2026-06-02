@@ -170,7 +170,7 @@ type DashData = {
   upcomingEvents: UpcomingEvent[];
   opsDetail: {
     maintenance: { id: string; title: string; priority: string; status: string; location: string; daysOpen: number; createdAt: string }[];
-    housekeeping: { id: string; type: string; typeLabel: string; status: string; cabinName: string; daysOpen: number }[];
+    housekeeping: { id: string; type: string; typeLabel: string; status: string; cabinName: string; locType: string; assignedNames: string[]; daysOpen: number }[];
   };
   recentSurveys: {
     id: string; guestName: string; cabinName: string; npsScore: number | null;
@@ -1518,17 +1518,28 @@ function OpsSection({ data }: { data: DashData }) {
                 borderBottom: i < arr.length - 1 ? `1px solid ${T.border}` : "none",
               }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 6 }}>{cabin}</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {tasks.map(t => {
                     const s = HK_STATUS_COLORS[t.status] ?? HK_STATUS_COLORS.pending;
                     return (
                       <div key={t.id} style={{
-                        display: "flex", alignItems: "center", gap: 5,
-                        padding: "3px 9px", borderRadius: 99,
+                        display: "flex", flexDirection: "column", gap: 4,
+                        padding: "6px 10px", borderRadius: 10,
                         background: s.bg, border: `1px solid ${T.border}`,
+                        minWidth: 0,
                       }}>
-                        <span style={{ fontSize: 11, color: T.text }}>{t.typeLabel}</span>
-                        <span style={{ fontSize: 9, fontWeight: 700, color: s.color, textTransform: "uppercase" }}>{s.label}</span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{t.typeLabel}</span>
+                          <span style={{ fontSize: 9, fontWeight: 700, color: s.color, textTransform: "uppercase" }}>{s.label}</span>
+                        </div>
+                        {t.assignedNames.length > 0 && (
+                          <div style={{ fontSize: 10, color: T.muted }}>
+                            👤 {t.assignedNames.join(", ")}
+                          </div>
+                        )}
+                        {t.assignedNames.length === 0 && (
+                          <div style={{ fontSize: 10, color: T.red }}>Sem responsável</div>
+                        )}
                       </div>
                     );
                   })}

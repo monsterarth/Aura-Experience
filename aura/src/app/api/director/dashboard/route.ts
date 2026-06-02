@@ -156,7 +156,7 @@ export async function GET(request: NextRequest) {
         .order('createdAt', { ascending: true }),
       // Ops: tarefas de governança abertas (detalhes)
       supabaseAdmin.from('housekeeping_tasks')
-        .select('id, type, status, cabinId, structureId, unitId, createdAt')
+        .select('id, type, status, cabinId, structureId, unitId, customLocation, assignedTo, createdAt')
         .eq('propertyId', propertyId)
         .in('status', ['pending', 'in_progress', 'waiting_conference', 'awaiting_checkout'])
         .order('createdAt', { ascending: true }),
@@ -335,33 +335,59 @@ export async function GET(request: NextRequest) {
           (s.units ?? []).forEach((u: any) => { unitMap[u.id] = `${s.name} · ${u.name}`; });
         });
 
-        const resolveLocation = (t: any): string => {
-          if (t.cabinId)      return cabinMap[t.cabinId]    ?? "Cabana";
-          if (t.unitId)       return unitMap[t.unitId]      ?? structureMap[t.structureId] ?? "Área comum";
-          if (t.structureId)  return structureMap[t.structureId] ?? "Área comum";
-          return t.customLocation ?? "Local não especificado";
+        // customLocation tem prioridade para ambos os tipos de tarefa
+        type LocType = 'cabin' | 'structure' | 'other';
+        const resolveLocation = (t: any): { name: string; type: LocType; sortKey: string } => {
+          if (t.customLocation) return { name: t.customLocation, type: 'other', sortKey: `z_${t.customLocation}` };
+          if (t.cabinId && cabinMap[t.cabinId]) {
+            const name = cabinMap[t.cabinId];
+            const num = name.match(/\d+/)?.[0]?.padStart(6, '0') ?? name;
+            return { name, type: 'cabin', sortKey: `a_${num}` };
+          }
+          if (t.unitId && unitMap[t.unitId])    return { name: unitMap[t.unitId],          type: 'structure', sortKey: `b_${unitMap[t.unitId]}` };
+          if (t.structureId && structureMap[t.structureId]) return { name: structureMap[t.structureId], type: 'structure', sortKey: `b_${structureMap[t.structureId]}` };
+          return { name: "Local não especificado", type: 'other', sortKey: 'z_z' };
         };
+
+        // Busca nomes dos staff assignedTo
+        const allStaffIds = Array.from(new Set(
+          hkTasks.flatMap((t: any) => Array.isArray(t.assignedTo) ? t.assignedTo : []).filter(Boolean)
+        ));
+        const { data: staffNames } = allStaffIds.length
+          ? await supabaseAdmin.from('staff').select('id, fullName').in('id', allStaffIds)
+          : { data: [] };
+        const staffMap: Record<string, string> = {};
+        (staffNames ?? []).forEach((s: any) => { staffMap[s.id] = s.fullName.split(' ')[0]; });
 
         const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
         const HK_TYPE_LABELS: Record<string, string> = {
-          turnover: "Virada", daily: "Diária", linen_change: "Roupa de cama",
+          turnover: "Troca", daily: "Diária", linen_change: "Roupa de cama",
           inspection_checkin: "Inspeção check-in", inspection_checkout: "Inspeção check-out", custom: "Personalizada",
         };
+
+        const hkMapped = hkTasks.map((t: any) => {
+          const loc = resolveLocation(t);
+          const assigned: string[] = Array.isArray(t.assignedTo)
+            ? t.assignedTo.map((id: string) => staffMap[id]).filter(Boolean)
+            : [];
+          return {
+            id: t.id, type: t.type, typeLabel: HK_TYPE_LABELS[t.type] ?? t.type,
+            status: t.status, cabinName: loc.name, locType: loc.type, sortKey: loc.sortKey,
+            assignedNames: assigned,
+            daysOpen: Math.floor((now.getTime() - new Date(t.createdAt).getTime()) / (1000 * 60 * 60 * 24)),
+          };
+        }).sort((a: any, b: any) => a.sortKey.localeCompare(b.sortKey));
 
         return {
           maintenance: maintTasks
             .sort((a: any, b: any) => (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9))
             .map((t: any) => ({
               id: t.id, title: t.title, priority: t.priority, status: t.status,
-              location: resolveLocation(t),
+              location: resolveLocation(t).name,
               daysOpen: Math.floor((now.getTime() - new Date(t.createdAt).getTime()) / (1000 * 60 * 60 * 24)),
               createdAt: t.createdAt,
             })),
-          housekeeping: hkTasks.map((t: any) => ({
-            id: t.id, type: t.type, typeLabel: HK_TYPE_LABELS[t.type] ?? t.type,
-            status: t.status, cabinName: resolveLocation(t),
-            daysOpen: Math.floor((now.getTime() - new Date(t.createdAt).getTime()) / (1000 * 60 * 60 * 24)),
-          })),
+          housekeeping: hkMapped,
         };
       })(),
       recentSurveys: await (async () => {
