@@ -759,7 +759,7 @@ function EquipeSection({ propertyId }: { propertyId: string }) {
           { label: "Equipe ativa", val: activeStaff, color: T.g1 },
           { label: "Hoje em turno", val: onDutyToday.length, color: T.g2 },
           { label: "Aniversários no mês", val: birthdaysThisMonth.length, color: T.pink },
-          { label: "Folgas esta semana", val: offThisWeek, color: T.amber },
+          { label: "Folgas hoje", val: todaySchedules.filter(ts => !ts.eff.isWork).length, color: T.amber },
         ].map(k => (
           <div key={k.label} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 14px" }}>
             <div style={{ fontSize: 11, color: T.muted, fontWeight: 500 }}>{k.label}</div>
