@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
   const dayOfWeek = todayStart.getDay(); // 0=Dom
   const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
   const weekMonday = new Date(todayStart); weekMonday.setDate(todayStart.getDate() + diffToMonday);
-  const weekSunday = new Date(weekMonday); weekSunday.setDate(weekMonday.getDate() + 6);
+  const weekSunday = new Date(weekMonday); weekSunday.setDate(weekMonday.getDate() + 6); weekSunday.setHours(23, 59, 59, 999);
   const weekMondayStr = weekMonday.toISOString().split('T')[0];
   const weekSundayStr = weekSunday.toISOString().split('T')[0];
 
@@ -97,8 +97,8 @@ export async function GET(request: NextRequest) {
       // Stays que se sobrepõem com qualquer dia da semana Seg-Dom
       supabaseAdmin.from('stays').select('checkIn, checkOut, guestCount')
         .eq('propertyId', propertyId)
-        .lte('checkIn', weekSundayStr + 'T23:59:59')
-        .gte('checkOut', weekMondayStr)
+        .lte('checkIn', weekSunday.toISOString())
+        .gte('checkOut', weekMonday.toISOString())
         .in('status', ['pending', 'pre_checkin_done', 'active', 'checked_out', 'finished', 'archived']),
       supabaseAdmin.from('stays').select('checkIn, checkOut, guestCount')
         .eq('propertyId', propertyId).gte('checkIn', monthStartStr).lte('checkIn', monthEndStr),
@@ -168,11 +168,11 @@ export async function GET(request: NextRequest) {
     const weekOccupancy = Array.from({ length: 7 }, (_, i) => {
       const d = new Date(weekMonday); d.setDate(weekMonday.getDate() + i);
       const dStr = d.toISOString().split('T')[0];
-      // Normaliza checkIn/checkOut para YYYY-MM-DD para comparação segura
+      // Considera ocupado qualquer stay cujo checkIn <= dStr e checkOut >= dStr
       const occupied = weekStays.filter(s => {
         const ci = (s.checkIn as string).slice(0, 10);
         const co = (s.checkOut as string).slice(0, 10);
-        return ci <= dStr && co > dStr;
+        return ci <= dStr && co >= dStr;
       }).length;
       const checkinsExpected = weekStays.filter(s => (s.checkIn as string).slice(0, 10) === dStr).length;
       const pct = totalCabins > 0 ? Math.round((occupied / totalCabins) * 100) : 0;
