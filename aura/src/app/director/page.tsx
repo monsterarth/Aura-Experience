@@ -90,7 +90,7 @@ const ROLE_LABELS: Record<string, string> = {
 
 const OPERATIONAL_ROLES = new Set([
   "reception", "governance", "maid", "maintenance", "technician",
-  "kitchen", "waiter", "porter", "houseman", "marketing",
+  "kitchen", "waiter", "porter", "houseman", "marketing", "manager",
 ]);
 
 const ROLE_COLORS: Record<string, { color: string; bg: string; border: string }> = {
@@ -1462,7 +1462,23 @@ export default function DirectorPage() {
 
             {/* Header */}
             <div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: T.text }}>{greeting(userData?.fullName ?? "")}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: T.text }}>{greeting(userData?.fullName ?? "")}</div>
+                <button
+                  onClick={async () => {
+                    const supabase = createClientBrowserAuto();
+                    await supabase.auth.signOut();
+                    window.location.href = "/admin/login";
+                  }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 5, padding: "6px 12px",
+                    borderRadius: 99, border: `1px solid ${T.border}`, background: T.glass,
+                    color: T.muted, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                  }}
+                >
+                  Sair
+                </button>
+              </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: T.muted }}>
                   <span>{property?.name}</span>

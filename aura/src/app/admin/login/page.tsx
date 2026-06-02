@@ -42,6 +42,8 @@ export default function AdminLoginPage() {
       case 'kitchen':
       case 'waiter':
         return "/admin/kitchen";
+      case 'director':
+        return "/director";
       case 'admin':
       case 'reception':
       case 'porter':
