@@ -9,6 +9,7 @@ import {
   Heart, Star, RefreshCw, Bell, Building2,
   Phone, Mail, X, Clock, Cake, MapPin, Tag,
   Zap, Utensils, Dumbbell, Palette, Moon, Briefcase, HelpCircle,
+  ShieldCheck, Layers,
 } from "lucide-react";
 import { createClientBrowserAuto } from "@/lib/supabase-browser";
 import { StaffService } from "@/services/staff-service";
@@ -166,6 +167,10 @@ type DashData = {
     notes: string | null; status: string | null;
   }[];
   upcomingEvents: UpcomingEvent[];
+  opsDetail: {
+    maintenance: { id: string; title: string; priority: string; status: string; location: string; daysOpen: number; createdAt: string }[];
+    housekeeping: { id: string; type: string; typeLabel: string; status: string; cabinName: string; daysOpen: number }[];
+  };
   recentSurveys: {
     id: string; guestName: string; cabinName: string; npsScore: number | null;
     averageRating: number | null; categoryRatings: Record<string, number>;
@@ -1383,6 +1388,146 @@ function EquipeSection({ propertyId }: { propertyId: string }) {
   );
 }
 
+// ── Ops Section ──────────────────────────────────────────────────────────────
+
+const PRIORITY_COLORS: Record<string, { color: string; bg: string; border: string; label: string }> = {
+  urgent: { color: T.red,    bg: T.redBg,    border: T.redBorder,    label: "Urgente"  },
+  high:   { color: T.amber,  bg: T.amberBg,  border: T.amberBorder,  label: "Alta"     },
+  medium: { color: T.blue,   bg: T.blueBg,   border: T.blueBorder,   label: "Média"    },
+  low:    { color: T.muted,  bg: T.glass,    border: T.border,       label: "Baixa"    },
+};
+
+const HK_STATUS_COLORS: Record<string, { color: string; bg: string; label: string }> = {
+  pending:              { color: T.muted,  bg: T.glass,      label: "Pendente"       },
+  in_progress:          { color: T.amber,  bg: T.amberBg,    label: "Em andamento"   },
+  waiting_conference:   { color: T.violet, bg: T.violetBg,   label: "Aguard. conf."  },
+  awaiting_checkout:    { color: T.blue,   bg: T.blueBg,     label: "Aguard. saída"  },
+};
+
+function OpsSection({ data }: { data: DashData }) {
+  const ops = data.opsDetail ?? { maintenance: [], housekeeping: [] };
+  const urgentMaint = ops.maintenance.filter(t => t.priority === "urgent");
+  const otherMaint  = ops.maintenance.filter(t => t.priority !== "urgent");
+
+  // Agrupar HK por cabana
+  const hkByCabin: Record<string, typeof ops.housekeeping> = {};
+  ops.housekeeping.forEach(t => {
+    if (!hkByCabin[t.cabinName]) hkByCabin[t.cabinName] = [];
+    hkByCabin[t.cabinName].push(t);
+  });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+      {/* KPIs rápidos */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div style={{ background: urgentMaint.length > 0 ? T.redBg : T.glass2, border: `1px solid ${urgentMaint.length > 0 ? T.redBorder : T.border}`, borderRadius: 14, padding: "12px 14px" }}>
+          <div style={{ fontSize: 11, color: T.muted, fontWeight: 500 }}>Manutenção urgente</div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: urgentMaint.length > 0 ? T.red : T.text, marginTop: 4 }}>{urgentMaint.length}</div>
+        </div>
+        <div style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 14px" }}>
+          <div style={{ fontSize: 11, color: T.muted, fontWeight: 500 }}>Total manutenção</div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: T.text, marginTop: 4 }}>{ops.maintenance.length}</div>
+        </div>
+        <div style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 14px" }}>
+          <div style={{ fontSize: 11, color: T.muted, fontWeight: 500 }}>HK pendentes</div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: T.violet, marginTop: 4 }}>{ops.housekeeping.length}</div>
+        </div>
+        <div style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 14px" }}>
+          <div style={{ fontSize: 11, color: T.muted, fontWeight: 500 }}>Cabanas com tarefa</div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: T.text, marginTop: 4 }}>{Object.keys(hkByCabin).length}</div>
+        </div>
+      </div>
+
+      {/* Manutenção */}
+      {ops.maintenance.length > 0 && (
+        <div style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 16, overflow: "hidden" }}>
+          <div style={{ padding: "12px 16px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 8 }}>
+            <Wrench size={14} color={T.amber} />
+            <span style={{ fontSize: 11, fontWeight: 700, color: T.amber, textTransform: "uppercase", letterSpacing: ".06em" }}>Manutenção</span>
+            <span style={{ marginLeft: "auto", fontSize: 11, color: T.muted }}>{ops.maintenance.length} aberta{ops.maintenance.length > 1 ? "s" : ""}</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {ops.maintenance.map((t, i) => {
+              const p = PRIORITY_COLORS[t.priority] ?? PRIORITY_COLORS.low;
+              const isOld = t.daysOpen >= 2;
+              return (
+                <div key={t.id} style={{
+                  display: "flex", gap: 10, alignItems: "flex-start", padding: "12px 16px",
+                  borderBottom: i < ops.maintenance.length - 1 ? `1px solid ${T.border}` : "none",
+                  background: t.priority === "urgent" ? "rgba(248,113,113,0.04)" : "transparent",
+                }}>
+                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: p.color, marginTop: 5, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</div>
+                    <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{t.location}</div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 99, background: p.bg, color: p.color, border: `1px solid ${p.border}`, textTransform: "uppercase" }}>{p.label}</div>
+                    <div style={{ fontSize: 10, color: isOld ? T.red : T.muted2, fontWeight: isOld ? 700 : 400 }}>
+                      {t.daysOpen === 0 ? "hoje" : `${t.daysOpen}d`}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {ops.maintenance.length === 0 && (
+        <div style={{ background: T.glass2, border: `1px solid ${T.greenBorder}`, borderRadius: 16, padding: "16px", display: "flex", alignItems: "center", gap: 10 }}>
+          <ShieldCheck size={18} color={T.green} />
+          <span style={{ fontSize: 13, fontWeight: 600, color: T.green }}>Nenhuma ordem de manutenção aberta</span>
+        </div>
+      )}
+
+      {/* Governança por cabana */}
+      {ops.housekeeping.length > 0 && (
+        <div style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 16, overflow: "hidden" }}>
+          <div style={{ padding: "12px 16px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 8 }}>
+            <Layers size={14} color={T.violet} />
+            <span style={{ fontSize: 11, fontWeight: 700, color: T.violet, textTransform: "uppercase", letterSpacing: ".06em" }}>Governança</span>
+            <span style={{ marginLeft: "auto", fontSize: 11, color: T.muted }}>{ops.housekeeping.length} tarefa{ops.housekeeping.length > 1 ? "s" : ""}</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {Object.entries(hkByCabin).map(([cabin, tasks], i, arr) => (
+              <div key={cabin} style={{
+                padding: "12px 16px",
+                borderBottom: i < arr.length - 1 ? `1px solid ${T.border}` : "none",
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 6 }}>{cabin}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {tasks.map(t => {
+                    const s = HK_STATUS_COLORS[t.status] ?? HK_STATUS_COLORS.pending;
+                    return (
+                      <div key={t.id} style={{
+                        display: "flex", alignItems: "center", gap: 5,
+                        padding: "3px 9px", borderRadius: 99,
+                        background: s.bg, border: `1px solid ${T.border}`,
+                      }}>
+                        <span style={{ fontSize: 11, color: T.text }}>{t.typeLabel}</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: s.color, textTransform: "uppercase" }}>{s.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {ops.housekeeping.length === 0 && (
+        <div style={{ background: T.glass2, border: `1px solid ${T.greenBorder}`, borderRadius: 16, padding: "16px", display: "flex", alignItems: "center", gap: 10 }}>
+          <ShieldCheck size={18} color={T.green} />
+          <span style={{ fontSize: 13, fontWeight: 600, color: T.green }}>Governança em dia</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Bottom Nav ────────────────────────────────────────────────────────────────
 
 type NavSection = "home" | "agenda" | "equipe" | "relatorios";
@@ -1392,7 +1537,7 @@ function BottomNav({ active, onChange }: { active: NavSection; onChange: (s: Nav
     { id: "home",       label: "Início",     Icon: LayoutGrid },
     { id: "agenda",     label: "Agenda",     Icon: Calendar },
     { id: "equipe",     label: "Equipe",     Icon: Users },
-    { id: "relatorios", label: "Relatórios", Icon: BarChart2 },
+    { id: "relatorios", label: "Ops", Icon: BarChart2 },
   ];
   return (
     <div style={{
@@ -1563,15 +1708,7 @@ export default function DirectorPage() {
 
             {section === "equipe" && property?.id && <EquipeSection propertyId={property.id} />}
 
-            {section === "relatorios" && (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, paddingTop: 60 }}>
-                <BarChart2 size={48} color={T.muted2} />
-                <div style={{ fontSize: 16, fontWeight: 700, color: T.muted }}>Relatórios em breve</div>
-                <div style={{ fontSize: 13, color: T.muted2, textAlign: "center", lineHeight: 1.6, maxWidth: 260 }}>
-                  Relatórios gerenciais, exportações e análises comparativas serão disponibilizados em breve.
-                </div>
-              </div>
-            )}
+            {section === "relatorios" && <OpsSection data={data} />}
 
             {/* Botão de refresh */}
             <button onClick={() => loadDashboard()} style={{

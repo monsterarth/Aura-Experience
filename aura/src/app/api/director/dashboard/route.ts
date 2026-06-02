@@ -55,6 +55,8 @@ export async function GET(request: NextRequest) {
       monthWeddingsRes,
       monthMaintenanceRes,
       monthComplaintsRes,
+      maintenanceDetailRes,
+      hkDetailRes,
       recentSurveysRes,
     ] = await Promise.all([
       // Cabanas ocupadas agora
@@ -145,6 +147,18 @@ export async function GET(request: NextRequest) {
       // Reclamações no mês (isDetractor = true no metrics)
       supabaseAdmin.from('survey_responses').select('metrics')
         .eq('propertyId', propertyId).gte('createdAt', monthStart.toISOString()),
+      // Ops: tarefas de manutenção abertas (detalhes)
+      supabaseAdmin.from('maintenance_tasks')
+        .select('id, title, priority, status, createdAt, cabinId, customLocation, structureId')
+        .eq('propertyId', propertyId)
+        .in('status', ['pending', 'in_progress', 'paused'])
+        .order('createdAt', { ascending: true }),
+      // Ops: tarefas de governança abertas (detalhes)
+      supabaseAdmin.from('housekeeping_tasks')
+        .select('id, type, status, cabinId, createdAt')
+        .eq('propertyId', propertyId)
+        .in('status', ['pending', 'in_progress', 'waiting_conference', 'awaiting_checkout'])
+        .order('createdAt', { ascending: true }),
       // Avaliações individuais últimos 30 dias
       supabaseAdmin.from('survey_responses')
         .select('id, metrics, createdAt, stayId, answers')
@@ -292,6 +306,43 @@ export async function GET(request: NextRequest) {
         complaints:        monthComplaints,
       },
       upcomingWeddings,
+      opsDetail: await (async () => {
+        const maintTasks = maintenanceDetailRes.data ?? [];
+        const hkTasks    = hkDetailRes.data ?? [];
+
+        // Nomes das cabanas para ops
+        const cabinIdsOps = Array.from(new Set([
+          ...maintTasks.map((t: any) => t.cabinId),
+          ...hkTasks.map((t: any) => t.cabinId),
+        ].filter(Boolean)));
+        const { data: cabinsOps } = cabinIdsOps.length
+          ? await supabaseAdmin.from('cabins').select('id, name').in('id', cabinIdsOps)
+          : { data: [] };
+        const cabinMap: Record<string, string> = {};
+        (cabinsOps ?? []).forEach((c: any) => { cabinMap[c.id] = c.name; });
+
+        const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
+        const HK_TYPE_LABELS: Record<string, string> = {
+          turnover: "Virada", daily: "Diária", linen_change: "Roupa de cama",
+          inspection_checkin: "Inspeção check-in", inspection_checkout: "Inspeção check-out", custom: "Personalizada",
+        };
+
+        return {
+          maintenance: maintTasks
+            .sort((a: any, b: any) => (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9))
+            .map((t: any) => ({
+              id: t.id, title: t.title, priority: t.priority, status: t.status,
+              location: t.cabinId ? cabinMap[t.cabinId] ?? "Cabana" : t.customLocation ?? "Local não especificado",
+              daysOpen: Math.floor((now.getTime() - new Date(t.createdAt).getTime()) / (1000 * 60 * 60 * 24)),
+              createdAt: t.createdAt,
+            })),
+          housekeeping: hkTasks.map((t: any) => ({
+            id: t.id, type: t.type, typeLabel: HK_TYPE_LABELS[t.type] ?? t.type,
+            status: t.status, cabinName: t.cabinId ? cabinMap[t.cabinId] ?? "Cabana" : "Área comum",
+            daysOpen: Math.floor((now.getTime() - new Date(t.createdAt).getTime()) / (1000 * 60 * 60 * 24)),
+          })),
+        };
+      })(),
       recentSurveys: await (async () => {
         const surveys = recentSurveysRes.data ?? [];
         if (surveys.length === 0) return [];
