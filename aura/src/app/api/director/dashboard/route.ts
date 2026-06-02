@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
       fbOrdersRes,
       nextWeddingRes,
       upcomingWeddingsRes,
+      upcomingEventsRes,
       weekStaysRes,
       monthStaysRes,
       monthWeddingsRes,
@@ -115,6 +116,13 @@ export async function GET(request: NextRequest) {
         .eq('propertyId', propertyId)
         .gte('weddingDate', today).lte('weddingDate', in30dStr)
         .order('weddingDate', { ascending: true }),
+      // Eventos publicados próximos 30 dias
+      supabaseAdmin.from('events')
+        .select('id, title, startDate, endDate, startTime, endTime, location, category, type, imageUrl, description, price, priceDescription, featured')
+        .eq('propertyId', propertyId)
+        .eq('status', 'published')
+        .gte('startDate', today).lte('startDate', in30dStr)
+        .order('startDate', { ascending: true }),
       // Stays da semana (Seg–Dom)
       supabaseAdmin.from('stays').select('checkIn, checkOut')
         .eq('propertyId', propertyId)
@@ -250,6 +258,15 @@ export async function GET(request: NextRequest) {
         staffOnDuty: 0,
       },
       nextWedding,
+      upcomingEvents: (upcomingEventsRes.data ?? []).map(e => ({
+        id: e.id, title: e.title, startDate: e.startDate, endDate: e.endDate ?? null,
+        startTime: e.startTime ?? null, endTime: e.endTime ?? null,
+        location: e.location ?? null, category: e.category, type: e.type,
+        imageUrl: e.imageUrl ?? null, description: e.description ?? null,
+        price: e.price ?? null, priceDescription: e.priceDescription ?? null,
+        featured: !!e.featured,
+        daysUntil: Math.ceil((new Date(e.startDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
+      })),
       weekOccupancy,
       monthStats: {
         occupancyPct,

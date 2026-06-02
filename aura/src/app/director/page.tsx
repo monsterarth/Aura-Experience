@@ -7,7 +7,8 @@ import {
   LayoutGrid, Calendar, Users, BarChart2,
   TrendingUp, AlertTriangle, Wrench, ChevronRight,
   Heart, Star, RefreshCw, Bell, Building2,
-  Phone, Mail, X, Clock, Cake,
+  Phone, Mail, X, Clock, Cake, MapPin, Tag,
+  Zap, Utensils, Dumbbell, Palette, Moon, Briefcase, HelpCircle,
 } from "lucide-react";
 import { createClientBrowserAuto } from "@/lib/supabase-browser";
 import { StaffService } from "@/services/staff-service";
@@ -128,6 +129,13 @@ const DAY_SHORT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+type UpcomingEvent = {
+  id: string; title: string; startDate: string; endDate: string | null;
+  startTime: string | null; endTime: string | null; location: string | null;
+  category: string; type: string; imageUrl: string | null; description: string | null;
+  price: number | null; priceDescription: string | null; featured: boolean; daysUntil: number;
+};
+
 type DashData = {
   stats: {
     occupiedCabins: number; totalCabins: number;
@@ -145,6 +153,7 @@ type DashData = {
   weekOccupancy: { date: string; dayLabel: string; occupied: number; total: number; pct: number; checkinsExpected: number }[];
   monthStats: { occupancyPct: number; uniqueGuests: number; nightsSold: number; weddingsCount: number; maintenanceOrders: number; complaints: number };
   upcomingWeddings: { id: string; coupleName: string; date: string; exclusive: boolean; guestCount: number; daysUntil: number }[];
+  upcomingEvents: UpcomingEvent[];
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -450,38 +459,191 @@ function MonthTab({ data }: { data: DashData }) {
   );
 }
 
+// ── Agenda helpers ────────────────────────────────────────────────────────────
+
+const CATEGORY_ICONS: Record<string, React.ElementType> = {
+  entertainment: Zap, gastronomy: Utensils, sports: Dumbbell,
+  culture: Palette, nightlife: Moon, corporate: Briefcase,
+  wedding: Heart, birthday: Cake, other: HelpCircle,
+};
+const CATEGORY_LABELS: Record<string, string> = {
+  entertainment: "Entretenimento", gastronomy: "Gastronomia", sports: "Esportes",
+  culture: "Cultura", nightlife: "Vida Noturna", corporate: "Corporativo",
+  wedding: "Casamento", birthday: "Aniversário", other: "Outro",
+};
+
+function EventDrawer({ event, onClose }: { event: UpcomingEvent; onClose: () => void }) {
+  const Icon = CATEGORY_ICONS[event.category] ?? HelpCircle;
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)" }} onClick={onClose} />
+      <div style={{
+        position: "relative", background: "#0d0f1a", borderRadius: "24px 24px 0 0",
+        border: `1px solid ${T.border2}`, animation: "dir-slide-up .25s ease",
+        maxHeight: "82dvh", overflowY: "auto", paddingBottom: "env(safe-area-inset-bottom,0px)",
+      }}>
+        <div style={{ width: 36, height: 4, borderRadius: 99, background: T.border2, margin: "12px auto 0" }} />
+        <button onClick={onClose} style={{
+          position: "absolute", top: 14, right: 16, width: 32, height: 32, borderRadius: 99,
+          background: T.glass3, border: `1px solid ${T.border}`, display: "flex", alignItems: "center",
+          justifyContent: "center", cursor: "pointer", color: T.muted,
+        }}><X size={14} /></button>
+
+        {event.imageUrl && (
+          <img src={event.imageUrl} alt={event.title} style={{ width: "100%", height: 180, objectFit: "cover", marginTop: 8 }} />
+        )}
+
+        <div style={{ padding: "16px 20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: T.glass3, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Icon size={20} color={T.g1} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 17, fontWeight: 800, color: T.text, lineHeight: 1.3 }}>{event.title}</div>
+              <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>{CATEGORY_LABELS[event.category] ?? event.category}</div>
+            </div>
+            <div style={{
+              fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 99, flexShrink: 0,
+              background: event.daysUntil <= 3 ? T.greenBg : T.blueBg,
+              color: event.daysUntil <= 3 ? T.green : T.blue,
+              border: `1px solid ${event.daysUntil <= 3 ? T.greenBorder : T.blueBorder}`,
+            }}>{event.daysUntil === 0 ? "Hoje" : `em ${event.daysUntil}d`}</div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Calendar size={13} color={T.muted} />
+              <span style={{ fontSize: 13, color: T.text }}>
+                {fmtDate(event.startDate)}{event.endDate && event.endDate !== event.startDate ? ` → ${fmtDate(event.endDate)}` : ""}
+              </span>
+            </div>
+            {event.startTime && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Clock size={13} color={T.muted} />
+                <span style={{ fontSize: 13, color: T.text }}>{event.startTime.slice(0,5)}{event.endTime ? ` – ${event.endTime.slice(0,5)}` : ""}</span>
+              </div>
+            )}
+            {event.location && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <MapPin size={13} color={T.muted} />
+                <span style={{ fontSize: 13, color: T.text }}>{event.location}</span>
+              </div>
+            )}
+            {(event.priceDescription || event.price !== null) && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Tag size={13} color={T.muted} />
+                <span style={{ fontSize: 13, color: T.text }}>
+                  {event.priceDescription || (event.price === 0 ? "Gratuito" : `R$ ${event.price}`)}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {event.description && (
+            <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12, padding: "12px 14px", fontSize: 13, color: T.muted, lineHeight: 1.6 }}>
+              {event.description}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Seção: Agenda ────────────────────────────────────────────────────────────
 
 function AgendaSection({ data }: { data: DashData }) {
+  const [selectedEvent, setSelectedEvent] = useState<UpcomingEvent | null>(null);
+
+  // Unir eventos e casamentos numa lista ordenada por data
+  const weddingItems = data.upcomingWeddings.map(w => ({
+    kind: "wedding" as const, date: w.date, daysUntil: w.daysUntil, w,
+  }));
+  const eventItems = data.upcomingEvents.map(e => ({
+    kind: "event" as const, date: e.startDate, daysUntil: e.daysUntil, e,
+  }));
+  const allItems = [...weddingItems, ...eventItems].sort((a, b) => a.date.localeCompare(b.date));
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ fontSize: 11, color: T.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em" }}>Casamentos — próximos 30 dias</div>
-      {data.upcomingWeddings.length === 0 && (
-        <div style={{ textAlign: "center", padding: "40px 0", color: T.muted2, fontSize: 14 }}>Nenhum casamento agendado</div>
+      <div style={{ fontSize: 11, color: T.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em" }}>
+        Agenda — próximos 30 dias
+      </div>
+
+      {allItems.length === 0 && (
+        <div style={{ textAlign: "center", padding: "40px 0", color: T.muted2, fontSize: 14 }}>Nenhum evento agendado</div>
       )}
-      {data.upcomingWeddings.map(w => (
-        <div key={w.id} style={{
-          background: T.glass2, border: `1px solid ${T.pinkBorder}`, borderRadius: 16, padding: 16,
-          display: "flex", gap: 12, alignItems: "center",
-        }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: T.pinkBg, border: `1px solid ${T.pinkBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <Heart size={18} color={T.pink} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{w.coupleName}</div>
-            <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>
-              {fmtDate(w.date)} · {w.guestCount} convidados
-              {w.exclusive && <span style={{ marginLeft: 6, fontSize: 10, color: T.violet, fontWeight: 600 }}>EXCLUSIVO</span>}
+
+      {allItems.map((item, i) => {
+        if (item.kind === "wedding") {
+          const w = item.w;
+          return (
+            <div key={`w-${w.id}`} style={{
+              background: T.glass2, border: `1px solid ${T.pinkBorder}`, borderRadius: 16, padding: 16,
+              display: "flex", gap: 12, alignItems: "center",
+            }}>
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: T.pinkBg, border: `1px solid ${T.pinkBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Heart size={20} color={T.pink} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 10, color: T.pink, fontWeight: 600, textTransform: "uppercase", marginBottom: 2 }}>Casamento</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{w.coupleName}</div>
+                <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>
+                  {fmtDate(w.date)} · {w.guestCount} convidados
+                  {w.exclusive && <span style={{ marginLeft: 6, fontSize: 10, color: T.violet, fontWeight: 600 }}>EXCLUSIVO</span>}
+                </div>
+              </div>
+              <div style={{
+                fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 99, flexShrink: 0,
+                background: w.daysUntil <= 7 ? T.greenBg : T.blueBg,
+                color: w.daysUntil <= 7 ? T.green : T.blue,
+                border: `1px solid ${w.daysUntil <= 7 ? T.greenBorder : T.blueBorder}`,
+              }}>{w.daysUntil === 0 ? "Hoje" : `${w.daysUntil}d`}</div>
             </div>
-          </div>
-          <div style={{
-            fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 99,
-            background: w.daysUntil <= 7 ? T.greenBg : T.blueBg,
-            color: w.daysUntil <= 7 ? T.green : T.blue,
-            border: `1px solid ${w.daysUntil <= 7 ? T.greenBorder : T.blueBorder}`,
-          }}>{w.daysUntil}d</div>
-        </div>
-      ))}
+          );
+        }
+
+        const e = item.e;
+        const Icon = CATEGORY_ICONS[e.category] ?? HelpCircle;
+        return (
+          <button key={`e-${e.id}`} onClick={() => setSelectedEvent(e)} style={{
+            background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 16, padding: 16,
+            display: "flex", gap: 12, alignItems: "center", cursor: "pointer", textAlign: "left", width: "100%",
+          }}>
+            {e.imageUrl ? (
+              <img src={e.imageUrl} alt={e.title} style={{ width: 44, height: 44, borderRadius: 12, objectFit: "cover", flexShrink: 0 }} />
+            ) : (
+              <div style={{ width: 44, height: 44, borderRadius: 12, background: T.glass3, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Icon size={20} color={T.g1} />
+              </div>
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 10, color: T.g1, fontWeight: 600, textTransform: "uppercase", marginBottom: 2 }}>
+                {CATEGORY_LABELS[e.category] ?? "Evento"}
+                {e.featured && <span style={{ marginLeft: 6, color: T.amber }}>★</span>}
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</div>
+              <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>
+                {fmtDate(e.startDate)}
+                {e.startTime && <span> · {e.startTime.slice(0,5)}</span>}
+                {e.location && <span> · {e.location}</span>}
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
+              <div style={{
+                fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 99,
+                background: e.daysUntil <= 3 ? T.greenBg : T.blueBg,
+                color: e.daysUntil <= 3 ? T.green : T.blue,
+                border: `1px solid ${e.daysUntil <= 3 ? T.greenBorder : T.blueBorder}`,
+              }}>{e.daysUntil === 0 ? "Hoje" : `${e.daysUntil}d`}</div>
+              <ChevronRight size={13} color={T.muted2} />
+            </div>
+          </button>
+        );
+      })}
+
+      {selectedEvent && <EventDrawer event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
     </div>
   );
 }
