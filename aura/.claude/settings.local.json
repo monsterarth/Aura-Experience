@@ -32,7 +32,9 @@
       "Bash(git stash *)",
       "Bash(git -C c:/Aura-Experience/aura status)",
       "Bash(git -C c:/Aura-Experience/aura diff src/app/admin/concierge/page.tsx)",
-      "Bash(git -C c:/Aura-Experience/aura log --oneline -5)"
+      "Bash(git -C c:/Aura-Experience/aura log --oneline -5)",
+      "Bash(pnpm tsc *)",
+      "WebFetch(domain:www.stay-app.com)"
     ]
   }
 }

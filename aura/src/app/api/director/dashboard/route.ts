@@ -1,0 +1,220 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { supabaseAdmin } from '@/lib/supabase';
+
+export async function GET(request: NextRequest) {
+  const auth = await requireAuth();
+  if (isAuthError(auth)) return auth;
+  if (!supabaseAdmin) return NextResponse.json(null, { status: 500 });
+
+  const { searchParams } = new URL(request.url);
+  const propertyId = searchParams.get('propertyId');
+  if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
+
+  const now = new Date();
+  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+  const today = todayStart.toISOString().split('T')[0];
+
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const monthStartStr = monthStart.toISOString().split('T')[0];
+  const monthEndStr = monthEnd.toISOString().split('T')[0];
+
+  const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const since48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+  const in30d = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const in7d = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  try {
+    const [
+      occupiedRes,
+      totalCabinsRes,
+      checkinsDoneRes,
+      checkinsTotalRes,
+      checkoutsDoneRes,
+      checkoutsTotalRes,
+      guestsRes,
+      surveyRes,
+      negativeNpsRes,
+      urgentMaintenanceRes,
+      hkTasksRes,
+      conciergeRes,
+      fbOrdersRes,
+      nextWeddingRes,
+      upcomingWeddingsRes,
+      weekStaysRes,
+      monthStaysRes,
+      monthWeddingsRes,
+      monthMaintenanceRes,
+      monthComplaintsRes,
+    ] = await Promise.all([
+      supabaseAdmin.from('stays').select('id', { count: 'exact', head: true })
+        .eq('propertyId', propertyId).eq('status', 'active'),
+      supabaseAdmin.from('cabins').select('id', { count: 'exact', head: true })
+        .eq('propertyId', propertyId),
+      supabaseAdmin.from('stays').select('id', { count: 'exact', head: true })
+        .eq('propertyId', propertyId)
+        .gte('checkIn', todayStart.toISOString()).lte('checkIn', todayEnd.toISOString())
+        .eq('status', 'active'),
+      supabaseAdmin.from('stays').select('id', { count: 'exact', head: true })
+        .eq('propertyId', propertyId)
+        .gte('checkIn', todayStart.toISOString()).lte('checkIn', todayEnd.toISOString())
+        .in('status', ['pending', 'pre_checkin_done', 'active']),
+      supabaseAdmin.from('stays').select('id', { count: 'exact', head: true })
+        .eq('propertyId', propertyId)
+        .gte('checkOut', todayStart.toISOString()).lte('checkOut', todayEnd.toISOString())
+        .in('status', ['checked_out', 'finished', 'archived']),
+      supabaseAdmin.from('stays').select('id', { count: 'exact', head: true })
+        .eq('propertyId', propertyId)
+        .gte('checkOut', todayStart.toISOString()).lte('checkOut', todayEnd.toISOString())
+        .in('status', ['active', 'checked_out', 'finished', 'archived']),
+      supabaseAdmin.from('stays').select('guestCount')
+        .eq('propertyId', propertyId).eq('status', 'active'),
+      supabaseAdmin.from('survey_responses').select('npsScore, rating')
+        .eq('propertyId', propertyId).gte('createdAt', since30d).not('npsScore', 'is', null),
+      supabaseAdmin.from('survey_responses').select('id, npsScore, createdAt')
+        .eq('propertyId', propertyId).gte('createdAt', since48h).lte('npsScore', 6).not('npsScore', 'is', null),
+      supabaseAdmin.from('maintenance_tasks').select('id, title, createdAt')
+        .eq('propertyId', propertyId).eq('priority', 'urgent').in('status', ['pending', 'in_progress']),
+      supabaseAdmin.from('housekeeping_tasks').select('id', { count: 'exact', head: true })
+        .eq('propertyId', propertyId).in('status', ['pending', 'in_progress', 'waiting_conference']),
+      supabaseAdmin.from('concierge_requests').select('id', { count: 'exact', head: true })
+        .eq('propertyId', propertyId).eq('status', 'pending'),
+      supabaseAdmin.from('fb_orders').select('id', { count: 'exact', head: true })
+        .eq('propertyId', propertyId).gte('createdAt', todayStart.toISOString()).lte('createdAt', todayEnd.toISOString()),
+      supabaseAdmin.from('weddings').select('id, coupleName, date, exclusive, guestCount')
+        .eq('propertyId', propertyId).gt('date', today).order('date', { ascending: true }).limit(1),
+      supabaseAdmin.from('weddings').select('id, coupleName, date, exclusive, guestCount')
+        .eq('propertyId', propertyId).gte('date', today).lte('date', in30d).order('date', { ascending: true }),
+      supabaseAdmin.from('stays').select('checkIn, checkOut, guestCount')
+        .eq('propertyId', propertyId).lte('checkIn', in7d).gte('checkOut', today)
+        .in('status', ['pending', 'pre_checkin_done', 'active']),
+      supabaseAdmin.from('stays').select('checkIn, checkOut, guestCount')
+        .eq('propertyId', propertyId).gte('checkIn', monthStartStr).lte('checkIn', monthEndStr),
+      supabaseAdmin.from('weddings').select('id', { count: 'exact', head: true })
+        .eq('propertyId', propertyId).gte('date', monthStartStr).lte('date', monthEndStr),
+      supabaseAdmin.from('maintenance_tasks').select('id', { count: 'exact', head: true })
+        .eq('propertyId', propertyId).gte('createdAt', monthStart.toISOString()),
+      supabaseAdmin.from('survey_responses').select('id', { count: 'exact', head: true })
+        .eq('propertyId', propertyId).gte('createdAt', monthStart.toISOString()).lte('npsScore', 6),
+    ]);
+
+    // Ocupação
+    const occupiedCabins = occupiedRes.count ?? 0;
+    const totalCabins = totalCabinsRes.count ?? 0;
+    const guestsOnProperty = (guestsRes.data ?? []).reduce((s, r) => s + (r.guestCount ?? 0), 0);
+
+    // NPS
+    const surveyData = surveyRes.data ?? [];
+    let npsScore: number | null = null;
+    let promoters = 0, passives = 0, detractors = 0;
+    const ratingDist: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    if (surveyData.length > 0) {
+      const sum = surveyData.reduce((s, r) => s + (r.npsScore ?? 0), 0);
+      npsScore = Math.round((sum / surveyData.length) * 10) / 10;
+      surveyData.forEach(r => {
+        const n = r.npsScore ?? 0;
+        if (n >= 9) promoters++;
+        else if (n >= 7) passives++;
+        else detractors++;
+        const star = r.rating;
+        if (star >= 1 && star <= 5) ratingDist[star] = (ratingDist[star] ?? 0) + 1;
+      });
+      const total = surveyData.length;
+      promoters = Math.round((promoters / total) * 100);
+      passives = Math.round((passives / total) * 100);
+      detractors = 100 - promoters - passives;
+    }
+
+    // Alertas
+    const alerts: { type: string; title: string; desc: string; createdAt: string }[] = [];
+    (negativeNpsRes.data ?? []).slice(0, 3).forEach(r => {
+      alerts.push({ type: 'detractor', title: 'Avaliação negativa', desc: `NPS ${r.npsScore} registrado`, createdAt: r.createdAt });
+    });
+    (urgentMaintenanceRes.data ?? []).slice(0, 3).forEach(r => {
+      alerts.push({ type: 'maintenance_urgent', title: 'Manutenção urgente', desc: r.title ?? '', createdAt: r.createdAt });
+    });
+    alerts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    // Próximo casamento
+    const nw = (nextWeddingRes.data ?? [])[0] ?? null;
+    const nextWedding = nw ? {
+      id: nw.id, coupleName: nw.coupleName, date: nw.date,
+      exclusive: !!nw.exclusive, guestCount: nw.guestCount ?? 0,
+      daysUntil: Math.ceil((new Date(nw.date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
+    } : null;
+
+    // Casamentos próximos 30 dias
+    const upcomingWeddings = (upcomingWeddingsRes.data ?? []).map(w => ({
+      id: w.id, coupleName: w.coupleName, date: w.date,
+      exclusive: !!w.exclusive, guestCount: w.guestCount ?? 0,
+      daysUntil: Math.ceil((new Date(w.date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
+    }));
+
+    // Ocupação por dia (próximos 7 dias)
+    const weekStays = weekStaysRes.data ?? [];
+    const weekOccupancy = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(todayStart); d.setDate(d.getDate() + i);
+      const dStr = d.toISOString().split('T')[0];
+      const DAY_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+      const occupied = weekStays.filter(s => s.checkIn <= dStr && s.checkOut > dStr).length;
+      const checkinsExpected = weekStays.filter(s => s.checkIn === dStr).length;
+      const pct = totalCabins > 0 ? Math.round((occupied / totalCabins) * 100) : 0;
+      return { date: dStr, dayLabel: DAY_SHORT[d.getDay()], occupied, total: totalCabins, pct, checkinsExpected };
+    });
+
+    // Stats do mês
+    const monthStays = monthStaysRes.data ?? [];
+    const daysInMonth = monthEnd.getDate();
+    const daysElapsed = Math.min(now.getDate(), daysInMonth);
+    const possibleNights = totalCabins * daysElapsed;
+    const nightsSold = monthStays.reduce((s, st) => {
+      const ci = new Date(st.checkIn); const co = new Date(st.checkOut);
+      return s + Math.ceil((co.getTime() - ci.getTime()) / (1000 * 60 * 60 * 24));
+    }, 0);
+    const occupancyPct = possibleNights > 0 ? Math.round((nightsSold / possibleNights) * 100) : 0;
+    const uniqueGuestsSet = new Set(monthStays.map(s => s.guestCount));
+    const uniqueGuests = monthStays.length;
+
+    return NextResponse.json({
+      stats: {
+        occupiedCabins,
+        totalCabins,
+        checkinsDone: checkinsDoneRes.count ?? 0,
+        checkinsTotal: checkinsTotalRes.count ?? 0,
+        checkoutsDone: checkoutsDoneRes.count ?? 0,
+        checkoutsTotal: checkoutsTotalRes.count ?? 0,
+        guestsOnProperty,
+      },
+      nps: {
+        score: npsScore,
+        promoters,
+        passives,
+        detractors,
+        distribution: [5, 4, 3, 2, 1].map(stars => ({ stars, count: ratingDist[stars] ?? 0 })),
+      },
+      alerts: alerts.slice(0, 5),
+      ops: {
+        hkActiveTasks: hkTasksRes.count ?? 0,
+        conciergeePending: conciergeRes.count ?? 0,
+        fbOrdersToday: fbOrdersRes.count ?? 0,
+        staffOnDuty: 0,
+      },
+      nextWedding,
+      weekOccupancy,
+      monthStats: {
+        occupancyPct,
+        uniqueGuests,
+        nightsSold,
+        weddingsCount: monthWeddingsRes.count ?? 0,
+        maintenanceOrders: monthMaintenanceRes.count ?? 0,
+        complaints: monthComplaintsRes.count ?? 0,
+      },
+      upcomingWeddings,
+    });
+  } catch (err) {
+    console.error('[director/dashboard]', err);
+    return NextResponse.json({ error: 'internal' }, { status: 500 });
+  }
+}

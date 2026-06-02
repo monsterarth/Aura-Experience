@@ -6,6 +6,7 @@ import { RoleGuard } from "@/components/auth/RoleGuard";
 import { useState, useRef, useEffect } from "react";
 
 const APPS = [
+  { id: "diretoria",  label: "Diretoria",          description: "Dashboard estratégico para proprietários e diretores",    color: "#9b6dff", icon: "staff" },
   { id: "governanta", label: "Governança",       description: "Gestão de quartos, tarefas e equipe de governança",   color: "#c084fc", icon: "staff" },
   { id: "maid",       label: "Camareira",        description: "App da camareira — checklist de limpeza e arrumação",  color: "#4ec9d4", icon: "staff" },
   { id: "manutencao", label: "Manutenção",       description: "Ordens de serviço e kanban de manutenção",            color: "#f59e0b", icon: "staff" },

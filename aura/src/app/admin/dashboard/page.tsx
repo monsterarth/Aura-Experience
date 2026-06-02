@@ -7,6 +7,7 @@ import { useAuth } from "@/context/AuthContext";
 const ROLE_DESTINATIONS: Record<string, string> = {
   super_admin:  "/admin/core/dashboard",
   admin:        "/admin/reception",
+  director:     "/director",
   hr:           "/admin/hr",
   reception:    "/admin/reception",
   governance:   "/admin/governance",

@@ -8,6 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import Link from "next/link";
 
 const APP_META: Record<string, { label: string; path: string; color: string }> = {
+  diretoria:  { label: "Diretoria",          path: "/director",     color: "#9b6dff" },
   governanta: { label: "Governança",        path: "/governanta",   color: "#c084fc" },
   maid:       { label: "Camareira",         path: "/maid",         color: "#4ec9d4" },
   manutencao: { label: "Manutenção",        path: "/maintenance",  color: "#f59e0b" },

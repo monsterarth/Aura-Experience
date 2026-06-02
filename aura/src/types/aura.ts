@@ -5,6 +5,7 @@ export type Timestamp = string;
 export type UserRole =
   | 'super_admin'
   | 'admin'
+  | 'director'   // Diretoria / Proprietário (app mobile de gestão estratégica)
   | 'manager'    // Gestão (Gestão de Equipe e Escalas)
   | 'reception'
   | 'governance' // Governanta / Gestor do setor
