@@ -11,8 +11,9 @@ const APP_META: Record<string, { label: string; path: string; color: string }> =
   diretoria:  { label: "Diretoria",          path: "/director",     color: "#9b6dff" },
   governanta: { label: "Governança",        path: "/governanta",   color: "#c084fc" },
   maid:       { label: "Camareira",         path: "/maid",         color: "#4ec9d4" },
-  manutencao: { label: "Manutenção",        path: "/maintenance",  color: "#f59e0b" },
-  houseman:   { label: "Mensageiro",        path: "/houseman",     color: "#fb923c" },
+  manutencao:         { label: "Manutenção — Técnico",      path: "/maintenance",     color: "#f59e0b" },
+  "manutencao-ops":   { label: "Manutenção — Coordenador", path: "/maintenance-ops", color: "#fb923c" },
+  houseman:           { label: "Mensageiro",               path: "/houseman",        color: "#fb923c" },
   garcom:     { label: "Garçom",            path: "/waiter",       color: "#60a5fa" },
   hospede:    { label: "Portal do Hóspede", path: "/check-in",     color: "#2dd4bf" },
 };

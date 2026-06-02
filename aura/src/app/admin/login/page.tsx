@@ -38,7 +38,7 @@ export default function AdminLoginPage() {
         return "/admin/houseman";
       case 'maintenance':
       case 'technician':
-        return "/admin/maintenance";
+        return "/maintenance";
       case 'kitchen':
       case 'waiter':
         return "/admin/kitchen";

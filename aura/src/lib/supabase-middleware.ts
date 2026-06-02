@@ -54,7 +54,7 @@ export async function updateSession(request: NextRequest) {
     const pathname = request.nextUrl.pathname;
     const isAdminPage = pathname.startsWith('/admin') && !pathname.includes('/login');
     const isAdminApi = pathname.startsWith('/api/admin');
-    const isStaffApp = pathname.startsWith('/governanta') || pathname.startsWith('/maid') || pathname.startsWith('/admin/houseman') || pathname.startsWith('/admin/maintenance') || pathname.startsWith('/admin/kitchen');
+    const isStaffApp = pathname.startsWith('/governanta') || pathname.startsWith('/maid') || pathname.startsWith('/houseman') || pathname.startsWith('/maintenance') || pathname.startsWith('/waiter');
 
     // Proteger páginas de staff — redireciona para login se não autenticado
     if (isStaffApp && !user) {
@@ -82,9 +82,12 @@ export async function updateSession(request: NextRequest) {
             '/maintenance': ['maintenance', 'technician'],
         };
 
+        const ADMIN_BYPASS = ['super_admin', 'admin', 'manager'];
+
         for (const [route, allowed] of Object.entries(roleForRoute)) {
             if (pathname.startsWith(route)) {
                 const hasAccess = role && (
+                    ADMIN_BYPASS.includes(role) ||
                     allowed.includes(role) ||
                     secondaryRoles.some(r => allowed.includes(r))
                 );
