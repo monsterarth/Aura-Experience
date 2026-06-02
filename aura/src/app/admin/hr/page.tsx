@@ -159,9 +159,9 @@ function HRDashboardContent() {
     return mm === currentMonth;
   });
 
-  // KPI 4 — Folgas esta semana
-  const folgaCount = weekOverrides.filter(
-    o => o.startTime === null || o.startTime === undefined
+  // KPI 4 — Folgas hoje (quem não está em turno)
+  const folgaCount = activeStaff.filter(s =>
+    !resolveEffectiveDaySchedule(s, s.schedules, todayOverrides, today, checkpoints).isWork
   ).length;
 
   // Shift turno classification
@@ -301,7 +301,7 @@ function HRDashboardContent() {
       border: "rgba(244,114,182,0.22)",
     },
     {
-      label: "Folgas esta semana",
+      label: "Folgas hoje",
       value: String(folgaCount),
       sub: "registradas na semana",
       icon: Palmtree,
@@ -648,7 +648,7 @@ function HRDashboardContent() {
               }}>
                 <Palmtree size={14} style={{ color: "#f59e0b" }} />
               </div>
-              <div style={sectionHeader}>Folgas da Semana</div>
+              <div style={sectionHeader}>Folgas Hoje</div>
               {folgaCount > 0 && (
                 <span style={{
                   marginLeft: "auto",
@@ -663,20 +663,17 @@ function HRDashboardContent() {
 
             {folgaCount === 0 ? (
               <div style={{ fontSize: 12, color: "rgba(238,240,248,0.3)", textAlign: "center", padding: "12px 0" }}>
-                Nenhuma folga registrada esta semana
+                Nenhuma folga hoje
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {weekOverrides
-                  .filter(o => o.startTime === null || o.startTime === undefined)
-                  .map(o => {
-                    const staff = activeStaff.find(s => s.id === o.staffId);
-                    if (!staff) return null;
-                    const rs = getRoleStyle(staff.role);
-                    const initials = staff.fullName.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
-                    const dateLabel = new Date(o.date + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" });
+                {activeStaff
+                  .filter(s => !resolveEffectiveDaySchedule(s, s.schedules, todayOverrides, today, checkpoints).isWork)
+                  .map(s => {
+                    const rs = getRoleStyle(s.role);
+                    const initials = s.fullName.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase();
                     return (
-                      <div key={o.id} style={{
+                      <div key={s.id} style={{
                         display: "flex", alignItems: "center", gap: 10,
                         padding: "9px 12px", borderRadius: 12,
                         background: "rgba(255,255,255,0.035)", border: "1px solid rgba(255,255,255,0.07)",
@@ -688,8 +685,8 @@ function HRDashboardContent() {
                           fontSize: 12, fontWeight: 900, color: rs.color,
                         }}>{initials}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--foreground, #eef0f8)" }}>{staff.fullName}</div>
-                          <div style={muted}>{ROLE_LABELS[staff.role] ?? staff.role} · {dateLabel}</div>
+                          <div style={{ fontSize: 12, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--foreground, #eef0f8)" }}>{s.fullName}</div>
+                          <div style={muted}>{ROLE_LABELS[s.role] ?? s.role}</div>
                         </div>
                         <span style={{
                           flexShrink: 0,
