@@ -83,8 +83,14 @@ const ROLE_LABELS: Record<string, string> = {
   houseman:    "Mensageiro",
   marketing:   "Marketing",
   admin:       "Administrador",
+  manager:     "Gerente / RH",
   director:    "Diretor",
 };
+
+const OPERATIONAL_ROLES = new Set([
+  "reception", "governance", "maid", "maintenance", "technician",
+  "kitchen", "waiter", "porter", "houseman", "marketing",
+]);
 
 const ROLE_COLORS: Record<string, { color: string; bg: string; border: string }> = {
   governance:  { color: "#c084fc", bg: "rgba(192,132,252,0.1)", border: "rgba(192,132,252,0.25)" },
@@ -706,7 +712,7 @@ function EquipeSection({ propertyId }: { propertyId: string }) {
           StaffService.getPropertyScheduleOverrides(propertyId, fromYMD, toYMDStr),
           StaffService.getPropertyCheckpoints(propertyId),
         ]);
-        setAllStaff((sv ?? []) as StaffWithSchedules[]);
+        setAllStaff(((sv ?? []) as StaffWithSchedules[]).filter(s => OPERATIONAL_ROLES.has(s.role)));
         setOverrides(ov ?? []);
         setCheckpoints(cp ?? []);
       } finally {
