@@ -606,8 +606,9 @@ function StaffProfileDrawer({ staff, eff, onClose }: {
 
 // ── Folgas Hoje ───────────────────────────────────────────────────────────────
 
-function FolgasHoje({ todaySchedules }: {
+function FolgasHoje({ todaySchedules, onSelect }: {
   todaySchedules: { staff: StaffWithSchedules; eff: { isWork: boolean; startTime?: string; endTime?: string } }[];
+  onSelect: (ts: { staff: StaffWithSchedules; eff: { isWork: boolean; startTime?: string; endTime?: string } }) => void;
 }) {
   const [open, setOpen] = useState(false);
   const off = todaySchedules.filter(ts => !ts.eff.isWork);
@@ -658,7 +659,7 @@ function FolgasHoje({ todaySchedules }: {
             const s = ts.staff;
             const rs = getRoleStyle(s.role);
             return (
-              <div key={s.id} style={{ display: "flex", gap: 10, alignItems: "center", opacity: 0.7 }}>
+              <button key={s.id} onClick={() => onSelect(ts)} style={{ display: "flex", gap: 10, alignItems: "center", opacity: 0.7, background: "none", border: "none", cursor: "pointer", padding: 0, width: "100%", textAlign: "left" }}>
                 {s.profilePictureUrl ? (
                   <img src={s.profilePictureUrl} alt={s.fullName} style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", border: `2px solid ${rs.border}`, flexShrink: 0 }} />
                 ) : (
@@ -671,7 +672,7 @@ function FolgasHoje({ todaySchedules }: {
                   <div style={{ fontSize: 11, color: T.muted }}>{ROLE_LABELS[s.role] ?? s.role}</div>
                 </div>
                 <div style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 99, background: T.glass3, color: T.muted }}>Folga</div>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -861,7 +862,7 @@ function EquipeSection({ propertyId }: { propertyId: string }) {
       </div>
 
       {/* Folgas hoje */}
-      <FolgasHoje todaySchedules={todaySchedules} />
+      <FolgasHoje todaySchedules={todaySchedules} onSelect={setSelectedStaff} />
 
       {/* Aniversários do mês */}
       {birthdaysThisMonth.length > 0 && (
