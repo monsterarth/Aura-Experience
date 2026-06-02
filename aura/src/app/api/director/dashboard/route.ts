@@ -24,7 +24,14 @@ export async function GET(request: NextRequest) {
   const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const since48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
   const in30d = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const in7d = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  // Semana Seg–Dom da semana corrente
+  const dayOfWeek = todayStart.getDay(); // 0=Dom
+  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const weekMonday = new Date(todayStart); weekMonday.setDate(todayStart.getDate() + diffToMonday);
+  const weekSunday = new Date(weekMonday); weekSunday.setDate(weekMonday.getDate() + 6);
+  const weekMondayStr = weekMonday.toISOString().split('T')[0];
+  const weekSundayStr = weekSunday.toISOString().split('T')[0];
 
   try {
     const [
@@ -87,9 +94,12 @@ export async function GET(request: NextRequest) {
         .eq('propertyId', propertyId).gt('date', today).order('date', { ascending: true }).limit(1),
       supabaseAdmin.from('weddings').select('id, coupleName, date, exclusive, guestCount')
         .eq('propertyId', propertyId).gte('date', today).lte('date', in30d).order('date', { ascending: true }),
+      // Stays que se sobrepõem com qualquer dia da semana Seg-Dom
       supabaseAdmin.from('stays').select('checkIn, checkOut, guestCount')
-        .eq('propertyId', propertyId).lte('checkIn', in7d).gte('checkOut', today)
-        .in('status', ['pending', 'pre_checkin_done', 'active']),
+        .eq('propertyId', propertyId)
+        .lte('checkIn', weekSundayStr + 'T23:59:59')
+        .gte('checkOut', weekMondayStr)
+        .in('status', ['pending', 'pre_checkin_done', 'active', 'checked_out', 'finished', 'archived']),
       supabaseAdmin.from('stays').select('checkIn, checkOut, guestCount')
         .eq('propertyId', propertyId).gte('checkIn', monthStartStr).lte('checkIn', monthEndStr),
       supabaseAdmin.from('weddings').select('id', { count: 'exact', head: true })
@@ -152,14 +162,19 @@ export async function GET(request: NextRequest) {
       daysUntil: Math.ceil((new Date(w.date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
     }));
 
-    // Ocupação por dia (próximos 7 dias)
+    // Ocupação por dia — Seg a Dom da semana corrente
     const weekStays = weekStaysRes.data ?? [];
+    const DAY_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
     const weekOccupancy = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(todayStart); d.setDate(d.getDate() + i);
+      const d = new Date(weekMonday); d.setDate(weekMonday.getDate() + i);
       const dStr = d.toISOString().split('T')[0];
-      const DAY_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
-      const occupied = weekStays.filter(s => s.checkIn <= dStr && s.checkOut > dStr).length;
-      const checkinsExpected = weekStays.filter(s => s.checkIn === dStr).length;
+      // Normaliza checkIn/checkOut para YYYY-MM-DD para comparação segura
+      const occupied = weekStays.filter(s => {
+        const ci = (s.checkIn as string).slice(0, 10);
+        const co = (s.checkOut as string).slice(0, 10);
+        return ci <= dStr && co > dStr;
+      }).length;
+      const checkinsExpected = weekStays.filter(s => (s.checkIn as string).slice(0, 10) === dStr).length;
       const pct = totalCabins > 0 ? Math.round((occupied / totalCabins) * 100) : 0;
       return { date: dStr, dayLabel: DAY_SHORT[d.getDay()], occupied, total: totalCabins, pct, checkinsExpected };
     });
