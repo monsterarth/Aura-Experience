@@ -97,11 +97,13 @@ export async function GET(request: NextRequest) {
       // Stays que se sobrepõem com qualquer dia da semana Seg-Dom
       supabaseAdmin.from('stays').select('checkIn, checkOut, guestCount')
         .eq('propertyId', propertyId)
-        .lte('checkIn', weekSunday.toISOString())
-        .gte('checkOut', weekMonday.toISOString())
+        .lte('checkIn', weekSundayStr)
+        .gte('checkOut', weekMondayStr)
         .in('status', ['pending', 'pre_checkin_done', 'active', 'checked_out', 'finished', 'archived']),
       supabaseAdmin.from('stays').select('checkIn, checkOut, guestCount')
-        .eq('propertyId', propertyId).gte('checkIn', monthStartStr).lte('checkIn', monthEndStr),
+        .eq('propertyId', propertyId)
+        .lte('checkIn', monthEndStr)
+        .gte('checkOut', monthStartStr),
       supabaseAdmin.from('weddings').select('id', { count: 'exact', head: true })
         .eq('propertyId', propertyId).gte('date', monthStartStr).lte('date', monthEndStr),
       supabaseAdmin.from('maintenance_tasks').select('id', { count: 'exact', head: true })
@@ -163,6 +165,9 @@ export async function GET(request: NextRequest) {
     }));
 
     // Ocupação por dia — Seg a Dom da semana corrente
+    console.log('[director/week] range:', weekMondayStr, '→', weekSundayStr, '| stays found:', weekStaysRes.data?.length, '| error:', weekStaysRes.error?.message);
+    console.log('[director/week] sample:', weekStaysRes.data?.[0]);
+    console.log('[director/month] monthStays found:', monthStaysRes.data?.length, '| error:', monthStaysRes.error?.message);
     const weekStays = weekStaysRes.data ?? [];
     const DAY_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
     const weekOccupancy = Array.from({ length: 7 }, (_, i) => {
