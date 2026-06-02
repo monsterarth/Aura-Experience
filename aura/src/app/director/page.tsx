@@ -133,7 +133,8 @@ const DAY_SHORT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 type UpcomingEvent = {
   id: string; title: string; startDate: string; endDate: string | null;
   startTime: string | null; endTime: string | null; location: string | null;
-  category: string; type: string; imageUrl: string | null; description: string | null;
+  category: string; type: string; status: string;
+  imageUrl: string | null; description: string | null;
   price: number | null; priceDescription: string | null; featured: boolean; daysUntil: number;
 };
 
@@ -851,6 +852,7 @@ function EventDrawer({ event, onClose }: { event: UpcomingEvent; onClose: () => 
 function AgendaSection({ data }: { data: DashData }) {
   const [selectedEvent, setSelectedEvent] = useState<UpcomingEvent | null>(null);
   const [selectedWedding, setSelectedWedding] = useState<DashData["upcomingWeddings"][0] | null>(null);
+  const [daysWindow, setDaysWindow] = useState(30);
 
   // Unir eventos e casamentos numa lista ordenada por data
   const weddingItems = data.upcomingWeddings.map(w => ({
@@ -859,7 +861,11 @@ function AgendaSection({ data }: { data: DashData }) {
   const eventItems = data.upcomingEvents.map(e => ({
     kind: "event" as const, date: e.startDate, daysUntil: e.daysUntil, e,
   }));
-  const allItems = [...weddingItems, ...eventItems].sort((a, b) => a.date.localeCompare(b.date));
+  const allItems = [...weddingItems, ...eventItems]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .filter(item => item.daysUntil <= daysWindow);
+  const totalItems = [...weddingItems, ...eventItems].length;
+  const hasMore = allItems.length < totalItems;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -919,6 +925,11 @@ function AgendaSection({ data }: { data: DashData }) {
               <div style={{ fontSize: 10, color: T.g1, fontWeight: 600, textTransform: "uppercase", marginBottom: 2 }}>
                 {CATEGORY_LABELS[e.category] ?? "Evento"}
                 {e.featured && <span style={{ marginLeft: 6, color: T.amber }}>★</span>}
+                {e.status === "draft" && (
+                  <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 99, background: T.amberBg, color: T.amber, border: `1px solid ${T.amberBorder}`, textTransform: "uppercase" }}>
+                    Não publicado
+                  </span>
+                )}
               </div>
               <div style={{ fontSize: 14, fontWeight: 700, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.title}</div>
               <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>
@@ -939,6 +950,16 @@ function AgendaSection({ data }: { data: DashData }) {
           </button>
         );
       })}
+
+      {hasMore && (
+        <button onClick={() => setDaysWindow(w => w + 30)} style={{
+          width: "100%", padding: "11px 0", borderRadius: 14,
+          border: `1px solid ${T.border}`, background: T.glass,
+          color: T.muted, fontSize: 13, fontWeight: 600, cursor: "pointer",
+        }}>
+          Carregar mais 30 dias
+        </button>
+      )}
 
       {selectedEvent && <EventDrawer event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
       {selectedWedding && <WeddingDrawer w={selectedWedding} onClose={() => setSelectedWedding(null)} />}

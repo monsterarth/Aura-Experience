@@ -23,7 +23,8 @@ export async function GET(request: NextRequest) {
 
   const since30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const since48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-  const in30dStr = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const in30dStr = new Date(Date.now() + 30  * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const in90dStr = new Date(Date.now() + 90  * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
   // Semana Seg–Dom da semana corrente
   const dow = todayStart.getDay();
@@ -119,12 +120,12 @@ export async function GET(request: NextRequest) {
         .eq('propertyId', propertyId)
         .gte('weddingDate', today).lte('weddingDate', in30dStr)
         .order('weddingDate', { ascending: true }),
-      // Eventos publicados próximos 30 dias
+      // Eventos publicados e rascunhos próximos 90 dias
       supabaseAdmin.from('events')
-        .select('id, title, startDate, endDate, startTime, endTime, location, category, type, imageUrl, description, price, priceDescription, featured')
+        .select('id, title, startDate, endDate, startTime, endTime, location, category, type, status, imageUrl, description, price, priceDescription, featured')
         .eq('propertyId', propertyId)
-        .eq('status', 'published')
-        .gte('startDate', today).lte('startDate', in30dStr)
+        .in('status', ['published', 'draft'])
+        .gte('startDate', today).lte('startDate', in90dStr)
         .order('startDate', { ascending: true }),
       // Stays da semana (Seg–Dom)
       supabaseAdmin.from('stays').select('checkIn, checkOut')
@@ -291,6 +292,7 @@ export async function GET(request: NextRequest) {
         id: e.id, title: e.title, startDate: e.startDate, endDate: e.endDate ?? null,
         startTime: e.startTime ?? null, endTime: e.endTime ?? null,
         location: e.location ?? null, category: e.category, type: e.type,
+        status: e.status,
         imageUrl: e.imageUrl ?? null, description: e.description ?? null,
         price: e.price ?? null, priceDescription: e.priceDescription ?? null,
         featured: !!e.featured,
