@@ -53,7 +53,9 @@ const ROLE_LABELS: Record<string, string> = {
   houseman:    "Mensageiro",
   marketing:   "Marketing",
   hr:          "Gestão",
+  manager:     "Gerente / RH",
   admin:       "Administrador",
+  director:    "Diretor",
   super_admin: "Super Admin",
 };
 
@@ -138,7 +140,7 @@ function HRDashboardContent() {
   const weekStart = getMonday(today);
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
-  const activeStaff = staffWithSchedules.filter(s => s.active);
+  const activeStaff = staffWithSchedules.filter(s => s.active && s.role !== 'director');
 
   // KPI 1 — Equipe ativa
   const activeCount = activeStaff.length;
