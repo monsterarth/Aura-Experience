@@ -166,6 +166,11 @@ type DashData = {
     notes: string | null; status: string | null;
   }[];
   upcomingEvents: UpcomingEvent[];
+  recentSurveys: {
+    id: string; guestName: string; npsScore: number | null;
+    averageRating: number | null; categoryRatings: Record<string, number>;
+    isDetractor: boolean; createdAt: string;
+  }[];
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -184,9 +189,9 @@ function fmtDate(iso: string) {
 
 // ── Sub-components ───────────────────────────────────────────────────────────
 
-function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+function Card({ children, style, onClick }: { children: React.ReactNode; style?: React.CSSProperties; onClick?: () => void }) {
   return (
-    <div style={{
+    <div onClick={onClick} style={{
       background: T.glass2,
       border: `1px solid ${T.border}`,
       borderRadius: 16,
@@ -236,7 +241,7 @@ function FinancePlaceholder({ label = "Módulo financeiro em breve" }: { label?:
 
 // ── Tab: Hoje ────────────────────────────────────────────────────────────────
 
-function TodayTab({ data, onOpenAgenda }: { data: DashData; onOpenAgenda: () => void }) {
+function TodayTab({ data, onOpenAgenda, onOpenReviews }: { data: DashData; onOpenAgenda: () => void; onOpenReviews: () => void }) {
   const occ = data.stats;
   const occPct = occ.totalCabins > 0 ? Math.round((occ.occupiedCabins / occ.totalCabins) * 100) : 0;
 
@@ -275,8 +280,11 @@ function TodayTab({ data, onOpenAgenda }: { data: DashData; onOpenAgenda: () => 
 
       {/* NPS */}
       {data.nps.score !== null && (
-        <Card>
-          <div style={{ fontSize: 11, color: T.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 12 }}>Satisfação dos Hóspedes</div>
+        <Card style={{ cursor: "pointer" }} onClick={onOpenReviews}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: T.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em" }}>Satisfação dos Hóspedes</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: T.g1 }}>Ver todas <ChevronRight size={12} /></div>
+          </div>
           <div style={{ display: "flex", gap: 16, alignItems: "flex-end", marginBottom: 14 }}>
             <div>
               <div style={{ fontSize: 40, fontWeight: 900, color: T.text, lineHeight: 1 }}>{data.nps.score?.toFixed(1)}</div>
@@ -483,6 +491,131 @@ const CATEGORY_LABELS: Record<string, string> = {
   culture: "Cultura", nightlife: "Vida Noturna", corporate: "Corporativo",
   wedding: "Casamento", birthday: "Aniversário", other: "Outro",
 };
+
+// ── Reviews Drawer ────────────────────────────────────────────────────────────
+
+const CATEGORY_RATING_LABELS: Record<string, string> = {
+  governance: "Governança", reception: "Recepção", kitchen: "Cozinha",
+  maintenance: "Manutenção", overall: "Geral", cleanliness: "Limpeza",
+  service: "Serviço", location: "Localização", value: "Custo-benefício",
+};
+
+function NpsStars({ score, max = 10 }: { score: number; max?: number }) {
+  const pct = Math.round((score / max) * 100);
+  const color = score >= 9 ? T.green : score >= 7 ? T.amber : T.red;
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{ fontSize: 20, fontWeight: 900, color }}>{score}</div>
+      <div style={{ fontSize: 11, color: T.muted }}>/ {max}</div>
+    </div>
+  );
+}
+
+function ReviewsDrawer({ surveys, onClose }: {
+  surveys: DashData["recentSurveys"];
+  onClose: () => void;
+}) {
+  const [filter, setFilter] = useState<"todos" | "promotores" | "detratores">("todos");
+
+  const filtered = surveys.filter(s => {
+    if (filter === "promotores") return (s.npsScore ?? 0) >= 9;
+    if (filter === "detratores") return s.isDetractor;
+    return true;
+  });
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)" }} onClick={onClose} />
+      <div style={{
+        position: "relative", background: "#0d0f1a", borderRadius: "24px 24px 0 0",
+        border: `1px solid ${T.border2}`, animation: "dir-slide-up .25s ease",
+        maxHeight: "88dvh", overflowY: "auto", paddingBottom: "env(safe-area-inset-bottom,0px)",
+      }}>
+        <div style={{ width: 36, height: 4, borderRadius: 99, background: T.border2, margin: "12px auto 0" }} />
+        <button onClick={onClose} style={{
+          position: "absolute", top: 14, right: 16, width: 32, height: 32, borderRadius: 99,
+          background: T.glass3, border: `1px solid ${T.border}`, display: "flex", alignItems: "center",
+          justifyContent: "center", cursor: "pointer", color: T.muted,
+        }}><X size={14} /></button>
+
+        <div style={{ padding: "20px 20px 28px", display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Header */}
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <Star size={20} color={T.amber} />
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: T.text }}>Avaliações</div>
+              <div style={{ fontSize: 12, color: T.muted }}>Últimos 30 dias · {surveys.length} respostas</div>
+            </div>
+          </div>
+
+          {/* Filtros */}
+          <div style={{ display: "flex", gap: 6 }}>
+            {(["todos", "promotores", "detratores"] as const).map(f => (
+              <button key={f} onClick={() => setFilter(f)} style={{
+                padding: "5px 12px", borderRadius: 99, border: `1px solid ${filter === f ? T.g1 : T.border}`,
+                background: filter === f ? "rgba(155,109,255,0.15)" : T.glass,
+                color: filter === f ? T.g1 : T.muted,
+                fontSize: 11, fontWeight: 600, cursor: "pointer", textTransform: "capitalize",
+              }}>{f === "todos" ? "Todos" : f === "promotores" ? "Promotores" : "Detratores"}</button>
+            ))}
+          </div>
+
+          {/* Lista */}
+          {filtered.length === 0 && (
+            <div style={{ textAlign: "center", padding: "24px 0", color: T.muted2, fontSize: 13 }}>Nenhuma avaliação neste filtro</div>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {filtered.map(s => {
+              const nps = s.npsScore;
+              const scoreColor = nps == null ? T.muted : nps >= 9 ? T.green : nps >= 7 ? T.amber : T.red;
+              const scoreBg   = nps == null ? T.glass  : nps >= 9 ? T.greenBg : nps >= 7 ? T.amberBg : T.redBg;
+              const label     = nps == null ? "–" : nps >= 9 ? "Promotor" : nps >= 7 ? "Neutro" : "Detrator";
+              const catEntries = Object.entries(s.categoryRatings ?? {}).filter(([, v]) => typeof v === "number");
+              const dateStr = new Date(s.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+
+              return (
+                <div key={s.id} style={{
+                  background: T.glass2, border: `1px solid ${s.isDetractor ? T.redBorder : T.border}`,
+                  borderRadius: 14, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10,
+                }}>
+                  {/* Topo: nome + NPS */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{s.guestName}</div>
+                      <div style={{ fontSize: 11, color: T.muted }}>{dateStr}</div>
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
+                      {nps != null && (
+                        <div style={{ fontSize: 18, fontWeight: 900, color: scoreColor }}>{nps}<span style={{ fontSize: 11, fontWeight: 400, color: T.muted }}>/10</span></div>
+                      )}
+                      <div style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 99, background: scoreBg, color: scoreColor, textTransform: "uppercase" }}>{label}</div>
+                    </div>
+                  </div>
+
+                  {/* Categorias */}
+                  {catEntries.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      {catEntries.map(([cat, val]) => (
+                        <div key={cat} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ fontSize: 11, color: T.muted, width: 90, flexShrink: 0 }}>{CATEGORY_RATING_LABELS[cat] ?? cat}</div>
+                          <div style={{ flex: 1, height: 5, borderRadius: 99, background: T.glass3, overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: `${(val / 5) * 100}%`, background: val >= 4 ? T.green : val >= 3 ? T.amber : T.red, borderRadius: 99 }} />
+                          </div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: T.text, width: 20, textAlign: "right" }}>{val}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function WeddingDrawer({ w, onClose }: { w: DashData["upcomingWeddings"][0]; onClose: () => void }) {
   return (
@@ -1256,6 +1389,7 @@ export default function DirectorPage() {
   const { currentProperty: property } = useProperty();
 
   const [section, setSection] = useState<NavSection>("home");
+  const [showReviews, setShowReviews] = useState(false);
   const [tab, setTab] = useState<"hoje" | "semana" | "mes">("hoje");
   const [data, setData] = useState<DashData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1367,7 +1501,7 @@ export default function DirectorPage() {
                   ))}
                 </div>
 
-                {tab === "hoje" && <TodayTab data={data} onOpenAgenda={() => setSection("agenda")} />}
+                {tab === "hoje" && <TodayTab data={data} onOpenAgenda={() => setSection("agenda")} onOpenReviews={() => setShowReviews(true)} />}
                 {tab === "semana" && <WeekTab data={data} />}
                 {tab === "mes" && <MonthTab data={data} />}
               </>
@@ -1400,6 +1534,7 @@ export default function DirectorPage() {
           </div>
         </div>
 
+        {showReviews && <ReviewsDrawer surveys={data.recentSurveys ?? []} onClose={() => setShowReviews(false)} />}
         <BottomNav active={section} onChange={handleNavChange} />
       </div>
     </>

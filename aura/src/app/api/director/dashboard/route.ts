@@ -55,6 +55,7 @@ export async function GET(request: NextRequest) {
       monthWeddingsRes,
       monthMaintenanceRes,
       monthComplaintsRes,
+      recentSurveysRes,
     ] = await Promise.all([
       // Cabanas ocupadas agora
       supabaseAdmin.from('stays').select('id', { count: 'exact', head: true })
@@ -144,6 +145,11 @@ export async function GET(request: NextRequest) {
       // Reclamações no mês (isDetractor = true no metrics)
       supabaseAdmin.from('survey_responses').select('metrics')
         .eq('propertyId', propertyId).gte('createdAt', monthStart.toISOString()),
+      // Avaliações individuais últimos 30 dias com nome do hóspede
+      supabaseAdmin.from('survey_responses')
+        .select('id, metrics, createdAt, guestId, guests!inner(fullName)')
+        .eq('propertyId', propertyId).gte('createdAt', since30d)
+        .order('createdAt', { ascending: false }).limit(30),
     ]);
 
     // ── Ocupação ──────────────────────────────────────────────────────────────
@@ -286,6 +292,15 @@ export async function GET(request: NextRequest) {
         complaints:        monthComplaints,
       },
       upcomingWeddings,
+      recentSurveys: (recentSurveysRes.data ?? []).map((r: any) => ({
+        id: r.id,
+        guestName: r.guests?.fullName ?? "Hóspede",
+        npsScore: (r.metrics as any)?.npsScore ?? null,
+        averageRating: (r.metrics as any)?.averageRating ?? null,
+        categoryRatings: (r.metrics as any)?.categoryRatings ?? {},
+        isDetractor: !!(r.metrics as any)?.isDetractor,
+        createdAt: r.createdAt,
+      })),
     });
   } catch (err) {
     console.error('[director/dashboard]', err);
