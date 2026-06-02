@@ -399,6 +399,7 @@ export interface MaintenanceTask {
   isRecurring: boolean;
   recurrenceRule?: string; // E.g., 'daily', 'weekly', 'monthly'
   lastRecurrenceCreated?: Timestamp; // Helps Cron avoid duplicates
+  recurrenceSourceId?: string; // Links cloned task back to the MaintenanceRule that generated it
 
   checklist: MaintenanceChecklistItem[];
 
@@ -409,10 +410,33 @@ export interface MaintenanceTask {
     notes?: string;
   };
 
+  conferredBy?: string; // ID of the coordinator who approved/closed the task
+
   startedAt?: Timestamp;
   finishedAt?: Timestamp;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+export interface MaintenanceRule {
+  id: string;
+  propertyId: string;
+  name: string;
+  description?: string;
+  trigger: 'fixed_interval';
+  interval: number;
+  intervalUnit: 'days' | 'weeks' | 'months';
+  cabinId?: string;
+  structureId?: string;
+  unitId?: string;
+  customLocation?: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  checklist: MaintenanceChecklistItem[];
+  assignedTo: string[];
+  active: boolean;
+  lastTriggeredAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SurveyReward {

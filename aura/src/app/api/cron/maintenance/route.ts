@@ -1,7 +1,80 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { MaintenanceTask } from '@/types/aura';
+import { MaintenanceTask, MaintenanceRule } from '@/types/aura';
 import { v4 as uuidv4 } from 'uuid';
+
+function getNextTriggerDate(rule: MaintenanceRule): Date {
+    const base = rule.lastTriggeredAt ? new Date(rule.lastTriggeredAt) : new Date(rule.createdAt);
+    const next = new Date(base);
+    if (rule.intervalUnit === 'days') {
+        next.setDate(next.getDate() + rule.interval);
+    } else if (rule.intervalUnit === 'weeks') {
+        next.setDate(next.getDate() + rule.interval * 7);
+    } else {
+        next.setMonth(next.getMonth() + rule.interval);
+    }
+    return next;
+}
+
+async function applyMaintenanceRules(propertyId: string): Promise<number> {
+    const { data: rules } = await supabaseAdmin
+        .from('maintenance_rules')
+        .select('*')
+        .eq('propertyId', propertyId)
+        .eq('active', true);
+
+    if (!rules || rules.length === 0) return 0;
+
+    const now = new Date();
+    const todayDate = now.toISOString().split('T')[0];
+    let created = 0;
+
+    for (const rule of rules as MaintenanceRule[]) {
+        const nextTrigger = getNextTriggerDate(rule);
+        if (now < nextTrigger) continue;
+
+        // Dedup: skip if already created today for this rule
+        const { data: existing } = await supabaseAdmin
+            .from('maintenance_tasks')
+            .select('id')
+            .eq('recurrenceSourceId', rule.id)
+            .eq('recurrenceDate', todayDate)
+            .maybeSingle();
+
+        if (existing) continue;
+
+        const isoNow = now.toISOString();
+        await supabaseAdmin.from('maintenance_tasks').insert({
+            id: uuidv4(),
+            propertyId,
+            title: rule.name,
+            description: rule.description || '',
+            priority: rule.priority,
+            status: 'pending',
+            cabinId: rule.cabinId || null,
+            structureId: rule.structureId || null,
+            unitId: rule.unitId || null,
+            customLocation: rule.customLocation || null,
+            assignedTo: rule.assignedTo || [],
+            checklist: (rule.checklist || []).map((c: any) => ({ ...c, checked: false })),
+            isRecurring: false,
+            recurrenceSourceId: rule.id,
+            recurrenceDate: todayDate,
+            blocksCabin: false,
+            createdAt: isoNow,
+            updatedAt: isoNow,
+        });
+
+        await supabaseAdmin
+            .from('maintenance_rules')
+            .update({ lastTriggeredAt: isoNow, updatedAt: isoNow })
+            .eq('id', rule.id);
+
+        created++;
+    }
+
+    return created;
+}
 
 async function writeCronLog(action: string, entityId: string, details: string, newData: object) {
   try {
@@ -42,6 +115,10 @@ export async function GET(request: Request) {
 
         for (const prop of properties) {
             const propertyId = prop.id;
+
+            // Apply rules-based recurring tasks
+            const rulesCreated = await applyMaintenanceRules(propertyId);
+            tasksCreated += rulesCreated;
 
             const { data: activeTasks } = await supabaseAdmin
                 .from('maintenance_tasks')

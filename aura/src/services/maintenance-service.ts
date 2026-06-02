@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import { MaintenanceTask, Cabin, Structure } from "@/types/aura";
+import { MaintenanceTask, MaintenanceRule } from "@/types/aura";
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
 
@@ -159,5 +159,103 @@ export const MaintenanceService = {
             propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "MAINTENANCE", entityId: taskId,
             details: `Finalizou tarefa. Resolvida: ${completionData.resolved}, Limpeza Necessária: ${completionData.needsCleaning}`
         });
-    }
+    },
+
+    async confirmTaskQuality(propertyId: string, taskId: string, notes: string, actorId: string, actorName: string) {
+        const { data: task } = await supabase.from('maintenance_tasks').select('*').eq('id', taskId).single();
+        if (!task) throw new Error("Tarefa não encontrada.");
+
+        await supabase.from('maintenance_tasks')
+            .update({
+                status: 'completed',
+                conferredBy: actorId,
+                finishedAt: task.finishedAt || new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            })
+            .eq('id', taskId);
+
+        if (task.blocksCabin && task.cabinId) {
+            await supabase.from('cabins').update({ status: 'available' }).eq('id', task.cabinId);
+        }
+
+        await AuditService.log({
+            propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "MAINTENANCE", entityId: taskId,
+            details: `Coordenador aprovou e concluiu tarefa de manutenção.${notes ? ` Obs: ${notes}` : ''}`
+        });
+    },
+
+    async rollbackTaskStatus(propertyId: string, taskId: string, reason: string, actorId: string, actorName: string) {
+        await supabase.from('maintenance_tasks')
+            .update({
+                status: 'pending',
+                updatedAt: new Date().toISOString()
+            })
+            .eq('id', taskId);
+
+        await AuditService.log({
+            propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "MAINTENANCE", entityId: taskId,
+            details: `Coordenador reprovou tarefa de manutenção. Motivo: ${reason}`
+        });
+    },
+
+    // ── Maintenance Rules ──────────────────────────────────────────────────────
+
+    async getRules(propertyId: string): Promise<MaintenanceRule[]> {
+        const { data } = await supabase
+            .from('maintenance_rules')
+            .select('*')
+            .eq('propertyId', propertyId)
+            .order('createdAt', { ascending: false });
+        return (data || []) as MaintenanceRule[];
+    },
+
+    async saveRule(propertyId: string, rule: Partial<MaintenanceRule>, actorId: string, actorName: string): Promise<string> {
+        const isNew = !rule.id;
+        const ruleId = rule.id || uuidv4();
+        const now = new Date().toISOString();
+
+        await supabase.from('maintenance_rules').upsert({
+            ...rule,
+            id: ruleId,
+            propertyId,
+            updatedAt: now,
+            ...(isNew && { createdAt: now }),
+        });
+
+        await AuditService.log({
+            propertyId, userId: actorId, userName: actorName, action: isNew ? "CREATE" : "UPDATE", entity: "MAINTENANCE", entityId: ruleId,
+            details: `${isNew ? 'Regra de manutenção criada' : 'Regra de manutenção editada'}: ${rule.name}`
+        });
+
+        return ruleId;
+    },
+
+    async deleteRule(propertyId: string, ruleId: string, actorId: string, actorName: string) {
+        const { data: rule } = await supabase.from('maintenance_rules').select('name').eq('id', ruleId).single();
+        await supabase.from('maintenance_rules').delete().eq('id', ruleId).eq('propertyId', propertyId);
+
+        await AuditService.log({
+            propertyId, userId: actorId, userName: actorName, action: "DELETE", entity: "MAINTENANCE", entityId: ruleId,
+            details: `Regra de manutenção apagada: ${rule?.name || ruleId}`
+        });
+    },
+
+    async toggleRule(propertyId: string, ruleId: string, active: boolean, actorId: string, actorName: string) {
+        await supabase.from('maintenance_rules')
+            .update({ active, updatedAt: new Date().toISOString() })
+            .eq('id', ruleId)
+            .eq('propertyId', propertyId);
+
+        await AuditService.log({
+            propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "MAINTENANCE", entityId: ruleId,
+            details: `Regra de manutenção ${active ? 'ativada' : 'desativada'}.`
+        });
+    },
+
+    async updateRuleLastTriggered(propertyId: string, ruleId: string, timestamp: string) {
+        await supabase.from('maintenance_rules')
+            .update({ lastTriggeredAt: timestamp, updatedAt: timestamp })
+            .eq('id', ruleId)
+            .eq('propertyId', propertyId);
+    },
 };
