@@ -147,7 +147,7 @@ export async function GET(request: NextRequest) {
         .eq('propertyId', propertyId).gte('createdAt', monthStart.toISOString()),
       // Avaliações individuais últimos 30 dias
       supabaseAdmin.from('survey_responses')
-        .select('id, metrics, createdAt, stayId')
+        .select('id, metrics, createdAt, stayId, answers')
         .eq('propertyId', propertyId).gte('createdAt', since30d)
         .order('createdAt', { ascending: false }).limit(30),
     ]);
@@ -310,6 +310,9 @@ export async function GET(request: NextRequest) {
           categoryRatings: (r.metrics as any)?.categoryRatings ?? {},
           isDetractor: !!(r.metrics as any)?.isDetractor,
           createdAt: r.createdAt,
+          comments: ((r.answers ?? []) as { questionId: string; value: any }[])
+            .map(a => typeof a.value === 'string' ? a.value.trim() : null)
+            .filter((v): v is string => !!v && v.length > 2),
         }));
       })(),
     });

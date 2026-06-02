@@ -169,7 +169,7 @@ type DashData = {
   recentSurveys: {
     id: string; guestName: string; npsScore: number | null;
     averageRating: number | null; categoryRatings: Record<string, number>;
-    isDetractor: boolean; createdAt: string;
+    isDetractor: boolean; createdAt: string; comments: string[];
   }[];
 };
 
@@ -511,6 +511,83 @@ function NpsStars({ score, max = 10 }: { score: number; max?: number }) {
   );
 }
 
+function ReviewCard({ s }: { s: DashData["recentSurveys"][0] }) {
+  const [showComments, setShowComments] = useState(false);
+  const nps = s.npsScore;
+  const scoreColor = nps == null ? T.muted : nps >= 9 ? T.green : nps >= 7 ? T.amber : T.red;
+  const scoreBg    = nps == null ? T.glass  : nps >= 9 ? T.greenBg : nps >= 7 ? T.amberBg : T.redBg;
+  const label      = nps == null ? "–" : nps >= 9 ? "Promotor" : nps >= 7 ? "Neutro" : "Detrator";
+  const catEntries = Object.entries(s.categoryRatings ?? {}).filter(([, v]) => typeof v === "number");
+  const dateStr    = new Date(s.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+  const hasComments = s.comments && s.comments.length > 0;
+
+  return (
+    <div style={{
+      background: T.glass2, border: `1px solid ${s.isDetractor ? T.redBorder : T.border}`,
+      borderRadius: 14, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10,
+    }}>
+      {/* Topo: nome + NPS */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{s.guestName}</div>
+          <div style={{ fontSize: 11, color: T.muted }}>{dateStr}</div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
+          {nps != null && (
+            <div style={{ fontSize: 18, fontWeight: 900, color: scoreColor }}>{nps}<span style={{ fontSize: 11, fontWeight: 400, color: T.muted }}>/10</span></div>
+          )}
+          <div style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 99, background: scoreBg, color: scoreColor, textTransform: "uppercase" }}>{label}</div>
+        </div>
+      </div>
+
+      {/* Categorias */}
+      {catEntries.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          {catEntries.map(([cat, val]) => (
+            <div key={cat} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ fontSize: 11, color: T.muted, width: 90, flexShrink: 0 }}>{CATEGORY_RATING_LABELS[cat] ?? cat}</div>
+              <div style={{ flex: 1, height: 5, borderRadius: 99, background: T.glass3, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${((val as number) / 5) * 100}%`, background: (val as number) >= 4 ? T.green : (val as number) >= 3 ? T.amber : T.red, borderRadius: 99 }} />
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.text, width: 20, textAlign: "right" }}>{val as number}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Botão comentários */}
+      {hasComments && (
+        <button onClick={() => setShowComments(v => !v)} style={{
+          display: "flex", alignItems: "center", gap: 6, padding: "7px 10px",
+          background: showComments ? T.glass3 : T.glass, border: `1px solid ${T.border}`,
+          borderRadius: 10, cursor: "pointer", color: T.muted, fontSize: 11, fontWeight: 600,
+          textAlign: "left", width: "100%",
+        }}>
+          <Star size={12} color={T.amber} />
+          {showComments ? "Ocultar comentários" : `Ver comentário${s.comments.length > 1 ? "s" : ""} (${s.comments.length})`}
+          <span style={{ marginLeft: "auto", fontSize: 12, transition: "transform .2s", display: "inline-block", transform: showComments ? "rotate(180deg)" : "none" }}>▾</span>
+        </button>
+      )}
+
+      {/* Comentários expandidos */}
+      {showComments && hasComments && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {s.comments.map((c, i) => (
+            <div key={i} style={{
+              background: T.glass, border: `1px solid ${T.border}`,
+              borderRadius: 10, padding: "10px 12px",
+              fontSize: 13, color: T.text, lineHeight: 1.6,
+              fontStyle: "italic",
+            }}>
+              &ldquo;{c}&rdquo;
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ReviewsDrawer({ surveys, onClose }: {
   surveys: DashData["recentSurveys"];
   onClose: () => void;
@@ -566,50 +643,7 @@ function ReviewsDrawer({ surveys, onClose }: {
             <div style={{ textAlign: "center", padding: "24px 0", color: T.muted2, fontSize: 13 }}>Nenhuma avaliação neste filtro</div>
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {filtered.map(s => {
-              const nps = s.npsScore;
-              const scoreColor = nps == null ? T.muted : nps >= 9 ? T.green : nps >= 7 ? T.amber : T.red;
-              const scoreBg   = nps == null ? T.glass  : nps >= 9 ? T.greenBg : nps >= 7 ? T.amberBg : T.redBg;
-              const label     = nps == null ? "–" : nps >= 9 ? "Promotor" : nps >= 7 ? "Neutro" : "Detrator";
-              const catEntries = Object.entries(s.categoryRatings ?? {}).filter(([, v]) => typeof v === "number");
-              const dateStr = new Date(s.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
-
-              return (
-                <div key={s.id} style={{
-                  background: T.glass2, border: `1px solid ${s.isDetractor ? T.redBorder : T.border}`,
-                  borderRadius: 14, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10,
-                }}>
-                  {/* Topo: nome + NPS */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{s.guestName}</div>
-                      <div style={{ fontSize: 11, color: T.muted }}>{dateStr}</div>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-                      {nps != null && (
-                        <div style={{ fontSize: 18, fontWeight: 900, color: scoreColor }}>{nps}<span style={{ fontSize: 11, fontWeight: 400, color: T.muted }}>/10</span></div>
-                      )}
-                      <div style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 99, background: scoreBg, color: scoreColor, textTransform: "uppercase" }}>{label}</div>
-                    </div>
-                  </div>
-
-                  {/* Categorias */}
-                  {catEntries.length > 0 && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                      {catEntries.map(([cat, val]) => (
-                        <div key={cat} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <div style={{ fontSize: 11, color: T.muted, width: 90, flexShrink: 0 }}>{CATEGORY_RATING_LABELS[cat] ?? cat}</div>
-                          <div style={{ flex: 1, height: 5, borderRadius: 99, background: T.glass3, overflow: "hidden" }}>
-                            <div style={{ height: "100%", width: `${(val / 5) * 100}%`, background: val >= 4 ? T.green : val >= 3 ? T.amber : T.red, borderRadius: 99 }} />
-                          </div>
-                          <div style={{ fontSize: 11, fontWeight: 700, color: T.text, width: 20, textAlign: "right" }}>{val}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {filtered.map(s => <ReviewCard key={s.id} s={s} />)}
           </div>
         </div>
       </div>
