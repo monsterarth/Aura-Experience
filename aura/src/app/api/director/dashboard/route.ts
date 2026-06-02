@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
         .eq('propertyId', propertyId)
         .gte('checkOut', todayStart.toISOString()).lte('checkOut', todayEnd.toISOString())
         .in('status', ['active', 'checked_out', 'finished', 'archived']),
-      supabaseAdmin.from('stays').select('guestCount')
+      supabaseAdmin.from('stays').select('counts')
         .eq('propertyId', propertyId).eq('status', 'active'),
       supabaseAdmin.from('survey_responses').select('npsScore, rating')
         .eq('propertyId', propertyId).gte('createdAt', since30d).not('npsScore', 'is', null),
@@ -95,12 +95,12 @@ export async function GET(request: NextRequest) {
       supabaseAdmin.from('weddings').select('id, coupleName, date, exclusive, guestCount')
         .eq('propertyId', propertyId).gte('date', today).lte('date', in30d).order('date', { ascending: true }),
       // Stays que se sobrepõem com qualquer dia da semana Seg-Dom
-      supabaseAdmin.from('stays').select('checkIn, checkOut, guestCount')
+      supabaseAdmin.from('stays').select('checkIn, checkOut')
         .eq('propertyId', propertyId)
         .lte('checkIn', weekSundayStr)
         .gte('checkOut', weekMondayStr)
         .in('status', ['pending', 'pre_checkin_done', 'active', 'checked_out', 'finished', 'archived']),
-      supabaseAdmin.from('stays').select('checkIn, checkOut, guestCount')
+      supabaseAdmin.from('stays').select('checkIn, checkOut')
         .eq('propertyId', propertyId)
         .lte('checkIn', monthEndStr)
         .gte('checkOut', monthStartStr),
@@ -115,7 +115,10 @@ export async function GET(request: NextRequest) {
     // Ocupação
     const occupiedCabins = occupiedRes.count ?? 0;
     const totalCabins = totalCabinsRes.count ?? 0;
-    const guestsOnProperty = (guestsRes.data ?? []).reduce((s, r) => s + (r.guestCount ?? 0), 0);
+    const guestsOnProperty = (guestsRes.data ?? []).reduce((s, r) => {
+      const c = r.counts as { adults?: number; children?: number; babies?: number } | null;
+      return s + (c?.adults ?? 0) + (c?.children ?? 0) + (c?.babies ?? 0);
+    }, 0);
 
     // NPS
     const surveyData = surveyRes.data ?? [];
@@ -165,9 +168,6 @@ export async function GET(request: NextRequest) {
     }));
 
     // Ocupação por dia — Seg a Dom da semana corrente
-    console.log('[director/week] range:', weekMondayStr, '→', weekSundayStr, '| stays found:', weekStaysRes.data?.length, '| error:', weekStaysRes.error?.message);
-    console.log('[director/week] sample:', weekStaysRes.data?.[0]);
-    console.log('[director/month] monthStays found:', monthStaysRes.data?.length, '| error:', monthStaysRes.error?.message);
     const weekStays = weekStaysRes.data ?? [];
     const DAY_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
     const weekOccupancy = Array.from({ length: 7 }, (_, i) => {
@@ -194,7 +194,6 @@ export async function GET(request: NextRequest) {
       return s + Math.ceil((co.getTime() - ci.getTime()) / (1000 * 60 * 60 * 24));
     }, 0);
     const occupancyPct = possibleNights > 0 ? Math.round((nightsSold / possibleNights) * 100) : 0;
-    const uniqueGuestsSet = new Set(monthStays.map(s => s.guestCount));
     const uniqueGuests = monthStays.length;
 
     return NextResponse.json({
