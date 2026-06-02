@@ -604,6 +604,82 @@ function StaffProfileDrawer({ staff, eff, onClose }: {
   );
 }
 
+// ── Folgas Hoje ───────────────────────────────────────────────────────────────
+
+function FolgasHoje({ todaySchedules }: {
+  todaySchedules: { staff: StaffWithSchedules; eff: { isWork: boolean; startTime?: string; endTime?: string } }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const off = todaySchedules.filter(ts => !ts.eff.isWork);
+  if (off.length === 0) return null;
+
+  return (
+    <div style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 16, overflow: "hidden" }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{
+          width: "100%", display: "flex", alignItems: "center", gap: 10,
+          padding: "12px 16px", background: "none", border: "none", cursor: "pointer",
+        }}
+      >
+        {/* Avatares compactos empilhados */}
+        <div style={{ display: "flex", flexShrink: 0 }}>
+          {off.slice(0, 4).map((ts, i) => {
+            const s = ts.staff;
+            const rs = getRoleStyle(s.role);
+            return s.profilePictureUrl ? (
+              <img key={s.id} src={s.profilePictureUrl} alt={s.fullName} style={{
+                width: 28, height: 28, borderRadius: "50%", objectFit: "cover",
+                border: `2px solid ${T.bg}`, marginLeft: i === 0 ? 0 : -8, position: "relative", zIndex: 4 - i,
+              }} />
+            ) : (
+              <div key={s.id} style={{
+                width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center",
+                justifyContent: "center", fontSize: 10, fontWeight: 800,
+                background: rs.bg, border: `2px solid ${T.bg}`, color: rs.color,
+                marginLeft: i === 0 ? 0 : -8, position: "relative", zIndex: 4 - i,
+              }}>{initials(s.fullName)}</div>
+            );
+          })}
+        </div>
+        <div style={{ flex: 1, textAlign: "left" }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: T.muted }}>Folgas hoje</span>
+          <span style={{
+            marginLeft: 8, fontSize: 11, fontWeight: 700, padding: "2px 7px", borderRadius: 99,
+            background: T.glass3, color: T.muted,
+          }}>{off.length}</span>
+        </div>
+        <span style={{ fontSize: 14, color: T.muted2, transition: "transform .2s", display: "inline-block", transform: open ? "rotate(180deg)" : "rotate(0deg)" }}>▾</span>
+      </button>
+
+      {open && (
+        <div style={{ borderTop: `1px solid ${T.border}`, padding: "10px 16px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+          {off.map(ts => {
+            const s = ts.staff;
+            const rs = getRoleStyle(s.role);
+            return (
+              <div key={s.id} style={{ display: "flex", gap: 10, alignItems: "center", opacity: 0.7 }}>
+                {s.profilePictureUrl ? (
+                  <img src={s.profilePictureUrl} alt={s.fullName} style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", border: `2px solid ${rs.border}`, flexShrink: 0 }} />
+                ) : (
+                  <div style={{ width: 36, height: 36, borderRadius: "50%", flexShrink: 0, background: rs.bg, border: `2px solid ${rs.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: rs.color }}>
+                    {initials(s.fullName)}
+                  </div>
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.fullName}</div>
+                  <div style={{ fontSize: 11, color: T.muted }}>{ROLE_LABELS[s.role] ?? s.role}</div>
+                </div>
+                <div style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 99, background: T.glass3, color: T.muted }}>Folga</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Seção: Equipe ─────────────────────────────────────────────────────────────
 
 function EquipeSection({ propertyId }: { propertyId: string }) {
@@ -783,6 +859,9 @@ function EquipeSection({ propertyId }: { propertyId: string }) {
           })}
         </div>
       </div>
+
+      {/* Folgas hoje */}
+      <FolgasHoje todaySchedules={todaySchedules} />
 
       {/* Aniversários do mês */}
       {birthdaysThisMonth.length > 0 && (
