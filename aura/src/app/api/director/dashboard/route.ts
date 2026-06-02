@@ -155,7 +155,7 @@ export async function GET(request: NextRequest) {
         .order('createdAt', { ascending: true }),
       // Ops: tarefas de governança abertas (detalhes)
       supabaseAdmin.from('housekeeping_tasks')
-        .select('id, type, status, cabinId, createdAt')
+        .select('id, type, status, cabinId, structureId, unitId, createdAt')
         .eq('propertyId', propertyId)
         .in('status', ['pending', 'in_progress', 'waiting_conference', 'awaiting_checkout'])
         .order('createdAt', { ascending: true }),
@@ -310,16 +310,35 @@ export async function GET(request: NextRequest) {
         const maintTasks = maintenanceDetailRes.data ?? [];
         const hkTasks    = hkDetailRes.data ?? [];
 
-        // Nomes das cabanas para ops
+        // Nomes das cabanas, structures e units para ops
         const cabinIdsOps = Array.from(new Set([
           ...maintTasks.map((t: any) => t.cabinId),
           ...hkTasks.map((t: any) => t.cabinId),
         ].filter(Boolean)));
-        const { data: cabinsOps } = cabinIdsOps.length
-          ? await supabaseAdmin.from('cabins').select('id, name').in('id', cabinIdsOps)
-          : { data: [] };
+        const structureIdsOps = Array.from(new Set([
+          ...maintTasks.map((t: any) => t.structureId),
+          ...hkTasks.map((t: any) => t.structureId),
+        ].filter(Boolean)));
+
+        const [cabinsOps, structuresOps] = await Promise.all([
+          cabinIdsOps.length ? supabaseAdmin.from('cabins').select('id, name').in('id', cabinIdsOps) : { data: [] },
+          structureIdsOps.length ? supabaseAdmin.from('structures').select('id, name, units:structure_units(id, name)').in('id', structureIdsOps) : { data: [] },
+        ]);
         const cabinMap: Record<string, string> = {};
-        (cabinsOps ?? []).forEach((c: any) => { cabinMap[c.id] = c.name; });
+        (cabinsOps.data ?? []).forEach((c: any) => { cabinMap[c.id] = c.name; });
+        const structureMap: Record<string, string> = {};
+        const unitMap: Record<string, string> = {};
+        (structuresOps.data ?? []).forEach((s: any) => {
+          structureMap[s.id] = s.name;
+          (s.units ?? []).forEach((u: any) => { unitMap[u.id] = `${s.name} · ${u.name}`; });
+        });
+
+        const resolveLocation = (t: any): string => {
+          if (t.cabinId)      return cabinMap[t.cabinId]    ?? "Cabana";
+          if (t.unitId)       return unitMap[t.unitId]      ?? structureMap[t.structureId] ?? "Área comum";
+          if (t.structureId)  return structureMap[t.structureId] ?? "Área comum";
+          return t.customLocation ?? "Local não especificado";
+        };
 
         const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 };
         const HK_TYPE_LABELS: Record<string, string> = {
@@ -332,13 +351,13 @@ export async function GET(request: NextRequest) {
             .sort((a: any, b: any) => (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9))
             .map((t: any) => ({
               id: t.id, title: t.title, priority: t.priority, status: t.status,
-              location: t.cabinId ? cabinMap[t.cabinId] ?? "Cabana" : t.customLocation ?? "Local não especificado",
+              location: resolveLocation(t),
               daysOpen: Math.floor((now.getTime() - new Date(t.createdAt).getTime()) / (1000 * 60 * 60 * 24)),
               createdAt: t.createdAt,
             })),
           housekeeping: hkTasks.map((t: any) => ({
             id: t.id, type: t.type, typeLabel: HK_TYPE_LABELS[t.type] ?? t.type,
-            status: t.status, cabinName: t.cabinId ? cabinMap[t.cabinId] ?? "Cabana" : "Área comum",
+            status: t.status, cabinName: resolveLocation(t),
             daysOpen: Math.floor((now.getTime() - new Date(t.createdAt).getTime()) / (1000 * 60 * 60 * 24)),
           })),
         };
