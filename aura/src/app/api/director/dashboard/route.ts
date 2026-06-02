@@ -118,7 +118,7 @@ export async function GET(request: NextRequest) {
       supabaseAdmin.from('weddings')
         .select('id, bride, groom, weddingDate, exclusivity, guestCount, coordinator, ceremonyDetails, receptionDetails, checkin, checkout, cabinsOccupied, notes, status')
         .eq('propertyId', propertyId)
-        .gte('weddingDate', today).lte('weddingDate', in30dStr)
+        .gte('weddingDate', today).lte('weddingDate', in90dStr)
         .order('weddingDate', { ascending: true }),
       // Eventos publicados e rascunhos próximos 90 dias
       supabaseAdmin.from('events')
@@ -324,7 +324,7 @@ export async function GET(request: NextRequest) {
 
         const [cabinsOps, structuresOps] = await Promise.all([
           cabinIdsOps.length ? supabaseAdmin.from('cabins').select('id, name').in('id', cabinIdsOps) : { data: [] },
-          structureIdsOps.length ? supabaseAdmin.from('structures').select('id, name, units:structure_units(id, name)').in('id', structureIdsOps) : { data: [] },
+          structureIdsOps.length ? supabaseAdmin.from('structures').select('id, name, units').in('id', structureIdsOps) : { data: [] },
         ]);
         const cabinMap: Record<string, string> = {};
         (cabinsOps.data ?? []).forEach((c: any) => { cabinMap[c.id] = c.name; });
