@@ -107,12 +107,12 @@ export async function GET(request: NextRequest) {
         .gte('createdAt', todayStart.toISOString()).lte('createdAt', todayEnd.toISOString()),
       // Próximo casamento — colunas corretas
       supabaseAdmin.from('weddings')
-        .select('id, bride, groom, weddingDate, exclusivity, guestCount')
+        .select('id, bride, groom, weddingDate, exclusivity, guestCount, coordinator, ceremonyDetails, receptionDetails, checkin, checkout, cabinsOccupied, notes, status')
         .eq('propertyId', propertyId).gt('weddingDate', today)
         .order('weddingDate', { ascending: true }).limit(1),
       // Casamentos próximos 30 dias
       supabaseAdmin.from('weddings')
-        .select('id, bride, groom, weddingDate, exclusivity, guestCount')
+        .select('id, bride, groom, weddingDate, exclusivity, guestCount, coordinator, ceremonyDetails, receptionDetails, checkin, checkout, cabinsOccupied, notes, status')
         .eq('propertyId', propertyId)
         .gte('weddingDate', today).lte('weddingDate', in30dStr)
         .order('weddingDate', { ascending: true }),
@@ -195,12 +195,21 @@ export async function GET(request: NextRequest) {
     alerts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     // ── Casamentos ────────────────────────────────────────────────────────────
-    const weddingShape = (w: { id: string; bride: string; groom: string; weddingDate: string; exclusivity: boolean; guestCount: number }) => ({
+    const weddingShape = (w: any) => ({
         id: w.id,
         coupleName: `${w.bride} & ${w.groom}`,
+        bride: w.bride, groom: w.groom,
         date: w.weddingDate,
         exclusive: !!w.exclusivity,
         guestCount: w.guestCount ?? 0,
+        coordinator: w.coordinator ?? null,
+        ceremonyDetails: w.ceremonyDetails ?? null,
+        receptionDetails: w.receptionDetails ?? null,
+        checkin: w.checkin ?? null,
+        checkout: w.checkout ?? null,
+        cabinsOccupied: w.cabinsOccupied ?? null,
+        notes: w.notes ?? null,
+        status: w.status ?? null,
         daysUntil: Math.ceil((new Date(w.weddingDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
     });
     const nw = (nextWeddingRes.data ?? [])[0] ?? null;

@@ -149,10 +149,22 @@ type DashData = {
   };
   alerts: { type: string; title: string; desc: string; createdAt: string }[];
   ops: { hkActiveTasks: number; conciergeePending: number; fbOrdersToday: number; staffOnDuty: number };
-  nextWedding: { id: string; coupleName: string; date: string; exclusive: boolean; guestCount: number; daysUntil: number } | null;
+  nextWedding: {
+    id: string; coupleName: string; bride: string; groom: string;
+    date: string; exclusive: boolean; guestCount: number; daysUntil: number;
+    coordinator: string | null; ceremonyDetails: string | null; receptionDetails: string | null;
+    checkin: string | null; checkout: string | null; cabinsOccupied: number | null;
+    notes: string | null; status: string | null;
+  } | null;
   weekOccupancy: { date: string; dayLabel: string; occupied: number; total: number; pct: number; checkinsExpected: number }[];
   monthStats: { occupancyPct: number; uniqueGuests: number; nightsSold: number; weddingsCount: number; maintenanceOrders: number; complaints: number };
-  upcomingWeddings: { id: string; coupleName: string; date: string; exclusive: boolean; guestCount: number; daysUntil: number }[];
+  upcomingWeddings: {
+    id: string; coupleName: string; bride: string; groom: string;
+    date: string; exclusive: boolean; guestCount: number; daysUntil: number;
+    coordinator: string | null; ceremonyDetails: string | null; receptionDetails: string | null;
+    checkin: string | null; checkout: string | null; cabinsOccupied: number | null;
+    notes: string | null; status: string | null;
+  }[];
   upcomingEvents: UpcomingEvent[];
 };
 
@@ -472,6 +484,115 @@ const CATEGORY_LABELS: Record<string, string> = {
   wedding: "Casamento", birthday: "Aniversário", other: "Outro",
 };
 
+function WeddingDrawer({ w, onClose }: { w: DashData["upcomingWeddings"][0]; onClose: () => void }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)" }} onClick={onClose} />
+      <div style={{
+        position: "relative", background: "#0d0f1a", borderRadius: "24px 24px 0 0",
+        border: `1px solid ${T.border2}`, animation: "dir-slide-up .25s ease",
+        maxHeight: "82dvh", overflowY: "auto", paddingBottom: "env(safe-area-inset-bottom,0px)",
+      }}>
+        <div style={{ width: 36, height: 4, borderRadius: 99, background: T.border2, margin: "12px auto 0" }} />
+        <button onClick={onClose} style={{
+          position: "absolute", top: 14, right: 16, width: 32, height: 32, borderRadius: 99,
+          background: T.glass3, border: `1px solid ${T.border}`, display: "flex", alignItems: "center",
+          justifyContent: "center", cursor: "pointer", color: T.muted,
+        }}><X size={14} /></button>
+
+        <div style={{ padding: "20px 20px 28px", display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Header */}
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: T.pinkBg, border: `1px solid ${T.pinkBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Heart size={22} color={T.pink} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10, color: T.pink, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em" }}>
+                Casamento{w.exclusive ? " · Exclusivo" : ""}
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: T.text, lineHeight: 1.2 }}>{w.coupleName}</div>
+            </div>
+            <div style={{
+              fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 99, flexShrink: 0,
+              background: w.daysUntil <= 7 ? T.greenBg : T.blueBg,
+              color: w.daysUntil <= 7 ? T.green : T.blue,
+              border: `1px solid ${w.daysUntil <= 7 ? T.greenBorder : T.blueBorder}`,
+            }}>{w.daysUntil === 0 ? "Hoje" : `em ${w.daysUntil}d`}</div>
+          </div>
+
+          {/* Info grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12, padding: "10px 12px" }}>
+              <div style={{ fontSize: 10, color: T.muted, marginBottom: 3 }}>Data do casamento</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{fmtDate(w.date)}</div>
+            </div>
+            <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12, padding: "10px 12px" }}>
+              <div style={{ fontSize: 10, color: T.muted, marginBottom: 3 }}>Convidados</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{w.guestCount}</div>
+            </div>
+            {w.checkin && (
+              <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12, padding: "10px 12px" }}>
+                <div style={{ fontSize: 10, color: T.muted, marginBottom: 3 }}>Check-in</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{fmtDate(w.checkin)}</div>
+              </div>
+            )}
+            {w.checkout && (
+              <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12, padding: "10px 12px" }}>
+                <div style={{ fontSize: 10, color: T.muted, marginBottom: 3 }}>Check-out</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{fmtDate(w.checkout)}</div>
+              </div>
+            )}
+            {w.cabinsOccupied != null && (
+              <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12, padding: "10px 12px" }}>
+                <div style={{ fontSize: 10, color: T.muted, marginBottom: 3 }}>Cabanas</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{w.cabinsOccupied}</div>
+              </div>
+            )}
+          </div>
+
+          {/* Cerimonialista */}
+          {w.coordinator && (
+            <div style={{ background: T.violetBg, border: `1px solid ${T.violetBorder}`, borderRadius: 12, padding: "12px 14px", display: "flex", gap: 10, alignItems: "center" }}>
+              <Users size={16} color={T.violet} style={{ flexShrink: 0 }} />
+              <div>
+                <div style={{ fontSize: 10, color: T.violet, fontWeight: 600, textTransform: "uppercase", marginBottom: 2 }}>Cerimonialista</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{w.coordinator}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Cerimônia / Recepção */}
+          {(w.ceremonyDetails || w.receptionDetails) && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {w.ceremonyDetails && (
+                <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12, padding: "10px 14px" }}>
+                  <div style={{ fontSize: 10, color: T.muted, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Cerimônia</div>
+                  <div style={{ fontSize: 13, color: T.text }}>{w.ceremonyDetails}</div>
+                </div>
+              )}
+              {w.receptionDetails && (
+                <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12, padding: "10px 14px" }}>
+                  <div style={{ fontSize: 10, color: T.muted, fontWeight: 600, textTransform: "uppercase", marginBottom: 3 }}>Recepção</div>
+                  <div style={{ fontSize: 13, color: T.text }}>{w.receptionDetails}</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Notas */}
+          {w.notes && (
+            <div style={{ background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 12, padding: "12px 14px" }}>
+              <div style={{ fontSize: 10, color: T.amber, fontWeight: 600, textTransform: "uppercase", marginBottom: 4 }}>Observações</div>
+              <div style={{ fontSize: 13, color: T.text, lineHeight: 1.6 }}>{w.notes}</div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EventDrawer({ event, onClose }: { event: UpcomingEvent; onClose: () => void }) {
   const Icon = CATEGORY_ICONS[event.category] ?? HelpCircle;
   return (
@@ -555,6 +676,7 @@ function EventDrawer({ event, onClose }: { event: UpcomingEvent; onClose: () => 
 
 function AgendaSection({ data }: { data: DashData }) {
   const [selectedEvent, setSelectedEvent] = useState<UpcomingEvent | null>(null);
+  const [selectedWedding, setSelectedWedding] = useState<DashData["upcomingWeddings"][0] | null>(null);
 
   // Unir eventos e casamentos numa lista ordenada por data
   const weddingItems = data.upcomingWeddings.map(w => ({
@@ -579,9 +701,9 @@ function AgendaSection({ data }: { data: DashData }) {
         if (item.kind === "wedding") {
           const w = item.w;
           return (
-            <div key={`w-${w.id}`} style={{
+            <button key={`w-${w.id}`} onClick={() => setSelectedWedding(w)} style={{
               background: T.glass2, border: `1px solid ${T.pinkBorder}`, borderRadius: 16, padding: 16,
-              display: "flex", gap: 12, alignItems: "center",
+              display: "flex", gap: 12, alignItems: "center", cursor: "pointer", textAlign: "left", width: "100%",
             }}>
               <div style={{ width: 44, height: 44, borderRadius: 12, background: T.pinkBg, border: `1px solid ${T.pinkBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 <Heart size={20} color={T.pink} />
@@ -600,7 +722,8 @@ function AgendaSection({ data }: { data: DashData }) {
                 color: w.daysUntil <= 7 ? T.green : T.blue,
                 border: `1px solid ${w.daysUntil <= 7 ? T.greenBorder : T.blueBorder}`,
               }}>{w.daysUntil === 0 ? "Hoje" : `${w.daysUntil}d`}</div>
-            </div>
+              <ChevronRight size={13} color={T.muted2} style={{ flexShrink: 0 }} />
+            </button>
           );
         }
 
@@ -644,6 +767,7 @@ function AgendaSection({ data }: { data: DashData }) {
       })}
 
       {selectedEvent && <EventDrawer event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
+      {selectedWedding && <WeddingDrawer w={selectedWedding} onClose={() => setSelectedWedding(null)} />}
     </div>
   );
 }
