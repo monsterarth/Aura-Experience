@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { roleHome, isMobileOnlyRole } from '@/lib/role-routes'
 
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -128,17 +129,6 @@ export async function updateSession(request: NextRequest) {
         }
     }
 
-    // Mapa de roles móveis para as suas apps
-    const mobileRoleApp: Record<string, string> = {
-        maid: '/maid',
-        governance: '/governanta',
-        waiter: '/waiter',
-        houseman: '/houseman',
-        maintenance: '/maintenance',
-        technician: '/maintenance',
-        porter: '/porter',
-    };
-
     // Proteger páginas admin e API routes admin — redireciona/bloqueia se não autenticado
     if ((isAdminPage || isAdminApi) && !user) {
         if (isAdminApi) {
@@ -150,7 +140,7 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.redirect(url)
     }
 
-    // Roles móveis não devem aceder rotas admin — redireciona para a sua app
+    // Roles móveis operacionais não acessam /admin — redireciona para a sua app de campo
     if (isAdminPage && user) {
         const { data: staffRow } = await supabaseAdmin
             .from('staff')
@@ -158,14 +148,15 @@ export async function updateSession(request: NextRequest) {
             .eq('id', user.id)
             .maybeSingle();
         const role = staffRow?.role as string | undefined;
-        if (role && mobileRoleApp[role]) {
+        if (isMobileOnlyRole(role)) {
             const url = request.nextUrl.clone();
-            url.pathname = mobileRoleApp[role];
+            url.pathname = roleHome(role);
             return NextResponse.redirect(url);
         }
     }
 
-    // Redirect to dashboard if logged in and on login page
+    // Já logado e na página de login → vai para a tela inicial do seu cargo
+    // (fonte única em role-routes.ts — nunca mais despeja todo mundo em /admin/stays)
     if (pathname.includes('/admin/login') && user) {
         const { data: staffRow } = await supabaseAdmin
             .from('staff')
@@ -174,7 +165,7 @@ export async function updateSession(request: NextRequest) {
             .maybeSingle();
         const role = staffRow?.role as string | undefined;
         const url = request.nextUrl.clone();
-        url.pathname = (role && mobileRoleApp[role]) ? mobileRoleApp[role] : '/admin/stays';
+        url.pathname = roleHome(role);
         return NextResponse.redirect(url);
     }
 

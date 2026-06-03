@@ -3,23 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-
-const ROLE_DESTINATIONS: Record<string, string> = {
-  super_admin:  "/admin/core/dashboard",
-  admin:        "/admin/reception",
-  director:     "/director",
-  hr:           "/admin/hr",
-  reception:    "/admin/reception",
-  governance:   "/admin/governance",
-  maid:         "/admin/governance",
-  maintenance:  "/admin/maintenance",
-  technician:   "/admin/maintenance",
-  kitchen:      "/admin/cafe-salao/kds",
-  waiter:       "/admin/cafe-salao/kds",
-  marketing:    "/admin/surveys/responses",
-  porter:       "/admin/stays",
-  houseman:     "/admin/stays",
-};
+import { roleHome } from "@/lib/role-routes";
 
 export default function DashboardRedirectPage() {
   const { userData, userDataReady } = useAuth();
@@ -27,9 +11,7 @@ export default function DashboardRedirectPage() {
 
   useEffect(() => {
     if (!userDataReady) return;
-    const role = userData?.role ?? "";
-    const dest = ROLE_DESTINATIONS[role] ?? "/admin/stays";
-    router.replace(dest);
+    router.replace(roleHome(userData?.role));
   }, [userDataReady, userData, router]);
 
   return (

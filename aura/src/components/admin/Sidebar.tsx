@@ -9,6 +9,7 @@ import { useProperty } from "@/context/PropertyContext";
 import { PropertyService } from "@/services/property-service";
 import { Property } from "@/types/aura";
 import { cn } from "@/lib/utils";
+import { roleHome, isMobileOnlyRole } from "@/lib/role-routes";
 import {
   LayoutDashboard, Users, Home, Wrench,
   Sparkles, Building, ChevronDown, LogOut,
@@ -548,11 +549,11 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
     return null;
   }
 
-  const mobileOnlyRoles = ["maid", "technician", "waiter", "porter", "houseman"];
-  if (userData?.role && mobileOnlyRoles.includes(userData.role)) {
-    if (userData.role === "maid" && pathname !== "/maid") router.replace("/maid");
-    else if (userData.role === "technician" && pathname !== "/maintenance") router.replace("/maintenance");
-    else if (userData.role === "houseman" && pathname !== "/houseman") router.replace("/houseman");
+  // Cargos operacionais mobile não renderizam o admin — manda para o seu app de campo.
+  // (guarda secundária; o middleware já barra no server. Fonte única em role-routes.ts)
+  if (isMobileOnlyRole(userData?.role)) {
+    const home = roleHome(userData?.role);
+    if (pathname !== home) router.replace(home);
     return null;
   }
 

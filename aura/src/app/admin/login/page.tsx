@@ -9,6 +9,7 @@ import Image from "next/image";
 import { Loader2, Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Staff } from "@/types/aura";
+import { roleHome } from "@/lib/role-routes";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -21,36 +22,6 @@ export default function AdminLoginPage() {
   useEffect(() => {
     if (error) setError(null);
   }, [email, password]);
-
-  /**
-   * Redirecionamento inteligente baseado no Cargo (Role-based Routing)
-   */
-  const getRedirectPath = (role: Staff['role']) => {
-    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-    switch (role) {
-      case 'super_admin':
-        return "/admin/core/properties";
-      case 'governance':
-        return isMobile ? "/governanta" : "/admin/governance/kanban";
-      case 'maid':
-        return "/maid";
-      case 'houseman':
-        return "/admin/houseman";
-      case 'maintenance':
-      case 'technician':
-        return "/maintenance";
-      case 'kitchen':
-      case 'waiter':
-        return "/admin/kitchen";
-      case 'director':
-        return "/director";
-      case 'admin':
-      case 'reception':
-      case 'porter':
-      default:
-        return "/admin/stays";
-    }
-  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,7 +57,7 @@ export default function AdminLoginPage() {
 
       toast.success(`Bem-vindo de volta, ${userData.fullName.split(' ')[0]}!`);
 
-      const targetPath = getRedirectPath(userData.role);
+      const targetPath = roleHome(userData.role);
       router.push(targetPath);
 
     } catch (err: any) {
