@@ -34,6 +34,12 @@ export async function GET(request: NextRequest) {
   const weekSundayStr = weekSunday.toISOString().split('T')[0];
 
   try {
+    // Cabanas fora da ocupação (extras / uso da casa) — excluídas do numerador e denominador
+    const { data: ignoredCabinsData } = await supabaseAdmin.from('cabins')
+      .select('id').eq('propertyId', propertyId).eq('ignoreInOccupancy', true);
+    const ignoredCabinIds = (ignoredCabinsData ?? []).map(c => c.id as string);
+    const ignoredCabinSet = new Set(ignoredCabinIds);
+
     const [
       occupiedRes,
       totalCabinsRes,
@@ -60,12 +66,16 @@ export async function GET(request: NextRequest) {
       hkDetailRes,
       recentSurveysRes,
     ] = await Promise.all([
-      // Cabanas ocupadas agora
-      supabaseAdmin.from('stays').select('id', { count: 'exact', head: true })
-        .eq('propertyId', propertyId).eq('status', 'active'),
-      // Total cabanas
+      // Cabanas ocupadas agora (exclui estadias em cabanas fora da ocupação)
+      (() => {
+        let q = supabaseAdmin!.from('stays').select('id', { count: 'exact', head: true })
+          .eq('propertyId', propertyId).eq('status', 'active');
+        if (ignoredCabinIds.length) q = q.or(`cabinId.is.null,cabinId.not.in.(${ignoredCabinIds.join(',')})`);
+        return q;
+      })(),
+      // Total cabanas (exclui as marcadas como fora da ocupação)
       supabaseAdmin.from('cabins').select('id', { count: 'exact', head: true })
-        .eq('propertyId', propertyId),
+        .eq('propertyId', propertyId).eq('ignoreInOccupancy', false),
       // Check-ins feitos hoje
       supabaseAdmin.from('stays').select('id', { count: 'exact', head: true })
         .eq('propertyId', propertyId)
@@ -128,13 +138,13 @@ export async function GET(request: NextRequest) {
         .gte('startDate', today).lte('startDate', in90dStr)
         .order('startDate', { ascending: true }),
       // Stays da semana (Seg–Dom)
-      supabaseAdmin.from('stays').select('checkIn, checkOut')
+      supabaseAdmin.from('stays').select('checkIn, checkOut, cabinId')
         .eq('propertyId', propertyId)
         .lte('checkIn', weekSundayStr)
         .gte('checkOut', weekMondayStr)
         .in('status', ['pending', 'pre_checkin_done', 'active', 'checked_out', 'finished', 'archived']),
       // Stays do mês
-      supabaseAdmin.from('stays').select('checkIn, checkOut')
+      supabaseAdmin.from('stays').select('checkIn, checkOut, cabinId')
         .eq('propertyId', propertyId)
         .lte('checkIn', monthEndStr)
         .gte('checkOut', monthStartStr),
@@ -238,7 +248,8 @@ export async function GET(request: NextRequest) {
     const upcomingWeddings = (upcomingWeddingsRes.data ?? []).map(w => weddingShape(w as any));
 
     // ── Semana ────────────────────────────────────────────────────────────────
-    const weekStays = weekStaysRes.data ?? [];
+    // Exclui estadias em cabanas fora da ocupação (estadias sem cabana seguem contando)
+    const weekStays = (weekStaysRes.data ?? []).filter(s => !s.cabinId || !ignoredCabinSet.has(s.cabinId as string));
     const DAY_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
     const weekOccupancy = Array.from({ length: 7 }, (_, i) => {
       const d = new Date(weekMonday); d.setDate(weekMonday.getDate() + i);
@@ -254,7 +265,7 @@ export async function GET(request: NextRequest) {
     });
 
     // ── Mês ───────────────────────────────────────────────────────────────────
-    const monthStays = monthStaysRes.data ?? [];
+    const monthStays = (monthStaysRes.data ?? []).filter(s => !s.cabinId || !ignoredCabinSet.has(s.cabinId as string));
     const daysElapsed   = Math.min(now.getDate(), monthEnd.getDate());
     const possibleNights = totalCabins * daysElapsed;
     const nightsSold = monthStays.reduce((s, st) => {

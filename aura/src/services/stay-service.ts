@@ -121,11 +121,13 @@ export const StayService = {
 
   async createStayRecord(params: {
     propertyId: string;
-    guestId: string;
+    guestId: string | null;
     cabinConfigs: { cabinId: string | null, adults: number, children: number, babies: number }[];
     checkIn: Date;
     checkOut: Date;
     sendAutomations: boolean;
+    internalUse?: boolean;
+    internalLabel?: string;
     actorId: string;
     actorName: string;
   }) {
@@ -162,7 +164,7 @@ export const StayService = {
       return {
         id: stayId,
         propertyId: params.propertyId,
-        guestId: params.guestId,
+        guestId: params.guestId ?? null,
         cabinId: config.cabinId ?? null,
         groupId,
         accessCode,
@@ -170,8 +172,11 @@ export const StayService = {
         checkOut: params.checkOut.toISOString(),
         counts: { adults: config.adults, children: config.children, babies: config.babies },
         additionalGuests,
+        internalUse: params.internalUse ?? false,
+        internalLabel: params.internalLabel ?? null,
         status: 'pending',
         automationFlags: {
+          enabled: params.sendAutomations,
           send48h: params.sendAutomations,
           send24h: params.sendAutomations,
           preCheckinSent: false,

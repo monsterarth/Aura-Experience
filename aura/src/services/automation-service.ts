@@ -119,6 +119,12 @@ export class AutomationService {
     dbClient?: SupabaseClient
   ): Promise<{ success: boolean; messageId?: string; error?: string }> {
     try {
+      // Interruptor mestre: reservas com automações desligadas (ex: uso da casa) não disparam
+      // nenhuma comunicação automática de WhatsApp. `enabled` ausente = habilitado (comportamento legado).
+      if (stay && stay.automationFlags?.enabled === false) {
+        return { success: false, error: 'automations_disabled' };
+      }
+
       const body = this.getBodyForLanguage(template, guest.preferredLanguage);
       const finalMessageBody = this.parseVariables(body, guest, cabin, stay, property);
 

@@ -86,6 +86,10 @@ function renderCabinStatusIcon(status: Cabin["status"]) {
 }
 
 function getStayBarColor(stay: StayWithGuest) {
+    // Uso da casa (ocupação interna) → âmbar, distinto de reservas de cliente
+    if (stay.internalUse) {
+        return "bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-[0_0_12px_rgba(245,158,11,0.35)]";
+    }
     // finished com conta aberta → laranja
     if (stay.status === "finished" && (stay.hasOpenFolio || stay.lostItemsDescription)) {
         return "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-[0_0_12px_rgba(249,115,22,0.4)]";
@@ -783,6 +787,11 @@ export default function ReservationMapClient() {
                                             <p className="text-xs font-black text-foreground truncate tracking-tight text-right">
                                                 {cabin.name}
                                             </p>
+                                            {cabin.ignoreInOccupancy && (
+                                                <p className="text-[8px] font-bold uppercase tracking-wider text-amber-500 truncate text-right">
+                                                    Fora da ocupação
+                                                </p>
+                                            )}
                                         </div>
                                         <div className={cn(
                                             "shrink-0 flex items-center justify-center w-6 h-6 rounded-md",

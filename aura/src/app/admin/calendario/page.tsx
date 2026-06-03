@@ -10,6 +10,7 @@ import { format, addMonths, subMonths, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Loader2, ChevronLeft, ChevronRight, ChevronDown, X, Ticket, CalendarDays, LogIn, LogOut as LogOutIcon, Gift, BedDouble, LayoutGrid, List } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { stayDisplayName } from "@/lib/stay-display";
 import { useIsMobile } from "@/hooks/useMediaQuery";
 
 // ==========================================
@@ -22,6 +23,8 @@ interface StayEntry {
   checkOut: string;
   guestName?: string;
   cabinName?: string;
+  internalUse?: boolean; // ocupação interna (uso da casa) — exibir selo, não é cliente
+  countsForOccupancy?: boolean; // false → cabana fora da ocupação (não infla o indicador de lotação)
 }
 
 interface StructureBookingEntry {
@@ -173,7 +176,10 @@ function DaySummaryContent({ summary }: { summary: DaySummary }) {
           <div className="space-y-2">
             {summary.checkIns.map((s) => (
               <div key={s.id} className="p-2.5 bg-emerald-500/5 border border-emerald-500/10 rounded-xl">
-                <p className="text-sm font-bold">{s.guestName || "Hóspede"}</p>
+                <p className="text-sm font-bold flex items-center gap-1.5">
+                  {s.guestName || "Hóspede"}
+                  {s.internalUse && <span className="text-[8px] font-black uppercase tracking-wider text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">Uso da casa</span>}
+                </p>
                 {s.cabinName && <p className="text-[10px] text-muted-foreground">{s.cabinName}</p>}
               </div>
             ))}
@@ -191,7 +197,10 @@ function DaySummaryContent({ summary }: { summary: DaySummary }) {
           <div className="space-y-2">
             {summary.checkOuts.map((s) => (
               <div key={s.id} className="p-2.5 bg-orange-500/5 border border-orange-500/10 rounded-xl">
-                <p className="text-sm font-bold">{s.guestName || "Hóspede"}</p>
+                <p className="text-sm font-bold flex items-center gap-1.5">
+                  {s.guestName || "Hóspede"}
+                  {s.internalUse && <span className="text-[8px] font-black uppercase tracking-wider text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">Uso da casa</span>}
+                </p>
                 {s.cabinName && <p className="text-[10px] text-muted-foreground">{s.cabinName}</p>}
               </div>
             ))}
@@ -209,7 +218,10 @@ function DaySummaryContent({ summary }: { summary: DaySummary }) {
           <div className="space-y-2">
             {summary.inHouse.map((s) => (
               <div key={s.id} className="p-2.5 bg-blue-500/5 border border-blue-500/10 rounded-xl">
-                <p className="text-sm font-bold">{s.guestName || "Hóspede"}</p>
+                <p className="text-sm font-bold flex items-center gap-1.5">
+                  {s.guestName || "Hóspede"}
+                  {s.internalUse && <span className="text-[8px] font-black uppercase tracking-wider text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded">Uso da casa</span>}
+                </p>
                 {s.cabinName && <p className="text-[10px] text-muted-foreground">{s.cabinName}</p>}
               </div>
             ))}
@@ -367,7 +379,7 @@ export default function CalendarioPage() {
 
         supabase
           .from("stays")
-          .select("id, checkIn, checkOut, guestId, cabinId")
+          .select("id, checkIn, checkOut, guestId, cabinId, internalUse, internalLabel")
           .eq("propertyId", property.id)
           .lte("checkIn", end)
           .gte("checkOut", start)
@@ -408,7 +420,7 @@ export default function CalendarioPage() {
           ? supabase.from("guests").select("id, fullName, birthDate").in("id", allGuestIds)
           : Promise.resolve({ data: [] }),
 
-        supabase.from("cabins").select("id, name").eq("propertyId", property.id),
+        supabase.from("cabins").select("id, name, ignoreInOccupancy").eq("propertyId", property.id),
 
         allStructureIds.length > 0
           ? supabase.from("structures").select("id, name").in("id", allStructureIds)
@@ -422,11 +434,13 @@ export default function CalendarioPage() {
           .not("birthDate", "is", null),
       ]);
 
-      // Build lookup maps
-      setTotalCabins(cabinsResult.data ? cabinsResult.data.length : 0);
+      // Build lookup maps — total de cabanas ignora as marcadas como fora da ocupação
+      const cabinRows = (cabinsResult.data || []) as any[];
+      setTotalCabins(cabinRows.filter(c => !c.ignoreInOccupancy).length);
+      const ignoredCabinSet = new Set(cabinRows.filter(c => c.ignoreInOccupancy).map(c => c.id as string));
 
       const cabinNameMap: Record<string, string> = {};
-      for (const c of (cabinsResult.data || []) as any[]) cabinNameMap[c.id] = c.name;
+      for (const c of cabinRows) cabinNameMap[c.id] = c.name;
 
       const structureNameMap: Record<string, string> = {};
       for (const s of (structuresNameResult.data || []) as any[]) structureNameMap[s.id] = s.name;
@@ -436,8 +450,10 @@ export default function CalendarioPage() {
         id: s.id,
         checkIn: toLocalDateStr(s.checkIn),
         checkOut: toLocalDateStr(s.checkOut),
-        guestName: guestNamesMap[s.guestId] || "Hóspede",
+        guestName: stayDisplayName(s, guestNamesMap[s.guestId]),
         cabinName: cabinNameMap[s.cabinId] || undefined,
+        internalUse: !!s.internalUse,
+        countsForOccupancy: !s.cabinId || !ignoredCabinSet.has(s.cabinId),
       }));
       setStays(staysMapped);
 
@@ -786,7 +802,10 @@ export default function CalendarioPage() {
                   const summary = summaryByDate[dateStr];
                   const isToday = dateStr === format(new Date(), "yyyy-MM-dd");
                   const isSelected = selectedDay === dateStr;
-                  const occupancy = summary ? summary.checkIns.length + summary.inHouse.length : 0;
+                  const occupancy = summary
+                    ? summary.checkIns.filter(s => s.countsForOccupancy !== false).length +
+                      summary.inHouse.filter(s => s.countsForOccupancy !== false).length
+                    : 0;
                   const isLotado = totalCabins > 0 && occupancy >= totalCabins;
                   const isQuaseCheia = totalCabins > 0 && !isLotado && occupancy / totalCabins >= 0.8;
 

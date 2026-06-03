@@ -75,6 +75,7 @@ export default function CabinsPage() {
         category: "",
         capacity: 2,
         status: "available",
+        ignoreInOccupancy: false,
         allowedSetups: [],
         wifi: { ssid: "", password: "" },
         equipment: [],
@@ -91,6 +92,7 @@ export default function CabinsPage() {
       category: "",
       capacity: 2,
       status: "available",
+      ignoreInOccupancy: false,
       allowedSetups: [],
       wifi: { ssid: "", password: "" },
       equipment: [],
@@ -282,11 +284,18 @@ export default function CabinsPage() {
           {cabins.map((cabin) => (
             <div key={cabin.id} className="bg-card border border-border rounded-[40px] p-8 space-y-6 group hover:border-primary/40 transition-all flex flex-col shadow-sm">
               <div className="flex justify-between items-center">
-                <div className={cn(
-                  "px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border",
-                  cabin.status === 'available' ? "bg-green-500/10 text-green-600 border-green-500/20" : "bg-secondary text-muted-foreground border-border"
-                )}>
-                  {cabin.status}
+                <div className="flex items-center gap-2">
+                  <div className={cn(
+                    "px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border",
+                    cabin.status === 'available' ? "bg-green-500/10 text-green-600 border-green-500/20" : "bg-secondary text-muted-foreground border-border"
+                  )}>
+                    {cabin.status}
+                  </div>
+                  {cabin.ignoreInOccupancy && (
+                    <div className="px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border bg-amber-500/10 text-amber-600 border-amber-500/20">
+                      Fora da ocupação
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
                   {!isGovOnly && (
@@ -417,6 +426,24 @@ export default function CabinsPage() {
                   </div>
                 )}
               </section>
+
+              <label className={cn(
+                "flex items-center gap-3 p-4 rounded-2xl border transition-colors",
+                editingCabin?.ignoreInOccupancy ? "bg-amber-500/10 border-amber-500/30" : "bg-secondary border-border",
+                isGovOnly ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:bg-accent"
+              )}>
+                <input
+                  type="checkbox"
+                  disabled={isGovOnly}
+                  checked={!!editingCabin?.ignoreInOccupancy}
+                  onChange={e => setEditingCabin({ ...editingCabin!, ignoreInOccupancy: e.target.checked })}
+                  className="accent-amber-500 w-4 h-4"
+                />
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black text-foreground uppercase tracking-tighter">Ignorar na ocupação</span>
+                  <span className="text-[9px] text-muted-foreground">Cabana extra / uso da casa — não conta na taxa de ocupação</span>
+                </div>
+              </label>
 
               <section className="space-y-4">
                 <div className="flex justify-between items-center">

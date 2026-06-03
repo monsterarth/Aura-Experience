@@ -21,6 +21,7 @@ import { ContactService } from "@/services/contact-service";
 import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import { sanitizeDocumentForFnrh } from "@/lib/utils-checkin";
 import { cn } from "@/lib/utils";
+import { stayDisplayName } from "@/lib/stay-display";
 import { supabase } from "@/lib/supabase";
 import { Stay, Guest, Cabin, FolioItem } from "@/types/aura";
 
@@ -619,11 +620,16 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
         <header className="p-6 border-b border-border bg-secondary/50 flex justify-between items-center shrink-0">
           <div className="flex items-center gap-4">
             <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black text-xl border border-primary/20 shadow-sm">
-              {guest?.fullName?.charAt(0) || "G"}
+              {stayDisplayName(stay, guest?.fullName).charAt(0) || "G"}
             </div>
             <div>
               <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
-                {guest?.fullName}
+                {stayDisplayName(stay, guest?.fullName)}
+                {stay.internalUse && (
+                  <span className="px-2 py-0.5 rounded-full text-[9px] uppercase font-black tracking-wider border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                    Uso da Casa
+                  </span>
+                )}
                 <span className={cn("px-2 py-0.5 rounded-full text-[9px] uppercase font-black tracking-wider border bg-background", currentStatus.class)}>
                   {currentStatus.label}
                 </span>

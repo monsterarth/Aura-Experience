@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { stayDisplayName } from '@/lib/stay-display';
 
 export async function GET(request: NextRequest) {
     const auth = await requireAuth();
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
             supabaseAdmin.from('structures').select('*').eq('propertyId', propertyId),
             supabaseAdmin
                 .from('stays')
-                .select('id, cabinId, hasPet, checkIn, checkOut, guestId, counts, areaConfigs, expectedArrivalTime')
+                .select('id, cabinId, hasPet, checkIn, checkOut, guestId, counts, areaConfigs, expectedArrivalTime, internalUse, internalLabel')
                 .eq('propertyId', propertyId)
                 .eq('status', 'active'),
         ]);
@@ -43,7 +44,8 @@ export async function GET(request: NextRequest) {
             hasPet: s.hasPet ?? false,
             checkIn: s.checkIn,
             checkOut: s.checkOut,
-            guestName: guestNameMap[s.guestId] ?? 'Hóspede',
+            guestName: stayDisplayName(s, s.guestId ? guestNameMap[s.guestId] : undefined),
+            internalUse: !!s.internalUse,
             counts: s.counts ?? undefined,
             areaConfigs: s.areaConfigs ?? undefined,
             expectedArrivalTime: s.expectedArrivalTime ?? undefined,

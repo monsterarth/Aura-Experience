@@ -153,6 +153,7 @@ export interface Cabin {
   name: string;       // Gerado: "01 - Praia 2 dormitórios"
   capacity: number;
   status: 'available' | 'occupied' | 'maintenance' | 'cleaning';
+  ignoreInOccupancy?: boolean; // true → não conta na taxa de ocupação (extra / uso da casa)
   allowedSetups?: string[];
   layout?: CabinArea[];
   currentStayId?: string;
@@ -501,7 +502,7 @@ export interface Stay {
   id: string;
   propertyId: string;
   groupId?: string | null;
-  guestId: string;
+  guestId: string | null;
   cabinId: string | null;
   cabinHistory?: { cabinId: string; from: string; to: string }[];
   accessCode: string;
@@ -557,9 +558,14 @@ export interface Stay {
     weight: number; // Limite de 15kg
   };
 
+  // Reserva interna / uso da casa
+  internalUse?: boolean;   // true → ocupação interna (manutenção, família, bloqueio), não é cliente
+  internalLabel?: string;  // rótulo livre quando não há hóspede (ex: "Manutenção cabana 5")
+
   // Status
   status: 'pending' | 'pre_checkin_done' | 'active' | 'finished' | 'cancelled' | 'archived';
   automationFlags: {
+    enabled?: boolean;     // interruptor mestre: false → nenhuma comunicação automática de WhatsApp
     send48h: boolean;
     send24h: boolean;
     preCheckinSent: boolean;

@@ -1420,6 +1420,7 @@ export default function GovernantaPage() {
   const [loading, setLoading] = useState(true);
   const [cabinStays, setCabinStays] = useState<Record<string, {
     guestName: string;
+    internalUse?: boolean;
     checkIn: string;
     checkOut: string;
     status: string;
@@ -1524,7 +1525,7 @@ export default function GovernantaPage() {
         const todayStr = new Date().toISOString().split('T')[0];
         const { data: staysRaw } = await supabase
           .from('stays')
-          .select('id, cabinId, checkIn, checkOut, status, expectedArrivalTime, guestId')
+          .select('id, cabinId, checkIn, checkOut, status, expectedArrivalTime, guestId, internalUse, internalLabel')
           .eq('propertyId', property.id)
           .in('status', ['active', 'pending', 'pre_checkin_done'])
           .not('cabinId', 'is', null)
@@ -1539,11 +1540,12 @@ export default function GovernantaPage() {
           const guestMap: Record<string, string> = {};
           (guestsRaw ?? []).forEach((g: any) => { guestMap[g.id] = g.fullName; });
 
-          const staysMap: Record<string, { guestName: string; checkIn: string; checkOut: string; status: string; expectedArrivalTime?: string | null }> = {};
+          const staysMap: Record<string, { guestName: string; internalUse?: boolean; checkIn: string; checkOut: string; status: string; expectedArrivalTime?: string | null }> = {};
           staysRaw.forEach((stay: any) => {
             if (stay.cabinId) {
               staysMap[stay.cabinId] = {
-                guestName: guestMap[stay.guestId] ?? "",
+                guestName: stay.internalUse ? (stay.internalLabel?.trim() || "Uso da Casa") : (guestMap[stay.guestId] ?? ""),
+                internalUse: !!stay.internalUse,
                 checkIn: stay.checkIn,
                 checkOut: stay.checkOut,
                 status: stay.status,
@@ -2065,8 +2067,13 @@ export default function GovernantaPage() {
                                     }}>{occLabel.text}</span>
                                   )}
                                   {occ.guestName && (
-                                    <span style={{ fontSize: 12, fontWeight: 600, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    <span style={{ fontSize: 12, fontWeight: 600, color: occ.internalUse ? T.amber : T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                       {occ.guestName}
+                                    </span>
+                                  )}
+                                  {occ.internalUse && (
+                                    <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", padding: "2px 6px", borderRadius: 6, color: T.amber, background: T.amberBg }}>
+                                      Uso da casa
                                     </span>
                                   )}
                                   {occ.status === 'active' && checkOutDate && (

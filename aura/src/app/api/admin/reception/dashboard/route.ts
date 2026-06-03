@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { stayDisplayName } from '@/lib/stay-display';
 
 export async function GET(request: NextRequest) {
     const auth = await requireAuth();
@@ -101,7 +102,7 @@ export async function GET(request: NextRequest) {
                 .neq('status', 'cancelled'),
             // Chegadas de hoje ainda pendentes — usadas pela recepção para notificar
             // quando a governanta libera uma cabana com check-in no dia
-            supabaseAdmin.from('stays').select('cabinId, guestId')
+            supabaseAdmin.from('stays').select('cabinId, guestId, internalUse, internalLabel')
                 .eq('propertyId', propertyId)
                 .gte('checkIn', todayStart.toISOString()).lte('checkIn', todayEnd.toISOString())
                 .in('status', ['pending', 'pre_checkin_done'])
@@ -202,7 +203,8 @@ export async function GET(request: NextRequest) {
         const todayArrivals = arrivalsRaw.map((s: any) => ({
             cabinId:   s.cabinId,
             cabinName: cabinNameMap[s.cabinId] ?? 'Cabana',
-            guestName: s.guestId ? (arrivalGuestMap[s.guestId] ?? 'Hóspede') : 'Hóspede',
+            guestName: stayDisplayName(s, s.guestId ? arrivalGuestMap[s.guestId] : undefined),
+            internalUse: !!s.internalUse,
         }));
 
         return NextResponse.json({

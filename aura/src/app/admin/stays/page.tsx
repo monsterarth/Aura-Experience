@@ -406,6 +406,9 @@ export default function StaysPage() {
                             {guestName.split(' ')[0]} {guestName.split(' ').slice(-1)}
                             <MessageCircle size={20} className="opacity-0 group-hover/name:opacity-100 transition-opacity text-primary" />
                           </h3>
+                          {s.internalUse && (
+                            <span className="inline-block text-[9px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md">Uso da Casa</span>
+                          )}
                           <div className="flex items-center gap-2 text-foreground/40 text-[10px] font-bold uppercase tracking-widest">
                             <Clock size={12} />
                             {s.checkIn ? format(new Date(s.checkIn), "dd MMM", { locale: ptBR }) : ''} —

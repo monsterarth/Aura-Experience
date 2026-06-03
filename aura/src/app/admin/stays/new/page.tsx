@@ -84,7 +84,15 @@ function NewStayPageContent() {
   });
 
   const [sendAutomations, setSendAutomations] = useState(true);
+  const [internalUse, setInternalUse] = useState(false);
+  const [internalLabel, setInternalLabel] = useState("");
   const [createdInfo, setCreatedInfo] = useState<{ code: string } | null>(null);
+
+  // Reserva de uso da casa nasce sem comunicação automática (toggle de automações desligado)
+  const toggleInternalUse = (checked: boolean) => {
+    setInternalUse(checked);
+    if (checked) setSendAutomations(false);
+  };
 
   useEffect(() => {
     if (!contextProperty?.id) return;
@@ -143,8 +151,13 @@ function NewStayPageContent() {
     e.preventDefault();
     if (!contextProperty?.id || !userData?.id) return;
 
-    if (!guestData.fullName || !dateRange?.from || !dateRange?.to) {
-      return toast.error("Nome do hóspede e Período completo são obrigatórios.");
+    if (!dateRange?.from || !dateRange?.to) {
+      return toast.error("Período completo é obrigatório.");
+    }
+
+    // Em reserva de uso da casa o hóspede é opcional; nas demais, o nome é obrigatório
+    if (!internalUse && !guestData.fullName) {
+      return toast.error("Nome do hóspede é obrigatório.");
     }
 
     if (docType === "CPF" && docNumber && !validateCPF(docNumber)) {
@@ -153,81 +166,86 @@ function NewStayPageContent() {
 
     const cleanedPhone = guestData.phone.replace(/\D/g, '');
 
-    if (cleanedPhone.length < 10) {
+    // Telefone só é obrigatório quando há comunicação prevista (reserva normal)
+    if (!internalUse && cleanedPhone.length < 10) {
       return toast.error("O número de WhatsApp digitado é muito curto.");
     }
 
     setLoading(true);
-    const toastId = toast.loading("Validando número na Meta (WhatsApp)...");
+    const toastId = toast.loading(internalUse ? "Criando reserva de uso da casa..." : "Validando número na Meta (WhatsApp)...");
 
     try {
-      // 1. O PORTÃO DE SEGURANÇA: Validar o WhatsApp antes de sujar o banco
-      const whatsRes = await fetch('/api/whatsapp/check-number', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ number: cleanedPhone, propertyId: contextProperty.id })
-      });
+      // Reserva de uso da casa: hóspede opcional. Só cria/valida hóspede quando há nome preenchido.
+      const hasGuest = !!guestData.fullName;
+      let savedGuestId: string | null = null;
 
-      const whatsData = await whatsRes.json();
+      if (hasGuest) {
+        // Validação Meta + checagem de contato apenas para reservas normais (uso da casa não comunica)
+        if (!internalUse && cleanedPhone.length >= 10) {
+          const whatsRes = await fetch('/api/whatsapp/check-number', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ number: cleanedPhone, propertyId: contextProperty.id })
+          });
+          const whatsData = await whatsRes.json();
+          if (!whatsRes.ok || !whatsData.exists) {
+            // Avisa mas não bloqueia — falsos negativos ocorrem com DDIs internacionais (ex: Uruguai +598)
+            toast.warning("WhatsApp não confirmado pela API, mas prosseguindo com a reserva.", { id: toastId });
+          } else {
+            toast.success("WhatsApp Validado! Criando registros...", { id: toastId });
+          }
 
-      if (!whatsRes.ok || !whatsData.exists) {
-        // Avisa mas não bloqueia — falsos negativos ocorrem com DDIs internacionais (ex: Uruguai +598)
-        toast.warning("WhatsApp não confirmado pela API, mas prosseguindo com a reserva.", { id: toastId });
-      } else {
-        toast.success("WhatsApp Validado! Criando registros...", { id: toastId });
-      }
+          // Verifica se o número já pertence a outro hóspede
+          const existingContact = await ContactService.findByPhone(contextProperty.id, cleanedPhone);
+          if (existingContact?.isGuest && existingContact.guestId) {
+            const cleanDocCheck = docNumber.replace(/\D/g, '');
+            const isConflict = cleanDocCheck
+              ? existingContact.guestId !== cleanDocCheck
+              : existingContact.name.toLowerCase() !== guestData.fullName.toLowerCase();
+            if (isConflict) {
+              toast.warning(
+                `Atenção: este número já está cadastrado para "${existingContact.name}". Prosseguindo com a reserva.`,
+                { duration: 6000 }
+              );
+            }
+          }
+        }
 
-      // Usa sempre o número já limpo pelo frontend (o validNumber da API não é confiável)
-      const finalPhone = cleanedPhone;
-
-      // 2. VERIFICA SE O NÚMERO JÁ PERTENCE A OUTRO HÓSPEDE
-      const existingContact = await ContactService.findByPhone(contextProperty.id, finalPhone);
-      if (existingContact?.isGuest && existingContact.guestId) {
+        // Cria/atualiza o hóspede físico
         const cleanDoc = docNumber.replace(/\D/g, '');
-        const isConflict = cleanDoc
-          ? existingContact.guestId !== cleanDoc
-          : existingContact.name.toLowerCase() !== guestData.fullName.toLowerCase();
+        const initialGuestId = cleanDoc.length > 0 ? cleanDoc : `GUEST-${Date.now()}`;
 
-        if (isConflict) {
-          toast.warning(
-            `Atenção: este número já está cadastrado para "${existingContact.name}". Prosseguindo com a reserva.`,
-            { duration: 6000 }
+        savedGuestId = await GuestService.upsertGuest(contextProperty.id, {
+          id: initialGuestId,
+          propertyId: contextProperty.id,
+          fullName: guestData.fullName,
+          email: guestData.email,
+          phone: cleanedPhone,
+          nationality: 'Brasil',
+          document: { type: docType, number: docNumber || 'N/A' },
+          preferredLanguage: guestData.preferredLanguage,
+          birthDate: "", gender: "Outro", occupation: "", allergies: [],
+          address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", country: "Brasil" }
+        }, userData?.id, userData?.fullName);
+
+        // Injeta na agenda (Central de Comunicação) quando há telefone
+        if (cleanedPhone.length >= 10) {
+          await ContactService.upsertContact(
+            contextProperty.id,
+            guestData.fullName,
+            cleanedPhone,
+            true, // isGuest
+            savedGuestId,
+            userData.id,
+            userData.fullName
           );
         }
       }
 
-      // 3. CRIA O HÓSPEDE FÍSICO
-      const cleanDoc = docNumber.replace(/\D/g, '');
-      const initialGuestId = cleanDoc.length > 0 ? cleanDoc : `GUEST-${Date.now()}`;
-
-      const savedGuestId = await GuestService.upsertGuest(contextProperty.id, {
-        id: initialGuestId,
-        propertyId: contextProperty.id,
-        fullName: guestData.fullName,
-        email: guestData.email,
-        phone: finalPhone,
-        nationality: 'Brasil',
-        document: { type: docType, number: docNumber || 'N/A' },
-        preferredLanguage: guestData.preferredLanguage,
-        birthDate: "", gender: "Outro", occupation: "", allergies: [],
-        address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", country: "Brasil" }
-      }, userData?.id, userData?.fullName);
-
-      // 4. INJETA NA AGENDA IMEDIATAMENTE (Para a Central de Comunicação)
-      await ContactService.upsertContact(
-        contextProperty.id,
-        guestData.fullName,
-        finalPhone,
-        true, // isGuest
-        savedGuestId,
-        userData.id,
-        userData.fullName
-      );
-
-      // 5. FINALMENTE, CRIA A ESTADIA
+      // CRIA A ESTADIA
       const cabinConfigs = cabinSelections.length > 0
         ? cabinSelections
-        : [{ cabinId: null, name: 'Sem Cabana', adults: 2, children: 0, babies: 0 }];
+        : [{ cabinId: null, name: internalUse ? (internalLabel.trim() || 'Uso da Casa') : 'Sem Cabana', adults: 2, children: 0, babies: 0 }];
 
       const result = await StayService.createStayRecord({
         propertyId: contextProperty.id,
@@ -236,11 +254,13 @@ function NewStayPageContent() {
         checkIn: dateRange.from,
         checkOut: dateRange.to,
         sendAutomations,
+        internalUse,
+        internalLabel: internalUse ? (internalLabel.trim() || undefined) : undefined,
         actorId: userData.id,
         actorName: userData.fullName
       });
 
-      chatwootSyncOnStayCreated(contextProperty.id, savedGuestId, result.stayId).catch(() => {});
+      if (savedGuestId) chatwootSyncOnStayCreated(contextProperty.id, savedGuestId, result.stayId).catch(() => {});
 
       setCreatedInfo({ code: result.accessCode });
     } catch (error: any) {
@@ -292,6 +312,30 @@ function NewStayPageContent() {
               <h2 className="flex items-center gap-2 font-bold text-foreground border-b border-border pb-4">
                 <UserSearch size={18} className="text-primary" /> Identificação
               </h2>
+
+              <label className={cn(
+                "flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors",
+                internalUse ? "bg-amber-500/10 border-amber-500/30" : "bg-secondary border-border hover:bg-accent"
+              )}>
+                <input type="checkbox" checked={internalUse} onChange={e => toggleInternalUse(e.target.checked)} className="accent-amber-500 w-4 h-4" />
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black text-foreground uppercase tracking-tighter">Reserva de uso da casa (interno)</span>
+                  <span className="text-[9px] text-muted-foreground">Ocupação interna — não é cliente, hóspede opcional, sem comunicação automática</span>
+                </div>
+              </label>
+
+              {internalUse && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground">Identificação interna (opcional)</label>
+                  <input
+                    value={internalLabel}
+                    onChange={e => setInternalLabel(e.target.value)}
+                    placeholder="Ex: Manutenção cabana 5, Família, Bloqueio"
+                    className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors"
+                  />
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1 md:col-span-2">
                   <label className="text-[10px] font-bold uppercase text-muted-foreground">Documento (Opcional)</label>
@@ -320,15 +364,15 @@ function NewStayPageContent() {
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase text-muted-foreground">Nome do Titular *</label>
-                  <input required value={guestData.fullName} onChange={e => setGuestData({ ...guestData, fullName: e.target.value.toUpperCase() })} className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors" />
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground">Nome do Titular {internalUse ? "(opcional)" : "*"}</label>
+                  <input required={!internalUse} value={guestData.fullName} onChange={e => setGuestData({ ...guestData, fullName: e.target.value.toUpperCase() })} className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors" />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase text-muted-foreground">WhatsApp *</label>
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground">WhatsApp {internalUse ? "(opcional)" : "*"}</label>
                   <div className="flex">
                     <span className="flex items-center px-3 bg-secondary border border-r-0 border-border rounded-l-xl text-sm font-bold text-foreground">+</span>
                     <input
-                      required
+                      required={!internalUse}
                       type="tel"
                       autoComplete="tel"
                       value={(guestData.phone ?? "").replace(/\D/g, "")}
@@ -480,8 +524,8 @@ function NewStayPageContent() {
               <label className="flex items-center gap-3 cursor-pointer p-3 bg-secondary rounded-xl border border-border hover:bg-accent transition-colors mt-4">
                 <input type="checkbox" checked={sendAutomations} onChange={e => setSendAutomations(e.target.checked)} className="accent-primary w-4 h-4" />
                 <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-foreground uppercase tracking-tighter">Automação de WhatsApp</span>
-                  <span className="text-[9px] text-muted-foreground">48h e 24h pré-estadia</span>
+                  <span className="text-[10px] font-bold text-foreground uppercase tracking-tighter">Comunicação automática de WhatsApp</span>
+                  <span className="text-[9px] text-muted-foreground">Interruptor mestre — desligado, nenhuma mensagem automática é enviada</span>
                 </div>
               </label>
 

@@ -19,6 +19,7 @@ export interface ActiveStayInfo {
   checkIn: string;
   checkOut: string;
   guestName: string;
+  internalUse?: boolean;
   counts?: { adults: number; children: number; babies: number };
   areaConfigs?: { areaId: string; configIndex: number }[];
   expectedArrivalTime?: string;
@@ -105,7 +106,8 @@ function CabinCard({ cabin, hkState, activeStay, staysLoading, onClick }: {
     <div
       onClick={onClick}
       className={cn(
-        "bg-card border border-border rounded-2xl p-4 flex flex-col gap-3 transition-all hover:border-border/80 hover:shadow-md hover:shadow-black/20",
+        "bg-card border rounded-2xl p-4 flex flex-col gap-3 transition-all hover:shadow-md hover:shadow-black/20",
+        cabin.ignoreInOccupancy ? "border-dashed border-amber-500/40 hover:border-amber-500/60" : "border-border hover:border-border/80",
         onClick && "cursor-pointer hover:border-primary/30"
       )}
     >
@@ -125,6 +127,12 @@ function CabinCard({ cabin, hkState, activeStay, staysLoading, onClick }: {
           <PawPrint size={13} className="text-amber-500 shrink-0 mt-0.5" />
         )}
       </div>
+
+      {cabin.ignoreInOccupancy && (
+        <span className="text-[9px] font-bold uppercase tracking-wider text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-md w-fit">
+          Fora da ocupação
+        </span>
+      )}
 
       {/* Status + badge HK */}
       <div className="flex flex-col gap-1.5">
@@ -150,9 +158,14 @@ function CabinCard({ cabin, hkState, activeStay, staysLoading, onClick }: {
           <div className="flex items-center gap-1.5">
             <User size={11} className="text-muted-foreground shrink-0" />
             <span className="text-xs font-semibold text-foreground/80 truncate">
-              {activeStay.guestName.split(' ')[0]}
+              {activeStay.internalUse ? activeStay.guestName : activeStay.guestName.split(' ')[0]}
             </span>
           </div>
+          {activeStay.internalUse && (
+            <span className="text-[8px] font-black uppercase tracking-wider text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded w-fit">
+              Uso da casa
+            </span>
+          )}
           <div className={cn("flex items-center gap-1.5 text-[10px]", checkoutIsToday ? "text-orange-400 font-semibold" : "text-muted-foreground")}>
             <Clock size={10} className="shrink-0" />
             <span>Saída {formattedCheckout}</span>

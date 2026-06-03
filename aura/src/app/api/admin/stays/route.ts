@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { supabaseAdmin } from '@/lib/supabase';
+import { stayDisplayName } from '@/lib/stay-display';
 
 // Máximo de estadias encerradas retornadas (as mais recentes).
 // Evita que o histórico cresça indefinidamente e quebre a rota.
@@ -113,7 +114,7 @@ export async function GET(request: NextRequest) {
             const pendingFolioCount = folioItems.filter((f: any) => f.status === 'pending').length;
             return {
                 ...stay,
-                guestName:       guestMap.get(stay.guestId) ?? 'Hóspede desconhecido',
+                guestName:       stayDisplayName(stay, guestMap.get(stay.guestId), 'Hóspede desconhecido'),
                 cabinName:       cabinMap.get(stay.cabinId) ?? 'Sem Cabana',
                 folioItems,
                 pendingFolioCount,

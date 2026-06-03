@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { stayDisplayName } from '@/lib/stay-display';
 
 export async function GET(request: NextRequest) {
     const auth = await requireAuth();
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
 
         const enrichedStays = stays.map(s => ({
             ...s,
-            guestName: s.guestId ? (guestNameMap[s.guestId] ?? 'Hóspede') : 'Hóspede',
+            guestName: stayDisplayName(s, s.guestId ? guestNameMap[s.guestId] : undefined),
         }));
 
         return NextResponse.json({
