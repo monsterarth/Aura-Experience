@@ -974,7 +974,7 @@ export default function StayDetailPage() {
             <div className="flex flex-col gap-2">
               <button onClick={async () => { setTransferDialogOpen(false); await doSave(pendingTransferCabinId, "cleaning"); setPendingTransferCabinId(null); }}
                 className="w-full py-2.5 bg-amber-500/10 border border-amber-500 text-amber-600 font-bold uppercase text-xs rounded-xl hover:bg-amber-500 hover:text-white transition-all">
-                Sim, Gerar Faxina de Troca
+                Sim, Gerar Faxina
               </button>
               <button onClick={async () => { setTransferDialogOpen(false); await doSave(pendingTransferCabinId, "available"); setPendingTransferCabinId(null); }}
                 className="w-full py-2.5 bg-secondary text-foreground font-bold uppercase text-xs rounded-xl border border-border hover:bg-muted transition-all">

@@ -400,7 +400,7 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins }: MaidMobil
                       <div>
                         <h3 className="text-2xl font-black text-green-600 dark:text-green-400">{locationName}</h3>
                         <p className="text-xs font-bold uppercase text-green-600/70 mt-0.5">
-                          {task.type === 'turnover' ? 'Faxina Completa (Troca)' : task.type === 'daily' ? 'Arrumação Diária' : 'Limpeza Personalizada'}
+                          {task.type === 'turnover' ? 'Faxina' : task.type === 'daily' ? 'Arrumação Diária' : 'Limpeza Personalizada'}
                         </p>
                       </div>
                       {task.type === 'turnover' && task.keyLocation && (
@@ -470,7 +470,7 @@ export function MaidMobileApp({ propertyId, userData, tasks, cabins }: MaidMobil
                       <div>
                         <h3 className="text-xl font-black text-foreground">{locationName}</h3>
                         <p className="text-xs font-bold uppercase text-muted-foreground mt-0.5">
-                          {task.type === 'turnover' ? 'Faxina Completa' : task.type === 'daily' ? 'Arrumação Diária' : 'Limpeza Personalizada'}
+                          {task.type === 'turnover' ? 'Faxina' : task.type === 'daily' ? 'Arrumação Diária' : 'Limpeza Personalizada'}
                         </p>
                         {task.type === 'turnover' && task.keyLocation && (
                           <span className={cn(

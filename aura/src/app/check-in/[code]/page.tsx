@@ -822,7 +822,7 @@ function GuestHubContent() {
                                 <Moon size={32} />
                             </div>
                             <h2 className="text-2xl font-black uppercase tracking-tighter mb-1">{t.dndConfirmTitle}</h2>
-                            <p className="text-sm text-muted-foreground mb-6">Faxinas de troca (check-out) nunca são suspensas.</p>
+                            <p className="text-sm text-muted-foreground mb-6">Faxinas de check-out nunca são suspensas.</p>
                             <div className="flex flex-col gap-3">
                                 <button onClick={() => handleDnd(1)} className="w-full py-3 bg-yellow-500/10 text-yellow-700 hover:bg-yellow-500 hover:text-white font-bold uppercase rounded-2xl transition-all text-sm">
                                     {t.dndOption1h}

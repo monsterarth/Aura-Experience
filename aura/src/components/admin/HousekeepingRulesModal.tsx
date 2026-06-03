@@ -73,7 +73,7 @@ const TRIGGER_OPTIONS: { value: HousekeepingRuleTrigger; label: string; descript
 ];
 
 const TASK_TYPE_OPTIONS: { value: HousekeepingRule['taskType']; label: string }[] = [
-  { value: 'turnover',            label: 'Faxina de Troca' },
+  { value: 'turnover',            label: 'Faxina' },
   { value: 'inspection_checkout', label: 'Conferência de Saída' },
   { value: 'inspection_checkin',  label: 'Conferência de Entrada' },
   { value: 'daily',               label: 'Arrumação' },

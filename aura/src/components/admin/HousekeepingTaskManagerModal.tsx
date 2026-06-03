@@ -254,7 +254,7 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
               onChange={e => setFormData({ ...formData, type: e.target.value as any })}
               className="w-full bg-secondary border border-border p-3 rounded-xl text-sm outline-none"
             >
-              <option value="turnover">Faxina Completa (Troca)</option>
+              <option value="turnover">Faxina</option>
               <option value="daily">Arrumação Diária</option>
               <option value="linen_change">Arrumação com Troca de Toalha</option>
               <option value="inspection_checkin">Revisão de Quarto</option>

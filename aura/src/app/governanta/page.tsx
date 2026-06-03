@@ -217,7 +217,7 @@ function StatusBadge({ status }: { status: HousekeepingTask["status"] }) {
 
 function TypeBadge({ type }: { type: HousekeepingTask["type"] }) {
   const map: Record<string, { label: string; color: string; bg: string }> = {
-    turnover:            { label: "Faxina de Troca",        color: T.v1,   bg: "rgba(167,139,250,0.12)" },
+    turnover:            { label: "Faxina",        color: T.v1,   bg: "rgba(167,139,250,0.12)" },
     inspection_checkin:  { label: "Conf. de Entrada",       color: T.v1,   bg: "rgba(167,139,250,0.12)" },
     inspection_checkout: { label: "Conf. de Saída",         color: T.v1,   bg: "rgba(167,139,250,0.12)" },
     daily:               { label: "Arrumação",               color: T.blue, bg: T.blueBg },
@@ -1008,7 +1008,7 @@ function NewTaskSheet({
               {([
                 { value: "daily",               label: "Arrumação" },
                 { value: "linen_change",         label: "Arr. c/ Troca" },
-                { value: "turnover",             label: "Faxina de Troca" },
+                { value: "turnover",             label: "Faxina" },
                 { value: "inspection_checkin",   label: "Conf. Entrada" },
                 { value: "inspection_checkout",  label: "Conf. Saída" },
                 { value: "custom",               label: "Personalizada" },
@@ -1840,7 +1840,7 @@ export default function GovernantaPage() {
                 <div key={t.id} style={{ background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 18, padding: 16, marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                   <div>
                     <div style={{ fontSize: 18, fontWeight: 900, color: T.amber }}>{getLocationName(t)}</div>
-                    <div style={{ fontSize: 12, color: T.amber, opacity: 0.7, marginTop: 2 }}>Faxina de Troca · Verificar cabana</div>
+                    <div style={{ fontSize: 12, color: T.amber, opacity: 0.7, marginTop: 2 }}>Faxina · Verificar cabana</div>
                   </div>
                   <button
                     onClick={() => setGovMiniTarget(t)}
@@ -1979,7 +1979,7 @@ export default function GovernantaPage() {
                           .filter(Boolean).join(", ");
 
                         const typeLabels: Record<string, string> = {
-                          turnover:            "Faxina de Troca",
+                          turnover:            "Faxina",
                           daily:               "Arrumação",
                           linen_change:        "Troca de Roupa",
                           inspection_checkin:  "Conf. Entrada",
@@ -2121,7 +2121,7 @@ export default function GovernantaPage() {
                       <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingTop: 8 }}>
                         {cabinHistory.map(task => {
                           const typeLabels: Record<string, string> = {
-                            turnover:            "Faxina de Troca",
+                            turnover:            "Faxina",
                             daily:               "Arrumação",
                             linen_change:        "Troca de Roupa",
                             inspection_checkin:  "Conf. Entrada",

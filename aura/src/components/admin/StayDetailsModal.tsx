@@ -973,7 +973,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
               }}
               className="w-full py-3 px-4 bg-amber-500/10 border border-amber-500 text-amber-600 font-bold uppercase tracking-wider text-xs rounded-xl hover:bg-amber-500 hover:text-white transition-all"
             >
-              Sim, Gerar Faxina (Troca)
+              Sim, Gerar Faxina
             </button>
             <button
               onClick={async () => {

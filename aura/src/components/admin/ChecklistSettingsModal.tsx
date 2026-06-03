@@ -12,7 +12,7 @@ import { v4 as uuidv4 } from "uuid";
 type TabType = 'turnover' | 'inspection_checkout' | 'inspection_checkin' | 'daily' | 'linen_change' | 'custom';
 
 const TABS: { type: TabType; label: string }[] = [
-  { type: 'turnover',            label: 'Faxina de Troca' },
+  { type: 'turnover',            label: 'Faxina' },
   { type: 'inspection_checkout', label: 'Conferência de Saída' },
   { type: 'inspection_checkin',  label: 'Conferência de Entrada' },
   { type: 'daily',               label: 'Arrumação Diária' },
@@ -34,7 +34,7 @@ export function ChecklistSettingsModal({ isOpen, onClose, propertyId }: Checklis
   const [template, setTemplate] = useState<any>({
     id: "",
     type: 'turnover',
-    title: "Faxina de Troca (Padrão)",
+    title: "Faxina (Padrão)",
     items: []
   });
 

@@ -6,7 +6,7 @@ import { AuditService } from "./audit-service";
 // ─── Log helpers ─────────────────────────────────────────────────────────────
 
 const TASK_TYPE_LABELS: Record<string, string> = {
-  turnover: 'Faxina Completa',
+  turnover: 'Faxina',
   daily: 'Arrumação',
   linen_change: 'Troca de Roupa',
   inspection_checkin: 'Inspeção Check-in',

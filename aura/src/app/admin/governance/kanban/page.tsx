@@ -664,7 +664,7 @@ export default function GovernanceKanbanPage() {
                       {cabin ? `${cabin.number} — ${cabin.name}` : 'Cabana'}
                     </p>
                     <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-0.5">
-                      Faxina de Troca{assignedNames ? ` · ${assignedNames}` : ' · Sem camareira'}
+                      Faxina{assignedNames ? ` · ${assignedNames}` : ' · Sem camareira'}
                     </p>
                   </div>
                   <button

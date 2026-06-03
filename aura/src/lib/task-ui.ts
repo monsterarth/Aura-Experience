@@ -7,7 +7,7 @@ export type TaskType = HousekeepingTask['type'];
 
 export function getTaskLabel(type: TaskType): string {
   switch (type) {
-    case 'turnover':            return 'Faxina de Troca';
+    case 'turnover':            return 'Faxina';
     case 'inspection_checkin':  return 'Conferência de Entrada';
     case 'inspection_checkout': return 'Conferência de Saída';
     case 'daily':               return 'Arrumação';

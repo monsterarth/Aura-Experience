@@ -58,7 +58,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     await supabaseAdmin.from('housekeeping_tasks')
         .update({
             status: 'cancelled',
-            observations: 'Cancelada automaticamente por Check-out (Substituída por Faxina de Troca).',
+            observations: 'Cancelada automaticamente por Check-out (Substituída por Faxina).',
             updatedAt: now,
         })
         .eq('propertyId', propertyId)

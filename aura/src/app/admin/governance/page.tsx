@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 // -------------------------------------------------------
 
 const TASK_TYPE_LABELS: Record<string, string> = {
-  turnover: 'Faxina completa',
+  turnover: 'Faxina',
   daily: 'Diária',
   linen_change: 'Arrumação c/ troca',
   inspection_checkin: 'Inspeção c/in',
@@ -480,7 +480,7 @@ function GovernanceReportModal({
 
             {/* Seção: Saídas */}
             <SectionTable
-              title={<span className="flex items-center gap-2"><LogOut size={12} className="text-orange-400" /> Saídas — Faxina completa</span>}
+              title={<span className="flex items-center gap-2"><LogOut size={12} className="text-orange-400" /> Saídas — Faxina</span>}
               cabinList={checkoutsToday}
               highlight="checkout"
               emptyMsg="Nenhuma saída prevista."
@@ -910,7 +910,7 @@ export default function GovernancePage() {
           ? (historyTarget.item.number ? `Cabana ${historyTarget.item.number}` : historyTarget.item.name)
           : historyTarget.item.name;
         const typeLabels: Record<string, string> = {
-          turnover:            "Faxina de Troca",
+          turnover:            "Faxina",
           daily:               "Arrumação",
           linen_change:        "Troca de Roupa",
           inspection_checkin:  "Conf. Entrada",
