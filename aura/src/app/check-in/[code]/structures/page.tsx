@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, Suspense } from "react";
+import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import { StayService } from "@/services/stay-service";
@@ -692,8 +693,8 @@ function StructuresWizard() {
                                     className="bg-card border border-border p-5 rounded-3xl flex items-center gap-4 text-left hover:border-primary/50 hover:shadow-md transition-all group"
                                 >
                                     {s.imageUrl ? (
-                                        <div className="w-16 h-16 rounded-2xl overflow-hidden shrink-0 bg-secondary">
-                                            <img src={s.imageUrl} alt={s.name} className="w-full h-full object-cover" />
+                                        <div className="w-16 h-16 rounded-2xl overflow-hidden shrink-0 bg-secondary relative">
+                                            <Image src={s.imageUrl} alt={s.name} width={64} height={64} sizes="64px" className="w-full h-full object-cover" />
                                         </div>
                                     ) : (
                                         <div className="w-12 h-12 bg-secondary rounded-2xl flex items-center justify-center shrink-0">
@@ -737,8 +738,8 @@ function StructuresWizard() {
                                     className="bg-card border border-border p-5 rounded-3xl flex items-center gap-4 text-left hover:border-primary/50 hover:shadow-md transition-all group"
                                 >
                                     {unit.imageUrl ? (
-                                        <div className="w-16 h-16 rounded-2xl overflow-hidden shrink-0 bg-secondary">
-                                            <img src={unit.imageUrl} alt={unit.name} className="w-full h-full object-cover" />
+                                        <div className="w-16 h-16 rounded-2xl overflow-hidden shrink-0 bg-secondary relative">
+                                            <Image src={unit.imageUrl} alt={unit.name} width={64} height={64} sizes="64px" className="w-full h-full object-cover" />
                                         </div>
                                     ) : (
                                         <div className="w-12 h-12 bg-secondary rounded-2xl flex items-center justify-center shrink-0">

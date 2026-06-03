@@ -8,6 +8,35 @@ const supabaseAdmin = createClient(
 )
 
 export async function updateSession(request: NextRequest) {
+    const pathname = request.nextUrl.pathname;
+
+    // ── Rotas públicas do hóspede: não exigem sessão ───────────────────────────
+    // /check-in e /feedback são acessadas por hóspedes não autenticados. Pular o
+    // supabase.auth.getUser() (round-trip ao servidor de Auth do Supabase) reduz a
+    // latência de cada navegação no portal. A única necessidade aqui é injetar
+    // x-property-id quando a propriedade usa um domínio customizado.
+    const isPublicGuestRoute = pathname.startsWith('/check-in') || pathname.startsWith('/feedback');
+    if (isPublicGuestRoute) {
+        const response = NextResponse.next({ request });
+        const host = request.headers.get('host') ?? '';
+        const knownHosts = ['aaura.app.br', 'localhost', '127.0.0.1'];
+        const isCustomDomain = !knownHosts.some(h => host.includes(h));
+
+        if (isCustomDomain) {
+            const { data } = await supabaseAdmin
+                .from('properties')
+                .select('id')
+                .eq('settings->>customDomain', host)
+                .maybeSingle();
+
+            if (data?.id) {
+                response.headers.set('x-property-id', data.id);
+            }
+        }
+
+        return response;
+    }
+
     let supabaseResponse = NextResponse.next({
         request,
     })
@@ -51,7 +80,6 @@ export async function updateSession(request: NextRequest) {
         supabaseResponse.headers.set('x-user-id', user.id);
     }
 
-    const pathname = request.nextUrl.pathname;
     const isAdminPage = pathname.startsWith('/admin') && !pathname.includes('/login');
     const isAdminApi = pathname.startsWith('/api/admin');
     const isStaffApp = pathname.startsWith('/governanta') || pathname.startsWith('/maid') || pathname.startsWith('/houseman') || pathname.startsWith('/maintenance') || pathname.startsWith('/waiter');
@@ -154,26 +182,6 @@ export async function updateSession(request: NextRequest) {
     // renovados pelo middleware sempre cheguem ao browser (não ficam presos em 304)
     if (request.nextUrl.pathname.startsWith('/admin')) {
         supabaseResponse.headers.set('Cache-Control', 'private, no-store')
-    }
-
-    // Domínio customizado: injeta x-property-id para rotas públicas do hóspede
-    const isPublicGuestRoute = pathname.startsWith('/check-in') || pathname.startsWith('/feedback');
-    if (isPublicGuestRoute) {
-        const host = request.headers.get('host') ?? '';
-        const knownHosts = ['aaura.app.br', 'localhost', '127.0.0.1'];
-        const isCustomDomain = !knownHosts.some(h => host.includes(h));
-
-        if (isCustomDomain) {
-            const { data } = await supabaseAdmin
-                .from('properties')
-                .select('id')
-                .eq('settings->>customDomain', host)
-                .maybeSingle();
-
-            if (data?.id) {
-                supabaseResponse.headers.set('x-property-id', data.id);
-            }
-        }
     }
 
     return supabaseResponse

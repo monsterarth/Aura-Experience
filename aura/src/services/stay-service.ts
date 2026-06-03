@@ -301,20 +301,37 @@ export const StayService = {
 
     if (error || !stays) return [];
 
-    const enriched = await Promise.all(stays.map(async (stay: any) => {
-      let cabin = null;
-      if (stay.cabinId) {
-        const { data } = await supabase.from('cabins').select('name, wifi').eq('id', stay.cabinId).maybeSingle();
-        cabin = data;
-      }
+    // Carrega todas as cabanas referenciadas numa única query (evita N+1).
+    const cabinIds = Array.from(new Set(stays.map((s: any) => s.cabinId).filter(Boolean)));
+    const cabinMap = new Map<string, { name: string; wifi: any }>();
+    if (cabinIds.length > 0) {
+      const { data: cabins } = await supabase
+        .from('cabins')
+        .select('id, name, wifi')
+        .in('id', cabinIds);
+      (cabins ?? []).forEach((c: any) => cabinMap.set(c.id, { name: c.name, wifi: c.wifi }));
+    }
+
+    return stays.map((stay: any) => {
+      const cabin = stay.cabinId ? cabinMap.get(stay.cabinId) : null;
       return {
         ...stay,
         cabinName: cabin ? cabin.name : "Acomodação",
         cabinWifi: cabin ? cabin.wifi : undefined
       };
-    }));
+    });
+  },
 
-    return enriched;
+  /** Busca apenas o idioma preferido do hóspede — usado no boot do portal sem
+   *  refetch do stay/cabin completos (getStayWithGuestAndCabin). */
+  async getGuestPreferredLanguage(guestId?: string | null): Promise<string | null> {
+    if (!guestId) return null;
+    const { data } = await supabase
+      .from('guests')
+      .select('preferredLanguage')
+      .eq('id', guestId)
+      .maybeSingle();
+    return (data as any)?.preferredLanguage ?? null;
   },
 
   async getGroupStays(accessCode: string) {

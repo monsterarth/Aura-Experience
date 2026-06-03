@@ -287,46 +287,44 @@ function GuestHubContent() {
                     return;
                 }
 
-                setStays(stays as Stay[]);
                 const firstStay = stays[0] as Stay;
+
+                // Redireciona cedo para o formulário se ainda não fez check-in (reserva única),
+                // antes de buscar property/idioma/survey — que seriam descartados no redirect.
+                if (stays.length === 1 && (firstStay.status === 'pending' || firstStay.status === 'pre_checkin_done')) {
+                    router.replace(`/check-in/form/${firstStay.id}`);
+                    return;
+                }
+
+                setStays(stays as Stay[]);
                 setStay(firstStay);
                 setDndEnabled(firstStay.dnd_enabled ?? false);
                 setDndUntil(firstStay.dnd_until ?? null);
 
-                const prop = await PropertyService.getPropertyById(firstStay.propertyId);
+                const isFinished = stays.length === 1 && firstStay.status === 'finished';
+
+                // Property, idioma e survey (quando aplicável) não dependem entre si:
+                // busca em paralelo em vez de em cascata. As estruturas (usadas só no
+                // modal de "Reportar Problema") são carregadas sob demanda — ver useEffect.
+                const [prop, savedLang, surveyed] = await Promise.all([
+                    PropertyService.getPropertyById(firstStay.propertyId),
+                    StayService.getGuestPreferredLanguage(firstStay.guestId).catch(() => null),
+                    isFinished
+                        ? SurveyService.hasSurveyForStay(firstStay.propertyId, firstStay.id).catch(() => false)
+                        : Promise.resolve(false),
+                ]);
+
                 setProperty(prop as Property);
 
-                // Fetch structures for issue reporting flow
-                try {
-                    const structuresData = await StructureService.getStructures(firstStay.propertyId);
-                    setStructures(structuresData as Structure[]);
-                } catch { /* silently ignore */ }
-
-                // Ler idioma preferido do hóspede, fallback para idioma do browser
-                try {
-                    const stayData = await StayService.getStayWithGuestAndCabin(firstStay.propertyId, firstStay.id);
-                    const savedLang = stayData?.guest?.preferredLanguage;
-                    if (savedLang && ['pt', 'en', 'es'].includes(savedLang)) {
-                        setLang(savedLang as 'pt' | 'en' | 'es');
-                    } else {
-                        const browserLang = navigator.language.slice(0, 2);
-                        if (browserLang === 'es') setLang('es');
-                        else if (browserLang === 'en') setLang('en');
-                    }
-                } catch { /* silently ignore — UI defaults to PT */ }
-
-                if (stays.length === 1) {
-                    if (firstStay.status === 'pending' || firstStay.status === 'pre_checkin_done') {
-                        // Ainda não fez check-in, redirecionar para o formulário
-                        router.replace(`/check-in/form/${firstStay.id}`);
-                        return;
-                    }
-
-                    if (firstStay.status === 'finished') {
-                        const surveyed = await SurveyService.hasSurveyForStay(firstStay.propertyId, firstStay.id);
-                        setHasSurvey(surveyed);
-                    }
+                if (savedLang && ['pt', 'en', 'es'].includes(savedLang)) {
+                    setLang(savedLang as 'pt' | 'en' | 'es');
+                } else {
+                    const browserLang = navigator.language.slice(0, 2);
+                    if (browserLang === 'es') setLang('es');
+                    else if (browserLang === 'en') setLang('en');
                 }
+
+                if (isFinished) setHasSurvey(surveyed);
 
                 setLoading(false);
             } catch (err: any) {
@@ -337,6 +335,16 @@ function GuestHubContent() {
         }
         init();
     }, [code, router]);
+
+    // Carrega estruturas sob demanda — só quando o hóspede abre o passo "Área Comum"
+    // do modal de reportar problema. Mantém o boot do portal fora do caminho crítico.
+    useEffect(() => {
+        if (reportStep === 'structure' && structures.length === 0 && stay) {
+            StructureService.getStructures(stay.propertyId)
+                .then(d => setStructures(d as Structure[]))
+                .catch(() => { /* silently ignore */ });
+        }
+    }, [reportStep, stay, structures.length]);
 
     const handleTermsAccept = async () => {
         if (!stay) return;
