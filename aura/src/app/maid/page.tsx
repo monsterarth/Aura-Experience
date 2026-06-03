@@ -9,8 +9,9 @@ import { HousekeepingService } from "@/services/housekeeping-service";
 import { CabinService } from "@/services/cabin-service";
 import { ConciergeService } from "@/services/concierge-service";
 import { StaffService } from "@/services/staff-service";
+import { StructureService } from "@/services/structure-service";
 import { supabase } from "@/lib/supabase";
-import { HousekeepingTask, Cabin, ConciergeItem, ConciergeRequest, Staff } from "@/types/aura";
+import { HousekeepingTask, Cabin, ConciergeItem, ConciergeRequest, Staff, Structure } from "@/types/aura";
 import { getTaskLabel } from "@/lib/task-ui";
 import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
 import { ScrapWall } from "@/components/admin/profile/ScrapWall";
@@ -1344,12 +1345,31 @@ export default function MaidPage() {
     const init = async () => {
       setDataLoading(true);
       try {
-        // Timeout de 6s: evita que uma query lenta de cabines trave a tela de loading
-        const timeout = new Promise<Cabin[]>(resolve => setTimeout(() => resolve([]), 6000));
-        const cabinsData = await Promise.race([CabinService.getCabinsByProperty(property.id), timeout]);
+        // Timeout de 6s: evita que uma query lenta trave a tela de loading
+        const withTimeout = <R,>(p: Promise<R>, fallback: R) =>
+          Promise.race([p, new Promise<R>(resolve => setTimeout(() => resolve(fallback), 6000))]);
+        const [cabinsData, structuresData] = await Promise.all([
+          withTimeout(CabinService.getCabinsByProperty(property.id), []),
+          withTimeout(StructureService.getStructures(property.id), []),
+        ]);
         const cabinMap: Record<string, Cabin> = {};
         cabinsData.forEach(c => { cabinMap[c.id] = c; });
         setCabins(cabinMap);
+
+        const structureMap: Record<string, Structure> = {};
+        structuresData.forEach(s => { structureMap[s.id] = s; });
+
+        // Resolve o nome do local da tarefa: cabana → estrutura (+ unidade) → local avulso.
+        const resolveLocationName = (t: HousekeepingTask): string => {
+          if (t.cabinId) return cabinMap[t.cabinId]?.name ?? t.cabinId;
+          if (t.structureId) {
+            const s = structureMap[t.structureId];
+            const base = s?.name ?? t.structureId;
+            const unit = t.unitId ? s?.units?.find(u => u.id === t.unitId)?.name : undefined;
+            return unit ? `${base} — ${unit}` : base;
+          }
+          return t.customLocation ?? "Tarefa";
+        };
 
         unsubscribe = HousekeepingService.listenToActiveTasks(property.id, allTasks => {
           const myId = userData?.id;
@@ -1359,7 +1379,7 @@ export default function MaidPage() {
 
           const enriched: EnrichedTask[] = myTasks.map(t => ({
             ...t,
-            cabinName: t.cabinId ? (cabinMap[t.cabinId]?.name ?? t.cabinId) : (t.customLocation ?? "Tarefa"),
+            cabinName: resolveLocationName(t),
           }));
           setTasks(enriched);
         });
