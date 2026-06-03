@@ -390,25 +390,26 @@ export default function MaintenanceKanbanPage() {
     const activeTabItems = activeTab === 'pending' ? pendingTasks : activeTab === 'in_progress' ? inProgressTasks : waitingTasks;
 
     return (
-        <div className="h-full flex flex-col space-y-4 p-4 md:p-0">
+        <div className="flex flex-col space-y-4">
             {/* Header */}
-            <div className="flex items-center justify-between mt-2 md:mt-0">
-                <div className="flex items-center gap-3">
-                    <Link href="/admin/maintenance" className="p-2 bg-secondary text-muted-foreground hover:text-foreground rounded-xl border border-border transition-colors">
+            <div className="flex flex-wrap items-center justify-between gap-2 mt-2 md:mt-0">
+                <div className="flex items-center gap-3 min-w-0">
+                    <Link href="/admin/maintenance" className="p-2 bg-secondary text-muted-foreground hover:text-foreground rounded-xl border border-border transition-colors shrink-0">
                         <ChevronLeft size={16} />
                     </Link>
-                    <div>
-                        <h1 className="text-2xl font-bold tracking-tight">Kanban de Manutenção</h1>
+                    <div className="min-w-0">
+                        <h1 className="text-xl md:text-2xl font-bold tracking-tight truncate">Kanban de Manutenção</h1>
                         <p className="text-sm text-muted-foreground mt-0.5 hidden sm:block">Ordens de serviço em tempo real.</p>
                     </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 shrink-0">
                     {isManager && (
                         <button
                             onClick={() => setIsRulesOpen(true)}
-                            className="px-4 py-2 bg-secondary text-foreground font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-accent transition-colors flex items-center gap-2 shadow-sm border border-border"
+                            className="p-2 md:px-4 md:py-2 bg-secondary text-foreground font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-accent transition-colors flex items-center gap-2 shadow-sm border border-border"
+                            title="Automação"
                         >
-                            <RefreshCw size={14} /> Automação
+                            <RefreshCw size={14} /> <span className="hidden md:inline">Automação</span>
                         </button>
                     )}
                     <button
@@ -425,9 +426,9 @@ export default function MaintenanceKanbanPage() {
                     </button>
                     <button
                         onClick={() => { setSelectedTask(null); setIsManagerOpen(true); }}
-                        className="px-4 py-2 bg-primary text-primary-foreground font-bold text-xs uppercase tracking-widest rounded-xl hover:opacity-90 transition-opacity flex items-center gap-2 shadow-sm"
+                        className="px-3 md:px-4 py-2 bg-primary text-primary-foreground font-bold text-xs uppercase tracking-widest rounded-xl hover:opacity-90 transition-opacity flex items-center gap-1.5 shadow-sm"
                     >
-                        <Plus size={16} /> Nova Tarefa
+                        <Plus size={16} /> <span className="hidden sm:inline">Nova Tarefa</span><span className="sm:hidden">Nova</span>
                     </button>
                 </div>
             </div>
@@ -473,7 +474,7 @@ export default function MaintenanceKanbanPage() {
             </div>
 
             {/* Kanban — Mobile (abas) */}
-            <div className="md:hidden flex flex-col flex-1 min-h-0">
+            <div className="md:hidden flex flex-col">
                 <div className="flex gap-1 bg-muted/30 p-1 rounded-2xl border border-border shrink-0">
                     {([
                         { key: 'pending', label: 'Pendentes', count: pendingTasks.length, color: 'text-foreground' },
@@ -512,7 +513,7 @@ export default function MaintenanceKanbanPage() {
                         {activeTabItems.every(t => selectedIds.has(t.id)) ? 'Desmarcar todos' : 'Selecionar todos'}
                     </button>
                 )}
-                <div className="flex-1 overflow-y-auto mt-4 space-y-4 custom-scrollbar pb-4">
+                <div className="mt-4 space-y-4 pb-4">
                     {activeTabItems.length === 0 ? (
                         <div className="h-24 border-2 border-dashed border-border rounded-xl flex items-center justify-center text-xs font-bold text-muted-foreground uppercase opacity-50">Vazio</div>
                     ) : (

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { EventService } from "@/services/event-service";
@@ -8,8 +8,9 @@ import { Event } from "@/types/aura";
 import { supabase } from "@/lib/supabase";
 import { format, addMonths, subMonths, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Loader2, ChevronLeft, ChevronRight, X, Ticket, CalendarDays, LogIn, LogOut as LogOutIcon, Gift, BedDouble } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, ChevronDown, X, Ticket, CalendarDays, LogIn, LogOut as LogOutIcon, Gift, BedDouble, LayoutGrid, List } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/useMediaQuery";
 
 // ==========================================
 // TYPES
@@ -148,6 +149,179 @@ function DotRow({ groups }: { groups: DotGroup[] }) {
   );
 }
 
+function summaryTotal(s: DaySummary) {
+  return (
+    s.checkIns.length + s.checkOuts.length + s.inHouse.length +
+    s.events.length + s.structureBookings.length + s.birthdays.length
+  );
+}
+
+// ==========================================
+// DAY SUMMARY CONTENT — shared by the detail panel and the mobile agenda view
+// ==========================================
+
+function DaySummaryContent({ summary }: { summary: DaySummary }) {
+  return (
+    <>
+      {/* Check-ins */}
+      {summary.checkIns.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <LogIn size={12} className="text-emerald-400" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Check-ins ({summary.checkIns.length})</span>
+          </div>
+          <div className="space-y-2">
+            {summary.checkIns.map((s) => (
+              <div key={s.id} className="p-2.5 bg-emerald-500/5 border border-emerald-500/10 rounded-xl">
+                <p className="text-sm font-bold">{s.guestName || "Hóspede"}</p>
+                {s.cabinName && <p className="text-[10px] text-muted-foreground">{s.cabinName}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Check-outs */}
+      {summary.checkOuts.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <LogOutIcon size={12} className="text-orange-400" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-orange-400">Check-outs ({summary.checkOuts.length})</span>
+          </div>
+          <div className="space-y-2">
+            {summary.checkOuts.map((s) => (
+              <div key={s.id} className="p-2.5 bg-orange-500/5 border border-orange-500/10 rounded-xl">
+                <p className="text-sm font-bold">{s.guestName || "Hóspede"}</p>
+                {s.cabinName && <p className="text-[10px] text-muted-foreground">{s.cabinName}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Hospedados (In House) */}
+      {summary.inHouse.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <BedDouble size={12} className="text-blue-400" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-blue-400">Hospedados ({summary.inHouse.length})</span>
+          </div>
+          <div className="space-y-2">
+            {summary.inHouse.map((s) => (
+              <div key={s.id} className="p-2.5 bg-blue-500/5 border border-blue-500/10 rounded-xl">
+                <p className="text-sm font-bold">{s.guestName || "Hóspede"}</p>
+                {s.cabinName && <p className="text-[10px] text-muted-foreground">{s.cabinName}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Events */}
+      {summary.events.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Ticket size={12} className="text-primary" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-primary">Eventos ({summary.events.length})</span>
+          </div>
+          <div className="space-y-2">
+            {summary.events.map((e) => (
+              <div key={e.id} className="p-2.5 bg-primary/5 border border-primary/10 rounded-xl">
+                <p className="text-sm font-bold">{e.title}</p>
+                <div className="flex gap-2 mt-1 flex-wrap">
+                  {e.startTime && <p className="text-[10px] text-muted-foreground">{e.startTime}{e.endTime ? ` – ${e.endTime}` : ""}</p>}
+                  {e.location && <p className="text-[10px] text-muted-foreground">{e.location}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Structure Bookings */}
+      {summary.structureBookings.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <CalendarDays size={12} className="text-slate-400" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Estruturas ({summary.structureBookings.length})</span>
+          </div>
+          <div className="space-y-2">
+            {summary.structureBookings.map((b) => (
+              <div key={b.id} className="p-2.5 bg-slate-500/5 border border-slate-500/10 rounded-xl">
+                <p className="text-sm font-bold">{b.structureName || "Estrutura"}</p>
+                <div className="flex gap-2 mt-1">
+                  <p className="text-[10px] text-muted-foreground">{b.startTime} – {b.endTime}</p>
+                  {b.guestName && <p className="text-[10px] text-muted-foreground">{b.guestName}</p>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Birthdays — in-house */}
+      {summary.birthdays.some((b) => b.isInHouse) && (
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Gift size={12} className="text-amber-400" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">
+              Aniversários · In-house ({summary.birthdays.filter((b) => b.isInHouse).length})
+            </span>
+          </div>
+          <div className="space-y-2">
+            {summary.birthdays.filter((b) => b.isInHouse).map((b, i) => (
+              <div key={i} className="p-2.5 bg-amber-500/5 border border-amber-500/10 rounded-xl">
+                <p className="text-sm font-bold">{b.guestName}</p>
+                {b.age !== undefined && <p className="text-[10px] text-muted-foreground">{b.age} anos</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Birthdays — staff */}
+      {summary.birthdays.some((b) => b.isStaff) && (
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Gift size={12} className="text-indigo-400" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">
+              Equipe ({summary.birthdays.filter((b) => b.isStaff).length})
+            </span>
+          </div>
+          <div className="space-y-2">
+            {summary.birthdays.filter((b) => b.isStaff).map((b, i) => (
+              <div key={i} className="p-2.5 bg-indigo-500/5 border border-indigo-500/10 rounded-xl">
+                <p className="text-sm font-bold text-indigo-300">{b.guestName}</p>
+                {b.age !== undefined && <p className="text-[10px] text-indigo-400/60">{b.age} anos</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Birthdays — guests not in-house */}
+      {summary.birthdays.some((b) => !b.isInHouse && !b.isStaff) && (
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Gift size={12} className="text-amber-400/40" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
+              Aniversários · Fora ({summary.birthdays.filter((b) => !b.isInHouse && !b.isStaff).length})
+            </span>
+          </div>
+          <div className="space-y-2">
+            {summary.birthdays.filter((b) => !b.isInHouse && !b.isStaff).map((b, i) => (
+              <div key={i} className="p-2 bg-muted/20 border border-white/5 rounded-xl">
+                <p className="text-sm text-muted-foreground">{b.guestName}</p>
+                {b.age !== undefined && <p className="text-[10px] text-muted-foreground/50">{b.age} anos</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ==========================================
 // MAIN COMPONENT
 // ==========================================
@@ -159,6 +333,7 @@ export default function CalendarioPage() {
   const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()));
   const [loading, setLoading] = useState(true);
   const [hiddenLayers, setHiddenLayers] = useState<Set<string>>(new Set());
+  const [showLegendMobile, setShowLegendMobile] = useState(false);
 
   const [events, setEvents] = useState<Event[]>([]);
   const [stays, setStays] = useState<StayEntry[]>([]);
@@ -170,6 +345,15 @@ export default function CalendarioPage() {
 
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [totalCabins, setTotalCabins] = useState(0);
+
+  // View mode — grid (heat-map) on desktop, agenda (list) on mobile by default
+  const isMobile = useIsMobile();
+  const [viewMode, setViewMode] = useState<"grid" | "agenda">("grid");
+  const userPickedView = useRef(false);
+  useEffect(() => {
+    if (!userPickedView.current) setViewMode(isMobile ? "agenda" : "grid");
+  }, [isMobile]);
+  const pickView = (m: "grid" | "agenda") => { userPickedView.current = true; setViewMode(m); };
 
   const loadData = useCallback(async () => {
     if (!property?.id) return;
@@ -412,6 +596,16 @@ export default function CalendarioPage() {
     [birthdayRecords]
   );
 
+  // Days of the month that have at least one item, sorted — powers the agenda view
+  const agendaDays = useMemo(
+    () =>
+      Object.keys(summaryByDate)
+        .filter((d) => summaryTotal(summaryByDate[d]) > 0)
+        .sort()
+        .map((d) => ({ dateStr: d, summary: summaryByDate[d] })),
+    [summaryByDate]
+  );
+
   if (!property) {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground">
@@ -421,23 +615,46 @@ export default function CalendarioPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="md:p-6 space-y-5 max-w-7xl mx-auto">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-black uppercase tracking-tight text-foreground">Calendário</h1>
           <p className="text-sm text-muted-foreground mt-1">Visão unificada de eventos, hospedagens e estruturas</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* View toggle */}
+          <div className="flex items-center rounded-xl border border-white/10 p-0.5">
+            <button
+              onClick={() => pickView("grid")}
+              className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors", viewMode === "grid" ? "bg-primary text-black" : "text-muted-foreground hover:text-foreground")}
+            >
+              <LayoutGrid size={14} /> <span className="hidden sm:inline">Grade</span>
+            </button>
+            <button
+              onClick={() => pickView("agenda")}
+              className={cn("flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors", viewMode === "agenda" ? "bg-primary text-black" : "text-muted-foreground hover:text-foreground")}
+            >
+              <List size={14} /> <span className="hidden sm:inline">Agenda</span>
+            </button>
+          </div>
           <button onClick={() => { setCurrentMonth(startOfMonth(new Date())); setSelectedDay(null); }} className="px-3 py-2 text-xs font-bold border border-white/10 rounded-xl hover:bg-secondary transition-colors">
             Hoje
           </button>
         </div>
       </div>
 
-      {/* Legend — click to toggle layers */}
-      <div className="flex flex-wrap items-center gap-2 text-xs">
+      {/* Legend — click to toggle layers. Collapsible on mobile to save space. */}
+      <div>
+        <button
+          onClick={() => setShowLegendMobile((v) => !v)}
+          className="md:hidden flex items-center gap-2 text-xs font-bold text-muted-foreground border border-white/10 rounded-lg px-3 py-1.5 mb-2"
+        >
+          Camadas{hiddenLayers.size > 0 ? ` · ${hiddenLayers.size} ocultas` : ""}
+          <ChevronDown size={13} className={cn("transition-transform", showLegendMobile && "rotate-180")} />
+        </button>
+        <div className={cn("flex-wrap items-center gap-2 text-xs", showLegendMobile ? "flex" : "hidden md:flex")}>
         {([
           { key: "checkin",   color: "bg-emerald-400", label: "Check-in" },
           { key: "checkout",  color: "bg-orange-400",  label: "Check-out" },
@@ -466,11 +683,73 @@ export default function CalendarioPage() {
             </button>
           );
         })}
+        </div>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <Loader2 className="animate-spin text-primary w-8 h-8" />
+        </div>
+      ) : viewMode === "agenda" ? (
+        /* ===== AGENDA VIEW (mobile-first list) ===== */
+        <div className="space-y-4">
+          {/* Month nav */}
+          <div className="flex items-center justify-between">
+            <button onClick={() => { setCurrentMonth(m => subMonths(m, 1)); setSelectedDay(null); }} className="p-2 rounded-xl hover:bg-secondary transition-colors">
+              <ChevronLeft size={20} />
+            </button>
+            <h2 className="font-black uppercase text-lg tracking-tight">
+              {format(currentMonth, "MMMM yyyy", { locale: ptBR })}
+            </h2>
+            <button onClick={() => { setCurrentMonth(m => addMonths(m, 1)); setSelectedDay(null); }} className="p-2 rounded-xl hover:bg-secondary transition-colors">
+              <ChevronRight size={20} />
+            </button>
+          </div>
+
+          {/* Month totals */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-card border border-white/5 rounded-xl p-3 text-center">
+              <p className="text-2xl font-black text-emerald-400">{stays.length}</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">Hospedagens</p>
+            </div>
+            <div className="bg-card border border-white/5 rounded-xl p-3 text-center">
+              <p className="text-2xl font-black text-primary">{events.filter(e => e.status === "published").length}</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">Eventos</p>
+            </div>
+            <div className="bg-card border border-white/5 rounded-xl p-3 text-center">
+              <p className="text-2xl font-black text-slate-400">{structureBookings.length}</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">Estruturas</p>
+            </div>
+            <div className="bg-card border border-white/5 rounded-xl p-3 text-center">
+              <p className="text-2xl font-black text-amber-400">{birthdayDaysCount}</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mt-0.5">Aniversários</p>
+            </div>
+          </div>
+
+          {/* Day list */}
+          {agendaDays.length === 0 ? (
+            <div className="bg-card border border-white/5 rounded-2xl p-8 flex flex-col items-center justify-center text-muted-foreground text-center">
+              <CalendarDays size={40} className="opacity-20 mb-3" />
+              <p className="text-sm font-medium">Nenhum item neste mês</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {agendaDays.map(({ dateStr, summary }) => {
+                const isToday = dateStr === format(new Date(), "yyyy-MM-dd");
+                return (
+                  <div key={dateStr} className={cn("bg-card border rounded-2xl overflow-hidden", isToday ? "border-primary/40" : "border-white/5")}>
+                    <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+                      <h3 className="font-black uppercase text-sm tracking-tight">{formatDatePT(dateStr)}</h3>
+                      {isToday && <span className="text-[9px] font-black uppercase tracking-widest bg-primary text-black px-2 py-0.5 rounded-full">Hoje</span>}
+                    </div>
+                    <div className="p-4 space-y-4">
+                      <DaySummaryContent summary={summary} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       ) : (
         <div className="grid lg:grid-cols-3 gap-6">
@@ -501,7 +780,7 @@ export default function CalendarioPage() {
               {/* Day cells */}
               <div className="grid grid-cols-7">
                 {calendarGrid.map((day, idx) => {
-                  if (!day) return <div key={`e-${idx}`} className="min-h-[80px] border-b border-r border-white/5 bg-secondary/10 opacity-30" />;
+                  if (!day) return <div key={`e-${idx}`} className="min-h-[60px] md:min-h-[80px] border-b border-r border-white/5 bg-secondary/10 opacity-30" />;
 
                   const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
                   const summary = summaryByDate[dateStr];
@@ -525,7 +804,7 @@ export default function CalendarioPage() {
                       key={day}
                       onClick={() => setSelectedDay(isSelected ? null : dateStr)}
                       className={cn(
-                        "group min-h-[80px] border-b border-r border-white/5 p-1.5 flex flex-col items-center text-left transition-all relative",
+                        "group min-h-[60px] md:min-h-[80px] border-b border-r border-white/5 p-1 md:p-1.5 flex flex-col items-center text-left transition-all relative",
                         isSelected ? "bg-primary/20 ring-1 ring-inset ring-primary/40" : hasItems ? "hover:bg-secondary/50" : "hover:bg-secondary/20",
                       )}
                     >
@@ -588,162 +867,7 @@ export default function CalendarioPage() {
                   {totalSelectedItems === 0 && (
                     <p className="text-sm text-muted-foreground py-8 text-center">Nenhum item neste dia.</p>
                   )}
-
-                  {/* Check-ins */}
-                  {selectedDaySummary.checkIns.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <LogIn size={12} className="text-emerald-400" />
-                        <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Check-ins ({selectedDaySummary.checkIns.length})</span>
-                      </div>
-                      <div className="space-y-2">
-                        {selectedDaySummary.checkIns.map((s) => (
-                          <div key={s.id} className="p-2.5 bg-emerald-500/5 border border-emerald-500/10 rounded-xl">
-                            <p className="text-sm font-bold">{s.guestName || "Hóspede"}</p>
-                            {s.cabinName && <p className="text-[10px] text-muted-foreground">{s.cabinName}</p>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Check-outs */}
-                  {selectedDaySummary.checkOuts.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <LogOutIcon size={12} className="text-orange-400" />
-                        <span className="text-[10px] font-black uppercase tracking-widest text-orange-400">Check-outs ({selectedDaySummary.checkOuts.length})</span>
-                      </div>
-                      <div className="space-y-2">
-                        {selectedDaySummary.checkOuts.map((s) => (
-                          <div key={s.id} className="p-2.5 bg-orange-500/5 border border-orange-500/10 rounded-xl">
-                            <p className="text-sm font-bold">{s.guestName || "Hóspede"}</p>
-                            {s.cabinName && <p className="text-[10px] text-muted-foreground">{s.cabinName}</p>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Hospedados (In House) */}
-                  {selectedDaySummary.inHouse.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <BedDouble size={12} className="text-blue-400" />
-                        <span className="text-[10px] font-black uppercase tracking-widest text-blue-400">Hospedados ({selectedDaySummary.inHouse.length})</span>
-                      </div>
-                      <div className="space-y-2">
-                        {selectedDaySummary.inHouse.map((s) => (
-                          <div key={s.id} className="p-2.5 bg-blue-500/5 border border-blue-500/10 rounded-xl">
-                            <p className="text-sm font-bold">{s.guestName || "Hóspede"}</p>
-                            {s.cabinName && <p className="text-[10px] text-muted-foreground">{s.cabinName}</p>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Events */}
-                  {selectedDaySummary.events.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <Ticket size={12} className="text-primary" />
-                        <span className="text-[10px] font-black uppercase tracking-widest text-primary">Eventos ({selectedDaySummary.events.length})</span>
-                      </div>
-                      <div className="space-y-2">
-                        {selectedDaySummary.events.map((e) => (
-                          <div key={e.id} className="p-2.5 bg-primary/5 border border-primary/10 rounded-xl">
-                            <p className="text-sm font-bold">{e.title}</p>
-                            <div className="flex gap-2 mt-1 flex-wrap">
-                              {e.startTime && <p className="text-[10px] text-muted-foreground">{e.startTime}{e.endTime ? ` – ${e.endTime}` : ""}</p>}
-                              {e.location && <p className="text-[10px] text-muted-foreground">{e.location}</p>}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Structure Bookings */}
-                  {selectedDaySummary.structureBookings.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <CalendarDays size={12} className="text-slate-400" />
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Estruturas ({selectedDaySummary.structureBookings.length})</span>
-                      </div>
-                      <div className="space-y-2">
-                        {selectedDaySummary.structureBookings.map((b) => (
-                          <div key={b.id} className="p-2.5 bg-slate-500/5 border border-slate-500/10 rounded-xl">
-                            <p className="text-sm font-bold">{b.structureName || "Estrutura"}</p>
-                            <div className="flex gap-2 mt-1">
-                              <p className="text-[10px] text-muted-foreground">{b.startTime} – {b.endTime}</p>
-                              {b.guestName && <p className="text-[10px] text-muted-foreground">{b.guestName}</p>}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Birthdays — in-house */}
-                  {selectedDaySummary.birthdays.some((b) => b.isInHouse) && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <Gift size={12} className="text-amber-400" />
-                        <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">
-                          Aniversários · In-house ({selectedDaySummary.birthdays.filter((b) => b.isInHouse).length})
-                        </span>
-                      </div>
-                      <div className="space-y-2">
-                        {selectedDaySummary.birthdays.filter((b) => b.isInHouse).map((b, i) => (
-                          <div key={i} className="p-2.5 bg-amber-500/5 border border-amber-500/10 rounded-xl">
-                            <p className="text-sm font-bold">{b.guestName}</p>
-                            {b.age !== undefined && <p className="text-[10px] text-muted-foreground">{b.age} anos</p>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Birthdays — staff */}
-                  {selectedDaySummary.birthdays.some((b) => b.isStaff) && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <Gift size={12} className="text-indigo-400" />
-                        <span className="text-[10px] font-black uppercase tracking-widest text-indigo-400">
-                          Equipe ({selectedDaySummary.birthdays.filter((b) => b.isStaff).length})
-                        </span>
-                      </div>
-                      <div className="space-y-2">
-                        {selectedDaySummary.birthdays.filter((b) => b.isStaff).map((b, i) => (
-                          <div key={i} className="p-2.5 bg-indigo-500/5 border border-indigo-500/10 rounded-xl">
-                            <p className="text-sm font-bold text-indigo-300">{b.guestName}</p>
-                            {b.age !== undefined && <p className="text-[10px] text-indigo-400/60">{b.age} anos</p>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Birthdays — guests not in-house */}
-                  {selectedDaySummary.birthdays.some((b) => !b.isInHouse && !b.isStaff) && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <Gift size={12} className="text-amber-400/40" />
-                        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
-                          Aniversários · Fora ({selectedDaySummary.birthdays.filter((b) => !b.isInHouse && !b.isStaff).length})
-                        </span>
-                      </div>
-                      <div className="space-y-2">
-                        {selectedDaySummary.birthdays.filter((b) => !b.isInHouse && !b.isStaff).map((b, i) => (
-                          <div key={i} className="p-2 bg-muted/20 border border-white/5 rounded-xl">
-                            <p className="text-sm text-muted-foreground">{b.guestName}</p>
-                            {b.age !== undefined && <p className="text-[10px] text-muted-foreground/50">{b.age} anos</p>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  <DaySummaryContent summary={selectedDaySummary} />
                 </div>
               </div>
             ) : (

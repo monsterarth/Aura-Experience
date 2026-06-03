@@ -153,7 +153,7 @@ export default function AuditLogsPage() {
 
   return (
     <RoleGuard allowedRoles={["super_admin", "admin", "manager"]}>
-      <div className="p-4 md:p-8 max-w-[1400px] mx-auto space-y-6 animate-in fade-in duration-500">
+      <div className="max-w-[1400px] mx-auto space-y-6 animate-in fade-in duration-500">
 
         {/* Header */}
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border pb-6">

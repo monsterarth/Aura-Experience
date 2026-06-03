@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/admin/Sidebar";
 import { AdminTopbar } from "@/components/admin/AdminTopbar";
@@ -55,6 +56,7 @@ function AdminLayoutInner({ children, initialTheme }: { children: React.ReactNod
   const pathname = usePathname();
   const isLoginPage = pathname === "/admin/login";
   const { impersonating, userData } = useAuth();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   const isLight = (userData?.uiTheme ?? initialTheme) === 'light';
 
@@ -64,7 +66,7 @@ function AdminLayoutInner({ children, initialTheme }: { children: React.ReactNod
     >
       <style>{`.aura-admin-root { ${isLight ? LIGHT_VARS : DARK_VARS} }`}</style>
 
-      {!isLoginPage && <Sidebar />}
+      {!isLoginPage && <Sidebar isOpen={mobileNavOpen} setIsOpen={setMobileNavOpen} />}
       {!isLoginPage && <ImpersonateBanner />}
 
       <main
@@ -72,7 +74,7 @@ function AdminLayoutInner({ children, initialTheme }: { children: React.ReactNod
         style={impersonating ? { paddingTop: 42 } : undefined}
       >
         <div className="absolute top-0 right-0 w-[600px] h-[300px] bg-gradient-to-bl from-[#E6E6FA] via-[#B0E0E6]/20 to-transparent opacity-10 pointer-events-none rounded-full blur-[100px]" />
-        {!isLoginPage && <AdminTopbar />}
+        {!isLoginPage && <AdminTopbar onMenuClick={() => setMobileNavOpen(true)} />}
         <div className={`flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar ${isLight ? 'bg-[#ede9e4]' : 'bg-[linear-gradient(135deg,rgba(20,20,20,1)_0%,rgba(26,26,26,1)_100%)]'}`}>
           <div className="w-full max-w-[1400px] mx-auto min-h-full pb-20 p-4 lg:p-8">
             {children}

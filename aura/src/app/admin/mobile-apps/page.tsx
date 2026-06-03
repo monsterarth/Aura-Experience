@@ -107,7 +107,7 @@ function MobileAppsContent() {
 
   return (
     <>
-      <div className="p-6 space-y-8">
+      <div className="space-y-8">
         <div>
           <h1 className="text-2xl font-semibold text-white">Apps Mobile</h1>
           <p className="text-white/50 text-sm mt-1">

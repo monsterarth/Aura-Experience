@@ -443,7 +443,7 @@ function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onEdit, on
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "stretch", justifyContent: "flex-end" }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ width: 520, background: T.card, borderLeft: `1px solid ${T.border2}`, display: "flex", flexDirection: "column", animation: "wedding-slide-in .22s ease", boxShadow: "-24px 0 80px rgba(0,0,0,.6)" }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: "min(520px, 100vw)", background: T.card, borderLeft: `1px solid ${T.border2}`, display: "flex", flexDirection: "column", animation: "wedding-slide-in .22s ease", boxShadow: "-24px 0 80px rgba(0,0,0,.6)" }}>
         {/* Header */}
         <div style={{ padding: "20px 24px 0", borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 16 }}>
@@ -937,7 +937,7 @@ export default function CasamentosPage() {
       `}</style>
 
       {/* KPIs */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 14 }}>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-[10px] mb-[14px]">
         {kpis.map((k, i) => (
           <div key={i} style={{ background: T.card, border: `1px solid ${k.border}`, borderRadius: 14, padding: "14px 18px", display: "flex", alignItems: "center", gap: 12, animation: `wedding-fade-in .3s ease ${i * .07}s both`, position: "relative", overflow: "hidden" }}>
             <div style={{ position: "absolute", top: -20, right: -20, width: 70, height: 70, borderRadius: "50%", background: `radial-gradient(circle,${k.color}18 0%,transparent 70%)`, pointerEvents: "none" }} />

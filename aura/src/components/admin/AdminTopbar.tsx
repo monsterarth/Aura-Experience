@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
-import { ChevronRight, Search, X } from "lucide-react";
+import { ChevronRight, Search, X, Menu } from "lucide-react";
 import { NotificationCenter } from "@/components/admin/NotificationCenter";
 
 // ─── Route label map ──────────────────────────────────────────────────────────
@@ -281,16 +281,16 @@ function SearchBox() {
 }
 
 // ─── AdminTopbar ──────────────────────────────────────────────────────────────
-export function AdminTopbar() {
+export function AdminTopbar({ onMenuClick }: { onMenuClick?: () => void }) {
   return (
     <header
+      className="px-3 sm:px-5"
       style={{
         height: 48,
         flexShrink: 0,
         display: "flex",
         alignItems: "center",
         gap: 12,
-        padding: "0 20px",
         background: "color-mix(in srgb, var(--card) 85%, transparent)",
         backdropFilter: "blur(12px)",
         borderBottom: "1px solid var(--border)",
@@ -299,10 +299,23 @@ export function AdminTopbar() {
         zIndex: 30,
       }}
     >
+      {/* Mobile menu trigger — opens the sidebar drawer */}
+      <button
+        onClick={onMenuClick}
+        aria-label="Abrir menu"
+        className="lg:hidden flex items-center justify-center -ml-1 mr-1 p-1.5 rounded-lg shrink-0"
+        style={{ color: "var(--foreground)" }}
+      >
+        <Menu size={20} />
+      </button>
+
       <Breadcrumb />
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-        <SearchBox />
+        {/* Quick-nav search — hidden on phones to leave room for the bell */}
+        <div className="hidden sm:block">
+          <SearchBox />
+        </div>
         <NotificationCenter />
       </div>
     </header>

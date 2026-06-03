@@ -453,7 +453,7 @@ export default function EscalasPage() {
 
   return (
     <RoleGuard allowedRoles={["super_admin", "admin", "manager"]}>
-      <div className="p-4 md:p-8 space-y-6 max-w-[1400px] mx-auto">
+      <div className="space-y-6 max-w-[1400px] mx-auto">
 
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -529,7 +529,7 @@ export default function EscalasPage() {
             <table className="w-full text-xs border-collapse">
               <thead>
                 <tr className="bg-[#0e0e0e]">
-                  <th className="text-left px-4 py-3 text-white/40 font-black uppercase tracking-widest text-[10px] border-b border-white/5 min-w-[180px]">
+                  <th className="text-left px-4 py-3 text-white/40 font-black uppercase tracking-widest text-[10px] border-b border-white/5 min-w-[150px] sticky left-0 z-10 bg-[#0e0e0e]">
                     Funcionário
                   </th>
                   {weekDays.map((day, i) => {
@@ -549,7 +549,7 @@ export default function EscalasPage() {
                   return (
                     <tr key={staff.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
                       {/* Funcionário */}
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 sticky left-0 z-10 bg-[#111] border-r border-white/5">
                         <div className="flex items-center gap-2">
                           <div className="w-7 h-7 rounded-full bg-[#1c1c1c] border border-white/10 flex items-center justify-center text-[10px] font-black text-[#E0FFFF] shrink-0 overflow-hidden">
                             {staff.profilePictureUrl

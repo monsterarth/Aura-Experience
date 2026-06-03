@@ -382,43 +382,45 @@ export default function GovernanceKanbanPage() {
   };
 
   return (
-    <div className="h-full flex flex-col space-y-4 md:space-y-6 p-4 md:p-0">
+    <div className="flex flex-col space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-3 min-w-0">
           <Link
             href="/admin/governance"
-            className="p-2 bg-secondary text-muted-foreground hover:text-foreground rounded-xl border border-border transition-colors"
+            className="p-2 bg-secondary text-muted-foreground hover:text-foreground rounded-xl border border-border transition-colors shrink-0"
           >
             <ChevronLeft size={16} />
           </Link>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Kanban de Governança</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Sincronizado em tempo real com a equipe de campo.</p>
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight truncate">Kanban de Governança</h1>
+            <p className="text-sm text-muted-foreground mt-0.5 hidden sm:block">Sincronizado em tempo real com a equipe de campo.</p>
           </div>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-2 shrink-0">
           {(userData?.role === 'super_admin' || userData?.role === 'admin' || userData?.role === 'governance' || userData?.role === 'manager') && (
             <>
               <button
                 onClick={() => setIsSettingsOpen(true)}
-                className="px-4 py-2 bg-secondary text-foreground rounded-xl text-xs font-bold uppercase hover:bg-accent transition-all border border-border flex items-center gap-2 shadow-sm"
+                className="p-2 md:px-4 md:py-2 bg-secondary text-foreground rounded-xl text-xs font-bold uppercase hover:bg-accent transition-all border border-border flex items-center gap-2 shadow-sm"
+                title="Procedimentos"
               >
-                <Settings2 size={14} /> Procedimentos
+                <Settings2 size={14} /> <span className="hidden md:inline">Procedimentos</span>
               </button>
               <button
                 onClick={() => setIsRulesOpen(true)}
-                className="px-4 py-2 bg-secondary text-foreground rounded-xl text-xs font-bold uppercase hover:bg-accent transition-all border border-border flex items-center gap-2 shadow-sm"
+                className="p-2 md:px-4 md:py-2 bg-secondary text-foreground rounded-xl text-xs font-bold uppercase hover:bg-accent transition-all border border-border flex items-center gap-2 shadow-sm"
+                title="Automação"
               >
-                <Sparkles size={14} /> Automação
+                <Sparkles size={14} /> <span className="hidden md:inline">Automação</span>
               </button>
             </>
           )}
           <button onClick={() => setIsArchiveOpen(true)} className="hidden md:flex flex-row px-4 py-2 bg-secondary text-foreground rounded-xl text-xs font-bold uppercase hover:bg-accent transition-all border border-border items-center gap-2 shadow-sm">
             <Archive size={14} /> Arquivo
           </button>
-          <button onClick={() => { setSelectedTask(null); setIsManagerOpen(true); }} className="px-4 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-bold uppercase hover:opacity-90 transition-all shadow-sm flex items-center gap-2">
-            <Plus size={14} /> Nova Tarefa
+          <button onClick={() => { setSelectedTask(null); setIsManagerOpen(true); }} className="px-3 md:px-4 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-bold uppercase hover:opacity-90 transition-all shadow-sm flex items-center gap-1.5">
+            <Plus size={14} /> <span className="hidden sm:inline">Nova Tarefa</span><span className="sm:hidden">Nova</span>
           </button>
         </div>
       </div>
@@ -458,7 +460,7 @@ export default function GovernanceKanbanPage() {
       </div>
 
       {/* Kanban — Mobile (abas) */}
-      <div className="md:hidden flex flex-col flex-1 min-h-0">
+      <div className="md:hidden flex flex-col">
         <div className="flex gap-1 bg-muted/30 p-1 rounded-2xl border border-border shrink-0">
           {([
             { key: 'pending', label: 'A Fazer', count: pendingTasks.length, color: 'text-zinc-500' },
@@ -496,7 +498,7 @@ export default function GovernanceKanbanPage() {
             </button>
           ) : null;
         })()}
-        <div className="flex-1 overflow-y-auto mt-4 space-y-4 custom-scrollbar pb-4">
+        <div className="mt-4 space-y-4 pb-4">
           {(activeTab === 'pending' ? pendingTasks : activeTab === 'in_progress' ? inProgressTasks : waitingTasks).length === 0 ? (
             <div className="h-24 border-2 border-dashed border-border rounded-xl flex items-center justify-center text-xs font-bold text-muted-foreground uppercase opacity-50">Vazio</div>
           ) : (

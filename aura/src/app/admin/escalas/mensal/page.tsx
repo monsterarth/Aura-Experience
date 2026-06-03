@@ -284,7 +284,7 @@ export default function EscalasMensalPage() {
 
   return (
     <RoleGuard allowedRoles={["super_admin", "admin", "manager"]}>
-      <div className="p-4 md:p-6 space-y-5 max-w-full mx-auto">
+      <div className="space-y-5 max-w-full mx-auto">
 
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

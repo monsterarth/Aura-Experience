@@ -301,7 +301,7 @@ export default function StaysPage() {
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 className={cn(
-                  "flex-1 md:flex-none px-8 py-3 rounded-[20px] text-[10px] font-black uppercase tracking-[0.2em] transition-all",
+                  "flex-1 md:flex-none px-3 md:px-8 py-3 rounded-[20px] text-[10px] font-black uppercase tracking-[0.1em] md:tracking-[0.2em] transition-all",
                   activeTab === tab
                     ? "bg-white text-black shadow-xl"
                     : "text-foreground/40 hover:text-foreground hover:bg-white/5"
@@ -316,14 +316,14 @@ export default function StaysPage() {
                 <button
                   onClick={() => setActiveTab('pendente')}
                   className={cn(
-                    "flex-1 md:flex-none px-6 py-3 rounded-[20px] text-[10px] font-black uppercase tracking-[0.2em] transition-all flex items-center gap-2",
+                    "flex-1 md:flex-none px-2 md:px-6 py-3 rounded-[20px] text-[10px] font-black uppercase tracking-[0.1em] md:tracking-[0.2em] transition-all flex items-center justify-center gap-1 md:gap-2",
                     activeTab === 'pendente'
                       ? "bg-orange-500 text-white shadow-xl"
                       : "text-orange-400 hover:text-orange-300 hover:bg-orange-500/10"
                   )}
                 >
                   <Receipt size={12} />
-                  Conta
+                  <span className="hidden sm:inline">Conta</span>
                   {pendingCount > 0 && (
                     <span className={cn(
                       "text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center",
@@ -682,9 +682,54 @@ export default function StaysPage() {
               </div>
             )}
 
-            {/* RENDERIZAÇÃO 2: TABELA COMPACTA (Para Encerradas e Histórico) */}
+            {/* RENDERIZAÇÃO 2: ENCERRADAS — cards no mobile, tabela no desktop */}
             {activeTab === 'encerradas' && (
-              <div className="bg-card border border-white/5 rounded-3xl overflow-hidden shadow-sm overflow-x-auto">
+              <>
+              {/* Mobile: lista de cards */}
+              <div className="md:hidden space-y-3">
+                {filteredStays.map((s) => {
+                  const guestName = s.guestName || "Hóspede Desconhecido";
+                  const npsVal = s.nps !== undefined ? s.nps : s.npsScore;
+                  const hasEval = npsVal !== undefined && npsVal !== null;
+                  const npsLabel = !hasEval ? null : npsVal >= 9 ? { text: `Promotor (${npsVal})`, cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" } : npsVal <= 6 ? { text: `Detrator (${npsVal})`, cls: "bg-red-500/10 text-red-500 border-red-500/20" } : { text: `Neutro (${npsVal})`, cls: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20" };
+                  return (
+                    <div key={s.id} className="bg-card border border-white/5 rounded-2xl p-4 space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-lg border ${!s.cabinId ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-primary/10 text-primary border-primary/20'}`}>
+                          {s.cabinName}
+                        </span>
+                        {s.status === 'cancelled' && <span className="text-[8px] uppercase tracking-widest bg-red-500/10 text-red-500 px-2 py-0.5 rounded">Cancelada</span>}
+                        {s.hasOpenFolio && <span className="text-[8px] uppercase tracking-widest bg-orange-500/10 text-orange-400 px-2 py-0.5 rounded border border-orange-500/20">Conta aberta</span>}
+                      </div>
+                      <div>
+                        <p className="font-bold text-foreground">{guestName}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-widest">
+                          {s.checkIn ? format(new Date(s.checkIn), "dd/MM") : ''} → {s.checkOut ? format(new Date(s.checkOut), "dd/MM") : ''}
+                        </p>
+                      </div>
+                      {npsLabel && (
+                        <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${npsLabel.cls}`}>
+                          <Star size={10} className="fill-current" />{npsLabel.text}
+                        </span>
+                      )}
+                      <div className="flex gap-2 pt-1">
+                        <button onClick={() => handleOpenWhatsapp(s)} className="flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest bg-white/5 hover:bg-white/10 text-foreground rounded-xl transition-colors flex items-center justify-center gap-1">
+                          <MessageCircle size={12} /> WhatsApp
+                        </button>
+                        <button onClick={() => handleOpenFicha(s)} className="flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest bg-primary/10 hover:bg-primary/20 text-primary rounded-xl transition-colors flex items-center justify-center gap-1">
+                          <ArrowUpRight size={12} /> Ficha
+                        </button>
+                        <button onClick={() => handleArchive(s.id)} className="p-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl transition-colors" title="Arquivar">
+                          <Archive size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop: tabela compacta */}
+              <div className="hidden md:block bg-card border border-white/5 rounded-3xl overflow-hidden shadow-sm overflow-x-auto">
                 <table className="w-full text-left min-w-[600px]">
                   <thead className="bg-muted/50 border-b border-border">
                     <tr>
@@ -803,6 +848,7 @@ export default function StaysPage() {
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </>
         )}

@@ -468,7 +468,7 @@ export default function AdminConciergePage() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
 
       {/* ── KPI Bar ─────────────────────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 14 }}>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-[10px] mb-[14px]">
         {[
           { label: 'Pendentes',     value: openRequests.length, color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.22)',  Icon: Clock        },
           { label: 'Urgentes',      value: urgentCount,         color: '#f87171', bg: 'rgba(248,113,113,0.08)', border: 'rgba(248,113,113,0.22)', Icon: AlertTriangle },

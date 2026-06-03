@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, Users, Home, Wrench,
   Sparkles, Building, ChevronDown, LogOut,
-  MessageSquare, Settings, Globe, Menu, X,
+  MessageSquare, Settings, Globe, X,
   Star, ClipboardList, Bot, FileText,
   Loader2, ChevronLeft, ChevronRight, Coffee,
   CalendarDays, UserSearch,
@@ -491,14 +491,13 @@ function PainelNavItem({
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-export const Sidebar = () => {
+export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v: boolean) => void }) => {
   const { userData, isSuperAdmin, loading: authLoading, userDataReady, impersonating } = useAuth();
   const { currentProperty: property, setProperty } = useProperty();
   const { counts: notifCounts } = useNotifications();
   const pathname = usePathname();
   const router = useRouter();
   const [allProperties, setAllProperties] = useState<Property[]>([]);
-  const [isOpen, setIsOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
@@ -591,15 +590,6 @@ export const Sidebar = () => {
 
   return (
     <>
-      {/* Mobile fab */}
-      <button
-        onClick={() => setIsOpen(true)}
-        className="lg:hidden fixed bottom-6 right-6 z-40 p-4 rounded-full shadow-lg transition-transform hover:scale-105"
-        style={{ background: T.grad, color: "#fff" }}
-      >
-        <Menu size={24} />
-      </button>
-
       {/* Mobile overlay */}
       {isOpen && (
         <div
