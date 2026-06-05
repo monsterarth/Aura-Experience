@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import {
     MapPin, MapPinned, Save, Crosshair, Target, Eye, EyeOff,
@@ -13,6 +13,7 @@ import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { Structure, Cabin, Property } from "@/types/aura";
 import { ImageUpload } from "@/components/admin/ImageUpload";
+import { gcpResidualsPercent } from "@/app/check-in/[code]/map/utils/geoTransform";
 
 // ── Componente de entrada de coordenadas no formato Google Maps ─────────────
 // Aceita colar direto: "-28.131983, -48.643969" e faz o parse automaticamente.
@@ -200,6 +201,27 @@ export default function ResortMapAdminPage() {
     const mappedStructures = structures.filter(s => s.showOnMap && s.mapPin?.pixelX != null);
     const mappedCabins     = cabins.filter(c => c.mapPin?.pixelX != null);
 
+    // Diagnóstico de calibração: mesmo conjunto de pontos que o hóspede usa
+    // (GCPs manuais + pins de estrutura com lat/lng) com o erro leave-one-out.
+    const calibrationPoints = useMemo(() => {
+        const pts: { label: string; lat: number; lng: number; px: number; py: number }[] = [];
+        (mapConfig.gcps ?? []).forEach((g, i) => pts.push({ label: `Ponto de calibração ${i + 1}`, lat: g.lat, lng: g.lng, px: g.px, py: g.py }));
+        structures
+            .filter(s => s.showOnMap && s.mapPin?.pixelX != null && (s.mapPin.lat !== 0 || s.mapPin.lng !== 0))
+            .forEach(s => pts.push({ label: s.name, lat: s.mapPin!.lat, lng: s.mapPin!.lng, px: s.mapPin!.pixelX!, py: s.mapPin!.pixelY! }));
+        return pts;
+    }, [mapConfig.gcps, structures]);
+
+    const residuals = useMemo(() => {
+        const r = gcpResidualsPercent(calibrationPoints.map(p => ({ lat: p.lat, lng: p.lng, px: p.px, py: p.py })));
+        return calibrationPoints
+            .map((p, i) => ({ ...p, residual: r[i] }))
+            .filter(x => x.residual != null)
+            .sort((a, b) => (b.residual! - a.residual!));
+    }, [calibrationPoints]);
+
+    const avgResidual = residuals.length ? residuals.reduce((s, x) => s + x.residual!, 0) / residuals.length : null;
+
     if (!currentProperty) {
         return (
             <div className="max-w-3xl mx-auto py-20 text-center text-muted-foreground">
@@ -355,6 +377,37 @@ export default function ResortMapAdminPage() {
                                         </div>
                                     )}
                                 </div>
+
+                                {/* Qualidade da Calibração — diagnóstico de pontos inconsistentes */}
+                                {residuals.length >= 4 && (
+                                    <div className="bg-card border border-border rounded-3xl p-5 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <Target size={16} className="text-primary" />
+                                                <h3 className="font-bold text-foreground">Qualidade da calibração</h3>
+                                            </div>
+                                            {avgResidual != null && (
+                                                <span className={`text-xs font-bold px-2.5 py-1 rounded-lg ${avgResidual < 4 ? "bg-green-500/10 text-green-600" : avgResidual < 8 ? "bg-amber-500/10 text-amber-600" : "bg-red-500/10 text-red-500"}`}>
+                                                    erro médio {avgResidual.toFixed(1)}%
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground flex items-start gap-2">
+                                            <Info size={13} className="mt-0.5 shrink-0" />
+                                            Cada ponto é comparado com a posição prevista pelos demais. Erro alto = coordenada digitada errada ou pin no lugar errado. Corrija ou remova os pontos em vermelho.
+                                        </p>
+                                        <div className="space-y-1.5">
+                                            {residuals.slice(0, 6).map((r, i) => (
+                                                <div key={i} className="flex items-center justify-between gap-2 text-sm">
+                                                    <span className="truncate text-foreground/90">{r.label}</span>
+                                                    <span className={`shrink-0 font-bold font-mono text-xs px-2 py-0.5 rounded ${r.residual! < 4 ? "text-green-600" : r.residual! < 8 ? "text-amber-600" : "bg-red-500/10 text-red-500"}`}>
+                                                        {r.residual! < 4 ? "✓ " : r.residual! >= 8 ? "⚠ " : ""}{r.residual!.toFixed(1)}%
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Satélite */}
                                 <div className="bg-card border border-border rounded-3xl p-5 space-y-3">

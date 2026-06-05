@@ -1,22 +1,39 @@
 // Transformação GPS → posição normalizada (0..1) na imagem ilustrada.
 //
-// Modo preferido: transformação affine (6 parâmetros) calibrada por Ground
-// Control Points (GCPs) via mínimos quadrados.
-//   px = a·lng + b·lat + c
-//   py = d·lng + e·lat + f
+// Mapas ILUSTRADOS não são geometricamente fiéis (perspectiva, distâncias
+// artísticas), então uma única transformação affine GLOBAL não consegue
+// representá-los — com muitos pontos o mínimos-quadrados "espalha" o erro e
+// piora em todo lugar.
 //
-// IMPORTANTE — normalização de coordenadas:
-// lat/lng no Brasil têm valores absolutos grandes (~-28, ~-48).
-// O cálculo dos mínimos quadrados envolve produtos como (-28)² = 784 enquanto
-// os valores pixel são 0..1. Essa diferença de escala (≈1000x) torna o sistema
-// de equações mal condicionado e produz erros de escala e offset significativos.
-// Fix: subtrair a média (centroide) dos GCPs antes de qualquer cálculo.
+// Solução: affine LOCAL ponderada (Shepard). Para cada consulta, calcula uma
+// affine dando mais peso aos GCPs próximos do ponto. Isso:
+//   - respeita a distorção local do mapa desenhado;
+//   - é robusto a um GCP ruim isolado (peso baixo quando distante);
+//   - degrada para affine global quando os pontos são esparsos.
 //
-// Fallback: mapeamento linear pelos limites (bounds) quando há <3 GCPs.
+// Coordenadas são normalizadas pelo centroide (lat/lng no Brasil ~ -28/-48
+// geram produtos grandes que deixam o sistema mal condicionado).
+//
+// Fallback: mapeamento linear por bounds quando há <3 GCPs válidos.
 
 export type Gcp    = { lat: number; lng: number; px: number; py: number };
 export type Bounds = { minLat: number; maxLat: number; minLng: number; maxLng: number };
-export type AffineTransform = { a: number; b: number; c: number; d: number; e: number; f: number };
+
+// --- Validação ---
+
+export function isValidGcp(g: Gcp): boolean {
+    return (
+        Number.isFinite(g.lat) && Number.isFinite(g.lng) &&
+        Number.isFinite(g.px)  && Number.isFinite(g.py)  &&
+        !(g.lat === 0 && g.lng === 0) &&          // ponto adicionado mas não preenchido
+        g.px >= -0.05 && g.px <= 1.05 &&          // pixel dentro (com folga) da imagem
+        g.py >= -0.05 && g.py <= 1.05
+    );
+}
+
+export function sanitizeGcps(gcps: Gcp[]): Gcp[] {
+    return (gcps ?? []).filter(isValidGcp);
+}
 
 // --- Álgebra linear ---
 
@@ -27,7 +44,7 @@ function solve3x3(M: number[][], v: number[]): number[] | null {
         for (let r = col + 1; r < 3; r++) {
             if (Math.abs(A[r][col]) > Math.abs(A[pivot][col])) pivot = r;
         }
-        if (Math.abs(A[pivot][col]) < 1e-12) return null;
+        if (Math.abs(A[pivot][col]) < 1e-15) return null;
         [A[col], A[pivot]] = [A[pivot], A[col]];
         for (let r = 0; r < 3; r++) {
             if (r === col) continue;
@@ -38,28 +55,46 @@ function solve3x3(M: number[][], v: number[]): number[] | null {
     return [A[0][3] / A[0][0], A[1][3] / A[1][1], A[2][3] / A[2][2]];
 }
 
-function fitAxis(gcps: Gcp[], target: (g: Gcp) => number): [number, number, number] | null {
-    let sLL = 0, sLa = 0, sL = 0, saa = 0, sa = 0;
-    const sN = gcps.length;
+// Mínimos quadrados ponderados para v = a·lng + b·lat + c
+function fitAxisWeighted(pts: Gcp[], target: (g: Gcp) => number, weights: number[]): [number, number, number] | null {
+    let sLL = 0, sLa = 0, sL = 0, saa = 0, sa = 0, sW = 0;
     let tL = 0, ta = 0, t1 = 0;
-    for (const g of gcps) {
-        const { lng, lat } = g;
-        const t = target(g);
-        sLL += lng * lng; sLa += lng * lat; sL += lng;
-        saa += lat * lat; sa  += lat;
-        tL += t * lng; ta += t * lat; t1 += t;
+    for (let i = 0; i < pts.length; i++) {
+        const w = weights[i];
+        const L = pts[i].lng, A = pts[i].lat, t = target(pts[i]);
+        sLL += w * L * L; sLa += w * L * A; sL += w * L;
+        saa += w * A * A; sa += w * A; sW += w;
+        tL += w * t * L; ta += w * t * A; t1 += w * t;
     }
-    const Mx = [[sLL, sLa, sL], [sLa, saa, sa], [sL, sa, sN]];
-    return solve3x3(Mx, [tL, ta, t1]) as [number, number, number] | null;
+    const M = [[sLL, sLa, sL], [sLa, saa, sa], [sL, sa, sW]];
+    return solve3x3(M, [tL, ta, t1]) as [number, number, number] | null;
 }
 
-// Constrói a transformação affine a partir de GCPs já normalizados.
-function buildTransformNormalized(gcps: Gcp[]): AffineTransform | null {
-    if (gcps.length < 3) return null;
-    const x = fitAxis(gcps, g => g.px);
-    const y = fitAxis(gcps, g => g.py);
+function centroid(gcps: Gcp[]) {
+    const meanLat = gcps.reduce((s, g) => s + g.lat, 0) / gcps.length;
+    const meanLng = gcps.reduce((s, g) => s + g.lng, 0) / gcps.length;
+    return { meanLat, meanLng };
+}
+
+// Diagonal do conjunto (em graus) — usada para definir o raio de suavização.
+function spreadDiagonal(pts: Gcp[]): number {
+    let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+    for (const p of pts) {
+        if (p.lng < minLng) minLng = p.lng; if (p.lng > maxLng) maxLng = p.lng;
+        if (p.lat < minLat) minLat = p.lat; if (p.lat > maxLat) maxLat = p.lat;
+    }
+    return Math.hypot(maxLng - minLng, maxLat - minLat);
+}
+
+// Avalia uma affine local ponderada por proximidade ao ponto (qLng,qLat).
+// `smoothing` é o raio (em graus) onde os pontos têm peso relevante.
+function localAffineEval(norm: Gcp[], qLng: number, qLat: number, smoothing: number): { x: number; y: number } | null {
+    const s2 = smoothing * smoothing;
+    const weights = norm.map(g => 1 / ((g.lng - qLng) ** 2 + (g.lat - qLat) ** 2 + s2));
+    const x = fitAxisWeighted(norm, g => g.px, weights);
+    const y = fitAxisWeighted(norm, g => g.py, weights);
     if (!x || !y) return null;
-    return { a: x[0], b: x[1], c: x[2], d: y[0], e: y[1], f: y[2] };
+    return { x: x[0] * qLng + x[1] * qLat + x[2], y: y[0] * qLng + y[1] * qLat + y[2] };
 }
 
 // --- API pública ---
@@ -70,35 +105,24 @@ export function gpsToFraction(
     opts: { gcps?: Gcp[]; bounds?: Bounds },
 ): { x: number; y: number } | null {
 
-    const gcps = opts.gcps ?? [];
+    const gcps = sanitizeGcps(opts.gcps ?? []);
 
     if (gcps.length >= 3) {
-        // 1) Calcula centroide para normalização
-        const meanLat = gcps.reduce((s, g) => s + g.lat, 0) / gcps.length;
-        const meanLng = gcps.reduce((s, g) => s + g.lng, 0) / gcps.length;
+        const { meanLat, meanLng } = centroid(gcps);
+        const norm = gcps.map(g => ({ lat: g.lat - meanLat, lng: g.lng - meanLng, px: g.px, py: g.py }));
+        const qLat = lat - meanLat, qLng = lng - meanLng;
 
-        // 2) Normaliza GCPs (trabalha com diferenças pequenas ≈ 0.0001 em vez de valores absolutos ≈ 28)
-        const normalized = gcps.map(g => ({
-            lat: g.lat - meanLat,
-            lng: g.lng - meanLng,
-            px:  g.px,
-            py:  g.py,
-        }));
+        const diag = spreadDiagonal(norm);
+        // Raio de suavização ≈ 30% da diagonal: equilibra "modelar a distorção
+        // local" (raio menor) vs "ser robusto a pins imprecisos" (raio maior).
+        const smoothing = diag > 0 ? diag * 0.3 : 1e-4;
 
-        const t = buildTransformNormalized(normalized);
-        if (t) {
-            const { a, b, c, d, e, f } = t;
-            // 3) Normaliza o ponto de consulta com o mesmo centroide
-            const nlat = lat - meanLat;
-            const nlng = lng - meanLng;
-            return {
-                x: a * nlng + b * nlat + c,
-                y: d * nlng + e * nlat + f,
-            };
-        }
+        const f = localAffineEval(norm, qLng, qLat, smoothing)
+            // fallback: affine global (raio enorme → pesos ~iguais)
+            ?? localAffineEval(norm, qLng, qLat, diag * 100 || 1);
+        if (f) return f;
     }
 
-    // Fallback linear por bounds (sem GCPs suficientes)
     if (opts.bounds) {
         const { minLat, maxLat, minLng, maxLng } = opts.bounds;
         if (maxLng === minLng || maxLat === minLat) return null;
@@ -109,4 +133,30 @@ export function gpsToFraction(
     }
 
     return null;
+}
+
+// Diagnóstico de calibração: para cada GCP válido, mede o quanto ele discorda
+// dos demais (leave-one-out) — prevê a posição dele usando os OUTROS pontos via
+// affine global e compara com a posição marcada. Resíduo alto = coordenada
+// errada / pin no lugar errado.
+// Retorna, por índice do array original, o erro em % da imagem (ou null).
+export function gcpResidualsPercent(gcps: Gcp[]): (number | null)[] {
+    const result: (number | null)[] = (gcps ?? []).map(() => null);
+    const validIdx = (gcps ?? []).map((g, i) => ({ g, i })).filter(({ g }) => isValidGcp(g));
+    if (validIdx.length < 4) return result; // precisa sobrar ≥3 ao remover 1
+
+    for (const { g: target, i: targetIdx } of validIdx) {
+        const others = validIdx.filter(v => v.i !== targetIdx).map(v => v.g);
+        const { meanLat, meanLng } = centroid(others);
+        const norm = others.map(o => ({ lat: o.lat - meanLat, lng: o.lng - meanLng, px: o.px, py: o.py }));
+        const w = norm.map(() => 1); // affine global (sem ponderação) p/ medir consenso
+        const x = fitAxisWeighted(norm, p => p.px, w);
+        const y = fitAxisWeighted(norm, p => p.py, w);
+        if (!x || !y) continue;
+        const qLng = target.lng - meanLng, qLat = target.lat - meanLat;
+        const predX = x[0] * qLng + x[1] * qLat + x[2];
+        const predY = y[0] * qLng + y[1] * qLat + y[2];
+        result[targetIdx] = Math.hypot(predX - target.px, predY - target.py) * 100;
+    }
+    return result;
 }
