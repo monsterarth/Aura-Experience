@@ -7,7 +7,7 @@ import { SurveyService } from "@/services/survey-service";
 import { PropertyService } from "@/services/property-service";
 import { StructureService } from "@/services/structure-service";
 import { Stay, Property, Structure } from "@/types/aura";
-import { Loader2, CheckCircle, FileText, Share, AlertCircle, Phone, Star, ArrowRight, Coffee, Calendar, BellRing, BookOpen, Wifi, Key, Ticket, MessageSquare, Menu, X, Lock, Moon, Clock, Flag } from "lucide-react";
+import { Loader2, CheckCircle, FileText, Share, AlertCircle, Phone, Star, ArrowRight, Coffee, Calendar, BellRing, BookOpen, Wifi, Key, Ticket, MessageSquare, Menu, X, Lock, Moon, Clock, Flag, MapPinned } from "lucide-react";
 import { toggleGuestDND } from "@/app/actions/dnd-actions";
 import { reportCabinIssue, reportStructureIssue, reportAppBug } from "@/app/actions/issue-actions";
 import { toast } from "sonner";
@@ -79,6 +79,8 @@ const hubTranslations = {
         guidesSub: 'Manuais e regras',
         events: 'Eventos',
         eventsSub: 'Na região e na pousada',
+        resortMap: 'Mapa do Resort',
+        resortMapSub: 'Áreas, GPS e reservas',
         survey: 'Avaliar Estadia',
         surveySub: 'Compartilhe sua experiência',
         whatsapp: 'Falar com a Recepção',
@@ -135,6 +137,8 @@ const hubTranslations = {
         guidesSub: 'Manuals & rules',
         events: 'Events',
         eventsSub: 'In the area & at the resort',
+        resortMap: 'Resort Map',
+        resortMapSub: 'Areas, GPS & bookings',
         survey: 'Rate your stay',
         surveySub: 'Share your experience',
         whatsapp: 'Contact Reception',
@@ -191,6 +195,8 @@ const hubTranslations = {
         guidesSub: 'Manuales y reglas',
         events: 'Eventos',
         eventsSub: 'En la zona y el hotel',
+        resortMap: 'Mapa del Resort',
+        resortMapSub: 'Áreas, GPS y reservas',
         survey: 'Evaluar estadía',
         surveySub: 'Comparte tu experiencia',
         whatsapp: 'Contactar Recepción',
@@ -638,6 +644,17 @@ function GuestHubContent() {
                             <div className="text-left">
                                 <h3 className="font-bold text-sm uppercase tracking-wider">{t.scheduling}</h3>
                                 <p className="text-[10px] font-medium text-muted-foreground mt-0.5">{t.schedulingSub}</p>
+                            </div>
+                        </button>
+
+                        {/* Mapa do Resort */}
+                        <button onClick={() => router.push(`/check-in/${code}/map`)} className="col-span-2 sm:col-span-1 bg-card border border-border p-5 rounded-[2rem] shadow-sm hover:shadow-md hover:border-primary/50 transition-all flex flex-col gap-3 group">
+                            <div className="w-10 h-10 bg-secondary rounded-2xl flex items-center justify-center text-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                                <MapPinned size={20} />
+                            </div>
+                            <div className="text-left">
+                                <h3 className="font-bold text-sm uppercase tracking-wider">{t.resortMap}</h3>
+                                <p className="text-[10px] font-medium text-muted-foreground mt-0.5">{t.resortMapSub}</p>
                             </div>
                         </button>
 

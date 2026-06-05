@@ -1,0 +1,280 @@
+"use client";
+
+import React, { useState, useEffect, useMemo, Suspense } from "react";
+import dynamic from "next/dynamic";
+import { useParams, useRouter } from "next/navigation";
+import { Loader2, ArrowLeft, Map as MapIcon, Satellite, MapPinned, Navigation, AlertCircle } from "lucide-react";
+import { toast } from "sonner";
+import { StayService } from "@/services/stay-service";
+import { PropertyService } from "@/services/property-service";
+import { Stay, Property } from "@/types/aura";
+import { MapArea, MapLang } from "./types";
+import { IllustratedMap } from "./IllustratedMap";
+import { AreaCard } from "./AreaCard";
+import { CategoryFilter } from "./components/CategoryFilter";
+import { useGPS } from "./hooks/useGPS";
+import { gpsToFraction } from "./utils/geoTransform";
+
+// Leaflet só no cliente (usa window) → import dinâmico sem SSR.
+const SatelliteMap = dynamic(() => import("./SatelliteMap").then(m => m.SatelliteMap), {
+    ssr: false,
+    loading: () => <div className="h-[60vh] flex items-center justify-center bg-secondary rounded-3xl"><Loader2 className="animate-spin text-primary" /></div>,
+});
+
+// --- Theme helper (mesmo padrão das outras páginas do portal) ---
+function hexToHSL(hex: string): string {
+    if (!hex) return "0 0% 0%";
+    hex = hex.replace(/^#/, "");
+    if (hex.length === 3) hex = hex.split("").map(x => x + x).join("");
+    const r = parseInt(hex.substring(0, 2), 16) / 255;
+    const g = parseInt(hex.substring(2, 4), 16) / 255;
+    const b = parseInt(hex.substring(4, 6), 16) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h = 0, s = 0; const l = (max + min) / 2;
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
+    return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
+}
+function getThemeStyles(p?: Property | null): React.CSSProperties {
+    const c = p?.theme?.colors;
+    if (!c) return {};
+    return {
+        "--primary": hexToHSL(c.primary), "--primary-foreground": hexToHSL(c.onPrimary),
+        "--secondary": hexToHSL(c.secondary), "--secondary-foreground": hexToHSL(c.onSecondary),
+        "--background": hexToHSL(c.background), "--card": hexToHSL(c.surface),
+        "--card-foreground": hexToHSL(c.textMain), "--foreground": hexToHSL(c.textMain),
+        "--muted": hexToHSL(c.secondary), "--muted-foreground": hexToHSL(c.textMuted),
+        "--accent": hexToHSL(c.accent), "--border": hexToHSL(c.accent),
+        "--radius": p?.theme?.shape?.radius || "0.5rem",
+    } as React.CSSProperties;
+}
+
+const TXT: Record<MapLang, Record<string, string>> = {
+    pt: { title: "Mapa do Resort", illustrated: "Ilustrado", satellite: "Satélite", empty: "O mapa ainda não foi configurado.", locating: "Localizando…", gpsOff: "Ative o GPS para ver sua localização", youAreHere: "Você está aqui", noImage: "Imagem do mapa indisponível." },
+    en: { title: "Resort Map", illustrated: "Illustrated", satellite: "Satellite", empty: "The map hasn't been set up yet.", locating: "Locating…", gpsOff: "Enable GPS to see your location", youAreHere: "You are here", noImage: "Map image unavailable." },
+    es: { title: "Mapa del Resort", illustrated: "Ilustrado", satellite: "Satélite", empty: "El mapa aún no está configurado.", locating: "Localizando…", gpsOff: "Activa el GPS para ver tu ubicación", youAreHere: "Estás aquí", noImage: "Imagen del mapa no disponible." },
+};
+
+function ResortMapView() {
+    const { code } = useParams();
+    const router = useRouter();
+
+    const [loading, setLoading] = useState(true);
+    const [stay, setStay] = useState<Stay | null>(null);
+    const [property, setProperty] = useState<Property | null>(null);
+    const [mapConfig, setMapConfig] = useState<NonNullable<Property["settings"]["mapConfig"]>>({});
+    const [areas, setAreas] = useState<MapArea[]>([]);
+    const [lang, setLang] = useState<MapLang>("pt");
+
+    const [mode, setMode] = useState<"illustrated" | "satellite">("illustrated");
+    const [category, setCategory] = useState<string | null>(null);
+    const [selectedArea, setSelectedArea] = useState<MapArea | null>(null);
+
+    const { pos, error: gpsError } = useGPS();
+    const t = TXT[lang];
+
+    // Carrega estadia + propriedade + idioma
+    useEffect(() => {
+        async function init() {
+            try {
+                if (!code) return;
+                const stays = await StayService.getStaysByAccessCode(code as string);
+                if (!stays || stays.length === 0) { setLoading(false); return; }
+                const s = stays[0] as Stay;
+                setStay(s);
+
+                try {
+                    const sd = await StayService.getStayWithGuestAndCabin(s.propertyId, s.id);
+                    const pl = sd?.guest?.preferredLanguage;
+                    if (pl) setLang(pl as MapLang);
+                    else {
+                        const bl = navigator.language.slice(0, 2);
+                        if (bl === "es") setLang("es"); else if (bl === "en") setLang("en");
+                    }
+                } catch { /* ignore */ }
+
+                const prop = await PropertyService.getPropertyById(s.propertyId);
+                if (prop) setProperty(prop as Property);
+            } catch (e) {
+                console.error(e);
+                toast.error("Erro ao carregar o mapa.");
+            } finally {
+                setLoading(false);
+            }
+        }
+        init();
+    }, [code]);
+
+    // Busca áreas + config (com polling de ocupação a cada 30s)
+    const fetchMap = async (propertyId: string) => {
+        const today = new Date().toISOString().split("T")[0];
+        const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
+        try {
+            const res = await fetch(`/api/guest/resort-map?propertyId=${propertyId}&date=${today}&nowMinutes=${nowMinutes}`);
+            const data = await res.json();
+            setMapConfig(data.mapConfig ?? {});
+            setAreas(Array.isArray(data.areas) ? data.areas : []);
+            // Mantém o card aberto sincronizado com dados novos
+            setSelectedArea(prev => prev ? (data.areas?.find((a: MapArea) => a.id === prev.id) ?? prev) : null);
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    useEffect(() => {
+        if (!property) return;
+        fetchMap(property.id);
+        const iv = setInterval(() => fetchMap(property.id), 30000);
+        return () => clearInterval(iv);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [property?.id]);
+
+    // Default de modo conforme config
+    useEffect(() => {
+        if (mapConfig.satelliteEnabled && !mapConfig.illustratedImageUrl) setMode("satellite");
+    }, [mapConfig.satelliteEnabled, mapConfig.illustratedImageUrl]);
+
+    const categories = useMemo(
+        () => Array.from(new Set(areas.map(a => a.category).filter(Boolean))),
+        [areas]
+    );
+    const visibleAreas = useMemo(
+        () => category ? areas.filter(a => a.category === category) : areas,
+        [areas, category]
+    );
+
+    // Posição do hóspede no mapa ilustrado (GPS → fração)
+    const userFraction = useMemo(() => {
+        if (!pos || (pos.accuracy && pos.accuracy > 50)) return null;
+        const f = gpsToFraction(pos.lat, pos.lng, { gcps: mapConfig.gcps, bounds: mapConfig.bounds });
+        if (!f || f.x < 0 || f.x > 1 || f.y < 0 || f.y > 1) return null;
+        return f;
+    }, [pos, mapConfig.gcps, mapConfig.bounds]);
+
+    if (loading || !property) {
+        return <div className="min-h-[100dvh] flex items-center justify-center bg-background"><Loader2 className="w-10 h-10 text-primary animate-spin" /></div>;
+    }
+
+    const themeStyles = getThemeStyles(property);
+    const hasIllustrated = !!mapConfig.illustratedImageUrl;
+    const hasSatellite = !!mapConfig.satelliteEnabled;
+    const nothingConfigured = !hasIllustrated && !hasSatellite;
+
+    return (
+        <div className="min-h-[100dvh] bg-background text-foreground flex flex-col" style={themeStyles}>
+            {/* Header */}
+            <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-md border-b border-border p-4 flex items-center gap-3">
+                <button onClick={() => router.push(`/check-in/${code}`)} className="p-2 hover:bg-secondary rounded-full transition-colors">
+                    <ArrowLeft size={22} />
+                </button>
+                <h1 className="text-lg font-black uppercase tracking-tighter flex-1">{t.title}</h1>
+                {/* Toggle de modo */}
+                {hasIllustrated && hasSatellite && (
+                    <div className="flex bg-secondary rounded-full p-0.5">
+                        <button onClick={() => setMode("illustrated")} className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all ${mode === "illustrated" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+                            <MapIcon size={13} /> {t.illustrated}
+                        </button>
+                        <button onClick={() => setMode("satellite")} className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all ${mode === "satellite" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+                            <Satellite size={13} /> {t.satellite}
+                        </button>
+                    </div>
+                )}
+            </header>
+
+            <main className="flex-1 p-4 space-y-4 w-full max-w-2xl mx-auto">
+                {nothingConfigured ? (
+                    <div className="flex flex-col items-center justify-center text-center py-24">
+                        <MapPinned size={48} className="text-muted-foreground opacity-40 mb-4" />
+                        <p className="text-muted-foreground">{t.empty}</p>
+                    </div>
+                ) : (
+                    <>
+                        {/* Filtro de categorias */}
+                        {categories.length > 1 && (
+                            <CategoryFilter categories={categories} selected={category} onSelect={setCategory} lang={lang} />
+                        )}
+
+                        {/* Aviso de GPS */}
+                        {gpsError && (
+                            <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">
+                                <AlertCircle size={14} /> {t.gpsOff}
+                            </div>
+                        )}
+
+                        {/* Mapa */}
+                        {mode === "satellite" && hasSatellite ? (
+                            <SatelliteMap
+                                areas={visibleAreas}
+                                center={mapConfig.center}
+                                defaultZoom={mapConfig.defaultZoom}
+                                userPos={pos}
+                                youAreHereLabel={t.youAreHere}
+                                onAreaClick={setSelectedArea}
+                            />
+                        ) : hasIllustrated ? (
+                            <IllustratedMap
+                                imageUrl={mapConfig.illustratedImageUrl!}
+                                areas={visibleAreas}
+                                userFraction={userFraction}
+                                youAreHereLabel={t.youAreHere}
+                                onAreaClick={setSelectedArea}
+                            />
+                        ) : (
+                            <div className="h-[50vh] flex items-center justify-center text-muted-foreground text-sm">{t.noImage}</div>
+                        )}
+
+                        {/* Lista rápida de áreas (atalho) */}
+                        <div className="grid grid-cols-2 gap-3">
+                            {visibleAreas.map(a => (
+                                <button
+                                    key={a.id}
+                                    onClick={() => setSelectedArea(a)}
+                                    className="bg-card border border-border rounded-2xl p-3 text-left hover:border-primary/50 transition-all flex items-center gap-2"
+                                >
+                                    <span className="text-xl shrink-0">{a.pinIcon || "📍"}</span>
+                                    <div className="min-w-0">
+                                        <p className="font-bold text-sm truncate">{a.name}</p>
+                                        {a.reviewCount > 0 && (
+                                            <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                                                <Navigation size={10} /> {a.rating} ★ · {a.currentOccupancy}/{a.capacity}
+                                            </p>
+                                        )}
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    </>
+                )}
+            </main>
+
+            {/* Bottom sheet da área */}
+            {selectedArea && stay && (
+                <AreaCard
+                    area={selectedArea}
+                    stay={stay}
+                    property={property}
+                    lang={lang}
+                    onClose={() => setSelectedArea(null)}
+                    onBooked={() => property && fetchMap(property.id)}
+                    onReviewed={() => property && fetchMap(property.id)}
+                />
+            )}
+        </div>
+    );
+}
+
+export default function GuestResortMapPage() {
+    return (
+        <Suspense fallback={<div className="min-h-[100dvh] flex items-center justify-center bg-background"><Loader2 className="w-10 h-10 text-primary animate-spin" /></div>}>
+            <ResortMapView />
+        </Suspense>
+    );
+}

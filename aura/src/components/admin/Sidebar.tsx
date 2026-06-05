@@ -17,7 +17,7 @@ import {
   Star, ClipboardList, Bot, FileText,
   Loader2, ChevronLeft, ChevronRight, Coffee,
   CalendarDays, UserSearch,
-  ClipboardCheck, Map, Gift, Flag, Phone,
+  ClipboardCheck, Map, MapPinned, Gift, Flag, Phone,
   LayoutGrid, RefrigeratorIcon, LayoutTemplate,
   UserCircle2, Smartphone, Heart, History,
 } from "lucide-react";
@@ -209,6 +209,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: "cabanas",    label: "Cabanas",           icon: Building,         href: "/admin/cabins",          roles: ["super_admin","admin","governance","manager"] },
       { id: "estruturas", label: "Estruturas",         icon: LayoutTemplate,   href: "/admin/core/structures", roles: ["super_admin","admin","manager"] },
+      { id: "resort_map", label: "Mapa do Resort",     icon: MapPinned,        href: "/admin/core/resort-map", roles: ["super_admin","admin","manager"] },
       { id: "frigobar",   label: "Frigobar",           icon: RefrigeratorIcon, href: "/admin/cabins/minibar",  roles: ["super_admin","admin","manager"] },
       { id: "escalas",    label: "Escalas",            icon: ClipboardCheck,   href: "/admin/escalas",         roles: ["super_admin","admin","manager"] },
       { id: "logs",       label: "Logs de Auditoria",  icon: FileText,         href: "/admin/logs",            roles: ["super_admin","admin","manager"] },

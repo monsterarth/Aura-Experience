@@ -89,6 +89,16 @@ export interface Property {
 
     // Domínio personalizado para o portal do hóspede (ex: aura.fazendadorosa.com.br)
     customDomain?: string;
+
+    // Configuração do Mapa Interativo do Resort (camada espacial sobre as Structures)
+    mapConfig?: {
+      illustratedImageUrl?: string;                                       // imagem ilustrada do resort (canvas)
+      bounds?: { minLat: number; maxLat: number; minLng: number; maxLng: number }; // fallback p/ GPS→pixel
+      gcps?: Array<{ lat: number; lng: number; px: number; py: number }>; // ground control points (calibração affine)
+      satelliteEnabled?: boolean;                                         // habilita o modo satélite (Leaflet)
+      center?: { lat: number; lng: number };                             // centro inicial do mapa satélite
+      defaultZoom?: number;                                               // zoom inicial do mapa satélite
+    };
   };
   createdAt: Timestamp;
 }
@@ -197,6 +207,13 @@ export interface Structure {
   messageTemplatePendingId?: string;
   messageTemplateConfirmedId?: string;
   messageTemplateCancelledId?: string;
+  // --- Camada de Mapa Interativo (opcional; só aparece no mapa quando configurado) ---
+  showOnMap?: boolean;                                                  // exibe esta estrutura no mapa do hóspede
+  mapPin?: { lat: number; lng: number; pixelX?: number; pixelY?: number }; // posição GPS + pixel na imagem ilustrada
+  pinColor?: string;                                                    // cor (hex) do pin na UI
+  pinIcon?: string;                                                     // emoji ou nome de ícone do pin
+  amenities?: string[];                                                 // comodidades da área
+  photos?: string[];                                                   // galeria de fotos da área
   createdAt?: Timestamp;
 }
 
@@ -223,6 +240,26 @@ export interface StructureBooking {
   unitId?: string; // If the structure has multiple units
   notes?: string;
   createdAt?: Timestamp;
+}
+
+// Avaliação de uma área/estrutura feita pelo hóspede (mapa interativo)
+export interface StructureReview {
+  id: string;
+  propertyId: string;
+  structureId: string;
+  stayId?: string;
+  guestId?: string;
+  guestName?: string;
+  rating: number;   // 1-5
+  comment?: string;
+  createdAt?: Timestamp;
+}
+
+// Agregado de avaliações por estrutura (média + contagem)
+export interface StructureRatingAggregate {
+  structureId: string;
+  rating: number;       // média
+  reviewCount: number;
 }
 
 
