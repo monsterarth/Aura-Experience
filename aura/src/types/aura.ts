@@ -178,6 +178,8 @@ export interface Cabin {
     manualUrl?: string;
   }[];
   housekeepingItems?: { id: string; label: string }[];
+  // Posição no Mapa Interativo do Resort
+  mapPin?: { lat: number; lng: number; pixelX?: number; pixelY?: number };
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }

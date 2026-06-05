@@ -4,35 +4,41 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { toast } from "sonner";
 import {
     MapPin, MapPinned, Save, Crosshair, Target, Eye, EyeOff,
-    Loader2, Trash2, Satellite, Image as ImageIcon, Info, Check,
+    Loader2, Trash2, Satellite, Image as ImageIcon, Info, Check, Home,
 } from "lucide-react";
 import { StructureService } from "@/services/structure-service";
 import { PropertyService } from "@/services/property-service";
+import { CabinService } from "@/services/cabin-service";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
-import { Structure, Property } from "@/types/aura";
+import { Structure, Cabin, Property } from "@/types/aura";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 
 type MapConfig = NonNullable<Property["settings"]["mapConfig"]>;
 type Gcp = { lat: number; lng: number; px: number; py: number };
 
-// Modo de clique no mapa: posicionar o pin de uma estrutura, ou marcar um GCP de calibração.
 type ClickMode =
-    | { kind: "pin"; structureId: string }
+    | { kind: "pin";       entityId: string; entityType: "structure" | "cabin" }
     | { kind: "gcp" }
     | null;
 
+// Aba lateral: estruturas ou cabanas
+type SideTab = "structures" | "cabins";
+
 const DEFAULT_PIN_COLOR = "#9b6dff";
+const CABIN_PIN_COLOR   = "#f59e0b"; // âmbar — diferencia visualmente das estruturas
 
 export default function ResortMapAdminPage() {
     const { currentProperty } = useProperty();
     const { userData } = useAuth();
 
     const [structures, setStructures] = useState<Structure[]>([]);
-    const [mapConfig, setMapConfig] = useState<MapConfig>({});
-    const [loading, setLoading] = useState(false);
-    const [saving, setSaving] = useState(false);
-    const [clickMode, setClickMode] = useState<ClickMode>(null);
+    const [cabins,     setCabins]     = useState<Cabin[]>([]);
+    const [mapConfig,  setMapConfig]  = useState<MapConfig>({});
+    const [loading,    setLoading]    = useState(false);
+    const [saving,     setSaving]     = useState(false);
+    const [clickMode,  setClickMode]  = useState<ClickMode>(null);
+    const [sideTab,    setSideTab]    = useState<SideTab>("structures");
 
     const imageWrapRef = useRef<HTMLDivElement>(null);
 
@@ -45,88 +51,86 @@ export default function ResortMapAdminPage() {
         if (!currentProperty) return;
         setLoading(true);
         try {
-            const data = await StructureService.getStructures(currentProperty.id);
-            setStructures(data);
+            const [structs, cabs] = await Promise.all([
+                StructureService.getStructures(currentProperty.id),
+                CabinService.getCabinsByProperty(currentProperty.id),
+            ]);
+            setStructures(structs);
+            setCabins(cabs);
             setMapConfig(currentProperty.settings?.mapConfig ?? {});
         } catch {
-            toast.error("Erro ao carregar estruturas.");
+            toast.error("Erro ao carregar dados do mapa.");
         } finally {
             setLoading(false);
         }
     };
 
-    // ── Edição local das estruturas (persistida no Salvar) ──────────────────────
-    const patchStructure = (id: string, patch: Partial<Structure>) => {
-        setStructures(prev => prev.map(s => (s.id === id ? { ...s, ...patch } : s)));
-    };
+    const patchStructure = (id: string, patch: Partial<Structure>) =>
+        setStructures(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
 
-    // ── Clique na imagem → grava posição normalizada (0..1) ─────────────────────
+    const patchCabin = (id: string, patch: Partial<Cabin>) =>
+        setCabins(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
+
+    // ── Clique na imagem ────────────────────────────────────────────────────────
     const handleImageClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
         if (!clickMode || !imageWrapRef.current) return;
         const rect = imageWrapRef.current.getBoundingClientRect();
-        const px = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-        const py = Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height));
+        const px = Math.min(1, Math.max(0, (e.clientX - rect.left)  / rect.width));
+        const py = Math.min(1, Math.max(0, (e.clientY - rect.top)   / rect.height));
 
         if (clickMode.kind === "pin") {
-            const s = structures.find(st => st.id === clickMode.structureId);
-            const prev = s?.mapPin ?? { lat: 0, lng: 0 };
-            patchStructure(clickMode.structureId, {
-                mapPin: { ...prev, pixelX: px, pixelY: py },
-                showOnMap: true,
-            });
-            toast.success("Pin posicionado. Informe lat/lng para o GPS.");
+            const prevPin = clickMode.entityType === "structure"
+                ? structures.find(s => s.id === clickMode.entityId)?.mapPin ?? { lat: 0, lng: 0 }
+                : cabins.find(c => c.id === clickMode.entityId)?.mapPin     ?? { lat: 0, lng: 0 };
+
+            if (clickMode.entityType === "structure") {
+                patchStructure(clickMode.entityId, {
+                    mapPin: { ...prevPin, pixelX: px, pixelY: py },
+                    showOnMap: true,
+                });
+            } else {
+                patchCabin(clickMode.entityId, {
+                    mapPin: { ...prevPin, pixelX: px, pixelY: py },
+                });
+            }
+            toast.success("Pin posicionado. Informe lat/lng para calibração GPS.");
             setClickMode(null);
         } else if (clickMode.kind === "gcp") {
-            setMapConfig(c => ({
-                ...c,
-                gcps: [...(c.gcps ?? []), { lat: 0, lng: 0, px, py }],
-            }));
+            setMapConfig(c => ({ ...c, gcps: [...(c.gcps ?? []), { lat: 0, lng: 0, px, py }] }));
             toast.success("Ponto de calibração adicionado. Informe lat/lng reais.");
             setClickMode(null);
         }
-    }, [clickMode, structures]);
+    }, [clickMode, structures, cabins]);
 
-    const updateGcp = (idx: number, patch: Partial<Gcp>) => {
-        setMapConfig(c => ({
-            ...c,
-            gcps: (c.gcps ?? []).map((g, i) => (i === idx ? { ...g, ...patch } : g)),
-        }));
-    };
-    const removeGcp = (idx: number) => {
+    const updateGcp = (idx: number, patch: Partial<Gcp>) =>
+        setMapConfig(c => ({ ...c, gcps: (c.gcps ?? []).map((g, i) => i === idx ? { ...g, ...patch } : g) }));
+    const removeGcp = (idx: number) =>
         setMapConfig(c => ({ ...c, gcps: (c.gcps ?? []).filter((_, i) => i !== idx) }));
-    };
 
     // ── Persistência ────────────────────────────────────────────────────────────
     const handleSave = async () => {
         if (!currentProperty || !userData) return;
         setSaving(true);
         try {
-            // 1) mapConfig no settings da propriedade (merge p/ não sobrescrever outras chaves)
             const mergedSettings = { ...currentProperty.settings, mapConfig };
             await PropertyService.updateSettings(
-                currentProperty.id,
-                { settings: mergedSettings },
-                userData.id,
-                userData.fullName,
+                currentProperty.id, { settings: mergedSettings },
+                userData.id, userData.fullName,
             );
 
-            // 2) cada estrutura com sua camada de mapa
-            await Promise.all(
-                structures.map(s =>
+            await Promise.all([
+                ...structures.map(s =>
                     StructureService.updateStructure(
-                        currentProperty.id,
-                        s.id,
-                        {
-                            showOnMap: s.showOnMap ?? false,
-                            mapPin: s.mapPin,
-                            pinColor: s.pinColor,
-                            pinIcon: s.pinIcon,
-                        },
-                        userData.id,
-                        userData.fullName,
+                        currentProperty.id, s.id,
+                        { showOnMap: s.showOnMap ?? false, mapPin: s.mapPin, pinColor: s.pinColor, pinIcon: s.pinIcon },
+                        userData.id, userData.fullName,
                     )
-                )
-            );
+                ),
+                // Salva apenas as cabanas que têm mapPin definido (poupamos upserts desnecessários)
+                ...cabins
+                    .filter(c => c.mapPin !== undefined)
+                    .map(c => CabinService.saveCabin(currentProperty.id, { id: c.id, mapPin: c.mapPin })),
+            ]);
 
             toast.success("Mapa do resort salvo com sucesso!");
         } catch (e) {
@@ -137,8 +141,10 @@ export default function ResortMapAdminPage() {
         }
     };
 
-    const gcps = mapConfig.gcps ?? [];
-    const mappedStructures = structures.filter(s => s.showOnMap);
+    // ── Derivados para render ────────────────────────────────────────────────────
+    const gcps             = mapConfig.gcps ?? [];
+    const mappedStructures = structures.filter(s => s.showOnMap && s.mapPin?.pixelX != null);
+    const mappedCabins     = cabins.filter(c => c.mapPin?.pixelX != null);
 
     if (!currentProperty) {
         return (
@@ -162,8 +168,7 @@ export default function ResortMapAdminPage() {
                     </p>
                 </div>
                 <button
-                    onClick={handleSave}
-                    disabled={saving}
+                    onClick={handleSave} disabled={saving}
                     className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-bold uppercase text-xs tracking-wider hover:opacity-90 transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
                 >
                     {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
@@ -177,20 +182,17 @@ export default function ResortMapAdminPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* ── Coluna esquerda: imagem + calibração ─────────────────────── */}
                     <div className="lg:col-span-2 space-y-4">
-                        {/* Upload */}
                         {!mapConfig.illustratedImageUrl ? (
                             <div className="bg-card border border-dashed border-border rounded-3xl p-8">
                                 <p className="text-sm font-bold text-foreground mb-1 flex items-center gap-2">
                                     <ImageIcon size={16} className="text-primary" /> Imagem ilustrada do resort
                                 </p>
                                 <p className="text-xs text-muted-foreground mb-4">
-                                    PNG/JPG/WebP, de preferência vista de cima (drone 90°). Mínimo 1200×1000px. Até 20MB (upload direto, sem perda de resolução).
+                                    PNG/JPG/WebP, de preferência vista de cima (drone 90°). Mínimo 1200×1000px. Até 20MB.
                                 </p>
                                 <div className="h-64 rounded-2xl overflow-hidden border border-border">
                                     <ImageUpload
-                                        path="maps"
-                                        direct
-                                        maxSizeMb={20}
+                                        path="maps" direct maxSizeMb={20}
                                         onUploadSuccess={(url) => setMapConfig(c => ({ ...c, illustratedImageUrl: url }))}
                                     />
                                 </div>
@@ -201,9 +203,7 @@ export default function ResortMapAdminPage() {
                                     <div className="flex items-center gap-2">
                                         <button
                                             onClick={() => setClickMode(clickMode?.kind === "gcp" ? null : { kind: "gcp" })}
-                                            className={`px-3 py-2 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all border ${clickMode?.kind === "gcp"
-                                                ? "bg-primary text-primary-foreground border-primary"
-                                                : "bg-card text-foreground border-border hover:border-primary/50"}`}
+                                            className={`px-3 py-2 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all border ${clickMode?.kind === "gcp" ? "bg-primary text-primary-foreground border-primary" : "bg-card text-foreground border-border hover:border-primary/50"}`}
                                         >
                                             <Crosshair size={14} /> {clickMode?.kind === "gcp" ? "Clique no mapa…" : "Add ponto GPS"}
                                         </button>
@@ -231,26 +231,36 @@ export default function ResortMapAdminPage() {
                                     <img src={mapConfig.illustratedImageUrl} alt="Mapa" className="w-full block pointer-events-none" />
 
                                     {/* Pins das estruturas */}
-                                    {mappedStructures.map(s => s.mapPin?.pixelX != null && (
-                                        <div
-                                            key={s.id}
+                                    {mappedStructures.map(s => (
+                                        <div key={s.id}
                                             className="absolute -translate-x-1/2 -translate-y-full flex flex-col items-center pointer-events-none"
-                                            style={{ left: `${(s.mapPin.pixelX ?? 0) * 100}%`, top: `${(s.mapPin.pixelY ?? 0) * 100}%` }}
+                                            style={{ left: `${(s.mapPin!.pixelX ?? 0) * 100}%`, top: `${(s.mapPin!.pixelY ?? 0) * 100}%` }}
                                         >
-                                            <div
-                                                className="px-2 py-1 rounded-lg text-[10px] font-bold text-white shadow-lg whitespace-nowrap flex items-center gap-1"
-                                                style={{ background: s.pinColor || DEFAULT_PIN_COLOR }}
-                                            >
+                                            <div className="px-2 py-1 rounded-lg text-[10px] font-bold text-white shadow-lg whitespace-nowrap flex items-center gap-1"
+                                                style={{ background: s.pinColor || DEFAULT_PIN_COLOR }}>
                                                 <span>{s.pinIcon || "📍"}</span>{s.name}
                                             </div>
                                             <div className="w-0.5 h-2" style={{ background: s.pinColor || DEFAULT_PIN_COLOR }} />
                                         </div>
                                     ))}
 
+                                    {/* Pins das cabanas */}
+                                    {mappedCabins.map(c => (
+                                        <div key={c.id}
+                                            className="absolute -translate-x-1/2 -translate-y-full flex flex-col items-center pointer-events-none"
+                                            style={{ left: `${(c.mapPin!.pixelX ?? 0) * 100}%`, top: `${(c.mapPin!.pixelY ?? 0) * 100}%` }}
+                                        >
+                                            <div className="px-2 py-1 rounded-lg text-[10px] font-bold text-white shadow-lg whitespace-nowrap flex items-center gap-1"
+                                                style={{ background: CABIN_PIN_COLOR }}>
+                                                🏠 {c.number}
+                                            </div>
+                                            <div className="w-0.5 h-2" style={{ background: CABIN_PIN_COLOR }} />
+                                        </div>
+                                    ))}
+
                                     {/* GCPs */}
                                     {gcps.map((g, i) => (
-                                        <div
-                                            key={i}
+                                        <div key={i}
                                             className="absolute -translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full border-2 border-white bg-amber-500 shadow-lg flex items-center justify-center text-[9px] font-black text-white pointer-events-none"
                                             style={{ left: `${g.px * 100}%`, top: `${g.py * 100}%` }}
                                         >
@@ -259,7 +269,7 @@ export default function ResortMapAdminPage() {
                                     ))}
                                 </div>
 
-                                {/* Calibração GPS (GCPs) */}
+                                {/* Calibração GPS */}
                                 <div className="bg-card border border-border rounded-3xl p-5 space-y-3">
                                     <div className="flex items-center gap-2">
                                         <Crosshair size={16} className="text-amber-500" />
@@ -267,8 +277,8 @@ export default function ResortMapAdminPage() {
                                     </div>
                                     <p className="text-xs text-muted-foreground flex items-start gap-2">
                                         <Info size={13} className="mt-0.5 shrink-0" />
-                                        Marque ≥3 pontos conhecidos no mapa e informe a latitude/longitude reais de cada um.
-                                        Com menos de 3, o GPS usa apenas os limites (bounds) abaixo.
+                                        Marque ≥3 pontos conhecidos no mapa e informe a latitude/longitude reais.
+                                        Com menos de 3, o GPS usa apenas os pins das estruturas como referência.
                                     </p>
                                     {gcps.length === 0 ? (
                                         <p className="text-xs text-muted-foreground italic py-2">Nenhum ponto de calibração ainda.</p>
@@ -277,18 +287,12 @@ export default function ResortMapAdminPage() {
                                             {gcps.map((g, i) => (
                                                 <div key={i} className="flex items-center gap-2">
                                                     <span className="w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-black flex items-center justify-center shrink-0">{i + 1}</span>
-                                                    <input
-                                                        type="number" step="any" placeholder="Latitude"
-                                                        value={g.lat || ""}
+                                                    <input type="number" step="any" placeholder="Latitude" value={g.lat || ""}
                                                         onChange={e => updateGcp(i, { lat: parseFloat(e.target.value) || 0 })}
-                                                        className="field-input flex-1 text-sm"
-                                                    />
-                                                    <input
-                                                        type="number" step="any" placeholder="Longitude"
-                                                        value={g.lng || ""}
+                                                        className="field-input flex-1 text-sm" />
+                                                    <input type="number" step="any" placeholder="Longitude" value={g.lng || ""}
                                                         onChange={e => updateGcp(i, { lng: parseFloat(e.target.value) || 0 })}
-                                                        className="field-input flex-1 text-sm"
-                                                    />
+                                                        className="field-input flex-1 text-sm" />
                                                     <button onClick={() => removeGcp(i)} className="p-2 text-muted-foreground hover:text-red-500">
                                                         <Trash2 size={14} />
                                                     </button>
@@ -298,7 +302,7 @@ export default function ResortMapAdminPage() {
                                     )}
                                 </div>
 
-                                {/* Satélite / bounds */}
+                                {/* Satélite */}
                                 <div className="bg-card border border-border rounded-3xl p-5 space-y-3">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2">
@@ -307,8 +311,7 @@ export default function ResortMapAdminPage() {
                                         </div>
                                         <button
                                             onClick={() => setMapConfig(c => ({ ...c, satelliteEnabled: !c.satelliteEnabled }))}
-                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${mapConfig.satelliteEnabled
-                                                ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"}`}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${mapConfig.satelliteEnabled ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"}`}
                                         >
                                             {mapConfig.satelliteEnabled ? "Ativado" : "Desativado"}
                                         </button>
@@ -338,79 +341,116 @@ export default function ResortMapAdminPage() {
                         )}
                     </div>
 
-                    {/* ── Coluna direita: lista de estruturas ───────────────────────── */}
+                    {/* ── Coluna direita: abas Estruturas / Cabanas ──────────────────── */}
                     <div className="space-y-3">
-                        <h3 className="font-bold text-foreground flex items-center gap-2 px-1">
-                            <MapPin size={16} className="text-primary" /> Áreas no mapa
-                        </h3>
-                        {structures.length === 0 ? (
-                            <p className="text-sm text-muted-foreground px-1">
-                                Nenhuma estrutura cadastrada. Crie em Estruturas Adicionais.
-                            </p>
-                        ) : (
-                            structures.map(s => (
-                                <div key={s.id} className="bg-card border border-border rounded-2xl p-4 space-y-3">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <p className="font-bold text-sm text-foreground truncate">{s.name}</p>
+                        {/* Tab switcher */}
+                        <div className="flex bg-secondary rounded-xl p-1">
+                            {(["structures", "cabins"] as SideTab[]).map(tab => (
+                                <button key={tab} onClick={() => setSideTab(tab)}
+                                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${sideTab === tab ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
+                                >
+                                    {tab === "structures" ? <><MapPin size={13} /> Áreas ({structures.filter(s => s.showOnMap).length})</> : <><Home size={13} /> Cabanas ({mappedCabins.length})</>}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Estruturas */}
+                        {sideTab === "structures" && structures.map(s => (
+                            <div key={s.id} className="bg-card border border-border rounded-2xl p-4 space-y-3">
+                                <div className="flex items-center justify-between gap-2">
+                                    <p className="font-bold text-sm text-foreground truncate">{s.name}</p>
+                                    <button onClick={() => patchStructure(s.id, { showOnMap: !s.showOnMap })}
+                                        className={`shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all ${s.showOnMap ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"}`}>
+                                        {s.showOnMap ? <Eye size={12} /> : <EyeOff size={12} />}
+                                        {s.showOnMap ? "Visível" : "Oculta"}
+                                    </button>
+                                </div>
+                                {s.showOnMap && (
+                                    <div className="space-y-3 animate-in fade-in duration-200">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="field-label">Latitude</label>
+                                                <input type="number" step="any" className="field-input text-sm" value={s.mapPin?.lat ?? ""}
+                                                    onChange={e => patchStructure(s.id, { mapPin: { lat: parseFloat(e.target.value) || 0, lng: s.mapPin?.lng ?? 0, pixelX: s.mapPin?.pixelX, pixelY: s.mapPin?.pixelY } })} />
+                                            </div>
+                                            <div>
+                                                <label className="field-label">Longitude</label>
+                                                <input type="number" step="any" className="field-input text-sm" value={s.mapPin?.lng ?? ""}
+                                                    onChange={e => patchStructure(s.id, { mapPin: { lat: s.mapPin?.lat ?? 0, lng: parseFloat(e.target.value) || 0, pixelX: s.mapPin?.pixelX, pixelY: s.mapPin?.pixelY } })} />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2 items-end">
+                                            <div>
+                                                <label className="field-label">Ícone (emoji)</label>
+                                                <input className="field-input text-sm" maxLength={2} placeholder="🏊" value={s.pinIcon ?? ""}
+                                                    onChange={e => patchStructure(s.id, { pinIcon: e.target.value })} />
+                                            </div>
+                                            <div>
+                                                <label className="field-label">Cor</label>
+                                                <input type="color" className="w-full h-9 rounded-lg border border-border bg-card cursor-pointer"
+                                                    value={s.pinColor ?? DEFAULT_PIN_COLOR}
+                                                    onChange={e => patchStructure(s.id, { pinColor: e.target.value })} />
+                                            </div>
+                                        </div>
                                         <button
-                                            onClick={() => patchStructure(s.id, { showOnMap: !s.showOnMap })}
-                                            className={`shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all ${s.showOnMap
-                                                ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"}`}
+                                            onClick={() => {
+                                                if (!mapConfig.illustratedImageUrl) { toast.error("Carregue a imagem do mapa primeiro."); return; }
+                                                setClickMode({ kind: "pin", entityId: s.id, entityType: "structure" });
+                                            }}
+                                            className={`w-full py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all border ${clickMode?.kind === "pin" && clickMode.entityId === s.id ? "bg-primary text-primary-foreground border-primary animate-pulse" : "bg-secondary text-foreground border-border hover:border-primary/50"}`}
                                         >
-                                            {s.showOnMap ? <Eye size={12} /> : <EyeOff size={12} />}
-                                            {s.showOnMap ? "Visível" : "Oculta"}
+                                            {s.mapPin?.pixelX != null ? <Check size={13} /> : <Target size={13} />}
+                                            {s.mapPin?.pixelX != null ? "Reposicionar no mapa" : "Posicionar no mapa"}
                                         </button>
                                     </div>
+                                )}
+                            </div>
+                        ))}
 
-                                    {s.showOnMap && (
-                                        <div className="space-y-3 animate-in fade-in duration-200">
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <div>
-                                                    <label className="field-label">Latitude</label>
-                                                    <input type="number" step="any" className="field-input text-sm"
-                                                        value={s.mapPin?.lat ?? ""}
-                                                        onChange={e => patchStructure(s.id, { mapPin: { lat: parseFloat(e.target.value) || 0, lng: s.mapPin?.lng ?? 0, pixelX: s.mapPin?.pixelX, pixelY: s.mapPin?.pixelY } })} />
-                                                </div>
-                                                <div>
-                                                    <label className="field-label">Longitude</label>
-                                                    <input type="number" step="any" className="field-input text-sm"
-                                                        value={s.mapPin?.lng ?? ""}
-                                                        onChange={e => patchStructure(s.id, { mapPin: { lat: s.mapPin?.lat ?? 0, lng: parseFloat(e.target.value) || 0, pixelX: s.mapPin?.pixelX, pixelY: s.mapPin?.pixelY } })} />
-                                                </div>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-2 items-end">
-                                                <div>
-                                                    <label className="field-label">Ícone (emoji)</label>
-                                                    <input className="field-input text-sm" maxLength={2} placeholder="🏊"
-                                                        value={s.pinIcon ?? ""}
-                                                        onChange={e => patchStructure(s.id, { pinIcon: e.target.value })} />
-                                                </div>
-                                                <div>
-                                                    <label className="field-label">Cor</label>
-                                                    <input type="color" className="w-full h-9 rounded-lg border border-border bg-card cursor-pointer"
-                                                        value={s.pinColor ?? DEFAULT_PIN_COLOR}
-                                                        onChange={e => patchStructure(s.id, { pinColor: e.target.value })} />
-                                                </div>
-                                            </div>
-                                            <button
-                                                onClick={() => {
-                                                    if (!mapConfig.illustratedImageUrl) {
-                                                        toast.error("Carregue a imagem do mapa primeiro.");
-                                                        return;
-                                                    }
-                                                    setClickMode({ kind: "pin", structureId: s.id });
-                                                }}
-                                                className={`w-full py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all border ${clickMode?.kind === "pin" && clickMode.structureId === s.id
-                                                    ? "bg-primary text-primary-foreground border-primary animate-pulse"
-                                                    : "bg-secondary text-foreground border-border hover:border-primary/50"}`}
-                                            >
-                                                {s.mapPin?.pixelX != null ? <Check size={13} /> : <Target size={13} />}
-                                                {s.mapPin?.pixelX != null ? "Reposicionar no mapa" : "Posicionar no mapa"}
-                                            </button>
+                        {/* Cabanas */}
+                        {sideTab === "cabins" && (
+                            <>
+                                <p className="text-xs text-muted-foreground px-1 flex items-start gap-2">
+                                    <Info size={13} className="shrink-0 mt-0.5" />
+                                    Todas as cabanas aparecerão no mapa. O hóspede vê a própria em destaque e as demais de forma discreta.
+                                </p>
+                                {cabins.map(c => (
+                                    <div key={c.id} className="bg-card border border-border rounded-2xl p-4 space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className="w-8 h-8 rounded-xl flex items-center justify-center text-sm shrink-0"
+                                                style={{ background: `${CABIN_PIN_COLOR}22`, border: `1px solid ${CABIN_PIN_COLOR}44` }}>
+                                                🏠
+                                            </span>
+                                            <p className="font-bold text-sm text-foreground truncate flex-1">{c.name}</p>
+                                            {c.mapPin?.pixelX != null && (
+                                                <span className="text-[10px] bg-green-500/10 text-green-600 px-2 py-0.5 rounded font-bold">✓ Posicionada</span>
+                                            )}
                                         </div>
-                                    )}
-                                </div>
-                            ))
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="field-label">Latitude</label>
+                                                <input type="number" step="any" className="field-input text-sm" value={c.mapPin?.lat ?? ""}
+                                                    onChange={e => patchCabin(c.id, { mapPin: { lat: parseFloat(e.target.value) || 0, lng: c.mapPin?.lng ?? 0, pixelX: c.mapPin?.pixelX, pixelY: c.mapPin?.pixelY } })} />
+                                            </div>
+                                            <div>
+                                                <label className="field-label">Longitude</label>
+                                                <input type="number" step="any" className="field-input text-sm" value={c.mapPin?.lng ?? ""}
+                                                    onChange={e => patchCabin(c.id, { mapPin: { lat: c.mapPin?.lat ?? 0, lng: parseFloat(e.target.value) || 0, pixelX: c.mapPin?.pixelX, pixelY: c.mapPin?.pixelY } })} />
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                if (!mapConfig.illustratedImageUrl) { toast.error("Carregue a imagem do mapa primeiro."); return; }
+                                                setClickMode({ kind: "pin", entityId: c.id, entityType: "cabin" });
+                                            }}
+                                            className={`w-full py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all border ${clickMode?.kind === "pin" && clickMode.entityId === c.id ? "bg-amber-500 text-white border-amber-500 animate-pulse" : "bg-secondary text-foreground border-border hover:border-amber-500/50"}`}
+                                        >
+                                            {c.mapPin?.pixelX != null ? <Check size={13} /> : <Target size={13} />}
+                                            {c.mapPin?.pixelX != null ? "Reposicionar no mapa" : "Posicionar no mapa"}
+                                        </button>
+                                    </div>
+                                ))}
+                            </>
                         )}
                     </div>
                 </div>

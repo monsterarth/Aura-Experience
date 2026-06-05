@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { StayService } from "@/services/stay-service";
 import { PropertyService } from "@/services/property-service";
 import { Stay, Property } from "@/types/aura";
-import { MapArea, MapLang } from "./types";
+import { MapArea, MapCabin, MapLang } from "./types";
 import { IllustratedMap } from "./IllustratedMap";
 import { AreaCard } from "./AreaCard";
 import { CategoryFilter } from "./components/CategoryFilter";
@@ -72,7 +72,8 @@ function ResortMapView() {
     const [stay, setStay] = useState<Stay | null>(null);
     const [property, setProperty] = useState<Property | null>(null);
     const [mapConfig, setMapConfig] = useState<NonNullable<Property["settings"]["mapConfig"]>>({});
-    const [areas, setAreas] = useState<MapArea[]>([]);
+    const [areas,   setAreas]   = useState<MapArea[]>([]);
+    const [cabins,  setCabins]  = useState<MapCabin[]>([]);
     const [lang, setLang] = useState<MapLang>("pt");
 
     const [mode, setMode] = useState<"illustrated" | "satellite">("illustrated");
@@ -122,15 +123,18 @@ function ResortMapView() {
     }, [code]);
 
     // Busca áreas + config (com polling de ocupação a cada 30s)
-    const fetchMap = async (propertyId: string) => {
+    const fetchMap = async (propertyId: string, currentStayId?: string) => {
         const today = new Date().toISOString().split("T")[0];
         const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
         try {
-            const res = await fetch(`/api/guest/resort-map?propertyId=${propertyId}&date=${today}&nowMinutes=${nowMinutes}`);
+            const sid = currentStayId ?? stay?.id ?? "";
+            const res = await fetch(
+                `/api/guest/resort-map?propertyId=${propertyId}&stayId=${sid}&date=${today}&nowMinutes=${nowMinutes}`
+            );
             const data = await res.json();
             setMapConfig(data.mapConfig ?? {});
             setAreas(Array.isArray(data.areas) ? data.areas : []);
-            // Mantém o card aberto sincronizado com dados novos
+            setCabins(Array.isArray(data.cabins) ? data.cabins : []);
             setSelectedArea(prev => prev ? (data.areas?.find((a: MapArea) => a.id === prev.id) ?? prev) : null);
         } catch (e) {
             console.error(e);
@@ -139,11 +143,11 @@ function ResortMapView() {
 
     useEffect(() => {
         if (!property) return;
-        fetchMap(property.id);
-        const iv = setInterval(() => fetchMap(property.id), 30000);
+        fetchMap(property.id, stay?.id);
+        const iv = setInterval(() => fetchMap(property.id, stay?.id), 30000);
         return () => clearInterval(iv);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [property?.id]);
+    }, [property?.id, stay?.id]);
 
     // Default de modo conforme config
     useEffect(() => {
@@ -237,6 +241,7 @@ function ResortMapView() {
                         {mode === "satellite" && hasSatellite ? (
                             <SatelliteMap
                                 areas={visibleAreas}
+                                cabins={cabins}
                                 center={mapConfig.center}
                                 defaultZoom={mapConfig.defaultZoom}
                                 userPos={pos}
@@ -252,6 +257,7 @@ function ResortMapView() {
                             <IllustratedMap
                                 imageUrl={mapConfig.illustratedImageUrl!}
                                 areas={visibleAreas}
+                                cabins={cabins}
                                 userFraction={userFraction}
                                 youAreHereLabel={t.youAreHere}
                                 onAreaClick={setSelectedArea}

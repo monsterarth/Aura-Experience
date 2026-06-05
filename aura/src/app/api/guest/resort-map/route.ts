@@ -7,6 +7,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { Structure, StructureBooking, StructureReview } from "@/types/aura";
 
+// Dados mínimos de cabana expostos ao hóspede (sem dados sensíveis de outros hóspedes)
+interface CabinMapData {
+    id: string;
+    number: string;
+    name: string;
+    mapPin: { lat: number; lng: number; pixelX?: number; pixelY?: number } | null;
+    isOwnCabin: boolean;
+}
+
 function timeToMinutes(t: string): number {
     const [h, m] = t.split(":").map(Number);
     return h * 60 + m;
@@ -14,9 +23,10 @@ function timeToMinutes(t: string): number {
 
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
-    const propertyId = searchParams.get("propertyId");
-    const date = searchParams.get("date"); // YYYY-MM-DD (hoje, do cliente)
-    const nowMinutesParam = searchParams.get("nowMinutes"); // minutos do dia, hora local do hóspede
+    const propertyId    = searchParams.get("propertyId");
+    const stayId        = searchParams.get("stayId");        // para identificar cabana própria
+    const date          = searchParams.get("date");
+    const nowMinutesParam = searchParams.get("nowMinutes");
 
     if (!propertyId) {
         return NextResponse.json({ error: "Missing propertyId" }, { status: 400 });
@@ -96,5 +106,32 @@ export async function GET(request: NextRequest) {
         };
     });
 
-    return NextResponse.json({ mapConfig, areas });
+    // Cabanas com pins — busca todas da propriedade (apenas campos necessários)
+    const { data: cabinsRaw } = await supabaseAdmin
+        .from("cabins")
+        .select("id, number, name, mapPin, currentStayId")
+        .eq("propertyId", propertyId);
+
+    // Descobre qual cabana pertence ao stay atual (para destacar a do hóspede)
+    let ownCabinId: string | null = null;
+    if (stayId) {
+        const { data: stayRow } = await supabaseAdmin
+            .from("stays")
+            .select("cabinId")
+            .eq("id", stayId)
+            .single();
+        ownCabinId = stayRow?.cabinId ?? null;
+    }
+
+    const cabins: CabinMapData[] = (cabinsRaw ?? [])
+        .filter((c: any) => c.mapPin != null)   // só inclui as que foram posicionadas no mapa
+        .map((c: any) => ({
+            id:         c.id,
+            number:     c.number,
+            name:       c.name,
+            mapPin:     c.mapPin,
+            isOwnCabin: c.id === ownCabinId,
+        }));
+
+    return NextResponse.json({ mapConfig, areas, cabins });
 }

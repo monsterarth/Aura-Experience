@@ -5,10 +5,26 @@ import { MapContainer, TileLayer, Marker, CircleMarker, useMap } from "react-lea
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Loader2, LocateFixed, LocateOff } from "lucide-react";
-import { MapArea } from "./types";
+import { MapArea, MapCabin } from "./types";
 import { GpsPosition, GpsStatus } from "./hooks/useGPS";
 
 const DEFAULT_PIN_COLOR = "#9b6dff";
+
+// Ícone para cabanas
+function cabinIcon(cabin: MapCabin): L.DivIcon {
+    const own = cabin.isOwnCabin;
+    const bg  = own ? "#f59e0b" : "#d97706";
+    const html = own
+        ? `<div style="transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center">
+            <div style="background:${bg};color:#fff;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.35);outline:2px solid #fff;display:flex;gap:4px;align-items:center">
+                🏠 <span>Sua cabana</span>
+            </div>
+            <div style="width:2px;height:8px;background:${bg}"></div>
+            <div style="width:8px;height:8px;border-radius:50%;background:${bg};border:2px solid #fff"></div>
+          </div>`
+        : `<div style="transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:${bg};border:2px solid rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;font-size:11px;opacity:0.55;box-shadow:0 1px 4px rgba(0,0,0,.3)">🏠</div>`;
+    return L.divIcon({ className: "", html, iconSize: [0, 0], iconAnchor: [0, 0] });
+}
 
 // Ícone customizado (HTML) para cada área — sem depender dos assets default do Leaflet.
 function areaIcon(area: MapArea): L.DivIcon {
@@ -52,6 +68,7 @@ function Recenter({ userPos }: { userPos: GpsPosition | null }) {
 
 interface SatelliteMapProps {
     areas: MapArea[];
+    cabins?: MapCabin[];
     center?: { lat: number; lng: number };
     defaultZoom?: number;
     userPos: GpsPosition | null;
@@ -64,8 +81,9 @@ interface SatelliteMapProps {
     gpsDeniedLabel?: string;
 }
 
-export function SatelliteMap({ areas, center, defaultZoom, userPos, youAreHereLabel, onAreaClick, gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar", locatingLabel = "Localizando…", gpsDeniedLabel }: SatelliteMapProps) {
+export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos, youAreHereLabel, onAreaClick, gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar", locatingLabel = "Localizando…", gpsDeniedLabel }: SatelliteMapProps) {
     const placed = areas.filter(a => a.mapPin?.lat != null && a.mapPin?.lng != null && (a.mapPin.lat !== 0 || a.mapPin.lng !== 0));
+    const placedCabins = cabins.filter(c => c.mapPin && (c.mapPin.lat !== 0 || c.mapPin.lng !== 0));
 
     const mapCenter = useMemo<[number, number]>(() => {
         if (center && (center.lat !== 0 || center.lng !== 0)) return [center.lat, center.lng];
@@ -99,6 +117,14 @@ export function SatelliteMap({ areas, center, defaultZoom, userPos, youAreHereLa
                         position={[area.mapPin!.lat, area.mapPin!.lng]}
                         icon={areaIcon(area)}
                         eventHandlers={{ click: () => onAreaClick(area) }}
+                    />
+                ))}
+
+                {placedCabins.map(cabin => (
+                    <Marker
+                        key={cabin.id}
+                        position={[cabin.mapPin!.lat, cabin.mapPin!.lng]}
+                        icon={cabinIcon(cabin)}
                     />
                 ))}
 
