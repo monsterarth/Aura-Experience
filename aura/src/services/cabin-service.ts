@@ -74,6 +74,22 @@ export const CabinService = {
     return id;
   },
 
+  // Atualiza apenas o mapPin da cabana — usado pelo CMS do Mapa do Resort.
+  // Usa UPDATE direto para não acionar as validações de campos NOT NULL do upsert.
+  async updateCabinMapPin(
+    propertyId: string,
+    cabinId: string,
+    mapPin: Cabin['mapPin'],
+  ): Promise<void> {
+    const { error } = await supabase
+      .from('cabins')
+      .update({ mapPin, updatedAt: new Date().toISOString() })
+      .eq('id', cabinId)
+      .eq('propertyId', propertyId);
+
+    if (error) throw error;
+  },
+
   async deleteCabin(propertyId: string, cabinId: string) {
     const { data: cabin } = await supabase
       .from('cabins')

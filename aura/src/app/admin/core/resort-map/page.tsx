@@ -126,10 +126,10 @@ export default function ResortMapAdminPage() {
                         userData.id, userData.fullName,
                     )
                 ),
-                // Salva apenas as cabanas que têm mapPin definido (poupamos upserts desnecessários)
+                // Atualiza só o mapPin das cabanas posicionadas — UPDATE direto, sem upsert
                 ...cabins
                     .filter(c => c.mapPin !== undefined)
-                    .map(c => CabinService.saveCabin(currentProperty.id, { id: c.id, mapPin: c.mapPin })),
+                    .map(c => CabinService.updateCabinMapPin(currentProperty.id, c.id, c.mapPin)),
             ]);
 
             toast.success("Mapa do resort salvo com sucesso!");
