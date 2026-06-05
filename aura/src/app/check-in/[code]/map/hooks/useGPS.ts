@@ -1,42 +1,62 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 
 export interface GpsPosition {
     lat: number;
     lng: number;
-    accuracy: number; // metros
+    accuracy: number;
 }
 
 export type GpsStatus =
-    | "idle"        // nunca solicitado
-    | "requesting"  // aguardando permissão / primeira posição
-    | "active"      // tem posição
-    | "denied"      // usuário negou ou sistema bloqueou
-    | "unavailable"; // API não disponível no browser
+    | "idle"         // permissão nunca solicitada nesta sessão
+    | "requesting"   // aguardando posição após permissão concedida
+    | "active"       // posição disponível
+    | "denied"       // browser bloqueou (permissão negada anteriormente)
+    | "unavailable"; // API não existe no browser
 
 interface UseGPSResult {
     pos: GpsPosition | null;
     status: GpsStatus;
-    request: () => void; // chame ao toque do botão — isso garante que o dialog de permissão apareça
+    request: () => void;
 }
 
-// GPS opt-in: só solicita localização quando `request()` é chamado (idealmente
-// em resposta a um gesto do usuário). Isso garante que o dialog de permissão
-// do browser sempre apareça, evitando a negação silenciosa em iOS/Android.
 export function useGPS(): UseGPSResult {
     const [pos, setPos] = useState<GpsPosition | null>(null);
     const [status, setStatus] = useState<GpsStatus>("idle");
     const watchId = useRef<number | null>(null);
     const staleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const request = useCallback(() => {
+    // Verifica o estado da permissão assim que o hook monta.
+    // - denied  → mostra instruções imediatamente, sem precisar tocar no botão
+    // - granted → inicia rastreamento automaticamente (usuário já aprovou antes)
+    // - prompt  → aguarda o toque do botão
+    useEffect(() => {
         if (typeof navigator === "undefined" || !navigator.geolocation) {
             setStatus("unavailable");
             return;
         }
-        if (watchId.current != null) return; // já ativo
+        if (!navigator.permissions) return; // browser antigo — aguarda botão
 
+        navigator.permissions
+            .query({ name: "geolocation" })
+            .then((result) => {
+                if (result.state === "denied") {
+                    setStatus("denied");
+                } else if (result.state === "granted") {
+                    startWatch(); // já autorizado, começa direto
+                }
+                // "prompt" → aguarda botão
+                result.onchange = () => {
+                    if (result.state === "denied") setStatus("denied");
+                    else if (result.state === "granted") startWatch();
+                };
+            })
+            .catch(() => {/* browser não suporta query de geolocation */});
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const startWatch = useCallback(() => {
+        if (watchId.current != null) return;
         setStatus("requesting");
 
         watchId.current = navigator.geolocation.watchPosition(
@@ -47,16 +67,14 @@ export function useGPS(): UseGPSResult {
                 staleTimer.current = setTimeout(() => {
                     setPos(null);
                     setStatus("idle");
-                    watchId.current = null;
+                    if (watchId.current != null) {
+                        navigator.geolocation.clearWatch(watchId.current);
+                        watchId.current = null;
+                    }
                 }, 30000);
             },
             (err) => {
-                if (err.code === err.PERMISSION_DENIED) {
-                    setStatus("denied");
-                } else {
-                    // POSITION_UNAVAILABLE ou TIMEOUT → volta a idle silenciosamente
-                    setStatus("idle");
-                }
+                setStatus(err.code === err.PERMISSION_DENIED ? "denied" : "idle");
                 if (watchId.current != null) {
                     navigator.geolocation.clearWatch(watchId.current);
                     watchId.current = null;
@@ -65,6 +83,15 @@ export function useGPS(): UseGPSResult {
             { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
         );
     }, []);
+
+    const request = useCallback(() => {
+        if (typeof navigator === "undefined" || !navigator.geolocation) {
+            setStatus("unavailable");
+            return;
+        }
+        if (status === "denied") return; // já negado — mostra instruções, não tenta de novo
+        startWatch();
+    }, [status, startWatch]);
 
     return { pos, status, request };
 }

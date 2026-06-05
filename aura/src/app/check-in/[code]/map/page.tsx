@@ -12,6 +12,7 @@ import { MapArea, MapLang } from "./types";
 import { IllustratedMap } from "./IllustratedMap";
 import { AreaCard } from "./AreaCard";
 import { CategoryFilter } from "./components/CategoryFilter";
+import { GpsPermissionHelp } from "./components/GpsPermissionHelp";
 import { useGPS } from "./hooks/useGPS";
 import { gpsToFraction } from "./utils/geoTransform";
 
@@ -79,7 +80,14 @@ function ResortMapView() {
     const [selectedArea, setSelectedArea] = useState<MapArea | null>(null);
 
     const { pos, status: gpsStatus, request: requestGPS } = useGPS();
+    const [showGpsHelp, setShowGpsHelp] = useState(false);
     const t = TXT[lang];
+
+    // Abre o modal de instruções ao tocar em "Me localizar" quando já negado
+    const handleRequestGPS = () => {
+        if (gpsStatus === "denied") { setShowGpsHelp(true); return; }
+        requestGPS();
+    };
 
     // Carrega estadia + propriedade + idioma
     useEffect(() => {
@@ -212,7 +220,7 @@ function ResortMapView() {
                                 youAreHereLabel={t.youAreHere}
                                 onAreaClick={setSelectedArea}
                                 gpsStatus={gpsStatus}
-                                onRequestGPS={requestGPS}
+                                onRequestGPS={handleRequestGPS}
                                 locateLabel={t.locate}
                                 locatingLabel={t.locating}
                                 gpsDeniedLabel={t.gpsDenied}
@@ -225,7 +233,7 @@ function ResortMapView() {
                                 youAreHereLabel={t.youAreHere}
                                 onAreaClick={setSelectedArea}
                                 gpsStatus={gpsStatus}
-                                onRequestGPS={requestGPS}
+                                onRequestGPS={handleRequestGPS}
                                 locateLabel={t.locate}
                                 locatingLabel={t.locating}
                                 gpsDeniedLabel={t.gpsDenied}
@@ -257,6 +265,11 @@ function ResortMapView() {
                     </>
                 )}
             </main>
+
+            {/* Modal de ajuda GPS */}
+            {showGpsHelp && (
+                <GpsPermissionHelp lang={lang} onClose={() => setShowGpsHelp(false)} />
+            )}
 
             {/* Bottom sheet da área */}
             {selectedArea && stay && (
