@@ -159,13 +159,36 @@ function ResortMapView() {
         [areas, category]
     );
 
-    // Posição do hóspede no mapa ilustrado (GPS → fração)
+    // GCPs derivados automaticamente dos pins das estruturas que têm
+    // lat/lng preenchidos + posição pixel. São equivalentes a GCPs manuais
+    // e evitam a necessidade de configurar calibração separada no admin.
+    const derivedGcps = useMemo(() =>
+        areas
+            .filter(a =>
+                a.mapPin?.pixelX != null &&
+                a.mapPin?.pixelY != null &&
+                (a.mapPin.lat !== 0 || a.mapPin.lng !== 0)
+            )
+            .map(a => ({
+                lat: a.mapPin!.lat,
+                lng: a.mapPin!.lng,
+                px:  a.mapPin!.pixelX!,
+                py:  a.mapPin!.pixelY!,
+            })),
+        [areas]
+    );
+
+    // Posição do hóspede no mapa ilustrado (GPS → fração normalizada 0..1)
     const userFraction = useMemo(() => {
-        if (!pos || (pos.accuracy && pos.accuracy > 50)) return null;
-        const f = gpsToFraction(pos.lat, pos.lng, { gcps: mapConfig.gcps, bounds: mapConfig.bounds });
+        if (!pos) return null;
+        // 200m de threshold: GPS outdoor em resort varia 10-80m, 50m era restritivo demais
+        if (pos.accuracy > 200) return null;
+        // Prioridade: GCPs manuais do admin → pins das estruturas como GCPs → bounds
+        const gcps = [...(mapConfig.gcps ?? []), ...derivedGcps];
+        const f = gpsToFraction(pos.lat, pos.lng, { gcps, bounds: mapConfig.bounds });
         if (!f || f.x < 0 || f.x > 1 || f.y < 0 || f.y > 1) return null;
         return f;
-    }, [pos, mapConfig.gcps, mapConfig.bounds]);
+    }, [pos, mapConfig.gcps, mapConfig.bounds, derivedGcps]);
 
     if (loading || !property) {
         return <div className="min-h-[100dvh] flex items-center justify-center bg-background"><Loader2 className="w-10 h-10 text-primary animate-spin" /></div>;

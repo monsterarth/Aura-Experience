@@ -17,6 +17,8 @@ interface IllustratedMapProps {
     locateLabel?: string;
     locatingLabel?: string;
     gpsDeniedLabel?: string;
+    // userFraction é passado de volta para colorir o botão corretamente
+    // (já está como prop acima via userFraction — reutilizamos)
 }
 
 const DEFAULT_PIN_COLOR = "#9b6dff";
@@ -85,24 +87,28 @@ export function IllustratedMap({
 
                     <button
                         onClick={onRequestGPS}
-                        disabled={gpsStatus === "requesting" || gpsStatus === "active"}
+                        disabled={gpsStatus === "requesting" || (gpsStatus === "active" && !!userFraction)}
                         className={`flex items-center gap-2 px-3 py-2 rounded-full font-bold text-xs shadow-lg transition-all
-                            ${gpsStatus === "active"
+                            ${gpsStatus === "active" && userFraction
                                 ? "bg-blue-500 text-white"
-                                : gpsStatus === "denied"
-                                    ? "bg-black/70 text-white/70"
-                                    : "bg-white/90 text-gray-800 active:scale-95"}`}
+                                : gpsStatus === "active" && !userFraction
+                                    ? "bg-amber-500 text-white"   // GPS ok mas sem calibração suficiente
+                                    : gpsStatus === "denied"
+                                        ? "bg-black/70 text-white/70"
+                                        : "bg-white/90 text-gray-800 active:scale-95"}`}
                     >
                         {gpsStatus === "requesting" ? (
                             <Loader2 size={14} className="animate-spin" />
                         ) : (
-                            <LocateFixed size={14} className={gpsStatus === "active" ? "text-white" : ""} />
+                            <LocateFixed size={14} />
                         )}
                         {gpsStatus === "requesting"
                             ? locatingLabel
-                            : gpsStatus === "active"
+                            : gpsStatus === "active" && userFraction
                                 ? youAreHereLabel ?? locateLabel
-                                : locateLabel}
+                                : gpsStatus === "active" && !userFraction
+                                    ? "GPS ativo"   // sinaliza que GPS funciona mas mapa não tem calibração
+                                    : locateLabel}
                     </button>
                 </div>
             )}
