@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 
 export interface GpsPosition {
     lat: number;
@@ -8,47 +8,63 @@ export interface GpsPosition {
     accuracy: number; // metros
 }
 
+export type GpsStatus =
+    | "idle"        // nunca solicitado
+    | "requesting"  // aguardando permissão / primeira posição
+    | "active"      // tem posição
+    | "denied"      // usuário negou ou sistema bloqueou
+    | "unavailable"; // API não disponível no browser
+
 interface UseGPSResult {
     pos: GpsPosition | null;
-    error: string | null;
+    status: GpsStatus;
+    request: () => void; // chame ao toque do botão — isso garante que o dialog de permissão apareça
 }
 
-// Encapsula navigator.geolocation.watchPosition com tratamento de erros:
-// - permissão negada / indisponível → expõe `error`, mas mantém o mapa funcional
-// - timeout → silencioso (sem ponto azul)
-// - sinal perdido → mantém última posição por até 30s, depois limpa
+// GPS opt-in: só solicita localização quando `request()` é chamado (idealmente
+// em resposta a um gesto do usuário). Isso garante que o dialog de permissão
+// do browser sempre apareça, evitando a negação silenciosa em iOS/Android.
 export function useGPS(): UseGPSResult {
     const [pos, setPos] = useState<GpsPosition | null>(null);
-    const [error, setError] = useState<string | null>(null);
+    const [status, setStatus] = useState<GpsStatus>("idle");
     const watchId = useRef<number | null>(null);
     const staleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    useEffect(() => {
+    const request = useCallback(() => {
         if (typeof navigator === "undefined" || !navigator.geolocation) {
-            setError("GPS indisponível");
+            setStatus("unavailable");
             return;
         }
+        if (watchId.current != null) return; // já ativo
+
+        setStatus("requesting");
 
         watchId.current = navigator.geolocation.watchPosition(
             ({ coords }) => {
-                setError(null);
+                setStatus("active");
                 setPos({ lat: coords.latitude, lng: coords.longitude, accuracy: coords.accuracy });
-                // reinicia o timer de "posição obsoleta"
                 if (staleTimer.current) clearTimeout(staleTimer.current);
-                staleTimer.current = setTimeout(() => setPos(null), 30000);
+                staleTimer.current = setTimeout(() => {
+                    setPos(null);
+                    setStatus("idle");
+                    watchId.current = null;
+                }, 30000);
             },
             (err) => {
-                // PERMISSION_DENIED = 1 → mostra aviso; demais erros (timeout/posição) ficam silenciosos
-                if (err.code === err.PERMISSION_DENIED) setError("GPS desativado");
+                if (err.code === err.PERMISSION_DENIED) {
+                    setStatus("denied");
+                } else {
+                    // POSITION_UNAVAILABLE ou TIMEOUT → volta a idle silenciosamente
+                    setStatus("idle");
+                }
+                if (watchId.current != null) {
+                    navigator.geolocation.clearWatch(watchId.current);
+                    watchId.current = null;
+                }
             },
-            { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+            { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
         );
-
-        return () => {
-            if (watchId.current != null) navigator.geolocation.clearWatch(watchId.current);
-            if (staleTimer.current) clearTimeout(staleTimer.current);
-        };
     }, []);
 
-    return { pos, error };
+    return { pos, status, request };
 }

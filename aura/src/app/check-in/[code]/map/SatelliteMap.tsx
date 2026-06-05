@@ -4,8 +4,9 @@ import React, { useMemo } from "react";
 import { MapContainer, TileLayer, Marker, CircleMarker, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { Loader2, LocateFixed, LocateOff } from "lucide-react";
 import { MapArea } from "./types";
-import { GpsPosition } from "./hooks/useGPS";
+import { GpsPosition, GpsStatus } from "./hooks/useGPS";
 
 const DEFAULT_PIN_COLOR = "#9b6dff";
 
@@ -56,9 +57,14 @@ interface SatelliteMapProps {
     userPos: GpsPosition | null;
     youAreHereLabel?: string;
     onAreaClick: (area: MapArea) => void;
+    gpsStatus?: GpsStatus;
+    onRequestGPS?: () => void;
+    locateLabel?: string;
+    locatingLabel?: string;
+    gpsDeniedLabel?: string;
 }
 
-export function SatelliteMap({ areas, center, defaultZoom, userPos, onAreaClick }: SatelliteMapProps) {
+export function SatelliteMap({ areas, center, defaultZoom, userPos, youAreHereLabel, onAreaClick, gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar", locatingLabel = "Localizando…", gpsDeniedLabel }: SatelliteMapProps) {
     const placed = areas.filter(a => a.mapPin?.lat != null && a.mapPin?.lng != null && (a.mapPin.lat !== 0 || a.mapPin.lng !== 0));
 
     const mapCenter = useMemo<[number, number]>(() => {
@@ -75,7 +81,7 @@ export function SatelliteMap({ areas, center, defaultZoom, userPos, onAreaClick 
     const zoom = defaultZoom ?? (placed.length > 0 || userPos ? 16 : 2);
 
     return (
-        <div className="rounded-3xl overflow-hidden border border-border shadow-sm">
+        <div className="rounded-3xl overflow-hidden border border-border shadow-sm relative">
             <style>{`.leaflet-user-ping{animation:userping 1.8s ease-out infinite}@keyframes userping{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.4);opacity:0}}`}</style>
             <MapContainer center={mapCenter} zoom={zoom} style={{ height: "60vh", width: "100%" }} scrollWheelZoom>
                 {/* Satélite gratuito (Esri World Imagery) — sem chave de API */}
@@ -109,6 +115,37 @@ export function SatelliteMap({ areas, center, defaultZoom, userPos, onAreaClick 
                     </>
                 )}
             </MapContainer>
+
+            {/* Botão de GPS — sobreposto fora do MapContainer para evitar conflito com eventos Leaflet */}
+            {onRequestGPS && (
+                <div className="absolute bottom-4 right-4 z-[1000] flex flex-col items-end gap-2">
+                    {gpsStatus === "denied" && gpsDeniedLabel && (
+                        <div className="flex items-center gap-1.5 bg-black/70 text-white text-[10px] font-semibold px-3 py-1.5 rounded-full shadow max-w-[200px] text-right">
+                            <LocateOff size={12} className="shrink-0" />
+                            {gpsDeniedLabel}
+                        </div>
+                    )}
+                    <button
+                        onClick={onRequestGPS}
+                        disabled={gpsStatus === "requesting" || gpsStatus === "active"}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-full font-bold text-xs shadow-lg transition-all
+                            ${gpsStatus === "active"
+                                ? "bg-blue-500 text-white"
+                                : gpsStatus === "denied"
+                                    ? "bg-black/70 text-white/70"
+                                    : "bg-white text-gray-800 active:scale-95"}`}
+                    >
+                        {gpsStatus === "requesting"
+                            ? <Loader2 size={14} className="animate-spin" />
+                            : <LocateFixed size={14} />}
+                        {gpsStatus === "requesting"
+                            ? locatingLabel
+                            : gpsStatus === "active"
+                                ? (youAreHereLabel ?? locateLabel)
+                                : locateLabel}
+                    </button>
+                </div>
+            )}
         </div>
     );
 }

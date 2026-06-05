@@ -1,21 +1,31 @@
 "use client";
 
 import React from "react";
+import { Loader2, LocateFixed, LocateOff } from "lucide-react";
 import { MapArea } from "./types";
+import { GpsStatus } from "./hooks/useGPS";
 
 interface IllustratedMapProps {
     imageUrl: string;
     areas: MapArea[];
-    userFraction?: { x: number; y: number } | null;  // posição normalizada do hóspede (GPS)
+    userFraction?: { x: number; y: number } | null;
     youAreHereLabel?: string;
     onAreaClick: (area: MapArea) => void;
+    // GPS opt-in
+    gpsStatus?: GpsStatus;
+    onRequestGPS?: () => void;
+    locateLabel?: string;
+    locatingLabel?: string;
+    gpsDeniedLabel?: string;
 }
 
 const DEFAULT_PIN_COLOR = "#9b6dff";
 
-// Mapa ilustrado: imagem do resort com pins das áreas sobrepostos (posição
-// normalizada 0..1) e o ponto "você está aqui" quando há GPS calibrado.
-export function IllustratedMap({ imageUrl, areas, userFraction, youAreHereLabel, onAreaClick }: IllustratedMapProps) {
+export function IllustratedMap({
+    imageUrl, areas, userFraction, youAreHereLabel, onAreaClick,
+    gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar",
+    locatingLabel = "Localizando…", gpsDeniedLabel,
+}: IllustratedMapProps) {
     const placed = areas.filter(a => a.mapPin?.pixelX != null && a.mapPin?.pixelY != null);
 
     return (
@@ -46,7 +56,7 @@ export function IllustratedMap({ imageUrl, areas, userFraction, youAreHereLabel,
                 );
             })}
 
-            {/* Você está aqui */}
+            {/* Ponto "você está aqui" */}
             {userFraction && (
                 <div
                     className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none"
@@ -59,6 +69,41 @@ export function IllustratedMap({ imageUrl, areas, userFraction, youAreHereLabel,
                             {youAreHereLabel}
                         </span>
                     )}
+                </div>
+            )}
+
+            {/* Botão de GPS — canto inferior direito, sobreposto ao mapa */}
+            {onRequestGPS && (
+                <div className="absolute bottom-3 right-3 flex flex-col items-end gap-2">
+                    {/* Mensagem de permissão negada */}
+                    {gpsStatus === "denied" && gpsDeniedLabel && (
+                        <div className="flex items-center gap-1.5 bg-black/70 text-white text-[10px] font-semibold px-3 py-1.5 rounded-full shadow max-w-[200px] text-right">
+                            <LocateOff size={12} className="shrink-0" />
+                            {gpsDeniedLabel}
+                        </div>
+                    )}
+
+                    <button
+                        onClick={onRequestGPS}
+                        disabled={gpsStatus === "requesting" || gpsStatus === "active"}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-full font-bold text-xs shadow-lg transition-all
+                            ${gpsStatus === "active"
+                                ? "bg-blue-500 text-white"
+                                : gpsStatus === "denied"
+                                    ? "bg-black/70 text-white/70"
+                                    : "bg-white/90 text-gray-800 active:scale-95"}`}
+                    >
+                        {gpsStatus === "requesting" ? (
+                            <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                            <LocateFixed size={14} className={gpsStatus === "active" ? "text-white" : ""} />
+                        )}
+                        {gpsStatus === "requesting"
+                            ? locatingLabel
+                            : gpsStatus === "active"
+                                ? youAreHereLabel ?? locateLabel
+                                : locateLabel}
+                    </button>
                 </div>
             )}
         </div>

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, Suspense } from "react";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
-import { Loader2, ArrowLeft, Map as MapIcon, Satellite, MapPinned, Navigation, AlertCircle } from "lucide-react";
+import { Loader2, ArrowLeft, Map as MapIcon, Satellite, MapPinned, Navigation, LocateFixed } from "lucide-react";
 import { toast } from "sonner";
 import { StayService } from "@/services/stay-service";
 import { PropertyService } from "@/services/property-service";
@@ -58,9 +58,9 @@ function getThemeStyles(p?: Property | null): React.CSSProperties {
 }
 
 const TXT: Record<MapLang, Record<string, string>> = {
-    pt: { title: "Mapa do Resort", illustrated: "Ilustrado", satellite: "Satélite", empty: "O mapa ainda não foi configurado.", locating: "Localizando…", gpsOff: "Ative o GPS para ver sua localização", youAreHere: "Você está aqui", noImage: "Imagem do mapa indisponível." },
-    en: { title: "Resort Map", illustrated: "Illustrated", satellite: "Satellite", empty: "The map hasn't been set up yet.", locating: "Locating…", gpsOff: "Enable GPS to see your location", youAreHere: "You are here", noImage: "Map image unavailable." },
-    es: { title: "Mapa del Resort", illustrated: "Ilustrado", satellite: "Satélite", empty: "El mapa aún no está configurado.", locating: "Localizando…", gpsOff: "Activa el GPS para ver tu ubicación", youAreHere: "Estás aquí", noImage: "Imagen del mapa no disponible." },
+    pt: { title: "Mapa do Resort", illustrated: "Ilustrado", satellite: "Satélite", empty: "O mapa ainda não foi configurado.", locate: "Me localizar", locating: "Localizando…", youAreHere: "Você está aqui", noImage: "Imagem do mapa indisponível.", gpsDenied: "Permissão de localização negada. Ative nas configurações do navegador." },
+    en: { title: "Resort Map", illustrated: "Illustrated", satellite: "Satellite", empty: "The map hasn't been set up yet.", locate: "Locate me", locating: "Locating…", youAreHere: "You are here", noImage: "Map image unavailable.", gpsDenied: "Location permission denied. Enable it in your browser settings." },
+    es: { title: "Mapa del Resort", illustrated: "Ilustrado", satellite: "Satélite", empty: "El mapa aún no está configurado.", locate: "Ubicarme", locating: "Ubicando…", youAreHere: "Estás aquí", noImage: "Imagen del mapa no disponible.", gpsDenied: "Permiso de ubicación denegado. Actívalo en la configuración del navegador." },
 };
 
 function ResortMapView() {
@@ -78,7 +78,7 @@ function ResortMapView() {
     const [category, setCategory] = useState<string | null>(null);
     const [selectedArea, setSelectedArea] = useState<MapArea | null>(null);
 
-    const { pos, error: gpsError } = useGPS();
+    const { pos, status: gpsStatus, request: requestGPS } = useGPS();
     const t = TXT[lang];
 
     // Carrega estadia + propriedade + idioma
@@ -202,13 +202,6 @@ function ResortMapView() {
                             <CategoryFilter categories={categories} selected={category} onSelect={setCategory} lang={lang} />
                         )}
 
-                        {/* Aviso de GPS */}
-                        {gpsError && (
-                            <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">
-                                <AlertCircle size={14} /> {t.gpsOff}
-                            </div>
-                        )}
-
                         {/* Mapa */}
                         {mode === "satellite" && hasSatellite ? (
                             <SatelliteMap
@@ -218,6 +211,11 @@ function ResortMapView() {
                                 userPos={pos}
                                 youAreHereLabel={t.youAreHere}
                                 onAreaClick={setSelectedArea}
+                                gpsStatus={gpsStatus}
+                                onRequestGPS={requestGPS}
+                                locateLabel={t.locate}
+                                locatingLabel={t.locating}
+                                gpsDeniedLabel={t.gpsDenied}
                             />
                         ) : hasIllustrated ? (
                             <IllustratedMap
@@ -226,6 +224,11 @@ function ResortMapView() {
                                 userFraction={userFraction}
                                 youAreHereLabel={t.youAreHere}
                                 onAreaClick={setSelectedArea}
+                                gpsStatus={gpsStatus}
+                                onRequestGPS={requestGPS}
+                                locateLabel={t.locate}
+                                locatingLabel={t.locating}
+                                gpsDeniedLabel={t.gpsDenied}
                             />
                         ) : (
                             <div className="h-[50vh] flex items-center justify-center text-muted-foreground text-sm">{t.noImage}</div>
