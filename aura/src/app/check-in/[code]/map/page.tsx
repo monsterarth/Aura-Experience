@@ -59,9 +59,9 @@ function getThemeStyles(p?: Property | null): React.CSSProperties {
 }
 
 const TXT: Record<MapLang, Record<string, string>> = {
-    pt: { title: "Mapa do Resort", illustrated: "Ilustrado", satellite: "Satélite", empty: "O mapa ainda não foi configurado.", locate: "Me localizar", locating: "Localizando…", youAreHere: "Você está aqui", noImage: "Imagem do mapa indisponível.", gpsDenied: "Permissão de localização negada. Ative nas configurações do navegador." },
-    en: { title: "Resort Map", illustrated: "Illustrated", satellite: "Satellite", empty: "The map hasn't been set up yet.", locate: "Locate me", locating: "Locating…", youAreHere: "You are here", noImage: "Map image unavailable.", gpsDenied: "Location permission denied. Enable it in your browser settings." },
-    es: { title: "Mapa del Resort", illustrated: "Ilustrado", satellite: "Satélite", empty: "El mapa aún no está configurado.", locate: "Ubicarme", locating: "Ubicando…", youAreHere: "Estás aquí", noImage: "Imagen del mapa no disponible.", gpsDenied: "Permiso de ubicación denegado. Actívalo en la configuración del navegador." },
+    pt: { title: "Mapa do Resort", illustrated: "Ilustrado", satellite: "Satélite", empty: "O mapa ainda não foi configurado.", locate: "Me localizar", locating: "Localizando…", youAreHere: "Você está aqui", noImage: "Imagem do mapa indisponível.", gpsDenied: "Permissão de localização negada. Ative nas configurações do navegador.", showCabins: "Ver outras cabanas", hideCabins: "Ocultar outras cabanas" },
+    en: { title: "Resort Map", illustrated: "Illustrated", satellite: "Satellite", empty: "The map hasn't been set up yet.", locate: "Locate me", locating: "Locating…", youAreHere: "You are here", noImage: "Map image unavailable.", gpsDenied: "Location permission denied. Enable it in your browser settings.", showCabins: "Show other cabins", hideCabins: "Hide other cabins" },
+    es: { title: "Mapa del Resort", illustrated: "Ilustrado", satellite: "Satélite", empty: "El mapa aún no está configurado.", locate: "Ubicarme", locating: "Ubicando…", youAreHere: "Estás aquí", noImage: "Imagen del mapa no disponible.", gpsDenied: "Permiso de ubicación denegado. Actívalo en la configuración del navegador.", showCabins: "Ver otras cabañas", hideCabins: "Ocultar otras cabañas" },
 };
 
 function ResortMapView() {
@@ -79,6 +79,7 @@ function ResortMapView() {
     const [mode, setMode] = useState<"illustrated" | "satellite">("illustrated");
     const [category, setCategory] = useState<string | null>(null);
     const [selectedArea, setSelectedArea] = useState<MapArea | null>(null);
+    const [showOtherCabins, setShowOtherCabins] = useState(false);
 
     const { pos, status: gpsStatus, request: requestGPS } = useGPS();
     const [showGpsHelp, setShowGpsHelp] = useState(false);
@@ -232,16 +233,26 @@ function ResortMapView() {
                     </div>
                 ) : (
                     <>
-                        {/* Filtro de categorias */}
-                        {categories.length > 1 && (
-                            <CategoryFilter categories={categories} selected={category} onSelect={setCategory} lang={lang} />
-                        )}
+                        {/* Filtro de categorias + toggle de outras cabanas */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {categories.length > 1 && (
+                                <CategoryFilter categories={categories} selected={category} onSelect={setCategory} lang={lang} />
+                            )}
+                            {cabins.some(c => !c.isOwnCabin) && (
+                                <button
+                                    onClick={() => setShowOtherCabins(v => !v)}
+                                    className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all border flex items-center gap-1.5 ${showOtherCabins ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/40" : "bg-card text-muted-foreground border-border"}`}
+                                >
+                                    🏠 {showOtherCabins ? t.hideCabins : t.showCabins}
+                                </button>
+                            )}
+                        </div>
 
                         {/* Mapa */}
                         {mode === "satellite" && hasSatellite ? (
                             <SatelliteMap
                                 areas={visibleAreas}
-                                cabins={cabins}
+                                cabins={showOtherCabins ? cabins : cabins.filter(c => c.isOwnCabin)}
                                 center={mapConfig.center}
                                 defaultZoom={mapConfig.defaultZoom}
                                 userPos={pos}
@@ -257,7 +268,7 @@ function ResortMapView() {
                             <IllustratedMap
                                 imageUrl={mapConfig.illustratedImageUrl!}
                                 areas={visibleAreas}
-                                cabins={cabins}
+                                cabins={showOtherCabins ? cabins : cabins.filter(c => c.isOwnCabin)}
                                 userFraction={userFraction}
                                 youAreHereLabel={t.youAreHere}
                                 onAreaClick={setSelectedArea}
