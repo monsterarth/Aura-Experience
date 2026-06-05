@@ -184,11 +184,13 @@ export default function ResortMapAdminPage() {
                                     <ImageIcon size={16} className="text-primary" /> Imagem ilustrada do resort
                                 </p>
                                 <p className="text-xs text-muted-foreground mb-4">
-                                    PNG/JPG, de preferência vista de cima (drone 90°). Mínimo 1200×1000px.
+                                    PNG/JPG/WebP, de preferência vista de cima (drone 90°). Mínimo 1200×1000px. Até 20MB (upload direto, sem perda de resolução).
                                 </p>
                                 <div className="h-64 rounded-2xl overflow-hidden border border-border">
                                     <ImageUpload
                                         path="maps"
+                                        direct
+                                        maxSizeMb={20}
                                         onUploadSuccess={(url) => setMapConfig(c => ({ ...c, illustratedImageUrl: url }))}
                                     />
                                 </div>

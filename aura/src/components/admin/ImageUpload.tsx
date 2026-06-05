@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Camera, Loader2, UploadCloud } from 'lucide-react';
 import { toast } from 'sonner';
+import { createClient } from '@supabase/supabase-js';
 
 interface ImageUploadProps {
     value?: string;
@@ -9,9 +10,17 @@ interface ImageUploadProps {
     path?: string;
     stayId?: string;
     accessCode?: string;
+    /** Limite de tamanho em MB (padrão 5). */
+    maxSizeMb?: number;
+    /**
+     * Upload direto navegador → Supabase Storage via URL assinada.
+     * Use para arquivos grandes (ex.: imagem do mapa em alta resolução) que
+     * ultrapassam o limite de ~4.5MB de corpo das serverless functions da Vercel.
+     */
+    direct?: boolean;
 }
 
-export function ImageUpload({ value, onUploadSuccess, className = '', path = 'profiles', stayId, accessCode }: ImageUploadProps) {
+export function ImageUpload({ value, onUploadSuccess, className = '', path = 'profiles', stayId, accessCode, maxSizeMb = 5, direct = false }: ImageUploadProps) {
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -19,24 +28,54 @@ export function ImageUpload({ value, onUploadSuccess, className = '', path = 'pr
         const file = event.target.files?.[0];
         if (!file) return;
 
-        // Validate type and size (max 5MB)
+        // Validate type and size
         if (!file.type.startsWith('image/')) {
             toast.error('Por favor, selecione uma imagem válida.');
             return;
         }
-        if (file.size > 5 * 1024 * 1024) {
-            toast.error('A imagem excede o limite de 5MB.');
+        if (file.size > maxSizeMb * 1024 * 1024) {
+            toast.error(`A imagem excede o limite de ${maxSizeMb}MB.`);
             return;
         }
 
         setIsUploading(true);
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('path', path);
-        if (stayId) formData.append('stayId', stayId);
-        if (accessCode) formData.append('accessCode', accessCode);
 
         try {
+            if (direct) {
+                // 1) Autoriza e gera URL assinada (não trafega o arquivo pela função)
+                const signRes = await fetch('/api/upload/signed-url', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: file.name, contentType: file.type }),
+                });
+                if (!signRes.ok) {
+                    const e = await signRes.json().catch(() => ({}));
+                    throw new Error(e.error || 'Falha ao autorizar o upload.');
+                }
+                const { token, path: storagePath, publicUrl } = await signRes.json();
+
+                // 2) Envia o arquivo direto ao bucket usando o token assinado
+                const sb = createClient(
+                    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+                    { auth: { persistSession: false, autoRefreshToken: false } },
+                );
+                const { error } = await sb.storage
+                    .from('images')
+                    .uploadToSignedUrl(storagePath, token, file, { contentType: file.type });
+                if (error) throw error;
+
+                onUploadSuccess(publicUrl);
+                toast.success('Imagem enviada com sucesso!');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('path', path);
+            if (stayId) formData.append('stayId', stayId);
+            if (accessCode) formData.append('accessCode', accessCode);
+
             const response = await fetch('/api/upload', {
                 method: 'POST',
                 body: formData,
