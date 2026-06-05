@@ -233,7 +233,7 @@ export default function ResortMapAdminPage() {
             {loading ? (
                 <div className="text-center py-20 text-muted-foreground animate-pulse">Carregando…</div>
             ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
                     {/* ── Coluna esquerda: imagem + calibração ─────────────────────── */}
                     <div className="lg:col-span-2 space-y-4">
                         {!mapConfig.illustratedImageUrl ? (
@@ -395,8 +395,8 @@ export default function ResortMapAdminPage() {
                         )}
                     </div>
 
-                    {/* ── Coluna direita: abas Estruturas / Cabanas ──────────────────── */}
-                    <div className="space-y-3">
+                    {/* ── Coluna direita: abas Estruturas / Cabanas — scroll próprio ── */}
+                    <div className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1 space-y-3">
                         {/* Tab switcher */}
                         <div className="flex bg-secondary rounded-xl p-1">
                             {(["structures", "cabins"] as SideTab[]).map(tab => (
