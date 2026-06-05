@@ -14,6 +14,60 @@ import { useAuth } from "@/context/AuthContext";
 import { Structure, Cabin, Property } from "@/types/aura";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 
+// ── Componente de entrada de coordenadas no formato Google Maps ─────────────
+// Aceita colar direto: "-28.131983, -48.643969" e faz o parse automaticamente.
+function CoordInput({
+    lat, lng,
+    onChange,
+    placeholder = "-28.131983, -48.643969",
+}: {
+    lat?: number; lng?: number;
+    onChange: (lat: number, lng: number) => void;
+    placeholder?: string;
+}) {
+    const hasValue = lat && lng && (lat !== 0 || lng !== 0);
+    const display  = hasValue ? `${lat}, ${lng}` : "";
+
+    const parse = (raw: string) => {
+        const parts = raw.trim().split(",");
+        if (parts.length !== 2) return;
+        const parsedLat = parseFloat(parts[0].trim());
+        const parsedLng = parseFloat(parts[1].trim());
+        if (!isNaN(parsedLat) && !isNaN(parsedLng)) onChange(parsedLat, parsedLng);
+    };
+
+    return (
+        <div className="space-y-1">
+            <label className="field-label flex items-center gap-1.5">
+                Coordenadas
+                <span className="text-muted-foreground/60 font-normal normal-case tracking-normal text-[10px]">
+                    — cole do Google Maps
+                </span>
+            </label>
+            <div className="relative">
+                <input
+                    className="field-input w-full text-sm font-mono pr-7"
+                    defaultValue={display}
+                    key={display}          // recria quando salvo externamente
+                    placeholder={placeholder}
+                    onBlur={e  => parse(e.target.value)}
+                    onPaste={e => { e.preventDefault(); parse(e.clipboardData.getData("text")); (e.target as HTMLInputElement).value = e.clipboardData.getData("text").trim(); }}
+                />
+                {hasValue && (
+                    <Check size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-green-500 pointer-events-none" />
+                )}
+            </div>
+        </div>
+    );
+}
+
+// Mesmo componente para os pontos de calibração GCP
+function GcpCoordInput({ lat, lng, onChange }: { lat: number; lng: number; onChange: (lat: number, lng: number) => void }) {
+    return (
+        <CoordInput lat={lat || undefined} lng={lng || undefined} onChange={onChange} placeholder="-28.131983, -48.643969" />
+    );
+}
+
 type MapConfig = NonNullable<Property["settings"]["mapConfig"]>;
 type Gcp = { lat: number; lng: number; px: number; py: number };
 
@@ -286,14 +340,14 @@ export default function ResortMapAdminPage() {
                                         <div className="space-y-2">
                                             {gcps.map((g, i) => (
                                                 <div key={i} className="flex items-center gap-2">
-                                                    <span className="w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-black flex items-center justify-center shrink-0">{i + 1}</span>
-                                                    <input type="number" step="any" placeholder="Latitude" value={g.lat || ""}
-                                                        onChange={e => updateGcp(i, { lat: parseFloat(e.target.value) || 0 })}
-                                                        className="field-input flex-1 text-sm" />
-                                                    <input type="number" step="any" placeholder="Longitude" value={g.lng || ""}
-                                                        onChange={e => updateGcp(i, { lng: parseFloat(e.target.value) || 0 })}
-                                                        className="field-input flex-1 text-sm" />
-                                                    <button onClick={() => removeGcp(i)} className="p-2 text-muted-foreground hover:text-red-500">
+                                                    <span className="w-6 h-6 rounded-full bg-amber-500 text-white text-xs font-black flex items-center justify-center shrink-0 mt-5">{i + 1}</span>
+                                                    <div className="flex-1">
+                                                        <GcpCoordInput
+                                                            lat={g.lat} lng={g.lng}
+                                                            onChange={(lat, lng) => updateGcp(i, { lat, lng })}
+                                                        />
+                                                    </div>
+                                                    <button onClick={() => removeGcp(i)} className="p-2 text-muted-foreground hover:text-red-500 mt-5">
                                                         <Trash2 size={14} />
                                                     </button>
                                                 </div>
@@ -367,18 +421,10 @@ export default function ResortMapAdminPage() {
                                 </div>
                                 {s.showOnMap && (
                                     <div className="space-y-3 animate-in fade-in duration-200">
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <div>
-                                                <label className="field-label">Latitude</label>
-                                                <input type="number" step="any" className="field-input text-sm" value={s.mapPin?.lat ?? ""}
-                                                    onChange={e => patchStructure(s.id, { mapPin: { lat: parseFloat(e.target.value) || 0, lng: s.mapPin?.lng ?? 0, pixelX: s.mapPin?.pixelX, pixelY: s.mapPin?.pixelY } })} />
-                                            </div>
-                                            <div>
-                                                <label className="field-label">Longitude</label>
-                                                <input type="number" step="any" className="field-input text-sm" value={s.mapPin?.lng ?? ""}
-                                                    onChange={e => patchStructure(s.id, { mapPin: { lat: s.mapPin?.lat ?? 0, lng: parseFloat(e.target.value) || 0, pixelX: s.mapPin?.pixelX, pixelY: s.mapPin?.pixelY } })} />
-                                            </div>
-                                        </div>
+                                        <CoordInput
+                                            lat={s.mapPin?.lat} lng={s.mapPin?.lng}
+                                            onChange={(lat, lng) => patchStructure(s.id, { mapPin: { lat, lng, pixelX: s.mapPin?.pixelX, pixelY: s.mapPin?.pixelY } })}
+                                        />
                                         <div className="grid grid-cols-2 gap-2 items-end">
                                             <div>
                                                 <label className="field-label">Ícone (emoji)</label>
@@ -426,18 +472,10 @@ export default function ResortMapAdminPage() {
                                                 <span className="text-[10px] bg-green-500/10 text-green-600 px-2 py-0.5 rounded font-bold">✓ Posicionada</span>
                                             )}
                                         </div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <div>
-                                                <label className="field-label">Latitude</label>
-                                                <input type="number" step="any" className="field-input text-sm" value={c.mapPin?.lat ?? ""}
-                                                    onChange={e => patchCabin(c.id, { mapPin: { lat: parseFloat(e.target.value) || 0, lng: c.mapPin?.lng ?? 0, pixelX: c.mapPin?.pixelX, pixelY: c.mapPin?.pixelY } })} />
-                                            </div>
-                                            <div>
-                                                <label className="field-label">Longitude</label>
-                                                <input type="number" step="any" className="field-input text-sm" value={c.mapPin?.lng ?? ""}
-                                                    onChange={e => patchCabin(c.id, { mapPin: { lat: c.mapPin?.lat ?? 0, lng: parseFloat(e.target.value) || 0, pixelX: c.mapPin?.pixelX, pixelY: c.mapPin?.pixelY } })} />
-                                            </div>
-                                        </div>
+                                        <CoordInput
+                                            lat={c.mapPin?.lat} lng={c.mapPin?.lng}
+                                            onChange={(lat, lng) => patchCabin(c.id, { mapPin: { lat, lng, pixelX: c.mapPin?.pixelX, pixelY: c.mapPin?.pixelY } })}
+                                        />
                                         <button
                                             onClick={() => {
                                                 if (!mapConfig.illustratedImageUrl) { toast.error("Carregue a imagem do mapa primeiro."); return; }
