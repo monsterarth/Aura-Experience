@@ -313,29 +313,6 @@ function NewStayPageContent() {
                 <UserSearch size={18} className="text-primary" /> Identificação
               </h2>
 
-              <label className={cn(
-                "flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors",
-                internalUse ? "bg-amber-500/10 border-amber-500/30" : "bg-secondary border-border hover:bg-accent"
-              )}>
-                <input type="checkbox" checked={internalUse} onChange={e => toggleInternalUse(e.target.checked)} className="accent-amber-500 w-4 h-4" />
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-foreground uppercase tracking-tighter">Reserva de uso da casa (interno)</span>
-                  <span className="text-[9px] text-muted-foreground">Ocupação interna — não é cliente, hóspede opcional, sem comunicação automática</span>
-                </div>
-              </label>
-
-              {internalUse && (
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase text-muted-foreground">Identificação interna (opcional)</label>
-                  <input
-                    value={internalLabel}
-                    onChange={e => setInternalLabel(e.target.value)}
-                    placeholder="Ex: Manutenção cabana 5, Família, Bloqueio"
-                    className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors"
-                  />
-                </div>
-              )}
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1 md:col-span-2">
                   <label className="text-[10px] font-bold uppercase text-muted-foreground">Documento (Opcional)</label>
@@ -521,7 +498,30 @@ function NewStayPageContent() {
 
               </div>
 
-              <label className="flex items-center gap-3 cursor-pointer p-3 bg-secondary rounded-xl border border-border hover:bg-accent transition-colors mt-4">
+              <label className={cn(
+                "flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors mt-4",
+                internalUse ? "bg-amber-500/10 border-amber-500/30" : "bg-secondary border-border hover:bg-accent"
+              )}>
+                <input type="checkbox" checked={internalUse} onChange={e => toggleInternalUse(e.target.checked)} className="accent-amber-500 w-4 h-4" />
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black text-foreground uppercase tracking-tighter">Reserva de uso da casa (interno)</span>
+                  <span className="text-[9px] text-muted-foreground">Ocupação interna — não é cliente, hóspede opcional, sem comunicação automática</span>
+                </div>
+              </label>
+
+              {internalUse && (
+                <div className="space-y-1 mt-2">
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground">Identificação interna (opcional)</label>
+                  <input
+                    value={internalLabel}
+                    onChange={e => setInternalLabel(e.target.value)}
+                    placeholder="Ex: Manutenção cabana 5, Família, Bloqueio"
+                    className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors"
+                  />
+                </div>
+              )}
+
+              <label className="flex items-center gap-3 cursor-pointer p-3 bg-secondary rounded-xl border border-border hover:bg-accent transition-colors mt-2">
                 <input type="checkbox" checked={sendAutomations} onChange={e => setSendAutomations(e.target.checked)} className="accent-primary w-4 h-4" />
                 <div className="flex flex-col">
                   <span className="text-[10px] font-bold text-foreground uppercase tracking-tighter">Comunicação automática de WhatsApp</span>
