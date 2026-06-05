@@ -60,9 +60,11 @@ export default function StructuresPage() {
     };
 
     const formatVisibility = (v: string) => {
-        if (v === 'admin_only') return 'Apenas Recepção';
-        if (v === 'guest_request') return 'Hóspede Solicita';
-        return 'Hóspede Reserva (Auto)';
+        if (v === 'admin_only')         return 'Apenas Recepção';
+        if (v === 'guest_request')      return 'Hóspede Solicita';
+        if (v === 'guest_auto_approve') return 'Hóspede Reserva (Auto)';
+        if (v === 'map_only')           return 'Apenas no Mapa';
+        return v;
     };
 
     return (

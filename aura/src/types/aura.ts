@@ -184,7 +184,11 @@ export interface Cabin {
   updatedAt?: Timestamp;
 }
 
-export type StructureVisibility = 'admin_only' | 'guest_request' | 'guest_auto_approve';
+export type StructureVisibility =
+  | 'admin_only'        // apenas recepção agenda (ex: sala de massagem)
+  | 'guest_request'     // hóspede solicita, recepção aprova
+  | 'guest_auto_approve'// hóspede reserva e aprova automaticamente
+  | 'map_only';         // local informativo no mapa, sem agendamento (restaurante, praia, guarita…)
 
 export interface Structure {
   id: string;

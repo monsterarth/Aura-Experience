@@ -93,7 +93,10 @@ export function AreaCard({ area, stay, property, lang, onClose, onBooked, onRevi
                                 {area.operatingHours?.openTime && (
                                     <div className="bg-card border border-border rounded-2xl p-3">
                                         <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1"><Clock size={11} /> {t.hours}</p>
-                                        <p className="font-bold text-sm mt-1">{area.operatingHours.openTime} – {area.operatingHours.closeTime}</p>
+                                        {area.operatingHours.openTime === "00:00" && (area.operatingHours.closeTime === "23:59" || area.operatingHours.closeTime === "00:00")
+                                            ? <p className="font-bold text-sm mt-1">24h</p>
+                                            : <p className="font-bold text-sm mt-1">{area.operatingHours.openTime} – {area.operatingHours.closeTime}</p>
+                                        }
                                     </div>
                                 )}
                                 {area.capacity > 0 && (

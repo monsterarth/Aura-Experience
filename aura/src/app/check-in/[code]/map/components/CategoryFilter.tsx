@@ -7,14 +7,19 @@ const ALL_LABEL: Record<MapLang, string> = { pt: "Todas", en: "All", es: "Todas"
 
 // Rótulos amigáveis para categorias conhecidas; cai no próprio valor se desconhecida.
 const CATEGORY_LABELS: Record<string, Record<MapLang, string>> = {
-    lazer: { pt: "Lazer", en: "Leisure", es: "Ocio" },
-    leisure: { pt: "Lazer", en: "Leisure", es: "Ocio" },
-    alimentacao: { pt: "Alimentação", en: "Food", es: "Comida" },
-    "bem-estar": { pt: "Bem-estar", en: "Wellness", es: "Bienestar" },
-    spa: { pt: "Spa", en: "Spa", es: "Spa" },
-    esporte: { pt: "Esporte", en: "Sport", es: "Deporte" },
-    sport: { pt: "Esporte", en: "Sport", es: "Deporte" },
-    service: { pt: "Serviço", en: "Service", es: "Servicio" },
+    // Agendáveis
+    lazer:       { pt: "Lazer",       en: "Leisure",    es: "Ocio" },
+    leisure:     { pt: "Lazer",       en: "Leisure",    es: "Ocio" },
+    "bem-estar": { pt: "Bem-estar",   en: "Wellness",   es: "Bienestar" },
+    spa:         { pt: "Spa",         en: "Spa",        es: "Spa" },
+    esporte:     { pt: "Esporte",     en: "Sport",      es: "Deporte" },
+    sport:       { pt: "Esporte",     en: "Sport",      es: "Deporte" },
+    service:     { pt: "Serviço",     en: "Service",    es: "Servicio" },
+    // Informativos
+    alimentacao: { pt: "Alimentação", en: "Food & Drinks", es: "Comida" },
+    natureza:    { pt: "Natureza",    en: "Nature",     es: "Naturaleza" },
+    comodidade:  { pt: "Comodidades", en: "Amenities",  es: "Comodidades" },
+    acesso:      { pt: "Acesso",      en: "Access",     es: "Acceso" },
 };
 
 interface CategoryFilterProps {
