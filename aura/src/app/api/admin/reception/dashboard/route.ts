@@ -23,6 +23,11 @@ export async function GET(request: NextRequest) {
     const since48h = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 
     try {
+        // Cabanas fora da ocupação (extras / uso da casa) — excluídas dos números de ocupação
+        const { data: ignoredCabinsData } = await supabaseAdmin.from('cabins')
+            .select('id').eq('propertyId', propertyId).eq('ignoreInOccupancy', true);
+        const ignoredCabinIds = (ignoredCabinsData ?? []).map((c: any) => c.id as string);
+
         const [
             cabinsRes,
             staffRes,
@@ -64,21 +69,25 @@ export async function GET(request: NextRequest) {
                 .eq('propertyId', propertyId)
                 .gte('checkOut', todayStart.toISOString()).lte('checkOut', todayEnd.toISOString())
                 .in('status', ['active', 'checked_out', 'finished', 'archived']),
-            // Cabanas ocupadas
-            supabaseAdmin.from('stays').select('id', { count: 'exact', head: true })
-                .eq('propertyId', propertyId).eq('status', 'active'),
-            // Total de cabanas
+            // Cabanas ocupadas (exclui estadias em cabanas fora da ocupação)
+            (() => {
+                let q = supabaseAdmin!.from('stays').select('id', { count: 'exact', head: true })
+                    .eq('propertyId', propertyId).eq('status', 'active');
+                if (ignoredCabinIds.length) q = q.or(`cabinId.is.null,cabinId.not.in.(${ignoredCabinIds.join(',')})`);
+                return q;
+            })(),
+            // Total de cabanas (exclui as marcadas como fora da ocupação)
             supabaseAdmin.from('cabins').select('id', { count: 'exact', head: true })
-                .eq('propertyId', propertyId),
+                .eq('propertyId', propertyId).eq('ignoreInOccupancy', false),
             // Cabanas com chegada hoje (não disponíveis para walk-in)
             supabaseAdmin.from('stays').select('cabinId')
                 .eq('propertyId', propertyId)
                 .gte('checkIn', todayStart.toISOString()).lte('checkIn', todayEnd.toISOString())
                 .in('status', ['pending', 'pre_checkin_done', 'active'])
                 .not('cabinId', 'is', null),
-            // Cabanas disponíveis
+            // Cabanas disponíveis (exclui as marcadas como fora da ocupação)
             supabaseAdmin.from('cabins').select('id')
-                .eq('propertyId', propertyId).eq('status', 'available'),
+                .eq('propertyId', propertyId).eq('status', 'available').eq('ignoreInOccupancy', false),
             // Estruturas
             supabaseAdmin.from('structures').select('*').eq('propertyId', propertyId),
             // Reservas de estruturas hoje (exceto canceladas/rejeitadas)

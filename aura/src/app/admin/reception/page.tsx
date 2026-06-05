@@ -288,6 +288,7 @@ export default function ReceptionDashboard() {
                     label="Ocupação"
                     value={`${stats.occupiedCabins}/${stats.totalCabins}`}
                     sub={stats.totalCabins > 0 ? `${Math.round(stats.occupiedCabins / stats.totalCabins * 100)}%` : '—'}
+                    note="*Apenas cabanas consideradas na ocupação"
                     color="text-emerald-400"
                     bg="bg-emerald-400/10"
                 />
@@ -602,7 +603,7 @@ export default function ReceptionDashboard() {
     );
 }
 
-function StatCard({ icon: Icon, label, value, sub, color, bg, highlight = false }: any) {
+function StatCard({ icon: Icon, label, value, sub, note, color, bg, highlight = false }: any) {
     return (
         <div className={cn(
             "bg-card border p-4 lg:p-5 rounded-3xl relative overflow-hidden group transition-all duration-300",
@@ -621,6 +622,7 @@ function StatCard({ icon: Icon, label, value, sub, color, bg, highlight = false 
                     {sub && <span className={cn("text-xs font-bold", color)}>{sub}</span>}
                 </div>
                 <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">{label}</p>
+                {note && <p className="text-[9px] text-muted-foreground/60 font-medium mt-1 leading-tight">{note}</p>}
             </div>
         </div>
     );
