@@ -187,7 +187,7 @@ export function GpsPermissionHelp({ lang, onClose }: GpsPermissionHelpProps) {
     const content = CONTENT[platform]?.[lang] ?? CONTENT["android-chrome"][lang];
 
     return (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-[2100] flex items-end justify-center" role="dialog" aria-modal="true">
             <div className="absolute inset-0 bg-black/50 animate-in fade-in" onClick={onClose} />
             <div className="relative w-full max-w-lg bg-background rounded-t-3xl shadow-2xl p-6 animate-in slide-in-from-bottom duration-300 space-y-5">
                 {/* Handle */}

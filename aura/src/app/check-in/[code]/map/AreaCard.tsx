@@ -41,7 +41,7 @@ export function AreaCard({ area, stay, property, lang, onClose, onBooked, onRevi
     ];
 
     return (
-        <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true">
+        <div className="fixed inset-0 z-[2000] flex items-end justify-center" role="dialog" aria-modal="true">
             <div className="absolute inset-0 bg-black/50 animate-in fade-in" onClick={onClose} />
 
             <div className="relative w-full max-w-lg bg-background rounded-t-3xl shadow-2xl max-h-[88dvh] flex flex-col animate-in slide-in-from-bottom duration-300">
