@@ -81,9 +81,11 @@ interface SatelliteMapProps {
     initialLayer?: "satellite" | "street";
     streetLabel?: string;
     satelliteLabel?: string;
+    /** Preenche o contêiner pai (tela cheia) em vez de altura fixa de cartão. */
+    fullscreen?: boolean;
 }
 
-export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos, youAreHereLabel, onAreaClick, gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar", locatingLabel = "Localizando…", gpsDeniedLabel, initialLayer = "street", streetLabel = "Ruas", satelliteLabel = "Satélite" }: SatelliteMapProps) {
+export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos, youAreHereLabel, onAreaClick, gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar", locatingLabel = "Localizando…", gpsDeniedLabel, initialLayer = "street", streetLabel = "Ruas", satelliteLabel = "Satélite", fullscreen = false }: SatelliteMapProps) {
     const [layer, setLayer] = useState<"satellite" | "street">(initialLayer);
     const placed = areas.filter(a => a.mapPin?.lat != null && a.mapPin?.lng != null && (a.mapPin.lat !== 0 || a.mapPin.lng !== 0));
     const placedCabins = cabins.filter(c => c.mapPin && (c.mapPin.lat !== 0 || c.mapPin.lng !== 0));
@@ -102,9 +104,9 @@ export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos,
     const zoom = defaultZoom ?? (placed.length > 0 || userPos ? 16 : 2);
 
     return (
-        <div className="rounded-3xl overflow-hidden border border-border shadow-sm relative">
+        <div className={fullscreen ? "h-full w-full relative" : "rounded-3xl overflow-hidden border border-border shadow-sm relative"}>
             <style>{`.leaflet-user-ping{animation:userping 1.8s ease-out infinite}@keyframes userping{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.4);opacity:0}}`}</style>
-            <MapContainer center={mapCenter} zoom={zoom} style={{ height: "60vh", width: "100%" }} scrollWheelZoom>
+            <MapContainer center={mapCenter} zoom={zoom} style={{ height: fullscreen ? "100%" : "60vh", width: "100%" }} scrollWheelZoom>
                 {layer === "satellite" ? (
                     /* Satélite gratuito (Esri World Imagery) — sem chave de API */
                     <TileLayer
@@ -174,7 +176,7 @@ export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos,
             {/* Troca de camada: Ruas (OSM) ⇄ Satélite (Esri) */}
             <button
                 onClick={() => setLayer(l => l === "satellite" ? "street" : "satellite")}
-                className="absolute top-3 right-3 z-[1000] flex items-center gap-1.5 px-3 py-2 rounded-full bg-white text-gray-800 font-bold text-xs shadow-lg active:scale-95 transition-all"
+                className={`absolute ${fullscreen ? "top-20" : "top-3"} right-3 z-[1000] flex items-center gap-1.5 px-3 py-2 rounded-full bg-white text-gray-800 font-bold text-xs shadow-lg active:scale-95 transition-all`}
             >
                 {layer === "satellite"
                     ? <><MapIcon size={14} /> {streetLabel}</>

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, Suspense } from "react";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
-import { Loader2, ArrowLeft, Map as MapIcon, Image as ImageIcon, MapPinned, Navigation } from "lucide-react";
+import { Loader2, ArrowLeft, Map as MapIcon, Image as ImageIcon, MapPinned, Layers } from "lucide-react";
 import { toast } from "sonner";
 import { StayService } from "@/services/stay-service";
 import { PropertyService } from "@/services/property-service";
@@ -11,6 +11,8 @@ import { Stay, Property } from "@/types/aura";
 import { MapArea, MapCabin, MapLang } from "./types";
 import { AreaCard } from "./AreaCard";
 import { CategoryFilter } from "./components/CategoryFilter";
+import { AreaListSection } from "./components/AreaListSection";
+import { StayHeroCard } from "./components/StayHeroCard";
 import { GpsPermissionHelp } from "./components/GpsPermissionHelp";
 import { useGPS } from "./hooks/useGPS";
 import { gpsToFractionMagnetic } from "./utils/geoTransform";
@@ -63,9 +65,9 @@ function getThemeStyles(p?: Property | null): React.CSSProperties {
 }
 
 const TXT: Record<MapLang, Record<string, string>> = {
-    pt: { title: "Mapa do Resort", illustrated: "Ilustrado", realMap: "Mapa", street: "Ruas", satellite: "Satélite", empty: "O mapa ainda não foi configurado.", locate: "Me localizar", locating: "Localizando…", youAreHere: "Você está aqui", noImage: "Imagem do mapa indisponível.", gpsDenied: "Permissão de localização negada. Ative nas configurações do navegador.", showCabins: "Ver outras cabanas", hideCabins: "Ocultar outras cabanas" },
-    en: { title: "Resort Map", illustrated: "Illustrated", realMap: "Map", street: "Streets", satellite: "Satellite", empty: "The map hasn't been set up yet.", locate: "Locate me", locating: "Locating…", youAreHere: "You are here", noImage: "Map image unavailable.", gpsDenied: "Location permission denied. Enable it in your browser settings.", showCabins: "Show other cabins", hideCabins: "Hide other cabins" },
-    es: { title: "Mapa del Resort", illustrated: "Ilustrado", realMap: "Mapa", street: "Calles", satellite: "Satélite", empty: "El mapa aún no está configurado.", locate: "Ubicarme", locating: "Ubicando…", youAreHere: "Estás aquí", noImage: "Imagen del mapa no disponible.", gpsDenied: "Permiso de ubicación denegado. Actívalo en la configuración del navegador.", showCabins: "Ver otras cabañas", hideCabins: "Ocultar otras cabañas" },
+    pt: { title: "Mapa do Resort", illustrated: "Ilustrado", realMap: "Mapa", street: "Ruas", satellite: "Satélite", empty: "O mapa ainda não foi configurado.", locate: "Me localizar", locating: "Localizando…", youAreHere: "Você está aqui", noImage: "Imagem do mapa indisponível.", gpsDenied: "Permissão de localização negada. Ative nas configurações do navegador.", showCabins: "Ver outras cabanas", hideCabins: "Ocultar outras cabanas", tapToOpen: "Toque para abrir o mapa", expand: "Ampliar", yourStay: "Sua estadia", yourCabin: "Sua Cabana", howToGet: "Como chegar", openNow: "Aberto agora", closed: "Fechado", h24: "24h", others: "Outros", noAreas: "Nenhum local nesta categoria." },
+    en: { title: "Resort Map", illustrated: "Illustrated", realMap: "Map", street: "Streets", satellite: "Satellite", empty: "The map hasn't been set up yet.", locate: "Locate me", locating: "Locating…", youAreHere: "You are here", noImage: "Map image unavailable.", gpsDenied: "Location permission denied. Enable it in your browser settings.", showCabins: "Show other cabins", hideCabins: "Hide other cabins", tapToOpen: "Tap to open the map", expand: "Expand", yourStay: "Your stay", yourCabin: "Your Cabin", howToGet: "Get directions", openNow: "Open now", closed: "Closed", h24: "24h", others: "Others", noAreas: "No places in this category." },
+    es: { title: "Mapa del Resort", illustrated: "Ilustrado", realMap: "Mapa", street: "Calles", satellite: "Satélite", empty: "El mapa aún no está configurado.", locate: "Ubicarme", locating: "Ubicando…", youAreHere: "Estás aquí", noImage: "Imagen del mapa no disponible.", gpsDenied: "Permiso de ubicación denegado. Actívalo en la configuración del navegador.", showCabins: "Ver otras cabañas", hideCabins: "Ocultar otras cabañas", tapToOpen: "Toca para abrir el mapa", expand: "Ampliar", yourStay: "Tu estadía", yourCabin: "Tu Cabaña", howToGet: "Cómo llegar", openNow: "Abierto ahora", closed: "Cerrado", h24: "24h", others: "Otros", noAreas: "Ningún lugar en esta categoría." },
 };
 
 function ResortMapView() {
@@ -84,6 +86,7 @@ function ResortMapView() {
     const [category, setCategory] = useState<string | null>(null);
     const [selectedArea, setSelectedArea] = useState<MapArea | null>(null);
     const [showOtherCabins, setShowOtherCabins] = useState(false);
+    const [mapOpen, setMapOpen] = useState(false);
 
     const { pos, status: gpsStatus, request: requestGPS } = useGPS();
     const [showGpsHelp, setShowGpsHelp] = useState(false);
@@ -209,6 +212,60 @@ function ResortMapView() {
     const hasRealMap = anchors.length > 0 || !!mapConfig.center || !!mapConfig.satelliteEnabled;
     const nothingConfigured = !hasIllustrated && !hasRealMap;
 
+    const ownCabin = cabins.find(c => c.isOwnCabin) ?? null;
+    const showSatellite = (mode === "satellite" && hasRealMap) || !hasIllustrated;
+    const cabinsForMap = showOtherCabins ? cabins : cabins.filter(c => c.isOwnCabin);
+    // Categorias a exibir no diretório (uma seção cada). Quando há filtro, só ela.
+    const dirCategories = category ? [category] : categories;
+    const noCatAreas = visibleAreas.filter(a => !a.category);
+
+    // Abre o mapa em tela cheia e (opcionalmente) já pede o GPS.
+    const openFullMap = (withGps = false) => {
+        setMapOpen(true);
+        if (withGps) handleRequestGPS();
+    };
+
+    // Renderiza o mapa ativo (compartilhado entre prévia desativada e overlay).
+    const renderMap = (fs: boolean) =>
+        showSatellite ? (
+            <SatelliteMap
+                areas={visibleAreas}
+                cabins={cabinsForMap}
+                center={mapConfig.center}
+                defaultZoom={mapConfig.defaultZoom}
+                userPos={pos}
+                youAreHereLabel={t.youAreHere}
+                onAreaClick={setSelectedArea}
+                gpsStatus={gpsStatus}
+                onRequestGPS={handleRequestGPS}
+                locateLabel={t.locate}
+                locatingLabel={t.locating}
+                gpsDeniedLabel={t.gpsDenied}
+                initialLayer="street"
+                streetLabel={t.street}
+                satelliteLabel={t.satellite}
+                fullscreen={fs}
+            />
+        ) : hasIllustrated ? (
+            <IllustratedMap
+                imageUrl={mapConfig.illustratedImageUrl!}
+                areas={visibleAreas}
+                cabins={cabinsForMap}
+                userFraction={userFraction}
+                youAreHereLabel={t.youAreHere}
+                onAreaClick={setSelectedArea}
+                selectedId={selectedArea?.id}
+                gpsStatus={gpsStatus}
+                onRequestGPS={handleRequestGPS}
+                locateLabel={t.locate}
+                locatingLabel={t.locating}
+                gpsDeniedLabel={t.gpsDenied}
+                fullscreen={fs}
+            />
+        ) : (
+            <div className="h-full flex items-center justify-center text-muted-foreground text-sm">{t.noImage}</div>
+        );
+
     return (
         <div className="min-h-[100dvh] bg-background text-foreground flex flex-col" style={themeStyles}>
             {/* Header */}
@@ -216,21 +273,21 @@ function ResortMapView() {
                 <button onClick={() => router.push(`/check-in/${code}`)} className="p-2 hover:bg-secondary rounded-full transition-colors">
                     <ArrowLeft size={22} />
                 </button>
-                <h1 className="text-lg font-black uppercase tracking-tighter flex-1">{t.title}</h1>
-                {/* Toggle de modo — só faz sentido quando há ilustrado E mapa real */}
-                {hasIllustrated && hasRealMap && (
-                    <div className="flex bg-secondary rounded-full p-0.5">
-                        <button onClick={() => setMode("illustrated")} className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all ${mode === "illustrated" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
-                            <ImageIcon size={13} /> {t.illustrated}
-                        </button>
-                        <button onClick={() => setMode("satellite")} className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all ${mode === "satellite" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
-                            <MapIcon size={13} /> {t.realMap}
-                        </button>
-                    </div>
+                <div className="flex-1 min-w-0">
+                    <h1 className="text-lg font-black uppercase tracking-tighter leading-none truncate">{t.title}</h1>
+                    {property?.name && <p className="text-xs font-semibold text-muted-foreground truncate mt-0.5">{property.name}</p>}
+                </div>
+                {!nothingConfigured && (
+                    <button
+                        onClick={() => openFullMap(false)}
+                        className="shrink-0 flex items-center gap-1.5 bg-primary text-primary-foreground rounded-full px-3.5 py-2 text-xs font-bold active:scale-95 transition-transform"
+                    >
+                        <MapIcon size={14} /> {t.realMap}
+                    </button>
                 )}
             </header>
 
-            <main className="flex-1 p-4 space-y-4 w-full max-w-2xl mx-auto">
+            <main className="flex-1 p-4 space-y-5 w-full max-w-2xl mx-auto">
                 {nothingConfigured ? (
                     <div className="flex flex-col items-center justify-center text-center py-24">
                         <MapPinned size={48} className="text-muted-foreground opacity-40 mb-4" />
@@ -238,82 +295,114 @@ function ResortMapView() {
                     </div>
                 ) : (
                     <>
+                        {/* Prévia do mapa (hero clicável → tela cheia) */}
+                        <button
+                            onClick={() => openFullMap(false)}
+                            className="relative block w-full h-[150px] rounded-3xl overflow-hidden border border-border shadow-sm group"
+                        >
+                            {hasIllustrated ? (
+                                /* eslint-disable-next-line @next/next/no-img-element */
+                                <img src={mapConfig.illustratedImageUrl!} alt="" className="absolute inset-0 w-full h-full object-cover transition-transform group-active:scale-[1.02]" draggable={false} />
+                            ) : (
+                                <div className="absolute inset-0 bg-secondary grid place-items-center">
+                                    <MapPinned size={40} className="text-muted-foreground opacity-40" />
+                                </div>
+                            )}
+                            <div className="absolute inset-x-0 bottom-0 px-4 pt-6 pb-3 bg-gradient-to-t from-black/55 to-transparent flex items-center justify-between">
+                                <span className="text-white font-black text-[13px]">{t.tapToOpen}</span>
+                                <span className="flex items-center gap-1.5 bg-white/92 text-foreground rounded-full px-3 py-1.5 text-xs font-bold">
+                                    <Layers size={14} className="text-primary" /> {t.expand}
+                                </span>
+                            </div>
+                        </button>
+
+                        {/* Sua estadia */}
+                        {ownCabin && (
+                            <StayHeroCard
+                                cabin={ownCabin}
+                                sectionLabel={t.yourStay}
+                                cabinLabel={t.yourCabin}
+                                routeLabel={t.howToGet}
+                                onRoute={() => openFullMap(true)}
+                            />
+                        )}
+
                         {/* Filtro de categorias + toggle de outras cabanas */}
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div className="space-y-2">
                             {categories.length > 1 && (
                                 <CategoryFilter categories={categories} selected={category} onSelect={setCategory} lang={lang} />
                             )}
                             {cabins.some(c => !c.isOwnCabin) && (
                                 <button
                                     onClick={() => setShowOtherCabins(v => !v)}
-                                    className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all border flex items-center gap-1.5 ${showOtherCabins ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/40" : "bg-card text-muted-foreground border-border"}`}
+                                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all border inline-flex items-center gap-1.5 ${showOtherCabins ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/40" : "bg-card text-muted-foreground border-border"}`}
                                 >
                                     🏠 {showOtherCabins ? t.hideCabins : t.showCabins}
                                 </button>
                             )}
                         </div>
 
-                        {/* Mapa */}
-                        {(mode === "satellite" && hasRealMap) || !hasIllustrated ? (
-                            <SatelliteMap
-                                areas={visibleAreas}
-                                cabins={showOtherCabins ? cabins : cabins.filter(c => c.isOwnCabin)}
-                                center={mapConfig.center}
-                                defaultZoom={mapConfig.defaultZoom}
-                                userPos={pos}
-                                youAreHereLabel={t.youAreHere}
-                                onAreaClick={setSelectedArea}
-                                gpsStatus={gpsStatus}
-                                onRequestGPS={handleRequestGPS}
-                                locateLabel={t.locate}
-                                locatingLabel={t.locating}
-                                gpsDeniedLabel={t.gpsDenied}
-                                initialLayer="street"
-                                streetLabel={t.street}
-                                satelliteLabel={t.satellite}
-                            />
-                        ) : hasIllustrated ? (
-                            <IllustratedMap
-                                imageUrl={mapConfig.illustratedImageUrl!}
-                                areas={visibleAreas}
-                                cabins={showOtherCabins ? cabins : cabins.filter(c => c.isOwnCabin)}
-                                userFraction={userFraction}
-                                youAreHereLabel={t.youAreHere}
-                                onAreaClick={setSelectedArea}
-                                selectedId={selectedArea?.id}
-                                gpsStatus={gpsStatus}
-                                onRequestGPS={handleRequestGPS}
-                                locateLabel={t.locate}
-                                locatingLabel={t.locating}
-                                gpsDeniedLabel={t.gpsDenied}
-                            />
+                        {/* Diretório por categoria */}
+                        {visibleAreas.length === 0 ? (
+                            <p className="text-center text-sm text-muted-foreground py-8">{t.noAreas}</p>
                         ) : (
-                            <div className="h-[50vh] flex items-center justify-center text-muted-foreground text-sm">{t.noImage}</div>
+                            <div className="space-y-5">
+                                {dirCategories.map(cat => (
+                                    <AreaListSection
+                                        key={cat}
+                                        category={cat}
+                                        areas={visibleAreas.filter(a => a.category === cat)}
+                                        lang={lang}
+                                        openLabel={t.openNow}
+                                        closedLabel={t.closed}
+                                        label24h={t.h24}
+                                        onAreaClick={setSelectedArea}
+                                    />
+                                ))}
+                                {noCatAreas.length > 0 && (
+                                    <AreaListSection
+                                        category={t.others}
+                                        areas={noCatAreas}
+                                        lang={lang}
+                                        openLabel={t.openNow}
+                                        closedLabel={t.closed}
+                                        label24h={t.h24}
+                                        onAreaClick={setSelectedArea}
+                                    />
+                                )}
+                            </div>
                         )}
-
-                        {/* Lista rápida de áreas (atalho) */}
-                        <div className="grid grid-cols-2 gap-3">
-                            {visibleAreas.map(a => (
-                                <button
-                                    key={a.id}
-                                    onClick={() => setSelectedArea(a)}
-                                    className="bg-card border border-border rounded-2xl p-3 text-left hover:border-primary/50 transition-all flex items-center gap-2"
-                                >
-                                    <span className="text-xl shrink-0">{a.pinIcon || "📍"}</span>
-                                    <div className="min-w-0">
-                                        <p className="font-bold text-sm truncate">{a.name}</p>
-                                        {a.reviewCount > 0 && (
-                                            <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-                                                <Navigation size={10} /> {a.rating} ★ · {a.currentOccupancy}/{a.capacity}
-                                            </p>
-                                        )}
-                                    </div>
-                                </button>
-                            ))}
-                        </div>
                     </>
                 )}
             </main>
+
+            {/* Mapa em tela cheia */}
+            {mapOpen && !nothingConfigured && (
+                <div className="fixed inset-0 z-50 bg-background">
+                    <div className="absolute inset-0">{renderMap(true)}</div>
+
+                    {/* Barra superior: voltar + toggle de modo */}
+                    <div className="absolute top-4 inset-x-4 z-[1100] flex items-center justify-between gap-2 pointer-events-none">
+                        <button
+                            onClick={() => setMapOpen(false)}
+                            className="pointer-events-auto w-10 h-10 rounded-full bg-card border border-border shadow-lg grid place-items-center active:scale-95 transition-transform"
+                            aria-label="Voltar"
+                        >
+                            <ArrowLeft size={20} />
+                        </button>
+                        {hasIllustrated && hasRealMap && (
+                            <div className="pointer-events-auto flex bg-card/95 backdrop-blur border border-border rounded-full p-0.5 shadow-lg">
+                                <button onClick={() => setMode("illustrated")} className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all ${mode === "illustrated" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+                                    <ImageIcon size={13} /> {t.illustrated}
+                                </button>
+                                <button onClick={() => setMode("satellite")} className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all ${mode === "satellite" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+                                    <MapIcon size={13} /> {t.realMap}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Modal de ajuda GPS */}
             {showGpsHelp && (

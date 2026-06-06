@@ -25,6 +25,8 @@ interface IllustratedMapProps {
     locateLabel?: string;
     locatingLabel?: string;
     gpsDeniedLabel?: string;
+    /** Preenche o contêiner pai (tela cheia) em vez de altura fixa de cartão. */
+    fullscreen?: boolean;
 }
 
 const DEFAULT_PIN_COLOR = "#9b6dff";
@@ -86,7 +88,7 @@ function FitImage({ bounds, zoomIn = 0.75 }: { bounds: L.LatLngBoundsLiteral; zo
 export function IllustratedMap({
     imageUrl, areas, cabins = [], userFraction, youAreHereLabel, onAreaClick, selectedId,
     gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar",
-    locatingLabel = "Localizando…", gpsDeniedLabel,
+    locatingLabel = "Localizando…", gpsDeniedLabel, fullscreen = false,
 }: IllustratedMapProps) {
     // Dimensões naturais da imagem → define o sistema de coordenadas (CRS.Simple).
     const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
@@ -110,7 +112,7 @@ export function IllustratedMap({
 
     if (!dims) {
         return (
-            <div className="h-[60vh] flex items-center justify-center bg-secondary rounded-3xl">
+            <div className={`flex items-center justify-center bg-secondary ${fullscreen ? "h-full w-full" : "h-[60vh] rounded-3xl"}`}>
                 <Loader2 className="animate-spin text-primary" />
             </div>
         );
@@ -122,7 +124,7 @@ export function IllustratedMap({
     const toLatLng = (fx: number, fy: number): [number, number] => [H * (1 - fy), W * fx];
 
     return (
-        <div className="rounded-3xl overflow-hidden border border-border shadow-sm relative">
+        <div className={fullscreen ? "h-full w-full relative" : "rounded-3xl overflow-hidden border border-border shadow-sm relative"}>
             <style>{`.leaflet-user-ping{animation:userping 1.8s ease-out infinite}@keyframes userping{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.4);opacity:0}}`}</style>
             <MapContainer
                 crs={L.CRS.Simple}
@@ -131,7 +133,7 @@ export function IllustratedMap({
                 maxZoom={4}
                 zoomSnap={0.25}
                 zoomDelta={0.5}
-                style={{ height: "60vh", width: "100%", background: "#e8e8e8" }}
+                style={{ height: fullscreen ? "100%" : "60vh", width: "100%", background: "#e8e8e8" }}
                 scrollWheelZoom
                 attributionControl={false}
             >

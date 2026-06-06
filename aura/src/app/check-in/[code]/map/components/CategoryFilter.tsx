@@ -22,6 +22,11 @@ const CATEGORY_LABELS: Record<string, Record<MapLang, string>> = {
     acesso:      { pt: "Acesso",      en: "Access",     es: "Acceso" },
 };
 
+// Rótulo i18n de uma categoria (reutilizável fora do filtro — ex.: cabeçalhos de seção).
+export function categoryLabel(c: string, lang: MapLang): string {
+    return CATEGORY_LABELS[c]?.[lang] ?? c;
+}
+
 interface CategoryFilterProps {
     categories: string[];
     selected: string | null;     // null = todas
