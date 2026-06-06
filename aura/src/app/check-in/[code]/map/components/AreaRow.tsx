@@ -1,10 +1,14 @@
 "use client";
 
 import React from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, CalendarClock } from "lucide-react";
 import { MapArea, MapLang } from "../types";
 import { OpenBadge } from "./OpenBadge";
 import { formatHours, isOpenNow } from "../utils/hours";
+
+// Áreas que o hóspede pode agendar pelo portal.
+const isBookable = (a: MapArea) =>
+    a.visibility === "guest_auto_approve" || a.visibility === "guest_request";
 
 interface AreaRowProps {
     area: MapArea;
@@ -12,6 +16,7 @@ interface AreaRowProps {
     openLabel: string;
     closedLabel: string;
     label24h: string;
+    bookableLabel: string;
     onClick: (area: MapArea) => void;
 }
 
@@ -21,7 +26,8 @@ function iconStyle(hex?: string): React.CSSProperties | undefined {
     return { background: `${hex}22` };
 }
 
-export function AreaRow({ area, openLabel, closedLabel, label24h, onClick }: AreaRowProps) {
+export function AreaRow({ area, openLabel, closedLabel, label24h, bookableLabel, onClick }: AreaRowProps) {
+    const bookable = isBookable(area);
     const open = isOpenNow(area.operatingHours);
     const hours = formatHours(area.operatingHours, label24h);
     const style = iconStyle(area.pinColor);
@@ -43,7 +49,13 @@ export function AreaRow({ area, openLabel, closedLabel, label24h, onClick }: Are
             <span className="flex-1 min-w-0">
                 <span className="block font-bold text-[14.5px] truncate text-foreground">{area.name}</span>
                 <span className="flex items-center gap-1.5 mt-0.5 min-w-0">
-                    <OpenBadge open={open} openLabel={openLabel} closedLabel={closedLabel} />
+                    {bookable ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full font-bold px-2 py-0.5 text-[11px] text-primary bg-primary/10 shrink-0">
+                            <CalendarClock size={11} /> {bookableLabel}
+                        </span>
+                    ) : (
+                        <OpenBadge open={open} openLabel={openLabel} closedLabel={closedLabel} />
+                    )}
                     {hours && (
                         <span className="text-[11.5px] text-muted-foreground truncate">· {hours}</span>
                     )}

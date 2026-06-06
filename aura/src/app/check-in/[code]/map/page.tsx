@@ -65,9 +65,9 @@ function getThemeStyles(p?: Property | null): React.CSSProperties {
 }
 
 const TXT: Record<MapLang, Record<string, string>> = {
-    pt: { title: "Mapa do Resort", illustrated: "Ilustrado", realMap: "Mapa", street: "Ruas", satellite: "Satélite", empty: "O mapa ainda não foi configurado.", locate: "Me localizar", locating: "Localizando…", youAreHere: "Você está aqui", noImage: "Imagem do mapa indisponível.", gpsDenied: "Permissão de localização negada. Ative nas configurações do navegador.", showCabins: "Ver outras cabanas", hideCabins: "Ocultar outras cabanas", tapToOpen: "Toque para abrir o mapa", expand: "Ampliar", yourStay: "Sua estadia", yourCabin: "Sua Cabana", howToGet: "Como chegar", openNow: "Aberto agora", closed: "Fechado", h24: "24h", others: "Outros", noAreas: "Nenhum local nesta categoria." },
-    en: { title: "Resort Map", illustrated: "Illustrated", realMap: "Map", street: "Streets", satellite: "Satellite", empty: "The map hasn't been set up yet.", locate: "Locate me", locating: "Locating…", youAreHere: "You are here", noImage: "Map image unavailable.", gpsDenied: "Location permission denied. Enable it in your browser settings.", showCabins: "Show other cabins", hideCabins: "Hide other cabins", tapToOpen: "Tap to open the map", expand: "Expand", yourStay: "Your stay", yourCabin: "Your Cabin", howToGet: "Get directions", openNow: "Open now", closed: "Closed", h24: "24h", others: "Others", noAreas: "No places in this category." },
-    es: { title: "Mapa del Resort", illustrated: "Ilustrado", realMap: "Mapa", street: "Calles", satellite: "Satélite", empty: "El mapa aún no está configurado.", locate: "Ubicarme", locating: "Ubicando…", youAreHere: "Estás aquí", noImage: "Imagen del mapa no disponible.", gpsDenied: "Permiso de ubicación denegado. Actívalo en la configuración del navegador.", showCabins: "Ver otras cabañas", hideCabins: "Ocultar otras cabañas", tapToOpen: "Toca para abrir el mapa", expand: "Ampliar", yourStay: "Tu estadía", yourCabin: "Tu Cabaña", howToGet: "Cómo llegar", openNow: "Abierto ahora", closed: "Cerrado", h24: "24h", others: "Otros", noAreas: "Ningún lugar en esta categoría." },
+    pt: { title: "Mapa do Resort", illustrated: "Ilustrado", realMap: "Mapa", street: "Ruas", satellite: "Satélite", empty: "O mapa ainda não foi configurado.", locate: "Me localizar", locating: "Localizando…", youAreHere: "Você está aqui", noImage: "Imagem do mapa indisponível.", gpsDenied: "Permissão de localização negada. Ative nas configurações do navegador.", showCabins: "Ver outras cabanas", hideCabins: "Ocultar outras cabanas", tapToOpen: "Toque para abrir o mapa", expand: "Ampliar", yourStay: "Sua estadia", yourCabin: "Sua Cabana", howToGet: "Como chegar", openNow: "Aberto agora", closed: "Fechado", h24: "24h", others: "Outros", noAreas: "Nenhum local nesta categoria.", bookable: "Disponível para agendar" },
+    en: { title: "Resort Map", illustrated: "Illustrated", realMap: "Map", street: "Streets", satellite: "Satellite", empty: "The map hasn't been set up yet.", locate: "Locate me", locating: "Locating…", youAreHere: "You are here", noImage: "Map image unavailable.", gpsDenied: "Location permission denied. Enable it in your browser settings.", showCabins: "Show other cabins", hideCabins: "Hide other cabins", tapToOpen: "Tap to open the map", expand: "Expand", yourStay: "Your stay", yourCabin: "Your Cabin", howToGet: "Get directions", openNow: "Open now", closed: "Closed", h24: "24h", others: "Others", noAreas: "No places in this category.", bookable: "Available to book" },
+    es: { title: "Mapa del Resort", illustrated: "Ilustrado", realMap: "Mapa", street: "Calles", satellite: "Satélite", empty: "El mapa aún no está configurado.", locate: "Ubicarme", locating: "Ubicando…", youAreHere: "Estás aquí", noImage: "Imagen del mapa no disponible.", gpsDenied: "Permiso de ubicación denegado. Actívalo en la configuración del navegador.", showCabins: "Ver otras cabañas", hideCabins: "Ocultar otras cabañas", tapToOpen: "Toca para abrir el mapa", expand: "Ampliar", yourStay: "Tu estadía", yourCabin: "Tu Cabaña", howToGet: "Cómo llegar", openNow: "Abierto ahora", closed: "Cerrado", h24: "24h", others: "Otros", noAreas: "Ningún lugar en esta categoría.", bookable: "Disponible para reservar" },
 };
 
 function ResortMapView() {
@@ -356,6 +356,7 @@ function ResortMapView() {
                                         openLabel={t.openNow}
                                         closedLabel={t.closed}
                                         label24h={t.h24}
+                                        bookableLabel={t.bookable}
                                         onAreaClick={setSelectedArea}
                                     />
                                 ))}
@@ -367,6 +368,7 @@ function ResortMapView() {
                                         openLabel={t.openNow}
                                         closedLabel={t.closed}
                                         label24h={t.h24}
+                                        bookableLabel={t.bookable}
                                         onAreaClick={setSelectedArea}
                                     />
                                 )}
