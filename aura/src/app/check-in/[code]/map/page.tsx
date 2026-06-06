@@ -276,6 +276,7 @@ function ResortMapView() {
                                 userFraction={userFraction}
                                 youAreHereLabel={t.youAreHere}
                                 onAreaClick={setSelectedArea}
+                                selectedId={selectedArea?.id}
                                 gpsStatus={gpsStatus}
                                 onRequestGPS={handleRequestGPS}
                                 locateLabel={t.locate}

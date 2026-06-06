@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { MapContainer, TileLayer, Marker, CircleMarker, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, CircleMarker, Tooltip, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Loader2, LocateFixed, LocateOff, Satellite, Map as MapIcon } from "lucide-react";
@@ -26,18 +26,13 @@ function cabinIcon(cabin: MapCabin): L.DivIcon {
     return L.divIcon({ className: "", html, iconSize: [0, 0], iconAnchor: [0, 0] });
 }
 
-// Ícone customizado (HTML) para cada área — sem depender dos assets default do Leaflet.
+// Ícone compacto (dot + emoji) — o nome vai no tooltip/card, evitando que as
+// pílulas largas se cubram quando os pins estão próximos.
 function areaIcon(area: MapArea): L.DivIcon {
     const color = area.pinColor || DEFAULT_PIN_COLOR;
     return L.divIcon({
         className: "",
-        html: `<div style="transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center">
-            <div style="background:${color};color:#fff;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;gap:4px;align-items:center">
-                <span>${area.pinIcon || "📍"}</span><span>${area.name}</span>
-            </div>
-            <div style="width:2px;height:8px;background:${color}"></div>
-            <div style="width:8px;height:8px;border-radius:50%;background:${color};border:2px solid #fff"></div>
-        </div>`,
+        html: `<div style="transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:14px">${area.pinIcon || "📍"}</div>`,
         iconSize: [0, 0],
         iconAnchor: [0, 0],
     });
@@ -130,7 +125,9 @@ export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos,
                         position={[area.mapPin!.lat, area.mapPin!.lng]}
                         icon={areaIcon(area)}
                         eventHandlers={{ click: () => onAreaClick(area) }}
-                    />
+                    >
+                        <Tooltip direction="top" offset={[0, -16]}>{area.name}</Tooltip>
+                    </Marker>
                 ))}
 
                 {placedCabins.map(cabin => (
