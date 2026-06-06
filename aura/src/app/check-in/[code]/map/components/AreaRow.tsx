@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { ChevronRight, CalendarClock, Bell } from "lucide-react";
+import { ChevronRight, CalendarClock, Bell, Lock } from "lucide-react";
 import { MapArea, MapLang } from "../types";
 import { OpenBadge } from "./OpenBadge";
 import { formatHours, isOpenNow } from "../utils/hours";
@@ -12,6 +12,9 @@ const isBookable = (a: MapArea) =>
     a.visibility === "guest_auto_approve" || a.visibility === "guest_request";
 // Áreas agendáveis apenas pela recepção (hóspede não agenda sozinho).
 const isReceptionOnly = (a: MapArea) => a.visibility === "admin_only";
+// Área de liberação diária ainda não liberada para hoje (bloqueada ao hóspede).
+const isAwaitingRelease = (a: MapArea) =>
+    !!a.requiresDailyRelease && a.releasedForDate !== new Date().toISOString().split("T")[0];
 
 interface AreaRowProps {
     area: MapArea;
@@ -21,6 +24,7 @@ interface AreaRowProps {
     label24h: string;
     bookableLabel: string;
     receptionLabel: string;
+    awaitingReleaseLabel: string;
     onClick: (area: MapArea) => void;
 }
 
@@ -30,8 +34,9 @@ function iconStyle(hex?: string): React.CSSProperties | undefined {
     return { background: `${hex}22` };
 }
 
-export function AreaRow({ area, lang, openLabel, closedLabel, label24h, bookableLabel, receptionLabel, onClick }: AreaRowProps) {
-    const bookable = isBookable(area);
+export function AreaRow({ area, lang, openLabel, closedLabel, label24h, bookableLabel, receptionLabel, awaitingReleaseLabel, onClick }: AreaRowProps) {
+    const awaiting = isBookable(area) && isAwaitingRelease(area);
+    const bookable = isBookable(area) && !awaiting;
     const reception = isReceptionOnly(area);
     const open = isOpenNow(area.operatingHours);
     const hours = formatHours(area.operatingHours, label24h);
@@ -54,7 +59,11 @@ export function AreaRow({ area, lang, openLabel, closedLabel, label24h, bookable
             <span className="flex-1 min-w-0">
                 <span className="block font-bold text-[14.5px] truncate text-foreground">{localizedName(area, lang)}</span>
                 <span className="flex items-center gap-1.5 mt-0.5 min-w-0">
-                    {bookable ? (
+                    {awaiting ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full font-bold px-2 py-0.5 text-[11px] text-muted-foreground bg-secondary shrink-0">
+                            <Lock size={11} /> {awaitingReleaseLabel}
+                        </span>
+                    ) : bookable ? (
                         <span className="inline-flex items-center gap-1.5 rounded-full font-bold px-2 py-0.5 text-[11px] text-primary bg-primary/10 shrink-0">
                             <CalendarClock size={11} /> {bookableLabel}
                         </span>

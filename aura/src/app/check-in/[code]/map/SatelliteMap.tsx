@@ -108,20 +108,24 @@ export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos,
     return (
         <div className={fullscreen ? "h-full w-full relative" : "rounded-3xl overflow-hidden border border-border shadow-sm relative"}>
             <style>{`.leaflet-user-ping{animation:userping 1.8s ease-out infinite}@keyframes userping{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.4);opacity:0}}`}</style>
-            <MapContainer center={mapCenter} zoom={zoom} style={{ height: fullscreen ? "100%" : "60vh", width: "100%" }} scrollWheelZoom>
+            <MapContainer center={mapCenter} zoom={zoom} maxZoom={21} style={{ height: fullscreen ? "100%" : "60vh", width: "100%" }} scrollWheelZoom>
                 {layer === "satellite" ? (
-                    /* Satélite gratuito (Esri World Imagery) — sem chave de API */
+                    /* Satélite gratuito (Esri World Imagery) — sem chave de API.
+                       maxNativeZoom < maxZoom: além do nível com tiles reais, o
+                       Leaflet amplia o último tile em vez de mostrar área vazia. */
                     <TileLayer
                         attribution='Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics'
                         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                        maxZoom={19}
+                        maxNativeZoom={18}
+                        maxZoom={21}
                     />
                 ) : (
                     /* Mapa de ruas (OpenStreetMap) — gratuito, sem chave */
                     <TileLayer
                         attribution='&copy; OpenStreetMap contributors'
                         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-                        maxZoom={19}
+                        maxNativeZoom={19}
+                        maxZoom={21}
                     />
                 )}
                 <Recenter userPos={userPos} />

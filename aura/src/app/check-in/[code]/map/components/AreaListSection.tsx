@@ -14,6 +14,7 @@ interface AreaListSectionProps {
     label24h: string;
     bookableLabel: string;
     receptionLabel: string;
+    awaitingReleaseLabel: string;
     onAreaClick: (area: MapArea) => void;
 }
 
@@ -23,7 +24,7 @@ function sectionColor(areas: MapArea[]): string | undefined {
     return c && /^#([0-9a-f]{6})$/i.test(c) ? c : undefined;
 }
 
-export function AreaListSection({ category, areas, lang, openLabel, closedLabel, label24h, bookableLabel, receptionLabel, onAreaClick }: AreaListSectionProps) {
+export function AreaListSection({ category, areas, lang, openLabel, closedLabel, label24h, bookableLabel, receptionLabel, awaitingReleaseLabel, onAreaClick }: AreaListSectionProps) {
     if (!areas.length) return null;
     const color = sectionColor(areas);
 
@@ -54,6 +55,7 @@ export function AreaListSection({ category, areas, lang, openLabel, closedLabel,
                             label24h={label24h}
                             bookableLabel={bookableLabel}
                             receptionLabel={receptionLabel}
+                            awaitingReleaseLabel={awaitingReleaseLabel}
                             onClick={onAreaClick}
                         />
                     </React.Fragment>

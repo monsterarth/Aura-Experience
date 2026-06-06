@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Loader2, Clock, CheckCircle2, Info } from "lucide-react";
+import { Loader2, Clock, CheckCircle2, Info, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { StructureService } from "@/services/structure-service";
 import { Stay, Property, TimeSlot, StructureBooking } from "@/types/aura";
@@ -16,6 +16,8 @@ const T: Record<MapLang, Record<string, string>> = {
         confirmedTitle: "Reserva confirmada!", requestedTitle: "Solicitação enviada!",
         confirmedDesc: "Aproveite seu momento!", requestedDesc: "Aguarde a confirmação via WhatsApp.",
         bookAnother: "Reservar outro horário", closed: "Encerrado", error: "Erro ao reservar. Tente outro horário.",
+        locked: "Aguardando liberação da recepção",
+        lockedDesc: "Esta área é preparada diariamente antes de liberar. Assim que estiver pronta, a recepção libera a reserva.",
     },
     en: {
         today: "Today", schedule: "Today's schedule", noSlots: "No slots available today.",
@@ -24,6 +26,8 @@ const T: Record<MapLang, Record<string, string>> = {
         confirmedTitle: "Booking confirmed!", requestedTitle: "Request sent!",
         confirmedDesc: "Enjoy your time!", requestedDesc: "Please wait for confirmation via WhatsApp.",
         bookAnother: "Book another time", closed: "Closed", error: "Booking failed. Try another time.",
+        locked: "Awaiting front desk release",
+        lockedDesc: "This area is prepared daily before it opens. The front desk will release booking once it's ready.",
     },
     es: {
         today: "Hoy", schedule: "Agenda del día", noSlots: "No hay horarios disponibles hoy.",
@@ -32,6 +36,8 @@ const T: Record<MapLang, Record<string, string>> = {
         confirmedTitle: "¡Reserva confirmada!", requestedTitle: "¡Solicitud enviada!",
         confirmedDesc: "¡Disfruta tu momento!", requestedDesc: "Espera la confirmación vía WhatsApp.",
         bookAnother: "Reservar otro horario", closed: "Cerrado", error: "Error al reservar. Prueba otro horario.",
+        locked: "Esperando liberación de recepción",
+        lockedDesc: "Esta área se prepara cada día antes de abrir. Recepción liberará la reserva cuando esté lista.",
     },
 };
 
@@ -46,6 +52,9 @@ interface BookingPanelProps {
 export function BookingPanel({ area, stay, property, lang, onBooked }: BookingPanelProps) {
     const t = T[lang];
     const today = new Date().toISOString().split("T")[0];
+
+    // Liberação diária: bloqueada para o hóspede até a recepção liberar para hoje.
+    const awaitingRelease = !!area.requiresDailyRelease && area.releasedForDate !== today;
 
     const [slots, setSlots] = useState<TimeSlot[]>([]);
     const [loading, setLoading] = useState(true);
@@ -141,6 +150,18 @@ export function BookingPanel({ area, stay, property, lang, onBooked }: BookingPa
                 >
                     {t.bookAnother}
                 </button>
+            </div>
+        );
+    }
+
+    if (awaitingRelease) {
+        return (
+            <div className="flex flex-col items-center text-center py-8 px-4">
+                <div className="w-16 h-16 bg-secondary text-muted-foreground rounded-full flex items-center justify-center mb-4">
+                    <Lock size={28} />
+                </div>
+                <h3 className="text-base font-black text-foreground">{t.locked}</h3>
+                <p className="text-sm text-muted-foreground mt-1.5 max-w-xs">{t.lockedDesc}</p>
             </div>
         );
     }

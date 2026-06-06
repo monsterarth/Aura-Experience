@@ -15,7 +15,6 @@ import { AreaListSection } from "./components/AreaListSection";
 import { StayHeroCard } from "./components/StayHeroCard";
 import { GpsPermissionHelp } from "./components/GpsPermissionHelp";
 import { useGPS } from "./hooks/useGPS";
-import { gpsToFractionMagnetic } from "./utils/geoTransform";
 
 // Leaflet só no cliente (usa window) → import dinâmico sem SSR.
 const SatelliteMap = dynamic(() => import("./SatelliteMap").then(m => m.SatelliteMap), {
@@ -65,9 +64,9 @@ function getThemeStyles(p?: Property | null): React.CSSProperties {
 }
 
 const TXT: Record<MapLang, Record<string, string>> = {
-    pt: { title: "Mapa do Resort", illustrated: "Ilustrado", realMap: "Mapa", street: "Ruas", satellite: "Satélite", empty: "O mapa ainda não foi configurado.", locate: "Me localizar", locating: "Localizando…", youAreHere: "Você está aqui", noImage: "Imagem do mapa indisponível.", gpsDenied: "Permissão de localização negada. Ative nas configurações do navegador.", showCabins: "Ver outras cabanas", hideCabins: "Ocultar outras cabanas", tapToOpen: "Toque para abrir o mapa", expand: "Ampliar", yourStay: "Sua estadia", yourCabin: "Sua Cabana", howToGet: "Como chegar", openNow: "Aberto agora", closed: "Fechado", h24: "24h", others: "Outros", noAreas: "Nenhum local nesta categoria.", bookable: "Disponível para agendar", reception: "Agende na recepção" },
-    en: { title: "Resort Map", illustrated: "Illustrated", realMap: "Map", street: "Streets", satellite: "Satellite", empty: "The map hasn't been set up yet.", locate: "Locate me", locating: "Locating…", youAreHere: "You are here", noImage: "Map image unavailable.", gpsDenied: "Location permission denied. Enable it in your browser settings.", showCabins: "Show other cabins", hideCabins: "Hide other cabins", tapToOpen: "Tap to open the map", expand: "Expand", yourStay: "Your stay", yourCabin: "Your Cabin", howToGet: "Get directions", openNow: "Open now", closed: "Closed", h24: "24h", others: "Others", noAreas: "No places in this category.", bookable: "Available to book", reception: "Book at reception" },
-    es: { title: "Mapa del Resort", illustrated: "Ilustrado", realMap: "Mapa", street: "Calles", satellite: "Satélite", empty: "El mapa aún no está configurado.", locate: "Ubicarme", locating: "Ubicando…", youAreHere: "Estás aquí", noImage: "Imagen del mapa no disponible.", gpsDenied: "Permiso de ubicación denegado. Actívalo en la configuración del navegador.", showCabins: "Ver otras cabañas", hideCabins: "Ocultar otras cabañas", tapToOpen: "Toca para abrir el mapa", expand: "Ampliar", yourStay: "Tu estadía", yourCabin: "Tu Cabaña", howToGet: "Cómo llegar", openNow: "Abierto ahora", closed: "Cerrado", h24: "24h", others: "Otros", noAreas: "Ningún lugar en esta categoría.", bookable: "Disponible para reservar", reception: "Reserva en recepción" },
+    pt: { title: "Mapa do Resort", illustrated: "Ilustrado", realMap: "Mapa", street: "Ruas", satellite: "Satélite", empty: "O mapa ainda não foi configurado.", locate: "Me localizar", locating: "Localizando…", youAreHere: "Você está aqui", noImage: "Imagem do mapa indisponível.", gpsDenied: "Permissão de localização negada. Ative nas configurações do navegador.", showCabins: "Ver outras cabanas", hideCabins: "Ocultar outras cabanas", tapToOpen: "Toque para abrir o mapa", expand: "Ampliar", yourStay: "Sua estadia", yourCabin: "Sua Cabana", howToGet: "Como chegar", openNow: "Aberto agora", closed: "Fechado", h24: "24h", others: "Outros", noAreas: "Nenhum local nesta categoria.", bookable: "Disponível para agendar", reception: "Agende na recepção", awaitingRelease: "Aguardando liberação" },
+    en: { title: "Resort Map", illustrated: "Illustrated", realMap: "Map", street: "Streets", satellite: "Satellite", empty: "The map hasn't been set up yet.", locate: "Locate me", locating: "Locating…", youAreHere: "You are here", noImage: "Map image unavailable.", gpsDenied: "Location permission denied. Enable it in your browser settings.", showCabins: "Show other cabins", hideCabins: "Hide other cabins", tapToOpen: "Tap to open the map", expand: "Expand", yourStay: "Your stay", yourCabin: "Your Cabin", howToGet: "Get directions", openNow: "Open now", closed: "Closed", h24: "24h", others: "Others", noAreas: "No places in this category.", bookable: "Available to book", reception: "Book at reception", awaitingRelease: "Awaiting release" },
+    es: { title: "Mapa del Resort", illustrated: "Ilustrado", realMap: "Mapa", street: "Calles", satellite: "Satélite", empty: "El mapa aún no está configurado.", locate: "Ubicarme", locating: "Ubicando…", youAreHere: "Estás aquí", noImage: "Imagen del mapa no disponible.", gpsDenied: "Permiso de ubicación denegado. Actívalo en la configuración del navegador.", showCabins: "Ver otras cabañas", hideCabins: "Ocultar otras cabañas", tapToOpen: "Toca para abrir el mapa", expand: "Ampliar", yourStay: "Tu estadía", yourCabin: "Tu Cabaña", howToGet: "Cómo llegar", openNow: "Abierto ahora", closed: "Cerrado", h24: "24h", others: "Otros", noAreas: "Ningún lugar en esta categoría.", bookable: "Disponible para reservar", reception: "Reserva en recepción", awaitingRelease: "Esperando liberación" },
 };
 
 function ResortMapView() {
@@ -192,14 +191,8 @@ function ResortMapView() {
         return list;
     }, [areas, cabins, mapConfig.gcps]);
 
-    // Posição do hóspede no mapa ilustrado via magnetismo (IDW pelos pins próximos)
-    const userFraction = useMemo(() => {
-        if (!pos) return null;
-        if (pos.accuracy > 200) return null;
-        const f = gpsToFractionMagnetic(pos.lat, pos.lng, anchors);
-        if (!f || f.x < 0 || f.x > 1 || f.y < 0 || f.y > 1) return null;
-        return f;
-    }, [pos, anchors]);
+    // GPS desativado no mapa ilustrado (posicionamento por magnetismo era
+    // impreciso demais); localização fica disponível apenas no mapa real.
 
     if (loading || !property) {
         return <div className="min-h-[100dvh] flex items-center justify-center bg-background"><Loader2 className="w-10 h-10 text-primary animate-spin" /></div>;
@@ -219,8 +212,10 @@ function ResortMapView() {
     const dirCategories = category ? [category] : categories;
     const noCatAreas = visibleAreas.filter(a => !a.category);
 
-    // Abre o mapa em tela cheia e (opcionalmente) já pede o GPS.
+    // Abre o mapa em tela cheia e (opcionalmente) já pede o GPS. Como o GPS só
+    // funciona no mapa real, "Como chegar" força o modo satélite/ruas.
     const openFullMap = (withGps = false) => {
+        if (withGps && hasRealMap) setMode("satellite");
         setMapOpen(true);
         if (withGps) handleRequestGPS();
     };
@@ -252,18 +247,12 @@ function ResortMapView() {
                 imageUrl={mapConfig.illustratedImageUrl!}
                 areas={visibleAreas}
                 cabins={cabinsForMap}
-                userFraction={userFraction}
-                youAreHereLabel={t.youAreHere}
                 onAreaClick={setSelectedArea}
                 selectedId={selectedArea?.id}
-                gpsStatus={gpsStatus}
-                onRequestGPS={handleRequestGPS}
-                locateLabel={t.locate}
-                locatingLabel={t.locating}
-                gpsDeniedLabel={t.gpsDenied}
                 fullscreen={fs}
                 lang={lang}
             />
+            /* GPS desativado no ilustrado — sem userFraction/onRequestGPS */
         ) : (
             <div className="h-full flex items-center justify-center text-muted-foreground text-sm">{t.noImage}</div>
         );
@@ -360,6 +349,7 @@ function ResortMapView() {
                                         label24h={t.h24}
                                         bookableLabel={t.bookable}
                                         receptionLabel={t.reception}
+                                        awaitingReleaseLabel={t.awaitingRelease}
                                         onAreaClick={setSelectedArea}
                                     />
                                 ))}
@@ -373,6 +363,7 @@ function ResortMapView() {
                                         label24h={t.h24}
                                         bookableLabel={t.bookable}
                                         receptionLabel={t.reception}
+                                        awaitingReleaseLabel={t.awaitingRelease}
                                         onAreaClick={setSelectedArea}
                                     />
                                 )}
