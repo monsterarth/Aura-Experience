@@ -64,13 +64,20 @@ const userIcon = L.divIcon({
     iconAnchor: [0, 0],
 });
 
-// Ajusta o enquadramento à imagem inteira ao montar.
-function FitImage({ bounds }: { bounds: L.LatLngBoundsExpression }) {
+// Enquadra a imagem inteira UMA vez ao montar (sem re-fit em cada render, senão
+// o zoom do usuário seria revertido). Começa com um pouco mais de aproximação.
+function FitImage({ bounds, zoomIn = 0.75 }: { bounds: L.LatLngBoundsLiteral; zoomIn?: number }) {
     const map = useMap();
+    const done = React.useRef(false);
     useEffect(() => {
+        if (done.current) return;
+        done.current = true;
         map.fitBounds(bounds);
-        map.setMaxBounds(L.latLngBounds(bounds as L.LatLngBoundsLiteral).pad(0.25));
-    }, [bounds, map]);
+        map.setMaxBounds(L.latLngBounds(bounds).pad(0.25));
+        // Aproxima um pouco além do "caber tudo" para não abrir tão distante.
+        map.setZoom(map.getZoom() + zoomIn);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     return null;
 }
 
@@ -122,6 +129,8 @@ export function IllustratedMap({
                 bounds={bounds}
                 minZoom={-4}
                 maxZoom={4}
+                zoomSnap={0.25}
+                zoomDelta={0.5}
                 style={{ height: "60vh", width: "100%", background: "#e8e8e8" }}
                 scrollWheelZoom
                 attributionControl={false}
