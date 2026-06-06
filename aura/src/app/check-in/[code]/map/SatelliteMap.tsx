@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { MapContainer, TileLayer, Marker, CircleMarker, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { Loader2, LocateFixed, LocateOff } from "lucide-react";
+import { Loader2, LocateFixed, LocateOff, Satellite, Map as MapIcon } from "lucide-react";
 import { MapArea, MapCabin } from "./types";
 import { GpsPosition, GpsStatus } from "./hooks/useGPS";
 
@@ -79,9 +79,14 @@ interface SatelliteMapProps {
     locateLabel?: string;
     locatingLabel?: string;
     gpsDeniedLabel?: string;
+    /** Camada inicial: 'satellite' (Esri) ou 'street' (OpenStreetMap). */
+    initialLayer?: "satellite" | "street";
+    streetLabel?: string;
+    satelliteLabel?: string;
 }
 
-export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos, youAreHereLabel, onAreaClick, gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar", locatingLabel = "Localizando…", gpsDeniedLabel }: SatelliteMapProps) {
+export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos, youAreHereLabel, onAreaClick, gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar", locatingLabel = "Localizando…", gpsDeniedLabel, initialLayer = "street", streetLabel = "Ruas", satelliteLabel = "Satélite" }: SatelliteMapProps) {
+    const [layer, setLayer] = useState<"satellite" | "street">(initialLayer);
     const placed = areas.filter(a => a.mapPin?.lat != null && a.mapPin?.lng != null && (a.mapPin.lat !== 0 || a.mapPin.lng !== 0));
     const placedCabins = cabins.filter(c => c.mapPin && (c.mapPin.lat !== 0 || c.mapPin.lng !== 0));
 
@@ -102,13 +107,21 @@ export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos,
         <div className="rounded-3xl overflow-hidden border border-border shadow-sm relative">
             <style>{`.leaflet-user-ping{animation:userping 1.8s ease-out infinite}@keyframes userping{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.4);opacity:0}}`}</style>
             <MapContainer center={mapCenter} zoom={zoom} style={{ height: "60vh", width: "100%" }} scrollWheelZoom>
-                {/* Satélite gratuito (Esri World Imagery) — sem chave de API */}
-                <TileLayer
-                    attribution='Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics'
-                    url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                    maxZoom={19}
-                />
-                {/* Rótulos de ruas por cima (OpenStreetMap), translúcido */}
+                {layer === "satellite" ? (
+                    /* Satélite gratuito (Esri World Imagery) — sem chave de API */
+                    <TileLayer
+                        attribution='Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics'
+                        url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                        maxZoom={19}
+                    />
+                ) : (
+                    /* Mapa de ruas (OpenStreetMap) — gratuito, sem chave */
+                    <TileLayer
+                        attribution='&copy; OpenStreetMap contributors'
+                        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        maxZoom={19}
+                    />
+                )}
                 <Recenter userPos={userPos} />
 
                 {placed.map(area => (
@@ -141,6 +154,16 @@ export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos,
                     </>
                 )}
             </MapContainer>
+
+            {/* Troca de camada: Ruas (OSM) ⇄ Satélite (Esri) */}
+            <button
+                onClick={() => setLayer(l => l === "satellite" ? "street" : "satellite")}
+                className="absolute top-3 right-3 z-[1000] flex items-center gap-1.5 px-3 py-2 rounded-full bg-white text-gray-800 font-bold text-xs shadow-lg active:scale-95 transition-all"
+            >
+                {layer === "satellite"
+                    ? <><MapIcon size={14} /> {streetLabel}</>
+                    : <><Satellite size={14} /> {satelliteLabel}</>}
+            </button>
 
             {/* Botão de GPS — sobreposto fora do MapContainer para evitar conflito com eventos Leaflet */}
             {onRequestGPS && (

@@ -135,6 +135,53 @@ export function gpsToFraction(
     return null;
 }
 
+// ── "Magnetismo" (IDW) — posicionamento robusto para mapa ilustrado ──────────
+// Em vez de uma transformação contínua (que sofre com a distorção do desenho),
+// interpola a posição em PIXEL diretamente a partir dos pins próximos, pesando
+// pela distância GPS real (metros). O ponto "você está aqui" é "puxado" para os
+// locais próximos — perto de um pin, gruda nele. Dispensa calibração dedicada.
+//
+// - magnetismMeters: raio de atração (menor = gruda mais forte no pin mais perto)
+// - maxDistanceMeters: se o usuário está mais longe que isso de QUALQUER pin,
+//   retorna null (provavelmente fora do resort → não mostra o ponto)
+export type Anchor = { lat: number; lng: number; px: number; py: number };
+
+export function gpsToFractionMagnetic(
+    lat: number,
+    lng: number,
+    anchors: Anchor[],
+    opts?: { magnetismMeters?: number; maxDistanceMeters?: number },
+): { x: number; y: number } | null {
+    const valid = (anchors ?? []).filter(a =>
+        Number.isFinite(a.lat) && Number.isFinite(a.lng) &&
+        Number.isFinite(a.px) && Number.isFinite(a.py) &&
+        !(a.lat === 0 && a.lng === 0)
+    );
+    if (valid.length === 0) return null;
+
+    const magnetism = opts?.magnetismMeters ?? 20;
+    const maxDist = opts?.maxDistanceMeters ?? 400;
+
+    const M_PER_DEG = 111320;
+    const cosLat = Math.cos(lat * Math.PI / 180);
+    const distMeters = (a: Anchor) => {
+        const dx = (a.lng - lng) * cosLat * M_PER_DEG;
+        const dy = (a.lat - lat) * M_PER_DEG;
+        return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    let minD = Infinity, sumW = 0, sumX = 0, sumY = 0;
+    for (const a of valid) {
+        const d = distMeters(a);
+        if (d < minD) minD = d;
+        const w = 1 / (d * d + magnetism * magnetism);
+        sumW += w; sumX += w * a.px; sumY += w * a.py;
+    }
+
+    if (minD > maxDist || sumW === 0) return null;
+    return { x: sumX / sumW, y: sumY / sumW };
+}
+
 // Diagnóstico de calibração: para cada GCP válido, mede o quanto ele discorda
 // dos demais (leave-one-out) — prevê a posição dele usando os OUTROS pontos via
 // affine global e compara com a posição marcada. Resíduo alto = coordenada

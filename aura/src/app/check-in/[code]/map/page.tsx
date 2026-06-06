@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, Suspense } from "react";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
-import { Loader2, ArrowLeft, Map as MapIcon, Satellite, MapPinned, Navigation, LocateFixed } from "lucide-react";
+import { Loader2, ArrowLeft, Map as MapIcon, Image as ImageIcon, MapPinned, Navigation } from "lucide-react";
 import { toast } from "sonner";
 import { StayService } from "@/services/stay-service";
 import { PropertyService } from "@/services/property-service";
@@ -14,7 +14,7 @@ import { AreaCard } from "./AreaCard";
 import { CategoryFilter } from "./components/CategoryFilter";
 import { GpsPermissionHelp } from "./components/GpsPermissionHelp";
 import { useGPS } from "./hooks/useGPS";
-import { gpsToFraction } from "./utils/geoTransform";
+import { gpsToFractionMagnetic } from "./utils/geoTransform";
 
 // Leaflet só no cliente (usa window) → import dinâmico sem SSR.
 const SatelliteMap = dynamic(() => import("./SatelliteMap").then(m => m.SatelliteMap), {
@@ -59,9 +59,9 @@ function getThemeStyles(p?: Property | null): React.CSSProperties {
 }
 
 const TXT: Record<MapLang, Record<string, string>> = {
-    pt: { title: "Mapa do Resort", illustrated: "Ilustrado", satellite: "Satélite", empty: "O mapa ainda não foi configurado.", locate: "Me localizar", locating: "Localizando…", youAreHere: "Você está aqui", noImage: "Imagem do mapa indisponível.", gpsDenied: "Permissão de localização negada. Ative nas configurações do navegador.", showCabins: "Ver outras cabanas", hideCabins: "Ocultar outras cabanas" },
-    en: { title: "Resort Map", illustrated: "Illustrated", satellite: "Satellite", empty: "The map hasn't been set up yet.", locate: "Locate me", locating: "Locating…", youAreHere: "You are here", noImage: "Map image unavailable.", gpsDenied: "Location permission denied. Enable it in your browser settings.", showCabins: "Show other cabins", hideCabins: "Hide other cabins" },
-    es: { title: "Mapa del Resort", illustrated: "Ilustrado", satellite: "Satélite", empty: "El mapa aún no está configurado.", locate: "Ubicarme", locating: "Ubicando…", youAreHere: "Estás aquí", noImage: "Imagen del mapa no disponible.", gpsDenied: "Permiso de ubicación denegado. Actívalo en la configuración del navegador.", showCabins: "Ver otras cabañas", hideCabins: "Ocultar otras cabañas" },
+    pt: { title: "Mapa do Resort", illustrated: "Ilustrado", realMap: "Mapa", street: "Ruas", satellite: "Satélite", empty: "O mapa ainda não foi configurado.", locate: "Me localizar", locating: "Localizando…", youAreHere: "Você está aqui", noImage: "Imagem do mapa indisponível.", gpsDenied: "Permissão de localização negada. Ative nas configurações do navegador.", showCabins: "Ver outras cabanas", hideCabins: "Ocultar outras cabanas" },
+    en: { title: "Resort Map", illustrated: "Illustrated", realMap: "Map", street: "Streets", satellite: "Satellite", empty: "The map hasn't been set up yet.", locate: "Locate me", locating: "Locating…", youAreHere: "You are here", noImage: "Map image unavailable.", gpsDenied: "Location permission denied. Enable it in your browser settings.", showCabins: "Show other cabins", hideCabins: "Hide other cabins" },
+    es: { title: "Mapa del Resort", illustrated: "Ilustrado", realMap: "Mapa", street: "Calles", satellite: "Satélite", empty: "El mapa aún no está configurado.", locate: "Ubicarme", locating: "Ubicando…", youAreHere: "Estás aquí", noImage: "Imagen del mapa no disponible.", gpsDenied: "Permiso de ubicación denegado. Actívalo en la configuración del navegador.", showCabins: "Ver otras cabañas", hideCabins: "Ocultar otras cabañas" },
 };
 
 function ResortMapView() {
@@ -150,10 +150,10 @@ function ResortMapView() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [property?.id, stay?.id]);
 
-    // Default de modo conforme config
+    // Default de modo: ilustrado quando configurado; senão o mapa real
     useEffect(() => {
-        if (mapConfig.satelliteEnabled && !mapConfig.illustratedImageUrl) setMode("satellite");
-    }, [mapConfig.satelliteEnabled, mapConfig.illustratedImageUrl]);
+        if (!mapConfig.illustratedImageUrl) setMode("satellite");
+    }, [mapConfig.illustratedImageUrl]);
 
     const categories = useMemo(
         () => Array.from(new Set(areas.map(a => a.category).filter(Boolean))),
@@ -167,33 +167,32 @@ function ResortMapView() {
     // GCPs derivados automaticamente dos pins das estruturas que têm
     // lat/lng preenchidos + posição pixel. São equivalentes a GCPs manuais
     // e evitam a necessidade de configurar calibração separada no admin.
-    const derivedGcps = useMemo(() =>
-        areas
-            .filter(a =>
-                a.mapPin?.pixelX != null &&
-                a.mapPin?.pixelY != null &&
-                (a.mapPin.lat !== 0 || a.mapPin.lng !== 0)
-            )
-            .map(a => ({
-                lat: a.mapPin!.lat,
-                lng: a.mapPin!.lng,
-                px:  a.mapPin!.pixelX!,
-                py:  a.mapPin!.pixelY!,
-            })),
-        [areas]
-    );
+    // Âncoras para o "magnetismo": todos os pontos com pixel + lat/lng (estruturas,
+    // cabanas e GCPs manuais). Quanto mais âncoras, melhor a cobertura.
+    const anchors = useMemo(() => {
+        const list: { lat: number; lng: number; px: number; py: number }[] = [];
+        for (const a of areas) {
+            if (a.mapPin?.pixelX != null && a.mapPin?.pixelY != null && (a.mapPin.lat !== 0 || a.mapPin.lng !== 0))
+                list.push({ lat: a.mapPin.lat, lng: a.mapPin.lng, px: a.mapPin.pixelX, py: a.mapPin.pixelY });
+        }
+        for (const c of cabins) {
+            if (c.mapPin?.pixelX != null && c.mapPin?.pixelY != null && (c.mapPin.lat !== 0 || c.mapPin.lng !== 0))
+                list.push({ lat: c.mapPin.lat, lng: c.mapPin.lng, px: c.mapPin.pixelX, py: c.mapPin.pixelY });
+        }
+        for (const g of (mapConfig.gcps ?? [])) {
+            if (g.lat !== 0 || g.lng !== 0) list.push({ lat: g.lat, lng: g.lng, px: g.px, py: g.py });
+        }
+        return list;
+    }, [areas, cabins, mapConfig.gcps]);
 
-    // Posição do hóspede no mapa ilustrado (GPS → fração normalizada 0..1)
+    // Posição do hóspede no mapa ilustrado via magnetismo (IDW pelos pins próximos)
     const userFraction = useMemo(() => {
         if (!pos) return null;
-        // 200m de threshold: GPS outdoor em resort varia 10-80m, 50m era restritivo demais
         if (pos.accuracy > 200) return null;
-        // Prioridade: GCPs manuais do admin → pins das estruturas como GCPs → bounds
-        const gcps = [...(mapConfig.gcps ?? []), ...derivedGcps];
-        const f = gpsToFraction(pos.lat, pos.lng, { gcps, bounds: mapConfig.bounds });
+        const f = gpsToFractionMagnetic(pos.lat, pos.lng, anchors);
         if (!f || f.x < 0 || f.x > 1 || f.y < 0 || f.y > 1) return null;
         return f;
-    }, [pos, mapConfig.gcps, mapConfig.bounds, derivedGcps]);
+    }, [pos, anchors]);
 
     if (loading || !property) {
         return <div className="min-h-[100dvh] flex items-center justify-center bg-background"><Loader2 className="w-10 h-10 text-primary animate-spin" /></div>;
@@ -201,8 +200,10 @@ function ResortMapView() {
 
     const themeStyles = getThemeStyles(property);
     const hasIllustrated = !!mapConfig.illustratedImageUrl;
-    const hasSatellite = !!mapConfig.satelliteEnabled;
-    const nothingConfigured = !hasIllustrated && !hasSatellite;
+    // Mapa real (Leaflet + tiles grátis) não precisa de config — disponível sempre
+    // que houver onde centralizar (pins, centro definido ou satélite ligado).
+    const hasRealMap = anchors.length > 0 || !!mapConfig.center || !!mapConfig.satelliteEnabled;
+    const nothingConfigured = !hasIllustrated && !hasRealMap;
 
     return (
         <div className="min-h-[100dvh] bg-background text-foreground flex flex-col" style={themeStyles}>
@@ -212,14 +213,14 @@ function ResortMapView() {
                     <ArrowLeft size={22} />
                 </button>
                 <h1 className="text-lg font-black uppercase tracking-tighter flex-1">{t.title}</h1>
-                {/* Toggle de modo */}
-                {hasIllustrated && hasSatellite && (
+                {/* Toggle de modo — só faz sentido quando há ilustrado E mapa real */}
+                {hasIllustrated && hasRealMap && (
                     <div className="flex bg-secondary rounded-full p-0.5">
                         <button onClick={() => setMode("illustrated")} className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all ${mode === "illustrated" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
-                            <MapIcon size={13} /> {t.illustrated}
+                            <ImageIcon size={13} /> {t.illustrated}
                         </button>
                         <button onClick={() => setMode("satellite")} className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all ${mode === "satellite" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
-                            <Satellite size={13} /> {t.satellite}
+                            <MapIcon size={13} /> {t.realMap}
                         </button>
                     </div>
                 )}
@@ -249,7 +250,7 @@ function ResortMapView() {
                         </div>
 
                         {/* Mapa */}
-                        {mode === "satellite" && hasSatellite ? (
+                        {(mode === "satellite" && hasRealMap) || !hasIllustrated ? (
                             <SatelliteMap
                                 areas={visibleAreas}
                                 cabins={showOtherCabins ? cabins : cabins.filter(c => c.isOwnCabin)}
@@ -263,6 +264,9 @@ function ResortMapView() {
                                 locateLabel={t.locate}
                                 locatingLabel={t.locating}
                                 gpsDeniedLabel={t.gpsDenied}
+                                initialLayer="street"
+                                streetLabel={t.street}
+                                satelliteLabel={t.satellite}
                             />
                         ) : hasIllustrated ? (
                             <IllustratedMap
