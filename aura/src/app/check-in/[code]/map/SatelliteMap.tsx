@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { MapContainer, TileLayer, Marker, CircleMarker, Tooltip, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, CircleMarker, Tooltip, useMap, ZoomControl } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -87,7 +87,7 @@ interface SatelliteMapProps {
     lang?: MapLang;
 }
 
-export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos, youAreHereLabel, onAreaClick, gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar", locatingLabel = "Localizando…", gpsDeniedLabel, initialLayer = "street", streetLabel = "Ruas", satelliteLabel = "Satélite", fullscreen = false, lang = "pt" }: SatelliteMapProps) {
+export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos, youAreHereLabel, onAreaClick, gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar", locatingLabel = "Localizando…", gpsDeniedLabel, initialLayer = "satellite", streetLabel = "Ruas", satelliteLabel = "Satélite", fullscreen = false, lang = "pt" }: SatelliteMapProps) {
     const [layer, setLayer] = useState<"satellite" | "street">(initialLayer);
     const placed = areas.filter(a => a.mapPin?.lat != null && a.mapPin?.lng != null && (a.mapPin.lat !== 0 || a.mapPin.lng !== 0));
     const placedCabins = cabins.filter(c => c.mapPin && (c.mapPin.lat !== 0 || c.mapPin.lng !== 0));
@@ -108,24 +108,24 @@ export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos,
     return (
         <div className={fullscreen ? "h-full w-full relative" : "rounded-3xl overflow-hidden border border-border shadow-sm relative"}>
             <style>{`.leaflet-user-ping{animation:userping 1.8s ease-out infinite}@keyframes userping{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.4);opacity:0}}`}</style>
-            <MapContainer center={mapCenter} zoom={zoom} maxZoom={21} style={{ height: fullscreen ? "100%" : "60vh", width: "100%" }} scrollWheelZoom>
+            <MapContainer center={mapCenter} zoom={zoom} maxZoom={17} zoomControl={false} style={{ height: fullscreen ? "100%" : "60vh", width: "100%" }} scrollWheelZoom>
+                {/* Controle de zoom no canto inferior esquerdo (evita o botão "voltar") */}
+                <ZoomControl position="bottomleft" />
                 {layer === "satellite" ? (
                     /* Satélite gratuito (Esri World Imagery) — sem chave de API.
-                       maxNativeZoom < maxZoom: além do nível com tiles reais, o
-                       Leaflet amplia o último tile em vez de mostrar área vazia. */
+                       maxZoom=17: nível com cobertura global garantida. Acima disso
+                       o Esri retorna "map data not yet available". */
                     <TileLayer
                         attribution='Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics'
                         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                        maxNativeZoom={18}
-                        maxZoom={21}
+                        maxZoom={17}
                     />
                 ) : (
                     /* Mapa de ruas (OpenStreetMap) — gratuito, sem chave */
                     <TileLayer
                         attribution='&copy; OpenStreetMap contributors'
                         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-                        maxNativeZoom={19}
-                        maxZoom={21}
+                        maxZoom={17}
                     />
                 )}
                 <Recenter userPos={userPos} />

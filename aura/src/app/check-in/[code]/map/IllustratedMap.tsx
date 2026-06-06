@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { MapContainer, ImageOverlay, Marker, Tooltip, useMap } from "react-leaflet";
+import { MapContainer, ImageOverlay, Marker, Tooltip, useMap, ZoomControl } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -149,10 +149,12 @@ export function IllustratedMap({
                 maxZoom={4}
                 zoomSnap={0.25}
                 zoomDelta={0.5}
+                zoomControl={false}
                 style={{ height: fullscreen ? "100%" : "60vh", width: "100%", background: "transparent" }}
                 scrollWheelZoom
                 attributionControl={false}
             >
+                <ZoomControl position="bottomleft" />
                 <ImageOverlay url={imageUrl} bounds={bounds} className="resort-illu-overlay" />
                 <FitImage bounds={bounds} />
 

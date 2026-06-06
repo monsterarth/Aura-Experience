@@ -236,7 +236,7 @@ function ResortMapView() {
                 locateLabel={t.locate}
                 locatingLabel={t.locating}
                 gpsDeniedLabel={t.gpsDenied}
-                initialLayer="street"
+                initialLayer="satellite"
                 streetLabel={t.street}
                 satelliteLabel={t.satellite}
                 fullscreen={fs}
