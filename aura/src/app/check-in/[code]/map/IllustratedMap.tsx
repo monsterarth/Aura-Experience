@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { MapContainer, ImageOverlay, Marker, Tooltip, useMap } from "react-leaflet";
+import MarkerClusterGroup from "react-leaflet-cluster";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import "react-leaflet-cluster/dist/assets/MarkerCluster.css";
+import "react-leaflet-cluster/dist/assets/MarkerCluster.Default.css";
 import { Loader2, LocateFixed, LocateOff } from "lucide-react";
 import { MapArea, MapCabin } from "./types";
 import { GpsStatus } from "./hooks/useGPS";
@@ -23,40 +29,49 @@ interface IllustratedMapProps {
 
 const DEFAULT_PIN_COLOR = "#9b6dff";
 
-// --- Clustering ---------------------------------------------------------------
-// Agrupa pins próximos em um único "cluster" de forma greedy.
-// threshold: distância normalizada (0..1) para considerar dois pontos no mesmo grupo.
-type PinCluster = {
-    id: string;          // id do primeiro pin (âncora)
-    cx: number;          // centro X do cluster (0..1)
-    cy: number;          // centro Y
-    areas: MapArea[];    // pins contidos
-};
+// --- Ícones (divIcon, mesmo padrão do mapa satélite) -------------------------
 
-function buildClusters(areas: MapArea[], threshold = 0.085): PinCluster[] {
-    const placed = areas.filter(a => a.mapPin?.pixelX != null && a.mapPin?.pixelY != null);
-    const assigned = new Set<string>();
-    const clusters: PinCluster[] = [];
+function areaIcon(area: MapArea): L.DivIcon {
+    const color = area.pinColor || DEFAULT_PIN_COLOR;
+    return L.divIcon({
+        className: "",
+        html: `<div style="transform:translate(-50%,-50%);width:30px;height:30px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:15px">${area.pinIcon || "📍"}</div>`,
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
+    });
+}
 
-    for (const anchor of placed) {
-        if (assigned.has(anchor.id)) continue;
-        const ax = anchor.mapPin!.pixelX!;
-        const ay = anchor.mapPin!.pixelY!;
+function cabinIcon(cabin: MapCabin): L.DivIcon {
+    const own = cabin.isOwnCabin;
+    const bg = own ? "#f59e0b" : "#d97706";
+    const html = own
+        ? `<div style="transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center">
+            <div style="background:${bg};color:#fff;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.35);outline:2px solid #fff;display:flex;gap:4px;align-items:center">🏠 <span>Sua cabana</span></div>
+            <div style="width:2px;height:8px;background:${bg}"></div>
+            <div style="width:8px;height:8px;border-radius:50%;background:${bg};border:2px solid #fff"></div>
+          </div>`
+        : `<div style="transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:${bg};border:2px solid rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;font-size:11px;opacity:0.55;box-shadow:0 1px 4px rgba(0,0,0,.3)">🏠</div>`;
+    return L.divIcon({ className: "", html, iconSize: [0, 0], iconAnchor: [0, 0] });
+}
 
-        const group: MapArea[] = [anchor];
-        for (const other of placed) {
-            if (other.id === anchor.id || assigned.has(other.id)) continue;
-            const dist = Math.hypot(other.mapPin!.pixelX! - ax, other.mapPin!.pixelY! - ay);
-            if (dist < threshold) group.push(other);
-        }
+const userIcon = L.divIcon({
+    className: "",
+    html: `<div style="transform:translate(-50%,-50%)">
+        <div style="position:absolute;inset:-8px;border-radius:50%;background:rgba(59,130,246,.3)" class="leaflet-user-ping"></div>
+        <div style="width:16px;height:16px;border-radius:50%;background:#3b82f6;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>
+    </div>`,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+});
 
-        for (const a of group) assigned.add(a.id);
-
-        const cx = group.reduce((s, a) => s + a.mapPin!.pixelX!, 0) / group.length;
-        const cy = group.reduce((s, a) => s + a.mapPin!.pixelY!, 0) / group.length;
-        clusters.push({ id: anchor.id, cx, cy, areas: group });
-    }
-    return clusters;
+// Ajusta o enquadramento à imagem inteira ao montar.
+function FitImage({ bounds }: { bounds: L.LatLngBoundsExpression }) {
+    const map = useMap();
+    useEffect(() => {
+        map.fitBounds(bounds);
+        map.setMaxBounds(L.latLngBounds(bounds as L.LatLngBoundsLiteral).pad(0.25));
+    }, [bounds, map]);
+    return null;
 }
 
 // ------------------------------------------------------------------------------
@@ -66,180 +81,103 @@ export function IllustratedMap({
     gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar",
     locatingLabel = "Localizando…", gpsDeniedLabel,
 }: IllustratedMapProps) {
-    const placedCabins = cabins.filter(c => c.mapPin?.pixelX != null && c.mapPin?.pixelY != null);
+    // Dimensões naturais da imagem → define o sistema de coordenadas (CRS.Simple).
+    const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
 
-    // Cluster expandido no momento (null = nenhum)
-    const [expandedCluster, setExpandedCluster] = useState<string | null>(null);
-    const wrapRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        let alive = true;
+        const img = new Image();
+        img.onload = () => { if (alive) setDims({ w: img.naturalWidth, h: img.naturalHeight }); };
+        img.src = imageUrl;
+        return () => { alive = false; };
+    }, [imageUrl]);
 
-    // Grupos de pins
-    const clusters = useMemo(() => buildClusters(areas), [areas]);
+    const placed = useMemo(
+        () => areas.filter(a => a.mapPin?.pixelX != null && a.mapPin?.pixelY != null),
+        [areas],
+    );
+    const placedCabins = useMemo(
+        () => cabins.filter(c => c.mapPin?.pixelX != null && c.mapPin?.pixelY != null),
+        [cabins],
+    );
 
-    // Fechar o popover se o selectedId mudou externamente
-    React.useEffect(() => {
-        if (selectedId) setExpandedCluster(null);
-    }, [selectedId]);
-
-    function handleClusterClick(cluster: PinCluster) {
-        if (cluster.areas.length === 1) {
-            onAreaClick(cluster.areas[0]);
-        } else {
-            setExpandedCluster(prev => prev === cluster.id ? null : cluster.id);
-        }
+    if (!dims) {
+        return (
+            <div className="h-[60vh] flex items-center justify-center bg-secondary rounded-3xl">
+                <Loader2 className="animate-spin text-primary" />
+            </div>
+        );
     }
 
-    // Fechar popover ao clicar fora
-    React.useEffect(() => {
-        if (!expandedCluster) return;
-        const handler = (e: MouseEvent) => {
-            const el = wrapRef.current;
-            if (el && !el.contains(e.target as Node)) setExpandedCluster(null);
-        };
-        document.addEventListener("mousedown", handler);
-        return () => document.removeEventListener("mousedown", handler);
-    }, [expandedCluster]);
+    const { w: W, h: H } = dims;
+    const bounds: L.LatLngBoundsLiteral = [[0, 0], [H, W]];
+    // Fração (x,y) com origem no canto superior-esquerdo → coord CRS.Simple (y p/ cima).
+    const toLatLng = (fx: number, fy: number): [number, number] => [H * (1 - fy), W * fx];
 
     return (
-        <div ref={wrapRef} className="relative w-full rounded-3xl overflow-hidden border border-border bg-secondary shadow-sm">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={imageUrl} alt="Mapa do resort" className="w-full block select-none" draggable={false} />
+        <div className="rounded-3xl overflow-hidden border border-border shadow-sm relative">
+            <style>{`.leaflet-user-ping{animation:userping 1.8s ease-out infinite}@keyframes userping{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.4);opacity:0}}`}</style>
+            <MapContainer
+                crs={L.CRS.Simple}
+                bounds={bounds}
+                minZoom={-4}
+                maxZoom={4}
+                style={{ height: "60vh", width: "100%", background: "#e8e8e8" }}
+                scrollWheelZoom
+                attributionControl={false}
+            >
+                <ImageOverlay url={imageUrl} bounds={bounds} />
+                <FitImage bounds={bounds} />
 
-            {/* Clusters de áreas */}
-            {clusters.map(cluster => {
-                const isMulti = cluster.areas.length > 1;
-                const isOpen = expandedCluster === cluster.id;
-                // Para cluster único, verifica seleção
-                const isSingleSelected = !isMulti && cluster.areas[0].id === selectedId;
-                const color = cluster.areas[0].pinColor || DEFAULT_PIN_COLOR;
-                const left = `${cluster.cx * 100}%`;
-                const top  = `${cluster.cy * 100}%`;
-
-                return (
-                    <div key={cluster.id}
-                        className="absolute"
-                        style={{ left, top, zIndex: isOpen ? 40 : isSingleSelected ? 30 : isMulti ? 25 : 15 }}
-                    >
-                        {/* Pin / Cluster bubble */}
-                        <button
-                            onClick={() => handleClusterClick(cluster)}
-                            className="absolute -translate-x-1/2 -translate-y-1/2 group focus:outline-none"
-                        >
-                            {isMulti ? (
-                                // Cluster: círculo maior com contador + primeiro emoji
-                                <div className={`
-                                    flex items-center gap-1 pl-2 pr-2.5 h-8 rounded-full
-                                    ring-2 ring-white shadow-lg text-white font-bold text-xs
-                                    transition-transform group-hover:scale-105 group-active:scale-95
-                                    ${isOpen ? "ring-4 ring-white/80 scale-105" : ""}
-                                `} style={{ background: color }}>
-                                    <span className="text-sm leading-none">{cluster.areas[0].pinIcon || "📍"}</span>
-                                    <span>{cluster.areas.length}</span>
-                                </div>
-                            ) : (
-                                // Pin individual
-                                <div
-                                    className={`w-7 h-7 rounded-full ring-2 ring-white shadow-lg grid place-items-center text-[13px] transition-transform group-hover:scale-110 group-active:scale-95 ${isSingleSelected ? "scale-125 ring-4" : ""}`}
-                                    style={{ background: color }}
-                                >
-                                    {cluster.areas[0].pinIcon || "📍"}
-                                </div>
-                            )}
-                        </button>
-
-                        {/* Popover do cluster expandido */}
-                        {isMulti && isOpen && (
-                            <div
-                                className="absolute bottom-10 left-1/2 -translate-x-1/2 z-50 bg-white rounded-2xl shadow-2xl border border-border overflow-hidden min-w-[160px] max-w-[220px]"
-                                onClick={e => e.stopPropagation()}
-                            >
-                                <div className="px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wide border-b border-border">
-                                    {cluster.areas.length} locais
-                                </div>
-                                <ul className="py-1">
-                                    {cluster.areas.map(a => (
-                                        <li key={a.id}>
-                                            <button
-                                                onClick={() => { setExpandedCluster(null); onAreaClick(a); }}
-                                                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-secondary active:bg-secondary/70 transition-colors text-left"
-                                            >
-                                                <span
-                                                    className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] shrink-0"
-                                                    style={{ background: a.pinColor || DEFAULT_PIN_COLOR }}
-                                                >
-                                                    {a.pinIcon || "📍"}
-                                                </span>
-                                                <span className="text-xs font-semibold text-foreground truncate">{a.name}</span>
-                                            </button>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
-                        )}
-
-                        {/* Rótulo do pin individual (quando não é cluster) */}
-                        {!isMulti && (
-                            <span
-                                className="absolute left-1/2 -translate-x-1/2 top-[22px] translate-y-1/2 whitespace-nowrap text-[10px] font-bold text-white px-1.5 py-0.5 rounded-md shadow max-w-[100px] truncate pointer-events-none"
-                                style={{ background: color }}
-                            >
-                                {cluster.areas[0].name}
-                            </span>
-                        )}
-                    </div>
-                );
-            })}
-
-            {/* Pins das cabanas */}
-            {placedCabins.map(cabin => {
-                const own = cabin.isOwnCabin;
-                return (
-                    <div
-                        key={cabin.id}
-                        className="absolute -translate-x-1/2 -translate-y-full flex flex-col items-center pointer-events-none"
-                        style={{
-                            left: `${(cabin.mapPin!.pixelX ?? 0) * 100}%`,
-                            top:  `${(cabin.mapPin!.pixelY ?? 0) * 100}%`,
-                            zIndex: own ? 10 : 5,
-                        }}
-                    >
-                        {own ? (
-                            <>
-                                <div className="px-2.5 py-1 rounded-full text-[11px] font-bold text-white shadow-lg whitespace-nowrap flex items-center gap-1 ring-2 ring-white"
-                                    style={{ background: "#f59e0b" }}>
-                                    🏠 <span>Sua cabana</span>
-                                </div>
-                                <div className="w-0.5 h-3" style={{ background: "#f59e0b" }} />
-                                <div className="w-3 h-3 rounded-full ring-2 ring-white shadow" style={{ background: "#f59e0b" }} />
-                            </>
-                        ) : (
-                            <div className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] opacity-50 ring-1 ring-white/60 shadow-sm"
-                                style={{ background: "#d97706" }}>
-                                🏠
-                            </div>
-                        )}
-                    </div>
-                );
-            })}
-
-            {/* Ponto "você está aqui" */}
-            {userFraction && (
-                <div
-                    className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-                    style={{ left: `${userFraction.x * 100}%`, top: `${userFraction.y * 100}%`, zIndex: 50 }}
+                {/* Áreas — clusterizam ao afastar, separam ao aproximar */}
+                <MarkerClusterGroup
+                    chunkedLoading
+                    maxClusterRadius={50}
+                    showCoverageOnHover={false}
+                    iconCreateFunction={(cluster: { getChildCount: () => number }) => {
+                        const count = cluster.getChildCount();
+                        return L.divIcon({
+                            className: "",
+                            html: `<div style="transform:translate(-50%,-50%);min-width:36px;height:36px;border-radius:999px;background:#9b6dff;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;padding:0 8px">${count}</div>`,
+                            iconSize: [0, 0],
+                            iconAnchor: [0, 0],
+                        });
+                    }}
                 >
-                    <span className="absolute inset-0 -m-3 rounded-full bg-blue-500/30 animate-ping" />
-                    <div className="relative w-4 h-4 rounded-full bg-blue-500 ring-2 ring-white shadow-lg" />
-                    {youAreHereLabel && (
-                        <span className="absolute top-5 left-1/2 -translate-x-1/2 whitespace-nowrap text-[10px] font-bold text-blue-600 bg-white/90 px-1.5 py-0.5 rounded shadow">
-                            {youAreHereLabel}
-                        </span>
-                    )}
-                </div>
-            )}
+                    {placed.map(area => (
+                        <Marker
+                            key={area.id}
+                            position={toLatLng(area.mapPin!.pixelX!, area.mapPin!.pixelY!)}
+                            icon={areaIcon(area)}
+                            eventHandlers={{ click: () => onAreaClick(area) }}
+                        >
+                            <Tooltip direction="top" offset={[0, -16]}>{area.name}</Tooltip>
+                        </Marker>
+                    ))}
+                </MarkerClusterGroup>
 
-            {/* Botão de GPS */}
+                {/* Cabanas */}
+                {placedCabins.map(cabin => (
+                    <Marker
+                        key={cabin.id}
+                        position={toLatLng(cabin.mapPin!.pixelX!, cabin.mapPin!.pixelY!)}
+                        icon={cabinIcon(cabin)}
+                    />
+                ))}
+
+                {/* Você está aqui */}
+                {userFraction && (
+                    <Marker position={toLatLng(userFraction.x, userFraction.y)} icon={userIcon}>
+                        {youAreHereLabel && (
+                            <Tooltip direction="bottom" offset={[0, 10]} permanent>{youAreHereLabel}</Tooltip>
+                        )}
+                    </Marker>
+                )}
+            </MapContainer>
+
+            {/* Botão de GPS — sobreposto fora do MapContainer */}
             {onRequestGPS && (
-                <div className="absolute bottom-3 right-3 flex flex-col items-end gap-2" style={{ zIndex: 60 }}>
+                <div className="absolute bottom-4 right-4 z-[1000] flex flex-col items-end gap-2">
                     {gpsStatus === "denied" && gpsDeniedLabel && (
                         <div className="flex items-center gap-1.5 bg-black/70 text-white text-[10px] font-semibold px-3 py-1.5 rounded-full shadow max-w-[200px] text-right">
                             <LocateOff size={12} className="shrink-0" />

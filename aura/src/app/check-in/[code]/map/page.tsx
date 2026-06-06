@@ -9,7 +9,6 @@ import { StayService } from "@/services/stay-service";
 import { PropertyService } from "@/services/property-service";
 import { Stay, Property } from "@/types/aura";
 import { MapArea, MapCabin, MapLang } from "./types";
-import { IllustratedMap } from "./IllustratedMap";
 import { AreaCard } from "./AreaCard";
 import { CategoryFilter } from "./components/CategoryFilter";
 import { GpsPermissionHelp } from "./components/GpsPermissionHelp";
@@ -18,6 +17,11 @@ import { gpsToFractionMagnetic } from "./utils/geoTransform";
 
 // Leaflet só no cliente (usa window) → import dinâmico sem SSR.
 const SatelliteMap = dynamic(() => import("./SatelliteMap").then(m => m.SatelliteMap), {
+    ssr: false,
+    loading: () => <div className="h-[60vh] flex items-center justify-center bg-secondary rounded-3xl"><Loader2 className="animate-spin text-primary" /></div>,
+});
+
+const IllustratedMap = dynamic(() => import("./IllustratedMap").then(m => m.IllustratedMap), {
     ssr: false,
     loading: () => <div className="h-[60vh] flex items-center justify-center bg-secondary rounded-3xl"><Loader2 className="animate-spin text-primary" /></div>,
 });
