@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, Save, Clock, Users, Activity, ImagePlus, Trash2, Plus, Calendar, Bot, MapPin } from "lucide-react";
+import { X, Save, Clock, Users, Activity, ImagePlus, Trash2, Plus, Calendar, Bot, MapPin, Globe } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
@@ -94,7 +94,9 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
         try {
             if (structure) {
                 const editableKeys = [
-                    "name", "category", "description", "visibility", "capacity", "status",
+                    "name", "name_en", "name_es", "category",
+                    "description", "description_en", "description_es",
+                    "visibility", "capacity", "status",
                     "bookingType", "units", "requiresTurnover", "operatingHours",
                     "imageUrl", "housekeepingChecklist",
                     "messageTemplatePendingId", "messageTemplateConfirmedId", "messageTemplateCancelledId",
@@ -153,6 +155,35 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
                                     <div className="col-span-2">
                                         <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Descrição {isMapOnly ? "(visível ao hóspede no mapa)" : "(Portal Hóspede)"}</label>
                                         <textarea value={formData.description ?? ""} onChange={e => setFormData({ ...formData, description: e.target.value })} className="w-full bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-primary text-foreground min-h-[80px]" placeholder={isMapOnly ? "Descreva o local, o que oferece, como chegar…" : "Descreva os equipamentos, regras e detalhes visíveis ao hóspede."} />
+                                    </div>
+
+                                    {/* Traduções (i18n inline) — opcionais; vazio cai no PT */}
+                                    <div className="col-span-2">
+                                        <details className="group rounded-xl border border-border bg-background/50">
+                                            <summary className="flex items-center gap-2 cursor-pointer select-none p-3 text-[10px] font-bold uppercase text-muted-foreground">
+                                                <Globe size={12} /> Traduções (EN / ES) — opcional
+                                            </summary>
+                                            <div className="p-3 pt-0 space-y-4">
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div>
+                                                        <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Nome (EN)</label>
+                                                        <input value={formData.name_en ?? ""} onChange={e => setFormData({ ...formData, name_en: e.target.value })} className="w-full bg-background border border-border p-2.5 rounded-xl text-sm outline-none focus:border-primary text-foreground" placeholder="e.g. Main Restaurant" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Nome (ES)</label>
+                                                        <input value={formData.name_es ?? ""} onChange={e => setFormData({ ...formData, name_es: e.target.value })} className="w-full bg-background border border-border p-2.5 rounded-xl text-sm outline-none focus:border-primary text-foreground" placeholder="ej. Restaurante Principal" />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Descrição (EN)</label>
+                                                    <textarea value={formData.description_en ?? ""} onChange={e => setFormData({ ...formData, description_en: e.target.value })} className="w-full bg-background border border-border p-2.5 rounded-xl text-sm outline-none focus:border-primary text-foreground min-h-[60px]" placeholder="English description…" />
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Descrição (ES)</label>
+                                                    <textarea value={formData.description_es ?? ""} onChange={e => setFormData({ ...formData, description_es: e.target.value })} className="w-full bg-background border border-border p-2.5 rounded-xl text-sm outline-none focus:border-primary text-foreground min-h-[60px]" placeholder="Descripción en español…" />
+                                                </div>
+                                            </div>
+                                        </details>
                                     </div>
                                 </div>
                             </div>

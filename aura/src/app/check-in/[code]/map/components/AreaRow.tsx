@@ -5,6 +5,7 @@ import { ChevronRight, CalendarClock, Bell } from "lucide-react";
 import { MapArea, MapLang } from "../types";
 import { OpenBadge } from "./OpenBadge";
 import { formatHours, isOpenNow } from "../utils/hours";
+import { localizedName } from "../utils/localize";
 
 // Áreas que o hóspede pode agendar direto pelo portal.
 const isBookable = (a: MapArea) =>
@@ -29,7 +30,7 @@ function iconStyle(hex?: string): React.CSSProperties | undefined {
     return { background: `${hex}22` };
 }
 
-export function AreaRow({ area, openLabel, closedLabel, label24h, bookableLabel, receptionLabel, onClick }: AreaRowProps) {
+export function AreaRow({ area, lang, openLabel, closedLabel, label24h, bookableLabel, receptionLabel, onClick }: AreaRowProps) {
     const bookable = isBookable(area);
     const reception = isReceptionOnly(area);
     const open = isOpenNow(area.operatingHours);
@@ -51,7 +52,7 @@ export function AreaRow({ area, openLabel, closedLabel, label24h, bookableLabel,
 
             {/* Centro */}
             <span className="flex-1 min-w-0">
-                <span className="block font-bold text-[14.5px] truncate text-foreground">{area.name}</span>
+                <span className="block font-bold text-[14.5px] truncate text-foreground">{localizedName(area, lang)}</span>
                 <span className="flex items-center gap-1.5 mt-0.5 min-w-0">
                     {bookable ? (
                         <span className="inline-flex items-center gap-1.5 rounded-full font-bold px-2 py-0.5 text-[11px] text-primary bg-primary/10 shrink-0">

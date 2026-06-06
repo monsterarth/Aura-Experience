@@ -8,8 +8,9 @@ import "leaflet/dist/leaflet.css";
 import "react-leaflet-cluster/dist/assets/MarkerCluster.css";
 import "react-leaflet-cluster/dist/assets/MarkerCluster.Default.css";
 import { Loader2, LocateFixed, LocateOff } from "lucide-react";
-import { MapArea, MapCabin } from "./types";
+import { MapArea, MapCabin, MapLang } from "./types";
 import { GpsStatus } from "./hooks/useGPS";
+import { localizedName } from "./utils/localize";
 
 interface IllustratedMapProps {
     imageUrl: string;
@@ -27,6 +28,7 @@ interface IllustratedMapProps {
     gpsDeniedLabel?: string;
     /** Preenche o contêiner pai (tela cheia) em vez de altura fixa de cartão. */
     fullscreen?: boolean;
+    lang?: MapLang;
 }
 
 const DEFAULT_PIN_COLOR = "#9b6dff";
@@ -88,7 +90,7 @@ function FitImage({ bounds, zoomIn = 0.75 }: { bounds: L.LatLngBoundsLiteral; zo
 export function IllustratedMap({
     imageUrl, areas, cabins = [], userFraction, youAreHereLabel, onAreaClick, selectedId,
     gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar",
-    locatingLabel = "Localizando…", gpsDeniedLabel, fullscreen = false,
+    locatingLabel = "Localizando…", gpsDeniedLabel, fullscreen = false, lang = "pt",
 }: IllustratedMapProps) {
     // Dimensões naturais da imagem → define o sistema de coordenadas (CRS.Simple).
     const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
@@ -176,7 +178,7 @@ export function IllustratedMap({
                             icon={areaIcon(area)}
                             eventHandlers={{ click: () => onAreaClick(area) }}
                         >
-                            <Tooltip direction="top" offset={[0, -16]}>{area.name}</Tooltip>
+                            <Tooltip direction="top" offset={[0, -16]}>{localizedName(area, lang)}</Tooltip>
                         </Marker>
                     ))}
                 </MarkerClusterGroup>

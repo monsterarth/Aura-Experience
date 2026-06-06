@@ -9,6 +9,7 @@ import { StarRating } from "./components/StarRating";
 import { OccupancyBar } from "./components/OccupancyBar";
 import { BookingPanel } from "./BookingPanel";
 import { ReviewPanel } from "./ReviewPanel";
+import { localizedName, localizedDescription } from "./utils/localize";
 
 const T: Record<MapLang, Record<string, string>> = {
     pt: { info: "Info", book: "Agendar", review: "Avaliar", hours: "Horário", capacity: "Capacidade", amenities: "Comodidades", people: "pessoas", reviews: "avaliações", noDesc: "Sem descrição." },
@@ -48,7 +49,7 @@ export function AreaCard({ area, stay, property, lang, onClose, onBooked, onRevi
                 {/* Handle + close */}
                 <div className="flex items-center justify-between p-4 pb-2">
                     <div className="w-10 h-1 rounded-full bg-border mx-auto absolute left-1/2 -translate-x-1/2 top-2" />
-                    <h2 className="text-lg font-black truncate pr-2">{area.pinIcon} {area.name}</h2>
+                    <h2 className="text-lg font-black truncate pr-2">{area.pinIcon} {localizedName(area, lang)}</h2>
                     <button onClick={onClose} className="p-1.5 rounded-full hover:bg-secondary shrink-0"><X size={20} /></button>
                 </div>
 
@@ -87,7 +88,7 @@ export function AreaCard({ area, stay, property, lang, onClose, onBooked, onRevi
                                 </div>
                             )}
 
-                            <p className="text-sm text-muted-foreground leading-relaxed">{area.description || t.noDesc}</p>
+                            <p className="text-sm text-muted-foreground leading-relaxed">{localizedDescription(area, lang) || t.noDesc}</p>
 
                             <div className="grid grid-cols-2 gap-3">
                                 {area.operatingHours?.openTime && (

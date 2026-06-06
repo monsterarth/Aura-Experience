@@ -245,6 +245,7 @@ function ResortMapView() {
                 streetLabel={t.street}
                 satelliteLabel={t.satellite}
                 fullscreen={fs}
+                lang={lang}
             />
         ) : hasIllustrated ? (
             <IllustratedMap
@@ -261,6 +262,7 @@ function ResortMapView() {
                 locatingLabel={t.locating}
                 gpsDeniedLabel={t.gpsDenied}
                 fullscreen={fs}
+                lang={lang}
             />
         ) : (
             <div className="h-full flex items-center justify-center text-muted-foreground text-sm">{t.noImage}</div>

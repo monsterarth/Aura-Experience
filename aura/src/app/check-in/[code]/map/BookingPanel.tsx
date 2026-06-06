@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { StructureService } from "@/services/structure-service";
 import { Stay, Property, TimeSlot, StructureBooking } from "@/types/aura";
 import { MapArea, MapLang } from "./types";
+import { localizedName } from "./utils/localize";
 
 const T: Record<MapLang, Record<string, string>> = {
     pt: {
@@ -133,7 +134,7 @@ export function BookingPanel({ area, stay, property, lang, onBooked }: BookingPa
                 </div>
                 <h3 className="text-lg font-black">{auto ? t.confirmedTitle : t.requestedTitle}</h3>
                 <p className="text-sm text-muted-foreground mt-1">{auto ? t.confirmedDesc : t.requestedDesc}</p>
-                <p className="font-bold mt-3">{area.name} · {selected?.startTime}–{selected?.endTime}</p>
+                <p className="font-bold mt-3">{localizedName(area, lang)} · {selected?.startTime}–{selected?.endTime}</p>
                 <button
                     onClick={() => { setSuccess(false); loadSlots(); }}
                     className="mt-5 text-xs font-bold uppercase tracking-wider text-primary"

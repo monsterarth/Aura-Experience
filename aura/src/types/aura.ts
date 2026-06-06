@@ -194,8 +194,12 @@ export interface Structure {
   id: string;
   propertyId: string;
   name: string;
+  name_en?: string;        // tradução do nome (i18n inline)
+  name_es?: string;
   category: string; // e.g. 'spa', 'sport', 'leisure', 'service'
   description: string;
+  description_en?: string; // tradução da descrição (i18n inline)
+  description_es?: string;
   visibility: StructureVisibility;
   capacity: number;
   status: 'available' | 'occupied' | 'maintenance' | 'cleaning';

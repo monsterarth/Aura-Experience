@@ -8,8 +8,9 @@ import "leaflet/dist/leaflet.css";
 import "react-leaflet-cluster/dist/assets/MarkerCluster.css";
 import "react-leaflet-cluster/dist/assets/MarkerCluster.Default.css";
 import { Loader2, LocateFixed, LocateOff, Satellite, Map as MapIcon } from "lucide-react";
-import { MapArea, MapCabin } from "./types";
+import { MapArea, MapCabin, MapLang } from "./types";
 import { GpsPosition, GpsStatus } from "./hooks/useGPS";
+import { localizedName } from "./utils/localize";
 
 const DEFAULT_PIN_COLOR = "#9b6dff";
 
@@ -83,9 +84,10 @@ interface SatelliteMapProps {
     satelliteLabel?: string;
     /** Preenche o contêiner pai (tela cheia) em vez de altura fixa de cartão. */
     fullscreen?: boolean;
+    lang?: MapLang;
 }
 
-export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos, youAreHereLabel, onAreaClick, gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar", locatingLabel = "Localizando…", gpsDeniedLabel, initialLayer = "street", streetLabel = "Ruas", satelliteLabel = "Satélite", fullscreen = false }: SatelliteMapProps) {
+export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos, youAreHereLabel, onAreaClick, gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar", locatingLabel = "Localizando…", gpsDeniedLabel, initialLayer = "street", streetLabel = "Ruas", satelliteLabel = "Satélite", fullscreen = false, lang = "pt" }: SatelliteMapProps) {
     const [layer, setLayer] = useState<"satellite" | "street">(initialLayer);
     const placed = areas.filter(a => a.mapPin?.lat != null && a.mapPin?.lng != null && (a.mapPin.lat !== 0 || a.mapPin.lng !== 0));
     const placedCabins = cabins.filter(c => c.mapPin && (c.mapPin.lat !== 0 || c.mapPin.lng !== 0));
@@ -146,7 +148,7 @@ export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos,
                             icon={areaIcon(area)}
                             eventHandlers={{ click: () => onAreaClick(area) }}
                         >
-                            <Tooltip direction="top" offset={[0, -16]}>{area.name}</Tooltip>
+                            <Tooltip direction="top" offset={[0, -16]}>{localizedName(area, lang)}</Tooltip>
                         </Marker>
                     ))}
                 </MarkerClusterGroup>
