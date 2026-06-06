@@ -80,6 +80,38 @@ export const StructureService = {
         });
     },
 
+    // Libera (ou rebloqueia) uma estrutura de liberação diária para uma data.
+    // date = YYYY-MM-DD libera para aquele dia; date = null volta a bloquear.
+    async setDailyRelease(
+        propertyId: string,
+        structureId: string,
+        date: string | null,
+        actorId: string,
+        actorName: string,
+        structureName?: string
+    ): Promise<void> {
+        const { error } = await supabase
+            .from('structures')
+            .update({ releasedForDate: date })
+            .eq('id', structureId)
+            .eq('propertyId', propertyId);
+
+        if (error) throw error;
+
+        const label = structureName ? ` "${structureName}"` : '';
+        await AuditService.log({
+            propertyId,
+            userId: actorId,
+            userName: actorName,
+            action: date ? "STRUCTURE_RELEASED" : "STRUCTURE_BLOCKED",
+            entity: "STRUCTURE",
+            entityId: structureId,
+            details: date
+                ? `Estrutura${label} liberada para uso em ${date}.`
+                : `Estrutura${label} rebloqueada (liberação diária revogada).`
+        });
+    },
+
     async deleteStructure(propertyId: string, structureId: string, actorId: string, actorName: string): Promise<void> {
         const { error } = await supabase
             .from('structures')

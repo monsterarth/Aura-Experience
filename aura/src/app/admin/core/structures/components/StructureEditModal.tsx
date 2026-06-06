@@ -97,7 +97,7 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
                     "name", "name_en", "name_es", "category",
                     "description", "description_en", "description_es",
                     "visibility", "capacity", "status",
-                    "bookingType", "units", "requiresTurnover", "operatingHours",
+                    "bookingType", "units", "requiresTurnover", "requiresDailyRelease", "operatingHours",
                     "imageUrl", "housekeepingChecklist",
                     "messageTemplatePendingId", "messageTemplateConfirmedId", "messageTemplateCancelledId",
                 ];
@@ -251,6 +251,19 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
                                     </p>
                                 </div>
                             </label>
+
+                            {/* Liberação diária — só faz sentido para estruturas agendáveis */}
+                            {!isMapOnly && (
+                                <label className="flex items-center gap-3 p-4 bg-secondary/40 border border-border rounded-2xl cursor-pointer hover:bg-secondary/60 transition-colors">
+                                    <input type="checkbox" checked={formData.requiresDailyRelease ?? false} onChange={e => setFormData({ ...formData, requiresDailyRelease: e.target.checked })} className="w-5 h-5 accent-primary rounded cursor-pointer" />
+                                    <div>
+                                        <div className="font-bold text-sm text-foreground">Exige Liberação Diária</div>
+                                        <p className="text-xs text-muted-foreground mt-0.5">
+                                            Fica bloqueada para o hóspede todo dia (ex: jacuzzi a limpar/aquecer) até a recepção liberar na Agenda de Estruturas. Reseta sozinha à meia-noite.
+                                        </p>
+                                    </div>
+                                </label>
+                            )}
 
                             {formData.requiresTurnover && (
                                 <div className="space-y-4 pt-4 border-t border-border mt-2">

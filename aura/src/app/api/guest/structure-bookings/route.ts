@@ -146,6 +146,24 @@ export async function POST(request: NextRequest) {
             }
         }
 
+        // Liberação diária: estruturas marcadas (ex: jacuzzi) ficam bloqueadas para o
+        // hóspede até a recepção liberar para a data. Liberada só quando releasedForDate
+        // === a data da reserva. Bloqueia apenas o portal do hóspede (não a recepção).
+        if (booking.structureId && booking.date) {
+            const { data: structRelease } = await supabaseAdmin
+                .from('structures')
+                .select('requiresDailyRelease, releasedForDate')
+                .eq('id', booking.structureId)
+                .single();
+
+            if (structRelease?.requiresDailyRelease && structRelease.releasedForDate !== booking.date) {
+                return NextResponse.json(
+                    { error: "Esta área ainda não foi liberada pela recepção hoje. Fale com a recepção para reservar." },
+                    { status: 409 }
+                );
+            }
+        }
+
         // Política: cada estadia pode utilizar cada estrutura no máximo 1x por dia,
         // independente de unidade e independente de já ter finalizado o uso.
         if (stayId && booking.structureId && booking.date) {

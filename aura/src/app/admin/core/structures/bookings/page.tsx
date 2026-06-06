@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { format, addDays, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Calendar, Check, X, Clock, MapPin, User, Plus, Info, Wrench } from "lucide-react";
+import { ChevronLeft, ChevronRight, Calendar, Check, X, Clock, MapPin, User, Plus, Info, Wrench, Lock, Unlock } from "lucide-react";
 import { toast } from "sonner";
 import { StructureService } from "@/services/structure-service";
 import { useProperty } from "@/context/PropertyContext";
@@ -115,6 +115,28 @@ export default function StructureBookingsPage() {
             fetchData();
         } catch (error) {
             toast.error("Erro ao atualizar reserva.");
+        }
+    };
+
+    const handleToggleRelease = async (structure: Structure, release: boolean) => {
+        if (!currentProperty || !userData) return;
+        const dateStr = format(currentDate, "yyyy-MM-dd");
+        try {
+            await StructureService.setDailyRelease(
+                currentProperty.id,
+                structure.id,
+                release ? dateStr : null,
+                userData.id,
+                userData.fullName,
+                structure.name
+            );
+            // Atualização otimista — o realtime de structures não está assinado nesta página
+            setStructures(prev => prev.map(s =>
+                s.id === structure.id ? { ...s, releasedForDate: release ? dateStr : undefined } : s
+            ));
+            toast.success(release ? `${structure.name} liberada para uso.` : `${structure.name} bloqueada.`);
+        } catch (error) {
+            toast.error("Erro ao atualizar liberação.");
         }
     };
 
@@ -253,7 +275,7 @@ export default function StructureBookingsPage() {
 
                         return (
                             <div key={structure.id} className="bg-card border border-border rounded-3xl overflow-hidden shadow-sm">
-                                <header className="px-6 py-4 bg-secondary/50 border-b border-border flex justify-between items-center">
+                                <header className="px-6 py-4 bg-secondary/50 border-b border-border flex justify-between items-center gap-4">
                                     <div className="flex items-center gap-3">
                                         <MapPin size={24} className="text-primary" />
                                         <div>
@@ -263,6 +285,29 @@ export default function StructureBookingsPage() {
                                             </p>
                                         </div>
                                     </div>
+
+                                    {/* Liberação diária — botão Liberar/Bloquear (só para estruturas que exigem) */}
+                                    {structure.requiresDailyRelease && (() => {
+                                        const dateStr = format(currentDate, "yyyy-MM-dd");
+                                        const releasedToday = structure.releasedForDate === dateStr;
+                                        return releasedToday ? (
+                                            <button
+                                                onClick={() => handleToggleRelease(structure, false)}
+                                                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-green-500/40 bg-green-500/10 text-green-600 font-bold text-xs uppercase tracking-wider hover:bg-green-500/20 transition-all"
+                                                title="Clique para bloquear novamente"
+                                            >
+                                                <Unlock size={15} /> Liberada para uso
+                                            </button>
+                                        ) : (
+                                            <button
+                                                onClick={() => handleToggleRelease(structure, true)}
+                                                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-orange-500/40 bg-orange-500/10 text-orange-600 font-bold text-xs uppercase tracking-wider hover:bg-orange-500/20 transition-all"
+                                                title="Bloqueada até a recepção liberar"
+                                            >
+                                                <Lock size={15} /> Liberar para uso
+                                            </button>
+                                        );
+                                    })()}
                                 </header>
 
                                 <div className="divide-y divide-border">

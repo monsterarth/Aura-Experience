@@ -213,6 +213,11 @@ export interface Structure {
   units?: { id: string; name: string; imageUrl?: string }[];
   bookingType: 'fixed_slots' | 'free_time';
   requiresTurnover: boolean; // Does it require housekeeping after use?
+  // Liberação diária: estrutura fica bloqueada por padrão a cada dia (ex: jacuzzi que
+  // precisa ser limpa/aquecida) até a recepção liberar. Liberada apenas quando
+  // releasedForDate === data de hoje — reseta sozinha à meia-noite, sem cron.
+  requiresDailyRelease?: boolean;
+  releasedForDate?: string; // YYYY-MM-DD para a qual a recepção liberou o uso
   housekeepingChecklist?: { id: string; label: string }[];
   messageTemplatePendingId?: string;
   messageTemplateConfirmedId?: string;
@@ -730,6 +735,7 @@ export interface AuditLog {
   | 'CABIN_CREATED' | 'CABIN_UPDATED' | 'CABIN_DELETED'
   | 'CONTACT_UPDATED' | 'CONTACT_DELETED' | 'CONTACT_PHONE_MIGRATED'
   | 'STRUCTURE_CREATED' | 'STRUCTURE_UPDATED' | 'STRUCTURE_DELETED'
+  | 'STRUCTURE_RELEASED' | 'STRUCTURE_BLOCKED'
   | 'STRUCTURE_BOOKING_CREATED' | 'STRUCTURE_BOOKING_STATUS_CHANGED'
   | 'EVENT_CREATED' | 'EVENT_UPDATED' | 'EVENT_DELETED' | 'EVENT_PUBLISHED'
   | 'CONCIERGE_REQUESTED' | 'CONCIERGE_DELIVERED' | 'CONCIERGE_RETURNED' | 'CONCIERGE_LOST'
