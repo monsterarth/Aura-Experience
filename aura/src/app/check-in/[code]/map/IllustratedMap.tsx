@@ -124,8 +124,22 @@ export function IllustratedMap({
     const toLatLng = (fx: number, fy: number): [number, number] => [H * (1 - fy), W * fx];
 
     return (
-        <div className={fullscreen ? "h-full w-full relative" : "rounded-3xl overflow-hidden border border-border shadow-sm relative"}>
-            <style>{`.leaflet-user-ping{animation:userping 1.8s ease-out infinite}@keyframes userping{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.4);opacity:0}}`}</style>
+        <div
+            className={fullscreen ? "h-full w-full relative" : "rounded-3xl overflow-hidden border border-border shadow-sm relative"}
+            style={{
+                // Fundo "mesa" texturizado do tema (em vez de cinza chapado nas
+                // bordas quando a imagem não preenche tudo).
+                backgroundColor: "hsl(var(--secondary))",
+                backgroundImage: "radial-gradient(hsl(var(--border)) 1px, transparent 1px)",
+                backgroundSize: "18px 18px",
+            }}
+        >
+            <style>{`
+                .leaflet-user-ping{animation:userping 1.8s ease-out infinite}
+                @keyframes userping{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.4);opacity:0}}
+                /* Imagem ilustrada "flutua" sobre a mesa, como um quadro */
+                .resort-illu-overlay{filter:drop-shadow(0 6px 22px rgba(0,0,0,.28));border-radius:6px}
+            `}</style>
             <MapContainer
                 crs={L.CRS.Simple}
                 bounds={bounds}
@@ -133,11 +147,11 @@ export function IllustratedMap({
                 maxZoom={4}
                 zoomSnap={0.25}
                 zoomDelta={0.5}
-                style={{ height: fullscreen ? "100%" : "60vh", width: "100%", background: "#e8e8e8" }}
+                style={{ height: fullscreen ? "100%" : "60vh", width: "100%", background: "transparent" }}
                 scrollWheelZoom
                 attributionControl={false}
             >
-                <ImageOverlay url={imageUrl} bounds={bounds} />
+                <ImageOverlay url={imageUrl} bounds={bounds} className="resort-illu-overlay" />
                 <FitImage bounds={bounds} />
 
                 {/* Áreas — clusterizam ao afastar, separam ao aproximar */}
@@ -185,6 +199,12 @@ export function IllustratedMap({
                     </Marker>
                 )}
             </MapContainer>
+
+            {/* Vinheta de moldura — escurece sutilmente as bordas */}
+            <div
+                className="pointer-events-none absolute inset-0 z-[400]"
+                style={{ boxShadow: "inset 0 0 70px rgba(0,0,0,0.18)" }}
+            />
 
             {/* Botão de GPS — sobreposto fora do MapContainer */}
             {onRequestGPS && (
