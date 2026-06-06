@@ -2,8 +2,11 @@
 
 import React, { useMemo, useState } from "react";
 import { MapContainer, TileLayer, Marker, CircleMarker, Tooltip, useMap } from "react-leaflet";
+import MarkerClusterGroup from "react-leaflet-cluster";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import "react-leaflet-cluster/dist/assets/MarkerCluster.css";
+import "react-leaflet-cluster/dist/assets/MarkerCluster.Default.css";
 import { Loader2, LocateFixed, LocateOff, Satellite, Map as MapIcon } from "lucide-react";
 import { MapArea, MapCabin } from "./types";
 import { GpsPosition, GpsStatus } from "./hooks/useGPS";
@@ -119,16 +122,32 @@ export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos,
                 )}
                 <Recenter userPos={userPos} />
 
-                {placed.map(area => (
-                    <Marker
-                        key={area.id}
-                        position={[area.mapPin!.lat, area.mapPin!.lng]}
-                        icon={areaIcon(area)}
-                        eventHandlers={{ click: () => onAreaClick(area) }}
-                    >
-                        <Tooltip direction="top" offset={[0, -16]}>{area.name}</Tooltip>
-                    </Marker>
-                ))}
+                {/* Áreas — agrupadas por zoom (cluster automático do Leaflet) */}
+                <MarkerClusterGroup
+                    chunkedLoading
+                    maxClusterRadius={60}
+                    showCoverageOnHover={false}
+                    iconCreateFunction={(cluster: { getChildCount: () => number }) => {
+                        const count = cluster.getChildCount();
+                        return L.divIcon({
+                            className: "",
+                            html: `<div style="transform:translate(-50%,-50%);min-width:36px;height:36px;border-radius:999px;background:#9b6dff;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;padding:0 8px;gap:4px"><span>${count}</span></div>`,
+                            iconSize: [0, 0],
+                            iconAnchor: [0, 0],
+                        });
+                    }}
+                >
+                    {placed.map(area => (
+                        <Marker
+                            key={area.id}
+                            position={[area.mapPin!.lat, area.mapPin!.lng]}
+                            icon={areaIcon(area)}
+                            eventHandlers={{ click: () => onAreaClick(area) }}
+                        >
+                            <Tooltip direction="top" offset={[0, -16]}>{area.name}</Tooltip>
+                        </Marker>
+                    ))}
+                </MarkerClusterGroup>
 
                 {placedCabins.map(cabin => (
                     <Marker
