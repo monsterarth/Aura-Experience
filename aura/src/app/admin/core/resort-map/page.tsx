@@ -151,11 +151,12 @@ export default function ResortMapAdminPage() {
         setSavingPoi(true);
         try {
             if (editingPoi.id) {
-                await fetch("/api/admin/map-pois", {
+                const res = await fetch("/api/admin/map-pois", {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ ...editingPoi, propertyId: currentProperty.id }),
                 });
+                if (!res.ok) { toast.error("Erro ao atualizar ponto de interesse."); return; }
                 patchPoi(editingPoi.id, editingPoi);
                 toast.success("Ponto de interesse atualizado!");
             } else {
@@ -164,6 +165,7 @@ export default function ResortMapAdminPage() {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ ...editingPoi, propertyId: currentProperty.id }),
                 });
+                if (!res.ok) { toast.error("Erro ao criar ponto de interesse."); return; }
                 const { id } = await res.json();
                 setPois(prev => [{ ...editingPoi, id, propertyId: currentProperty.id, showOnMap: true } as MapPoi, ...prev]);
                 toast.success("Ponto de interesse criado!");
@@ -179,7 +181,8 @@ export default function ResortMapAdminPage() {
     const handleDeletePoi = async (id: string) => {
         if (!confirm("Remover este ponto de interesse?")) return;
         try {
-            await fetch(`/api/admin/map-pois?id=${id}`, { method: "DELETE" });
+            const res = await fetch(`/api/admin/map-pois?id=${id}`, { method: "DELETE" });
+            if (!res.ok) { toast.error("Erro ao remover ponto de interesse."); return; }
             setPois(prev => prev.filter(p => p.id !== id));
             toast.success("Ponto removido.");
         } catch {
