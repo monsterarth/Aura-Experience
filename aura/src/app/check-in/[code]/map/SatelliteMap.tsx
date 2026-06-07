@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { MapContainer, TileLayer, Marker, CircleMarker, Tooltip, useMap, ZoomControl } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, CircleMarker, Tooltip, Polyline, useMap, ZoomControl } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -85,9 +85,28 @@ interface SatelliteMapProps {
     /** Preenche o contêiner pai (tela cheia) em vez de altura fixa de cartão. */
     fullscreen?: boolean;
     lang?: MapLang;
+    /** Destino para traçar rota a partir da posição do usuário ("Como chegar"). */
+    routeTo?: { lat: number; lng: number } | null;
 }
 
-export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos, youAreHereLabel, onAreaClick, gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar", locatingLabel = "Localizando…", gpsDeniedLabel, initialLayer = "satellite", streetLabel = "Ruas", satelliteLabel = "Satélite", fullscreen = false, lang = "pt" }: SatelliteMapProps) {
+// Enquadra a rota (usuário + destino) uma vez quando ambos existem; antes disso,
+// centraliza no destino.
+function RouteFit({ from, to }: { from: GpsPosition | null; to: { lat: number; lng: number } | null }) {
+    const map = useMap();
+    const fitted = React.useRef(false);
+    React.useEffect(() => {
+        if (!to) { fitted.current = false; return; }
+        if (from && !fitted.current) {
+            fitted.current = true;
+            map.fitBounds(L.latLngBounds([[from.lat, from.lng], [to.lat, to.lng]]).pad(0.35), { maxZoom: 18 });
+        } else if (!from && !fitted.current) {
+            map.setView([to.lat, to.lng], Math.max(map.getZoom(), 16));
+        }
+    }, [from, to, map]);
+    return null;
+}
+
+export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos, youAreHereLabel, onAreaClick, gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar", locatingLabel = "Localizando…", gpsDeniedLabel, initialLayer = "satellite", streetLabel = "Ruas", satelliteLabel = "Satélite", fullscreen = false, lang = "pt", routeTo = null }: SatelliteMapProps) {
     const [layer, setLayer] = useState<"satellite" | "street">(initialLayer);
     const placed = areas.filter(a => a.mapPin?.lat != null && a.mapPin?.lng != null && (a.mapPin.lat !== 0 || a.mapPin.lng !== 0));
     const placedCabins = cabins.filter(c => c.mapPin && (c.mapPin.lat !== 0 || c.mapPin.lng !== 0));
@@ -108,32 +127,45 @@ export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos,
     return (
         <div className={fullscreen ? "h-full w-full relative" : "rounded-3xl overflow-hidden border border-border shadow-sm relative"}>
             <style>{`.leaflet-user-ping{animation:userping 1.8s ease-out infinite}@keyframes userping{0%{transform:scale(1);opacity:.6}100%{transform:scale(2.4);opacity:0}}`}</style>
-            <MapContainer center={mapCenter} zoom={zoom} maxZoom={17} zoomControl={false} style={{ height: fullscreen ? "100%" : "60vh", width: "100%" }} scrollWheelZoom>
+            <MapContainer center={mapCenter} zoom={zoom} maxZoom={19} zoomControl={false} style={{ height: fullscreen ? "100%" : "60vh", width: "100%" }} scrollWheelZoom>
                 {/* Controle de zoom no canto inferior esquerdo (evita o botão "voltar") */}
                 <ZoomControl position="bottomleft" />
                 {layer === "satellite" ? (
                     /* Satélite gratuito (Esri World Imagery) — sem chave de API.
-                       maxZoom=17: nível com cobertura global garantida. Acima disso
-                       o Esri retorna "map data not yet available". */
+                       maxNativeZoom=17 (cobertura global garantida) e maxZoom=19:
+                       além de 17 o Leaflet AMPLIA o tile z17 (fica menos nítido,
+                       mas permite separar pins) em vez de pedir tiles inexistentes
+                       que retornariam "map data not yet available". */
                     <TileLayer
                         attribution='Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics'
                         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                        maxZoom={17}
+                        maxNativeZoom={17}
+                        maxZoom={19}
                     />
                 ) : (
                     /* Mapa de ruas (OpenStreetMap) — gratuito, sem chave */
                     <TileLayer
                         attribution='&copy; OpenStreetMap contributors'
                         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-                        maxZoom={17}
+                        maxNativeZoom={19}
+                        maxZoom={19}
                     />
                 )}
-                <Recenter userPos={userPos} />
+                {routeTo ? <RouteFit from={userPos} to={routeTo} /> : <Recenter userPos={userPos} />}
+
+                {/* Rota "Como chegar" — linha do usuário até o destino (cabana) */}
+                {routeTo && userPos && (
+                    <Polyline
+                        positions={[[userPos.lat, userPos.lng], [routeTo.lat, routeTo.lng]]}
+                        pathOptions={{ color: "#3b82f6", weight: 4, opacity: 0.9, dashArray: "8 8" }}
+                    />
+                )}
 
                 {/* Áreas — agrupadas por zoom (cluster automático do Leaflet) */}
                 <MarkerClusterGroup
                     chunkedLoading
-                    maxClusterRadius={60}
+                    maxClusterRadius={45}
+                    spiderfyOnMaxZoom
                     showCoverageOnHover={false}
                     iconCreateFunction={(cluster: { getChildCount: () => number }) => {
                         const count = cluster.getChildCount();

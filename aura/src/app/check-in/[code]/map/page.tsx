@@ -86,6 +86,7 @@ function ResortMapView() {
     const [selectedArea, setSelectedArea] = useState<MapArea | null>(null);
     const [showOtherCabins, setShowOtherCabins] = useState(false);
     const [mapOpen, setMapOpen] = useState(false);
+    const [routeTo, setRouteTo] = useState<{ lat: number; lng: number } | null>(null);
 
     const { pos, status: gpsStatus, request: requestGPS } = useGPS();
     const [showGpsHelp, setShowGpsHelp] = useState(false);
@@ -213,12 +214,21 @@ function ResortMapView() {
     const noCatAreas = visibleAreas.filter(a => !a.category);
 
     // Abre o mapa em tela cheia e (opcionalmente) já pede o GPS. Como o GPS só
-    // funciona no mapa real, "Como chegar" força o modo satélite/ruas.
+    // funciona no mapa real, "Como chegar" força o modo satélite/ruas e traça a
+    // rota até a cabana do hóspede (quando ela tem coordenadas GPS).
     const openFullMap = (withGps = false) => {
-        if (withGps && hasRealMap) setMode("satellite");
+        if (withGps && hasRealMap) {
+            setMode("satellite");
+            const cab = ownCabin?.mapPin;
+            setRouteTo(cab && (cab.lat !== 0 || cab.lng !== 0) ? { lat: cab.lat, lng: cab.lng } : null);
+        } else {
+            setRouteTo(null);
+        }
         setMapOpen(true);
         if (withGps) handleRequestGPS();
     };
+
+    const closeFullMap = () => { setMapOpen(false); setRouteTo(null); };
 
     // Renderiza o mapa ativo (compartilhado entre prévia desativada e overlay).
     const renderMap = (fs: boolean) =>
@@ -241,6 +251,7 @@ function ResortMapView() {
                 satelliteLabel={t.satellite}
                 fullscreen={fs}
                 lang={lang}
+                routeTo={routeTo}
             />
         ) : hasIllustrated ? (
             <IllustratedMap
@@ -381,7 +392,7 @@ function ResortMapView() {
                     {/* Barra superior: voltar + toggle de modo */}
                     <div className="absolute top-4 inset-x-4 z-[1100] flex items-center justify-between gap-2 pointer-events-none">
                         <button
-                            onClick={() => setMapOpen(false)}
+                            onClick={closeFullMap}
                             className="pointer-events-auto w-10 h-10 rounded-full bg-card border border-border shadow-lg grid place-items-center active:scale-95 transition-transform"
                             aria-label="Voltar"
                         >
