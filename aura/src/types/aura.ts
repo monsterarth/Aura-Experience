@@ -277,6 +277,28 @@ export interface StructureRatingAggregate {
   reviewCount: number;
 }
 
+// Ponto de interesse no mapa — marcador leve sem fluxo de agendamento/limpeza.
+// Usado para portões, locais de foto, trilhas, estacionamento e lugares externos
+// (restaurantes, bares, mercados fora da propriedade).
+export interface MapPoi {
+  id: string;
+  propertyId: string;
+  name: string;
+  name_en?: string;
+  name_es?: string;
+  description?: string;
+  /** Pin no mapa: lat/lng para mapa satélite; pixelX/pixelY para mapa ilustrado. */
+  mapPin?: { lat?: number; lng?: number; pixelX?: number; pixelY?: number };
+  pinIcon?: string;    // emoji
+  pinColor?: string;   // hex, default '#6b7280'
+  /** Categorias: gate | photo_spot | trail | parking | restaurant | bar | market | other */
+  category: string;
+  photos?: string[];
+  /** URL externo (site do restaurante, link do Google Maps etc.) */
+  externalLink?: string;
+  showOnMap: boolean;
+  createdAt?: string;
+}
 
 // ==========================================
 // MÓDULO DE GOVERNANÇA E CONSUMO

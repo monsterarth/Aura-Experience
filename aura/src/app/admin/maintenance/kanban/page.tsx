@@ -55,7 +55,7 @@ export default function MaintenanceKanbanPage() {
             try {
                 const [cabinsData, structuresData] = await Promise.all([
                     CabinService.getCabinsByProperty(property.id),
-                    StructureService.getStructures(property.id)
+                    StructureService.getBookableStructures(property.id)
                 ]);
 
                 const cabinsDict: Record<string, Cabin> = {};

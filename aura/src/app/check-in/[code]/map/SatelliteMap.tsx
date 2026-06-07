@@ -8,7 +8,7 @@ import "leaflet/dist/leaflet.css";
 import "react-leaflet-cluster/dist/assets/MarkerCluster.css";
 import "react-leaflet-cluster/dist/assets/MarkerCluster.Default.css";
 import { Loader2, LocateFixed, LocateOff, Satellite, Map as MapIcon } from "lucide-react";
-import { MapArea, MapCabin, MapLang } from "./types";
+import { MapArea, MapCabin, MapLang, MapPoi } from "./types";
 import { GpsPosition, GpsStatus } from "./hooks/useGPS";
 import { localizedName } from "./utils/localize";
 
@@ -28,6 +28,17 @@ function cabinIcon(cabin: MapCabin): L.DivIcon {
           </div>`
         : `<div style="transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:${bg};border:2px solid rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;font-size:11px;opacity:0.55;box-shadow:0 1px 4px rgba(0,0,0,.3)">🏠</div>`;
     return L.divIcon({ className: "", html, iconSize: [0, 0], iconAnchor: [0, 0] });
+}
+
+// Ícone de POI — borda tracejada para diferenciar visualmente das áreas agendáveis
+function poiIcon(poi: MapPoi): L.DivIcon {
+    const color = poi.pinColor || "#6b7280";
+    return L.divIcon({
+        className: "",
+        html: `<div style="transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;background:${color};border:2.5px dashed rgba(255,255,255,.85);box-shadow:0 2px 6px rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center;font-size:14px">${poi.pinIcon || "📍"}</div>`,
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
+    });
 }
 
 // Ícone compacto (dot + emoji) — o nome vai no tooltip/card, evitando que as
@@ -87,6 +98,9 @@ interface SatelliteMapProps {
     lang?: MapLang;
     /** Destino para traçar rota a partir da posição do usuário ("Como chegar"). */
     routeTo?: { lat: number; lng: number } | null;
+    /** Pontos de interesse — marcadores leves sem fluxo de agendamento. */
+    pois?: MapPoi[];
+    onPoiClick?: (poi: MapPoi) => void;
 }
 
 // Enquadra a rota (usuário + destino) uma vez quando ambos existem; antes disso,
@@ -106,9 +120,10 @@ function RouteFit({ from, to }: { from: GpsPosition | null; to: { lat: number; l
     return null;
 }
 
-export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos, youAreHereLabel, onAreaClick, gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar", locatingLabel = "Localizando…", gpsDeniedLabel, initialLayer = "satellite", streetLabel = "Ruas", satelliteLabel = "Satélite", fullscreen = false, lang = "pt", routeTo = null }: SatelliteMapProps) {
+export function SatelliteMap({ areas, cabins = [], pois = [], onPoiClick, center, defaultZoom, userPos, youAreHereLabel, onAreaClick, gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar", locatingLabel = "Localizando…", gpsDeniedLabel, initialLayer = "satellite", streetLabel = "Ruas", satelliteLabel = "Satélite", fullscreen = false, lang = "pt", routeTo = null }: SatelliteMapProps) {
     const [layer, setLayer] = useState<"satellite" | "street">(initialLayer);
     const placed = areas.filter(a => a.mapPin?.lat != null && a.mapPin?.lng != null && (a.mapPin.lat !== 0 || a.mapPin.lng !== 0));
+    const placedPois = pois.filter(p => p.mapPin?.lat != null && p.mapPin?.lng != null && (p.mapPin.lat !== 0 || p.mapPin.lng !== 0));
     const placedCabins = cabins.filter(c => c.mapPin && (c.mapPin.lat !== 0 || c.mapPin.lng !== 0));
 
     const mapCenter = useMemo<[number, number]>(() => {
@@ -188,6 +203,18 @@ export function SatelliteMap({ areas, cabins = [], center, defaultZoom, userPos,
                         </Marker>
                     ))}
                 </MarkerClusterGroup>
+
+                {/* Pontos de interesse — grupo separado, sem cluster junto às áreas */}
+                {placedPois.map(poi => (
+                    <Marker
+                        key={poi.id}
+                        position={[poi.mapPin!.lat!, poi.mapPin!.lng!]}
+                        icon={poiIcon(poi)}
+                        eventHandlers={{ click: () => onPoiClick?.(poi) }}
+                    >
+                        <Tooltip direction="top" offset={[0, -16]}>{poi.name}</Tooltip>
+                    </Marker>
+                ))}
 
                 {placedCabins.map(cabin => (
                     <Marker

@@ -5,15 +5,32 @@ import { toast } from "sonner";
 import {
     MapPin, MapPinned, Save, Crosshair, Target, Eye, EyeOff,
     Loader2, Trash2, Satellite, Image as ImageIcon, Info, Check, Home,
+    Plus, X, ExternalLink,
 } from "lucide-react";
 import { StructureService } from "@/services/structure-service";
 import { PropertyService } from "@/services/property-service";
 import { CabinService } from "@/services/cabin-service";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
-import { Structure, Cabin, Property } from "@/types/aura";
+import { Structure, Cabin, Property, MapPoi } from "@/types/aura";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import { gcpResidualsPercent } from "@/app/check-in/[code]/map/utils/geoTransform";
+
+const POI_CATEGORY_LABELS: Record<string, string> = {
+    gate:        "Portão / Entrada",
+    photo_spot:  "Local de Foto",
+    trail:       "Trilha / Caminho",
+    parking:     "Estacionamento",
+    restaurant:  "Restaurante / Bar",
+    bar:         "Bar / Balada",
+    market:      "Mercado / Loja",
+    other:       "Outro",
+};
+
+const DEFAULT_POI: Partial<MapPoi> = {
+    name: "", category: "other", pinIcon: "📍", pinColor: "#6b7280",
+    showOnMap: true, photos: [], externalLink: "",
+};
 
 // ── Componente de entrada de coordenadas no formato Google Maps ─────────────
 // Aceita colar direto: "-28.131983, -48.643969" e faz o parse automaticamente.
@@ -73,12 +90,12 @@ type MapConfig = NonNullable<Property["settings"]["mapConfig"]>;
 type Gcp = { lat: number; lng: number; px: number; py: number };
 
 type ClickMode =
-    | { kind: "pin";       entityId: string; entityType: "structure" | "cabin" }
+    | { kind: "pin";       entityId: string; entityType: "structure" | "cabin" | "poi" }
     | { kind: "gcp" }
     | null;
 
-// Aba lateral: estruturas ou cabanas
-type SideTab = "structures" | "cabins";
+// Aba lateral: estruturas, cabanas ou pontos de interesse
+type SideTab = "structures" | "cabins" | "pois";
 
 const DEFAULT_PIN_COLOR = "#9b6dff";
 const CABIN_PIN_COLOR   = "#f59e0b"; // âmbar — diferencia visualmente das estruturas
@@ -89,11 +106,15 @@ export default function ResortMapAdminPage() {
 
     const [structures, setStructures] = useState<Structure[]>([]);
     const [cabins,     setCabins]     = useState<Cabin[]>([]);
+    const [pois,       setPois]       = useState<MapPoi[]>([]);
     const [mapConfig,  setMapConfig]  = useState<MapConfig>({});
     const [loading,    setLoading]    = useState(false);
     const [saving,     setSaving]     = useState(false);
     const [clickMode,  setClickMode]  = useState<ClickMode>(null);
     const [sideTab,    setSideTab]    = useState<SideTab>("structures");
+    // Editor de POI
+    const [editingPoi, setEditingPoi] = useState<Partial<MapPoi> | null>(null);
+    const [savingPoi,  setSavingPoi]  = useState(false);
 
     const imageWrapRef = useRef<HTMLDivElement>(null);
 
@@ -106,17 +127,63 @@ export default function ResortMapAdminPage() {
         if (!currentProperty) return;
         setLoading(true);
         try {
-            const [structs, cabs] = await Promise.all([
+            const [structs, cabs, poisRes] = await Promise.all([
                 StructureService.getStructures(currentProperty.id),
                 CabinService.getCabinsByProperty(currentProperty.id),
+                fetch(`/api/admin/map-pois?propertyId=${currentProperty.id}`).then(r => r.json()),
             ]);
             setStructures(structs);
             setCabins(cabs);
+            setPois(poisRes.pois ?? []);
             setMapConfig(currentProperty.settings?.mapConfig ?? {});
         } catch {
             toast.error("Erro ao carregar dados do mapa.");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const patchPoi = (id: string, patch: Partial<MapPoi>) =>
+        setPois(prev => prev.map(p => p.id === id ? { ...p, ...patch } : p));
+
+    const handleSavePoi = async () => {
+        if (!editingPoi?.name || !currentProperty) return;
+        setSavingPoi(true);
+        try {
+            if (editingPoi.id) {
+                await fetch("/api/admin/map-pois", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ ...editingPoi, propertyId: currentProperty.id }),
+                });
+                patchPoi(editingPoi.id, editingPoi);
+                toast.success("Ponto de interesse atualizado!");
+            } else {
+                const res = await fetch("/api/admin/map-pois", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ ...editingPoi, propertyId: currentProperty.id }),
+                });
+                const { id } = await res.json();
+                setPois(prev => [{ ...editingPoi, id, propertyId: currentProperty.id, showOnMap: true } as MapPoi, ...prev]);
+                toast.success("Ponto de interesse criado!");
+            }
+            setEditingPoi(null);
+        } catch {
+            toast.error("Erro ao salvar ponto de interesse.");
+        } finally {
+            setSavingPoi(false);
+        }
+    };
+
+    const handleDeletePoi = async (id: string) => {
+        if (!confirm("Remover este ponto de interesse?")) return;
+        try {
+            await fetch(`/api/admin/map-pois?id=${id}`, { method: "DELETE" });
+            setPois(prev => prev.filter(p => p.id !== id));
+            toast.success("Ponto removido.");
+        } catch {
+            toast.error("Erro ao remover ponto.");
         }
     };
 
@@ -134,17 +201,20 @@ export default function ResortMapAdminPage() {
         const py = Math.min(1, Math.max(0, (e.clientY - rect.top)   / rect.height));
 
         if (clickMode.kind === "pin") {
-            const prevPin = clickMode.entityType === "structure"
-                ? structures.find(s => s.id === clickMode.entityId)?.mapPin ?? { lat: 0, lng: 0 }
-                : cabins.find(c => c.id === clickMode.entityId)?.mapPin     ?? { lat: 0, lng: 0 };
-
             if (clickMode.entityType === "structure") {
+                const prevPin = structures.find(s => s.id === clickMode.entityId)?.mapPin ?? { lat: 0, lng: 0 };
                 patchStructure(clickMode.entityId, {
                     mapPin: { ...prevPin, pixelX: px, pixelY: py },
                     showOnMap: true,
                 });
-            } else {
+            } else if (clickMode.entityType === "cabin") {
+                const prevPin = cabins.find(c => c.id === clickMode.entityId)?.mapPin ?? { lat: 0, lng: 0 };
                 patchCabin(clickMode.entityId, {
+                    mapPin: { ...prevPin, pixelX: px, pixelY: py },
+                });
+            } else if (clickMode.entityType === "poi") {
+                const prevPin = pois.find(p => p.id === clickMode.entityId)?.mapPin ?? {};
+                patchPoi(clickMode.entityId, {
                     mapPin: { ...prevPin, pixelX: px, pixelY: py },
                 });
             }
@@ -155,7 +225,7 @@ export default function ResortMapAdminPage() {
             toast.success("Ponto de calibração adicionado. Informe lat/lng reais.");
             setClickMode(null);
         }
-    }, [clickMode, structures, cabins]);
+    }, [clickMode, structures, cabins, pois]);
 
     const updateGcp = (idx: number, patch: Partial<Gcp>) =>
         setMapConfig(c => ({ ...c, gcps: (c.gcps ?? []).map((g, i) => i === idx ? { ...g, ...patch } : g) }));
@@ -185,6 +255,14 @@ export default function ResortMapAdminPage() {
                 ...cabins
                     .filter(c => c.mapPin !== undefined)
                     .map(c => CabinService.updateCabinMapPin(currentProperty.id, c.id, c.mapPin)),
+                // Persiste mapPin dos POIs que já têm id
+                ...pois
+                    .filter(p => p.id && p.mapPin !== undefined)
+                    .map(p => fetch("/api/admin/map-pois", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ id: p.id, mapPin: p.mapPin, showOnMap: p.showOnMap }),
+                    })),
             ]);
 
             toast.success("Mapa do resort salvo com sucesso!");
@@ -200,6 +278,7 @@ export default function ResortMapAdminPage() {
     const gcps             = mapConfig.gcps ?? [];
     const mappedStructures = structures.filter(s => s.showOnMap && s.mapPin?.pixelX != null);
     const mappedCabins     = cabins.filter(c => c.mapPin?.pixelX != null);
+    const mappedPois       = pois.filter(p => p.showOnMap && p.mapPin?.pixelX != null);
 
     // Diagnóstico de calibração: mesmo conjunto de pontos que o hóspede usa
     // (GCPs manuais + pins de estrutura com lat/lng) com o erro leave-one-out.
@@ -334,6 +413,20 @@ export default function ResortMapAdminPage() {
                                         </div>
                                     ))}
 
+                                    {/* Pins dos POIs */}
+                                    {mappedPois.map(p => (
+                                        <div key={p.id}
+                                            className="absolute -translate-x-1/2 -translate-y-full flex flex-col items-center pointer-events-none"
+                                            style={{ left: `${(p.mapPin!.pixelX ?? 0) * 100}%`, top: `${(p.mapPin!.pixelY ?? 0) * 100}%` }}
+                                        >
+                                            <div className="px-2 py-1 rounded-lg text-[10px] font-bold text-white shadow-lg whitespace-nowrap flex items-center gap-1"
+                                                style={{ background: p.pinColor || "#6b7280", border: "1.5px dashed rgba(255,255,255,.7)" }}>
+                                                <span>{p.pinIcon || "📍"}</span>{p.name}
+                                            </div>
+                                            <div className="w-0.5 h-2" style={{ background: p.pinColor || "#6b7280" }} />
+                                        </div>
+                                    ))}
+
                                     {/* GCPs */}
                                     {gcps.map((g, i) => (
                                         <div key={i}
@@ -451,14 +544,19 @@ export default function ResortMapAdminPage() {
                     {/* ── Coluna direita: abas Estruturas / Cabanas — scroll próprio ── */}
                     <div className="lg:sticky lg:top-6 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1 space-y-3">
                         {/* Tab switcher */}
-                        <div className="flex bg-secondary rounded-xl p-1">
-                            {(["structures", "cabins"] as SideTab[]).map(tab => (
-                                <button key={tab} onClick={() => setSideTab(tab)}
-                                    className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${sideTab === tab ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
-                                >
-                                    {tab === "structures" ? <><MapPin size={13} /> Áreas ({structures.filter(s => s.showOnMap).length})</> : <><Home size={13} /> Cabanas ({mappedCabins.length})</>}
-                                </button>
-                            ))}
+                        <div className="flex bg-secondary rounded-xl p-1 gap-0.5">
+                            <button onClick={() => setSideTab("structures")}
+                                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${sideTab === "structures" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}>
+                                <MapPin size={12} /> Áreas
+                            </button>
+                            <button onClick={() => setSideTab("cabins")}
+                                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${sideTab === "cabins" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}>
+                                <Home size={12} /> Cabanas
+                            </button>
+                            <button onClick={() => setSideTab("pois")}
+                                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${sideTab === "pois" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}>
+                                <MapPin size={12} /> POIs
+                            </button>
                         </div>
 
                         {/* Estruturas */}
@@ -541,6 +639,140 @@ export default function ResortMapAdminPage() {
                                         </button>
                                     </div>
                                 ))}
+                            </>
+                        )}
+                        {/* Pontos de Interesse */}
+                        {sideTab === "pois" && (
+                            <>
+                                <p className="text-xs text-muted-foreground px-1 flex items-start gap-2">
+                                    <Info size={13} className="shrink-0 mt-0.5" />
+                                    Portões, locais de foto, trilhas, estacionamentos e lugares externos (restaurantes, bares…). Aparecem no mapa com ícone distinto. Sem agendamento ou limpeza.
+                                </p>
+                                <button
+                                    onClick={() => setEditingPoi({ ...DEFAULT_POI })}
+                                    className="w-full py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all border border-primary/30 text-primary hover:bg-primary/10"
+                                >
+                                    <Plus size={14} /> Novo Ponto
+                                </button>
+
+                                {/* Formulário inline de criação/edição */}
+                                {editingPoi && (
+                                    <div className="bg-card border border-primary/40 rounded-2xl p-4 space-y-3 animate-in fade-in duration-150">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-xs font-black uppercase text-foreground/60 tracking-widest">
+                                                {editingPoi.id ? "Editar POI" : "Novo POI"}
+                                            </p>
+                                            <button onClick={() => setEditingPoi(null)} className="p-1 text-muted-foreground hover:text-foreground"><X size={14} /></button>
+                                        </div>
+                                        <div>
+                                            <label className="field-label">Nome *</label>
+                                            <input required className="field-input w-full" placeholder="Ex: Portão Principal"
+                                                value={editingPoi.name ?? ""}
+                                                onChange={e => setEditingPoi(p => ({ ...p!, name: e.target.value }))} />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="field-label">Categoria</label>
+                                                <select className="field-input w-full text-sm"
+                                                    value={editingPoi.category ?? "other"}
+                                                    onChange={e => setEditingPoi(p => ({ ...p!, category: e.target.value }))}>
+                                                    {Object.entries(POI_CATEGORY_LABELS).map(([v, l]) => (
+                                                        <option key={v} value={v}>{l}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="field-label">Ícone (emoji)</label>
+                                                <input className="field-input w-full text-sm" maxLength={2} placeholder="📍"
+                                                    value={editingPoi.pinIcon ?? ""}
+                                                    onChange={e => setEditingPoi(p => ({ ...p!, pinIcon: e.target.value }))} />
+                                            </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="field-label">Cor</label>
+                                                <input type="color" className="w-full h-9 rounded-lg border border-border bg-card cursor-pointer"
+                                                    value={editingPoi.pinColor ?? "#6b7280"}
+                                                    onChange={e => setEditingPoi(p => ({ ...p!, pinColor: e.target.value }))} />
+                                            </div>
+                                            <div className="flex items-end pb-0.5">
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input type="checkbox"
+                                                        checked={editingPoi.showOnMap ?? true}
+                                                        onChange={e => setEditingPoi(p => ({ ...p!, showOnMap: e.target.checked }))}
+                                                        className="w-4 h-4 accent-primary rounded" />
+                                                    <span className="text-xs font-bold text-foreground">Visível</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="field-label">Descrição</label>
+                                            <textarea className="field-input w-full text-sm min-h-[60px]" placeholder="Descrição opcional…"
+                                                value={editingPoi.description ?? ""}
+                                                onChange={e => setEditingPoi(p => ({ ...p!, description: e.target.value }))} />
+                                        </div>
+                                        <CoordInput
+                                            lat={editingPoi.mapPin?.lat} lng={editingPoi.mapPin?.lng}
+                                            onChange={(lat, lng) => setEditingPoi(p => ({ ...p!, mapPin: { ...(p!.mapPin ?? {}), lat, lng } }))}
+                                        />
+                                        <div>
+                                            <label className="field-label flex items-center gap-1.5"><ExternalLink size={11} /> Link Externo <span className="font-normal normal-case tracking-normal text-muted-foreground/60">(opcional)</span></label>
+                                            <input className="field-input w-full text-sm" placeholder="https://…"
+                                                value={editingPoi.externalLink ?? ""}
+                                                onChange={e => setEditingPoi(p => ({ ...p!, externalLink: e.target.value }))} />
+                                        </div>
+                                        <button
+                                            onClick={handleSavePoi}
+                                            disabled={savingPoi || !editingPoi.name}
+                                            className="w-full py-2.5 bg-primary text-primary-foreground rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50"
+                                        >
+                                            {savingPoi ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                                            Salvar POI
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Lista de POIs */}
+                                {pois.map(p => (
+                                    <div key={p.id} className="bg-card border border-border rounded-2xl p-4 space-y-3">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                <span className="text-lg shrink-0">{p.pinIcon || "📍"}</span>
+                                                <div className="min-w-0">
+                                                    <p className="font-bold text-sm text-foreground truncate">{p.name}</p>
+                                                    <p className="text-[10px] text-muted-foreground">{POI_CATEGORY_LABELS[p.category] ?? p.category}</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                <button
+                                                    onClick={() => patchPoi(p.id, { showOnMap: !p.showOnMap })}
+                                                    className={`px-2 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all ${p.showOnMap ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"}`}>
+                                                    {p.showOnMap ? <Eye size={11} /> : <EyeOff size={11} />}
+                                                </button>
+                                                <button onClick={() => setEditingPoi({ ...p })} className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-secondary">
+                                                    <Info size={13} />
+                                                </button>
+                                                <button onClick={() => handleDeletePoi(p.id)} className="p-1.5 text-muted-foreground hover:text-red-500 rounded-lg hover:bg-red-500/10">
+                                                    <Trash2 size={13} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                        {/* Posicionar no mapa ilustrado */}
+                                        <button
+                                            onClick={() => {
+                                                if (!mapConfig.illustratedImageUrl) { toast.error("Carregue a imagem do mapa primeiro."); return; }
+                                                setClickMode({ kind: "pin", entityId: p.id, entityType: "poi" });
+                                            }}
+                                            className={`w-full py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all border ${clickMode?.kind === "pin" && clickMode.entityId === p.id ? "bg-primary text-primary-foreground border-primary animate-pulse" : "bg-secondary text-foreground border-border hover:border-primary/50"}`}
+                                        >
+                                            {p.mapPin?.pixelX != null ? <Check size={13} /> : <Target size={13} />}
+                                            {p.mapPin?.pixelX != null ? "Reposicionar no mapa" : "Posicionar no mapa"}
+                                        </button>
+                                    </div>
+                                ))}
+                                {pois.length === 0 && !editingPoi && (
+                                    <p className="text-xs text-muted-foreground text-center italic py-6">Nenhum ponto de interesse cadastrado.</p>
+                                )}
                             </>
                         )}
                     </div>

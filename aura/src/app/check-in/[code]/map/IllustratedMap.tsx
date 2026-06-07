@@ -8,7 +8,7 @@ import "leaflet/dist/leaflet.css";
 import "react-leaflet-cluster/dist/assets/MarkerCluster.css";
 import "react-leaflet-cluster/dist/assets/MarkerCluster.Default.css";
 import { Loader2, LocateFixed, LocateOff } from "lucide-react";
-import { MapArea, MapCabin, MapLang } from "./types";
+import { MapArea, MapCabin, MapLang, MapPoi } from "./types";
 import { GpsStatus } from "./hooks/useGPS";
 import { localizedName } from "./utils/localize";
 
@@ -16,9 +16,11 @@ interface IllustratedMapProps {
     imageUrl: string;
     areas: MapArea[];
     cabins?: MapCabin[];
+    pois?: MapPoi[];
     userFraction?: { x: number; y: number } | null;
     youAreHereLabel?: string;
     onAreaClick: (area: MapArea) => void;
+    onPoiClick?: (poi: MapPoi) => void;
     selectedId?: string;
     // GPS opt-in
     gpsStatus?: GpsStatus;
@@ -87,8 +89,18 @@ function FitImage({ bounds, zoomIn = 0.75 }: { bounds: L.LatLngBoundsLiteral; zo
 
 // ------------------------------------------------------------------------------
 
+function poiIcon(poi: MapPoi): L.DivIcon {
+    const color = poi.pinColor || "#6b7280";
+    return L.divIcon({
+        className: "",
+        html: `<div style="transform:translate(-50%,-50%);width:28px;height:28px;border-radius:50%;background:${color};border:2.5px dashed rgba(255,255,255,.85);box-shadow:0 2px 6px rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center;font-size:14px">${poi.pinIcon || "📍"}</div>`,
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
+    });
+}
+
 export function IllustratedMap({
-    imageUrl, areas, cabins = [], userFraction, youAreHereLabel, onAreaClick, selectedId,
+    imageUrl, areas, cabins = [], pois = [], userFraction, youAreHereLabel, onAreaClick, onPoiClick, selectedId,
     gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar",
     locatingLabel = "Localizando…", gpsDeniedLabel, fullscreen = false, lang = "pt",
 }: IllustratedMapProps) {
@@ -110,6 +122,10 @@ export function IllustratedMap({
     const placedCabins = useMemo(
         () => cabins.filter(c => c.mapPin?.pixelX != null && c.mapPin?.pixelY != null),
         [cabins],
+    );
+    const placedPois = useMemo(
+        () => pois.filter(p => p.mapPin?.pixelX != null && p.mapPin?.pixelY != null),
+        [pois],
     );
 
     if (!dims) {
@@ -184,6 +200,18 @@ export function IllustratedMap({
                         </Marker>
                     ))}
                 </MarkerClusterGroup>
+
+                {/* Pontos de Interesse — grupo separado das áreas */}
+                {placedPois.map(poi => (
+                    <Marker
+                        key={poi.id}
+                        position={toLatLng(poi.mapPin!.pixelX!, poi.mapPin!.pixelY!)}
+                        icon={poiIcon(poi)}
+                        eventHandlers={{ click: () => onPoiClick?.(poi) }}
+                    >
+                        <Tooltip direction="top" offset={[0, -16]}>{poi.name}</Tooltip>
+                    </Marker>
+                ))}
 
                 {/* Cabanas */}
                 {placedCabins.map(cabin => (

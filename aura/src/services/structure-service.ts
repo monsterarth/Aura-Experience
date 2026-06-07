@@ -21,6 +21,23 @@ export const StructureService = {
         return data as Structure[];
     },
 
+    // Retorna apenas estruturas com fluxo de agendamento/operação (exclui map_only).
+    // Use esta versão nas páginas de agendamentos, kanban e manutenção para evitar
+    // que locais informativos (restaurante, guarita etc.) apareçam em contextos errados.
+    async getBookableStructures(propertyId: string): Promise<Structure[]> {
+        const { data, error } = await supabase
+            .from('structures')
+            .select('*')
+            .eq('propertyId', propertyId)
+            .neq('visibility', 'map_only');
+
+        if (error) {
+            console.error("Error fetching bookable structures:", error);
+            return [];
+        }
+        return data as Structure[];
+    },
+
     async getStructure(propertyId: string, structureId: string): Promise<Structure | null> {
         const { data, error } = await supabase
             .from('structures')

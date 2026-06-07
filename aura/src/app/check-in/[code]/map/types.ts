@@ -1,4 +1,4 @@
-import { Structure } from "@/types/aura";
+import { Structure, MapPoi as AuraMapPoi } from "@/types/aura";
 
 // Estrutura enriquecida com dados do mapa (vinda de /api/guest/resort-map)
 export type MapArea = Structure & {
@@ -15,5 +15,8 @@ export interface MapCabin {
     mapPin: { lat: number; lng: number; pixelX?: number; pixelY?: number } | null;
     isOwnCabin: boolean;
 }
+
+// Re-exporta MapPoi do core de tipos para uso nos componentes do mapa
+export type { AuraMapPoi as MapPoi };
 
 export type MapLang = "pt" | "en" | "es";

@@ -52,7 +52,7 @@ export default function StructureBookingsPage() {
             const dateStr = format(currentDate, "yyyy-MM-dd");
 
             const [allStructures, allBookings, allActiveStays] = await Promise.all([
-                StructureService.getStructures(currentProperty.id),
+                StructureService.getBookableStructures(currentProperty.id),
                 StructureService.getAllBookingsByDate(currentProperty.id, dateStr),
                 StayService.getStaysByStatus(currentProperty.id, ['pending', 'pre_checkin_done', 'active', 'late_checkout'])
             ]);

@@ -8,8 +8,9 @@ import { toast } from "sonner";
 import { StayService } from "@/services/stay-service";
 import { PropertyService } from "@/services/property-service";
 import { Stay, Property } from "@/types/aura";
-import { MapArea, MapCabin, MapLang } from "./types";
+import { MapArea, MapCabin, MapLang, MapPoi } from "./types";
 import { AreaCard } from "./AreaCard";
+import { PoiCard } from "./components/PoiCard";
 import { CategoryFilter } from "./components/CategoryFilter";
 import { AreaListSection } from "./components/AreaListSection";
 import { StayHeroCard } from "./components/StayHeroCard";
@@ -79,11 +80,13 @@ function ResortMapView() {
     const [mapConfig, setMapConfig] = useState<NonNullable<Property["settings"]["mapConfig"]>>({});
     const [areas,   setAreas]   = useState<MapArea[]>([]);
     const [cabins,  setCabins]  = useState<MapCabin[]>([]);
+    const [pois,    setPois]    = useState<MapPoi[]>([]);
     const [lang, setLang] = useState<MapLang>("pt");
 
     const [mode, setMode] = useState<"illustrated" | "satellite">("illustrated");
     const [category, setCategory] = useState<string | null>(null);
     const [selectedArea, setSelectedArea] = useState<MapArea | null>(null);
+    const [selectedPoi, setSelectedPoi] = useState<MapPoi | null>(null);
     const [showOtherCabins, setShowOtherCabins] = useState(false);
     const [mapOpen, setMapOpen] = useState(false);
     const [routeTo, setRouteTo] = useState<{ lat: number; lng: number } | null>(null);
@@ -143,6 +146,7 @@ function ResortMapView() {
             setMapConfig(data.mapConfig ?? {});
             setAreas(Array.isArray(data.areas) ? data.areas : []);
             setCabins(Array.isArray(data.cabins) ? data.cabins : []);
+            setPois(Array.isArray(data.pois) ? data.pois : []);
             setSelectedArea(prev => prev ? (data.areas?.find((a: MapArea) => a.id === prev.id) ?? prev) : null);
         } catch (e) {
             console.error(e);
@@ -236,6 +240,8 @@ function ResortMapView() {
             <SatelliteMap
                 areas={visibleAreas}
                 cabins={cabinsForMap}
+                pois={pois}
+                onPoiClick={setSelectedPoi}
                 center={mapConfig.center}
                 defaultZoom={mapConfig.defaultZoom}
                 userPos={pos}
@@ -258,6 +264,8 @@ function ResortMapView() {
                 imageUrl={mapConfig.illustratedImageUrl!}
                 areas={visibleAreas}
                 cabins={cabinsForMap}
+                pois={pois}
+                onPoiClick={setSelectedPoi}
                 onAreaClick={setSelectedArea}
                 selectedId={selectedArea?.id}
                 fullscreen={fs}
@@ -427,6 +435,15 @@ function ResortMapView() {
                     onClose={() => setSelectedArea(null)}
                     onBooked={() => property && fetchMap(property.id)}
                     onReviewed={() => property && fetchMap(property.id)}
+                />
+            )}
+
+            {/* Bottom sheet do POI */}
+            {selectedPoi && (
+                <PoiCard
+                    poi={selectedPoi}
+                    lang={lang}
+                    onClose={() => setSelectedPoi(null)}
                 />
             )}
         </div>

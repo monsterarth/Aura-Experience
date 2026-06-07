@@ -68,7 +68,7 @@ export default function GovernanceKanbanPage() {
         const [cabinsData, staffData, structuresData] = await Promise.all([
           CabinService.getCabinsByProperty(property.id),
           StaffService.getStaffByProperty(property.id),
-          StructureService.getStructures(property.id)
+          StructureService.getBookableStructures(property.id)
         ]);
 
         const cabinsDict: Record<string, Cabin> = {};

@@ -48,7 +48,7 @@ export default function MaintenanceDashboardPage() {
       try {
         const [cabinsData, structuresData, staffData] = await Promise.all([
           CabinService.getCabinsByProperty(property.id),
-          StructureService.getStructures(property.id),
+          StructureService.getBookableStructures(property.id),
           StaffService.getStaffByProperty(property.id),
         ]);
 

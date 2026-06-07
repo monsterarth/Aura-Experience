@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Image from "next/image";
-import { X, Clock, Info, Calendar, Star } from "lucide-react";
+import { X, Clock, Info, Calendar, Star, Navigation } from "lucide-react";
 import { Stay, Property } from "@/types/aura";
 import { MapArea, MapLang } from "./types";
 import { StarRating } from "./components/StarRating";
@@ -12,9 +12,9 @@ import { ReviewPanel } from "./ReviewPanel";
 import { localizedName, localizedDescription } from "./utils/localize";
 
 const T: Record<MapLang, Record<string, string>> = {
-    pt: { info: "Info", book: "Agendar", review: "Avaliar", hours: "Horário", capacity: "Capacidade", amenities: "Comodidades", people: "pessoas", reviews: "avaliações", noDesc: "Sem descrição." },
-    en: { info: "Info", book: "Book", review: "Reviews", hours: "Hours", capacity: "Capacity", amenities: "Amenities", people: "people", reviews: "reviews", noDesc: "No description." },
-    es: { info: "Info", book: "Reservar", review: "Reseñas", hours: "Horario", capacity: "Capacidad", amenities: "Comodidades", people: "personas", reviews: "reseñas", noDesc: "Sin descripción." },
+    pt: { info: "Info", book: "Agendar", review: "Avaliar", hours: "Horário", capacity: "Capacidade", amenities: "Comodidades", people: "pessoas", reviews: "avaliações", noDesc: "Sem descrição.", directions: "Como chegar" },
+    en: { info: "Info", book: "Book", review: "Reviews", hours: "Hours", capacity: "Capacity", amenities: "Amenities", people: "people", reviews: "reviews", noDesc: "No description.", directions: "Get directions" },
+    es: { info: "Info", book: "Reservar", review: "Reseñas", hours: "Horario", capacity: "Capacidad", amenities: "Comodidades", people: "personas", reviews: "reseñas", noDesc: "Sin descripción.", directions: "Cómo llegar" },
 };
 
 type Tab = "info" | "book" | "review";
@@ -30,6 +30,10 @@ interface AreaCardProps {
 }
 
 const bookable = (a: MapArea) => a.visibility === "guest_auto_approve" || a.visibility === "guest_request";
+const hasDirections = (a: MapArea) =>
+    a.visibility === "map_only" &&
+    a.mapPin?.lat != null && a.mapPin.lat !== 0 &&
+    a.mapPin?.lng != null && a.mapPin.lng !== 0;
 
 export function AreaCard({ area, stay, property, lang, onClose, onBooked, onReviewed }: AreaCardProps) {
     const t = T[lang];
@@ -129,6 +133,14 @@ export function AreaCard({ area, stay, property, lang, onClose, onBooked, onRevi
                                     className="w-full py-3.5 bg-primary text-primary-foreground rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-primary/20"
                                 >
                                     <Calendar size={18} /> {t.book}
+                                </button>
+                            )}
+                            {hasDirections(area) && (
+                                <button
+                                    onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${area.mapPin!.lat},${area.mapPin!.lng}`, "_blank")}
+                                    className="w-full py-3.5 bg-primary text-primary-foreground rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-primary/20 active:scale-95 transition-transform"
+                                >
+                                    <Navigation size={18} /> {t.directions}
                                 </button>
                             )}
                         </div>

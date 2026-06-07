@@ -5,7 +5,7 @@
 // Usa supabaseAdmin para não abrir sessão de auth no browser do hóspede.
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
-import { Structure, StructureBooking, StructureReview } from "@/types/aura";
+import { Structure, StructureBooking, StructureReview, MapPoi } from "@/types/aura";
 
 // Dados mínimos de cabana expostos ao hóspede (sem dados sensíveis de outros hóspedes)
 interface CabinMapData {
@@ -133,5 +133,13 @@ export async function GET(request: NextRequest) {
             isOwnCabin: c.id === ownCabinId,
         }));
 
-    return NextResponse.json({ mapConfig, areas, cabins });
+    // Pontos de interesse (MapPoi) — marcadores leves sem fluxo de agendamento
+    const { data: poisRaw } = await supabaseAdmin
+        .from("map_pois")
+        .select("*")
+        .eq("propertyId", propertyId)
+        .eq("showOnMap", true);
+    const pois: MapPoi[] = (poisRaw ?? []) as MapPoi[];
+
+    return NextResponse.json({ mapConfig, areas, cabins, pois });
 }
