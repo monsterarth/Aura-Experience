@@ -5,8 +5,12 @@ import { UserRole } from "@/types/aura";
 import { usePathname, useRouter } from "next/navigation";
 
 const ROLE_ROUTES: Partial<Record<UserRole, { path: string; label: string }>> = {
-  maid:       { path: "/maid",       label: "Camareira" },
-  governance: { path: "/governanta", label: "Governanta" },
+  governance:  { path: "/governanta",  label: "Governanta" },
+  maid:        { path: "/maid",        label: "Camareira" },
+  waiter:      { path: "/waiter",      label: "Garçom" },
+  houseman:    { path: "/houseman",    label: "Houseman" },
+  maintenance: { path: "/maintenance", label: "Manutenção" },
+  technician:  { path: "/maintenance", label: "Técnico" },
 };
 
 export function RoleSwitcher() {
