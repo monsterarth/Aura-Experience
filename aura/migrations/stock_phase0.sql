@@ -145,8 +145,18 @@ ALTER TABLE public.stock_movements REPLICA IDENTITY FULL;
 ALTER TABLE public.stock_balances  REPLICA IDENTITY FULL;
 ALTER TABLE public.stock_products  REPLICA IDENTITY FULL;
 
--- OPCIONAL — só se a publicação supabase_realtime NÃO for "FOR ALL TABLES".
--- Se der erro dizendo que a publicação é FOR ALL TABLES, ignore (já está coberto).
---   ALTER PUBLICATION supabase_realtime ADD TABLE public.stock_movements;
---   ALTER PUBLICATION supabase_realtime ADD TABLE public.stock_balances;
---   ALTER PUBLICATION supabase_realtime ADD TABLE public.stock_products;
+-- Realtime: adiciona as tabelas à publicação supabase_realtime (idempotente).
+-- Necessário quando a publicação NÃO é "FOR ALL TABLES" (caso deste projeto).
+-- Se já for FOR ALL TABLES, as tabelas já constam e o bloco apenas ignora.
+DO $$
+DECLARE t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['stock_movements','stock_balances','stock_products'] LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_publication_tables
+      WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = t
+    ) THEN
+      EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE public.%I;', t);
+    END IF;
+  END LOOP;
+END $$;
