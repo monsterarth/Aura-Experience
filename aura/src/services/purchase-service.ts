@@ -64,6 +64,7 @@ export const PurchaseService = {
       supplierId: payload.supplierId ?? null,
       locationId: payload.locationId ?? null,
       invoiceNumber: payload.invoiceNumber ?? null,
+      invoiceUrl: payload.invoiceUrl ?? null,
       status: payload.status ?? "draft",
       isEmergency: payload.isEmergency ?? false,
       orderDate: payload.orderDate ?? null,

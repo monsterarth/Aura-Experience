@@ -8,7 +8,8 @@ import { StockClient } from "@/lib/stock-client";
 import { Purchase, PurchaseStatus, Supplier, StockLocation, StockProduct } from "@/types/aura";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Plus, Loader2, Pencil, Trash2, Save, X, ShoppingCart, PackageCheck, Zap, Trash } from "lucide-react";
+import { Plus, Loader2, Pencil, Trash2, Save, X, ShoppingCart, PackageCheck, Zap, Trash, Paperclip } from "lucide-react";
+import { FileUpload } from "@/components/admin/FileUpload";
 
 const STATUS: Record<PurchaseStatus, { label: string; cls: string }> = {
   draft: { label: "Rascunho", cls: "bg-secondary text-muted-foreground" },
@@ -20,10 +21,10 @@ const STATUS: Record<PurchaseStatus, { label: string; cls: string }> = {
 interface ItemRow { productId: string; quantity: string; unitCost: string; }
 interface PForm {
   id?: string; status: PurchaseStatus; supplierId: string; locationId: string;
-  invoiceNumber: string; orderDate: string; isEmergency: boolean; notes: string; items: ItemRow[];
+  invoiceNumber: string; invoiceUrl: string; orderDate: string; isEmergency: boolean; notes: string; items: ItemRow[];
 }
 const emptyForm: PForm = {
-  status: "draft", supplierId: "", locationId: "", invoiceNumber: "", orderDate: "",
+  status: "draft", supplierId: "", locationId: "", invoiceNumber: "", invoiceUrl: "", orderDate: "",
   isEmergency: false, notes: "", items: [{ productId: "", quantity: "", unitCost: "" }],
 };
 
@@ -66,7 +67,7 @@ export default function ComprasPage() {
   const openNew = () => setForm({ ...emptyForm, items: [{ productId: "", quantity: "", unitCost: "" }] });
   const openEdit = (p: Purchase) => setForm({
     id: p.id, status: p.status, supplierId: p.supplierId ?? "", locationId: p.locationId ?? "",
-    invoiceNumber: p.invoiceNumber ?? "", orderDate: p.orderDate ?? "", isEmergency: p.isEmergency, notes: p.notes ?? "",
+    invoiceNumber: p.invoiceNumber ?? "", invoiceUrl: p.invoiceUrl ?? "", orderDate: p.orderDate ?? "", isEmergency: p.isEmergency, notes: p.notes ?? "",
     items: (p.items ?? []).map((i) => ({ productId: i.productId, quantity: String(i.quantity), unitCost: String(i.unitCost) })),
   });
 
@@ -91,8 +92,8 @@ export default function ComprasPage() {
       await StockClient.savePurchase({
         propertyId: property.id, id: form.id, status: form.status,
         supplierId: form.supplierId || null, locationId: form.locationId || null,
-        invoiceNumber: form.invoiceNumber || undefined, orderDate: form.orderDate || null,
-        isEmergency: form.isEmergency, notes: form.notes || undefined, items,
+        invoiceNumber: form.invoiceNumber || undefined, invoiceUrl: form.invoiceUrl || undefined,
+        orderDate: form.orderDate || null, isEmergency: form.isEmergency, notes: form.notes || undefined, items,
       });
       setForm(null); await load(); toast.success("Compra salva.");
     } catch (e) { toast.error((e as Error).message); } finally { setSaving(false); }
@@ -151,6 +152,9 @@ export default function ComprasPage() {
                       <div className="font-medium text-foreground flex items-center gap-1.5">
                         {p.isEmergency && <Zap size={13} className="text-amber-500" />}
                         {p.invoiceNumber || "(sem NF)"}
+                        {p.invoiceUrl && (
+                          <a href={p.invoiceUrl} target="_blank" rel="noopener noreferrer" title="Ver nota fiscal" className="text-muted-foreground hover:text-primary"><Paperclip size={12} /></a>
+                        )}
                       </div>
                       <div className="text-xs text-muted-foreground">{p.supplier?.name ?? "Sem fornecedor"}</div>
                     </td>
@@ -209,6 +213,10 @@ export default function ComprasPage() {
                     <span className="text-sm text-foreground flex items-center gap-1"><Zap size={13} className="text-amber-500" /> Emergencial</span>
                   </label>
                 </div>
+              </div>
+
+              <div><label className="field-label">Nota fiscal (PDF ou imagem)</label>
+                <FileUpload value={form.invoiceUrl || undefined} onChange={(url) => setForm({ ...form, invoiceUrl: url })} label="Enviar nota fiscal" />
               </div>
 
               {/* Itens */}

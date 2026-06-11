@@ -1493,6 +1493,7 @@ export interface Purchase {
   supplierId?: string | null;
   locationId?: string | null;     // local de recebimento (destino das entradas)
   invoiceNumber?: string;
+  invoiceUrl?: string;            // documento da NF (PDF/imagem)
   status: PurchaseStatus;
   isEmergency: boolean;
   orderDate?: string | null;      // YYYY-MM-DD
