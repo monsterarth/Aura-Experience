@@ -81,6 +81,19 @@ export async function updateSession(request: NextRequest) {
         supabaseResponse.headers.set('x-user-id', user.id);
     }
 
+    // PWA start_url = "/" — redirecionar autenticados para a tela inicial do cargo
+    if (pathname === '/' && user) {
+        const { data: staffRow } = await supabaseAdmin
+            .from('staff')
+            .select('role')
+            .eq('id', user.id)
+            .maybeSingle();
+        const role = staffRow?.role as string | undefined;
+        const url = request.nextUrl.clone();
+        url.pathname = roleHome(role);
+        return NextResponse.redirect(url);
+    }
+
     const isAdminPage = pathname.startsWith('/admin') && !pathname.includes('/login');
     const isAdminApi = pathname.startsWith('/api/admin');
     const isStaffApp = pathname.startsWith('/governanta') || pathname.startsWith('/maid') || pathname.startsWith('/houseman') || pathname.startsWith('/maintenance') || pathname.startsWith('/waiter');
