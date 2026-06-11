@@ -20,6 +20,7 @@ import {
   ClipboardCheck, Map, MapPinned, Gift, Flag, Phone,
   LayoutGrid, RefrigeratorIcon, LayoutTemplate,
   UserCircle2, Smartphone, Heart, History,
+  Package, ArrowLeftRight, SlidersHorizontal,
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import Image from "next/image";
@@ -200,6 +201,16 @@ const NAV_GROUPS: NavGroup[] = [
           { id: "app_garcom",     label: "Garçom",     href: "/admin/mobile-apps/garcom",     roles: ["super_admin","admin","manager"] },
         ],
       },
+    ],
+  },
+  {
+    id: "estoque_grupo",
+    label: "Compras & Estoque",
+    collapsible: true,
+    items: [
+      { id: "estoque_produtos", label: "Estoque",        icon: Package,           href: "/admin/estoque/produtos",       roles: ["super_admin","admin","manager"] },
+      { id: "estoque_mov",      label: "Movimentações",  icon: ArrowLeftRight,    href: "/admin/estoque/movimentacoes",  roles: ["super_admin","admin","manager"] },
+      { id: "estoque_config",   label: "Config. Estoque",icon: SlidersHorizontal, href: "/admin/estoque/configuracoes",  roles: ["super_admin","admin","manager"] },
     ],
   },
   {

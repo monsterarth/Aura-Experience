@@ -768,8 +768,14 @@ export interface AuditLog {
   | 'REASSIGN_GUEST'
   | 'CRON_DAILY_AUTOMATIONS' | 'CRON_DAILY_HOUSEKEEPING' | 'CRON_BREAKFAST_ATTENDANCE'
   | 'CRON_HOUSEKEEPING_ROUTINES' | 'CRON_MAINTENANCE' | 'CRON_PROCESS_MESSAGES'
-  | 'CRON_EVENING_REVALIDATION';
-  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER' | 'CONTACT' | 'AUTOMATION' | 'BREAKFAST' | 'CRON';
+  | 'CRON_EVENING_REVALIDATION'
+  | 'STOCK_ENTRY' | 'STOCK_EXIT' | 'STOCK_TRANSFER' | 'STOCK_ADJUSTMENT' | 'STOCK_LOSS'
+  | 'PURCHASE_CREATED' | 'PURCHASE_RECEIVED' | 'PURCHASE_CANCELLED'
+  | 'SUPPLIER_CREATED' | 'SUPPLIER_UPDATED' | 'SUPPLIER_DELETED'
+  | 'ASSET_CREATED' | 'ASSET_UPDATED' | 'ASSET_DISPOSED'
+  | 'INVENTORY_OPENED' | 'INVENTORY_CLOSED'
+  | 'CRON_STOCK_LOW' | 'CRON_STOCK_EXPIRY' | 'CRON_ASSET_DEPRECIATION';
+  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER' | 'CONTACT' | 'AUTOMATION' | 'BREAKFAST' | 'CRON' | 'SUPPLIER' | 'ASSET' | 'PURCHASE' | 'INVENTORY';
   entityId: string;
   oldData?: any;
   newData?: any;
@@ -1342,4 +1348,107 @@ export interface ChangelogEntry {
   text:        string;
   sortOrder:   number;
   createdAt:   string;
+}
+
+// ==========================================
+// MÓDULO ESTOQUE / PATRIMÔNIO — Fase 0 (Fundação)
+// ==========================================
+
+export type StockCategoryScope = 'consumable' | 'asset' | 'both';
+export type StockLocationType   = 'warehouse' | 'kitchen' | 'bar' | 'laundry' | 'cabin' | 'other';
+export type StockUnit           = 'un' | 'kg' | 'g' | 'L' | 'ml' | 'cx' | 'pct' | 'par' | 'rolo';
+export type StockMovementType   = 'entry' | 'exit' | 'transfer' | 'adjustment' | 'loss';
+export type StockLossType       = 'expiry' | 'damage' | 'handling' | 'other';
+export type StockReferenceType  = 'purchase' | 'consumption' | 'manual' | 'inventory' | 'concierge' | 'minibar' | 'fb';
+
+export interface StockCategory {
+  id: string;
+  propertyId: string;
+  name: string;
+  name_en?: string;
+  name_es?: string;
+  icon?: string;            // emoji
+  color?: string;
+  appliesTo: StockCategoryScope;
+  order?: number;
+  active: boolean;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface StockLocation {
+  id: string;
+  propertyId: string;
+  name: string;
+  type: StockLocationType;
+  cabinId?: string | null;
+  active: boolean;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface StockProduct {
+  id: string;
+  propertyId: string;
+  name: string;
+  name_en?: string;
+  name_es?: string;
+  categoryId?: string | null;
+  sku?: string;
+  unit: StockUnit;
+  barcode?: string;
+  imageUrl?: string;
+  trackExpiry: boolean;
+  minStock: number;
+  maxStock?: number | null;
+  averageCost: number;        // custo médio ponderado
+  lastPurchaseCost?: number | null;
+  active: boolean;
+  deleted: boolean;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  // Joined / virtual
+  category?: StockCategory;
+  totalQuantity?: number;     // soma dos saldos (calculado)
+}
+
+export interface StockBalance {
+  id: string;
+  propertyId: string;
+  productId: string;
+  locationId: string;
+  quantity: number;
+  updatedAt: Timestamp;
+}
+
+export interface StockMovement {
+  id: string;
+  propertyId: string;
+  productId: string;
+  type: StockMovementType;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+  fromLocationId?: string | null;
+  toLocationId?: string | null;
+  batchId?: string | null;        // usado a partir da Fase 2
+  lossType?: StockLossType | null;
+  referenceType: StockReferenceType;
+  referenceId?: string | null;
+  performedBy?: string;
+  performedByName?: string;
+  notes?: string;
+  createdAt: Timestamp;
+  // Joined / virtual
+  product?: StockProduct;
+  fromLocation?: StockLocation;
+  toLocation?: StockLocation;
+}
+
+export interface StockSettings {
+  propertyId: string;
+  noTurnoverDays: number;         // janela "sem giro" (default 60)
+  expiryAlertLeadDays: number;    // antecedência do alerta de validade (default 30)
+  autoLossOnExpiry: boolean;
+  updatedAt: Timestamp;
 }
