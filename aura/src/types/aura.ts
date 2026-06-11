@@ -1452,3 +1452,97 @@ export interface StockSettings {
   autoLossOnExpiry: boolean;
   updatedAt: Timestamp;
 }
+
+// ── Fase 1: Fornecedores & Compras ───────────────────────────────────────────
+export type PurchaseStatus = 'draft' | 'ordered' | 'received' | 'cancelled';
+
+export interface Supplier {
+  id: string;
+  propertyId: string;
+  name: string;
+  cnpj?: string;
+  email?: string;
+  phone?: string;
+  contactPerson?: string;
+  address?: string;
+  paymentTerms?: string;
+  category?: string;
+  active: boolean;
+  notes?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export interface PurchaseItem {
+  id: string;
+  purchaseId: string;
+  productId: string;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+  expiryDate?: string | null;     // YYYY-MM-DD (usado na Fase 2)
+  batchCode?: string | null;
+  createdAt?: Timestamp;
+  // Joined / virtual
+  product?: StockProduct;
+}
+
+export interface Purchase {
+  id: string;
+  propertyId: string;
+  supplierId?: string | null;
+  locationId?: string | null;     // local de recebimento (destino das entradas)
+  invoiceNumber?: string;
+  status: PurchaseStatus;
+  isEmergency: boolean;
+  orderDate?: string | null;      // YYYY-MM-DD
+  receivedDate?: string | null;
+  totalValue: number;
+  notes?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  // Joined / virtual
+  supplier?: Supplier;
+  location?: StockLocation;
+  items?: PurchaseItem[];
+}
+
+// ── Fase 1: Patrimônio ───────────────────────────────────────────────────────
+export type AssetStatus = 'active' | 'maintenance' | 'inactive' | 'disposed' | 'written_off';
+export type AssetDepreciationMethod = 'linear' | 'none';
+
+export interface Asset {
+  id: string;
+  propertyId: string;
+  name: string;
+  assetTag?: string;              // nº de patrimônio
+  categoryId?: string | null;
+  locationId?: string | null;
+  cabinId?: string | null;
+  serialNumber?: string;
+  brand?: string;
+  model?: string;
+  acquisitionDate?: string | null;
+  acquisitionCost: number;
+  supplierId?: string | null;
+  purchaseId?: string | null;
+  depreciationMethod: AssetDepreciationMethod;
+  usefulLifeMonths?: number | null;
+  residualValue: number;
+  depreciationStart?: string | null;
+  status: AssetStatus;
+  // Garantia (opcional)
+  warrantyUntil?: string | null;
+  warrantyProvider?: string;
+  warrantyDocUrl?: string;
+  warrantyNotes?: string;
+  imageUrl?: string;
+  notes?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  // Joined / computed
+  category?: StockCategory;
+  monthlyDepreciation?: number;
+  accumulatedDepreciation?: number;
+  bookValue?: number;             // valor contábil atual
+}

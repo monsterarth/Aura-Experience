@@ -1,11 +1,12 @@
 // src/lib/stock-client.ts
-// Wrapper HTTP tipado para as páginas do módulo Estoque consumirem as rotas
-// /api/admin/estoque/* (que validam sessão e usam service-role no servidor).
+// Wrapper HTTP tipado para as páginas do módulo Estoque/Patrimônio consumirem as
+// rotas em /api/admin/* (que validam sessão e usam service-role no servidor).
 import {
   StockCategory, StockLocation, StockProduct, StockMovement, StockSettings,
+  Supplier, Purchase, PurchaseItem, Asset,
 } from "@/types/aura";
 
-const BASE = "/api/admin/estoque";
+const BASE = "/api/admin";
 
 async function get<T>(path: string, propertyId: string, extra = ""): Promise<T> {
   const res = await fetch(`${BASE}/${path}?propertyId=${encodeURIComponent(propertyId)}${extra}`, { cache: "no-store" });
@@ -31,22 +32,35 @@ type WithProp<T> = Partial<T> & { propertyId: string };
 
 export const StockClient = {
   // categorias
-  categories: (pid: string) => get<StockCategory[]>("categories", pid),
-  saveCategory: (body: WithProp<StockCategory>) => post("categories", body),
-  deleteCategory: (pid: string, id: string) => del("categories", pid, id),
+  categories: (pid: string) => get<StockCategory[]>("estoque/categories", pid),
+  saveCategory: (body: WithProp<StockCategory>) => post("estoque/categories", body),
+  deleteCategory: (pid: string, id: string) => del("estoque/categories", pid, id),
   // locais
-  locations: (pid: string) => get<StockLocation[]>("locations", pid),
-  saveLocation: (body: WithProp<StockLocation>) => post("locations", body),
-  deleteLocation: (pid: string, id: string) => del("locations", pid, id),
+  locations: (pid: string) => get<StockLocation[]>("estoque/locations", pid),
+  saveLocation: (body: WithProp<StockLocation>) => post("estoque/locations", body),
+  deleteLocation: (pid: string, id: string) => del("estoque/locations", pid, id),
   // produtos
-  products: (pid: string) => get<StockProduct[]>("products", pid),
-  lowStock: (pid: string) => get<StockProduct[]>("products", pid, "&lowStock=1"),
-  saveProduct: (body: WithProp<StockProduct>) => post("products", body),
-  deleteProduct: (pid: string, id: string) => del("products", pid, id),
+  products: (pid: string) => get<StockProduct[]>("estoque/products", pid),
+  lowStock: (pid: string) => get<StockProduct[]>("estoque/products", pid, "&lowStock=1"),
+  saveProduct: (body: WithProp<StockProduct>) => post("estoque/products", body),
+  deleteProduct: (pid: string, id: string) => del("estoque/products", pid, id),
   // movimentações
-  movements: (pid: string, limit = 100) => get<StockMovement[]>("movements", pid, `&limit=${limit}`),
-  registerMovement: (body: Record<string, unknown> & { propertyId: string }) => post("movements", body),
+  movements: (pid: string, limit = 100) => get<StockMovement[]>("estoque/movements", pid, `&limit=${limit}`),
+  registerMovement: (body: Record<string, unknown> & { propertyId: string }) => post("estoque/movements", body),
   // parâmetros
-  settings: (pid: string) => get<StockSettings>("settings", pid),
-  saveSettings: (body: WithProp<StockSettings>) => post("settings", body),
+  settings: (pid: string) => get<StockSettings>("estoque/settings", pid),
+  saveSettings: (body: WithProp<StockSettings>) => post("estoque/settings", body),
+  // fornecedores
+  suppliers: (pid: string) => get<Supplier[]>("estoque/suppliers", pid),
+  saveSupplier: (body: WithProp<Supplier>) => post("estoque/suppliers", body),
+  deleteSupplier: (pid: string, id: string) => del("estoque/suppliers", pid, id),
+  // compras
+  purchases: (pid: string) => get<Purchase[]>("estoque/purchases", pid),
+  savePurchase: (body: Partial<Omit<Purchase, "items">> & { propertyId: string; items?: Partial<PurchaseItem>[] }) => post("estoque/purchases", body),
+  deletePurchase: (pid: string, id: string) => del("estoque/purchases", pid, id),
+  receivePurchase: (propertyId: string, purchaseId: string) => post("estoque/purchases/receive", { propertyId, purchaseId }),
+  // patrimônio
+  assets: (pid: string) => get<Asset[]>("patrimonio", pid),
+  saveAsset: (body: WithProp<Asset>) => post("patrimonio", body),
+  deleteAsset: (pid: string, id: string) => del("patrimonio", pid, id),
 };
