@@ -74,23 +74,45 @@ export default function EstoqueMovimentacoesPage() {
     if (showFrom && !form.fromLocationId) { toast.error("Selecione o local de origem."); return; }
     if (showTo && !form.toLocationId) { toast.error("Selecione o local de destino."); return; }
 
+    const payload = {
+      propertyId: property.id,
+      productId: form.productId,
+      type: form.type,
+      quantity: qty,
+      unitCost: showCost ? Number(form.unitCost || 0) : undefined,
+      fromLocationId: showFrom ? form.fromLocationId : undefined,
+      toLocationId: showTo ? form.toLocationId : undefined,
+      lossType: form.type === "loss" ? form.lossType : undefined,
+      notes: form.notes || undefined,
+      referenceType: "manual" as const,
+    };
+
+    const send = async (allowNegative: boolean) => {
+      await StockClient.registerMovement({ ...payload, allowNegative });
+      toast.success(allowNegative ? "Registrada — estoque ficou negativo." : "Movimentação registrada.");
+      setForm({ ...emptyMov, type: form.type });
+    };
+
     setSaving(true);
     try {
-      await StockClient.registerMovement({
-        propertyId: property.id,
-        productId: form.productId,
-        type: form.type,
-        quantity: qty,
-        unitCost: showCost ? Number(form.unitCost || 0) : undefined,
-        fromLocationId: showFrom ? form.fromLocationId : undefined,
-        toLocationId: showTo ? form.toLocationId : undefined,
-        lossType: form.type === "loss" ? form.lossType : undefined,
-        notes: form.notes || undefined,
-        referenceType: "manual",
-      });
-      toast.success("Movimentação registrada.");
-      setForm({ ...emptyMov, type: form.type });
-    } catch (e) { toast.error((e as Error).message); } finally { setSaving(false); }
+      await send(false);
+    } catch (e) {
+      const err = e as Error & { code?: string; available?: number; resulting?: number };
+      if (err.code === "NEGATIVE_STOCK") {
+        const ok = window.confirm(
+          `⚠️ Estoque insuficiente neste local.\n\n` +
+          `Disponível: ${err.available}\nMovimentação: ${qty}\nSaldo final: ${err.resulting} (negativo)\n\n` +
+          `Deseja registrar mesmo assim, deixando o estoque negativo?`
+        );
+        if (ok) {
+          try { await send(true); } catch (e2) { toast.error((e2 as Error).message); }
+        }
+      } else {
+        toast.error(err.message);
+      }
+    } finally {
+      setSaving(false);
+    }
   };
 
   const typeMeta = (t: StockMovementType) => TYPES.find((x) => x.value === t)!;

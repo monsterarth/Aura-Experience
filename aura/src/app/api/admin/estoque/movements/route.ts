@@ -22,6 +22,13 @@ export async function POST(request: NextRequest) {
     const id = await StockService.registerMovement(propertyId, input, { id: auth.staff.id, name: auth.staff.fullName });
     return NextResponse.json({ id });
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 400 });
+    const err = e as Error & { code?: string; available?: number; requested?: number; resulting?: number };
+    if (err.code === 'NEGATIVE_STOCK') {
+      return NextResponse.json({
+        error: err.message, code: 'NEGATIVE_STOCK',
+        available: err.available, requested: err.requested, resulting: err.resulting,
+      }, { status: 409 });
+    }
+    return NextResponse.json({ error: err.message }, { status: 400 });
   }
 }

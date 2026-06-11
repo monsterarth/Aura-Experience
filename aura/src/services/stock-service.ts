@@ -40,6 +40,15 @@ interface MovementInput {
   referenceType?: StockMovement["referenceType"];
   referenceId?: string | null;
   notes?: string;
+  allowNegative?: boolean;     // confirma explicitamente deixar o saldo do local negativo
+}
+
+/** Erro lançado quando a operação levaria o saldo do local abaixo de zero. */
+export interface NegativeStockError extends Error {
+  code: "NEGATIVE_STOCK";
+  available: number;
+  requested: number;
+  resulting: number;
 }
 
 const AUDIT_ACTION: Record<StockMovementType, AuditLog["action"]> = {
@@ -260,6 +269,19 @@ export const StockService = {
       : round4(Number(input.unitCost ?? fallbackCost));
     const totalCost = round2(unitCost * Math.abs(qty));
 
+    // Guarda de estoque negativo: bloqueia operações que REDUZEM o saldo de um
+    // local abaixo de zero, a menos que allowNegative seja explicitado.
+    const guard = this._negativeGuard(input, qty);
+    if (guard && guard.delta < 0 && !input.allowNegative) {
+      const current = await this._balanceAt(client, input.productId, guard.locationId);
+      const resulting = current + guard.delta;
+      if (resulting < 0) {
+        throw Object.assign(new Error("NEGATIVE_STOCK"), {
+          code: "NEGATIVE_STOCK", available: current, requested: Math.abs(guard.delta), resulting,
+        }) as NegativeStockError;
+      }
+    }
+
     const id = crypto.randomUUID();
     const { error: movErr } = await client.from("stock_movements").insert({
       id,
@@ -322,6 +344,29 @@ export const StockService = {
   async _totalQty(client: DB, productId: string): Promise<number> {
     const { data } = await client.from("stock_balances").select("quantity").eq("productId", productId);
     return ((data ?? []) as { quantity: number }[]).reduce((s, b) => s + Number(b.quantity), 0);
+  },
+
+  /** Local + delta a verificar contra saldo negativo (null quando não se aplica). */
+  _negativeGuard(input: MovementInput, qty: number): { locationId: string; delta: number } | null {
+    switch (input.type) {
+      case "exit":
+      case "loss":
+        return input.fromLocationId ? { locationId: input.fromLocationId, delta: -qty } : null;
+      case "transfer":
+        return input.fromLocationId ? { locationId: input.fromLocationId, delta: -qty } : null;
+      case "adjustment": {
+        const loc = input.toLocationId ?? input.fromLocationId;
+        return loc ? { locationId: loc, delta: qty } : null;  // qty já é o delta assinado
+      }
+      default:
+        return null;
+    }
+  },
+
+  async _balanceAt(client: DB, productId: string, locationId: string): Promise<number> {
+    const { data } = await client.from("stock_balances")
+      .select("quantity").eq("productId", productId).eq("locationId", locationId).maybeSingle();
+    return data ? Number(data.quantity) : 0;
   },
 
   async _applyDelta(client: DB, propertyId: string, productId: string, locationId: string, delta: number): Promise<void> {

@@ -16,7 +16,10 @@ async function post<T = { id?: string }>(path: string, body: unknown): Promise<T
   const res = await fetch(`${BASE}/${path}`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "Erro ao salvar.");
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw Object.assign(new Error(data?.error || "Erro ao salvar."), data);
+  }
   return res.json() as Promise<T>;
 }
 async function del(path: string, propertyId: string, id: string): Promise<void> {
