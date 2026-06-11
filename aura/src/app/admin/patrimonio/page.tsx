@@ -7,7 +7,9 @@ import { StockClient } from "@/lib/stock-client";
 import { Asset, AssetStatus, AssetDepreciationMethod, StockCategory, StockLocation, Supplier } from "@/types/aura";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Plus, Loader2, Pencil, Trash2, Save, X, Landmark, ShieldCheck, Search } from "lucide-react";
+import { Plus, Loader2, Pencil, Trash2, Save, X, Landmark, ShieldCheck, Search, FileText, Camera } from "lucide-react";
+import { ImageUpload } from "@/components/admin/ImageUpload";
+import { FileUpload } from "@/components/admin/FileUpload";
 
 const STATUS: Record<AssetStatus, { label: string; cls: string }> = {
   active: { label: "Ativo", cls: "bg-emerald-500/15 text-emerald-500" },
@@ -191,6 +193,25 @@ export default function PatrimonioPage() {
                   <input className="field-input w-full" value={form.serialNumber ?? ""} onChange={(e) => setF({ serialNumber: e.target.value })} /></div>
               </div>
 
+              {/* Imagens */}
+              <div className="border border-border rounded-2xl p-4 space-y-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5"><Camera size={13} /> Imagens</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="field-label">Foto do produto</label>
+                    <div className="h-36 rounded-xl overflow-hidden border border-border">
+                      <ImageUpload value={form.imageUrl} onUploadSuccess={(url) => setF({ imageUrl: url })} direct maxSizeMb={15} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="field-label">Etiqueta de especificações</label>
+                    <div className="h-36 rounded-xl overflow-hidden border border-border">
+                      <ImageUpload value={form.specImageUrl} onUploadSuccess={(url) => setF({ specImageUrl: url })} direct maxSizeMb={15} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="field-label">Fornecedor</label>
                   <select className="field-input w-full" value={form.supplierId ?? ""} onChange={(e) => setF({ supplierId: e.target.value || null })}>
@@ -236,10 +257,19 @@ export default function PatrimonioPage() {
                   <div><label className="field-label">Garantidor / loja</label>
                     <input className="field-input w-full" value={form.warrantyProvider ?? ""} onChange={(e) => setF({ warrantyProvider: e.target.value })} /></div>
                 </div>
-                <div><label className="field-label">Link do documento (nota/termo)</label>
-                  <input className="field-input w-full" placeholder="https://…" value={form.warrantyDocUrl ?? ""} onChange={(e) => setF({ warrantyDocUrl: e.target.value })} /></div>
                 <div><label className="field-label">Observações da garantia</label>
                   <input className="field-input w-full" value={form.warrantyNotes ?? ""} onChange={(e) => setF({ warrantyNotes: e.target.value })} /></div>
+              </div>
+
+              {/* Documentos */}
+              <div className="border border-border rounded-2xl p-4 space-y-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5"><FileText size={13} /> Documentos</p>
+                <div><label className="field-label">Nota fiscal (PDF ou imagem)</label>
+                  <FileUpload value={form.invoiceUrl} onChange={(url) => setF({ invoiceUrl: url || undefined })} label="Enviar nota fiscal" />
+                </div>
+                <div><label className="field-label">Documento de garantia (PDF ou imagem)</label>
+                  <FileUpload value={form.warrantyDocUrl} onChange={(url) => setF({ warrantyDocUrl: url || undefined })} label="Enviar documento" />
+                </div>
               </div>
 
               <div><label className="field-label">Observações</label>

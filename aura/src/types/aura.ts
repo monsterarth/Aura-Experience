@@ -1534,9 +1534,11 @@ export interface Asset {
   // Garantia (opcional)
   warrantyUntil?: string | null;
   warrantyProvider?: string;
-  warrantyDocUrl?: string;
+  warrantyDocUrl?: string;        // documento de garantia (PDF/imagem)
   warrantyNotes?: string;
-  imageUrl?: string;
+  imageUrl?: string;              // foto do produto
+  specImageUrl?: string;          // foto da etiqueta de especificações
+  invoiceUrl?: string;            // nota fiscal (PDF/imagem)
   notes?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
