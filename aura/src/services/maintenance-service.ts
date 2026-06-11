@@ -2,17 +2,22 @@ import { supabase } from "@/lib/supabase";
 import { MaintenanceTask, MaintenanceRule } from "@/types/aura";
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
+import { triggerTaskPush } from "@/lib/push-trigger";
 
 export const MaintenanceService = {
 
     listenToActiveTasks(propertyId: string, callback: (tasks: MaintenanceTask[]) => void) {
         const fetchInitial = async () => {
-            const { data } = await supabase
-                .from('maintenance_tasks')
-                .select('*')
-                .eq('propertyId', propertyId);
-
-            if (data) callback(data as MaintenanceTask[]);
+            // Lê via rota de servidor (sessão do middleware) — evita o quadro vazio causado
+            // por token do browser brevemente expirado no refresh mobile. Em erro, NÃO chama
+            // o callback (preserva o quadro atual em vez de apagá-lo com []).
+            try {
+                const res = await fetch(`/api/field/maintenance-tasks?propertyId=${encodeURIComponent(propertyId)}`, { cache: 'no-store' });
+                if (!res.ok) return;
+                callback((await res.json()) as MaintenanceTask[]);
+            } catch {
+                /* preserva o quadro atual */
+            }
         };
 
         fetchInitial();
@@ -62,6 +67,8 @@ export const MaintenanceService = {
             propertyId, userId: actorId, userName: actorName, action: "CREATE", entity: "MAINTENANCE", entityId: taskId,
             details: `Tarefa de manutenção '${data.title}' criada.`
         });
+
+        triggerTaskPush('maintenance', 'assigned', taskId);
     },
 
     async updateTask(propertyId: string, taskId: string, updates: Partial<MaintenanceTask>, actorId: string, actorName: string) {
@@ -93,6 +100,8 @@ export const MaintenanceService = {
             propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "MAINTENANCE", entityId: taskId,
             details: `Tarefa alocada para técnica(s).`
         });
+
+        triggerTaskPush('maintenance', 'assigned', taskId);
     },
 
     async startTask(propertyId: string, taskId: string, techId: string, actorName: string) {

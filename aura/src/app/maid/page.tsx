@@ -1293,7 +1293,7 @@ function ProfileScreen({
 type Tab = "home" | "tasks" | "profile";
 
 export default function MaidPage() {
-  const { userData, loading: authLoading, userDataReady, authConfirmed, tokenReady } = useAuth();
+  const { userData, loading: authLoading, userDataReady, authConfirmed } = useAuth();
   const { currentProperty: property, loading: propertyLoading } = useProperty();
   const router = useRouter();
 
@@ -1334,11 +1334,12 @@ export default function MaidPage() {
   }, [authLoading, userDataReady, propertyLoading, property]);
 
   useEffect(() => {
-    // tokenReady (set apenas por INITIAL_SESSION ou TOKEN_REFRESHED) garante que o
-    // browser Supabase client completou o refresh do token. Usar tokenReady em vez de
-    // authConfirmed evita retorno vazio de getActiveTasks quando o access token ainda
-    // está expirado (authConfirmed pode vir do fast-path antes do refresh terminar).
-    if (!property || !tokenReady) return;
+    // authConfirmed (garantido em ~1,5s pelo safety-timeout do AuthContext) destrava o
+    // carregamento de forma confiável. As tarefas são lidas via rota de servidor
+    // (/api/field/housekeeping-tasks), que usa a sessão validada/renovada pelo middleware —
+    // não dependemos mais do tokenReady, cujo evento INITIAL_SESSION podia nunca chegar no
+    // refresh mobile (lock travado), causando loop infinito de carregamento.
+    if (!property || !authConfirmed) return;
 
     let unsubscribe: (() => void) | undefined;
 
@@ -1392,7 +1393,7 @@ export default function MaidPage() {
 
     init();
     return () => unsubscribe?.();
-  }, [property, userData?.id, userData?.role, showToast, tokenReady]);
+  }, [property, userData?.id, userData?.role, showToast, authConfirmed]);
 
   useEffect(() => {
     if (!property?.id) return;
@@ -1500,7 +1501,7 @@ export default function MaidPage() {
   ];
 
   // dataLoading começa true e só vai para false quando init() termina.
-  // init() é gateado em tokenReady — portanto o spinner mostra naturalmente até o token estar pronto.
+  // init() é gateado em authConfirmed — o spinner mostra naturalmente até a sessão ser confirmada.
   const isBootstrapping = authLoading || !userDataReady || propertyLoading;
   const loading = isBootstrapping || dataLoading;
 

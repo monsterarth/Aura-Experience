@@ -704,7 +704,7 @@ function ProfileScreen({ userData, onLogout }: { userData: any; onLogout: () => 
 type Screen = "dashboard" | "tasks" | "profile";
 
 export default function ManutencaoPage() {
-  const { userData, tokenReady } = useAuth();
+  const { userData, authConfirmed } = useAuth();
   const { currentProperty: property, loading: propLoading } = useProperty();
 
   const [tasks, setTasks] = useState<MaintenanceTask[]>([]);
@@ -746,7 +746,7 @@ export default function ManutencaoPage() {
 
   useEffect(() => {
     if (!propLoading && !property) { setLoading(false); return; }
-    if (!property || !tokenReady) return;
+    if (!property || !authConfirmed) return;
     let unsub: () => void;
 
     const init = async () => {
@@ -781,7 +781,7 @@ export default function ManutencaoPage() {
 
     init();
     return () => { if (unsub) unsub(); };
-  }, [property, propLoading, showToast, tokenReady]);
+  }, [property, propLoading, showToast, authConfirmed]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
 

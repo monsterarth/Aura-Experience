@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { HousekeepingTask, HousekeepingRule } from "@/types/aura";
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
+import { triggerTaskPush } from "@/lib/push-trigger";
 
 // ─── Log helpers ─────────────────────────────────────────────────────────────
 
@@ -52,20 +53,22 @@ export const HousekeepingService = {
   },
 
   async getActiveTasks(propertyId: string): Promise<HousekeepingTask[] | null> {
-    const { data, error } = await supabase
-      .from('housekeeping_tasks')
-      .select('*')
-      .eq('propertyId', propertyId)
-      .neq('status', 'cancelled');
-
-    if (error) {
-      // Retorna null (não []) para que listenToActiveTasks preserve
-      // o quadro anterior em vez de apagá-lo em caso de erro de rede
-      // ou sessão brevemente inválida.
-      console.error("Error fetching active tasks:", error);
+    // Lê via rota de servidor (sessão validada/renovada pelo middleware) em vez da query
+    // RLS do browser — esta retornava [] quando o access token estava brevemente expirado
+    // (refresh mobile), apagando o quadro de faxinas mesmo havendo tarefas.
+    // Em erro (rede/sessão), retorna null (não []) para que listenToActiveTasks PRESERVE
+    // o quadro atual em vez de apagá-lo.
+    try {
+      const res = await fetch(`/api/field/housekeeping-tasks?propertyId=${encodeURIComponent(propertyId)}`, { cache: 'no-store' });
+      if (!res.ok) {
+        console.error("Error fetching active tasks:", res.status);
+        return null;
+      }
+      return (await res.json()) as HousekeepingTask[];
+    } catch (e) {
+      console.error("Error fetching active tasks:", e);
       return null;
     }
-    return data as HousekeepingTask[];
   },
 
   listenToActiveTasks(propertyId: string, callback: (tasks: HousekeepingTask[]) => void) {
@@ -125,6 +128,11 @@ export const HousekeepingService = {
       propertyId, userId: actorId, userName: actorName, action: "CREATE", entity: "CABIN", entityId: taskId,
       details: `Criou tarefa (${typeLabel}): ${location}.`
     });
+
+    // Push para camareiras já atribuídas na criação (criação manual no admin).
+    if (payload.assignedTo.length > 0) {
+      triggerTaskPush('housekeeping', 'assigned', taskId);
+    }
   },
 
   async updateTask(propertyId: string, taskId: string, updates: Partial<HousekeepingTask>, actorId: string, actorName: string) {
@@ -173,6 +181,8 @@ export const HousekeepingService = {
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "CABIN", entityId: taskId,
       details: `Delegou ${location} para: ${maidNames}.`
     });
+
+    triggerTaskPush('housekeeping', 'assigned', taskId);
   },
 
   async startTask(propertyId: string, taskId: string, assignedToId: string, actorName: string) {
@@ -303,6 +313,11 @@ export const HousekeepingService = {
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "CABIN", entityId: taskId,
       details: `Concluiu a limpeza: ${location}. ${statusLabel}.`
     });
+
+    // Faxina que exige conferência → notifica a governança.
+    if (newStatus === 'waiting_conference') {
+      triggerTaskPush('housekeeping', 'conference', taskId);
+    }
   },
 
   async confirmTaskQuality(propertyId: string, taskId: string, observations: string, actorId: string, actorName: string) {

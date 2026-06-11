@@ -1407,7 +1407,7 @@ function ProfileScreen({ userData, onLogout }: { userData: any; onLogout: () => 
 type Screen = "dashboard" | "conference" | "all" | "profile";
 
 export default function GovernantaPage() {
-  const { userData, authConfirmed, tokenReady } = useAuth();
+  const { userData, authConfirmed } = useAuth();
   const { currentProperty: property, loading: propLoading } = useProperty();
   const router = useRouter();
 
@@ -1491,10 +1491,11 @@ export default function GovernantaPage() {
   // Load data
   useEffect(() => {
     if (!propLoading && !property) { setLoading(false); return; }
-    // tokenReady (set apenas por INITIAL_SESSION/TOKEN_REFRESHED) garante token renovado.
-    // Usar em vez de authConfirmed evita retorno vazio das queries quando o token
-    // está expirado após idle — authConfirmed pode ser setado antes do refresh terminar.
-    if (!property || !tokenReady) return;
+    // authConfirmed (garantido em ~1,5s pelo safety-timeout) destrava o carregamento de forma
+    // confiável. As tarefas são lidas via rota de servidor (/api/field/housekeeping-tasks), que
+    // usa a sessão validada pelo middleware — não dependemos mais do tokenReady, cujo evento
+    // INITIAL_SESSION podia nunca chegar no refresh mobile, causando loop infinito.
+    if (!property || !authConfirmed) return;
     let unsub: () => void;
 
     const init = async () => {
@@ -1573,7 +1574,7 @@ export default function GovernantaPage() {
 
     init();
     return () => { if (unsub) unsub(); };
-  }, [property, propLoading, showToast, tokenReady]);
+  }, [property, propLoading, showToast, authConfirmed]);
 
   function getLocationName(task: HousekeepingTask): string {
     if (task.cabinId && cabins[task.cabinId]) {
