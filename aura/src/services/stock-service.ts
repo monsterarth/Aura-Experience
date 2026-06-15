@@ -15,7 +15,10 @@ import {
   StockMovement,
   StockMovementType,
   StockSettings,
+  StockBatch,
 } from "@/types/aura";
+
+interface BatchChunk { qty: number; unitCost: number; expiryDate: string | null; batchCode: string | null; purchaseId: string | null; }
 
 type DB = NonNullable<typeof supabaseAdmin>;
 function db(): DB {
@@ -41,6 +44,8 @@ interface MovementInput {
   referenceId?: string | null;
   notes?: string;
   allowNegative?: boolean;     // confirma explicitamente deixar o saldo do local negativo
+  expiryDate?: string | null;  // validade do lote (entrada de produto com trackExpiry)
+  batchCode?: string | null;
 }
 
 /** Erro lançado quando a operação levaria o saldo do local abaixo de zero. */
@@ -294,6 +299,34 @@ export const StockService = {
       }
     }
 
+    // Lotes (FIFO por validade) — apenas para produtos com trackExpiry.
+    let batchId: string | null = null;
+    if (product.trackExpiry) {
+      const loc = (input.toLocationId ?? input.fromLocationId) as string;
+      switch (input.type) {
+        case "entry":
+          batchId = await this._createBatch(client, propertyId, input.productId, input.toLocationId!, qty, unitCost,
+            input.expiryDate ?? null, input.batchCode ?? null,
+            input.referenceType === "purchase" ? (input.referenceId ?? null) : null);
+          break;
+        case "exit":
+        case "loss":
+          await this._consumeBatchesFIFO(client, input.productId, input.fromLocationId!, qty);
+          break;
+        case "transfer": {
+          const chunks = await this._consumeBatchesFIFO(client, input.productId, input.fromLocationId!, qty);
+          for (const c of chunks) {
+            await this._createBatch(client, propertyId, input.productId, input.toLocationId!, c.qty, c.unitCost, c.expiryDate, c.batchCode, c.purchaseId);
+          }
+          break;
+        }
+        case "adjustment":
+          if (qty < 0) await this._consumeBatchesFIFO(client, input.productId, loc, -qty);
+          else if (qty > 0) batchId = await this._createBatch(client, propertyId, input.productId, loc, qty, unitCost, input.expiryDate ?? null, input.batchCode ?? null, null);
+          break;
+      }
+    }
+
     const id = crypto.randomUUID();
     const { error: movErr } = await client.from("stock_movements").insert({
       id,
@@ -305,6 +338,7 @@ export const StockService = {
       totalCost,
       fromLocationId: input.fromLocationId ?? null,
       toLocationId: input.toLocationId ?? null,
+      batchId,
       lossType: input.lossType ?? null,
       referenceType: input.referenceType ?? "manual",
       referenceId: input.referenceId ?? null,
@@ -379,6 +413,74 @@ export const StockService = {
     const { data } = await client.from("stock_balances")
       .select("quantity").eq("productId", productId).eq("locationId", locationId).maybeSingle();
     return data ? Number(data.quantity) : 0;
+  },
+
+  // ── Lotes (FIFO por validade) ────────────────────────────────────────────────
+  async _createBatch(client: DB, propertyId: string, productId: string, locationId: string, qty: number,
+    unitCost: number, expiryDate: string | null, batchCode: string | null, purchaseId: string | null): Promise<string> {
+    const id = crypto.randomUUID();
+    await client.from("stock_batches").insert({
+      id, propertyId, productId, locationId, quantity: qty, unitCost,
+      expiryDate: expiryDate ?? null, batchCode: batchCode ?? null, purchaseId: purchaseId ?? null,
+      createdAt: now(), updatedAt: now(),
+    });
+    return id;
+  },
+
+  /** Baixa `qty` dos lotes do local por FIFO de validade; devolve os pedaços consumidos. */
+  async _consumeBatchesFIFO(client: DB, productId: string, locationId: string, qty: number): Promise<BatchChunk[]> {
+    let remaining = qty;
+    const consumed: BatchChunk[] = [];
+    const { data: batches } = await client.from("stock_batches")
+      .select("*").eq("productId", productId).eq("locationId", locationId).gt("quantity", 0)
+      .order("expiryDate", { ascending: true, nullsFirst: false })
+      .order("createdAt", { ascending: true });
+    for (const b of (batches ?? []) as StockBatch[]) {
+      if (remaining <= 0) break;
+      const take = Math.min(Number(b.quantity), remaining);
+      consumed.push({ qty: take, unitCost: Number(b.unitCost), expiryDate: b.expiryDate ?? null, batchCode: b.batchCode ?? null, purchaseId: b.purchaseId ?? null });
+      await client.from("stock_batches").update({ quantity: Number(b.quantity) - take, updatedAt: now() }).eq("id", b.id);
+      remaining -= take;
+    }
+    return consumed; // remaining > 0 só ocorre com allowNegative além dos lotes
+  },
+
+  async getBatches(propertyId: string, productId?: string): Promise<StockBatch[]> {
+    let q = db().from("stock_batches").select("*").eq("propertyId", propertyId).gt("quantity", 0);
+    if (productId) q = q.eq("productId", productId);
+    const { data } = await q.order("expiryDate", { ascending: true, nullsFirst: false });
+    return (data ?? []) as StockBatch[];
+  },
+
+  /** Lotes com saldo cuja validade vence dentro de `withinDays` (inclui já vencidos). */
+  async getExpiringBatches(propertyId: string, withinDays = 30): Promise<StockBatch[]> {
+    const limit = new Date(); limit.setDate(limit.getDate() + withinDays);
+    const limitStr = limit.toISOString().slice(0, 10);
+    const [{ data: batches }, { data: products }, { data: locations }] = await Promise.all([
+      db().from("stock_batches").select("*").eq("propertyId", propertyId).gt("quantity", 0)
+        .not("expiryDate", "is", null).lte("expiryDate", limitStr).order("expiryDate", { ascending: true }),
+      db().from("stock_products").select("id, name, unit").eq("propertyId", propertyId),
+      db().from("stock_locations").select("id, name").eq("propertyId", propertyId),
+    ]);
+    const pMap = new Map((products ?? []).map((p: { id: string }) => [p.id, p]));
+    const lMap = new Map((locations ?? []).map((l: { id: string }) => [l.id, l]));
+    return ((batches ?? []) as StockBatch[]).map((b) => ({
+      ...b,
+      product: pMap.get(b.productId) as StockProduct | undefined,
+      location: lMap.get(b.locationId) as StockLocation | undefined,
+    }));
+  },
+
+  /** Perdas (movimentos type='loss') dos últimos `sinceDays` dias, com produto. */
+  async getLosses(propertyId: string, sinceDays = 30): Promise<StockMovement[]> {
+    const since = new Date(); since.setDate(since.getDate() - sinceDays);
+    const [{ data: moves }, { data: products }] = await Promise.all([
+      db().from("stock_movements").select("*").eq("propertyId", propertyId).eq("type", "loss")
+        .gte("createdAt", since.toISOString()).order("createdAt", { ascending: false }),
+      db().from("stock_products").select("id, name, unit").eq("propertyId", propertyId),
+    ]);
+    const pMap = new Map((products ?? []).map((p: { id: string }) => [p.id, p]));
+    return ((moves ?? []) as StockMovement[]).map((m) => ({ ...m, product: pMap.get(m.productId) as StockProduct | undefined }));
   },
 
   async _applyDelta(client: DB, propertyId: string, productId: string, locationId: string, delta: number): Promise<void> {

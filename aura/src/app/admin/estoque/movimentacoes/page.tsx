@@ -25,10 +25,12 @@ const LOSS_TYPES: { value: StockLossType; label: string }[] = [
 interface MovForm {
   productId: string; type: StockMovementType; quantity: string; unitCost: string;
   fromLocationId: string; toLocationId: string; lossType: StockLossType; notes: string;
+  expiryDate: string; batchCode: string;
 }
 const emptyMov: MovForm = {
   productId: "", type: "entry", quantity: "", unitCost: "",
   fromLocationId: "", toLocationId: "", lossType: "expiry", notes: "",
+  expiryDate: "", batchCode: "",
 };
 
 export default function EstoqueMovimentacoesPage() {
@@ -65,6 +67,8 @@ export default function EstoqueMovimentacoesPage() {
   const showFrom = form.type === "exit" || form.type === "loss" || form.type === "transfer";
   const showTo = form.type === "entry" || form.type === "transfer" || form.type === "adjustment";
   const showCost = form.type === "entry";
+  const selectedProduct = products.find((p) => p.id === form.productId);
+  const showExpiry = form.type === "entry" && !!selectedProduct?.trackExpiry;
 
   const submit = async () => {
     if (!property?.id) return;
@@ -83,6 +87,8 @@ export default function EstoqueMovimentacoesPage() {
       fromLocationId: showFrom ? form.fromLocationId : undefined,
       toLocationId: showTo ? form.toLocationId : undefined,
       lossType: form.type === "loss" ? form.lossType : undefined,
+      expiryDate: showExpiry ? (form.expiryDate || undefined) : undefined,
+      batchCode: showExpiry ? (form.batchCode || undefined) : undefined,
       notes: form.notes || undefined,
       referenceType: "manual" as const,
     };
@@ -168,6 +174,20 @@ export default function EstoqueMovimentacoesPage() {
                 <input type="number" className="field-input w-full" value={form.unitCost}
                   onChange={(e) => setForm({ ...form, unitCost: e.target.value })} placeholder="0,00" />
               </div>
+            )}
+            {showExpiry && (
+              <>
+                <div>
+                  <label className="field-label">Validade</label>
+                  <input type="date" className="field-input w-full" value={form.expiryDate}
+                    onChange={(e) => setForm({ ...form, expiryDate: e.target.value })} />
+                </div>
+                <div>
+                  <label className="field-label">Lote (opcional)</label>
+                  <input className="field-input w-full" value={form.batchCode}
+                    onChange={(e) => setForm({ ...form, batchCode: e.target.value })} placeholder="Código do lote" />
+                </div>
+              </>
             )}
             {showFrom && (
               <div>

@@ -3,7 +3,7 @@
 // Sem histórico de manutenção nesta fase (decisão: adiado).
 import { supabase, supabaseAdmin } from "@/lib/supabase";
 import { AuditService } from "./audit-service";
-import { Asset, StockCategory } from "@/types/aura";
+import { Asset, StockCategory, AssetDepreciationEntry } from "@/types/aura";
 
 type DB = NonNullable<typeof supabaseAdmin>;
 function db(): DB {
@@ -79,5 +79,40 @@ export const AssetService = {
       propertyId, userId: actor.id, userName: actor.name,
       action: "ASSET_DISPOSED", entity: "ASSET", entityId: id, details: "Ativo removido.",
     });
+  },
+
+  async getDepreciationEntries(propertyId: string, assetId: string): Promise<AssetDepreciationEntry[]> {
+    const { data } = await db().from("asset_depreciation_entries")
+      .select("*").eq("propertyId", propertyId).eq("assetId", assetId).order("period", { ascending: false });
+    return (data ?? []) as AssetDepreciationEntry[];
+  },
+
+  /**
+   * Lança a depreciação do período (YYYY-MM) para os ativos lineares ativos.
+   * Idempotente por (assetId, period). Usado pelo cron mensal.
+   */
+  async runDepreciation(propertyId: string, period: string): Promise<number> {
+    const ref = new Date();
+    const { data: assets } = await db().from("assets").select("*")
+      .eq("propertyId", propertyId).eq("depreciationMethod", "linear").in("status", ["active", "maintenance"]);
+    let count = 0;
+    for (const a of (assets ?? []) as Asset[]) {
+      if (!a.usefulLifeMonths || a.usefulLifeMonths <= 0) continue;
+      const d = computeDepreciation(a, ref);
+      const amount = d.bookValue > Number(a.residualValue ?? 0) ? d.monthlyDepreciation : 0;
+      const { data: existing } = await db().from("asset_depreciation_entries")
+        .select("id").eq("assetId", a.id).eq("period", period).maybeSingle();
+      if (existing) {
+        await db().from("asset_depreciation_entries")
+          .update({ amount, accumulatedDepreciation: d.accumulatedDepreciation, bookValue: d.bookValue }).eq("id", existing.id);
+      } else {
+        await db().from("asset_depreciation_entries").insert({
+          id: crypto.randomUUID(), propertyId, assetId: a.id, period, amount,
+          accumulatedDepreciation: d.accumulatedDepreciation, bookValue: d.bookValue, createdAt: now(),
+        });
+      }
+      count++;
+    }
+    return count;
   },
 };

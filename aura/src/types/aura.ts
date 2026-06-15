@@ -1549,3 +1549,69 @@ export interface Asset {
   accumulatedDepreciation?: number;
   bookValue?: number;             // valor contábil atual
 }
+
+// ── Fase 2: Lotes / Validade ─────────────────────────────────────────────────
+export interface StockBatch {
+  id: string;
+  propertyId: string;
+  productId: string;
+  locationId: string;
+  batchCode?: string | null;
+  quantity: number;               // saldo restante do lote
+  unitCost: number;
+  expiryDate?: string | null;     // YYYY-MM-DD
+  purchaseId?: string | null;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  // Joined / virtual
+  product?: StockProduct;
+  location?: StockLocation;
+}
+
+// ── Fase 2: Inventário físico ────────────────────────────────────────────────
+export type InventoryCountStatus = 'open' | 'counting' | 'closed';
+
+export interface InventoryCount {
+  id: string;
+  propertyId: string;
+  locationId?: string | null;     // null = todos os locais
+  scope: string[];                // categoryIds ([] = todas)
+  status: InventoryCountStatus;
+  accuracy?: number | null;       // % preenchida ao fechar
+  createdBy?: string;
+  createdByName?: string;
+  startedAt: Timestamp;
+  closedAt?: string | null;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  // Joined / virtual
+  location?: StockLocation;
+  items?: InventoryCountItem[];
+  itemCount?: number;
+}
+
+export interface InventoryCountItem {
+  id: string;
+  countId: string;
+  productId: string;
+  locationId?: string | null;
+  systemQty: number;
+  countedQty?: number | null;     // null = ainda não contado
+  difference?: number | null;
+  adjusted: boolean;
+  createdAt?: Timestamp;
+  // Joined / virtual
+  product?: StockProduct;
+}
+
+// ── Fase 2: Depreciação (lançamentos) ────────────────────────────────────────
+export interface AssetDepreciationEntry {
+  id: string;
+  propertyId: string;
+  assetId: string;
+  period: string;                 // YYYY-MM
+  amount: number;
+  accumulatedDepreciation: number;
+  bookValue: number;
+  createdAt: Timestamp;
+}

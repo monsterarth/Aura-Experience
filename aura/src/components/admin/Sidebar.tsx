@@ -21,7 +21,7 @@ import {
   LayoutGrid, RefrigeratorIcon, LayoutTemplate,
   UserCircle2, Smartphone, Heart, History,
   Package, ArrowLeftRight, SlidersHorizontal,
-  ShoppingCart, Truck, Landmark,
+  ShoppingCart, Truck, Landmark, AlertOctagon,
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import Image from "next/image";
@@ -213,6 +213,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "estoque_mov",      label: "Movimentações",  icon: ArrowLeftRight,    href: "/admin/estoque/movimentacoes",  roles: ["super_admin","admin","manager"] },
       { id: "estoque_compras",  label: "Compras",        icon: ShoppingCart,      href: "/admin/estoque/compras",        roles: ["super_admin","admin","manager"] },
       { id: "estoque_fornec",   label: "Fornecedores",   icon: Truck,             href: "/admin/estoque/fornecedores",   roles: ["super_admin","admin","manager"] },
+      { id: "estoque_inventario", label: "Inventário",   icon: ClipboardList,     href: "/admin/estoque/inventario",     roles: ["super_admin","admin","manager"] },
+      { id: "estoque_perdas",   label: "Perdas",         icon: AlertOctagon,      href: "/admin/estoque/perdas",         roles: ["super_admin","admin","manager"] },
       { id: "patrimonio",       label: "Patrimônio",     icon: Landmark,          href: "/admin/patrimonio",             roles: ["super_admin","admin","manager"] },
       { id: "estoque_config",   label: "Config. Estoque",icon: SlidersHorizontal, href: "/admin/estoque/configuracoes",  roles: ["super_admin","admin","manager"] },
     ],
