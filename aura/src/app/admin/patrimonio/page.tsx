@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { Plus, Loader2, Pencil, Trash2, Save, X, Landmark, ShieldCheck, Search, FileText, Camera } from "lucide-react";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import { FileUpload } from "@/components/admin/FileUpload";
+import { useDiscardGuard } from "@/lib/use-discard-guard";
 
 const STATUS: Record<AssetStatus, { label: string; cls: string }> = {
   active: { label: "Ativo", cls: "bg-emerald-500/15 text-emerald-500" },
@@ -36,6 +37,7 @@ export default function PatrimonioPage() {
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<Partial<Asset> | null>(null);
   const [saving, setSaving] = useState(false);
+  const requestClose = useDiscardGuard(form, () => setForm(null));
 
   const load = useCallback(async () => {
     if (!property?.id) return;
@@ -155,11 +157,11 @@ export default function PatrimonioPage() {
       )}
 
       {form && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={() => setForm(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={requestClose}>
           <div className="bg-card border border-border w-full max-w-2xl rounded-3xl shadow-2xl max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="p-5 border-b border-border flex justify-between items-center sticky top-0 bg-card z-10">
               <h2 className="text-lg font-bold text-foreground">{form.id ? "Editar ativo" : "Novo ativo"}</h2>
-              <button onClick={() => setForm(null)} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
+              <button onClick={requestClose} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
             </div>
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-[1fr_140px] gap-3">
@@ -276,7 +278,7 @@ export default function PatrimonioPage() {
                 <textarea className="field-input w-full" rows={2} value={form.notes ?? ""} onChange={(e) => setF({ notes: e.target.value })} /></div>
             </div>
             <div className="p-5 border-t border-border flex justify-end gap-2 sticky bottom-0 bg-card">
-              <button onClick={() => setForm(null)} className="px-4 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground">Cancelar</button>
+              <button onClick={requestClose} className="px-4 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground">Cancelar</button>
               <button onClick={save} disabled={saving} className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground">
                 {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Salvar
               </button>

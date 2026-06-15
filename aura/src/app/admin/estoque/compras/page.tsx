@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Plus, Loader2, Pencil, Trash2, Save, X, ShoppingCart, PackageCheck, Zap, Trash, Paperclip } from "lucide-react";
 import { FileUpload } from "@/components/admin/FileUpload";
+import { useDiscardGuard } from "@/lib/use-discard-guard";
 
 const STATUS: Record<PurchaseStatus, { label: string; cls: string }> = {
   draft: { label: "Rascunho", cls: "bg-secondary text-muted-foreground" },
@@ -37,6 +38,7 @@ export default function ComprasPage() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<PForm | null>(null);
   const [saving, setSaving] = useState(false);
+  const requestClose = useDiscardGuard(form, () => setForm(null));
 
   const loadStatic = useCallback(async () => {
     if (!property?.id) return;
@@ -183,11 +185,11 @@ export default function ComprasPage() {
       )}
 
       {form && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={() => setForm(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={requestClose}>
           <div className="bg-card border border-border w-full max-w-2xl rounded-3xl shadow-2xl max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="p-5 border-b border-border flex justify-between items-center sticky top-0 bg-card z-10">
               <h2 className="text-lg font-bold text-foreground">{form.id ? "Editar compra" : "Nova compra"}</h2>
-              <button onClick={() => setForm(null)} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
+              <button onClick={requestClose} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
             </div>
             <div className="p-5 space-y-4">
               <div className="grid grid-cols-2 gap-3">
@@ -245,7 +247,7 @@ export default function ComprasPage() {
                 <input className="field-input w-full" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
             </div>
             <div className="p-5 border-t border-border flex justify-end gap-2 sticky bottom-0 bg-card">
-              <button onClick={() => setForm(null)} className="px-4 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground">Cancelar</button>
+              <button onClick={requestClose} className="px-4 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground">Cancelar</button>
               <button onClick={save} disabled={saving} className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground">
                 {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Salvar
               </button>
