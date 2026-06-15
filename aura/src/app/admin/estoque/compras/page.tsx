@@ -21,6 +21,7 @@ const STATUS: Record<PurchaseStatus, { label: string; cls: string }> = {
 
 interface ItemRow { productId: string; quantity: string; unitCost: string; expiryDate: string; batchCode: string; }
 const emptyItem: ItemRow = { productId: "", quantity: "", unitCost: "", expiryDate: "", batchCode: "" };
+interface RecvRow { itemId: string; name: string; unit: string; trackExpiry: boolean; quantity: number; expiryDate: string; batchCode: string; }
 interface PForm {
   id?: string; status: PurchaseStatus; supplierId: string; locationId: string;
   invoiceNumber: string; invoiceUrl: string; orderDate: string; isEmergency: boolean; notes: string; items: ItemRow[];
@@ -40,6 +41,8 @@ export default function ComprasPage() {
   const [form, setForm] = useState<PForm | null>(null);
   const [saving, setSaving] = useState(false);
   const requestClose = useDiscardGuard(form, () => setForm(null));
+  const [receiving, setReceiving] = useState<{ purchase: Purchase; rows: RecvRow[] } | null>(null);
+  const [receivingBusy, setReceivingBusy] = useState(false);
 
   const loadStatic = useCallback(async () => {
     if (!property?.id) return;
@@ -102,12 +105,32 @@ export default function ComprasPage() {
     } catch (e) { toast.error((e as Error).message); } finally { setSaving(false); }
   };
 
-  const receive = async (p: Purchase) => {
-    if (!property?.id) return;
+  const openReceive = (p: Purchase) => {
     if (!p.locationId) { toast.error("Defina o local de recebimento (edite a compra)."); return; }
-    if (!confirm(`Receber a compra${p.invoiceNumber ? ` NF ${p.invoiceNumber}` : ""}?\n\nIsso dará entrada de ${p.items?.length ?? 0} item(ns) no estoque em "${p.location?.name ?? ""}" e atualizará o custo médio.`)) return;
-    try { await StockClient.receivePurchase(property.id, p.id); await load(); toast.success("Compra recebida — entradas geradas."); }
-    catch (e) { toast.error((e as Error).message); }
+    const rows: RecvRow[] = (p.items ?? []).map((it) => {
+      const prod = products.find((x) => x.id === it.productId);
+      return {
+        itemId: it.id, name: prod?.name ?? "—", unit: prod?.unit ?? "", trackExpiry: !!prod?.trackExpiry,
+        quantity: Number(it.quantity), expiryDate: it.expiryDate ?? "", batchCode: it.batchCode ?? "",
+      };
+    });
+    setReceiving({ purchase: p, rows });
+  };
+
+  const setRecvRow = (idx: number, patch: Partial<RecvRow>) =>
+    setReceiving((r) => r ? { ...r, rows: r.rows.map((row, i) => i === idx ? { ...row, ...patch } : row) } : r);
+
+  const confirmReceive = async () => {
+    if (!property?.id || !receiving) return;
+    setReceivingBusy(true);
+    try {
+      const overrides: Record<string, { expiryDate?: string | null; batchCode?: string | null }> = {};
+      for (const r of receiving.rows) {
+        if (r.trackExpiry) overrides[r.itemId] = { expiryDate: r.expiryDate || null, batchCode: r.batchCode || null };
+      }
+      await StockClient.receivePurchase(property.id, receiving.purchase.id, overrides);
+      setReceiving(null); await load(); toast.success("Compra recebida — entradas geradas.");
+    } catch (e) { toast.error((e as Error).message); } finally { setReceivingBusy(false); }
   };
 
   const remove = async (p: Purchase) => {
@@ -168,7 +191,7 @@ export default function ComprasPage() {
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1">
                         {editable && (
-                          <button onClick={() => receive(p)} title="Receber no estoque" className="p-1.5 text-emerald-500 hover:bg-emerald-500/10 rounded-lg"><PackageCheck size={15} /></button>
+                          <button onClick={() => openReceive(p)} title="Receber no estoque" className="p-1.5 text-emerald-500 hover:bg-emerald-500/10 rounded-lg"><PackageCheck size={15} /></button>
                         )}
                         {editable && <button onClick={() => openEdit(p)} className="p-1.5 text-muted-foreground hover:text-foreground"><Pencil size={14} /></button>}
                         {p.status !== "received" && <button onClick={() => remove(p)} className="p-1.5 text-muted-foreground hover:text-destructive"><Trash2 size={14} /></button>}
@@ -229,29 +252,18 @@ export default function ComprasPage() {
                   <button onClick={addItem} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline"><Plus size={13} /> Adicionar item</button>
                 </div>
                 <div className="space-y-2">
-                  {form.items.map((it, idx) => {
-                    const prod = products.find((p) => p.id === it.productId);
-                    return (
-                      <div key={idx} className="space-y-1.5">
-                        <div className="grid grid-cols-[1fr_80px_100px_28px] gap-2 items-center">
-                          <select className="field-input w-full" value={it.productId} onChange={(e) => setItem(idx, { productId: e.target.value })}>
-                            <option value="">Produto…</option>
-                            {products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>)}
-                          </select>
-                          <input type="number" className="field-input w-full" placeholder="Qtd" value={it.quantity} onChange={(e) => setItem(idx, { quantity: e.target.value })} />
-                          <input type="number" className="field-input w-full" placeholder="Custo un." value={it.unitCost} onChange={(e) => setItem(idx, { unitCost: e.target.value })} />
-                          <button onClick={() => removeItem(idx)} className="p-1 text-muted-foreground hover:text-destructive"><Trash size={14} /></button>
-                        </div>
-                        {prod?.trackExpiry && (
-                          <div className="flex items-center gap-2 pl-1">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500 shrink-0">Validade</span>
-                            <input type="date" className="field-input py-1 text-xs" value={it.expiryDate} onChange={(e) => setItem(idx, { expiryDate: e.target.value })} />
-                            <input className="field-input py-1 text-xs flex-1" placeholder="Lote (opcional)" value={it.batchCode} onChange={(e) => setItem(idx, { batchCode: e.target.value })} />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {form.items.map((it, idx) => (
+                    <div key={idx} className="grid grid-cols-[1fr_80px_100px_28px] gap-2 items-center">
+                      <select className="field-input w-full" value={it.productId} onChange={(e) => setItem(idx, { productId: e.target.value })}>
+                        <option value="">Produto…</option>
+                        {products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>)}
+                      </select>
+                      <input type="number" className="field-input w-full" placeholder="Qtd" value={it.quantity} onChange={(e) => setItem(idx, { quantity: e.target.value })} />
+                      <input type="number" className="field-input w-full" placeholder="Custo un." value={it.unitCost} onChange={(e) => setItem(idx, { unitCost: e.target.value })} />
+                      <button onClick={() => removeItem(idx)} className="p-1 text-muted-foreground hover:text-destructive"><Trash size={14} /></button>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-muted-foreground pl-1">A validade dos itens perecíveis é informada no <b>recebimento</b>.</p>
                 </div>
                 <div className="text-right mt-2 text-sm font-bold text-foreground">Total: R$ {grandTotal.toFixed(2)}</div>
               </div>
@@ -263,6 +275,47 @@ export default function ComprasPage() {
               <button onClick={requestClose} className="px-4 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground">Cancelar</button>
               <button onClick={save} disabled={saving} className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground">
                 {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de recebimento — validade é informada aqui (quando a mercadoria chega) */}
+      {receiving && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+          <div className="bg-card border border-border w-full max-w-xl rounded-3xl shadow-2xl max-h-[92vh] flex flex-col">
+            <div className="p-5 border-b border-border flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-bold text-foreground flex items-center gap-2"><PackageCheck size={18} className="text-emerald-500" /> Receber compra</h2>
+                <p className="text-xs text-muted-foreground">Entrada em &quot;{receiving.purchase.location?.name ?? ""}&quot;. Informe a validade dos itens perecíveis.</p>
+              </div>
+              <button onClick={() => setReceiving(null)} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
+            </div>
+            <div className="p-5 overflow-y-auto space-y-2">
+              {receiving.rows.map((r, idx) => (
+                <div key={r.itemId} className="border border-border rounded-xl p-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="font-medium text-foreground">{r.name}</span>
+                    <span className="text-muted-foreground tabular-nums">{r.quantity} {r.unit}</span>
+                  </div>
+                  {r.trackExpiry ? (
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500 shrink-0">Validade</span>
+                      <input type="date" className="field-input py-1 text-xs" value={r.expiryDate} onChange={(e) => setRecvRow(idx, { expiryDate: e.target.value })} />
+                      <input className="field-input py-1 text-xs flex-1" placeholder="Lote (opcional)" value={r.batchCode} onChange={(e) => setRecvRow(idx, { batchCode: e.target.value })} />
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-muted-foreground mt-1">Sem controle de validade.</p>
+                  )}
+                </div>
+              ))}
+              {receiving.rows.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Compra sem itens.</p>}
+            </div>
+            <div className="p-5 border-t border-border flex justify-end gap-2">
+              <button onClick={() => setReceiving(null)} className="px-4 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground">Cancelar</button>
+              <button onClick={confirmReceive} disabled={receivingBusy} className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold rounded-xl bg-emerald-600 text-white hover:bg-emerald-700">
+                {receivingBusy ? <Loader2 size={15} className="animate-spin" /> : <PackageCheck size={15} />} Confirmar entrada
               </button>
             </div>
           </div>

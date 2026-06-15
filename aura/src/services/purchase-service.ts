@@ -102,8 +102,15 @@ export const PurchaseService = {
     return id;
   },
 
-  /** Recebe a compra: gera entradas de estoque (custo médio recalculado) e marca received. */
-  async receivePurchase(propertyId: string, purchaseId: string, actor: Actor): Promise<void> {
+  /**
+   * Recebe a compra: gera entradas (custo médio recalculado) e marca received.
+   * `overrides` traz validade/lote informados NO RECEBIMENTO (por item), pois a
+   * validade só é conhecida quando a mercadoria chega; também grava de volta no item.
+   */
+  async receivePurchase(
+    propertyId: string, purchaseId: string, actor: Actor,
+    overrides?: Record<string, { expiryDate?: string | null; batchCode?: string | null }>,
+  ): Promise<void> {
     const { data: purchase } = await db().from("purchases").select("*").eq("id", purchaseId).eq("propertyId", propertyId).single();
     if (!purchase) throw new Error("Compra não encontrada.");
     if (purchase.status === "received") throw new Error("Compra já foi recebida.");
@@ -113,6 +120,10 @@ export const PurchaseService = {
     if (!items || items.length === 0) throw new Error("Compra sem itens.");
 
     for (const it of items as PurchaseItem[]) {
+      const ov = overrides?.[it.id];
+      const expiryDate = ov?.expiryDate ?? it.expiryDate ?? null;
+      const batchCode = ov?.batchCode ?? it.batchCode ?? null;
+      if (ov) await db().from("purchase_items").update({ expiryDate, batchCode }).eq("id", it.id);
       await StockService.registerMovement(propertyId, {
         productId: it.productId,
         type: "entry",
@@ -121,8 +132,8 @@ export const PurchaseService = {
         toLocationId: purchase.locationId,
         referenceType: "purchase",
         referenceId: purchaseId,
-        expiryDate: it.expiryDate ?? null,
-        batchCode: it.batchCode ?? null,
+        expiryDate,
+        batchCode,
         notes: `Recebimento${purchase.invoiceNumber ? ` NF ${purchase.invoiceNumber}` : ""}`,
       }, actor);
     }

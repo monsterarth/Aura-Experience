@@ -59,7 +59,8 @@ export const StockClient = {
   purchases: (pid: string) => get<Purchase[]>("estoque/purchases", pid),
   savePurchase: (body: Partial<Omit<Purchase, "items">> & { propertyId: string; items?: Partial<PurchaseItem>[] }) => post("estoque/purchases", body),
   deletePurchase: (pid: string, id: string) => del("estoque/purchases", pid, id),
-  receivePurchase: (propertyId: string, purchaseId: string) => post("estoque/purchases/receive", { propertyId, purchaseId }),
+  receivePurchase: (propertyId: string, purchaseId: string, overrides?: Record<string, { expiryDate?: string | null; batchCode?: string | null }>) =>
+    post("estoque/purchases/receive", { propertyId, purchaseId, overrides }),
   // patrimônio
   assets: (pid: string) => get<Asset[]>("patrimonio", pid),
   saveAsset: (body: WithProp<Asset>) => post("patrimonio", body),
