@@ -19,14 +19,15 @@ const STATUS: Record<PurchaseStatus, { label: string; cls: string }> = {
   cancelled: { label: "Cancelada", cls: "bg-red-500/15 text-red-500" },
 };
 
-interface ItemRow { productId: string; quantity: string; unitCost: string; }
+interface ItemRow { productId: string; quantity: string; unitCost: string; expiryDate: string; batchCode: string; }
+const emptyItem: ItemRow = { productId: "", quantity: "", unitCost: "", expiryDate: "", batchCode: "" };
 interface PForm {
   id?: string; status: PurchaseStatus; supplierId: string; locationId: string;
   invoiceNumber: string; invoiceUrl: string; orderDate: string; isEmergency: boolean; notes: string; items: ItemRow[];
 }
 const emptyForm: PForm = {
   status: "draft", supplierId: "", locationId: "", invoiceNumber: "", invoiceUrl: "", orderDate: "",
-  isEmergency: false, notes: "", items: [{ productId: "", quantity: "", unitCost: "" }],
+  isEmergency: false, notes: "", items: [{ ...emptyItem }],
 };
 
 export default function ComprasPage() {
@@ -66,11 +67,11 @@ export default function ComprasPage() {
 
   const prodName = (id: string) => products.find((p) => p.id === id)?.name ?? "—";
 
-  const openNew = () => setForm({ ...emptyForm, items: [{ productId: "", quantity: "", unitCost: "" }] });
+  const openNew = () => setForm({ ...emptyForm, items: [{ ...emptyItem }] });
   const openEdit = (p: Purchase) => setForm({
     id: p.id, status: p.status, supplierId: p.supplierId ?? "", locationId: p.locationId ?? "",
     invoiceNumber: p.invoiceNumber ?? "", invoiceUrl: p.invoiceUrl ?? "", orderDate: p.orderDate ?? "", isEmergency: p.isEmergency, notes: p.notes ?? "",
-    items: (p.items ?? []).map((i) => ({ productId: i.productId, quantity: String(i.quantity), unitCost: String(i.unitCost) })),
+    items: (p.items ?? []).map((i) => ({ productId: i.productId, quantity: String(i.quantity), unitCost: String(i.unitCost), expiryDate: i.expiryDate ?? "", batchCode: i.batchCode ?? "" })),
   });
 
   const grandTotal = useMemo(() => {
@@ -80,14 +81,14 @@ export default function ComprasPage() {
 
   const setItem = (idx: number, patch: Partial<ItemRow>) =>
     setForm((f) => f ? { ...f, items: f.items.map((it, i) => i === idx ? { ...it, ...patch } : it) } : f);
-  const addItem = () => setForm((f) => f ? { ...f, items: [...f.items, { productId: "", quantity: "", unitCost: "" }] } : f);
+  const addItem = () => setForm((f) => f ? { ...f, items: [...f.items, { ...emptyItem }] } : f);
   const removeItem = (idx: number) => setForm((f) => f ? { ...f, items: f.items.filter((_, i) => i !== idx) } : f);
 
   const save = async () => {
     if (!property?.id || !form) return;
     const items = form.items
       .filter((i) => i.productId && Number(i.quantity) > 0)
-      .map((i) => ({ productId: i.productId, quantity: Number(i.quantity), unitCost: Number(i.unitCost || 0) }));
+      .map((i) => ({ productId: i.productId, quantity: Number(i.quantity), unitCost: Number(i.unitCost || 0), expiryDate: i.expiryDate || null, batchCode: i.batchCode || null }));
     if (items.length === 0) { toast.error("Adicione ao menos um item com quantidade."); return; }
     setSaving(true);
     try {
@@ -228,17 +229,29 @@ export default function ComprasPage() {
                   <button onClick={addItem} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline"><Plus size={13} /> Adicionar item</button>
                 </div>
                 <div className="space-y-2">
-                  {form.items.map((it, idx) => (
-                    <div key={idx} className="grid grid-cols-[1fr_80px_100px_28px] gap-2 items-center">
-                      <select className="field-input w-full" value={it.productId} onChange={(e) => setItem(idx, { productId: e.target.value })}>
-                        <option value="">Produto…</option>
-                        {products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>)}
-                      </select>
-                      <input type="number" className="field-input w-full" placeholder="Qtd" value={it.quantity} onChange={(e) => setItem(idx, { quantity: e.target.value })} />
-                      <input type="number" className="field-input w-full" placeholder="Custo un." value={it.unitCost} onChange={(e) => setItem(idx, { unitCost: e.target.value })} />
-                      <button onClick={() => removeItem(idx)} className="p-1 text-muted-foreground hover:text-destructive"><Trash size={14} /></button>
-                    </div>
-                  ))}
+                  {form.items.map((it, idx) => {
+                    const prod = products.find((p) => p.id === it.productId);
+                    return (
+                      <div key={idx} className="space-y-1.5">
+                        <div className="grid grid-cols-[1fr_80px_100px_28px] gap-2 items-center">
+                          <select className="field-input w-full" value={it.productId} onChange={(e) => setItem(idx, { productId: e.target.value })}>
+                            <option value="">Produto…</option>
+                            {products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>)}
+                          </select>
+                          <input type="number" className="field-input w-full" placeholder="Qtd" value={it.quantity} onChange={(e) => setItem(idx, { quantity: e.target.value })} />
+                          <input type="number" className="field-input w-full" placeholder="Custo un." value={it.unitCost} onChange={(e) => setItem(idx, { unitCost: e.target.value })} />
+                          <button onClick={() => removeItem(idx)} className="p-1 text-muted-foreground hover:text-destructive"><Trash size={14} /></button>
+                        </div>
+                        {prod?.trackExpiry && (
+                          <div className="flex items-center gap-2 pl-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500 shrink-0">Validade</span>
+                            <input type="date" className="field-input py-1 text-xs" value={it.expiryDate} onChange={(e) => setItem(idx, { expiryDate: e.target.value })} />
+                            <input className="field-input py-1 text-xs flex-1" placeholder="Lote (opcional)" value={it.batchCode} onChange={(e) => setItem(idx, { batchCode: e.target.value })} />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
                 <div className="text-right mt-2 text-sm font-bold text-foreground">Total: R$ {grandTotal.toFixed(2)}</div>
               </div>

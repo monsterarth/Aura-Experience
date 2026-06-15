@@ -121,6 +121,8 @@ export const PurchaseService = {
         toLocationId: purchase.locationId,
         referenceType: "purchase",
         referenceId: purchaseId,
+        expiryDate: it.expiryDate ?? null,
+        batchCode: it.batchCode ?? null,
         notes: `Recebimento${purchase.invoiceNumber ? ` NF ${purchase.invoiceNumber}` : ""}`,
       }, actor);
     }

@@ -230,7 +230,7 @@ export default function EstoqueProdutosPage() {
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={form.trackExpiry ?? false}
                     onChange={(e) => setForm({ ...form, trackExpiry: e.target.checked })} className="w-4 h-4 accent-primary" />
-                  <span className="text-sm text-foreground">Controla validade (Fase 2)</span>
+                  <span className="text-sm text-foreground">Controla validade</span>
                 </label>
                 {form.id && (
                   <label className="flex items-center gap-2 cursor-pointer">

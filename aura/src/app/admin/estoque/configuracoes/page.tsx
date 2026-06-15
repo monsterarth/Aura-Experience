@@ -255,7 +255,7 @@ export default function EstoqueConfigPage() {
             <input type="checkbox" checked={settings.autoLossOnExpiry}
               onChange={(e) => setSettings({ ...settings, autoLossOnExpiry: e.target.checked })}
               className="w-4 h-4 accent-primary" />
-            <span className="text-sm text-foreground">Registrar perda automática ao vencer (Fase 2)</span>
+            <span className="text-sm text-foreground">Registrar perda automática ao vencer</span>
           </label>
           <button onClick={saveSettings} disabled={saving}
             className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold rounded-lg bg-primary text-primary-foreground">
