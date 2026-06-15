@@ -233,6 +233,18 @@ export const StockService = {
     }));
   },
 
+  /** Histórico de ENTRADAS (para explicar o custo médio): qtd, custo e data por produto. */
+  async getEntryHistory(propertyId: string, limit = 500): Promise<{ productId: string; quantity: number; unitCost: number; createdAt: string }[]> {
+    const { data, error } = await db()
+      .from("stock_movements")
+      .select("productId, quantity, unitCost, createdAt")
+      .eq("propertyId", propertyId).eq("type", "entry")
+      .order("createdAt", { ascending: false })
+      .limit(limit);
+    if (error) { console.error("getEntryHistory", error); return []; }
+    return (data ?? []) as { productId: string; quantity: number; unitCost: number; createdAt: string }[];
+  },
+
   async getBalances(propertyId: string, productId?: string) {
     let q = db().from("stock_balances").select("*").eq("propertyId", propertyId);
     if (productId) q = q.eq("productId", productId);

@@ -42,6 +42,7 @@ export const StockClient = {
   // produtos
   products: (pid: string) => get<StockProduct[]>("estoque/products", pid),
   lowStock: (pid: string) => get<StockProduct[]>("estoque/products", pid, "&lowStock=1"),
+  entryHistory: (pid: string) => get<{ productId: string; quantity: number; unitCost: number; createdAt: string }[]>("estoque/products", pid, "&entries=1"),
   saveProduct: (body: WithProp<StockProduct>) => post("estoque/products", body),
   deleteProduct: (pid: string, id: string) => del("estoque/products", pid, id),
   // movimentações

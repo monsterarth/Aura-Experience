@@ -12,6 +12,9 @@ export async function GET(request: NextRequest) {
   if (url.searchParams.get('lowStock') === '1') {
     return NextResponse.json(await StockService.getLowStock(propertyId));
   }
+  if (url.searchParams.get('entries') === '1') {
+    return NextResponse.json(await StockService.getEntryHistory(propertyId));
+  }
   return NextResponse.json(await StockService.getProducts(propertyId));
 }
 
