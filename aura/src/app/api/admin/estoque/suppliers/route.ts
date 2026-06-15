@@ -6,8 +6,11 @@ import { SupplierService } from '@/services/supplier-service';
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(['super_admin', 'admin', 'manager']);
   if (isAuthError(auth)) return auth;
-  const propertyId = new URL(request.url).searchParams.get('propertyId');
+  const url = new URL(request.url);
+  const propertyId = url.searchParams.get('propertyId');
   if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
+  const detail = url.searchParams.get('detail');
+  if (detail) return NextResponse.json(await SupplierService.getSupplierDetail(propertyId, detail));
   return NextResponse.json(await SupplierService.getSuppliers(propertyId));
 }
 

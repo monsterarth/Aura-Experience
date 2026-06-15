@@ -1508,6 +1508,13 @@ export interface Purchase {
   items?: PurchaseItem[];
 }
 
+/** Ficha do fornecedor: dados + histórico de compras + resumo. */
+export interface SupplierDetail {
+  supplier: Supplier;
+  purchases: Purchase[];
+  stats: { count: number; totalReceived: number; lastPurchaseDate?: string | null };
+}
+
 // ── Fase 1: Patrimônio ───────────────────────────────────────────────────────
 export type AssetStatus = 'active' | 'maintenance' | 'inactive' | 'disposed' | 'written_off';
 export type AssetDepreciationMethod = 'linear' | 'none';

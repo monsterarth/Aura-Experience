@@ -4,10 +4,18 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { StockClient } from "@/lib/stock-client";
-import { Supplier } from "@/types/aura";
+import { Supplier, SupplierDetail } from "@/types/aura";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import { useDiscardGuard } from "@/lib/use-discard-guard";
-import { Plus, Loader2, Pencil, Trash2, Save, X, Truck, Mail, Phone } from "lucide-react";
+import { Plus, Loader2, Pencil, Trash2, Save, X, Truck, Mail, Phone, ShoppingCart, MapPin } from "lucide-react";
+
+const PSTATUS: Record<string, { label: string; cls: string }> = {
+  draft: { label: "Rascunho", cls: "bg-secondary text-muted-foreground" },
+  ordered: { label: "Pedida", cls: "bg-blue-500/15 text-blue-500" },
+  received: { label: "Recebida", cls: "bg-emerald-500/15 text-emerald-500" },
+  cancelled: { label: "Cancelada", cls: "bg-red-500/15 text-red-500" },
+};
 
 const empty: Partial<Supplier> = { name: "", active: true };
 
@@ -18,6 +26,17 @@ export default function FornecedoresPage() {
   const [form, setForm] = useState<Partial<Supplier> | null>(null);
   const [saving, setSaving] = useState(false);
   const requestClose = useDiscardGuard(form, () => setForm(null));
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<SupplierDetail | null>(null);
+
+  const openDetail = async (id: string) => {
+    if (!property?.id) return;
+    setDetailId(id); setDetail(null);
+    try { setDetail(await StockClient.supplierDetail(property.id, id)); }
+    catch (e) { toast.error((e as Error).message); }
+  };
+  const closeDetail = () => { setDetailId(null); setDetail(null); };
+  const fmtDate = (s?: string | null) => s ? new Date(s).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "—";
 
   const load = useCallback(async () => {
     if (!property?.id) return;
@@ -74,7 +93,7 @@ export default function FornecedoresPage() {
             </thead>
             <tbody>
               {suppliers.map((s) => (
-                <tr key={s.id} className="border-b border-border/50 last:border-0 hover:bg-secondary/30">
+                <tr key={s.id} onClick={() => openDetail(s.id)} className="border-b border-border/50 last:border-0 hover:bg-secondary/30 cursor-pointer">
                   <td className="px-4 py-3">
                     <div className="font-medium text-foreground">{s.name}{!s.active && <span className="ml-2 text-[10px] uppercase text-muted-foreground">(inativo)</span>}</div>
                     {s.cnpj && <div className="text-xs text-muted-foreground">{s.cnpj}</div>}
@@ -85,7 +104,7 @@ export default function FornecedoresPage() {
                     {!s.phone && !s.email && "—"}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{s.paymentTerms || "—"}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-end gap-1">
                       <button onClick={() => setForm(s)} className="p-1.5 text-muted-foreground hover:text-foreground"><Pencil size={14} /></button>
                       <button onClick={() => remove(s.id)} className="p-1.5 text-muted-foreground hover:text-destructive"><Trash2 size={14} /></button>
@@ -146,6 +165,76 @@ export default function FornecedoresPage() {
                 {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Salvar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ficha do fornecedor */}
+      {detailId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={closeDetail}>
+          <div className="bg-card border border-border w-full max-w-2xl rounded-3xl shadow-2xl max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            {!detail ? (
+              <div className="flex justify-center py-20"><Loader2 className="animate-spin text-primary" /></div>
+            ) : (
+              <>
+                <div className="p-5 border-b border-border flex justify-between items-start">
+                  <div>
+                    <h2 className="text-lg font-bold text-foreground flex items-center gap-2"><Truck size={18} /> {detail.supplier.name}</h2>
+                    <p className="text-xs text-muted-foreground">{detail.supplier.category || "—"}{detail.supplier.cnpj ? ` · ${detail.supplier.cnpj}` : ""}</p>
+                  </div>
+                  <button onClick={closeDetail} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
+                </div>
+                <div className="p-5 overflow-y-auto space-y-5">
+                  {/* Resumo */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="bg-secondary/40 rounded-xl p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Compras</div>
+                      <div className="text-lg font-bold tabular-nums text-foreground">{detail.stats.count}</div>
+                    </div>
+                    <div className="bg-secondary/40 rounded-xl p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Total recebido</div>
+                      <div className="text-lg font-bold tabular-nums text-foreground">R$ {Number(detail.stats.totalReceived).toFixed(2)}</div>
+                    </div>
+                    <div className="bg-secondary/40 rounded-xl p-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Última compra</div>
+                      <div className="text-lg font-bold text-foreground">{fmtDate(detail.stats.lastPurchaseDate)}</div>
+                    </div>
+                  </div>
+
+                  {/* Contato */}
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+                    {detail.supplier.phone && <div className="flex items-center gap-2 text-muted-foreground"><Phone size={13} /> {detail.supplier.phone}</div>}
+                    {detail.supplier.email && <div className="flex items-center gap-2 text-muted-foreground"><Mail size={13} /> {detail.supplier.email}</div>}
+                    {detail.supplier.contactPerson && <div className="text-muted-foreground">Contato: <span className="text-foreground">{detail.supplier.contactPerson}</span></div>}
+                    {detail.supplier.paymentTerms && <div className="text-muted-foreground">Pagamento: <span className="text-foreground">{detail.supplier.paymentTerms}</span></div>}
+                    {detail.supplier.address && <div className="col-span-2 flex items-center gap-2 text-muted-foreground"><MapPin size={13} /> {detail.supplier.address}</div>}
+                  </div>
+                  {detail.supplier.notes && <p className="text-xs text-muted-foreground border-l-2 border-border pl-2">{detail.supplier.notes}</p>}
+
+                  {/* Últimas compras */}
+                  <div>
+                    <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5"><ShoppingCart size={13} /> Últimas compras</h3>
+                    {detail.purchases.length ? (
+                      <table className="w-full text-sm">
+                        <tbody>
+                          {detail.purchases.map((p) => {
+                            const st = PSTATUS[p.status] ?? { label: p.status, cls: "bg-secondary text-muted-foreground" };
+                            return (
+                              <tr key={p.id} className="border-b border-border/40 last:border-0">
+                                <td className="py-1.5 text-muted-foreground whitespace-nowrap pr-2">{fmtDate(p.createdAt)}</td>
+                                <td className="py-1.5 text-foreground pr-2">{p.invoiceNumber || "(sem NF)"}</td>
+                                <td className="py-1.5 pr-2"><span className={cn("text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md", st.cls)}>{st.label}</span></td>
+                                <td className="py-1.5 text-right tabular-nums text-foreground">R$ {Number(p.totalValue).toFixed(2)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    ) : <p className="text-xs text-muted-foreground">Nenhuma compra com este fornecedor ainda.</p>}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

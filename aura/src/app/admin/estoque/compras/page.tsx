@@ -43,6 +43,8 @@ export default function ComprasPage() {
   const requestClose = useDiscardGuard(form, () => setForm(null));
   const [receiving, setReceiving] = useState<{ purchase: Purchase; rows: RecvRow[] } | null>(null);
   const [receivingBusy, setReceivingBusy] = useState(false);
+  const [nota, setNota] = useState<Purchase | null>(null);
+  const fmtDate = (s?: string | null) => s ? new Date(s).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "—";
 
   const loadStatic = useCallback(async () => {
     if (!property?.id) return;
@@ -173,13 +175,13 @@ export default function ComprasPage() {
                 const st = STATUS[p.status];
                 const editable = p.status === "draft" || p.status === "ordered";
                 return (
-                  <tr key={p.id} className="border-b border-border/50 last:border-0 hover:bg-secondary/30">
+                  <tr key={p.id} onClick={() => setNota(p)} className="border-b border-border/50 last:border-0 hover:bg-secondary/30 cursor-pointer">
                     <td className="px-4 py-3">
                       <div className="font-medium text-foreground flex items-center gap-1.5">
                         {p.isEmergency && <Zap size={13} className="text-amber-500" />}
                         {p.invoiceNumber || "(sem NF)"}
                         {p.invoiceUrl && (
-                          <a href={p.invoiceUrl} target="_blank" rel="noopener noreferrer" title="Ver nota fiscal" className="text-muted-foreground hover:text-primary"><Paperclip size={12} /></a>
+                          <a href={p.invoiceUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} title="Ver nota fiscal" className="text-muted-foreground hover:text-primary"><Paperclip size={12} /></a>
                         )}
                       </div>
                       <div className="text-xs text-muted-foreground">{p.supplier?.name ?? "Sem fornecedor"}</div>
@@ -188,7 +190,7 @@ export default function ComprasPage() {
                     <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{p.items?.length ?? 0}</td>
                     <td className="px-4 py-3 text-right tabular-nums font-medium text-foreground">R$ {Number(p.totalValue).toFixed(2)}</td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">{p.location?.name ?? "—"}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-1">
                         {editable && (
                           <button onClick={() => openReceive(p)} title="Receber no estoque" className="p-1.5 text-emerald-500 hover:bg-emerald-500/10 rounded-lg"><PackageCheck size={15} /></button>
@@ -317,6 +319,72 @@ export default function ComprasPage() {
               <button onClick={confirmReceive} disabled={receivingBusy} className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold rounded-xl bg-emerald-600 text-white hover:bg-emerald-700">
                 {receivingBusy ? <Loader2 size={15} className="animate-spin" /> : <PackageCheck size={15} />} Confirmar entrada
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Nota de compra (digital) */}
+      {nota && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={() => setNota(null)}>
+          <div className="bg-card border border-border w-full max-w-xl rounded-3xl shadow-2xl max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-5 border-b border-border flex justify-between items-start">
+              <div>
+                <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                  <ShoppingCart size={18} /> Nota de compra{nota.invoiceNumber ? ` · ${nota.invoiceNumber}` : ""}
+                  {nota.isEmergency && <Zap size={14} className="text-amber-500" />}
+                </h2>
+                <p className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
+                  {nota.supplier?.name ?? "Sem fornecedor"}
+                  <span className={cn("text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md", STATUS[nota.status].cls)}>{STATUS[nota.status].label}</span>
+                </p>
+              </div>
+              <button onClick={() => setNota(null)} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
+            </div>
+            <div className="p-5 overflow-y-auto space-y-4">
+              <div className="grid grid-cols-3 gap-3 text-sm">
+                <div><div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Local</div><div className="text-foreground">{nota.location?.name ?? "—"}</div></div>
+                <div><div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Pedido</div><div className="text-foreground">{fmtDate(nota.orderDate)}</div></div>
+                <div><div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Recebido</div><div className="text-foreground">{fmtDate(nota.receivedDate)}</div></div>
+              </div>
+
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
+                    <th className="text-left py-2">Item</th>
+                    <th className="text-right py-2">Qtd</th>
+                    <th className="text-right py-2">Custo un.</th>
+                    <th className="text-right py-2">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(nota.items ?? []).map((it) => (
+                    <tr key={it.id} className="border-b border-border/40 last:border-0">
+                      <td className="py-2 text-foreground">
+                        {it.product?.name ?? "—"}
+                        {it.expiryDate && <span className="block text-[10px] text-muted-foreground">val. {fmtDate(it.expiryDate)}{it.batchCode ? ` · lote ${it.batchCode}` : ""}</span>}
+                      </td>
+                      <td className="py-2 text-right tabular-nums">{Number(it.quantity)} {it.product?.unit}</td>
+                      <td className="py-2 text-right tabular-nums text-muted-foreground">R$ {Number(it.unitCost).toFixed(2)}</td>
+                      <td className="py-2 text-right tabular-nums">R$ {Number(it.totalCost).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                  {(nota.items ?? []).length === 0 && <tr><td colSpan={4} className="py-6 text-center text-muted-foreground">Sem itens.</td></tr>}
+                </tbody>
+              </table>
+
+              <div className="flex justify-between items-center border-t border-border pt-3">
+                <span className="text-sm font-bold text-foreground">Total</span>
+                <span className="text-lg font-bold tabular-nums text-foreground">R$ {Number(nota.totalValue).toFixed(2)}</span>
+              </div>
+
+              {nota.notes && <p className="text-xs text-muted-foreground border-l-2 border-border pl-2">{nota.notes}</p>}
+
+              {nota.invoiceUrl && (
+                <a href={nota.invoiceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-sm font-bold text-primary hover:underline">
+                  <Paperclip size={14} /> Ver nota fiscal anexada
+                </a>
+              )}
             </div>
           </div>
         </div>
