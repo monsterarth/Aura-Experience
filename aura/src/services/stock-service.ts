@@ -16,6 +16,7 @@ import {
   StockMovementType,
   StockSettings,
   StockBatch,
+  StockBalance,
 } from "@/types/aura";
 
 interface BatchChunk { qty: number; unitCost: number; expiryDate: string | null; batchCode: string | null; purchaseId: string | null; }
@@ -169,6 +170,29 @@ export const StockService = {
       totalQuantity: totals.get(p.id) ?? 0,
       category: p.categoryId ? (catMap.get(p.categoryId) as StockCategory | undefined) : undefined,
     }));
+  },
+
+  /** Ficha do produto: saldo por local, lotes com saldo e histórico de movimentação. */
+  async getProductDetail(propertyId: string, productId: string) {
+    const [{ data: product }, { data: balances }, { data: batches }, { data: movements }, { data: locations }] = await Promise.all([
+      db().from("stock_products").select("*").eq("id", productId).eq("propertyId", propertyId).single(),
+      db().from("stock_balances").select("*").eq("propertyId", propertyId).eq("productId", productId),
+      db().from("stock_batches").select("*").eq("propertyId", propertyId).eq("productId", productId).gt("quantity", 0).order("expiryDate", { ascending: true, nullsFirst: false }),
+      db().from("stock_movements").select("*").eq("propertyId", propertyId).eq("productId", productId).order("createdAt", { ascending: false }).limit(100),
+      db().from("stock_locations").select("id, name").eq("propertyId", propertyId),
+    ]);
+    const lMap = new Map((locations ?? []).map((l: { id: string; name: string }) => [l.id, l]));
+    const name = (id?: string | null) => (id ? (lMap.get(id)?.name ?? "—") : "—");
+    return {
+      product: product as StockProduct,
+      balances: ((balances ?? []) as StockBalance[]).map((b) => ({ ...b, locationName: name(b.locationId) })),
+      batches: ((batches ?? []) as StockBatch[]).map((b) => ({ ...b, locationName: name(b.locationId) })),
+      movements: ((movements ?? []) as StockMovement[]).map((m) => ({
+        ...m,
+        fromLocation: m.fromLocationId ? (lMap.get(m.fromLocationId) as StockLocation | undefined) : undefined,
+        toLocation: m.toLocationId ? (lMap.get(m.toLocationId) as StockLocation | undefined) : undefined,
+      })),
+    };
   },
 
   /** Produtos cuja quantidade total está abaixo do estoque mínimo. */

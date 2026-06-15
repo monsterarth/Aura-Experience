@@ -1568,6 +1568,14 @@ export interface StockBatch {
   location?: StockLocation;
 }
 
+/** Ficha do produto: saldo por local, lotes/validades e histórico. */
+export interface ProductDetail {
+  product: StockProduct;
+  balances: (StockBalance & { locationName: string })[];
+  batches: (StockBatch & { locationName: string })[];
+  movements: StockMovement[];
+}
+
 // ── Fase 2: Inventário físico ────────────────────────────────────────────────
 export type InventoryCountStatus = 'open' | 'counting' | 'closed';
 

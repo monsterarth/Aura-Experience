@@ -15,6 +15,10 @@ export async function GET(request: NextRequest) {
   if (url.searchParams.get('entries') === '1') {
     return NextResponse.json(await StockService.getEntryHistory(propertyId));
   }
+  const detail = url.searchParams.get('detail');
+  if (detail) {
+    return NextResponse.json(await StockService.getProductDetail(propertyId, detail));
+  }
   return NextResponse.json(await StockService.getProducts(propertyId));
 }
 
