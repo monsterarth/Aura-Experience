@@ -1,12 +1,14 @@
 // src/components/admin/MinibarModal.tsx
+// Lançamento de frigobar — agora sobre o Concierge (grupo "Frigobar").
+// Itens vêm de concierge_items (grupo Frigobar, disponíveis p/ camareira) e o
+// lançamento passa pelo pipeline do Concierge (folio + estoque + histórico).
 "use client";
 
 import React, { useState, useEffect } from "react";
 import { X, Save, Coffee, Plus, Minus, AlertCircle, ShoppingCart, Loader2, Settings } from "lucide-react";
-import { HousekeepingTask, MinibarItem } from "@/types/aura";
-import { StayService } from "@/services/stay-service";
+import { HousekeepingTask, ConciergeItem } from "@/types/aura";
+import { ConciergeService } from "@/services/concierge-service";
 import { useAuth } from "@/context/AuthContext";
-import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -21,50 +23,21 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
   const { userData } = useAuth();
   const [loading, setLoading] = useState(false);
   const [loadingItems, setLoadingItems] = useState(false);
-  const [items, setItems] = useState<MinibarItem[]>([]);
+  const [items, setItems] = useState<ConciergeItem[]>([]);
   const [cart, setCart] = useState<Record<string, number>>({});
 
   useEffect(() => {
-    if (isOpen && task?.cabinId) {
+    if (isOpen && task?.propertyId) {
       setCart({});
-      fetchItems(task.cabinId, task.propertyId);
+      fetchItems(task.propertyId);
     }
-  }, [isOpen, task?.cabinId]);
+  }, [isOpen, task?.propertyId]);
 
-  const fetchItems = async (cabinId: string, propertyId: string) => {
+  const fetchItems = async (propertyId: string) => {
     setLoadingItems(true);
     try {
-      // 1. Load global catalog for this property
-      const { data: globals, error } = await supabase
-        .from('minibar_items')
-        .select('*')
-        .eq('propertyId', propertyId)
-        .is('cabinId', null)
-        .eq('active', true)
-        .order('order', { ascending: true });
-      if (error) throw error;
-
-      // 2. Load cabin-specific overrides
-      const { data: overrides } = await supabase
-        .from('minibar_cabin_overrides')
-        .select('*')
-        .eq('cabinId', cabinId);
-      const overrideMap: Record<string, { active: boolean; price: number | null }> = {};
-      for (const ov of (overrides || [])) {
-        overrideMap[ov.itemId] = { active: ov.active, price: ov.price };
-      }
-
-      // 3. Merge: filter by effective active, apply override price
-      const merged = (globals || [])
-        .map((item: MinibarItem) => {
-          const ov = overrideMap[item.id];
-          const active = ov ? ov.active : item.active;
-          const price = (ov && ov.price !== null) ? ov.price : item.price;
-          return { ...item, active, price };
-        })
-        .filter((item: MinibarItem) => item.active);
-
-      setItems(merged);
+      const frigobar = await ConciergeService.getFrigobarItems(propertyId);
+      setItems(frigobar.filter(i => i.active));
     } catch {
       toast.error('Erro ao carregar itens do frigobar.');
       setItems([]);
@@ -87,39 +60,27 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
     });
   };
 
+  const totalItems = Object.values(cart).reduce((a, b) => a + b, 0);
+
   const handleSave = async () => {
     if (!task.stayId) {
       toast.error("Esta tarefa não está vinculada a uma reserva. O consumo não tem onde ser lançado.");
       return;
     }
-
-    const itemsToSave = Object.keys(cart).map(itemId => {
-      const item = items.find(i => i.id === itemId)!;
-      const quantity = cart[itemId];
-      return {
-        description: item.name,
-        quantity,
-        unitPrice: item.price,
-        totalPrice: item.price * quantity,
-        category: 'minibar' as const,
-        addedBy: userData?.id || "SYSTEM",
-      };
-    });
-
-    if (itemsToSave.length === 0) {
+    if (totalItems === 0) {
       toast.info("Nenhum consumo foi adicionado.");
       onClose();
       return;
     }
-
     setLoading(true);
     try {
-      await Promise.all(
-        itemsToSave.map(item =>
-          StayService.addFolioItemManual(task.propertyId, task.stayId!, item, userData?.id || "SYSTEM", userData?.fullName || "Camareira Aura")
-        )
+      await ConciergeService.launchFrigobar(
+        task.propertyId,
+        { stayId: task.stayId, cabinId: task.cabinId, cart },
+        userData?.id || "SYSTEM",
+        userData?.fullName || "Camareira Aura",
       );
-      toast.success(`${itemsToSave.length} item(ns) lançados na conta da cabana!`);
+      toast.success("Consumo lançado na conta da cabana!");
       onClose();
     } catch (error) {
       console.error(error);
@@ -128,8 +89,6 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
       setLoading(false);
     }
   };
-
-  const totalItems = Object.values(cart).reduce((a, b) => a + b, 0);
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
@@ -168,7 +127,7 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
             <div className="flex flex-col items-center gap-3 py-10 text-center text-muted-foreground">
               <Settings size={28} className="opacity-40" />
               <p className="text-sm font-medium">Nenhum item configurado</p>
-              <p className="text-xs opacity-70">Configure os itens desta cabana em<br />Acomodações → Frigobar.</p>
+              <p className="text-xs opacity-70">Cadastre itens no <br />Concierge → grupo &quot;Frigobar&quot;.</p>
             </div>
           ) : (
             <>

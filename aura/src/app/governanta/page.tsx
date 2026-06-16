@@ -11,7 +11,7 @@ import { CabinService } from "@/services/cabin-service";
 import { StaffService } from "@/services/staff-service";
 import { StructureService } from "@/services/structure-service";
 import { StayService } from "@/services/stay-service";
-import { HousekeepingTask, Cabin, Staff, Structure, MinibarItem, ConciergeItem } from "@/types/aura";
+import { HousekeepingTask, Cabin, Staff, Structure, ConciergeItem } from "@/types/aura";
 import { ConciergeService } from "@/services/concierge-service";
 import { MaintenanceService } from "@/services/maintenance-service";
 import { supabase } from "@/lib/supabase";
@@ -1429,7 +1429,7 @@ export default function GovernantaPage() {
 
   const [screen, setScreen] = useState<Screen>("dashboard");
 
-  const [minibarItems, setMinibarItems] = useState<MinibarItem[]>([]);
+  const [minibarItems, setMinibarItems] = useState<ConciergeItem[]>([]);
   const [govMiniTarget, setGovMiniTarget] = useState<HousekeepingTask | null>(null);
 
   // Sheets
@@ -1505,17 +1505,13 @@ export default function GovernantaPage() {
         const withTimeout = <T,>(p: Promise<T>, fallback: T) =>
           Promise.race([p, new Promise<T>(resolve => setTimeout(() => resolve(fallback), 6000))]);
 
-        const [cabinsData, staffData, structuresData, miniResult] = await Promise.all([
+        const [cabinsData, staffData, structuresData, frigobarItems] = await Promise.all([
           withTimeout(CabinService.getCabinsByProperty(property.id), []),
           withTimeout(StaffService.getStaffByProperty(property.id), []),
           withTimeout(StructureService.getStructures(property.id), []),
-          withTimeout(
-            supabase.from("minibar_items").select("*").eq("propertyId", property.id).eq("active", true).order("order", { ascending: true }),
-            { data: [] }
-          ),
+          withTimeout(ConciergeService.getFrigobarItems(property.id), [] as ConciergeItem[]),
         ]);
-        const { data: miniData } = miniResult as { data: any[] | null };
-        setMinibarItems((miniData || []) as MinibarItem[]);
+        setMinibarItems(frigobarItems as ConciergeItem[]);
 
         const cabinsDict: Record<string, Cabin> = {};
         cabinsData.forEach(c => { cabinsDict[c.id] = c; });
@@ -1659,16 +1655,10 @@ export default function GovernantaPage() {
     const task = govMiniTarget;
     if (!task?.stayId || !property) return;
     try {
-      await Promise.all(
-        Object.entries(cart).filter(([, q]) => q > 0).map(([itemId, qty]) => {
-          const item = minibarItems.find(m => m.id === itemId);
-          if (!item) return Promise.resolve();
-          return StayService.addFolioItemManual(
-            property.id, task.stayId!,
-            { description: item.name, quantity: qty, unitPrice: item.price, totalPrice: item.price * qty, category: "minibar", addedBy: userData?.id || "" },
-            userData?.id || "", userData?.fullName || "Governanta",
-          );
-        })
+      await ConciergeService.launchFrigobar(
+        property.id,
+        { stayId: task.stayId, cabinId: task.cabinId, cart },
+        userData?.id || "", userData?.fullName || "Governanta",
       );
       showToast("Frigobar lançado!");
     } catch { showToast("Erro ao lançar frigobar.", T.red); throw new Error("folio_failed"); }

@@ -578,6 +578,33 @@ export const ConciergeService = {
   },
 
   // ==========================================
+  // FRIGOBAR (itens de Concierge no grupo "Frigobar")
+  // ==========================================
+
+  /** Itens de frigobar = itens de concierge (disponíveis p/ camareira) no grupo "Frigobar". */
+  async getFrigobarItems(propertyId: string): Promise<ConciergeItem[]> {
+    const items = await this.getConciergeItemsForMaid(propertyId);
+    return items.filter(i => (i.group?.name || '').trim().toLowerCase() === 'frigobar');
+  },
+
+  /** Lança o consumo de frigobar pelo pipeline do concierge (folio + estoque + histórico). */
+  async launchFrigobar(
+    propertyId: string,
+    params: { stayId: string; cabinId?: string; cart: Record<string, number> },
+    actorId: string,
+    actorName: string,
+  ): Promise<void> {
+    for (const [itemId, qty] of Object.entries(params.cart)) {
+      if (!qty || qty <= 0) continue;
+      const req = await this.createRequest(
+        { propertyId, stayId: params.stayId, cabinId: params.cabinId, itemId, quantity: qty, requestedBy: 'maid' },
+        actorId, actorName,
+      );
+      await this.deliverRequest(propertyId, req.id, actorId, actorName);
+    }
+  },
+
+  // ==========================================
   // REALTIME
   // ==========================================
 

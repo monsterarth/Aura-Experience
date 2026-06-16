@@ -3,7 +3,9 @@
 import React, { useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { StayService } from "@/services/stay-service";
-import { MinibarItem } from "@/types/aura";
+
+// Itens exibidos no passo de frigobar (origem: itens de Concierge do grupo "Frigobar").
+type FrigobarItem = { id: string; name: string; price: number };
 
 // ─── Design tokens (mesmos do /maid) ─────────────────────────────────────────
 
@@ -112,7 +114,7 @@ export function MinibarSheet({
   actorLabel = "Camareira",
 }: {
   cabinName: string;
-  items: MinibarItem[];
+  items: FrigobarItem[];
   onClose: () => void;
   onSend: (cart: Record<string, number>) => Promise<void>;
   keyLocation?: "reception" | "cabin" | "unknown";

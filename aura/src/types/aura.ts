@@ -1150,31 +1150,7 @@ export interface ConciergeItem {
   updatedAt: Timestamp;
 }
 
-// Itens do minibar/frigobar — catálogo global (cabinId = null) + overrides por cabana
-export interface MinibarItem {
-  id: string;
-  cabinId: string | null; // null = item global da propriedade
-  propertyId: string;
-  name: string;       // PT
-  name_en?: string;
-  name_es?: string;
-  price: number;
-  stock: number;
-  active: boolean;
-  order?: number;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-}
-
-// Ajuste por cabana: sobrescreve active e/ou preço de um item global
-export interface MinibarCabinOverride {
-  id: string;
-  itemId: string;
-  cabinId: string;
-  active: boolean;
-  price: number | null; // null = usa o preço global
-  updatedAt: Timestamp;
-}
+// (Frigobar aposentado na Fase 3B — itens migrados para Concierge, grupo "Frigobar".)
 
 export interface ConciergeRequest {
   id: string;
