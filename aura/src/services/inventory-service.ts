@@ -97,9 +97,13 @@ export const InventoryService = {
     const { data: items } = await db().from("inventory_count_items").select("*").eq("countId", countId);
 
     const counted = ((items ?? []) as InventoryCountItem[]).filter((i) => i.countedQty !== null && i.countedQty !== undefined);
-    let matched = 0;
+    let matched = 0;        // itens com contagem exata
+    let totalSystem = 0;    // Σ saldo do sistema (base p/ acuracidade ponderada)
+    let totalAbsDiff = 0;   // Σ |diferença|
     for (const it of counted) {
       const diff = Number(it.countedQty) - Number(it.systemQty);
+      totalSystem += Number(it.systemQty);
+      totalAbsDiff += Math.abs(diff);
       if (diff === 0) { matched++; }
       else {
         await StockService.registerMovement(propertyId, {
@@ -112,12 +116,16 @@ export const InventoryService = {
       await db().from("inventory_count_items").update({ adjusted: true }).eq("id", it.id);
     }
 
-    const accuracy = counted.length ? Math.round((matched / counted.length) * 10000) / 100 : 0;
+    // Acuracidade ponderada por quantidade: 1 − (Σ|dif| / Σ sistema).
+    // Sem base de quantidade, cai para acerto exato por item.
+    const accuracy = totalSystem > 0
+      ? Math.max(0, Math.round((1 - totalAbsDiff / totalSystem) * 10000) / 100)
+      : (counted.length ? Math.round((matched / counted.length) * 10000) / 100 : 0);
     await db().from("inventory_counts").update({ status: "closed", accuracy, closedAt: now(), updatedAt: now() }).eq("id", countId);
     await AuditService.log({
       propertyId, userId: actor.id, userName: actor.name,
       action: "INVENTORY_CLOSED", entity: "INVENTORY", entityId: countId,
-      details: `Inventário fechado. Acuracidade ${accuracy}% (${matched}/${counted.length} itens batidos).`,
+      details: `Inventário fechado. Acuracidade ${accuracy}% (${matched}/${counted.length} itens exatos · divergência total ${totalAbsDiff}).`,
     });
     return accuracy;
   },
