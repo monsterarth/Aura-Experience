@@ -3,7 +3,7 @@
 // rotas em /api/admin/* (que validam sessão e usam service-role no servidor).
 import {
   StockCategory, StockLocation, StockProduct, StockMovement, StockSettings,
-  Supplier, Purchase, PurchaseItem, Asset, StockBatch, InventoryCount, ProductDetail, SupplierDetail,
+  Supplier, Purchase, PurchaseItem, Asset, StockBatch, InventoryCount, ProductDetail, SupplierDetail, StockDashboard,
 } from "@/types/aura";
 
 const BASE = "/api/admin";
@@ -49,6 +49,8 @@ export const StockClient = {
   // movimentações
   movements: (pid: string, limit = 100) => get<StockMovement[]>("estoque/movements", pid, `&limit=${limit}`),
   registerMovement: (body: Record<string, unknown> & { propertyId: string }) => post("estoque/movements", body),
+  // dashboard (visão geral)
+  dashboard: (pid: string, days = 30) => get<StockDashboard>("estoque/overview", pid, `&days=${days}`),
   // parâmetros
   settings: (pid: string) => get<StockSettings>("estoque/settings", pid),
   saveSettings: (body: WithProp<StockSettings>) => post("estoque/settings", body),

@@ -1557,6 +1557,30 @@ export interface StockBatch {
   location?: StockLocation;
 }
 
+/** Agregado da Visão Geral do estoque (dashboard). */
+export interface StockDashboard {
+  kpis: {
+    stockValue: number;        // Σ saldo × custo médio
+    totalProducts: number;
+    totalUnits: number;
+    lowStockCount: number;
+    noTurnoverCount: number;
+    noTurnoverValue: number;
+    lossesValue: number;       // perdas no período
+    cmv: number;               // custo dos consumos (concierge/fb) no período
+    accuracy: number | null;   // último inventário fechado
+    purchasesCount: number;
+    purchasesTotal: number;
+    expiringCount: number;
+  };
+  byCategory: { name: string; value: number; color?: string }[];
+  movementsDaily: { date: string; entry: number; exit: number }[];
+  lossesByType: { type: string; value: number; count: number }[];
+  movementsSummary: { entry: number; exit: number; transfer: number; adjustment: number; loss: number };
+  lowStockItems: { id: string; name: string; unit: string; qty: number; min: number }[];
+  recentMovements: StockMovement[];
+}
+
 /** Ficha do produto: saldo por local, lotes/validades e histórico. */
 export interface ProductDetail {
   product: StockProduct;

@@ -209,6 +209,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Compras & Estoque",
     collapsible: true,
     items: [
+      { id: "estoque_overview", label: "Visão Geral",    icon: LayoutDashboard,   href: "/admin/estoque",                roles: ["super_admin","admin","manager"], exactMatch: true },
       { id: "estoque_produtos", label: "Estoque",        icon: Package,           href: "/admin/estoque/produtos",       roles: ["super_admin","admin","manager"] },
       { id: "estoque_mov",      label: "Movimentações",  icon: ArrowLeftRight,    href: "/admin/estoque/movimentacoes",  roles: ["super_admin","admin","manager"] },
       { id: "estoque_compras",  label: "Compras",        icon: ShoppingCart,      href: "/admin/estoque/compras",        roles: ["super_admin","admin","manager"] },

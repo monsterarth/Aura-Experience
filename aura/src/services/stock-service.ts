@@ -17,6 +17,7 @@ import {
   StockSettings,
   StockBatch,
   StockBalance,
+  StockDashboard,
 } from "@/types/aura";
 
 interface BatchChunk { qty: number; unitCost: number; expiryDate: string | null; batchCode: string | null; purchaseId: string | null; }
@@ -192,6 +193,98 @@ export const StockService = {
         fromLocation: m.fromLocationId ? (lMap.get(m.fromLocationId) as StockLocation | undefined) : undefined,
         toLocation: m.toLocationId ? (lMap.get(m.toLocationId) as StockLocation | undefined) : undefined,
       })),
+    };
+  },
+
+  /** Agregado da Visão Geral (dashboard) — KPIs, gráficos e listas em uma chamada. */
+  async getDashboard(propertyId: string, days = 30): Promise<StockDashboard> {
+    const ref = new Date();
+    const since = new Date(ref); since.setDate(since.getDate() - days);
+    const sinceIso = since.toISOString();
+    const settings = await this.getSettings(propertyId);
+    const turnSince = new Date(ref); turnSince.setDate(turnSince.getDate() - (Number(settings.noTurnoverDays) || 60));
+
+    const [{ data: products }, { data: balances }, { data: categories }, { data: movements }, { data: closedCounts }, { data: recentExits }, { data: purchases }, { data: locs }] = await Promise.all([
+      db().from("stock_products").select("*").eq("propertyId", propertyId).eq("deleted", false),
+      db().from("stock_balances").select("productId, quantity").eq("propertyId", propertyId),
+      db().from("stock_categories").select("id, name, color").eq("propertyId", propertyId),
+      db().from("stock_movements").select("*").eq("propertyId", propertyId).gte("createdAt", sinceIso).order("createdAt", { ascending: false }),
+      db().from("inventory_counts").select("accuracy").eq("propertyId", propertyId).eq("status", "closed").order("closedAt", { ascending: false }).limit(1),
+      db().from("stock_movements").select("productId").eq("propertyId", propertyId).eq("type", "exit").gte("createdAt", turnSince.toISOString()),
+      db().from("purchases").select("totalValue").eq("propertyId", propertyId).eq("status", "received").gte("receivedDate", sinceIso),
+      db().from("stock_locations").select("id, name").eq("propertyId", propertyId),
+    ]);
+
+    const prods = (products ?? []) as StockProduct[];
+    const totals = new Map<string, number>();
+    for (const b of (balances ?? []) as { productId: string; quantity: number }[]) totals.set(b.productId, (totals.get(b.productId) ?? 0) + Number(b.quantity));
+    const catMap = new Map((categories ?? []).map((c: { id: string; name: string; color?: string }) => [c.id, c]));
+
+    let stockValue = 0, totalUnits = 0;
+    const catValue = new Map<string, { value: number; color?: string }>();
+    for (const p of prods) {
+      const qty = totals.get(p.id) ?? 0;
+      const val = qty * Number(p.averageCost || 0);
+      stockValue += val; totalUnits += qty;
+      const cat = p.categoryId ? catMap.get(p.categoryId) : undefined;
+      const name = cat?.name ?? "Sem categoria";
+      const cur = catValue.get(name) ?? { value: 0, color: cat?.color };
+      cur.value += val; catValue.set(name, cur);
+    }
+    const byCategory = Array.from(catValue.entries()).map(([name, v]) => ({ name, value: round2(v.value), color: v.color })).filter(c => c.value > 0).sort((a, b) => b.value - a.value);
+
+    const active = prods.filter(p => p.active);
+    const lowAll = active.filter(p => (totals.get(p.id) ?? 0) < Number(p.minStock));
+    const lowStockItems = lowAll.slice(0, 30).map(p => ({ id: p.id, name: p.name, unit: p.unit, qty: totals.get(p.id) ?? 0, min: Number(p.minStock) }));
+    const exited = new Set((recentExits ?? []).map((m: { productId: string }) => m.productId));
+    const noTurnover = active.filter(p => (totals.get(p.id) ?? 0) > 0 && !exited.has(p.id));
+    const noTurnoverValue = round2(noTurnover.reduce((s, p) => s + (totals.get(p.id) ?? 0) * Number(p.averageCost || 0), 0));
+
+    const moves = (movements ?? []) as StockMovement[];
+    const summary = { entry: 0, exit: 0, transfer: 0, adjustment: 0, loss: 0 };
+    const daily = new Map<string, { entry: number; exit: number }>();
+    const lossM = new Map<string, { value: number; count: number }>();
+    let lossesValue = 0, cmv = 0;
+    for (const m of moves) {
+      summary[m.type] = (summary[m.type] ?? 0) + 1;
+      const day = String(m.createdAt).slice(0, 10);
+      const d = daily.get(day) ?? { entry: 0, exit: 0 };
+      if (m.type === "entry") d.entry += Number(m.totalCost);
+      if (m.type === "exit" || m.type === "loss") d.exit += Number(m.totalCost);
+      daily.set(day, d);
+      if (m.type === "loss") {
+        lossesValue += Number(m.totalCost);
+        const t = m.lossType ?? "other";
+        const lv = lossM.get(t) ?? { value: 0, count: 0 };
+        lv.value += Number(m.totalCost); lv.count += 1; lossM.set(t, lv);
+      }
+      if (m.type === "exit" && (m.referenceType === "concierge" || m.referenceType === "fb" || m.referenceType === "minibar")) cmv += Number(m.totalCost);
+    }
+    const movementsDaily = Array.from(daily.entries()).map(([date, v]) => ({ date, entry: round2(v.entry), exit: round2(v.exit) })).sort((a, b) => a.date.localeCompare(b.date));
+    const lossesByType = Array.from(lossM.entries()).map(([type, v]) => ({ type, value: round2(v.value), count: v.count })).sort((a, b) => b.value - a.value);
+
+    const pName = new Map(prods.map(p => [p.id, p.name]));
+    const lName = new Map((locs ?? []).map((l: { id: string; name: string }) => [l.id, l]));
+    const recentMovements = moves.slice(0, 10).map(m => ({
+      ...m,
+      product: { name: pName.get(m.productId) } as StockProduct,
+      fromLocation: m.fromLocationId ? (lName.get(m.fromLocationId) as StockLocation | undefined) : undefined,
+      toLocation: m.toLocationId ? (lName.get(m.toLocationId) as StockLocation | undefined) : undefined,
+    }));
+
+    const expiring = await this.getExpiringBatches(propertyId, Number(settings.expiryAlertLeadDays) || 30);
+
+    return {
+      kpis: {
+        stockValue: round2(stockValue), totalProducts: active.length, totalUnits: round2(totalUnits),
+        lowStockCount: lowAll.length, noTurnoverCount: noTurnover.length, noTurnoverValue,
+        lossesValue: round2(lossesValue), cmv: round2(cmv),
+        accuracy: (closedCounts && closedCounts[0]) ? Number(closedCounts[0].accuracy) : null,
+        purchasesCount: (purchases ?? []).length,
+        purchasesTotal: round2(((purchases ?? []) as { totalValue: number }[]).reduce((s, p) => s + Number(p.totalValue), 0)),
+        expiringCount: expiring.length,
+      },
+      byCategory, movementsDaily, lossesByType, movementsSummary: summary, lowStockItems, recentMovements,
     };
   },
 
