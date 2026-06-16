@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { FBCategory, FBMenuItem, FBOrder, FBSettings } from '@/types/aura';
+import { StockIntegration } from './stock-integration';
 
 const mapCategory = (dbObj: any): FBCategory => ({
     id: dbObj.id,
@@ -351,6 +352,7 @@ export const fbService = {
     },
 
     async updateOrderStatus(id: string, status: FBOrder['status']): Promise<FBOrder> {
+        const { data: prev } = await supabase.from('fb_orders').select('status').eq('id', id).single();
         const { data, error } = await supabase
             .from('fb_orders')
             .update({ status, updated_at: new Date().toISOString() })
@@ -358,6 +360,40 @@ export const fbService = {
             .select()
             .single();
         if (error) throw error;
-        return mapOrder(data);
+        const order = mapOrder(data);
+        // Baixa de estoque por ficha técnica ao entregar (1ª vez). Best-effort.
+        if (status === 'delivered' && prev?.status !== 'delivered') {
+            await this._deductStockForOrder(order);
+        }
+        return order;
+    },
+
+    /** Explode a ficha técnica do pedido e baixa cada insumo vinculado (integração de estoque). */
+    async _deductStockForOrder(order: FBOrder): Promise<void> {
+        try {
+            const menuItems = await this.getMenuItems(order.propertyId);
+            const map = new Map(menuItems.map(m => [m.id, m]));
+            const actor = { id: 'system', name: 'F&B' };
+            for (const oi of (order.items || [])) {
+                const mi = map.get(oi.menuItemId);
+                if (!mi) continue;
+                // Usa os ingredientes do sabor escolhido (se houver), senão os do item.
+                let ings = mi.ingredients || [];
+                if (oi.flavor && mi.flavors?.length) {
+                    const fl = mi.flavors.find(f => f.name === oi.flavor);
+                    if (fl?.ingredients?.length) ings = fl.ingredients;
+                }
+                for (const ing of ings) {
+                    if (!ing.productId || !ing.consumptionQty) continue;
+                    await StockIntegration.consumeForSale(
+                        order.propertyId,
+                        { productId: ing.productId, quantity: ing.consumptionQty * oi.quantity, referenceType: 'fb', referenceId: order.id },
+                        actor,
+                    );
+                }
+            }
+        } catch (e) {
+            console.error('[F&B] baixa de estoque do pedido falhou (ignorado):', e);
+        }
     }
 };

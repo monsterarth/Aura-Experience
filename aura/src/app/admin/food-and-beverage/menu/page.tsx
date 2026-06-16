@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { fbService } from "@/services/fb-service";
+import { StockClient } from "@/lib/stock-client";
 import { FBCategory, FBMenuItem, FBIngredient, FBFlavor } from "@/types/aura";
 import { Loader2, Plus, Edit2, Trash2, CheckCircle2, XCircle, Search, Save, X, Info, Settings, ArrowUp, ArrowDown, Copy } from "lucide-react";
 import { toast } from "sonner";
@@ -63,7 +64,17 @@ export default function FBMenuPage() {
     const [tempFlavor, setTempFlavor] = useState<FBFlavor>({ name: "", name_en: "", name_es: "", imageUrl: "", ingredients: [] });
 
     // Ingredient Temp State for Item form
-    const [tempIngredient, setTempIngredient] = useState<FBIngredient>({ name: "", cost: 0, quantity: "" });
+    const [tempIngredient, setTempIngredient] = useState<FBIngredient>({ name: "", cost: 0, quantity: "", productId: null, consumptionQty: undefined });
+
+    // Estoque: produtos para vincular na ficha técnica (só se o módulo estiver ligado)
+    const stockEnabled = currentProperty?.settings?.hasStock !== false;
+    const [stockProducts, setStockProducts] = useState<{ id: string; name: string; unit: string }[]>([]);
+    useEffect(() => {
+        if (!currentProperty?.id || !stockEnabled) { setStockProducts([]); return; }
+        StockClient.products(currentProperty.id)
+            .then(ps => setStockProducts(ps.map(p => ({ id: p.id, name: p.name, unit: p.unit }))))
+            .catch(() => setStockProducts([]));
+    }, [currentProperty?.id, stockEnabled]);
 
     // For flavors ingredient management
     const [editingFlavorIndex, setEditingFlavorIndex] = useState<number | null>(null);
@@ -296,7 +307,7 @@ export default function FBMenuPage() {
             ...prev,
             ingredients: [...prev.ingredients, { ...tempIngredient }]
         }));
-        setTempIngredient({ name: "", cost: 0, quantity: "" });
+        setTempIngredient({ name: "", cost: 0, quantity: "", productId: null, consumptionQty: undefined });
     }
 
     function removeIngredient(index: number) {
@@ -890,6 +901,27 @@ export default function FBMenuPage() {
                                         <Plus size={20} />
                                     </button>
                                 </div>
+
+                                {stockEnabled && (
+                                    <div className="flex flex-col md:flex-row gap-2 md:items-center">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground shrink-0">Baixa de estoque (opcional):</span>
+                                        <select
+                                            value={tempIngredient.productId ?? ""}
+                                            onChange={e => setTempIngredient({ ...tempIngredient, productId: e.target.value || null })}
+                                            className="flex-1 bg-background border border-border p-3 rounded-xl outline-none focus:border-primary/50 text-sm"
+                                        >
+                                            <option value="">Sem vínculo de estoque</option>
+                                            {stockProducts.map(p => <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>)}
+                                        </select>
+                                        <input
+                                            type="number" step="0.001" min="0"
+                                            placeholder="Qtd consumida / porção"
+                                            value={tempIngredient.consumptionQty ?? ""}
+                                            onChange={e => setTempIngredient({ ...tempIngredient, consumptionQty: e.target.value === "" ? undefined : parseFloat(e.target.value) })}
+                                            className="w-full md:w-44 bg-background border border-border p-3 rounded-xl outline-none focus:border-primary/50 text-sm font-mono"
+                                        />
+                                    </div>
+                                )}
 
                                 {itemForm.ingredients.length > 0 && (
                                     <div className="border border-border rounded-xl bg-background overflow-hidden mt-4">
