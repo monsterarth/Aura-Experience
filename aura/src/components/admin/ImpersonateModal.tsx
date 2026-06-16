@@ -28,6 +28,7 @@ const ROLE_RANK: Record<UserRole, number> = {
   kitchen:     40,
   maintenance: 40,
   marketing:   40,
+  compras:     40,
   maid:        20,
   technician:  20,
   waiter:      20,

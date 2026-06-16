@@ -4,7 +4,7 @@ import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { InventoryService } from '@/services/inventory-service';
 
 export async function GET(request: NextRequest) {
-  const auth = await requireAuth(['super_admin', 'admin', 'manager']);
+  const auth = await requireAuth(['super_admin', 'admin', 'manager', 'compras']);
   if (isAuthError(auth)) return auth;
   const url = new URL(request.url);
   const propertyId = url.searchParams.get('propertyId');
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireAuth(['super_admin', 'admin', 'manager']);
+  const auth = await requireAuth(['super_admin', 'admin', 'manager', 'compras']);
   if (isAuthError(auth)) return auth;
   const body = await request.json();
   const { propertyId, action } = body;
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const auth = await requireAuth(['super_admin', 'admin', 'manager']);
+  const auth = await requireAuth(['super_admin', 'admin', 'manager', 'compras']);
   if (isAuthError(auth)) return auth;
   const url = new URL(request.url);
   const id = url.searchParams.get('id');

@@ -4,7 +4,7 @@ import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { StockService } from '@/services/stock-service';
 
 export async function GET(request: NextRequest) {
-  const auth = await requireAuth(['super_admin', 'admin', 'manager']);
+  const auth = await requireAuth(['super_admin', 'admin', 'manager', 'compras']);
   if (isAuthError(auth)) return auth;
   const url = new URL(request.url);
   const propertyId = url.searchParams.get('propertyId');
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireAuth(['super_admin', 'admin', 'manager']);
+  const auth = await requireAuth(['super_admin', 'admin', 'manager', 'compras']);
   if (isAuthError(auth)) return auth;
   const { propertyId, ...input } = await request.json();
   if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });

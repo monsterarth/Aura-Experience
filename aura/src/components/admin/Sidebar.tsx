@@ -11,7 +11,7 @@ import { Property } from "@/types/aura";
 import { cn } from "@/lib/utils";
 import { roleHome, isMobileOnlyRole } from "@/lib/role-routes";
 import {
-  LayoutDashboard, Users, Home, Wrench,
+  Users, Home, Wrench,
   Sparkles, Building, ChevronDown, LogOut,
   MessageSquare, Settings, Globe, X,
   Star, ClipboardList, Bot, FileText,
@@ -90,6 +90,7 @@ const ROLE_META: Record<string, { label: string; short: string; color: string; b
   kitchen:     { label: "Cozinha",          short: "CZ", color: T.orange, badge: "Cozinha",     badgeBg: T.orangeBg,               badgeBorder: "rgba(251,146,60,0.25)"  },
   maintenance: { label: "Manutenção",       short: "MT", color: T.amber,  badge: "Manutenção",  badgeBg: T.amberBg,                badgeBorder: T.amberBorder            },
   marketing:   { label: "Marketing",        short: "MK", color: "#a3e635",badge: "Marketing",   badgeBg: "rgba(163,230,53,0.08)",  badgeBorder: "rgba(163,230,53,0.22)"  },
+  compras:     { label: "Compras",          short: "CP", color: "#34d399",badge: "Compras",     badgeBg: "rgba(52,211,153,0.10)",  badgeBorder: "rgba(52,211,153,0.25)"  },
 };
 
 function getRoleMeta(role?: string | null) {
@@ -134,6 +135,7 @@ const PAINEL_CHILDREN: SubItem[] = [
   { id: "painel_kds",        label: "Cozinha/KDS", href: "/admin/cafe-salao/kds",       roles: ["super_admin", "admin"] },
   { id: "painel_aval",       label: "Avaliações",  href: "/admin/surveys/responses",    roles: ["super_admin", "admin", "manager"] },
   { id: "painel_gerencia",   label: "Gerência",    href: "/admin/hr",                   roles: ["super_admin", "admin", "manager"] },
+  { id: "painel_estoque",    label: "Estoque",     href: "/admin/estoque",              roles: ["super_admin", "admin", "manager", "compras"] },
 ];
 
 // ─── Nav groups ───────────────────────────────────────────────────────────────
@@ -144,16 +146,16 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         id: "painel", label: "Painel", icon: LayoutGrid,
-        href: "/admin/dashboard", roles: ["super_admin","admin","manager","reception","governance","maintenance","kitchen","marketing"],
+        href: "/admin/dashboard", roles: ["super_admin","admin","manager","reception","governance","maintenance","kitchen","marketing","compras"],
         children: PAINEL_CHILDREN,
       },
       {
         id: "perfil", label: "Meu Perfil", icon: UserCircle2,
-        href: "/admin/perfil", roles: ["super_admin","admin","manager","reception","governance","maintenance","kitchen","marketing"],
+        href: "/admin/perfil", roles: ["super_admin","admin","manager","reception","governance","maintenance","kitchen","marketing","compras"],
       },
       {
         id: "configuracoes", label: "Configurações", icon: Settings,
-        href: "/admin/perfil/configuracoes", roles: ["super_admin","admin","manager","reception","governance","maintenance","kitchen","marketing"],
+        href: "/admin/perfil/configuracoes", roles: ["super_admin","admin","manager","reception","governance","maintenance","kitchen","marketing","compras"],
       },
     ],
   },
@@ -209,15 +211,13 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Compras & Estoque",
     collapsible: true,
     items: [
-      { id: "estoque_overview", label: "Visão Geral",    icon: LayoutDashboard,   href: "/admin/estoque",                roles: ["super_admin","admin","manager"], exactMatch: true },
-      { id: "estoque_produtos", label: "Estoque",        icon: Package,           href: "/admin/estoque/produtos",       roles: ["super_admin","admin","manager"] },
-      { id: "estoque_mov",      label: "Movimentações",  icon: ArrowLeftRight,    href: "/admin/estoque/movimentacoes",  roles: ["super_admin","admin","manager"] },
-      { id: "estoque_compras",  label: "Compras",        icon: ShoppingCart,      href: "/admin/estoque/compras",        roles: ["super_admin","admin","manager"] },
-      { id: "estoque_fornec",   label: "Fornecedores",   icon: Truck,             href: "/admin/estoque/fornecedores",   roles: ["super_admin","admin","manager"] },
-      { id: "estoque_inventario", label: "Inventário",   icon: ClipboardList,     href: "/admin/estoque/inventario",     roles: ["super_admin","admin","manager"] },
-      { id: "estoque_perdas",   label: "Perdas",         icon: AlertOctagon,      href: "/admin/estoque/perdas",         roles: ["super_admin","admin","manager"] },
-      { id: "patrimonio",       label: "Patrimônio",     icon: Landmark,          href: "/admin/patrimonio",             roles: ["super_admin","admin","manager"] },
-      { id: "estoque_config",   label: "Config. Estoque",icon: SlidersHorizontal, href: "/admin/estoque/configuracoes",  roles: ["super_admin","admin","manager"] },
+      { id: "estoque_produtos", label: "Estoque",        icon: Package,           href: "/admin/estoque/produtos",       roles: ["super_admin","admin","manager","compras"] },
+      { id: "estoque_mov",      label: "Movimentações",  icon: ArrowLeftRight,    href: "/admin/estoque/movimentacoes",  roles: ["super_admin","admin","manager","compras"] },
+      { id: "estoque_compras",  label: "Compras",        icon: ShoppingCart,      href: "/admin/estoque/compras",        roles: ["super_admin","admin","manager","compras"] },
+      { id: "estoque_fornec",   label: "Fornecedores",   icon: Truck,             href: "/admin/estoque/fornecedores",   roles: ["super_admin","admin","manager","compras"] },
+      { id: "estoque_inventario", label: "Inventário",   icon: ClipboardList,     href: "/admin/estoque/inventario",     roles: ["super_admin","admin","manager","compras"] },
+      { id: "estoque_perdas",   label: "Perdas",         icon: AlertOctagon,      href: "/admin/estoque/perdas",         roles: ["super_admin","admin","manager","compras"] },
+      { id: "patrimonio",       label: "Patrimônio",     icon: Landmark,          href: "/admin/patrimonio",             roles: ["super_admin","admin","manager","compras"] },
     ],
   },
   {
@@ -238,6 +238,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Setup",
     collapsible: true,
     items: [
+      { id: "estoque_config", label: "Config. Estoque", icon: SlidersHorizontal, href: "/admin/estoque/configuracoes",        roles: ["super_admin","admin","manager","compras"] },
       { id: "gastro_main", label: "Gastronomia",      icon: Coffee,        href: "/admin/food-and-beverage/menu",           roles: ["super_admin","admin","kitchen","manager"] },
       { id: "cafe",        label: "Café Salão (KDS)", icon: Phone,         href: "/admin/cafe-salao",                       roles: ["super_admin","admin","kitchen","manager"] },
       { id: "equipe",      label: "Equipe",            icon: Users,         href: "/admin/staff",                            roles: ["super_admin","admin","manager"] },

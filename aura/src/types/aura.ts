@@ -16,7 +16,8 @@ export type UserRole =
   | 'waiter'     // Garçom (Operacional Mobile)
   | 'porter'     // Porteiro (Operacional Mobile)
   | 'houseman'   // Mensageiro (Operacional Mobile)
-  | 'marketing'; // Marketing
+  | 'marketing'  // Marketing
+  | 'compras';   // Compras (cargo: gere o módulo de estoque/compras; acesso restrito)
 
 export interface PropertyTheme {
   colors: {

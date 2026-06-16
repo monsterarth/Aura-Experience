@@ -19,6 +19,7 @@ export const ROLE_HOME: Record<string, string> = {
   reception:   '/admin/reception',
   kitchen:     '/admin/cafe-salao/kds',
   marketing:   '/admin/surveys/responses',
+  compras:     '/admin/estoque',
   // Cargos operacionais mobile — caem direto no seu app de campo
   governance:  '/governanta',
   maid:        '/maid',

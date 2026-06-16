@@ -4,7 +4,7 @@ import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { PurchaseService } from '@/services/purchase-service';
 
 export async function POST(request: NextRequest) {
-  const auth = await requireAuth(['super_admin', 'admin', 'manager']);
+  const auth = await requireAuth(['super_admin', 'admin', 'manager', 'compras']);
   if (isAuthError(auth)) return auth;
   const { propertyId, purchaseId, overrides } = await request.json();
   if (!propertyId || !purchaseId) return NextResponse.json({ error: 'propertyId and purchaseId required' }, { status: 400 });
