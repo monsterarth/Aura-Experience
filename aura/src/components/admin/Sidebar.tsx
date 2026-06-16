@@ -759,6 +759,8 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
           scrollbarColor: `${TT.border} transparent`,
         }}>
           {NAV_GROUPS.map((group) => {
+            // Módulo Compras & Estoque desligado para a propriedade (SaaS): esconde o grupo.
+            if (group.id === "estoque_grupo" && property?.settings?.hasStock === false) return null;
             const visibleItems = group.items.filter(canSee);
             if (visibleItems.length === 0) return null;
             const isCollapsible = !!group.collapsible;

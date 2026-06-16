@@ -9,7 +9,7 @@ import {
     Save, ArrowLeft, Smartphone, Palette,
     Type, Layout, Loader2, Clock, MessageSquare,
     Phone, ShieldCheck, Coffee, Sparkles, Wrench, FileText, Image as ImageIcon,
-    CheckCircle2, Globe, AlertTriangle, Trash2, RefreshCcw, Database
+    CheckCircle2, Globe, AlertTriangle, Trash2, RefreshCcw, Database, Settings2
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -82,6 +82,7 @@ export default function PropertySettingsPage() {
         whatsappEnabled: false,
         whatsappConfig: { apiUrl: "", apiKey: "", instanceName: "", chatwootUrl: "", chatwootAccountId: "", chatwootApiToken: "", chatwootInboxId: 0 },
         customDomain: "",
+        hasStock: true,   // módulo Compras & Estoque (SaaS)
         checkInTime: "14:00",
         checkOutTime: "12:00",
         receptionStartTime: "08:00",
@@ -463,6 +464,21 @@ export default function PropertySettingsPage() {
                                         />
                                     </div>
                                 </div>
+                            </section>
+
+                            <section className="bg-card border border-border p-8 rounded-[32px] space-y-4">
+                                <h3 className="font-bold text-lg flex items-center gap-2">
+                                    <Settings2 className="text-primary" size={20} /> Módulos
+                                </h3>
+                                <label className="flex items-center justify-between gap-4 cursor-pointer">
+                                    <span>
+                                        <span className="block font-bold text-foreground">Compras &amp; Estoque</span>
+                                        <span className="block text-xs text-muted-foreground">Estoque, compras, patrimônio e baixa automática no consumo (Concierge/F&amp;B). Desligado: o resto do sistema funciona normalmente, sem estoque.</span>
+                                    </span>
+                                    <input type="checkbox" checked={settings.hasStock !== false}
+                                        onChange={e => setSettings({ ...settings, hasStock: e.target.checked })}
+                                        className="w-5 h-5 accent-primary shrink-0" />
+                                </label>
                             </section>
 
                             <section className="bg-card border border-border p-8 rounded-[32px] space-y-6">

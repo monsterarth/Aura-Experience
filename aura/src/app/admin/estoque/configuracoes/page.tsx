@@ -242,6 +242,14 @@ export default function EstoqueConfigPage() {
       ) : settings ? (
         <section className="bg-card border border-border rounded-2xl p-5 space-y-4 max-w-lg">
           <div>
+            <label className="field-label">Local de consumo padrão (baixa de Concierge/F&B)</label>
+            <select className="field-input w-full" value={settings.defaultSaleLocationId ?? ""}
+              onChange={(e) => setSettings({ ...settings, defaultSaleLocationId: e.target.value || null })}>
+              <option value="">— (sem baixa automática)</option>
+              {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </div>
+          <div>
             <label className="field-label">Dias sem giro (alerta de baixa rotatividade)</label>
             <input type="number" className="field-input w-full" value={settings.noTurnoverDays}
               onChange={(e) => setSettings({ ...settings, noTurnoverDays: Number(e.target.value) })} />

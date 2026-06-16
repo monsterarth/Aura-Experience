@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { ConciergeService } from "@/services/concierge-service";
+import { StockClient } from "@/lib/stock-client";
 import { ConciergeRequest, ConciergeItem, ConciergeCategory, ConciergeGroup } from "@/types/aura";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import EmojiPicker from "emoji-picker-react";
@@ -38,8 +39,7 @@ interface ItemForm {
   availableForGuest: boolean; availableForMaid: boolean;
   order: string;
   groupId: string;
-  stock_qty: string;
-  stock_unlimited: boolean;
+  productId: string;   // vínculo com produto do estoque (Fase 3)
 }
 
 interface GroupForm {
@@ -55,8 +55,7 @@ const defaultForm: ItemForm = {
   availableForGuest: true, availableForMaid: false,
   order: '0',
   groupId: '',
-  stock_qty: '',
-  stock_unlimited: true,
+  productId: '',
 };
 
 const defaultGroupForm: GroupForm = { name: '', icon: '📦', color: '#9b6dff', order: '0' };
@@ -164,6 +163,14 @@ export default function AdminConciergePage() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ItemForm>(defaultForm);
+  const [stockProducts, setStockProducts] = useState<{ id: string; name: string; unit: string }[]>([]);
+  const stockEnabled = property?.settings?.hasStock !== false;
+  useEffect(() => {
+    if (!property?.id || !stockEnabled) { setStockProducts([]); return; }
+    StockClient.products(property.id)
+      .then(ps => setStockProducts(ps.map(p => ({ id: p.id, name: p.name, unit: p.unit }))))
+      .catch(() => setStockProducts([]));
+  }, [property?.id, stockEnabled]);
   const [saving, setSaving] = useState(false);
 
   // ── Archive state ──
@@ -299,7 +306,6 @@ export default function AdminConciergePage() {
   const openNew = () => { setForm(defaultForm); setEditingId(null); setShowForm(true); };
 
   const openEdit = (item: ConciergeItem) => {
-    const isUnlimited = item.stock_qty == null;
     setForm({
       name: item.name, name_en: item.name_en || '', name_es: item.name_es || '',
       description: item.description || '', description_en: item.description_en || '', description_es: item.description_es || '',
@@ -309,8 +315,7 @@ export default function AdminConciergePage() {
       active: item.active, availableForGuest: item.availableForGuest ?? true,
       availableForMaid: item.availableForMaid ?? false, order: String(item.order ?? 0),
       groupId: item.groupId || '',
-      stock_qty: isUnlimited ? '' : String(item.stock_qty),
-      stock_unlimited: isUnlimited,
+      productId: item.productId || '',
     });
     setEditingId(item.id);
     setShowForm(true);
@@ -363,7 +368,7 @@ export default function AdminConciergePage() {
         active: form.active, availableForGuest: form.availableForGuest, availableForMaid: form.availableForMaid,
         order: parseInt(form.order) || 0,
         groupId: form.groupId || undefined,
-        stock_qty: form.stock_unlimited ? null : (parseInt(form.stock_qty) || null),
+        productId: form.productId || null,
       };
       if (editingId) {
         await ConciergeService.updateItem(property.id, editingId, payload, userData.id, userData.fullName);
@@ -829,7 +834,7 @@ export default function AdminConciergePage() {
       {showForm && (
         <CatalogFormModal
           form={form} setForm={setForm} editingId={editingId} saving={saving}
-          groups={groups}
+          groups={groups} stockProducts={stockProducts} stockEnabled={stockEnabled}
           onClose={() => { setShowForm(false); setEditingId(null); }}
           onSave={handleSave}
         />
@@ -1405,12 +1410,14 @@ function NewRequestModal({ preset, onClose }: {
 
 type LangTab = 'pt' | 'en' | 'es';
 
-function CatalogFormModal({ form, setForm, editingId, saving, groups, onClose, onSave }: {
+function CatalogFormModal({ form, setForm, editingId, saving, groups, stockProducts, stockEnabled, onClose, onSave }: {
   form: ItemForm;
   setForm: React.Dispatch<React.SetStateAction<ItemForm>>;
   editingId: string | null;
   saving: boolean;
   groups: ConciergeGroup[];
+  stockProducts: { id: string; name: string; unit: string }[];
+  stockEnabled: boolean;
   onClose: () => void;
   onSave: () => void;
 }) {
@@ -1819,39 +1826,26 @@ function CatalogFormModal({ form, setForm, editingId, saving, groups, onClose, o
             </div>
           )}
 
-          {/* ── Estoque ── */}
-          <div>
-            <div style={sectionLabel}>Estoque</div>
-            <button
-              onClick={() => setForm(prev => ({ ...prev, stock_unlimited: !prev.stock_unlimited, stock_qty: '' }))}
-              style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 12, cursor: 'pointer', width: '100%', fontFamily: 'inherit', textAlign: 'left', marginBottom: form.stock_unlimited ? 0 : 10, background: form.stock_unlimited ? 'rgba(45,212,191,0.06)' : 'rgba(255,255,255,0.035)', border: `1px solid ${form.stock_unlimited ? 'rgba(45,212,191,0.25)' : 'rgba(255,255,255,0.07)'}`, transition: 'all .15s' }}
-            >
-              <div style={{ width: 20, height: 20, borderRadius: 6, background: form.stock_unlimited ? '#2dd4bf' : 'transparent', border: `2px solid ${form.stock_unlimited ? '#2dd4bf' : 'rgba(255,255,255,0.2)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all .15s' }}>
-                {form.stock_unlimited && <div style={{ width: 8, height: 8, borderRadius: 2, background: '#fff' }} />}
+          {/* ── Estoque (integração) ── */}
+          {stockEnabled && (
+            <div>
+              <div style={sectionLabel}>Estoque</div>
+              <label style={labelSt}>Produto vinculado</label>
+              <select
+                value={form.productId}
+                onChange={e => setForm(prev => ({ ...prev, productId: e.target.value }))}
+                style={{ ...inputSt }}
+              >
+                <option value="">Sem vínculo (não controla estoque)</option>
+                {stockProducts.map(p => <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>)}
+              </select>
+              <div style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)', marginTop: 4, lineHeight: 1.4 }}>
+                {form.category === 'loan'
+                  ? 'Ao marcar como perdido, dá baixa do produto vinculado no estoque.'
+                  : 'A cada entrega, dá baixa automática do produto vinculado no estoque.'}
               </div>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 800, color: form.stock_unlimited ? '#2dd4bf' : '#eef0f8' }}>Ilimitado</div>
-                <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', marginTop: 1 }}>Sem controle de estoque para este item</div>
-              </div>
-            </button>
-            {!form.stock_unlimited && (
-              <div>
-                <label style={labelSt}>Quantidade em estoque</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <button onClick={() => setForm(prev => ({ ...prev, stock_qty: String(Math.max(0, parseInt(prev.stock_qty || '0') - 1)) }))}
-                    style={{ width: 34, height: 37, borderRadius: 9, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontSize: 18, color: '#eef0f8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>−</button>
-                  <input type="number" min="0" value={form.stock_qty} onChange={e => setForm(prev => ({ ...prev, stock_qty: e.target.value }))}
-                    placeholder="0" style={{ ...inputSt, textAlign: 'center', padding: '9px 4px' }}
-                    onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
-                  <button onClick={() => setForm(prev => ({ ...prev, stock_qty: String(parseInt(prev.stock_qty || '0') + 1) }))}
-                    style={{ width: 34, height: 37, borderRadius: 9, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontSize: 18, color: '#eef0f8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>+</button>
-                </div>
-                <div style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)', marginTop: 4, lineHeight: 1.4 }}>
-                  {form.category === 'loan' ? 'Máx. de unidades em circulação simultânea.' : 'Unidades disponíveis; decrementado a cada entrega.'}
-                </div>
-              </div>
-            )}
-          </div>
+            </div>
+          )}
 
         </div>
 

@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { ConciergeGroup, ConciergeItem, ConciergeRequest } from "@/types/aura";
 import { AuditService } from "./audit-service";
 import { StayService } from "./stay-service";
+import { StockIntegration } from "./stock-integration";
 
 export const ConciergeService = {
 
@@ -327,34 +328,8 @@ export const ConciergeService = {
     actorId: string,
     actorName: string
   ): Promise<ConciergeRequest> {
-    // Stock check
-    const { data: itemData } = await supabase
-      .from('concierge_items')
-      .select('*')
-      .eq('id', data.itemId)
-      .single();
-    const item = itemData as ConciergeItem | null;
-
-    if (item && item.stock_qty != null) {
-      if (item.category === 'loan') {
-        // Count active loans (pending + in_progress + delivered but not returned/lost)
-        const { count } = await supabase
-          .from('concierge_requests')
-          .select('quantity', { count: 'exact', head: false })
-          .eq('itemId', data.itemId)
-          .in('status', ['pending', 'in_progress', 'delivered']);
-        const activeCount = count ?? 0;
-        if (activeCount + data.quantity > item.stock_qty) {
-          throw new Error('insufficient_stock');
-        }
-      } else {
-        // consumption: check raw stock
-        if (item.stock_qty < data.quantity) {
-          throw new Error('insufficient_stock');
-        }
-      }
-    }
-
+    // Estoque agora é gerido pelo módulo de Estoque (baixa na entrega). Pedido
+    // não bloqueia por falta de estoque — ver StockIntegration.consumeForSale.
     const now = new Date().toISOString();
     const payload = {
       ...data,
@@ -457,12 +432,13 @@ export const ConciergeService = {
       .eq('id', requestId);
     if (updErr) throw updErr;
 
-    // 4. Decrement stock for consumption items
-    if (item.category === 'consumption' && item.stock_qty != null) {
-      await supabase
-        .from('concierge_items')
-        .update({ stock_qty: Math.max(0, item.stock_qty - req.quantity), updatedAt: new Date().toISOString() })
-        .eq('id', item.id);
+    // 4. Baixa de estoque (integração) — consumo. No-op se módulo off ou item sem produto vinculado.
+    if (item.category === 'consumption') {
+      await StockIntegration.consumeForSale(
+        propertyId,
+        { productId: item.productId, quantity: req.quantity, referenceType: 'concierge', referenceId: requestId },
+        { id: actorId, name: actorName },
+      );
     }
 
     // 5. Charge folio if applicable
@@ -565,12 +541,13 @@ export const ConciergeService = {
       .eq('id', requestId);
     if (updErr) throw updErr;
 
-    // 3. Permanently reduce stock for loan items (lost item doesn't return)
-    if (item.category === 'loan' && item.stock_qty != null) {
-      await supabase
-        .from('concierge_items')
-        .update({ stock_qty: Math.max(0, item.stock_qty - req.quantity), updatedAt: new Date().toISOString() })
-        .eq('id', item.id);
+    // 3. Baixa de estoque (integração) — item de empréstimo extraviado (não retorna).
+    if (item.category === 'loan') {
+      await StockIntegration.consumeForSale(
+        propertyId,
+        { productId: item.productId, quantity: req.quantity, referenceType: 'concierge', referenceId: requestId },
+        { id: actorId, name: actorName },
+      );
     }
 
     // 4. Charge loss_price if defined

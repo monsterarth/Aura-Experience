@@ -63,6 +63,7 @@ export interface Property {
   settings: {
     hasBreakfast: boolean;
     hasKDS: boolean;
+    hasStock?: boolean;          // módulo Compras & Estoque (default: habilitado; off só se === false)
     whatsappEnabled: boolean;
     whatsappNumber?: string;
     whatsappConfig?: {
@@ -955,6 +956,9 @@ export interface FBIngredient {
   name: string;
   cost: number;
   quantity?: string; // Para controle futuro
+  productId?: string | null;   // vínculo com produto do estoque (Fase 3 — ficha técnica)
+  consumptionQty?: number;     // quantidade consumida por porção (na unidade do produto)
+  unit?: string;               // unidade de consumo (referência)
 }
 
 export interface FBFlavor {
@@ -1141,6 +1145,7 @@ export interface ConciergeItem {
   order?: number;
   groupId?: string;
   group?: ConciergeGroup;
+  productId?: string | null;     // vínculo com produto do estoque (Fase 3) — baixa no consumo
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -1450,6 +1455,7 @@ export interface StockSettings {
   noTurnoverDays: number;         // janela "sem giro" (default 60)
   expiryAlertLeadDays: number;    // antecedência do alerta de validade (default 30)
   autoLossOnExpiry: boolean;
+  defaultSaleLocationId?: string | null;  // local de onde concierge/F&B dão baixa (Fase 3)
   updatedAt: Timestamp;
 }
 

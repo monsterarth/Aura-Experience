@@ -525,7 +525,7 @@ export const StockService = {
   async getSettings(propertyId: string): Promise<StockSettings> {
     const { data } = await db().from("stock_settings").select("*").eq("propertyId", propertyId).maybeSingle();
     return (data as StockSettings) ?? {
-      propertyId, noTurnoverDays: 60, expiryAlertLeadDays: 30, autoLossOnExpiry: false, updatedAt: now(),
+      propertyId, noTurnoverDays: 60, expiryAlertLeadDays: 30, autoLossOnExpiry: false, defaultSaleLocationId: null, updatedAt: now(),
     };
   },
 
@@ -535,6 +535,7 @@ export const StockService = {
       noTurnoverDays: payload.noTurnoverDays ?? 60,
       expiryAlertLeadDays: payload.expiryAlertLeadDays ?? 30,
       autoLossOnExpiry: payload.autoLossOnExpiry ?? false,
+      defaultSaleLocationId: payload.defaultSaleLocationId ?? null,
       updatedAt: now(),
     };
     const { error } = await db().from("stock_settings").upsert(row);
