@@ -75,6 +75,7 @@ function ResortMapView() {
     const router = useRouter();
 
     const [loading, setLoading] = useState(true);
+    const [mapLoaded, setMapLoaded] = useState(false); // 1º fetchMap concluído
     const [stay, setStay] = useState<Stay | null>(null);
     const [property, setProperty] = useState<Property | null>(null);
     const [mapConfig, setMapConfig] = useState<NonNullable<Property["settings"]["mapConfig"]>>({});
@@ -150,6 +151,8 @@ function ResortMapView() {
             setSelectedArea(prev => prev ? (data.areas?.find((a: MapArea) => a.id === prev.id) ?? prev) : null);
         } catch (e) {
             console.error(e);
+        } finally {
+            setMapLoaded(true);
         }
     };
 
@@ -199,7 +202,7 @@ function ResortMapView() {
     // GPS desativado no mapa ilustrado (posicionamento por magnetismo era
     // impreciso demais); localização fica disponível apenas no mapa real.
 
-    if (loading || !property) {
+    if (loading || !property || !mapLoaded) {
         return <div className="min-h-[100dvh] flex items-center justify-center bg-background"><Loader2 className="w-10 h-10 text-primary animate-spin" /></div>;
     }
 

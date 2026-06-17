@@ -112,7 +112,7 @@ export function PortalShell({ stay, property, code, lang, setLang }: {
     return (
         <PortalContext.Provider value={ctx}>
             <div style={{ ...getPortalThemeVars(property), fontFamily: "var(--font-portal-body), system-ui, sans-serif" }}>
-                <div style={{ maxWidth: 448, margin: "0 auto", minHeight: "100dvh", display: "flex", flexDirection: "column", background: "var(--bg)", color: "var(--ink)", position: "relative", overflow: "hidden" }}>
+                <div style={{ maxWidth: 448, margin: "0 auto", height: "100dvh", display: "flex", flexDirection: "column", background: "var(--bg)", color: "var(--ink)", position: "relative", overflow: "hidden" }}>
                     <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", overflowX: "hidden", paddingTop: "env(safe-area-inset-top)" }}>
                         <div key={tab} className="portal-screen-fade">
                             {tab === "home" && <HomeScreen />}
