@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { StockService } from '@/services/stock-service';
+import { StockIntegration } from '@/services/stock-integration';
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth();
@@ -34,6 +36,33 @@ export async function GET(request: NextRequest) {
   const weekSundayStr = weekSunday.toISOString().split('T')[0];
 
   try {
+    // Resumo de estoque (módulo gated por property.settings.hasStock) — roda em paralelo
+    // e é resiliente: qualquer falha aqui vira `stock: null` e nunca derruba o dashboard.
+    const stockPromise = (async () => {
+      try {
+        if (!(await StockIntegration.isEnabled(propertyId))) return null;
+        const d = await StockService.getDashboard(propertyId, 30);
+        return {
+          kpis: {
+            stockValue:      d.kpis.stockValue,
+            cmv:             d.kpis.cmv,
+            lossesValue:     d.kpis.lossesValue,
+            purchasesTotal:  d.kpis.purchasesTotal,
+            purchasesCount:  d.kpis.purchasesCount,
+            accuracy:        d.kpis.accuracy,
+            lowStockCount:   d.kpis.lowStockCount,
+            expiringCount:   d.kpis.expiringCount,
+            noTurnoverCount: d.kpis.noTurnoverCount,
+            noTurnoverValue: d.kpis.noTurnoverValue,
+          },
+          lowStockItems: (d.lowStockItems ?? []).slice(0, 6),
+        };
+      } catch (e) {
+        console.error('[director/dashboard] stock', e);
+        return null;
+      }
+    })();
+
     // Cabanas fora da ocupação (extras / uso da casa) — excluídas do numerador e denominador
     const { data: ignoredCabinsData } = await supabaseAdmin.from('cabins')
       .select('id').eq('propertyId', propertyId).eq('ignoreInOccupancy', true);
@@ -319,6 +348,7 @@ export async function GET(request: NextRequest) {
         complaints:        monthComplaints,
       },
       upcomingWeddings,
+      stock: await stockPromise,
       opsDetail: await (async () => {
         const maintTasks = maintenanceDetailRes.data ?? [];
         const hkTasks    = hkDetailRes.data ?? [];

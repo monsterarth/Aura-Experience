@@ -9,7 +9,7 @@ import {
   Heart, Star, RefreshCw, Bell, Building2,
   Phone, Mail, X, Clock, Cake, MapPin, Tag,
   Zap, Utensils, Dumbbell, Palette, Moon, Briefcase, HelpCircle,
-  ShieldCheck, Layers,
+  ShieldCheck, Layers, Package, CalendarClock, Hourglass,
 } from "lucide-react";
 import { createClientBrowserAuto } from "@/lib/supabase-browser";
 import { StaffService } from "@/services/staff-service";
@@ -172,6 +172,15 @@ type DashData = {
     maintenance: { id: string; title: string; priority: string; status: string; location: string; daysOpen: number; createdAt: string }[];
     housekeeping: { id: string; type: string; typeLabel: string; status: string; cabinName: string; locType: string; assignedNames: string[]; daysOpen: number }[];
   };
+  stock: {
+    kpis: {
+      stockValue: number; cmv: number; lossesValue: number;
+      purchasesTotal: number; purchasesCount: number; accuracy: number | null;
+      lowStockCount: number; expiringCount: number;
+      noTurnoverCount: number; noTurnoverValue: number;
+    };
+    lowStockItems: { id: string; name: string; unit: string; qty: number; min: number }[];
+  } | null;
   recentSurveys: {
     id: string; guestName: string; cabinName: string; npsScore: number | null;
     averageRating: number | null; categoryRatings: Record<string, number>;
@@ -191,6 +200,12 @@ function greeting(name: string) {
 function fmtDate(iso: string) {
   const d = new Date(iso + "T12:00:00");
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+}
+
+function fmtMoney(n: number) {
+  const v = n ?? 0;
+  if (Math.abs(v) >= 1_000_000) return `R$ ${(v / 1_000_000).toFixed(1).replace(".", ",")} mi`;
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────────
@@ -1425,57 +1440,130 @@ const HK_STATUS_COLORS: Record<string, { color: string; bg: string; label: strin
   awaiting_checkout:    { color: T.blue,   bg: T.blueBg,     label: "Aguard. saída"  },
 };
 
-function OpsSection({ data }: { data: DashData }) {
-  const ops = data.opsDetail ?? { maintenance: [], housekeeping: [] };
-  const urgentMaint = ops.maintenance.filter(t => t.priority === "urgent");
-  const otherMaint  = ops.maintenance.filter(t => t.priority !== "urgent");
+// ── Ops: Estoque (resumo executivo) ──────────────────────────────────────────
 
-  // Agrupar HK por cabana
-  const hkByCabin: Record<string, typeof ops.housekeeping> = {};
-  ops.housekeeping.forEach(t => {
-    if (!hkByCabin[t.cabinName]) hkByCabin[t.cabinName] = [];
-    hkByCabin[t.cabinName].push(t);
-  });
+function StockKpi({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
+  return (
+    <div style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 14px" }}>
+      <div style={{ fontSize: 11, color: T.muted, fontWeight: 500 }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 900, color: color ?? T.text, marginTop: 4, lineHeight: 1.15 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: T.muted2, marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+}
 
+function StockAlert({ Icon, label, value, color, bg, border }: {
+  Icon: React.ElementType; label: string; value: string; color: string; bg: string; border: string;
+}) {
+  return (
+    <div style={{ flex: 1, background: bg, border: `1px solid ${border}`, borderRadius: 12, padding: "10px 8px", textAlign: "center" }}>
+      <Icon size={15} color={color} style={{ marginBottom: 4 }} />
+      <div style={{ fontSize: 16, fontWeight: 900, color }}>{value}</div>
+      <div style={{ fontSize: 9, color: T.muted, marginTop: 2 }}>{label}</div>
+    </div>
+  );
+}
+
+function StockOpsView({ stock }: { stock: NonNullable<DashData["stock"]> }) {
+  const k = stock.kpis;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
-      {/* KPIs rápidos */}
+      {/* KPIs */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <div style={{ background: urgentMaint.length > 0 ? T.redBg : T.glass2, border: `1px solid ${urgentMaint.length > 0 ? T.redBorder : T.border}`, borderRadius: 14, padding: "12px 14px" }}>
-          <div style={{ fontSize: 11, color: T.muted, fontWeight: 500 }}>Manutenção urgente</div>
-          <div style={{ fontSize: 24, fontWeight: 900, color: urgentMaint.length > 0 ? T.red : T.text, marginTop: 4 }}>{urgentMaint.length}</div>
+        <StockKpi label="Valor em estoque" value={fmtMoney(k.stockValue)} color={T.g2} />
+        <StockKpi label="CMV · 30 dias" value={fmtMoney(k.cmv)} color={T.g1} />
+        <StockKpi label="Perdas · 30 dias" value={fmtMoney(k.lossesValue)} color={k.lossesValue > 0 ? T.red : T.text} />
+        <StockKpi label="Compras · 30 dias" value={fmtMoney(k.purchasesTotal)} sub={`${k.purchasesCount} pedido${k.purchasesCount === 1 ? "" : "s"}`} color={T.text} />
+      </div>
+
+      {/* Acuracidade */}
+      <div style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <div style={{ fontSize: 11, color: T.muted, fontWeight: 500 }}>Acuracidade do inventário</div>
+          <div style={{ fontSize: 11, color: T.muted2, marginTop: 2 }}>Último inventário fechado</div>
         </div>
-        <div style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 14px" }}>
-          <div style={{ fontSize: 11, color: T.muted, fontWeight: 500 }}>Total manutenção</div>
-          <div style={{ fontSize: 24, fontWeight: 900, color: T.text, marginTop: 4 }}>{ops.maintenance.length}</div>
-        </div>
-        <div style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 14px" }}>
-          <div style={{ fontSize: 11, color: T.muted, fontWeight: 500 }}>HK pendentes</div>
-          <div style={{ fontSize: 24, fontWeight: 900, color: T.violet, marginTop: 4 }}>{ops.housekeeping.length}</div>
-        </div>
-        <div style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 14px" }}>
-          <div style={{ fontSize: 11, color: T.muted, fontWeight: 500 }}>Cabanas com tarefa</div>
-          <div style={{ fontSize: 24, fontWeight: 900, color: T.text, marginTop: 4 }}>{Object.keys(hkByCabin).length}</div>
+        <div style={{ fontSize: 26, fontWeight: 900, color: k.accuracy == null ? T.muted2 : k.accuracy >= 95 ? T.green : k.accuracy >= 85 ? T.amber : T.red }}>
+          {k.accuracy == null ? "–" : `${Math.round(k.accuracy)}%`}
         </div>
       </div>
 
-      {/* Manutenção */}
-      {ops.maintenance.length > 0 && (
+      {/* Alertas */}
+      <div style={{ display: "flex", gap: 8 }}>
+        <StockAlert Icon={AlertTriangle} label="Abaixo do mínimo" value={String(k.lowStockCount)}
+          color={k.lowStockCount > 0 ? T.amber : T.green} bg={k.lowStockCount > 0 ? T.amberBg : T.greenBg} border={k.lowStockCount > 0 ? T.amberBorder : T.greenBorder} />
+        <StockAlert Icon={CalendarClock} label="A vencer" value={String(k.expiringCount)}
+          color={k.expiringCount > 0 ? T.amber : T.green} bg={k.expiringCount > 0 ? T.amberBg : T.greenBg} border={k.expiringCount > 0 ? T.amberBorder : T.greenBorder} />
+        <StockAlert Icon={Hourglass} label="Sem giro" value={fmtMoney(k.noTurnoverValue)}
+          color={k.noTurnoverValue > 0 ? T.violet : T.green} bg={k.noTurnoverValue > 0 ? T.violetBg : T.greenBg} border={k.noTurnoverValue > 0 ? T.violetBorder : T.greenBorder} />
+      </div>
+
+      {/* Top itens em falta */}
+      {stock.lowStockItems.length > 0 ? (
+        <div style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 16, overflow: "hidden" }}>
+          <div style={{ padding: "12px 16px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 8 }}>
+            <AlertTriangle size={14} color={T.amber} />
+            <span style={{ fontSize: 11, fontWeight: 700, color: T.amber, textTransform: "uppercase", letterSpacing: ".06em" }}>Itens abaixo do mínimo</span>
+            <span style={{ marginLeft: "auto", fontSize: 11, color: T.muted }}>{k.lowStockCount} no total</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {stock.lowStockItems.map((it, i) => (
+              <div key={it.id} style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "11px 16px",
+                borderBottom: i < stock.lowStockItems.length - 1 ? `1px solid ${T.border}` : "none",
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{it.name}</div>
+                <div style={{ flexShrink: 0, fontSize: 12, fontWeight: 700 }}>
+                  <span style={{ color: it.qty <= 0 ? T.red : T.amber }}>{it.qty}</span>
+                  <span style={{ color: T.muted2 }}> / {it.min} {it.unit}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div style={{ background: T.glass2, border: `1px solid ${T.greenBorder}`, borderRadius: 16, padding: "16px", display: "flex", alignItems: "center", gap: 10 }}>
+          <ShieldCheck size={18} color={T.green} />
+          <span style={{ fontSize: 13, fontWeight: 600, color: T.green }}>Estoque sob controle</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Ops: Manutenção ──────────────────────────────────────────────────────────
+
+function MaintenanceOpsView({ maintenance }: { maintenance: DashData["opsDetail"]["maintenance"] }) {
+  const urgentMaint = maintenance.filter(t => t.priority === "urgent");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div style={{ background: urgentMaint.length > 0 ? T.redBg : T.glass2, border: `1px solid ${urgentMaint.length > 0 ? T.redBorder : T.border}`, borderRadius: 14, padding: "12px 14px" }}>
+          <div style={{ fontSize: 11, color: T.muted, fontWeight: 500 }}>Urgentes</div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: urgentMaint.length > 0 ? T.red : T.text, marginTop: 4 }}>{urgentMaint.length}</div>
+        </div>
+        <div style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 14px" }}>
+          <div style={{ fontSize: 11, color: T.muted, fontWeight: 500 }}>Total abertas</div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: T.text, marginTop: 4 }}>{maintenance.length}</div>
+        </div>
+      </div>
+
+      {maintenance.length > 0 ? (
         <div style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 16, overflow: "hidden" }}>
           <div style={{ padding: "12px 16px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 8 }}>
             <Wrench size={14} color={T.amber} />
             <span style={{ fontSize: 11, fontWeight: 700, color: T.amber, textTransform: "uppercase", letterSpacing: ".06em" }}>Manutenção</span>
-            <span style={{ marginLeft: "auto", fontSize: 11, color: T.muted }}>{ops.maintenance.length} aberta{ops.maintenance.length > 1 ? "s" : ""}</span>
+            <span style={{ marginLeft: "auto", fontSize: 11, color: T.muted }}>{maintenance.length} aberta{maintenance.length > 1 ? "s" : ""}</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column" }}>
-            {ops.maintenance.map((t, i) => {
+            {maintenance.map((t, i) => {
               const p = PRIORITY_COLORS[t.priority] ?? PRIORITY_COLORS.low;
               const isOld = t.daysOpen >= 2;
               return (
                 <div key={t.id} style={{
                   display: "flex", gap: 10, alignItems: "flex-start", padding: "12px 16px",
-                  borderBottom: i < ops.maintenance.length - 1 ? `1px solid ${T.border}` : "none",
+                  borderBottom: i < maintenance.length - 1 ? `1px solid ${T.border}` : "none",
                   background: t.priority === "urgent" ? "rgba(248,113,113,0.04)" : "transparent",
                 }}>
                   <div style={{ width: 6, height: 6, borderRadius: "50%", background: p.color, marginTop: 5, flexShrink: 0 }} />
@@ -1494,22 +1582,44 @@ function OpsSection({ data }: { data: DashData }) {
             })}
           </div>
         </div>
-      )}
-
-      {ops.maintenance.length === 0 && (
+      ) : (
         <div style={{ background: T.glass2, border: `1px solid ${T.greenBorder}`, borderRadius: 16, padding: "16px", display: "flex", alignItems: "center", gap: 10 }}>
           <ShieldCheck size={18} color={T.green} />
           <span style={{ fontSize: 13, fontWeight: 600, color: T.green }}>Nenhuma ordem de manutenção aberta</span>
         </div>
       )}
+    </div>
+  );
+}
 
-      {/* Governança por cabana */}
-      {ops.housekeeping.length > 0 && (
+// ── Ops: Governança ──────────────────────────────────────────────────────────
+
+function GovernanceOpsView({ housekeeping }: { housekeeping: DashData["opsDetail"]["housekeeping"] }) {
+  const hkByCabin: Record<string, typeof housekeeping> = {};
+  housekeeping.forEach(t => {
+    if (!hkByCabin[t.cabinName]) hkByCabin[t.cabinName] = [];
+    hkByCabin[t.cabinName].push(t);
+  });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 14px" }}>
+          <div style={{ fontSize: 11, color: T.muted, fontWeight: 500 }}>Tarefas abertas</div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: T.violet, marginTop: 4 }}>{housekeeping.length}</div>
+        </div>
+        <div style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 14px" }}>
+          <div style={{ fontSize: 11, color: T.muted, fontWeight: 500 }}>Cabanas com tarefa</div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: T.text, marginTop: 4 }}>{Object.keys(hkByCabin).length}</div>
+        </div>
+      </div>
+
+      {housekeeping.length > 0 ? (
         <div style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 16, overflow: "hidden" }}>
           <div style={{ padding: "12px 16px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 8 }}>
             <Layers size={14} color={T.violet} />
             <span style={{ fontSize: 11, fontWeight: 700, color: T.violet, textTransform: "uppercase", letterSpacing: ".06em" }}>Governança</span>
-            <span style={{ marginLeft: "auto", fontSize: 11, color: T.muted }}>{ops.housekeeping.length} tarefa{ops.housekeeping.length > 1 ? "s" : ""}</span>
+            <span style={{ marginLeft: "auto", fontSize: 11, color: T.muted }}>{housekeeping.length} tarefa{housekeeping.length > 1 ? "s" : ""}</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column" }}>
             {Object.entries(hkByCabin).map(([cabin, tasks], i, arr) => (
@@ -1548,14 +1658,52 @@ function OpsSection({ data }: { data: DashData }) {
             ))}
           </div>
         </div>
-      )}
-
-      {ops.housekeeping.length === 0 && (
+      ) : (
         <div style={{ background: T.glass2, border: `1px solid ${T.greenBorder}`, borderRadius: 16, padding: "16px", display: "flex", alignItems: "center", gap: 10 }}>
           <ShieldCheck size={18} color={T.green} />
           <span style={{ fontSize: 13, fontWeight: 600, color: T.green }}>Governança em dia</span>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Ops Section (hub operacional com sub-abas) ────────────────────────────────
+
+type OpsTab = "estoque" | "governanca" | "manutencao";
+
+function OpsSection({ data }: { data: DashData }) {
+  const ops = data.opsDetail ?? { maintenance: [], housekeeping: [] };
+  const hasStock = !!data.stock;
+  const [tab, setTab] = useState<OpsTab>(hasStock ? "estoque" : "governanca");
+
+  const segments: { id: OpsTab; label: string; Icon: React.ElementType }[] = [
+    ...(hasStock ? [{ id: "estoque" as const, label: "Estoque", Icon: Package }] : []),
+    { id: "governanca", label: "Governança", Icon: Layers },
+    { id: "manutencao", label: "Manutenção", Icon: Wrench },
+  ];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Segmented control */}
+      <div style={{ display: "flex", gap: 4, background: T.glass, borderRadius: 12, padding: 4 }}>
+        {segments.map(({ id, label, Icon }) => (
+          <button key={id} onClick={() => setTab(id)} style={{
+            flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+            padding: "8px 0", borderRadius: 9, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 13,
+            background: tab === id ? T.glass3 : "transparent",
+            color: tab === id ? T.text : T.muted,
+            transition: "all .2s",
+          }}>
+            <Icon size={14} />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "estoque" && data.stock && <StockOpsView stock={data.stock} />}
+      {tab === "governanca" && <GovernanceOpsView housekeeping={ops.housekeeping} />}
+      {tab === "manutencao" && <MaintenanceOpsView maintenance={ops.maintenance} />}
     </div>
   );
 }
@@ -1629,6 +1777,8 @@ export default function DirectorPage() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'stays', filter: `propertyId=eq.${property.id}` }, () => loadDashboard(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'housekeeping_tasks', filter: `propertyId=eq.${property.id}` }, () => loadDashboard(true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'concierge_requests', filter: `propertyId=eq.${property.id}` }, () => loadDashboard(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_movements', filter: `propertyId=eq.${property.id}` }, () => loadDashboard(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_balances', filter: `propertyId=eq.${property.id}` }, () => loadDashboard(true))
       .subscribe((status: string) => { subscribedRef.current = status === 'SUBSCRIBED'; });
     return () => { supabase.removeChannel(channel); };
   }, [property?.id, loadDashboard]);
