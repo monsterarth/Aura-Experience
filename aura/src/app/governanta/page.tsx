@@ -1506,7 +1506,12 @@ export default function GovernantaPage() {
           Promise.race([p, new Promise<T>(resolve => setTimeout(() => resolve(fallback), 6000))]);
 
         const [cabinsData, staffData, structuresData, frigobarItems] = await Promise.all([
-          withTimeout(CabinService.getCabinsByProperty(property.id), []),
+          withTimeout(
+            fetch(`/api/field/cabins?propertyId=${encodeURIComponent(property.id)}`, { cache: 'no-store' })
+              .then(r => r.ok ? (r.json() as Promise<Cabin[]>) : ([] as Cabin[]))
+              .catch(() => [] as Cabin[]),
+            [] as Cabin[]
+          ),
           withTimeout(StaffService.getStaffByProperty(property.id), []),
           withTimeout(StructureService.getStructures(property.id), []),
           withTimeout(ConciergeService.getFrigobarItems(property.id), [] as ConciergeItem[]),

@@ -1350,7 +1350,12 @@ export default function MaidPage() {
         const withTimeout = <R,>(p: Promise<R>, fallback: R) =>
           Promise.race([p, new Promise<R>(resolve => setTimeout(() => resolve(fallback), 6000))]);
         const [cabinsData, structuresData] = await Promise.all([
-          withTimeout(CabinService.getCabinsByProperty(property.id), []),
+          withTimeout(
+            fetch(`/api/field/cabins?propertyId=${encodeURIComponent(property.id)}`, { cache: 'no-store' })
+              .then(r => r.ok ? (r.json() as Promise<Cabin[]>) : ([] as Cabin[]))
+              .catch(() => [] as Cabin[]),
+            [] as Cabin[]
+          ),
           withTimeout(StructureService.getStructures(property.id), []),
         ]);
         const cabinMap: Record<string, Cabin> = {};
