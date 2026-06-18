@@ -7,7 +7,7 @@ import type { PortalStrings } from "./i18n";
 export type Lang = "pt" | "en" | "es";
 export type TabId = "home" | "explore" | "orders" | "stay";
 export type SheetName =
-    | "access" | "wifi" | "contact" | "dnd" | "report" | "guide" | "latecheckout" | "map" | "event";
+    | "access" | "wifi" | "contact" | "dnd" | "report" | "guide" | "latecheckout" | "event";
 
 export interface DndState { on: boolean; until: string | null }
 export interface ToastObj { msg: string; icon?: string }

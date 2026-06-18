@@ -24,7 +24,7 @@ function RowItem({ icon, tone = "brand", title, sub, right, onClick, danger }: {
 function Divider() { return <div style={{ height: 1, background: "var(--line)", margin: "0 14px 0 65px" }} />; }
 
 export function StayScreen() {
-    const { stay, property, code, lang, setLang, t, openSheet, push, dnd, handleDnd } = usePortal();
+    const { stay, property, code, lang, setLang, t, openSheet, push, go, dnd, handleDnd } = usePortal();
     const locale = LOCALE[lang] || "pt-BR";
 
     const cabinName = (stay as unknown as { cabinName?: string }).cabinName || property?.name || t.accommodation;
@@ -105,7 +105,7 @@ export function StayScreen() {
                     <Divider />
                     <RowItem icon="wifi" tone="green" title={t.wifiShort} sub={t.wifiShortSub} onClick={() => openSheet("wifi")} />
                     <Divider />
-                    <RowItem icon="map" tone="clay" title={t.mapRow} sub={t.mapRowSub} onClick={() => openSheet("map")} />
+                    <RowItem icon="map" tone="clay" title={t.mapRow} sub={t.mapRowSub} onClick={() => go("explore")} />
                 </Card>
             </div>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { Icon, Card, PrimaryBtn, GhostBtn, IconBtn, SectionTitle, Photo } from "./ui";
 import { usePortal, type SheetName, type Lang } from "./context";
 import { ImageUpload } from "@/components/admin/ImageUpload";
@@ -71,29 +72,20 @@ function CopyField({ label, value, mono }: { label: string; value: string; mono?
     );
 }
 
-// QR pseudo-determinístico (visual) a partir de uma seed.
-function QR({ seed = "aura", size = 150 }: { seed?: string; size?: number }) {
-    const n = 21;
-    const cells = React.useMemo(() => {
-        let s = 0; for (let i = 0; i < seed.length; i++) s = (s * 31 + seed.charCodeAt(i)) >>> 0;
-        const rand = () => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; };
-        const arr: boolean[] = []; for (let i = 0; i < n * n; i++) arr.push(rand() > 0.5);
-        return arr;
-    }, [seed]);
-    const isFinder = (r: number, c: number) => (r < 7 && c < 7) || (r < 7 && c >= n - 7) || (r >= n - 7 && c < 7);
-    const px = size / n;
+// Monta o payload padrão de QR de Wi-Fi (Android/iOS): "WIFI:T:WPA;S:<ssid>;P:<senha>;;".
+// Os caracteres especiais \ ; , : " precisam ser escapados com barra invertida.
+function wifiQrPayload(ssid: string, password?: string): string {
+    const esc = (s: string) => s.replace(/([\\;,:"])/g, "\\$1");
+    return password
+        ? `WIFI:T:WPA;S:${esc(ssid)};P:${esc(password)};;`
+        : `WIFI:T:nopass;S:${esc(ssid)};;`;
+}
+
+// QR real e escaneável da rede Wi-Fi, no card branco com quiet zone para leitura confiável.
+function WifiQR({ ssid, password, size = 158 }: { ssid: string; password?: string; size?: number }) {
     return (
-        <div style={{ width: size, height: size, background: "#fff", borderRadius: 14, padding: 10, boxSizing: "content-box", boxShadow: "var(--sh-sm)" }}>
-            <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-                {cells.map((on, i) => { const r = Math.floor(i / n), c = i % n; if (isFinder(r, c) || !on) return null; return <rect key={i} x={c * px} y={r * px} width={px} height={px} fill="#2B2620" />; })}
-                {[[0, 0], [0, n - 7], [n - 7, 0]].map(([r, c], k) => (
-                    <g key={k}>
-                        <rect x={c * px} y={r * px} width={px * 7} height={px * 7} fill="#2B2620" />
-                        <rect x={(c + 1) * px} y={(r + 1) * px} width={px * 5} height={px * 5} fill="#fff" />
-                        <rect x={(c + 2) * px} y={(r + 2) * px} width={px * 3} height={px * 3} fill="#8A5A2B" />
-                    </g>
-                ))}
-            </svg>
+        <div style={{ background: "#fff", borderRadius: 14, padding: 12, boxShadow: "var(--sh-sm)", lineHeight: 0 }}>
+            <QRCodeSVG value={wifiQrPayload(ssid, password)} size={size} level="M" marginSize={2} bgColor="#ffffff" fgColor="#2B2620" />
         </div>
     );
 }
@@ -126,18 +118,23 @@ function AccessSheet() {
 /* ---------- WIFI ---------- */
 function WifiSheet() {
     const { closeSheet, t, stay } = usePortal();
-    const wifi = (stay as unknown as { cabinWifi?: { ssid: string; password?: string } }).cabinWifi;
+    const wifi = (stay as unknown as { cabinWifi?: { ssid?: string; password?: string } }).cabinWifi;
+    // O admin salva wifi com o default { ssid: "", password: "" }; um objeto vazio é
+    // truthy, então avaliamos o SSID preenchido — não a mera existência do objeto —
+    // para não exibir campos em branco no lugar do estado "não configurado".
+    const ssid = wifi?.ssid?.trim();
+    const password = wifi?.password?.trim();
     return (
         <Sheet onClose={closeSheet} title={t.wifiTitle} icon="wifi" iconTone="green">
-            {wifi ? (
+            {ssid ? (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, padding: "8px 0 4px" }}>
-                        <QR seed={wifi.ssid + (wifi.password || "")} size={158} />
+                        <WifiQR ssid={ssid} password={password} size={158} />
                         <p style={{ margin: 0, fontSize: 12.5, color: "var(--muted)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 6 }}><Icon n="camera" s={15} c="var(--muted)" />{t.scanToConnect}</p>
                     </div>
                     <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 10 }}>
-                        <CopyField label={t.networkSSID} value={wifi.ssid} />
-                        <CopyField label={t.wifiPassword} value={wifi.password || "—"} mono />
+                        <CopyField label={t.networkSSID} value={ssid} />
+                        <CopyField label={t.wifiPassword} value={password || "—"} mono />
                     </div>
                 </div>
             ) : (
@@ -352,28 +349,6 @@ function LateCheckoutSheet() {
     );
 }
 
-/* ---------- MAP (preview + link para a rota /map existente) ---------- */
-function MapSheet() {
-    const { closeSheet, t, code, push } = usePortal();
-    return (
-        <Sheet onClose={closeSheet} title={t.mapTitle} icon="map" iconTone="clay">
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                <div style={{ borderRadius: 18, overflow: "hidden", position: "relative", height: 200, background: "linear-gradient(160deg, #BFD0A8, #8FAE72)" }}>
-                    <div style={{ position: "absolute", right: "8%", bottom: "8%", width: "42%", height: "44%", borderRadius: "46% 54% 60% 40%", background: "linear-gradient(160deg,#7FB0C9,#5E94B0)" }} />
-                    <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: .55 }} viewBox="0 0 100 100" preserveAspectRatio="none"><path d="M10 82 Q40 60 50 54 T92 28" stroke="#fff" strokeWidth="1.6" fill="none" strokeDasharray="3 3" /></svg>
-                    {([[46, 54, true], [38, 40, false], [64, 58, false], [80, 60, false]] as [number, number, boolean][]).map(([x, y, you], i) => (
-                        <div key={i} style={{ position: "absolute", left: `${x}%`, top: `${y}%`, transform: "translate(-50%,-50%)" }}>
-                            {you ? <div style={{ width: 18, height: 18, borderRadius: 99, background: "var(--gold)", border: "3px solid #fff", boxShadow: "0 2px 6px rgba(0,0,0,.3)" }} /> : <div style={{ width: 9, height: 9, borderRadius: 99, background: "var(--brand)", border: "2px solid #fff" }} />}
-                        </div>
-                    ))}
-                    <div style={{ position: "absolute", left: 14, bottom: 12, color: "#fff", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", textShadow: "0 1px 6px rgba(0,0,0,.4)" }}>{t.youAreHere}</div>
-                </div>
-                <PrimaryBtn icon="route" onClick={() => { closeSheet(); push(`/check-in/${code}/map`); }}>{t.openFullMap}</PrimaryBtn>
-            </div>
-        </Sheet>
-    );
-}
-
 /* ---------- EVENT (detalhe) ---------- */
 const EVT_LABELS: Record<Lang, { when: string; where: string; price: string; maps: string; link: string }> = {
     pt: { when: "Quando", where: "Local", price: "Entrada", maps: "Ver no Maps", link: "Ver ingresso / site" },
@@ -429,7 +404,6 @@ export function SheetHost({ sheet }: { sheet: { name: SheetName; payload?: unkno
         case "report": return <ReportSheet />;
         case "guide": return <GuideSheet which={(sheet.payload as "rules" | "pet" | "privacy") || "rules"} />;
         case "latecheckout": return <LateCheckoutSheet />;
-        case "map": return <MapSheet />;
         case "event": return sheet.payload ? <EventSheet event={sheet.payload as Event} /> : null;
         default: return null;
     }

@@ -140,7 +140,7 @@ export function HomeScreen() {
                     )}
                     <QuickAction icon="calendar" label={t.qaSchedule} sub={t.qaScheduleSub} tone="green" onClick={() => push(`/check-in/${code}/structures`)} />
                     <QuickAction icon="bell" label={t.qaConcierge} sub={t.qaConciergeSub} tone="gold" onClick={() => push(`/check-in/${code}/concierge`)} />
-                    <QuickAction icon="map" label={t.qaMap} sub={t.qaMapSub} tone="clay" onClick={() => openSheet("map")} />
+                    <QuickAction icon="map" label={t.qaMap} sub={t.qaMapSub} tone="clay" onClick={() => go("explore")} />
                 </div>
             </div>
 
