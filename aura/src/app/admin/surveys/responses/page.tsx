@@ -3,6 +3,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useProperty } from "@/context/PropertyContext";
+import { useAuth } from "@/context/AuthContext";
 import { SurveyResponse, SurveyTemplate } from "@/types/aura";
 import { SurveyService, SurveyInsight } from "@/services/survey-service";
 import { Button } from "@/components/ui/button";
@@ -25,11 +26,29 @@ import {
   Search,
   LayoutList,
   X,
-  FileText
+  FileText,
+  Trash2
 } from "lucide-react";
 
 export default function SurveysDashboardPage() {
   const { currentProperty: property } = useProperty();
+  const { isSuperAdmin } = useAuth();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDeleteResponse = async (id: string) => {
+    if (!confirm("Excluir esta avaliação? Isso libera a estadia para responder de novo.")) return;
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/admin/survey-responses?id=${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      setResponses(prev => prev.filter(r => r.id !== id));
+      setSelectedResponse(prev => (prev?.id === id ? null : prev));
+    } catch {
+      alert("Falha ao excluir a avaliação.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   // Estados de Dados
   const [responses, setResponses] = useState<SurveyResponse[]>([]);
@@ -462,15 +481,26 @@ export default function SurveysDashboardPage() {
                       </div>
 
                       {/* Rodapé do Card: Ações */}
-                      <div className="p-4 pt-0 mt-auto">
+                      <div className="p-4 pt-0 mt-auto flex items-center gap-2">
                         <Button
                           variant={isDetractor ? 'destructive' : 'secondary'}
-                          className="w-full h-9 text-xs font-bold shadow-sm"
+                          className="flex-1 h-9 text-xs font-bold shadow-sm"
                           onClick={() => setSelectedResponse(response)}
                         >
                           <FileText className="w-4 h-4 mr-2" />
                           Abrir Avaliação
                         </Button>
+                        {isSuperAdmin && (
+                          <Button
+                            variant="ghost" size="icon"
+                            className="h-9 w-9 shrink-0 text-rose-500 hover:bg-rose-500/10"
+                            disabled={deletingId === response.id}
+                            onClick={() => handleDeleteResponse(response.id)}
+                            title="Excluir avaliação (super admin)"
+                          >
+                            {deletingId === response.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                          </Button>
+                        )}
                       </div>
                     </div>
                   )
@@ -563,13 +593,26 @@ export default function SurveysDashboardPage() {
             </div>
 
             {/* Rodape Modal */}
-            <div className="p-4 bg-muted/30 border-t flex justify-between items-center">
-              <span className="text-xs text-muted-foreground">
+            <div className="p-4 bg-muted/30 border-t flex justify-between items-center gap-3">
+              <span className="text-xs text-muted-foreground truncate">
                 Avaliação enviada em {selectedResponse.createdAt ? new Date(selectedResponse.createdAt).toLocaleString('pt-BR') : ''}
               </span>
-              <Button onClick={() => setSelectedResponse(null)} className="h-9 px-6">
-                Fechar
-              </Button>
+              <div className="flex items-center gap-2 shrink-0">
+                {isSuperAdmin && (
+                  <Button
+                    variant="ghost"
+                    className="h-9 gap-2 text-rose-500 hover:bg-rose-500/10"
+                    disabled={deletingId === selectedResponse.id}
+                    onClick={() => handleDeleteResponse(selectedResponse.id)}
+                  >
+                    {deletingId === selectedResponse.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                    Excluir
+                  </Button>
+                )}
+                <Button onClick={() => setSelectedResponse(null)} className="h-9 px-6">
+                  Fechar
+                </Button>
+              </div>
             </div>
           </div>
         </div>
