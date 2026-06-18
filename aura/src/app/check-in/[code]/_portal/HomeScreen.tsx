@@ -3,8 +3,34 @@
 import React from "react";
 import { Icon, Card, SectionTitle, toneColor, toneBg } from "./ui";
 import { usePortal } from "./context";
+import { useToday, type TodayItem } from "./useToday";
 
 const LOCALE: Record<string, string> = { pt: "pt-BR", en: "en-US", es: "es-ES" };
+
+// Textos da timeline "Sua jornada hoje" (a rota devolve só dados; aqui localiza).
+const TL: Record<string, Record<string, string>> = {
+    pt: { cafe: "Café", checkout: "Check-out", concierge: "Concierge", dnd: "Não Perturbe", today: "Hoje",
+        bfNoneT: "Monte sua cesta de café", bfNoneB: "Garanta o café de amanhã entregue no seu chalé.", bfNoneC: "Montar cesta",
+        bfDoneT: "Cesta de café confirmada", bfDoneB: "Entrega no chalé às", bfDoneC: "Editar cesta",
+        bookB: "Sua reserva de hoje", bookC: "Ver", evB: "Evento de hoje", evC: "Ver no Explorar",
+        concT1: "pedido a caminho", concTn: "pedidos a caminho", concB: "Acompanhe no concierge.", concC: "Acompanhar",
+        coT: "Check-out às", coB: "Precisa de mais tempo? Posso pedir um late check-out.", coC: "Pedir late check-out",
+        dndT: "Não Perturbe ativo", dndB: "Limpeza pausada até", dndC: "Gerenciar" },
+    en: { cafe: "Breakfast", checkout: "Check-out", concierge: "Concierge", dnd: "Do Not Disturb", today: "Today",
+        bfNoneT: "Build your breakfast basket", bfNoneB: "Secure tomorrow's breakfast to your cabin.", bfNoneC: "Build basket",
+        bfDoneT: "Breakfast basket confirmed", bfDoneB: "Delivered to your cabin at", bfDoneC: "Edit basket",
+        bookB: "Your booking today", bookC: "View", evB: "Today's event", evC: "See in Explore",
+        concT1: "request on the way", concTn: "requests on the way", concB: "Track it in concierge.", concC: "Track",
+        coT: "Check-out at", coB: "Need more time? I can request a late check-out.", coC: "Request late check-out",
+        dndT: "Do Not Disturb on", dndB: "Cleaning paused until", dndC: "Manage" },
+    es: { cafe: "Desayuno", checkout: "Check-out", concierge: "Concierge", dnd: "No Molestar", today: "Hoy",
+        bfNoneT: "Arma tu cesta de desayuno", bfNoneB: "Asegura el desayuno de mañana en tu cabaña.", bfNoneC: "Armar cesta",
+        bfDoneT: "Cesta de desayuno confirmada", bfDoneB: "Entrega en tu cabaña a las", bfDoneC: "Editar cesta",
+        bookB: "Tu reserva de hoy", bookC: "Ver", evB: "Evento de hoy", evC: "Ver en Explorar",
+        concT1: "pedido en camino", concTn: "pedidos en camino", concB: "Síguelo en el concierge.", concC: "Seguir",
+        coT: "Check-out a las", coB: "¿Necesitas más tiempo? Puedo pedir late check-out.", coC: "Pedir late check-out",
+        dndT: "No Molestar activo", dndB: "Limpieza pausada hasta", dndC: "Gestionar" },
+};
 
 interface TimelineItem {
     id: string; icon: string; tone: string; time: string; title: string; body: string; cta: string;
@@ -61,7 +87,7 @@ function QuickAction({ icon, label, sub, tone, onClick }: {
 }
 
 export function HomeScreen() {
-    const { stay, property, code, lang, t, go, push, openSheet, dnd } = usePortal();
+    const { stay, property, code, lang, t, go, push, openSheet } = usePortal();
     const locale = LOCALE[lang] || "pt-BR";
 
     const cabinName = (stay as unknown as { cabinName?: string }).cabinName || property?.name || t.accommodation;
@@ -82,16 +108,37 @@ export function HomeScreen() {
     const fbEnabled = !!property?.settings?.fbSettings?.breakfast?.enabled &&
         ["delivery", "buffet", "both"].includes(property?.settings?.fbSettings?.breakfast?.modality ?? "");
 
-    // ---- Timeline "Sua jornada hoje" (camada Aura, a partir de dados reais) ----
-    const today: TimelineItem[] = [];
-    if (fbEnabled) {
-        today.push({ id: "cafe", icon: "coffee", tone: "brand", urgent: true, time: t.qaBreakfast, title: t.tlBreakfastTitle, body: t.tlBreakfastBody, cta: t.tlBreakfastCta, onAction: () => push(`/check-in/${code}/breakfast`) });
-    }
-    if (dnd.on) {
-        today.push({ id: "dnd", icon: "moon", tone: "gold", time: t.dndRow, title: t.tlDndTitle, body: t.tlDndBody.replace("{time}", dnd.until ? new Date(dnd.until).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }) : "—"), cta: t.tlDndCta, onAction: () => go("stay") });
-    }
-    today.push({ id: "checkout", icon: "clock", tone: "neutral", time: t.checkout, title: t.tlCheckoutTitle.replace("{time}", checkoutTime), body: t.tlCheckoutBody, cta: t.tlCheckoutCta, onAction: () => openSheet("latecheckout") });
-    today.push({ id: "explore", icon: "compass", tone: "green", time: "Hoje", title: t.tlExploreTitle, body: t.tlExploreBody, cta: t.tlExploreCta, onAction: () => go("explore") });
+    // ---- Timeline "Sua jornada hoje" — agenda real via /api/guest/today ----
+    const journey = useToday(stay.id, stay.propertyId, stay.accessCode);
+    const tl = TL[lang] || TL.pt;
+    const fmtClock = (v?: unknown) => { if (!v) return "—"; const dt = new Date(String(v)); return isNaN(dt.getTime()) ? String(v) : dt.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }); };
+    const localize = (it: TodayItem): TimelineItem => {
+        const data = it.data || {};
+        const base = { id: it.id, icon: it.icon, tone: it.tone, urgent: it.urgent };
+        switch (it.kind) {
+            case "breakfast":
+                return data.state === "ordered"
+                    ? { ...base, time: tl.cafe, title: tl.bfDoneT, body: `${tl.bfDoneB} ${data.time ?? "—"}`, cta: tl.bfDoneC, onAction: () => go("orders") }
+                    : { ...base, time: tl.cafe, title: tl.bfNoneT, body: tl.bfNoneB, cta: tl.bfNoneC, onAction: () => go("orders") };
+            case "booking":
+                return { ...base, time: String(data.time ?? ""), title: String(data.name || tl.bookB), body: tl.bookB, cta: tl.bookC, onAction: () => go("explore") };
+            case "event": {
+                const title = (lang === "en" && data.titleEn) || (lang === "es" && data.titleEs) || data.title;
+                return { ...base, time: String(data.time ?? tl.today), title: String(title ?? ""), body: String(data.location || tl.evB), cta: tl.evC, onAction: () => go("explore") };
+            }
+            case "concierge": {
+                const n = Number(data.count ?? 1);
+                return { ...base, time: tl.concierge, title: `${n}× ${n > 1 ? tl.concTn : tl.concT1}`, body: tl.concB, cta: tl.concC, onAction: () => go("orders") };
+            }
+            case "checkout":
+                return { ...base, time: tl.checkout, title: `${tl.coT} ${fmtClock(data.iso)}`, body: tl.coB, cta: tl.coC, onAction: () => openSheet("latecheckout") };
+            case "dnd":
+                return { ...base, time: tl.dnd, title: tl.dndT, body: `${tl.dndB} ${fmtClock(data.until)}`, cta: tl.dndC, onAction: () => go("stay") };
+            default:
+                return { ...base, time: "", title: "", body: "", cta: "", onAction: () => undefined };
+        }
+    };
+    const items = journey.items.map(localize);
 
     return (
         <div style={{ padding: "8px 18px 28px", display: "flex", flexDirection: "column", gap: 24 }}>
@@ -121,22 +168,30 @@ export function HomeScreen() {
                 </div>
             </div>
 
-            {/* Aura sugere — timeline Hoje */}
-            <div>
-                <SectionTitle right={<span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color: "var(--brand)", background: "var(--brand-soft)", padding: "4px 9px", borderRadius: 999 }}><Icon n="sparkle" s={13} c="var(--brand)" />Aura</span>}>{t.journeyToday}</SectionTitle>
-                <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-                    {today.map((it) => <TodayCard key={it.id} item={it} />)}
+            {/* Aura sugere — timeline Hoje (some se não houver itens) */}
+            {(journey.loading || items.length > 0) && (
+                <div>
+                    <SectionTitle right={<span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color: "var(--brand)", background: "var(--brand-soft)", padding: "4px 9px", borderRadius: 999 }}><Icon n="sparkle" s={13} c="var(--brand)" />Aura</span>}>{t.journeyToday}</SectionTitle>
+                    {journey.loading && items.length === 0 ? (
+                        <Card pad={15} style={{ display: "flex", alignItems: "center", justifyContent: "center", color: "var(--faint)" }}>
+                            <Icon n="refresh" s={20} c="var(--faint)" />
+                        </Card>
+                    ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+                            {items.map((it) => <TodayCard key={it.id} item={it} />)}
+                        </div>
+                    )}
                 </div>
-            </div>
+            )}
 
             {/* Ações rápidas */}
             <div>
                 <SectionTitle>{t.quickAccess}</SectionTitle>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 11 }}>
                     {fbEnabled ? (
-                        <QuickAction icon="coffee" label={t.qaBreakfast} sub={t.qaBreakfastSub} tone="brand" onClick={() => push(`/check-in/${code}/breakfast`)} />
+                        <QuickAction icon="coffee" label={t.qaBreakfast} sub={t.qaBreakfastSub} tone="brand" onClick={() => go("orders")} />
                     ) : (
-                        <QuickAction icon="ticket" label={t.eventsFull} sub={t.eventsFullSub} tone="brand" onClick={() => push(`/check-in/${code}/events`)} />
+                        <QuickAction icon="ticket" label={t.eventsFull} sub={t.eventsFullSub} tone="brand" onClick={() => go("explore")} />
                     )}
                     <QuickAction icon="calendar" label={t.qaSchedule} sub={t.qaScheduleSub} tone="green" onClick={() => push(`/check-in/${code}/structures`)} />
                     <QuickAction icon="bell" label={t.qaConcierge} sub={t.qaConciergeSub} tone="gold" onClick={() => push(`/check-in/${code}/concierge`)} />
