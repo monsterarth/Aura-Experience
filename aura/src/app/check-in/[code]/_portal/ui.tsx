@@ -80,6 +80,7 @@ export function Icon({ n, s = 20, c = "currentColor", w = 1.8, fill = "none", st
         heart: <path d="M12 20s-7-4.3-9.3-9C1.4 8.4 2.6 5 6 5c2 0 3.2 1.3 4 2.4C10.8 6.3 12 5 14 5c3.4 0 4.6 3.4 3.3 6-2.3 4.7-9.3 9-9.3 9z" />,
         binoculars: <><path d="M5 7a2 2 0 012-2h1a2 2 0 012 2v3H5z" /><path d="M19 7a2 2 0 00-2-2h-1a2 2 0 00-2 2v3h5z" /><path d="M5 10a4 4 0 108 0M11 10h2M11 10a4 4 0 108 0" /></>,
         fork: <><path d="M5 3v6a2 2 0 002 2v10" /><path d="M9 3v6a2 2 0 01-2 2" /><path d="M16 3c-1.5 1-2 3-2 5s.5 3 2 3v10" /></>,
+        search: <><circle cx="11" cy="11" r="7" /><line x1="20.5" y1="20.5" x2="16.5" y2="16.5" /></>,
     };
     return (
         <svg width={s} height={s} viewBox="0 0 24 24" fill={fill} stroke={c}
@@ -276,3 +277,9 @@ export function Avatar({ name, size = 38, tone = "brand" }: { name?: string; siz
 
 // Fonte display (Instrument Serif) — usada em títulos especiais.
 export const DISPLAY_FONT = "var(--font-portal-display), 'Instrument Serif', serif";
+
+/** Title-case p/ nomes vindos do banco em caixa alta (CELSO → Celso). */
+export function titleCase(s?: string): string {
+    if (!s) return "";
+    return s.trim().toLowerCase().split(/\s+/).map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join(" ");
+}

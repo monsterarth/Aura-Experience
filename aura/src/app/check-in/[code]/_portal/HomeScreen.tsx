@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Icon, Card, SectionTitle, toneColor, toneBg } from "./ui";
+import { Icon, Card, SectionTitle, toneColor, toneBg, titleCase } from "./ui";
 import { usePortal } from "./context";
 import { useToday, type TodayItem } from "./useToday";
 import { useWeather, weatherIcon } from "./useWeather";
@@ -93,7 +93,7 @@ export function HomeScreen() {
 
     const cabinName = (stay as unknown as { cabinName?: string }).cabinName || property?.name || t.accommodation;
     const guestName = (stay as unknown as { guestName?: string }).guestName;
-    const firstName = guestName ? guestName.split(" ")[0] : "";
+    const firstName = titleCase(guestName ? guestName.split(" ")[0] : "");
 
     const hour = new Date().getHours();
     const greeting = hour < 12 ? t.goodMorning : hour < 18 ? t.goodAfternoon : t.goodEvening;

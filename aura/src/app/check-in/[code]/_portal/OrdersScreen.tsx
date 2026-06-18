@@ -1,14 +1,14 @@
 "use client";
 
 import React from "react";
-import { Icon, Card, SectionTitle, PrimaryBtn, GhostBtn, Tag, QtyStepper } from "./ui";
+import { Icon, Card, SectionTitle, PrimaryBtn, GhostBtn, Tag, QtyStepper, Chip } from "./ui";
 import { Sheet } from "./sheets";
 import { CafeBuilder } from "./CafeBuilder";
 import { usePortal, type Lang } from "./context";
 import { ConciergeService } from "@/services/concierge-service";
 import { submitConciergeRequest } from "@/app/actions/concierge-actions";
 import { toggleGuestDND } from "@/app/actions/dnd-actions";
-import type { ConciergeItem, ConciergeRequest } from "@/types/aura";
+import type { ConciergeItem, ConciergeRequest, ConciergeGroup } from "@/types/aura";
 
 /* ============================================================
    Portal do Hóspede — TELA PEDIDOS (Fase 2)
@@ -32,6 +32,7 @@ const ORD = {
         lossPenalty: "Multa por extravio", notesPlaceholder: "Observação (opcional) · ex: entregar à noite",
         request: "Solicitar", requested: (q: number, n: string) => `${q}× ${n} solicitado`,
         noItems: "Nenhum item disponível no momento.",
+        searchPlaceholder: "Buscar item…", allCats: "Todos", noResults: "Nada encontrado para o filtro.",
         nothing: "Nada em andamento", nothingSub: "Seus pedidos ao concierge aparecem aqui com status ao vivo.",
         seeConcierge: "Ver itens do concierge", onTheWay: "a caminho",
         dndTitle: "Não Perturbe ativo", dndBody: (q: number, n: string) => `Você está em modo Não Perturbe. Deseja receber ${q}× ${n} no chalé mesmo assim?`,
@@ -51,6 +52,7 @@ const ORD = {
         lossPenalty: "Loss penalty", notesPlaceholder: "Note (optional) · e.g. deliver at night",
         request: "Request", requested: (q: number, n: string) => `${q}× ${n} requested`,
         noItems: "No items available right now.",
+        searchPlaceholder: "Search item…", allCats: "All", noResults: "Nothing matches your filter.",
         nothing: "Nothing in progress", nothingSub: "Your concierge requests show up here with live status.",
         seeConcierge: "See concierge items", onTheWay: "on the way",
         dndTitle: "Do Not Disturb on", dndBody: (q: number, n: string) => `You're in Do Not Disturb mode. Receive ${q}× ${n} at the cabin anyway?`,
@@ -70,6 +72,7 @@ const ORD = {
         lossPenalty: "Penalización por extravío", notesPlaceholder: "Nota (opcional) · ej: entregar de noche",
         request: "Solicitar", requested: (q: number, n: string) => `${q}× ${n} solicitado`,
         noItems: "No hay ítems disponibles ahora.",
+        searchPlaceholder: "Buscar ítem…", allCats: "Todos", noResults: "Nada encontrado para el filtro.",
         nothing: "Nada en curso", nothingSub: "Tus pedidos al concierge aparecen aquí con estado en vivo.",
         seeConcierge: "Ver ítems del concierge", onTheWay: "en camino",
         dndTitle: "No Molestar activo", dndBody: (q: number, n: string) => `Estás en modo No Molestar. ¿Recibir ${q}× ${n} en la cabaña de todas formas?`,
@@ -90,6 +93,11 @@ function itemDesc(item: ConciergeItem, lang: Lang): string | undefined {
     return item.description;
 }
 const money = (v: number) => `R$ ${v.toFixed(2).replace(".", ",")}`;
+
+// O emoji do item é codificado no image_url como "emoji:🧴" (mesmo esquema do admin).
+const EMOJI_PREFIX = "emoji:";
+const isEmojiUrl = (u?: string) => !!u && u.startsWith(EMOJI_PREFIX);
+const emojiFromUrl = (u?: string) => (u ? u.slice(EMOJI_PREFIX.length) : "");
 
 /* ---------- sub-nav ---------- */
 function SubNav({ sub, setSub, labels, statusCount }: {
@@ -128,7 +136,11 @@ function ConciergeItemCard({ item, lang, labels, onRequest }: {
     return (
         <Card pad={13} style={{ display: "flex", gap: 13 }}>
             <div style={{ width: 46, height: 46, borderRadius: 13, background: `var(--${tone}-soft)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" }}>
-                {item.image_url ? <img src={item.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <Icon n={loan ? "package" : "bag"} s={22} c={`var(--${tone})`} />}
+                {isEmojiUrl(item.image_url)
+                    ? <span style={{ fontSize: 25, lineHeight: 1 }}>{emojiFromUrl(item.image_url)}</span>
+                    : item.image_url
+                        ? <img src={item.image_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        : <Icon n={loan ? "package" : "bag"} s={22} c={`var(--${tone})`} />}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
@@ -187,6 +199,8 @@ export function OrdersScreen() {
     const [requests, setRequests] = React.useState<ConciergeRequest[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [dndPending, setDndPending] = React.useState<{ item: ConciergeItem; qty: number; note: string } | null>(null);
+    const [search, setSearch] = React.useState("");
+    const [cat, setCat] = React.useState<string>(""); // "" = todas; senão groupId
 
     React.useEffect(() => {
         let alive = true;
@@ -232,6 +246,22 @@ export function OrdersScreen() {
     const loan = items.filter((i) => i.category === "loan");
     const pendingCount = requests.filter((r) => r.status === "pending").length;
     const recentPending = requests.find((r) => r.status === "pending");
+
+    // Busca + filtro por categoria (grupos do concierge cadastrados no admin).
+    const groups = React.useMemo(() => {
+        const map = new Map<string, ConciergeGroup>();
+        for (const it of items) if (it.group && it.groupId && !map.has(it.groupId)) map.set(it.groupId, it.group);
+        return Array.from(map.values()).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    }, [items]);
+    const groupName = (g: ConciergeGroup) => (lang === "en" && g.name_en) || (lang === "es" && g.name_es) || g.name;
+    const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const q = norm(search.trim());
+    const matchesFilter = (it: ConciergeItem) =>
+        (cat === "" || it.groupId === cat) &&
+        (q === "" || norm(itemName(it, lang)).includes(q) || norm(itemDesc(it, lang) || "").includes(q));
+    const consumoF = consumo.filter(matchesFilter);
+    const loanF = loan.filter(matchesFilter);
+    const anyResult = consumoF.length + loanF.length > 0;
 
     return (
         <div style={{ padding: "8px 18px 28px", display: "flex", flexDirection: "column", gap: 16 }}>
@@ -291,21 +321,46 @@ export function OrdersScreen() {
                         </div>
                     ) : (
                         <>
-                            {consumo.length > 0 && (
-                                <div>
-                                    <SectionTitle right={<Icon n="bag" s={16} c="var(--faint)" />}>{labels.consumption}</SectionTitle>
-                                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                                        {consumo.map((it) => <ConciergeItemCard key={it.id} item={it} lang={lang} labels={labels} onRequest={doRequest} />)}
-                                    </div>
+                            {/* Busca */}
+                            <div style={{ position: "relative" }}>
+                                <Icon n="search" s={16} c="var(--faint)" style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)" }} />
+                                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={labels.searchPlaceholder} style={{ width: "100%", boxSizing: "border-box", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 14, padding: "11px 13px 11px 38px", fontFamily: "inherit", fontSize: 13.5, color: "var(--ink)", outline: "none", boxShadow: "var(--sh-xs)" }} />
+                            </div>
+
+                            {/* Filtro por categoria (grupos do concierge) */}
+                            {groups.length > 0 && (
+                                <div style={{ display: "flex", gap: 7, overflowX: "auto" }} className="portal-noscroll">
+                                    <Chip active={cat === ""} onClick={() => setCat("")}>{labels.allCats}</Chip>
+                                    {groups.map((g) => (
+                                        <Chip key={g.id} active={cat === g.id} onClick={() => setCat(g.id)}>{g.icon ? `${g.icon} ` : ""}{groupName(g)}</Chip>
+                                    ))}
                                 </div>
                             )}
-                            {loan.length > 0 && (
-                                <div>
-                                    <SectionTitle right={<Icon n="package" s={16} c="var(--faint)" />}>{labels.loan}</SectionTitle>
-                                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                                        {loan.map((it) => <ConciergeItemCard key={it.id} item={it} lang={lang} labels={labels} onRequest={doRequest} />)}
-                                    </div>
+
+                            {!anyResult ? (
+                                <div style={{ textAlign: "center", padding: "26px 10px", color: "var(--muted)" }}>
+                                    <Icon n="search" s={30} c="var(--faint)" style={{ margin: "0 auto 8px" }} />
+                                    <p style={{ margin: 0, fontSize: 13 }}>{labels.noResults}</p>
                                 </div>
+                            ) : (
+                                <>
+                                    {consumoF.length > 0 && (
+                                        <div>
+                                            <SectionTitle right={<Icon n="bag" s={16} c="var(--faint)" />}>{labels.consumption}</SectionTitle>
+                                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                                {consumoF.map((it) => <ConciergeItemCard key={it.id} item={it} lang={lang} labels={labels} onRequest={doRequest} />)}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {loanF.length > 0 && (
+                                        <div>
+                                            <SectionTitle right={<Icon n="package" s={16} c="var(--faint)" />}>{labels.loan}</SectionTitle>
+                                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                                                {loanF.map((it) => <ConciergeItemCard key={it.id} item={it} lang={lang} labels={labels} onRequest={doRequest} />)}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </>
                     )}
@@ -329,7 +384,14 @@ export function OrdersScreen() {
                             return (
                                 <Card key={r.id} pad={15}>
                                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                                        <div style={{ width: 44, height: 44, borderRadius: 13, background: `var(--${m.tone}-soft)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon n={loanItem ? "package" : "bag"} s={22} c={`var(--${m.tone})`} /></div>
+                                        <div style={{ width: 44, height: 44, borderRadius: 13, background: `var(--${m.tone}-soft)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" }}>{(() => {
+                                            const u = r.item?.image_url;
+                                            return isEmojiUrl(u)
+                                                ? <span style={{ fontSize: 22, lineHeight: 1 }}>{emojiFromUrl(u)}</span>
+                                                : u
+                                                    ? <img src={u} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                                    : <Icon n={loanItem ? "package" : "bag"} s={22} c={`var(--${m.tone})`} />;
+                                        })()}</div>
                                         <div style={{ flex: 1, minWidth: 0 }}>
                                             <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--ink)" }}>{r.quantity}× {r.item ? itemName(r.item, lang) : ""}</div>
                                             <div style={{ fontSize: 12, color: "var(--muted)" }}>{loanItem ? labels.loanTag : labels.orderedAt} · {new Date(r.createdAt).toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}</div>

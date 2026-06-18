@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Icon, Card, Chip, PrimaryBtn } from "./ui";
+import { Icon, Card, Chip, PrimaryBtn, titleCase } from "./ui";
 import { usePortal, type Lang } from "./context";
 import type { FBCategory, FBMenuItem, FBOrder } from "@/types/aura";
 
@@ -33,8 +33,8 @@ export function CafeBuilder() {
 
     const totalGuests = Math.max(1, (stay.counts?.adults || 0) + (stay.counts?.children || 0));
     const guestNames = React.useMemo(() => {
-        const primary = (stay as unknown as { guestName?: string }).guestName?.split(" ")[0] || t.guest(1);
-        const extra = (stay.additionalGuests || []).filter(g => g.type !== "free").map((g, i) => g.fullName?.split(" ")[0] || t.guest(i + 2));
+        const primary = titleCase((stay as unknown as { guestName?: string }).guestName?.split(" ")[0]) || t.guest(1);
+        const extra = (stay.additionalGuests || []).filter(g => g.type !== "free").map((g, i) => titleCase(g.fullName?.split(" ")[0]) || t.guest(i + 2));
         const all = [primary, ...extra].slice(0, totalGuests);
         while (all.length < totalGuests) all.push(t.guest(all.length + 1));
         return totalGuests === 1 ? [t.you] : all;
