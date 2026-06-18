@@ -123,11 +123,17 @@ export default function SurveysManagementPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Button variant="outline" onClick={() => router.push('/admin/surveys/area-reviews')} className="gap-2 shadow-sm">
+            <Star className="w-4 h-4" /> Avaliações de áreas
+          </Button>
           <Button variant="outline" onClick={() => setIsCategoryModalOpen(true)} className="gap-2 shadow-sm">
             <Settings2 className="w-4 h-4" /> Categorias
           </Button>
-          <Button onClick={() => router.push('/admin/surveys/new')} className="gap-2 shadow-sm">
-            <Plus className="w-4 h-4" /> Nova Pesquisa
+          <Button variant="outline" onClick={() => router.push('/admin/surveys/new')} className="gap-2 shadow-sm">
+            <Plus className="w-4 h-4" /> Clássica
+          </Button>
+          <Button onClick={() => router.push('/admin/surveys/curated/new')} className="gap-2 shadow-sm">
+            <Plus className="w-4 h-4" /> Nova (moderna)
           </Button>
         </div>
       </header>
@@ -147,7 +153,7 @@ export default function SurveysManagementPage() {
             <p className="text-muted-foreground max-w-md mb-6">
               Você ainda não possui formulários de feedback. Crie sua primeira pesquisa para começar.
             </p>
-            <Button onClick={() => router.push('/admin/surveys/new')} size="lg" className="gap-2">
+            <Button onClick={() => router.push('/admin/surveys/curated/new')} size="lg" className="gap-2">
               <Plus className="w-5 h-5" /> Criar Primeira Pesquisa
             </Button>
           </div>
@@ -174,7 +180,7 @@ export default function SurveysManagementPage() {
                 <div className="flex flex-col gap-3 mb-6 flex-1">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <ListOrdered className="w-4 h-4" />
-                    <span>{template.questions?.length || 0} perguntas no formulário</span>
+                    <span>{template.version === 'curated' ? 'Fluxo moderno (curado)' : `${template.questions?.length || 0} perguntas no formulário`}</span>
                   </div>
                   
                   {template.reward?.hasReward ? (
@@ -210,7 +216,7 @@ export default function SurveysManagementPage() {
                     <Button 
                       variant="ghost" 
                       className="h-9 px-3 text-muted-foreground hover:text-primary"
-                      onClick={() => router.push(`/admin/surveys/edit/${template.id}`)}
+                      onClick={() => router.push(template.version === 'curated' ? `/admin/surveys/curated/${template.id}` : `/admin/surveys/edit/${template.id}`)}
                       title="Editar pesquisa"
                     >
                       <Pencil className="w-4 h-4" />

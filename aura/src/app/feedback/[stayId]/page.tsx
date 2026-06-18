@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { Stay, SurveyTemplate, SurveyQuestion } from "@/types/aura";
+import { Stay, Property, SurveyTemplate, SurveyQuestion } from "@/types/aura";
+import { CuratedSurvey } from "./CuratedSurvey";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { CheckCircle2, Star, Send, Loader2, Gift } from "lucide-react";
@@ -71,6 +72,7 @@ export default function GuestFeedbackPage() {
   const [lang, setLang] = useState<Lang>('pt');
 
   const [stayContext, setStayContext] = useState<{ stay: Stay; propertyId: string } | null>(null);
+  const [property, setProperty] = useState<Property | null>(null);
   const [template, setTemplate] = useState<SurveyTemplate | null>(null);
   const [answers, setAnswers] = useState<Record<string, any>>({});
 
@@ -98,7 +100,8 @@ export default function GuestFeedbackPage() {
         return;
       }
 
-      const { stay, alreadyAnswered, template: activeTemplate, preferredLanguage } = await res.json();
+      const { stay, alreadyAnswered, template: activeTemplate, property: prop, preferredLanguage } = await res.json();
+      setProperty(prop ?? null);
 
       // Detect language: guest preference → browser fallback
       const detectedLang: Lang = (['pt', 'en', 'es'].includes(preferredLanguage) ? preferredLanguage : null)
@@ -269,6 +272,11 @@ export default function GuestFeedbackPage() {
       <p className="text-muted-foreground">{error || t.errorLoad}</p>
     </div>
   );
+
+  // Survey 2.0: fluxo curado (tema da propriedade). Legado segue abaixo.
+  if (template.version === 'curated' && stayContext) {
+    return <CuratedSurvey stay={stayContext.stay} property={property} template={template} lang={lang} />;
+  }
 
   const templateTitle = (lang === 'en' && template.title_en) || (lang === 'es' && template.title_es) || template.title || t.title;
 

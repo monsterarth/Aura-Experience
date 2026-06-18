@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { SurveyResponse, SurveyTemplate, Stay, SurveyCategoryItem } from "@/types/aura";
+import { computeSurveyMetrics } from "@/lib/survey-metrics";
 
 export interface SurveyInsight {
   id: string;
@@ -197,46 +198,14 @@ export class SurveyService {
       }
 
       const answers = Object.entries(answersRecord).map(([questionId, value]) => ({ questionId, value }));
-
-      let npsScore: number | undefined = undefined;
-      let totalRating = 0;
-      let ratingCount = 0;
-      let isDetractor = false;
-      const categoryRatings: Record<string, number> = {};
-      const categoryCounts: Record<string, number> = {};
-
-      answers.forEach(ans => {
-        const question = template.questions.find(q => q.id === ans.questionId);
-        if (!question) return;
-
-        const value = Number(ans.value);
-        if (question.type === 'nps' && !isNaN(value)) {
-          npsScore = value;
-          if (value <= 6) isDetractor = true;
-        }
-
-        if (question.type === 'rating' && !isNaN(value)) {
-          totalRating += value;
-          ratingCount += 1;
-          if (value <= 2) isDetractor = true;
-
-          const categoryKey = question.categoryName || "Geral";
-          if (!categoryRatings[categoryKey]) { categoryRatings[categoryKey] = 0; categoryCounts[categoryKey] = 0; }
-          categoryRatings[categoryKey] += value;
-          categoryCounts[categoryKey] += 1;
-        }
-      });
-
-      Object.keys(categoryRatings).forEach(cat => { categoryRatings[cat] = Number((categoryRatings[cat] / categoryCounts[cat]).toFixed(1)); });
-      const averageRating = ratingCount > 0 ? Number((totalRating / ratingCount).toFixed(1)) : undefined;
+      const metrics = computeSurveyMetrics(template, answers);
 
       const id = crypto.randomUUID();
       await supabase.from('survey_responses').insert({
-        id, propertyId, stayId, guestId, templateId: template.id, answers,
-        metrics: { npsScore, averageRating, categoryRatings, isDetractor }
+        id, propertyId, stayId, guestId, templateId: template.id, answers, metrics
       });
 
-      await supabase.from('stays').update({ hasSurvey: true, npsScore: npsScore || null }).eq('id', stayId);
+      await supabase.from('stays').update({ hasSurvey: true, npsScore: metrics.npsScore ?? null }).eq('id', stayId);
 
       return { success: true };
     } catch (error) {
