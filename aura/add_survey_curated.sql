@@ -38,7 +38,7 @@ ALTER TABLE public.survey_templates
 --     "recommend": { "enabled": true },
 --     "comment": { "enabled": true },
 --     "review": { "googlePlaceId": "", "booking": "" },
---     "recovery": {},
+--     "recovery": { "message": "Sentimos muito que sua estadia não tenha sido o que você merecia. Obrigado por nos contar com sinceridade — já avisamos a equipe, e a recepção vai entrar em contato pessoalmente para corrigir. 🌿" },
 --     "thankYou": {}
 --   }'::jsonb
 -- WHERE "propertyId" = '<PROPERTY_ID>' AND "isDefault" = true;

@@ -117,13 +117,15 @@ export default function GuestFeedbackPage() {
         return;
       }
 
-      if (!activeTemplate || activeTemplate.questions.length === 0) {
+      // Curado usa `config` (questions vazio é normal); legado exige perguntas.
+      const isCurated = activeTemplate?.version === 'curated';
+      if (!activeTemplate || (!isCurated && (activeTemplate.questions?.length ?? 0) === 0)) {
         setError(ui[detectedLang].errorNoSurvey);
         setLoading(false);
         return;
       }
 
-      activeTemplate.questions.sort((a: SurveyQuestion, b: SurveyQuestion) => a.position - b.position);
+      if (!isCurated) activeTemplate.questions.sort((a: SurveyQuestion, b: SurveyQuestion) => a.position - b.position);
       setStayContext({ stay: stay as Stay, propertyId: stay.propertyId });
       setTemplate(activeTemplate);
       setLoading(false);
