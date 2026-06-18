@@ -46,6 +46,8 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: propErr.message }, { status: 500 });
     }
     const mapConfig = property?.settings?.mapConfig ?? {};
+    // Avaliações de área só são expostas (média/contagem) quando a propriedade habilita o público.
+    const reviewsPublic = property?.settings?.areaReviews?.public === true;
 
     // Estruturas exibidas no mapa
     const { data: structuresRaw, error: structErr } = await supabaseAdmin
@@ -62,10 +64,11 @@ export async function GET(request: NextRequest) {
 
     // Agregados de avaliações (média + contagem) por estrutura
     const ratingMap = new Map<string, { sum: number; count: number }>();
-    if (structureIds.length > 0) {
+    if (reviewsPublic && structureIds.length > 0) {
         const { data: reviews } = await supabaseAdmin
             .from("structure_reviews")
             .select("structureId, rating")
+            .eq("status", "approved")
             .in("structureId", structureIds);
         for (const r of (reviews || []) as Pick<StructureReview, "structureId" | "rating">[]) {
             const agg = ratingMap.get(r.structureId) ?? { sum: 0, count: 0 };
