@@ -54,6 +54,9 @@ export function computeSurveyMetrics(template: SurveyTemplate, answers: Answer[]
         else if (recommend === "maybe") npsScore = 7;
         else if (recommend === "no") { npsScore = 3; isDetractor = true; }
         else if (overall !== undefined) npsScore = overall >= 4 ? 9 : overall === 3 ? 7 : 3;
+        // Sinal negativo forte (estrela <= 2 em geral/categoria, ou "Não") sempre cai
+        // como detrator no NPS — vence uma recomendação positiva contraditória.
+        if (isDetractor) npsScore = 3;
 
         const averageRating = ratingCount > 0 ? Number((totalRating / ratingCount).toFixed(1)) : undefined;
         return { npsScore, averageRating, categoryRatings, isDetractor, recommend, overall, highlights, commentShared };

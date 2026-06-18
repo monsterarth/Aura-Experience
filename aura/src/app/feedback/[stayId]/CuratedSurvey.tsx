@@ -134,9 +134,12 @@ export function CuratedSurvey({ stay, property, template, lang }: {
         step === "final" ? (config.recommend?.enabled === false || !!recommend) :
         true;
 
+    // Detrator vence: "Não", ou impressão geral <=2, ou qualquer categoria <=2
+    // (uma estrela baixa importa mais que um "Com certeza" contraditório).
+    const anyLowCat = Object.values(catRatings).some((v) => v > 0 && v <= 2);
+    const isDetractor = recommend === "no" || (overall > 0 && overall <= 2) || anyLowCat;
     const bucket: "promoter" | "detractor" | "passive" =
-        recommend === "yes" ? "promoter" : recommend === "no" ? "detractor" :
-        overall >= 4 ? "promoter" : overall <= 2 && overall > 0 ? "detractor" : "passive";
+        isDetractor ? "detractor" : (recommend === "yes" || overall >= 4) ? "promoter" : "passive";
 
     const toggleChip = (id: string) => setHighlights((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]);
 
