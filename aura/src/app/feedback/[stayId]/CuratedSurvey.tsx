@@ -19,6 +19,7 @@ const TXT = {
         brand: "Sua opinião", overallQ: "Como foi sua estadia", overallSub: "Sua opinião molda a experiência dos próximos hóspedes.",
         catsQ: "Avalie por item", catsSub: (n: number) => `Toque nas estrelas. Avalie ao menos ${n}.`,
         hlQ: "O que se destacou?", hlSub: "Escolha tudo que combina com sua experiência.",
+        hlLiked: "O que mais gostou?", hlImprove: "O que podemos melhorar?", other: "Outro…", otherPlaceholder: "Conte pra gente",
         recQ: (p: string) => `Recomendaria ${p}?`, recSub: "Quase lá!",
         commentLabelPublic: "Quer deixar um recado?", commentLabelPrivate: "Conte o que podemos melhorar", commentOptional: "(opcional)",
         commentPlaceholder: "Escreva aqui…",
@@ -34,6 +35,7 @@ const TXT = {
         brand: "Your feedback", overallQ: "How was your stay", overallSub: "Your opinion shapes the next guests' experience.",
         catsQ: "Rate by item", catsSub: (n: number) => `Tap the stars. Rate at least ${n}.`,
         hlQ: "What stood out?", hlSub: "Pick everything that matches your experience.",
+        hlLiked: "What did you like most?", hlImprove: "What can we improve?", other: "Other…", otherPlaceholder: "Tell us",
         recQ: (p: string) => `Would you recommend ${p}?`, recSub: "Almost there!",
         commentLabelPublic: "Want to leave a note?", commentLabelPrivate: "Tell us what we can improve", commentOptional: "(optional)",
         commentPlaceholder: "Write here…",
@@ -49,6 +51,7 @@ const TXT = {
         brand: "Tu opinión", overallQ: "¿Cómo fue tu estadía", overallSub: "Tu opinión moldea la experiencia de los próximos huéspedes.",
         catsQ: "Evalúa por ítem", catsSub: (n: number) => `Toca las estrellas. Evalúa al menos ${n}.`,
         hlQ: "¿Qué se destacó?", hlSub: "Elige todo lo que combine con tu experiencia.",
+        hlLiked: "¿Qué te gustó más?", hlImprove: "¿Qué podemos mejorar?", other: "Otro…", otherPlaceholder: "Cuéntanos",
         recQ: (p: string) => `¿Recomendarías ${p}?`, recSub: "¡Casi listo!",
         commentLabelPublic: "¿Quieres dejar un mensaje?", commentLabelPrivate: "Cuéntanos qué podemos mejorar", commentOptional: "(opcional)",
         commentPlaceholder: "Escribe aquí…",
@@ -90,19 +93,25 @@ export function CuratedSurvey({ stay, property, template, lang }: {
     const minCats = Math.min(config.minCategories ?? 3, cats.length || 3);
     const hlPositive = config.highlights?.positive ?? [];
     const hlImprove = config.highlights?.improve ?? [];
-    const allChips = [...hlPositive, ...hlImprove];
+    const otherPositive = !!config.highlights?.otherPositive;
+    const otherImprove = !!config.highlights?.otherImprove;
+    const hasHighlights = hlPositive.length > 0 || hlImprove.length > 0 || otherPositive || otherImprove;
 
     // monta a sequência de passos conforme a config
     const steps: ("overall" | "categories" | "highlights" | "final")[] = [];
     if (config.overall?.enabled !== false) steps.push("overall");
     if (cats.length) steps.push("categories");
-    if (allChips.length) steps.push("highlights");
+    if (hasHighlights) steps.push("highlights");
     steps.push("final");
 
     const [idx, setIdx] = React.useState(0);
     const [overall, setOverall] = React.useState(0);
     const [catRatings, setCatRatings] = React.useState<Record<string, number>>({});
     const [highlights, setHighlights] = React.useState<string[]>([]);
+    const [otherPosOn, setOtherPosOn] = React.useState(false);
+    const [otherPosText, setOtherPosText] = React.useState("");
+    const [otherImpOn, setOtherImpOn] = React.useState(false);
+    const [otherImpText, setOtherImpText] = React.useState("");
     const [recommend, setRecommend] = React.useState<"no" | "maybe" | "yes" | null>(null);
     const [comment, setComment] = React.useState("");
     const [submitting, setSubmitting] = React.useState(false);
@@ -131,13 +140,21 @@ export function CuratedSurvey({ stay, property, template, lang }: {
 
     const toggleChip = (id: string) => setHighlights((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]);
 
+    const chipStyle = (on: boolean): React.CSSProperties => ({ border: on ? "1.5px solid var(--brand)" : "1px solid var(--line)", background: on ? "var(--brand-soft)" : "var(--surface)", color: on ? "var(--brand-deep)" : "var(--ink-soft)", borderRadius: 999, padding: "11px 16px", fontFamily: "inherit", fontSize: 13.5, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7 });
+    const subTitle: React.CSSProperties = { margin: "0 0 10px", fontSize: 12, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--muted)" };
+    const otherInput: React.CSSProperties = { width: "100%", boxSizing: "border-box", marginTop: 10, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 12, padding: "10px 13px", fontFamily: "inherit", fontSize: 14, color: "var(--ink)", outline: "none" };
+
     const submit = async () => {
         setSubmitting(true);
         const answers: Record<string, unknown> = {};
         if (overall > 0) answers.overall = overall;
         Object.entries(catRatings).forEach(([id, v]) => { if (v > 0) answers[`cat:${id}`] = v; });
         if (recommend) answers.recommend = recommend;
-        if (highlights.length) answers.highlights = highlights;
+        const chosen: string[] = [];
+        [...hlPositive, ...hlImprove].forEach((c) => { if (highlights.includes(c.id)) chosen.push(c.label); });
+        if (otherPosOn && otherPosText.trim()) chosen.push(otherPosText.trim());
+        if (otherImpOn && otherImpText.trim()) chosen.push(otherImpText.trim());
+        if (chosen.length) answers.highlights = chosen;
         if (comment.trim()) answers.comment = comment.trim();
         try {
             const res = await fetch("/api/guest/survey", {
@@ -260,21 +277,37 @@ export function CuratedSurvey({ stay, property, template, lang }: {
                         </div>
                     )}
 
-                    {/* HIGHLIGHTS */}
+                    {/* HIGHLIGHTS — dois grupos rotulados + chip "Outro" (texto livre) */}
                     {step === "highlights" && (
                         <div className="portal-fade-up">
                             <h2 style={{ margin: "10px 0 6px", fontSize: 23, fontWeight: 800, letterSpacing: "-.02em", color: "var(--ink)" }}>{t.hlQ}</h2>
                             <p style={{ margin: "0 0 22px", fontSize: 13.5, color: "var(--muted)" }}>{t.hlSub}</p>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 9 }}>
-                                {allChips.map((c: SurveyChip) => {
-                                    const on = highlights.includes(c.id);
-                                    return (
-                                        <button key={c.id} onClick={() => toggleChip(c.id)} style={{ border: on ? "1.5px solid var(--brand)" : "1px solid var(--line)", background: on ? "var(--brand-soft)" : "var(--surface)", color: on ? "var(--brand-deep)" : "var(--ink-soft)", borderRadius: 999, padding: "11px 16px", fontFamily: "inherit", fontSize: 13.5, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 7 }}>
-                                            {on && <Icon n="check" s={15} c="var(--brand)" w={2.5} />}{cl(c)}
-                                        </button>
-                                    );
-                                })}
-                            </div>
+
+                            {(hlPositive.length > 0 || otherPositive) && (
+                                <div style={{ marginBottom: 18 }}>
+                                    <h3 style={subTitle}>{t.hlLiked}</h3>
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 9 }}>
+                                        {hlPositive.map((c: SurveyChip) => { const on = highlights.includes(c.id); return (
+                                            <button key={c.id} onClick={() => toggleChip(c.id)} style={chipStyle(on)}>{on && <Icon n="check" s={15} c="var(--brand)" w={2.5} />}{cl(c)}</button>
+                                        ); })}
+                                        {otherPositive && <button onClick={() => setOtherPosOn(v => !v)} style={chipStyle(otherPosOn)}>{otherPosOn && <Icon n="check" s={15} c="var(--brand)" w={2.5} />}{t.other}</button>}
+                                    </div>
+                                    {otherPositive && otherPosOn && <input value={otherPosText} onChange={(e) => setOtherPosText(e.target.value)} placeholder={t.otherPlaceholder} style={otherInput} />}
+                                </div>
+                            )}
+
+                            {(hlImprove.length > 0 || otherImprove) && (
+                                <div>
+                                    <h3 style={subTitle}>{t.hlImprove}</h3>
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 9 }}>
+                                        {hlImprove.map((c: SurveyChip) => { const on = highlights.includes(c.id); return (
+                                            <button key={c.id} onClick={() => toggleChip(c.id)} style={chipStyle(on)}>{on && <Icon n="check" s={15} c="var(--brand)" w={2.5} />}{cl(c)}</button>
+                                        ); })}
+                                        {otherImprove && <button onClick={() => setOtherImpOn(v => !v)} style={chipStyle(otherImpOn)}>{otherImpOn && <Icon n="check" s={15} c="var(--brand)" w={2.5} />}{t.other}</button>}
+                                    </div>
+                                    {otherImprove && otherImpOn && <input value={otherImpText} onChange={(e) => setOtherImpText(e.target.value)} placeholder={t.otherPlaceholder} style={otherInput} />}
+                                </div>
+                            )}
                         </div>
                     )}
 

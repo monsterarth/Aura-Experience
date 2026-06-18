@@ -544,7 +544,7 @@ export interface SurveyCuratedConfig {
   overall: { enabled: boolean };                       // passo das faces (1–5)
   categories: { id: string; label: string; label_en?: string; label_es?: string; icon?: string }[]; // estrelas; label PT é a chave em metrics.categoryRatings
   minCategories?: number;                              // "avalie ao menos N"
-  highlights: { positive: SurveyChip[]; improve?: SurveyChip[] };
+  highlights: { positive: SurveyChip[]; improve?: SurveyChip[]; otherPositive?: boolean; otherImprove?: boolean }; // otherX = chip "Outro" (texto livre)
   recommend: { enabled: boolean };                     // 3 opções (no/maybe/yes)
   comment: { enabled: boolean; prompt?: string; prompt_en?: string; prompt_es?: string };
   review: { googlePlaceId?: string; google?: string; booking?: string }; // promotor → writereview

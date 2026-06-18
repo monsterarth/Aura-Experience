@@ -24,7 +24,10 @@ function defaultConfig(): SurveyCuratedConfig {
         highlights: {
             positive: ["Tranquilidade", "Atendimento caloroso", "Café delicioso", "Vista linda", "Limpeza impecável", "Voltaria com certeza"]
                 .map((l) => ({ id: crypto.randomUUID(), label: l })),
-            improve: [],
+            improve: ["Limpeza", "Café da manhã", "Conforto da cama", "Wi-Fi / sinal", "Silêncio / barulho", "Manutenção", "Custo-benefício"]
+                .map((l) => ({ id: crypto.randomUUID(), label: l })),
+            otherPositive: true,
+            otherImprove: true,
         },
         recommend: { enabled: true },
         comment: { enabled: true },
@@ -142,8 +145,8 @@ export default function CuratedSurveyEditor() {
                 </section>
 
                 {/* Destaques */}
-                <ChipSection title="Destaques positivos" icon={<Tag className="w-4 h-4 text-primary" />} chips={config.highlights.positive} onChange={(positive) => patch({ highlights: { ...config.highlights, positive } })} />
-                <ChipSection title="A melhorar (opcional)" icon={<Tag className="w-4 h-4 text-muted-foreground" />} chips={config.highlights.improve || []} onChange={(improve) => patch({ highlights: { ...config.highlights, improve } })} />
+                <ChipSection title="Destaques positivos" icon={<Tag className="w-4 h-4 text-primary" />} chips={config.highlights.positive} onChange={(positive) => patch({ highlights: { ...config.highlights, positive } })} other={config.highlights.otherPositive} onToggleOther={(v) => patch({ highlights: { ...config.highlights, otherPositive: v } })} />
+                <ChipSection title="A melhorar (opcional)" icon={<Tag className="w-4 h-4 text-muted-foreground" />} chips={config.highlights.improve || []} onChange={(improve) => patch({ highlights: { ...config.highlights, improve } })} other={config.highlights.otherImprove} onToggleOther={(v) => patch({ highlights: { ...config.highlights, otherImprove: v } })} />
 
                 {/* Recomendação + comentário */}
                 <section className="bg-background border rounded-xl p-5 shadow-sm space-y-4">
@@ -200,7 +203,7 @@ export default function CuratedSurveyEditor() {
     );
 }
 
-function ChipSection({ title, icon, chips, onChange }: { title: string; icon: React.ReactNode; chips: SurveyChip[]; onChange: (c: SurveyChip[]) => void }) {
+function ChipSection({ title, icon, chips, onChange, other, onToggleOther }: { title: string; icon: React.ReactNode; chips: SurveyChip[]; onChange: (c: SurveyChip[]) => void; other?: boolean; onToggleOther?: (v: boolean) => void }) {
     return (
         <section className="bg-background border rounded-xl p-5 shadow-sm space-y-3">
             <h2 className="font-bold text-foreground flex items-center gap-2">{icon}{title}</h2>
@@ -214,7 +217,15 @@ function ChipSection({ title, icon, chips, onChange }: { title: string; icon: Re
                     </div>
                 ))}
             </div>
-            <Button variant="outline" size="sm" className="gap-2" onClick={() => onChange([...chips, { id: crypto.randomUUID(), label: "" }])}><Plus className="w-4 h-4" />Item</Button>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+                <Button variant="outline" size="sm" className="gap-2" onClick={() => onChange([...chips, { id: crypto.randomUUID(), label: "" }])}><Plus className="w-4 h-4" />Item</Button>
+                {onToggleOther && (
+                    <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                        <input type="checkbox" className="w-4 h-4 accent-primary" checked={!!other} onChange={(e) => onToggleOther(e.target.checked)} />
+                        Permitir campo livre (chip Outro)
+                    </label>
+                )}
+            </div>
         </section>
     );
 }
