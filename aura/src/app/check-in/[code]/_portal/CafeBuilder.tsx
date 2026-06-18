@@ -218,11 +218,6 @@ export function CafeBuilder() {
                 </Card>
             )}
 
-            {/* Quem está no chalé */}
-            <div style={{ display: "flex", alignItems: "center", gap: 9, background: "var(--green-soft)", borderRadius: 14, padding: "11px 13px" }}>
-                <Icon n="checkcircle" s={18} c="var(--green)" /><span style={{ fontSize: 12.5, color: "#2c574f", fontWeight: 600, lineHeight: 1.35 }}>{t.known}</span>
-            </div>
-
             {/* Categorias */}
             {categories.map(cat => {
                 const catItems = items.filter(i => i.categoryId === cat.id);

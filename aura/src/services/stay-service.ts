@@ -339,6 +339,20 @@ export const StayService = {
     return (data as any)?.preferredLanguage ?? null;
   },
 
+  /** Nome do titular + idioma preferido em uma consulta (portal: hero e café). */
+  async getGuestNameAndLang(guestId?: string | null): Promise<{ fullName: string | null; preferredLanguage: string | null }> {
+    if (!guestId) return { fullName: null, preferredLanguage: null };
+    const { data } = await supabase
+      .from('guests')
+      .select('fullName, preferredLanguage')
+      .eq('id', guestId)
+      .maybeSingle();
+    return {
+      fullName: (data as any)?.fullName ?? null,
+      preferredLanguage: (data as any)?.preferredLanguage ?? null,
+    };
+  },
+
   async getGroupStays(accessCode: string) {
     const { data: stays, error } = await supabase
       .from('stays')

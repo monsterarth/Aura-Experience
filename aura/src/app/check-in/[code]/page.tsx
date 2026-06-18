@@ -288,9 +288,9 @@ function GuestHubContent() {
                 // Property, idioma e survey (quando aplicável) não dependem entre si:
                 // busca em paralelo em vez de em cascata. As estruturas (usadas só no
                 // modal de "Reportar Problema") são carregadas sob demanda — ver useEffect.
-                const [prop, savedLang, surveyed] = await Promise.all([
+                const [prop, guestInfo, surveyed] = await Promise.all([
                     PropertyService.getPropertyById(firstStay.propertyId),
-                    StayService.getGuestPreferredLanguage(firstStay.guestId).catch(() => null),
+                    StayService.getGuestNameAndLang(firstStay.guestId).catch(() => null),
                     isFinished
                         ? SurveyService.hasSurveyForStay(firstStay.propertyId, firstStay.id).catch(() => false)
                         : Promise.resolve(false),
@@ -298,6 +298,12 @@ function GuestHubContent() {
 
                 setProperty(prop as Property);
 
+                // Nome do titular vem da tabela guests → injeta no stay p/ o portal (hero, café).
+                if (guestInfo?.fullName) {
+                    setStay({ ...firstStay, guestName: guestInfo.fullName } as Stay);
+                }
+
+                const savedLang = guestInfo?.preferredLanguage;
                 if (savedLang && ['pt', 'en', 'es'].includes(savedLang)) {
                     setLang(savedLang as 'pt' | 'en' | 'es');
                 } else {

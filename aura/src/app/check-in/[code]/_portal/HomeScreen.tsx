@@ -4,6 +4,7 @@ import React from "react";
 import { Icon, Card, SectionTitle, toneColor, toneBg } from "./ui";
 import { usePortal } from "./context";
 import { useToday, type TodayItem } from "./useToday";
+import { useWeather, weatherIcon } from "./useWeather";
 
 const LOCALE: Record<string, string> = { pt: "pt-BR", en: "en-US", es: "es-ES" };
 
@@ -14,21 +15,21 @@ const TL: Record<string, Record<string, string>> = {
         bfDoneT: "Cesta de café confirmada", bfDoneB: "Entrega no chalé às", bfDoneC: "Editar cesta",
         bookB: "Sua reserva de hoje", bookC: "Ver", evB: "Evento de hoje", evC: "Ver no Explorar",
         concT1: "pedido a caminho", concTn: "pedidos a caminho", concB: "Acompanhe no concierge.", concC: "Acompanhar",
-        coT: "Check-out às", coB: "Precisa de mais tempo? Posso pedir um late check-out.", coC: "Pedir late check-out",
+        coT: "Check-out às", coTm: "Check-out amanhã às", coB: "Precisa de mais tempo? Posso pedir um late check-out.", coBm: "Seu último dia conosco — se precisar, já solicito um late check-out.", coC: "Pedir late check-out",
         dndT: "Não Perturbe ativo", dndB: "Limpeza pausada até", dndC: "Gerenciar" },
     en: { cafe: "Breakfast", checkout: "Check-out", concierge: "Concierge", dnd: "Do Not Disturb", today: "Today",
         bfNoneT: "Build your breakfast basket", bfNoneB: "Secure tomorrow's breakfast to your cabin.", bfNoneC: "Build basket",
         bfDoneT: "Breakfast basket confirmed", bfDoneB: "Delivered to your cabin at", bfDoneC: "Edit basket",
         bookB: "Your booking today", bookC: "View", evB: "Today's event", evC: "See in Explore",
         concT1: "request on the way", concTn: "requests on the way", concB: "Track it in concierge.", concC: "Track",
-        coT: "Check-out at", coB: "Need more time? I can request a late check-out.", coC: "Request late check-out",
+        coT: "Check-out at", coTm: "Check-out tomorrow at", coB: "Need more time? I can request a late check-out.", coBm: "Your last day with us — if you need, I can request a late check-out now.", coC: "Request late check-out",
         dndT: "Do Not Disturb on", dndB: "Cleaning paused until", dndC: "Manage" },
     es: { cafe: "Desayuno", checkout: "Check-out", concierge: "Concierge", dnd: "No Molestar", today: "Hoy",
         bfNoneT: "Arma tu cesta de desayuno", bfNoneB: "Asegura el desayuno de mañana en tu cabaña.", bfNoneC: "Armar cesta",
         bfDoneT: "Cesta de desayuno confirmada", bfDoneB: "Entrega en tu cabaña a las", bfDoneC: "Editar cesta",
         bookB: "Tu reserva de hoy", bookC: "Ver", evB: "Evento de hoy", evC: "Ver en Explorar",
         concT1: "pedido en camino", concTn: "pedidos en camino", concB: "Síguelo en el concierge.", concC: "Seguir",
-        coT: "Check-out a las", coB: "¿Necesitas más tiempo? Puedo pedir late check-out.", coC: "Pedir late check-out",
+        coT: "Check-out a las", coTm: "Check-out mañana a las", coB: "¿Necesitas más tiempo? Puedo pedir late check-out.", coBm: "Tu último día con nosotros — si lo necesitas, puedo pedir un late check-out.", coC: "Pedir late check-out",
         dndT: "No Molestar activo", dndB: "Limpieza pausada hasta", dndC: "Gestionar" },
 };
 
@@ -108,6 +109,12 @@ export function HomeScreen() {
     const fbEnabled = !!property?.settings?.fbSettings?.breakfast?.enabled &&
         ["delivery", "buffet", "both"].includes(property?.settings?.fbSettings?.breakfast?.modality ?? "");
 
+    // ---- Tempo atual (Open-Meteo) usando o centro do mapa da propriedade ----
+    const mapCfg = property?.settings?.mapConfig;
+    const wxLat = mapCfg?.center?.lat ?? (mapCfg?.bounds ? (mapCfg.bounds.minLat + mapCfg.bounds.maxLat) / 2 : undefined);
+    const wxLng = mapCfg?.center?.lng ?? (mapCfg?.bounds ? (mapCfg.bounds.minLng + mapCfg.bounds.maxLng) / 2 : undefined);
+    const weather = useWeather(wxLat, wxLng);
+
     // ---- Timeline "Sua jornada hoje" — agenda real via /api/guest/today ----
     const journey = useToday(stay.id, stay.propertyId, stay.accessCode);
     const tl = TL[lang] || TL.pt;
@@ -130,8 +137,10 @@ export function HomeScreen() {
                 const n = Number(data.count ?? 1);
                 return { ...base, time: tl.concierge, title: `${n}× ${n > 1 ? tl.concTn : tl.concT1}`, body: tl.concB, cta: tl.concC, onAction: () => go("orders") };
             }
-            case "checkout":
-                return { ...base, time: tl.checkout, title: `${tl.coT} ${fmtClock(data.iso)}`, body: tl.coB, cta: tl.coC, onAction: () => openSheet("latecheckout") };
+            case "checkout": {
+                const coToday = data.today === true;
+                return { ...base, time: tl.checkout, title: `${coToday ? tl.coT : tl.coTm} ${fmtClock(data.iso)}`, body: coToday ? tl.coB : tl.coBm, cta: tl.coC, onAction: () => openSheet("latecheckout") };
+            }
             case "dnd":
                 return { ...base, time: tl.dnd, title: tl.dndT, body: `${tl.dndB} ${fmtClock(data.until)}`, cta: tl.dndC, onAction: () => go("stay") };
             default:
@@ -152,8 +161,14 @@ export function HomeScreen() {
                             <Icon n="binoculars" s={18} c="rgba(255,255,255,.85)" />
                             <span style={{ fontFamily: "var(--font-portal-display), serif", fontSize: 21, letterSpacing: ".01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{property?.name || "Aura"}</span>
                         </div>
+                        {weather.tempC != null && (
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.16)", borderRadius: 999, padding: "5px 11px", flexShrink: 0 }}>
+                                <Icon n={weatherIcon(weather.code)} s={15} c="#fff" />
+                                <span style={{ fontSize: 13.5, fontWeight: 700 }}>{Math.round(weather.tempC)}°</span>
+                            </div>
+                        )}
                     </div>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, opacity: .82, letterSpacing: ".02em" }}>{greeting}{firstName ? `, ${firstName}` : ""} ☀</p>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, opacity: .82, letterSpacing: ".02em" }}>{greeting}{firstName ? `, ${firstName}` : ""}</p>
                     <h1 style={{ margin: "3px 0 0", fontSize: 30, fontWeight: 800, letterSpacing: "-.02em", lineHeight: 1.02 }}>{cabinName}</h1>
                     <p style={{ margin: "5px 0 16px", fontSize: 13, opacity: .82 }}>
                         {checkIn ? checkIn.toLocaleDateString(locale, { day: "2-digit", month: "short" }) : ""}
