@@ -3,6 +3,7 @@
 import React from "react";
 import { Icon, Card, SectionTitle, PrimaryBtn, GhostBtn, Tag, QtyStepper } from "./ui";
 import { Sheet } from "./sheets";
+import { CafeBuilder } from "./CafeBuilder";
 import { usePortal, type Lang } from "./context";
 import { ConciergeService } from "@/services/concierge-service";
 import { submitConciergeRequest } from "@/app/actions/concierge-actions";
@@ -89,9 +90,6 @@ function itemDesc(item: ConciergeItem, lang: Lang): string | undefined {
     return item.description;
 }
 const money = (v: number) => `R$ ${v.toFixed(2).replace(".", ",")}`;
-
-interface BfOrderItem { menuItemId: string; name: string; quantity: number; flavor?: string; notes?: string }
-interface BfOrder { id: string; deliveryTime?: string; status: string; modality: string; totalPrice?: number; items: BfOrderItem[] }
 
 /* ---------- sub-nav ---------- */
 function SubNav({ sub, setSub, labels, statusCount }: {
@@ -189,7 +187,6 @@ export function OrdersScreen() {
     const [requests, setRequests] = React.useState<ConciergeRequest[]>([]);
     const [loading, setLoading] = React.useState(true);
     const [dndPending, setDndPending] = React.useState<{ item: ConciergeItem; qty: number; note: string } | null>(null);
-    const [bfOrder, setBfOrder] = React.useState<BfOrder | null>(null);
 
     React.useEffect(() => {
         let alive = true;
@@ -207,19 +204,6 @@ export function OrdersScreen() {
         })();
         return () => { alive = false; };
     }, [stay.propertyId, stay.id]);
-
-    // Pedido de café de amanhã (modalidade entrega) — status ao vivo.
-    React.useEffect(() => {
-        if (!fbEnabled || !cafeDelivery) return;
-        let alive = true;
-        const d = new Date(); d.setDate(d.getDate() + 1);
-        const iso = d.toISOString().split("T")[0];
-        fetch(`/api/guest/breakfast-orders?stayId=${stay.id}&propertyId=${stay.propertyId}&deliveryDate=${iso}&type=breakfast`)
-            .then((r) => (r.ok ? r.json() : null))
-            .then((j) => { if (alive && j?.order) setBfOrder(j.order as BfOrder); })
-            .catch(() => { /* silently ignore */ });
-        return () => { alive = false; };
-    }, [fbEnabled, cafeDelivery, stay.id, stay.propertyId]);
 
     const refreshRequests = async () => {
         try { setRequests(await ConciergeService.getConciergeRequestsForStay(stay.propertyId, stay.id)); } catch { /* noop */ }
@@ -272,43 +256,8 @@ export function OrdersScreen() {
                             </div>
                         </div>
                     ) : (
-                        /* Entrega no chalé */
-                        <>
-                            <div style={{ borderRadius: 22, padding: 18, color: "#fff", position: "relative", overflow: "hidden", background: "linear-gradient(145deg,var(--brand),var(--brand-deep))" }}>
-                                <div style={{ position: "absolute", right: -16, top: -16, opacity: .16 }}><Icon n="coffee" s={120} c="#fff" w={1.2} /></div>
-                                <div style={{ position: "relative" }}>
-                                    <h2 style={{ margin: "0 0 7px", fontFamily: "var(--font-portal-display), serif", fontSize: 26, fontWeight: 400 }}>{labels.cafeTitle}</h2>
-                                    <p style={{ margin: "0 0 16px", fontSize: 12.5, opacity: .85, lineHeight: 1.4 }}>{labels.cafeBody}</p>
-                                    <PrimaryBtn icon={bfOrder ? "edit" : "arrowright"} tone="ink" onClick={() => push(`/check-in/${code}/breakfast`)}>{bfOrder ? labels.editBasket : labels.cafeCta}</PrimaryBtn>
-                                </div>
-                            </div>
-
-                            {bfOrder && (
-                                <Card pad={15}>
-                                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                                        <div style={{ width: 44, height: 44, borderRadius: 13, background: "var(--brand-soft)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon n="coffee" s={22} c="var(--brand)" /></div>
-                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--ink)" }}>{labels.cafeScheduled}</div>
-                                            {bfOrder.deliveryTime && <div style={{ fontSize: 12, color: "var(--muted)" }}>{labels.deliverAt} {bfOrder.deliveryTime}</div>}
-                                        </div>
-                                        <Tag tone="gold">{labels.scheduledTag}</Tag>
-                                    </div>
-                                    {(() => {
-                                        const real = bfOrder.items.filter((it) => it.menuItemId !== "guest_observations");
-                                        if (real.length === 0) return null;
-                                        return (
-                                            <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
-                                                {real.slice(0, 8).map((it, i) => (
-                                                    <span key={i} style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)", background: "var(--surface-alt)", border: "1px solid var(--line)", borderRadius: 999, padding: "4px 10px" }}>
-                                                        {it.quantity > 1 ? `${it.quantity}× ` : ""}{it.name}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        );
-                                    })()}
-                                </Card>
-                            )}
-                        </>
+                        /* Entrega no chalé — builder numa página só */
+                        <CafeBuilder />
                     )}
                 </div>
             )}
