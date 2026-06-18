@@ -86,6 +86,10 @@ export interface Property {
     generalPolicyText?: Record<string, string>;
     privacyPolicyText?: Record<string, string>;
 
+    // Avaliações de área (mapa): visibilidade pública opt-in (padrão privado/só equipe).
+    // Quando public=true, reviews passam por moderação antes de aparecer aos hóspedes.
+    areaReviews?: { public?: boolean };
+
     // NOVO: Configurações do Módulo de F&B
     fbSettings?: FBSettings;
 
@@ -269,7 +273,9 @@ export interface StructureReview {
   guestName?: string;
   rating: number;   // 1-5
   comment?: string;
+  status?: 'pending' | 'approved' | 'hidden'; // moderação (Fase E); público só vê 'approved'
   createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 // Agregado de avaliações por estrutura (média + contagem)
@@ -524,6 +530,28 @@ export interface SurveyReward {
   description_es?: string;
 }
 
+// --- PESQUISA CURADA (Survey 2.0) ---
+// Config do fluxo moderno de feedback, guardada em survey_templates.config
+// quando version === 'curated'. i18n inline no padrão field/field_en/field_es.
+export interface SurveyChip {
+  id: string;
+  label: string;
+  label_en?: string;
+  label_es?: string;
+}
+
+export interface SurveyCuratedConfig {
+  overall: { enabled: boolean };                       // passo das faces (1–5)
+  categories: { id: string; label: string; label_en?: string; label_es?: string; icon?: string }[]; // estrelas; label PT é a chave em metrics.categoryRatings
+  minCategories?: number;                              // "avalie ao menos N"
+  highlights: { positive: SurveyChip[]; improve?: SurveyChip[]; otherPositive?: boolean; otherImprove?: boolean }; // otherX = chip "Outro" (texto livre)
+  recommend: { enabled: boolean };                     // 3 opções (no/maybe/yes)
+  comment: { enabled: boolean; prompt?: string; prompt_en?: string; prompt_es?: string };
+  review: { googlePlaceId?: string; google?: string; booking?: string }; // promotor → writereview
+  recovery?: { message?: string; message_en?: string; message_es?: string };               // tela do detrator
+  thankYou?: { title?: string; title_en?: string; title_es?: string; subtitle?: string; subtitle_en?: string; subtitle_es?: string };
+}
+
 // --- TEMPLATE DA PESQUISA ---
 // Coleção: properties/{propertyId}/survey_templates
 export interface SurveyTemplate {
@@ -535,6 +563,9 @@ export interface SurveyTemplate {
   isDefault: boolean; // Indica se esta é a pesquisa enviada no check-out
   questions: SurveyQuestion[];
   reward: SurveyReward;
+  // Survey 2.0: 'curated' usa `config` (fluxo moderno); 'builder'/undefined = legado (questions[]).
+  version?: 'builder' | 'curated';
+  config?: SurveyCuratedConfig;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -564,10 +595,15 @@ export interface SurveyResponse {
 
   // Métricas pré-calculadas para Dashboards rápidos (Evita re-calcular no Frontend)
   metrics: {
-    npsScore?: number; // 0-10 (Se houver pergunta NPS)
+    npsScore?: number; // 0-10 (Se houver pergunta NPS; no curado é derivado de `recommend`)
     averageRating?: number; // 1-5 (Média de todas as perguntas de Rating)
     categoryRatings: Record<string, number>; // Ex: { governance: 4.5, reception: 5 }
     isDetractor: boolean; // Flag automática (NPS <= 6 ou Rating <= 2) para disparar alertas
+    // Survey 2.0 (curado) — campos ricos para evolução futura do dashboard
+    recommend?: 'no' | 'maybe' | 'yes';
+    overall?: number;       // impressão geral 1-5 (faces)
+    highlights?: string[];  // ids/labels dos chips escolhidos
+    commentShared?: boolean; // intenção de publicar no Google (best-effort)
   };
 
   createdAt: Timestamp;
@@ -776,8 +812,9 @@ export interface AuditLog {
   | 'SUPPLIER_CREATED' | 'SUPPLIER_UPDATED' | 'SUPPLIER_DELETED'
   | 'ASSET_CREATED' | 'ASSET_UPDATED' | 'ASSET_DISPOSED'
   | 'INVENTORY_OPENED' | 'INVENTORY_CLOSED'
-  | 'CRON_STOCK_LOW' | 'CRON_STOCK_EXPIRY' | 'CRON_ASSET_DEPRECIATION';
-  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER' | 'CONTACT' | 'AUTOMATION' | 'BREAKFAST' | 'CRON' | 'SUPPLIER' | 'ASSET' | 'PURCHASE' | 'INVENTORY';
+  | 'CRON_STOCK_LOW' | 'CRON_STOCK_EXPIRY' | 'CRON_ASSET_DEPRECIATION'
+  | 'STRUCTURE_REVIEW_LOW';
+  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'STRUCTURE_REVIEW' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER' | 'CONTACT' | 'AUTOMATION' | 'BREAKFAST' | 'CRON' | 'SUPPLIER' | 'ASSET' | 'PURCHASE' | 'INVENTORY';
   entityId: string;
   oldData?: any;
   newData?: any;

@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { SurveyTemplate } from "@/types/aura";
+import { computeSurveyMetrics } from "@/lib/survey-metrics";
 
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
@@ -60,7 +61,14 @@ export async function GET(request: NextRequest) {
         .eq("isDefault", true)
         .maybeSingle();
 
-    return NextResponse.json({ stay, alreadyAnswered, template: template ?? null, preferredLanguage });
+    // 4. Property (tema "camaleão" + nome) para o fluxo curado
+    const { data: property } = await supabaseAdmin
+        .from("properties")
+        .select("*")
+        .eq("id", propertyId)
+        .maybeSingle();
+
+    return NextResponse.json({ stay, alreadyAnswered, template: template ?? null, property: property ?? null, preferredLanguage });
 }
 
 export async function POST(request: NextRequest) {
@@ -99,46 +107,12 @@ export async function POST(request: NextRequest) {
 
     const template = templateData as SurveyTemplate;
     const answers = Object.entries(answersRecord).map(([questionId, value]) => ({ questionId, value }));
-
-    // Calculate metrics
-    let npsScore: number | undefined = undefined;
-    let totalRating = 0;
-    let ratingCount = 0;
-    let isDetractor = false;
-    const categoryRatings: Record<string, number> = {};
-    const categoryCounts: Record<string, number> = {};
-
-    answers.forEach(ans => {
-        const question = template.questions.find(q => q.id === ans.questionId);
-        if (!question) return;
-
-        const value = Number(ans.value);
-        if (question.type === "nps" && !isNaN(value)) {
-            npsScore = value;
-            if (value <= 6) isDetractor = true;
-        }
-
-        if (question.type === "rating" && !isNaN(value)) {
-            totalRating += value;
-            ratingCount += 1;
-            if (value <= 2) isDetractor = true;
-
-            const categoryKey = question.categoryName || "Geral";
-            if (!categoryRatings[categoryKey]) { categoryRatings[categoryKey] = 0; categoryCounts[categoryKey] = 0; }
-            categoryRatings[categoryKey] += value;
-            categoryCounts[categoryKey] += 1;
-        }
-    });
-
-    Object.keys(categoryRatings).forEach(cat => {
-        categoryRatings[cat] = Number((categoryRatings[cat] / categoryCounts[cat]).toFixed(1));
-    });
-    const averageRating = ratingCount > 0 ? Number((totalRating / ratingCount).toFixed(1)) : undefined;
+    // Métricas: curado (deriva de overall/recommend/categorias) ou legado (questions[]).
+    const metrics = computeSurveyMetrics(template, answers);
 
     const id = crypto.randomUUID();
     const { error: insertError } = await supabaseAdmin.from("survey_responses").insert({
-        id, propertyId, stayId, guestId, templateId, answers,
-        metrics: { npsScore, averageRating, categoryRatings, isDetractor }
+        id, propertyId, stayId, guestId, templateId, answers, metrics
     });
 
     if (insertError) {
@@ -147,7 +121,7 @@ export async function POST(request: NextRequest) {
 
     await supabaseAdmin
         .from("stays")
-        .update({ hasSurvey: true, npsScore: npsScore ?? null })
+        .update({ hasSurvey: true, npsScore: metrics.npsScore ?? null })
         .eq("id", stayId);
 
     return NextResponse.json({ success: true });
