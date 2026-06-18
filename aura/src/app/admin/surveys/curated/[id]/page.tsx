@@ -169,8 +169,8 @@ export default function CuratedSurveyEditor() {
                 {/* Review público */}
                 <section className="bg-background border rounded-xl p-5 shadow-sm space-y-3">
                     <h2 className="font-bold text-foreground flex items-center gap-2"><Star className="w-4 h-4 text-primary" />Avaliação pública (promotores)</h2>
-                    <div><label className="field-label">Google Place ID</label><input className="field-input w-full" placeholder="ChIJ..." value={config.review.googlePlaceId || ""} onChange={(e) => patch({ review: { ...config.review, googlePlaceId: e.target.value } })} /><p className="text-xs text-muted-foreground mt-1">Encontre em developers.google.com/maps/documentation/places/web-service/place-id. Abre a tela de avaliar e copia o comentário p/ colar.</p></div>
-                    <div><label className="field-label">URL do Booking (opcional)</label><input className="field-input w-full" placeholder="https://www.booking.com/..." value={config.review.booking || ""} onChange={(e) => patch({ review: { ...config.review, booking: e.target.value } })} /></div>
+                    <div><label className="field-label">Google Place ID</label><input className="field-input w-full" placeholder="ChIJ..." value={config.review.googlePlaceId || ""} onChange={(e) => patch({ review: { ...config.review, googlePlaceId: e.target.value } })} /><p className="text-xs text-muted-foreground mt-1">Use o Place ID (começa com ChIJ…), NÃO o número CID. Pegue no Place ID Finder do Google Maps. Abre a tela de avaliar e copia o comentário p/ colar.</p></div>
+                    <div><label className="field-label">URL do Booking (opcional)</label><input className="field-input w-full" placeholder="https://www.booking.com/..." value={config.review.booking || ""} onChange={(e) => patch({ review: { ...config.review, booking: e.target.value } })} /><p className="text-xs text-muted-foreground mt-1">Cole o link completo, com https://</p></div>
                 </section>
 
                 {/* Recuperação (detrator) */}

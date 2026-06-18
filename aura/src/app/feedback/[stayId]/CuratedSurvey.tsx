@@ -170,11 +170,23 @@ export function CuratedSurvey({ stay, property, template, lang }: {
 
     const next = () => { if (idx < steps.length - 1) setIdx(idx + 1); else submit(); };
 
+    // Garante esquema absoluto (evita virar caminho relativo do site).
+    const normUrl = (u?: string): string | null => {
+        const s = (u || "").trim();
+        if (!s) return null;
+        return /^https?:\/\//i.test(s) ? s : `https://${s}`;
+    };
     const reviewUrl = (() => {
-        const pid = config.review?.googlePlaceId?.trim();
-        if (pid) return `https://search.google.com/local/writereview?placeid=${encodeURIComponent(pid)}`;
-        return config.review?.google?.trim() || null;
+        const pid = (config.review?.googlePlaceId || "").trim();
+        // Place ID real (ChIJ…) abre a tela de avaliar; CID puramente numérico daria 404
+        // no writereview, então abre a ficha do Google; senão, usa a URL completa.
+        if (/^[A-Za-z]/.test(pid)) return `https://search.google.com/local/writereview?placeid=${encodeURIComponent(pid)}`;
+        const full = normUrl(config.review?.google);
+        if (full) return full;
+        if (/^\d{5,}$/.test(pid)) return `https://www.google.com/maps?cid=${pid}`;
+        return null;
     })();
+    const bookingUrl = normUrl(config.review?.booking);
     const publishGoogle = async () => {
         if (comment.trim()) { try { await navigator.clipboard?.writeText(comment.trim()); setCopied(true); setTimeout(() => setCopied(false), 2200); } catch { /* noop */ } }
         if (reviewUrl) window.open(reviewUrl, "_blank");
@@ -204,12 +216,12 @@ export function CuratedSurvey({ stay, property, template, lang }: {
                         </>
                     )}
 
-                    {bucket === "promoter" && (reviewUrl || config.review?.booking) && (
+                    {bucket === "promoter" && (reviewUrl || bookingUrl) && (
                         <Card pad={16} style={{ width: "100%", marginBottom: 16 }}>
                             <p style={{ margin: "0 0 12px", fontSize: 13.5, color: "var(--ink-soft)", fontWeight: 600, lineHeight: 1.4 }}>{t.shareTitle}</p>
                             <div style={{ display: "flex", gap: 9 }}>
                                 {reviewUrl && <GhostBtn icon="star" style={{ flex: 1 }} onClick={publishGoogle}>{t.google}</GhostBtn>}
-                                {config.review?.booking && <GhostBtn icon="heart" style={{ flex: 1 }} onClick={() => window.open(config.review!.booking!, "_blank")}>{t.booking}</GhostBtn>}
+                                {bookingUrl && <GhostBtn icon="heart" style={{ flex: 1 }} onClick={() => window.open(bookingUrl, "_blank")}>{t.booking}</GhostBtn>}
                             </div>
                             {copied && <p style={{ margin: "10px 0 0", fontSize: 12, color: "var(--green)", fontWeight: 600 }}>{t.copied}</p>}
                         </Card>
