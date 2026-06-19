@@ -97,6 +97,46 @@ export const StructureService = {
         });
     },
 
+    // Estrutura marcada como salão do café — fonte única do horário (operatingHours)
+    // e da localização no mapa do café. Retorna null se nenhuma estiver marcada.
+    async getBreakfastVenue(propertyId: string): Promise<Structure | null> {
+        const { data } = await supabase
+            .from('structures')
+            .select('*')
+            .eq('propertyId', propertyId)
+            .eq('isBreakfastVenue', true)
+            .limit(1)
+            .maybeSingle();
+        return (data as Structure) ?? null;
+    },
+
+    // Define (exclusivamente) qual estrutura é o salão do café: limpa as demais
+    // e marca a escolhida. structureId=null apenas remove a marcação atual.
+    async setBreakfastVenue(propertyId: string, structureId: string | null, actorId: string, actorName: string): Promise<void> {
+        await supabase
+            .from('structures')
+            .update({ isBreakfastVenue: false })
+            .eq('propertyId', propertyId)
+            .eq('isBreakfastVenue', true);
+        if (structureId) {
+            const { error } = await supabase
+                .from('structures')
+                .update({ isBreakfastVenue: true })
+                .eq('id', structureId)
+                .eq('propertyId', propertyId);
+            if (error) throw error;
+        }
+        await AuditService.log({
+            propertyId,
+            userId: actorId,
+            userName: actorName,
+            action: "STRUCTURE_UPDATED",
+            entity: "STRUCTURE",
+            entityId: structureId ?? "—",
+            details: `Salão do café ${structureId ? "definido" : "removido"}.`
+        });
+    },
+
     // Libera (ou rebloqueia) uma estrutura de liberação diária para uma data.
     // date = YYYY-MM-DD libera para aquele dia; date = null volta a bloquear.
     async setDailyRelease(

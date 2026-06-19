@@ -38,6 +38,13 @@ interface TimelineItem {
     urgent?: boolean; onAction: () => void;
 }
 
+// Subtítulo do atalho de café conforme modalidade/janela.
+const QA_CAFE: Record<string, { buffet: (o: string, c: string) => string; buffetGeneric: string; deliverOpen: (e: string) => string; deliverGeneric: string; closed: (n: number) => string }> = {
+    pt: { buffet: (o, c) => `de ${o} às ${c}`, buffetGeneric: "Buffet no salão", deliverOpen: (e) => `Personalize até ${e}`, deliverGeneric: "Personalize sua cesta", closed: (n) => `Encerrado · cesta p/ ${n}` },
+    en: { buffet: (o, c) => `${o}–${c}`, buffetGeneric: "Buffet at the hall", deliverOpen: (e) => `Customize until ${e}`, deliverGeneric: "Customize your basket", closed: (n) => `Closed · basket for ${n}` },
+    es: { buffet: (o, c) => `de ${o} a ${c}`, buffetGeneric: "Buffet en el salón", deliverOpen: (e) => `Personaliza hasta ${e}`, deliverGeneric: "Personaliza tu cesta", closed: (n) => `Cerrado · cesta p/ ${n}` },
+};
+
 function StayProgress({ nights, current }: { nights: number; current: number }) {
     return (
         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
@@ -88,7 +95,7 @@ function QuickAction({ icon, label, sub, tone, onClick }: {
 }
 
 export function HomeScreen() {
-    const { stay, property, code, lang, t, go, push, openSheet } = usePortal();
+    const { stay, property, code, lang, t, go, push, openSheet, cafeVenue } = usePortal();
     const locale = LOCALE[lang] || "pt-BR";
 
     const cabinName = (stay as unknown as { cabinName?: string }).cabinName || property?.name || t.accommodation;
@@ -106,8 +113,20 @@ export function HomeScreen() {
     const checkoutDate = checkOut ? checkOut.toLocaleDateString(locale, { day: "2-digit", month: "short" }) : "";
     const checkoutTime = checkOut ? checkOut.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }) : "12:00";
 
-    const fbEnabled = !!property?.settings?.fbSettings?.breakfast?.enabled &&
-        ["delivery", "buffet", "both"].includes(property?.settings?.fbSettings?.breakfast?.modality ?? "");
+    const fbb = property?.settings?.fbSettings?.breakfast;
+    const fbEnabled = !!fbb?.enabled && ["delivery", "buffet", "both"].includes(fbb?.modality ?? "");
+
+    // ---- Subtítulo dinâmico do atalho de café (modalidade + janela de pedido) ----
+    const cafeDelivery = (stay.cestaBreakfastEnabled === true ? "delivery" : (fbb?.modality === "both" ? (fbb?.dailyMode ?? "delivery") : fbb?.modality)) === "delivery";
+    const cafePax = Math.max(1, (stay.counts?.adults || 0) + (stay.counts?.children || 0));
+    const owStart = fbb?.delivery?.orderWindowStart, owEnd = fbb?.delivery?.orderWindowEnd;
+    const nowHM = `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}`;
+    const deliveryWindowOpen = owStart && owEnd ? (nowHM >= owStart && nowHM <= owEnd) : true;
+    const hmShort = (s?: string) => (s ? s.replace(/^0/, "") : "");
+    const qc = QA_CAFE[lang] || QA_CAFE.pt;
+    const cafeSub = !cafeDelivery
+        ? (cafeVenue?.openTime && cafeVenue?.closeTime ? qc.buffet(hmShort(cafeVenue.openTime), hmShort(cafeVenue.closeTime)) : qc.buffetGeneric)
+        : (deliveryWindowOpen ? (owEnd ? qc.deliverOpen(hmShort(owEnd)) : qc.deliverGeneric) : qc.closed(cafePax));
 
     // ---- Tempo atual (Open-Meteo) usando o centro do mapa da propriedade ----
     const mapCfg = property?.settings?.mapConfig;
@@ -204,7 +223,7 @@ export function HomeScreen() {
                 <SectionTitle>{t.quickAccess}</SectionTitle>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 11 }}>
                     {fbEnabled ? (
-                        <QuickAction icon="coffee" label={t.qaBreakfast} sub={t.qaBreakfastSub} tone="brand" onClick={() => go("orders")} />
+                        <QuickAction icon="coffee" label={t.qaBreakfast} sub={cafeSub} tone="brand" onClick={() => go("orders")} />
                     ) : (
                         <QuickAction icon="ticket" label={t.eventsFull} sub={t.eventsFullSub} tone="brand" onClick={() => go("explore")} />
                     )}

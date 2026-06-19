@@ -9,6 +9,8 @@ import { Stay, Property } from "@/types/aura";
 import { Loader2, CheckCircle, FileText, AlertCircle, Phone, Star, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { PortalShell } from "./_portal/PortalShell";
+import type { CafeVenue } from "./_portal/context";
+import { StructureService } from "@/services/structure-service";
 
 // --- HELPERS DE TEMA ---
 function hexToHSL(hex: string): string {
@@ -244,6 +246,7 @@ function GuestHubContent() {
 
     const [stays, setStays] = useState<Stay[]>([]);
     const [stay, setStay] = useState<Stay | null>(null);
+    const [cafeVenue, setCafeVenue] = useState<CafeVenue | null>(null);
     const [property, setProperty] = useState<Property | null>(null);
 
     // States para fluxos
@@ -288,15 +291,28 @@ function GuestHubContent() {
                 // Property, idioma e survey (quando aplicável) não dependem entre si:
                 // busca em paralelo em vez de em cascata. As estruturas (usadas só no
                 // modal de "Reportar Problema") são carregadas sob demanda — ver useEffect.
-                const [prop, guestInfo, surveyed] = await Promise.all([
+                const [prop, guestInfo, surveyed, breakfastVenue] = await Promise.all([
                     PropertyService.getPropertyById(firstStay.propertyId),
                     StayService.getGuestNameAndLang(firstStay.guestId).catch(() => null),
                     isFinished
                         ? SurveyService.hasSurveyForStay(firstStay.propertyId, firstStay.id).catch(() => false)
                         : Promise.resolve(false),
+                    StructureService.getBreakfastVenue(firstStay.propertyId).catch(() => null),
                 ]);
 
                 setProperty(prop as Property);
+
+                // Salão do café (estrutura marcada) → horário + "como chegar" no portal.
+                if (breakfastVenue) {
+                    const pin = breakfastVenue.mapPin;
+                    setCafeVenue({
+                        id: breakfastVenue.id,
+                        name: breakfastVenue.name,
+                        openTime: breakfastVenue.operatingHours?.openTime,
+                        closeTime: breakfastVenue.operatingHours?.closeTime,
+                        mapPin: pin && (pin.lat !== 0 || pin.lng !== 0) ? { lat: pin.lat, lng: pin.lng } : null,
+                    });
+                }
 
                 // Nome do titular vem da tabela guests → injeta no stay p/ o portal (hero, café).
                 if (guestInfo?.fullName) {
@@ -535,6 +551,7 @@ function GuestHubContent() {
                 code={code as string}
                 lang={lang}
                 setLang={setLang}
+                cafeVenue={cafeVenue}
             />
         );
     }

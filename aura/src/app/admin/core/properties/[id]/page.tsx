@@ -4,7 +4,8 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PropertyService } from "@/services/property-service";
-import { Property, PropertyTheme } from "@/types/aura";
+import { StructureService } from "@/services/structure-service";
+import { Property, PropertyTheme, Structure } from "@/types/aura";
 import {
     Save, ArrowLeft, Smartphone, Palette,
     Type, Layout, Loader2, Clock, MessageSquare,
@@ -68,6 +69,11 @@ export default function PropertySettingsPage() {
 
     const [property, setProperty] = useState<Property | null>(null);
     const [theme, setTheme] = useState<PropertyTheme | null>(null);
+    // Salão do café (estrutura marcada) — picker redundante c/ o toggle da estrutura.
+    const [structures, setStructures] = useState<Structure[]>([]);
+    const [cafeVenueId, setCafeVenueId] = useState("");
+    const [cafeOpen, setCafeOpen] = useState("08:00");
+    const [cafeClose, setCafeClose] = useState("10:30");
 
     // Informações Básicas da Marca
     const [basicInfo, setBasicInfo] = useState({
@@ -214,6 +220,49 @@ export default function PropertySettingsPage() {
         } finally {
             setLoading(false);
         }
+    }
+
+    // Carrega estruturas e o salão do café atual (picker redundante c/ o toggle).
+    useEffect(() => {
+        if (!id) return;
+        StructureService.getStructures(id as string).then(list => {
+            setStructures(list);
+            const venue = list.find(s => s.isBreakfastVenue);
+            if (venue) {
+                setCafeVenueId(venue.id);
+                setCafeOpen(venue.operatingHours?.openTime || "08:00");
+                setCafeClose(venue.operatingHours?.closeTime || "10:30");
+            }
+        }).catch(() => { /* silencioso */ });
+    }, [id]);
+
+    async function saveCafeVenue(structureId: string) {
+        if (!userData) return;
+        setCafeVenueId(structureId);
+        try {
+            await StructureService.setBreakfastVenue(id as string, structureId || null, userData.id, userData.fullName);
+            const list = await StructureService.getStructures(id as string);
+            setStructures(list);
+            const venue = list.find(s => s.id === structureId);
+            if (venue) { setCafeOpen(venue.operatingHours?.openTime || "08:00"); setCafeClose(venue.operatingHours?.closeTime || "10:30"); }
+            toast.success(structureId ? "Salão do café definido." : "Salão do café removido.");
+        } catch { toast.error("Erro ao definir o salão do café."); }
+    }
+
+    async function saveCafeHours() {
+        if (!userData || !cafeVenueId) return;
+        const venue = structures.find(s => s.id === cafeVenueId);
+        if (!venue) return;
+        if (venue.operatingHours?.openTime === cafeOpen && venue.operatingHours?.closeTime === cafeClose) return;
+        try {
+            await StructureService.updateStructure(
+                id as string, cafeVenueId,
+                { operatingHours: { ...(venue.operatingHours ?? { slotDurationMinutes: 60, slotIntervalMinutes: 15 }), openTime: cafeOpen, closeTime: cafeClose } },
+                userData.id, userData.fullName
+            );
+            setStructures(prev => prev.map(s => s.id === cafeVenueId ? { ...s, operatingHours: { ...(s.operatingHours ?? { slotDurationMinutes: 60, slotIntervalMinutes: 15 }), openTime: cafeOpen, closeTime: cafeClose } } : s));
+            toast.success("Horário do café atualizado.");
+        } catch { toast.error("Erro ao salvar o horário."); }
     }
 
     async function handleSave() {
@@ -1025,6 +1074,37 @@ export default function PropertySettingsPage() {
                                                         className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
                                                     />
                                                 </div>
+                                            </div>
+                                        )}
+
+                                        {/* Salão do café (redundante com o toggle na estrutura — grava o mesmo dado) */}
+                                        {(settings.fbSettings.breakfast.modality === 'buffet' || settings.fbSettings.breakfast.modality === 'both') && (
+                                            <div className="bg-secondary p-6 rounded-2xl space-y-4">
+                                                <h4 className="font-bold text-sm">Salão do Café (Buffet)</h4>
+                                                <p className="text-xs text-muted-foreground -mt-2">Escolha qual estrutura é o salão do café. O horário abaixo é o mesmo Horário de Funcionamento da estrutura — editar aqui altera a estrutura, e a localização no mapa alimenta o botão Como chegar do portal.</p>
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Estrutura do Café</label>
+                                                    <select
+                                                        value={cafeVenueId}
+                                                        onChange={e => saveCafeVenue(e.target.value)}
+                                                        className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground appearance-none"
+                                                    >
+                                                        <option value="">— Nenhuma —</option>
+                                                        {structures.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                                    </select>
+                                                </div>
+                                                {cafeVenueId && (
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Abertura</label>
+                                                            <input type="time" value={cafeOpen} onChange={e => setCafeOpen(e.target.value)} onBlur={saveCafeHours} className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground [color-scheme:light] dark:[color-scheme:dark]" />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Fechamento</label>
+                                                            <input type="time" value={cafeClose} onChange={e => setCafeClose(e.target.value)} onBlur={saveCafeHours} className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground [color-scheme:light] dark:[color-scheme:dark]" />
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 

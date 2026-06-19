@@ -98,7 +98,7 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
                     "description", "description_en", "description_es",
                     "visibility", "capacity", "status",
                     "bookingType", "units", "requiresTurnover", "requiresDailyRelease", "operatingHours",
-                    "imageUrl", "housekeepingChecklist",
+                    "imageUrl", "housekeepingChecklist", "isBreakfastVenue",
                     "messageTemplatePendingId", "messageTemplateConfirmedId", "messageTemplateCancelledId",
                 ];
                 const payload: Record<string, any> = {};
@@ -264,6 +264,17 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
                                     </div>
                                 </label>
                             )}
+
+                            {/* Salão do café da manhã — define horário e local do café no portal */}
+                            <label className="flex items-center gap-3 p-4 bg-secondary/40 border border-border rounded-2xl cursor-pointer hover:bg-secondary/60 transition-colors">
+                                <input type="checkbox" checked={formData.isBreakfastVenue ?? false} onChange={e => setFormData({ ...formData, isBreakfastVenue: e.target.checked })} className="w-5 h-5 accent-primary rounded cursor-pointer" />
+                                <div>
+                                    <div className="font-bold text-sm text-foreground">É o salão do café da manhã</div>
+                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                        O Horário de Funcionamento acima vira o horário do café, e a localização no mapa alimenta o botão Como chegar do portal. Marque apenas uma estrutura.
+                                    </p>
+                                </div>
+                            </label>
 
                             {formData.requiresTurnover && (
                                 <div className="space-y-4 pt-4 border-t border-border mt-2">

@@ -9,7 +9,7 @@ import { Icon } from "./ui";
 import { getPortalThemeVars } from "./theme";
 import { portalI18n } from "./i18n";
 import {
-    PortalContext, type Lang, type TabId, type SheetName, type DndState, type ToastObj,
+    PortalContext, type Lang, type TabId, type SheetName, type DndState, type ToastObj, type CafeVenue,
 } from "./context";
 import { HomeScreen } from "./HomeScreen";
 import { StayScreen } from "./StayScreen";
@@ -54,8 +54,8 @@ function Toast({ toast }: { toast: ToastObj | null }) {
     );
 }
 
-export function PortalShell({ stay, property, code, lang, setLang }: {
-    stay: Stay; property: Property | null; code: string; lang: Lang; setLang: (l: Lang) => void;
+export function PortalShell({ stay, property, code, lang, setLang, cafeVenue = null }: {
+    stay: Stay; property: Property | null; code: string; lang: Lang; setLang: (l: Lang) => void; cafeVenue?: CafeVenue | null;
 }) {
     const router = useRouter();
     const t = portalI18n[lang] || portalI18n.pt;
@@ -65,6 +65,7 @@ export function PortalShell({ stay, property, code, lang, setLang }: {
     const [toastObj, setToastObj] = React.useState<ToastObj | null>(null);
     const [dnd, setDnd] = React.useState<DndState>({ on: stay.dnd_enabled ?? false, until: stay.dnd_until ?? null });
     const [dndLoading, setDndLoading] = React.useState(false);
+    const [mapFocus, setMapFocus] = React.useState<{ lat: number; lng: number } | null>(null);
 
     const scrollRef = React.useRef<HTMLDivElement>(null);
     const toastTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -107,6 +108,7 @@ export function PortalShell({ stay, property, code, lang, setLang }: {
         stay, property, code, lang, setLang, t,
         tab, go, push, openSheet, closeSheet, toast,
         dnd, setDnd, handleDnd, dndLoading,
+        cafeVenue, mapFocus, setMapFocus,
     };
 
     return (

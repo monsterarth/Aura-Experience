@@ -71,7 +71,7 @@ function EventRow({ ev, lang, todayLabel, onOpen }: { ev: Event; lang: MapLang; 
 }
 
 export function ExploreScreen() {
-    const { stay, property, lang, t, openSheet } = usePortal();
+    const { stay, property, lang, t, openSheet, mapFocus, setMapFocus } = usePortal();
     const L = EXP[lang] || EXP.pt;
     const M = MAP_TXT[lang] || MAP_TXT.pt;
     const mlang = lang as MapLang;
@@ -145,6 +145,17 @@ export function ExploreScreen() {
         if (withGps) handleRequestGPS();
     };
     const closeFullMap = () => { setMapOpen(false); setRouteTo(null); };
+
+    // "Como chegar ao café" — alvo de foco vindo de outra tela (aba Pedidos).
+    React.useEffect(() => {
+        if (!mapFocus || !mapLoaded) return;
+        if (hasRealMap) { setMode("satellite"); setRouteTo({ lat: mapFocus.lat, lng: mapFocus.lng }); }
+        else setRouteTo(null);
+        setMapOpen(true);
+        handleRequestGPS();
+        setMapFocus(null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mapFocus, mapLoaded, hasRealMap]);
 
     const renderFullMap = () =>
         showSatellite ? (

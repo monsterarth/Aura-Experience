@@ -230,6 +230,7 @@ export interface Structure {
   messageTemplateCancelledId?: string;
   // --- Camada de Mapa Interativo (opcional; só aparece no mapa quando configurado) ---
   showOnMap?: boolean;                                                  // exibe esta estrutura no mapa do hóspede
+  isBreakfastVenue?: boolean;                                           // marca como salão do café: operatingHours = horário do café, mapPin = "como chegar"
   mapPin?: { lat: number; lng: number; pixelX?: number; pixelY?: number }; // posição GPS + pixel na imagem ilustrada
   pinColor?: string;                                                    // cor (hex) do pin na UI
   pinIcon?: string;                                                     // emoji ou nome de ícone do pin

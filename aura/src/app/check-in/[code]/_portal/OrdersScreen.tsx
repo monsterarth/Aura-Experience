@@ -25,7 +25,7 @@ const ORD = {
         cafeTitle: "Café da manhã", cafeBody: "Monte a cesta perfeita e receba no seu chalé.", cafeCta: "Montar cesta",
         cafeOff: "Café da manhã indisponível para esta acomodação.",
         cafeScheduled: "Cesta de café · amanhã", deliverAt: "Entrega no chalé às", editBasket: "Editar cesta",
-        itemsWord: "itens", scheduledTag: "Agendado", buffetTitle: "Café buffet", buffetBody: "Servido no nosso restaurante central. É só chegar — bom apetite!", buffetOpen: "Ver detalhes",
+        itemsWord: "itens", scheduledTag: "Agendado", buffetTitle: "Café buffet", buffetBody: "Servido no nosso restaurante central. É só chegar — bom apetite!", buffetOpen: "Ver detalhes", howToGet: "Como chegar", openNow: "Aberto agora", closedNow: "Fechado agora", buffetHours: (o: string, c: string) => `de ${o} às ${c}`,
         conciergeLead: "Peça itens e serviços direto ao seu chalé.",
         consumption: "Consumo", loan: "Empréstimo",
         free: "Grátis", included: "incluso na hospedagem",
@@ -45,7 +45,7 @@ const ORD = {
         cafeTitle: "Breakfast", cafeBody: "Build the perfect basket, delivered to your cabin.", cafeCta: "Build basket",
         cafeOff: "Breakfast isn't available for this accommodation.",
         cafeScheduled: "Breakfast basket · tomorrow", deliverAt: "Delivered to your cabin at", editBasket: "Edit basket",
-        itemsWord: "items", scheduledTag: "Scheduled", buffetTitle: "Buffet breakfast", buffetBody: "Served at our central restaurant. Just drop by — enjoy!", buffetOpen: "See details",
+        itemsWord: "items", scheduledTag: "Scheduled", buffetTitle: "Buffet breakfast", buffetBody: "Served at our central restaurant. Just drop by — enjoy!", buffetOpen: "See details", howToGet: "Get directions", openNow: "Open now", closedNow: "Closed now", buffetHours: (o: string, c: string) => `${o}–${c}`,
         conciergeLead: "Request items and services straight to your cabin.",
         consumption: "Consumption", loan: "Loan",
         free: "Free", included: "included in your stay",
@@ -65,7 +65,7 @@ const ORD = {
         cafeTitle: "Desayuno", cafeBody: "Arma la cesta perfecta y recíbela en tu cabaña.", cafeCta: "Armar cesta",
         cafeOff: "El desayuno no está disponible para este alojamiento.",
         cafeScheduled: "Cesta de desayuno · mañana", deliverAt: "Entrega en tu cabaña a las", editBasket: "Editar cesta",
-        itemsWord: "ítems", scheduledTag: "Programado", buffetTitle: "Desayuno buffet", buffetBody: "Servido en nuestro restaurante central. Solo acércate — ¡buen provecho!", buffetOpen: "Ver detalles",
+        itemsWord: "ítems", scheduledTag: "Programado", buffetTitle: "Desayuno buffet", buffetBody: "Servido en nuestro restaurante central. Solo acércate — ¡buen provecho!", buffetOpen: "Ver detalles", howToGet: "Cómo llegar", openNow: "Abierto ahora", closedNow: "Cerrado ahora", buffetHours: (o: string, c: string) => `de ${o} a ${c}`,
         conciergeLead: "Pide ítems y servicios directo a tu cabaña.",
         consumption: "Consumo", loan: "Préstamo",
         free: "Gratis", included: "incluido en tu estadía",
@@ -183,7 +183,7 @@ function Tracker({ step, tone }: { step: number; tone: string }) {
 }
 
 export function OrdersScreen() {
-    const { stay, property, code, lang, push, dnd, setDnd, toast } = usePortal();
+    const { stay, property, code, lang, go, dnd, setDnd, toast, cafeVenue, setMapFocus } = usePortal();
     const labels = ORD[lang] || ORD.pt;
     const locale = LOCALE[lang] || "pt-BR";
 
@@ -193,6 +193,10 @@ export function OrdersScreen() {
     // dailyMode da recepção; uma estadia pode ser forçada para entrega.
     const resolvedModality = fb?.modality === "both" ? (fb?.dailyMode ?? "delivery") : fb?.modality;
     const cafeDelivery = (stay.cestaBreakfastEnabled === true ? "delivery" : resolvedModality) === "delivery";
+    // Salão do café (estrutura marcada): horário + se está aberto agora.
+    const nowHM = `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}`;
+    const salonOpen = !!cafeVenue?.openTime && !!cafeVenue?.closeTime && nowHM >= cafeVenue.openTime && nowHM <= cafeVenue.closeTime;
+    const hmShort = (s?: string) => (s ? s.replace(/^0/, "") : "");
 
     const [sub, setSub] = React.useState<string>(fbEnabled ? "cafe" : "concierge");
     const [items, setItems] = React.useState<ConciergeItem[]>([]);
@@ -276,13 +280,24 @@ export function OrdersScreen() {
                             <p style={{ margin: 0, fontSize: 13.5, color: "var(--muted)", fontWeight: 600 }}>{labels.cafeOff}</p>
                         </Card>
                     ) : !cafeDelivery ? (
-                        /* Buffet — servido no restaurante */
+                        /* Buffet — servido no salão; mostra horário e leva ao mapa */
                         <div style={{ borderRadius: 22, padding: 18, color: "#fff", position: "relative", overflow: "hidden", background: "linear-gradient(145deg,var(--brand),var(--brand-deep))" }}>
                             <div style={{ position: "absolute", right: -16, top: -16, opacity: .16 }}><Icon n="utensils" s={120} c="#fff" w={1.2} /></div>
                             <div style={{ position: "relative" }}>
                                 <h2 style={{ margin: "0 0 7px", fontFamily: "var(--font-portal-display), serif", fontSize: 26, fontWeight: 400 }}>{labels.buffetTitle}</h2>
-                                <p style={{ margin: "0 0 16px", fontSize: 12.5, opacity: .85, lineHeight: 1.4 }}>{labels.buffetBody}</p>
-                                <PrimaryBtn icon="arrowright" tone="ink" onClick={() => push(`/check-in/${code}/breakfast`)}>{labels.buffetOpen}</PrimaryBtn>
+                                {cafeVenue?.openTime && cafeVenue?.closeTime ? (
+                                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "0 0 16px" }}>
+                                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 14, fontWeight: 700 }}>
+                                            <Icon n="clock" s={15} c="#fff" />{labels.buffetHours(hmShort(cafeVenue.openTime), hmShort(cafeVenue.closeTime))}
+                                        </span>
+                                        <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".04em", textTransform: "uppercase", background: salonOpen ? "rgba(255,255,255,.22)" : "rgba(0,0,0,.18)", borderRadius: 999, padding: "3px 9px" }}>{salonOpen ? labels.openNow : labels.closedNow}</span>
+                                    </div>
+                                ) : (
+                                    <p style={{ margin: "0 0 16px", fontSize: 12.5, opacity: .85, lineHeight: 1.4 }}>{labels.buffetBody}</p>
+                                )}
+                                {salonOpen && cafeVenue?.mapPin && (
+                                    <PrimaryBtn icon="pin" tone="ink" onClick={() => { setMapFocus(cafeVenue!.mapPin!); go("explore"); }}>{labels.howToGet}</PrimaryBtn>
+                                )}
                             </div>
                         </div>
                     ) : (
