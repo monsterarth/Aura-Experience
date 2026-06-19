@@ -305,6 +305,8 @@ export interface MapPoi {
   photos?: string[];
   /** URL externo (site do restaurante, link do Google Maps etc.) */
   externalLink?: string;
+  /** Instagram: @usuario ou URL completa do perfil. */
+  instagram?: string;
   showOnMap: boolean;
   createdAt?: string;
 }

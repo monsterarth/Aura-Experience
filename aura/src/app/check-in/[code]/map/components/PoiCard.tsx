@@ -2,15 +2,22 @@
 
 import React from "react";
 import Image from "next/image";
-import { X, Navigation, ExternalLink } from "lucide-react";
+import { X, Navigation, ExternalLink, Instagram } from "lucide-react";
 import { MapPoi, MapLang } from "../types";
 import { categoryLabel } from "./CategoryFilter";
 
 const T: Record<MapLang, Record<string, string>> = {
-    pt: { directions: "Como chegar", openLink: "Ver no site", noDesc: "Sem descrição." },
-    en: { directions: "Get directions", openLink: "Visit website", noDesc: "No description." },
-    es: { directions: "Cómo llegar", openLink: "Ver sitio web", noDesc: "Sin descripción." },
+    pt: { directions: "Como chegar", openLink: "Ver no site", instagram: "Ver no Instagram", noDesc: "Sem descrição." },
+    en: { directions: "Get directions", openLink: "Visit website", instagram: "View on Instagram", noDesc: "No description." },
+    es: { directions: "Cómo llegar", openLink: "Ver sitio web", instagram: "Ver en Instagram", noDesc: "Sin descripción." },
 };
+
+// Aceita "@usuario", "usuario" ou URL completa → sempre devolve uma URL do perfil.
+function instagramUrl(raw: string): string {
+    const v = raw.trim();
+    if (/^https?:\/\//i.test(v)) return v;
+    return `https://instagram.com/${v.replace(/^@/, "")}`;
+}
 
 interface PoiCardProps {
     poi: MapPoi;
@@ -44,6 +51,10 @@ export function PoiCard({ poi, lang, onClose }: PoiCardProps) {
 
     const openLink = () => {
         if (poi.externalLink) window.open(poi.externalLink, "_blank");
+    };
+
+    const openInstagram = () => {
+        if (poi.instagram) window.open(instagramUrl(poi.instagram), "_blank");
     };
 
     const desc = localizedDescription(poi, lang);
@@ -106,6 +117,14 @@ export function PoiCard({ poi, lang, onClose }: PoiCardProps) {
                                 className="w-full py-3 bg-secondary text-foreground rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-secondary/80 transition-colors active:scale-95"
                             >
                                 <ExternalLink size={16} /> {t.openLink}
+                            </button>
+                        )}
+                        {poi.instagram && (
+                            <button
+                                onClick={openInstagram}
+                                className="w-full py-3 bg-secondary text-foreground rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-secondary/80 transition-colors active:scale-95"
+                            >
+                                <Instagram size={16} /> {t.instagram}
                             </button>
                         )}
                     </div>

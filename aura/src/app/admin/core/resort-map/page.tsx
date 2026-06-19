@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import {
     MapPin, MapPinned, Save, Crosshair, Target, Eye, EyeOff,
     Loader2, Trash2, Satellite, Image as ImageIcon, Info, Check, Home,
-    Plus, X, ExternalLink,
+    Plus, X, ExternalLink, Instagram,
 } from "lucide-react";
 import { StructureService } from "@/services/structure-service";
 import { PropertyService } from "@/services/property-service";
@@ -29,7 +29,7 @@ const POI_CATEGORY_LABELS: Record<string, string> = {
 
 const DEFAULT_POI: Partial<MapPoi> = {
     name: "", category: "other", pinIcon: "📍", pinColor: "#6b7280",
-    showOnMap: true, photos: [], externalLink: "",
+    showOnMap: true, photos: [], externalLink: "", instagram: "",
 };
 
 // ── Componente de entrada de coordenadas no formato Google Maps ─────────────
@@ -723,6 +723,12 @@ export default function ResortMapAdminPage() {
                                             <input className="field-input w-full text-sm" placeholder="https://…"
                                                 value={editingPoi.externalLink ?? ""}
                                                 onChange={e => setEditingPoi(p => ({ ...p!, externalLink: e.target.value }))} />
+                                        </div>
+                                        <div>
+                                            <label className="field-label flex items-center gap-1.5"><Instagram size={11} /> Instagram <span className="font-normal normal-case tracking-normal text-muted-foreground/60">(opcional)</span></label>
+                                            <input className="field-input w-full text-sm" placeholder="@usuario ou link do perfil"
+                                                value={editingPoi.instagram ?? ""}
+                                                onChange={e => setEditingPoi(p => ({ ...p!, instagram: e.target.value }))} />
                                         </div>
                                         <button
                                             onClick={handleSavePoi}

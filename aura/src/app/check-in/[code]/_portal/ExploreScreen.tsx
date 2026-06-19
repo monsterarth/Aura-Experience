@@ -98,7 +98,7 @@ export function ExploreScreen() {
     // ---- Mapa interativo (migrado de /map) ----
     const {
         mapConfig, areas, cabins, pois, mapLoaded, categories, ownCabin,
-        hasIllustrated, hasRealMap, nothingConfigured, refetch, gps,
+        hasIllustrated, hasRealMap, nothingConfigured, anchors, refetch, gps,
     } = useResortMap(stay.propertyId, stay.id);
 
     const [mode, setMode] = React.useState<"illustrated" | "satellite">("illustrated");
@@ -187,6 +187,7 @@ export function ExploreScreen() {
                 areas={visibleAreas}
                 cabins={cabinsForMap}
                 pois={pois}
+                anchors={anchors}
                 onPoiClick={setSelectedPoi}
                 onAreaClick={setSelectedArea}
                 selectedId={selectedArea?.id}

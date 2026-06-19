@@ -11,12 +11,15 @@ import { Loader2, LocateFixed, LocateOff } from "lucide-react";
 import { MapArea, MapCabin, MapLang, MapPoi } from "./types";
 import { GpsStatus } from "./hooks/useGPS";
 import { localizedName } from "./utils/localize";
+import { gpsToFraction, type Anchor } from "./utils/geoTransform";
 
 interface IllustratedMapProps {
     imageUrl: string;
     areas: MapArea[];
     cabins?: MapCabin[];
     pois?: MapPoi[];
+    /** Âncoras (pixel + lat/lng) p/ posicionar pins que só têm lat/lng. */
+    anchors?: Anchor[];
     userFraction?: { x: number; y: number } | null;
     youAreHereLabel?: string;
     onAreaClick: (area: MapArea) => void;
@@ -100,7 +103,7 @@ function poiIcon(poi: MapPoi): L.DivIcon {
 }
 
 export function IllustratedMap({
-    imageUrl, areas, cabins = [], pois = [], userFraction, youAreHereLabel, onAreaClick, onPoiClick, selectedId,
+    imageUrl, areas, cabins = [], pois = [], anchors = [], userFraction, youAreHereLabel, onAreaClick, onPoiClick, selectedId,
     gpsStatus = "idle", onRequestGPS, locateLabel = "Me localizar",
     locatingLabel = "Localizando…", gpsDeniedLabel, fullscreen = false, lang = "pt",
 }: IllustratedMapProps) {
@@ -123,10 +126,29 @@ export function IllustratedMap({
         () => cabins.filter(c => c.mapPin?.pixelX != null && c.mapPin?.pixelY != null),
         [cabins],
     );
-    const placedPois = useMemo(
-        () => pois.filter(p => p.mapPin?.pixelX != null && p.mapPin?.pixelY != null),
-        [pois],
-    );
+    // POIs no mapa ilustrado: usa o pixel marcado quando existe; senão, converte
+    // lat/lng → fração via calibração (mesmas âncoras do "você está aqui"). Assim,
+    // POIs cadastrados só com coordenadas do Google Maps também aparecem.
+    const placedPois = useMemo(() => {
+        const out: { poi: MapPoi; fx: number; fy: number }[] = [];
+        for (const p of pois) {
+            const pin = p.mapPin;
+            if (!pin) continue;
+            if (pin.pixelX != null && pin.pixelY != null) {
+                out.push({ poi: p, fx: pin.pixelX, fy: pin.pixelY });
+            } else if (
+                pin.lat != null && pin.lng != null && (pin.lat !== 0 || pin.lng !== 0) &&
+                anchors.length > 0
+            ) {
+                const f = gpsToFraction(pin.lat, pin.lng, { gcps: anchors });
+                // Descarta extrapolações muito fora da imagem (calibração ruim).
+                if (f && f.x > -0.1 && f.x < 1.1 && f.y > -0.1 && f.y < 1.1) {
+                    out.push({ poi: p, fx: f.x, fy: f.y });
+                }
+            }
+        }
+        return out;
+    }, [pois, anchors]);
 
     if (!dims) {
         return (
@@ -202,10 +224,10 @@ export function IllustratedMap({
                 </MarkerClusterGroup>
 
                 {/* Pontos de Interesse — grupo separado das áreas */}
-                {placedPois.map(poi => (
+                {placedPois.map(({ poi, fx, fy }) => (
                     <Marker
                         key={poi.id}
-                        position={toLatLng(poi.mapPin!.pixelX!, poi.mapPin!.pixelY!)}
+                        position={toLatLng(fx, fy)}
                         icon={poiIcon(poi)}
                         eventHandlers={{ click: () => onPoiClick?.(poi) }}
                     >

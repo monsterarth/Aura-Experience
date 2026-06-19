@@ -26,6 +26,8 @@ export interface ResortMapData {
     hasIllustrated: boolean;
     hasRealMap: boolean;
     nothingConfigured: boolean;
+    /** Âncoras (pixel + lat/lng) p/ converter GPS→pixel no mapa ilustrado. */
+    anchors: { lat: number; lng: number; px: number; py: number }[];
     refetch: () => void;
     gps: ReturnType<typeof useGPS>;
 }
@@ -97,6 +99,6 @@ export function useResortMap(propertyId?: string, stayId?: string): ResortMapDat
     return {
         mapConfig, areas, cabins, pois, mapLoaded,
         categories, ownCabin, hasIllustrated, hasRealMap, nothingConfigured,
-        refetch: fetchMap, gps,
+        anchors, refetch: fetchMap, gps,
     };
 }
