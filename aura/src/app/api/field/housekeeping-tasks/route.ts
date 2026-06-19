@@ -7,6 +7,8 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { HousekeepingService } from '@/services/housekeeping-service';
+import { notifyHousekeepingConference } from '@/lib/push-notify';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,4 +37,90 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json(data ?? []);
+}
+
+// Mutações de tarefa (start/resume/pause/skip/finish/upgrade) executadas server-side.
+// Antes a app da camareira escrevia direto no Supabase pelo browser: 5–7 round-trips em
+// sequência pela rede móvel + auditoria que podia se perder ao bloquear o celular. Aqui é
+// 1 round-trip a partir do dispositivo; o HousekeepingService roda com service-role (db()
+// detecta o servidor) e conclui update + cabana + auditoria/push de forma confiável.
+type TaskAction = 'start' | 'resume' | 'pause' | 'skip' | 'finish' | 'upgrade';
+
+export async function POST(req: Request) {
+  const auth = await requireAuth(['maid', 'super_admin', 'admin', 'manager']);
+  if (isAuthError(auth)) return auth;
+
+  let body: { action?: TaskAction; taskId?: string; checklist?: unknown[]; observations?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Payload inválido.' }, { status: 400 });
+  }
+
+  const { action, taskId } = body;
+  if (!action || !taskId) {
+    return NextResponse.json({ error: 'action e taskId são obrigatórios.' }, { status: 400 });
+  }
+
+  // service-role ignora RLS → validamos a posse da tarefa manualmente.
+  const { data: task } = await supabaseAdmin
+    .from('housekeeping_tasks')
+    .select('propertyId')
+    .eq('id', taskId)
+    .single();
+  if (!task?.propertyId) {
+    return NextResponse.json({ error: 'Tarefa não encontrada.' }, { status: 404 });
+  }
+
+  const isAdminTier = ['super_admin', 'admin', 'manager'].includes(auth.staff.role);
+  if (!isAdminTier && auth.staff.propertyId !== task.propertyId) {
+    return NextResponse.json({ error: 'Acesso negado.' }, { status: 403 });
+  }
+
+  const propertyId = task.propertyId as string;
+  const { id: actorId, fullName: actorName } = auth.staff;
+
+  try {
+    switch (action) {
+      case 'start':
+        await HousekeepingService.startTask(propertyId, taskId, actorId, actorName);
+        break;
+      case 'resume':
+        await HousekeepingService.resumeTask(propertyId, taskId, actorId, actorName);
+        break;
+      case 'pause':
+        await HousekeepingService.pauseTask(propertyId, taskId, actorId, actorName);
+        break;
+      case 'skip':
+        await HousekeepingService.skipTask(propertyId, taskId, actorId, actorName);
+        break;
+      case 'upgrade':
+        await HousekeepingService.upgradeToLinenChange(propertyId, taskId, actorId, actorName);
+        break;
+      case 'finish': {
+        const status = await HousekeepingService.finishTask(
+          propertyId, taskId, (body.checklist as any[]) ?? [], body.observations ?? '', actorId, actorName
+        );
+        // triggerTaskPush é no-op no servidor → disparamos o push de conferência aqui.
+        if (status === 'waiting_conference') {
+          try {
+            await notifyHousekeepingConference(taskId);
+          } catch (e) {
+            console.error('[field/housekeeping-tasks POST] push de conferência:', e);
+          }
+        }
+        break;
+      }
+      default:
+        return NextResponse.json({ error: 'Ação inválida.' }, { status: 400 });
+    }
+  } catch (e: any) {
+    if (e?.message === 'CHECKLIST_INCOMPLETE') {
+      return NextResponse.json({ error: 'CHECKLIST_INCOMPLETE' }, { status: 422 });
+    }
+    console.error('[field/housekeeping-tasks POST]', e?.message ?? e);
+    return NextResponse.json({ error: 'Erro ao processar a ação.' }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
 }

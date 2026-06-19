@@ -92,6 +92,14 @@ function todayLabel() {
   return new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
 }
 
+// Espelha a regra de finishTask no serviço — usado só para a atualização otimista decidir se
+// a faxina vai para "Aguardando governanta" (conferência) ou conclui direto. O servidor
+// permanece a fonte da verdade; o realtime reconcilia logo depois.
+function requiresConferenceClient(t: { type: string; needsConference?: boolean }): boolean {
+  return ["turnover", "inspection_checkin", "inspection_checkout"].includes(t.type) ||
+    (t.type === "custom" && t.needsConference === true);
+}
+
 // ─── GBorder ──────────────────────────────────────────────────────────────────
 
 function GBorder({ children, style = {}, r = 20 }: { children: React.ReactNode; style?: React.CSSProperties; r?: number }) {
@@ -391,6 +399,7 @@ type ChecklistItem = { id: string; label: string; checked: boolean; source?: "gl
 function TaskSheet({
   task, onClose, onToggle, showToast,
   propertyId, userId, userName, onChecklistLoaded,
+  onFinish, onPause, onUpgrade,
 }: {
   task: EnrichedTask;
   onClose: () => void;
@@ -400,6 +409,9 @@ function TaskSheet({
   userId: string;
   userName: string;
   onChecklistLoaded: (taskId: string, checklist: ChecklistItem[]) => void;
+  onFinish: (taskId: string, checklist: ChecklistItem[]) => void;
+  onPause: (taskId: string) => void;
+  onUpgrade: (taskId: string) => void;
 }) {
   const [showRep, setShowRep] = useState(false);
   const [maidItems, setMaidItems] = useState<ConciergeItem[]>([]);
@@ -467,32 +479,23 @@ function TaskSheet({
     finally { setLoadingItems(false); }
   };
 
-  const handleFinish = async () => {
+  const handleFinish = () => {
     if (finishingRef.current) return;
     finishingRef.current = true;
     setFinishing(true);
-    try {
-      await HousekeepingService.finishTask(propertyId, task.id, task.checklist, "", userId, userName);
-      onClose();
-    } catch (e: any) {
-      if (e?.message === "CHECKLIST_INCOMPLETE") showToast("Marque ao menos um item antes de finalizar.", T.amber);
-      else showToast("Erro ao finalizar.", T.red);
-    } finally {
-      finishingRef.current = false;
-      setFinishing(false);
-      setShowConfirm(false);
-    }
+    setShowConfirm(false);
+    // Otimista no pai (move/remove o cartão) + escrita server-side em background. A sheet
+    // fecha na hora; erro/rollback e checklist incompleto são tratados em onFinish.
+    onFinish(task.id, task.checklist);
+    onClose();
   };
 
-  const handlePause = async () => {
+  const handlePause = () => {
     if (pausingRef.current) return;
     pausingRef.current = true;
     setPausing(true);
-    try {
-      await HousekeepingService.pauseTask(propertyId, task.id, userId, userName);
-      onClose();
-    } catch { showToast("Erro ao pausar tarefa.", T.red); }
-    finally { pausingRef.current = false; setPausing(false); }
+    onPause(task.id);
+    onClose();
   };
 
   const handleSendRep = async (entries: { itemId: string; qty: number }[]) => {
@@ -507,16 +510,12 @@ function TaskSheet({
     } catch { showToast("Erro ao enviar solicitação.", T.red); }
   };
 
-  const handleUpgrade = async () => {
+  const handleUpgrade = () => {
     if (upgradingRef.current) return;
     upgradingRef.current = true;
     setUpgrading(true);
-    try {
-      await HousekeepingService.upgradeToLinenChange(propertyId, task.id, userId, userName);
-      showToast("Convertido para Troca de Roupa!");
-      onClose();
-    } catch { showToast("Erro ao converter tarefa.", T.red); }
-    finally { upgradingRef.current = false; setUpgrading(false); }
+    onUpgrade(task.id);
+    onClose();
   };
 
   const done = task.checklist.filter(c => c.checked).length;
@@ -672,7 +671,7 @@ function TaskSheet({
               </button>
             )}
             <button
-              onPointerDown={(e) => { e.preventDefault(); if (!finishing && !pausing) setShowConfirm(true); }}
+              onPointerDown={(e) => { e.preventDefault(); if (!finishing && !pausing) { if (task.checklist.length > 0 && !task.checklist.some(c => c.checked)) { showToast("Marque ao menos um item antes de finalizar.", T.amber); return; } setShowConfirm(true); } }}
               disabled={finishing || pausing}
               style={{ flex: 1, padding: 14, background: T.greenG, color: "#021a17", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(45,212,191,0.3)" }}
             >
@@ -812,7 +811,7 @@ function HomeScreen({
 function FaxinasScreen({
   tasks, onStart, onSkip, showToast, onToggle,
   propertyId, userId, userName, onChecklistLoaded, repRequests,
-  startingTaskId,
+  startingTaskId, onFinish, onPause, onUpgrade,
 }: {
   tasks: EnrichedTask[];
   onStart: (id: string) => void;
@@ -823,6 +822,9 @@ function FaxinasScreen({
   onChecklistLoaded: (taskId: string, checklist: ChecklistItem[]) => void;
   repRequests: ConciergeRequest[];
   startingTaskId: string | null;
+  onFinish: (taskId: string, checklist: ChecklistItem[]) => void;
+  onPause: (taskId: string) => void;
+  onUpgrade: (taskId: string) => void;
 }) {
   const [detail, setDetail] = useState<string | null>(null);
 
@@ -1013,6 +1015,7 @@ function FaxinasScreen({
           task={fullTask} onClose={() => setDetail(null)} onToggle={onToggle}
           showToast={showToast} propertyId={propertyId} userId={userId} userName={userName}
           onChecklistLoaded={onChecklistLoaded}
+          onFinish={onFinish} onPause={onPause} onUpgrade={onUpgrade}
         />
       )}
     </>
@@ -1321,6 +1324,22 @@ export default function MaidPage() {
     toastTimer.current = setTimeout(() => setToast(null), 2600);
   }, []);
 
+  // Mutação de tarefa via rota de servidor: 1 round-trip a partir do dispositivo (o servidor
+  // faz update + cabana + auditoria/push com service-role, rápido e confiável). keepalive
+  // garante a entrega mesmo se a camareira bloquear o celular logo após o toque.
+  const postAction = useCallback(async (action: string, taskId: string, extra?: Record<string, unknown>) => {
+    const res = await fetch('/api/field/housekeeping-tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, taskId, ...extra }),
+      keepalive: true,
+    });
+    if (!res.ok) {
+      const code = await res.json().then((b: { error?: string }) => b?.error).catch(() => null);
+      throw new Error(code || 'REQUEST_FAILED');
+    }
+  }, []);
+
   // Auth guard: redirect to login when auth resolved and no user
   useEffect(() => {
     if (authLoading || !userDataReady) return;
@@ -1415,54 +1434,133 @@ export default function MaidPage() {
       setPauseConfirm({ currentTaskId: activeTask.id, newTaskId: taskId });
       return;
     }
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
     startingRef.current = true;
     setStartingTaskId(taskId);
-    try {
-      const task = tasks.find(t => t.id === taskId);
-      if (task?.startedAt) {
-        await HousekeepingService.resumeTask(property.id, taskId, userData.id, userData.fullName);
-        showToast("Limpeza retomada! Cronômetro continuando.");
-      } else {
-        await HousekeepingService.startTask(property.id, taskId, userData.id, userData.fullName);
-        showToast("Limpeza iniciada! Cronômetro rodando.");
+
+    const prev = tasks;
+    const isResume = !!task.startedAt;
+    const nowIso = new Date().toISOString();
+    // Otimista: move o cartão para "Em andamento" na hora. O realtime reconcilia em seguida.
+    setTasks(curr => curr.map(t => {
+      if (t.id !== taskId) return t;
+      if (isResume) {
+        const pausedMs = t.pausedAt ? Date.now() - new Date(t.pausedAt).getTime() : 0;
+        return { ...t, status: "in_progress", pausedAt: undefined, totalPausedDuration: (t.totalPausedDuration || 0) + Math.floor(pausedMs / 1000) };
       }
-    } catch { showToast("Erro ao iniciar tarefa.", T.red); }
-    finally {
+      return { ...t, status: "in_progress", startedAt: nowIso };
+    }));
+    showToast(isResume ? "Limpeza retomada! Cronômetro continuando." : "Limpeza iniciada! Cronômetro rodando.");
+
+    try {
+      await postAction(isResume ? "resume" : "start", taskId);
+    } catch {
+      setTasks(prev);
+      showToast("Erro ao iniciar tarefa.", T.red);
+    } finally {
       startingRef.current = false;
       setStartingTaskId(null);
     }
-  }, [property, userData, tasks, showToast]);
+  }, [property, userData, tasks, showToast, postAction]);
 
   const handlePauseAndStart = useCallback(async () => {
     if (!pauseConfirm || !property || !userData || pauseStartBusy) return;
     setPauseStartBusy(true);
-    try {
-      await HousekeepingService.pauseTask(property.id, pauseConfirm.currentTaskId, userData.id, userData.fullName);
-      const newTask = tasks.find(t => t.id === pauseConfirm.newTaskId);
-      if (newTask?.startedAt) {
-        await HousekeepingService.resumeTask(property.id, pauseConfirm.newTaskId, userData.id, userData.fullName);
-      } else {
-        await HousekeepingService.startTask(property.id, pauseConfirm.newTaskId, userData.id, userData.fullName);
+    const { currentTaskId, newTaskId } = pauseConfirm;
+    const prev = tasks;
+    const newTask = tasks.find(t => t.id === newTaskId);
+    const isResume = !!newTask?.startedAt;
+    const nowIso = new Date().toISOString();
+    // Otimista: pausa a atual e ativa a nova imediatamente.
+    setTasks(curr => curr.map(t => {
+      if (t.id === currentTaskId) return { ...t, status: "pending", pausedAt: nowIso };
+      if (t.id === newTaskId) {
+        if (isResume) {
+          const pausedMs = t.pausedAt ? Date.now() - new Date(t.pausedAt).getTime() : 0;
+          return { ...t, status: "in_progress", pausedAt: undefined, totalPausedDuration: (t.totalPausedDuration || 0) + Math.floor(pausedMs / 1000) };
+        }
+        return { ...t, status: "in_progress", startedAt: nowIso };
       }
-      showToast("Tarefa anterior pausada. Nova limpeza iniciada!");
-    } catch { showToast("Erro ao trocar tarefa.", T.red); }
-    finally {
-      setPauseConfirm(null);
+      return t;
+    }));
+    setPauseConfirm(null);
+    showToast("Tarefa anterior pausada. Nova limpeza iniciada!");
+    try {
+      await postAction("pause", currentTaskId);
+      await postAction(isResume ? "resume" : "start", newTaskId);
+    } catch {
+      setTasks(prev);
+      showToast("Erro ao trocar tarefa.", T.red);
+    } finally {
       setPauseStartBusy(false);
     }
-  }, [pauseConfirm, property, userData, tasks, showToast, pauseStartBusy]);
+  }, [pauseConfirm, property, userData, tasks, showToast, pauseStartBusy, postAction]);
 
   const handleSkip = useCallback(async () => {
     if (!skipConfirmTaskId || !property || !userData || skipBusy) return;
     setSkipBusy(true);
+    const id = skipConfirmTaskId;
+    const prev = tasks;
+    setTasks(curr => curr.filter(t => t.id !== id));
+    setSkipConfirmTaskId(null);
+    showToast("Registrado — hóspede pediu para não limpar.");
     try {
-      await HousekeepingService.skipTask(property.id, skipConfirmTaskId, userData.id, userData.fullName);
-      setTasks(prev => prev.filter(t => t.id !== skipConfirmTaskId));
-      showToast("Registrado — hóspede pediu para não limpar.");
-      setSkipConfirmTaskId(null);
-    } catch { showToast("Erro ao pular tarefa.", T.red); }
-    finally { setSkipBusy(false); }
-  }, [skipConfirmTaskId, property, userData, skipBusy, showToast]);
+      await postAction("skip", id);
+    } catch {
+      setTasks(prev);
+      showToast("Erro ao pular tarefa.", T.red);
+    } finally {
+      setSkipBusy(false);
+    }
+  }, [skipConfirmTaskId, property, userData, skipBusy, showToast, tasks, postAction]);
+
+  const handleFinish = useCallback(async (taskId: string, checklist: ChecklistItem[]) => {
+    if (!property || !userData) return;
+    const prev = tasks;
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    // Otimista: conferência → "Aguardando governanta"; caso contrário conclui e sai da lista.
+    const goesToConference = requiresConferenceClient(task);
+    setTasks(curr => goesToConference
+      ? curr.map(t => t.id === taskId ? { ...t, status: "waiting_conference", checklist } : t)
+      : curr.filter(t => t.id !== taskId));
+    showToast(goesToConference ? "Enviada para conferência da governanta!" : "Faxina concluída!");
+    try {
+      await postAction("finish", taskId, { checklist, observations: "" });
+    } catch (e) {
+      setTasks(prev);
+      if ((e as Error).message === "CHECKLIST_INCOMPLETE") showToast("Marque ao menos um item antes de finalizar.", T.amber);
+      else showToast("Erro ao finalizar.", T.red);
+    }
+  }, [property, userData, tasks, showToast, postAction]);
+
+  const handlePause = useCallback(async (taskId: string) => {
+    if (!property || !userData) return;
+    const prev = tasks;
+    const nowIso = new Date().toISOString();
+    setTasks(curr => curr.map(t => t.id === taskId ? { ...t, status: "pending", pausedAt: nowIso } : t));
+    showToast("Limpeza pausada.");
+    try {
+      await postAction("pause", taskId);
+    } catch {
+      setTasks(prev);
+      showToast("Erro ao pausar tarefa.", T.red);
+    }
+  }, [property, userData, tasks, showToast, postAction]);
+
+  const handleUpgrade = useCallback(async (taskId: string) => {
+    if (!property || !userData) return;
+    const prev = tasks;
+    setTasks(curr => curr.map(t => t.id === taskId ? { ...t, type: "linen_change" } : t));
+    showToast("Convertido para Troca de Roupa!");
+    try {
+      await postAction("upgrade", taskId);
+    } catch {
+      setTasks(prev);
+      showToast("Erro ao converter tarefa.", T.red);
+    }
+  }, [property, userData, tasks, showToast, postAction]);
 
   const handleToggle = useCallback(async (taskId: string, itemId: string) => {
     // Optimistic
@@ -1570,7 +1668,7 @@ export default function MaidPage() {
             </div>
             <RoleSwitcher />
             {tab === "home" && <HomeScreen tasks={tasks} cabins={cabins} onNav={setTab} userName={userData?.fullName ?? "Camareira"} />}
-            {tab === "tasks" && <FaxinasScreen tasks={tasks} onStart={handleStart} onSkip={setSkipConfirmTaskId} showToast={showToast} onToggle={handleToggle} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onChecklistLoaded={handleChecklistLoaded} repRequests={repRequests} startingTaskId={startingTaskId} />}
+            {tab === "tasks" && <FaxinasScreen tasks={tasks} onStart={handleStart} onSkip={setSkipConfirmTaskId} showToast={showToast} onToggle={handleToggle} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onChecklistLoaded={handleChecklistLoaded} repRequests={repRequests} startingTaskId={startingTaskId} onFinish={handleFinish} onPause={handlePause} onUpgrade={handleUpgrade} />}
             {tab === "profile" && <ProfileScreen userData={userData} showToast={showToast} onLogout={handleLogout} propertyId={property?.id ?? ""} />}
           </div>
 

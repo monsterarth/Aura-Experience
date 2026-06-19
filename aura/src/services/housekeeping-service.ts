@@ -1,8 +1,15 @@
-import { supabase } from "@/lib/supabase";
+import { supabase, supabaseAdmin } from "@/lib/supabase";
 import { HousekeepingTask, HousekeepingRule } from "@/types/aura";
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
 import { triggerTaskPush } from "@/lib/push-trigger";
+
+// Resolve o client certo conforme o ambiente. No servidor (rota de campo
+// /api/field/housekeeping-tasks) usa service-role: a mutação vira 1 round-trip a partir do
+// dispositivo e o update + cabana + auditoria/push completam server-side, independente de a
+// camareira bloquear o celular logo após o toque. No browser, mantém o client autenticado do
+// usuário (RLS). Mesmo padrão do AuditService — por isso os métodos de escrita usam db().
+const db = () => (typeof window === 'undefined' && supabaseAdmin ? supabaseAdmin : supabase);
 
 // ─── Log helpers ─────────────────────────────────────────────────────────────
 
@@ -23,11 +30,11 @@ const TASK_STATUS_LABELS: Record<string, string> = {
 
 async function resolveLocation(cabinId?: string | null, structureId?: string | null, customLocation?: string | null): Promise<string> {
   if (cabinId) {
-    const { data } = await supabase.from('cabins').select('name').eq('id', cabinId).single();
+    const { data } = await db().from('cabins').select('name').eq('id', cabinId).single();
     if (data?.name) return data.name;
   }
   if (structureId) {
-    const { data } = await supabase.from('structures').select('name').eq('id', structureId).single();
+    const { data } = await db().from('structures').select('name').eq('id', structureId).single();
     if (data?.name) return data.name;
   }
   return customLocation || '—';
@@ -186,14 +193,14 @@ export const HousekeepingService = {
   },
 
   async startTask(propertyId: string, taskId: string, assignedToId: string, actorName: string) {
-    const { data: task } = await supabase.from('housekeeping_tasks')
+    const { data: task } = await db().from('housekeeping_tasks')
       .select('assignedTo, cabinId, structureId, customLocation, type').eq('id', taskId).single();
     if (!task) return;
 
     const currentAssignees = task.assignedTo || [];
     const newAssignees = Array.from(new Set([...currentAssignees, assignedToId]));
 
-    await supabase.from('housekeeping_tasks')
+    await db().from('housekeeping_tasks')
       .update({
         status: 'in_progress',
         assignedTo: newAssignees,
@@ -210,10 +217,10 @@ export const HousekeepingService = {
   },
 
   async pauseTask(propertyId: string, taskId: string, actorId: string, actorName: string) {
-    const { data: task } = await supabase.from('housekeeping_tasks')
+    const { data: task } = await db().from('housekeeping_tasks')
       .select('cabinId, structureId, customLocation, type').eq('id', taskId).single();
 
-    await supabase.from('housekeeping_tasks')
+    await db().from('housekeeping_tasks')
       .update({
         status: 'pending',
         pausedAt: new Date().toISOString(),
@@ -229,11 +236,11 @@ export const HousekeepingService = {
   },
 
   async skipTask(propertyId: string, taskId: string, actorId: string, actorName: string) {
-    const { data: task } = await supabase.from('housekeeping_tasks')
+    const { data: task } = await db().from('housekeeping_tasks')
       .select('cabinId, structureId, customLocation, type').eq('id', taskId).single();
 
     const now = new Date().toISOString();
-    await supabase.from('housekeeping_tasks')
+    await db().from('housekeeping_tasks')
       .update({ status: 'skipped', skippedAt: now, updatedAt: now })
       .eq('id', taskId);
 
@@ -245,7 +252,7 @@ export const HousekeepingService = {
   },
 
   async resumeTask(propertyId: string, taskId: string, actorId: string, actorName: string) {
-    const { data: task } = await supabase.from('housekeeping_tasks')
+    const { data: task } = await db().from('housekeeping_tasks')
       .select('pausedAt, totalPausedDuration, assignedTo, cabinId, structureId, customLocation, type').eq('id', taskId).single();
     if (!task) return;
 
@@ -254,7 +261,7 @@ export const HousekeepingService = {
     const currentAssignees = task.assignedTo || [];
     const newAssignees = Array.from(new Set([...currentAssignees, actorId]));
 
-    await supabase.from('housekeeping_tasks')
+    await db().from('housekeeping_tasks')
       .update({
         status: 'in_progress',
         pausedAt: null,
@@ -272,7 +279,8 @@ export const HousekeepingService = {
   },
 
   async finishTask(propertyId: string, taskId: string, checklist: any[], observations: string, actorId: string, actorName: string) {
-    const { data: task } = await supabase.from('housekeeping_tasks').select('*').eq('id', taskId).single();
+    const client = db();
+    const { data: task } = await client.from('housekeeping_tasks').select('*').eq('id', taskId).single();
     if (!task) throw new Error("Tarefa não encontrada.");
 
     // Require at least one checked item when the checklist has items
@@ -286,7 +294,7 @@ export const HousekeepingService = {
       (task.type === 'custom' && task.needsConference === true);
     const newStatus = requiresConference ? 'waiting_conference' : 'completed';
 
-    await supabase.from('housekeeping_tasks')
+    await client.from('housekeeping_tasks')
       .update({
         status: newStatus,
         checklist,
@@ -299,11 +307,11 @@ export const HousekeepingService = {
     // daily e linen_change concluídas liberam a cabana imediatamente
     if (newStatus === 'completed') {
       if (task.cabinId) {
-        const { data: cabin } = await supabase.from('cabins').select('currentStayId').eq('id', task.cabinId).single();
+        const { data: cabin } = await client.from('cabins').select('currentStayId').eq('id', task.cabinId).single();
         const cabinStatus = cabin?.currentStayId ? 'occupied' : 'available';
-        await supabase.from('cabins').update({ status: cabinStatus }).eq('id', task.cabinId);
+        await client.from('cabins').update({ status: cabinStatus }).eq('id', task.cabinId);
       } else if (task.structureId) {
-        await supabase.from('structures').update({ status: 'available' }).eq('id', task.structureId);
+        await client.from('structures').update({ status: 'available' }).eq('id', task.structureId);
       }
     }
 
@@ -315,9 +323,14 @@ export const HousekeepingService = {
     });
 
     // Faxina que exige conferência → notifica a governança.
+    // No browser, gatilho client-safe (fetch keepalive). No servidor triggerTaskPush é no-op
+    // — e push-notify é server-only/client-reachable via maid/page.tsx, então NÃO pode ser
+    // importado aqui. A rota de campo dispara o push server-side a partir do status retornado.
     if (newStatus === 'waiting_conference') {
       triggerTaskPush('housekeeping', 'conference', taskId);
     }
+
+    return newStatus;
   },
 
   async confirmTaskQuality(propertyId: string, taskId: string, observations: string, actorId: string, actorName: string) {
@@ -374,11 +387,11 @@ export const HousekeepingService = {
   },
 
   async upgradeToLinenChange(propertyId: string, taskId: string, actorId: string, actorName: string) {
-    const { data: task } = await supabase.from('housekeeping_tasks')
+    const { data: task } = await db().from('housekeeping_tasks')
       .select('cabinId, structureId, customLocation').eq('id', taskId).single();
 
     const now = new Date().toISOString();
-    const { error } = await supabase
+    const { error } = await db()
       .from('housekeeping_tasks')
       .update({ type: 'linen_change', updatedAt: now })
       .eq('id', taskId)
