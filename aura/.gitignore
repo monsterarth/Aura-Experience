@@ -38,4 +38,10 @@ service-account.json
 *.tsbuildinfo
 next-env.d.ts
 
-.vercel
+# scratch files & build/error dumps (keep the repo root clean)
+compile*.txt
+*_errors.txt
+tmp_*.txt
+temp_*.js
+schema_check.txt
+manual_api.txt
