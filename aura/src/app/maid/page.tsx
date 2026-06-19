@@ -337,21 +337,24 @@ function ReplenishSheet({
         ) : (
           filtered.map(item => {
             const q = cart[item.id] ?? 0;
+            const soldOut = item.stockAvailable === false;
             const emoji = item.image_url?.startsWith("emoji:") ? item.image_url.slice(6) : undefined;
             return (
               <div key={item.id} style={{
                 display: "flex", alignItems: "center", gap: 10, padding: "11px 12px",
                 borderRadius: 14, borderBottom: `1px solid ${T.border}`,
                 background: q > 0 ? "rgba(245,158,11,0.08)" : "transparent", transition: "background .15s",
+                opacity: soldOut ? 0.55 : 1,
               }}>
                 {emoji && <span style={{ fontSize: 18, flexShrink: 0 }}>{emoji}</span>}
                 <span style={{ flex: 1, fontSize: 14, fontWeight: q > 0 ? 700 : 400, color: q > 0 ? T.amber : T.text }}>{item.name}</span>
+                {soldOut && <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".05em", textTransform: "uppercase" as const, color: "#f87171", flexShrink: 0 }}>Esgotado</span>}
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <button onClick={() => adj(item.id, -1)} disabled={!q} style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${T.border}`, background: T.glass2, cursor: q ? "pointer" : "not-allowed", opacity: q ? 1 : 0.3, display: "flex", alignItems: "center", justifyContent: "center", color: T.text }}>
                     <I n="minus" s={13} />
                   </button>
                   <span style={{ width: 18, textAlign: "center", fontWeight: 900, fontSize: 14 }}>{q}</span>
-                  <button onClick={() => adj(item.id, 1)} style={{ width: 30, height: 30, borderRadius: 8, background: `linear-gradient(135deg,${T.amberBg},rgba(252,211,77,0.15))`, border: `1px solid ${T.amberBorder}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: T.amber }}>
+                  <button onClick={() => adj(item.id, 1)} disabled={soldOut} style={{ width: 30, height: 30, borderRadius: 8, background: `linear-gradient(135deg,${T.amberBg},rgba(252,211,77,0.15))`, border: `1px solid ${T.amberBorder}`, cursor: soldOut ? "not-allowed" : "pointer", opacity: soldOut ? 0.3 : 1, display: "flex", alignItems: "center", justifyContent: "center", color: T.amber }}>
                     <I n="plus" s={13} />
                   </button>
                 </div>

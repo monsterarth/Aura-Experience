@@ -72,6 +72,7 @@ const translations = {
     free: 'Grátis',
     requestItem: 'Solicitar',
     requesting: 'Solicitando...',
+    soldOut: 'Esgotado',
     requestSent: 'Pedido enviado!',
     orderHistory: 'Histórico de Pedidos',
     notes: 'Observações (opcional)',
@@ -98,6 +99,7 @@ const translations = {
     free: 'Free',
     requestItem: 'Request',
     requesting: 'Requesting...',
+    soldOut: 'Sold out',
     requestSent: 'Request sent!',
     orderHistory: 'Order History',
     notes: 'Notes (optional)',
@@ -124,6 +126,7 @@ const translations = {
     free: 'Gratis',
     requestItem: 'Solicitar',
     requesting: 'Solicitando...',
+    soldOut: 'Agotado',
     requestSent: '¡Solicitud enviada!',
     orderHistory: 'Historial de Pedidos',
     notes: 'Notas (opcional)',
@@ -296,10 +299,11 @@ export default function ConciergePage() {
     const qty = quantities[item.id] || 1;
     const note = notes[item.id] || '';
     const isSubmitting = submitting[item.id];
+    const soldOut = item.stockAvailable === false;
     const priceLabel = item.price === 0 ? t.free : `R$ ${item.price.toFixed(2).replace('.', ',')}`;
 
     return (
-      <div className="bg-card border border-border rounded-2xl overflow-hidden">
+      <div className={`bg-card border border-border rounded-2xl overflow-hidden ${soldOut ? 'opacity-60' : ''}`}>
         {item.image_url && (
           <div className="relative w-full h-36">
             <Image src={item.image_url} alt={getItemName(item, lang)} fill className="object-cover" />
@@ -315,6 +319,9 @@ export default function ConciergePage() {
             </div>
             <div className="text-right shrink-0">
               <span className="text-sm font-bold text-primary">{priceLabel}</span>
+              {soldOut && (
+                <p className="text-[10px] font-bold uppercase tracking-wide text-red-400 mt-0.5">{t.soldOut}</p>
+              )}
               {item.category === 'loan' && item.loss_price && item.loss_price > 0 && (
                 <p className="text-[10px] text-red-400 mt-0.5">{t.lossWarning(item.loss_price.toFixed(2).replace('.', ','))}</p>
               )}
@@ -340,14 +347,16 @@ export default function ConciergePage() {
             <div className="flex items-center gap-2 bg-secondary rounded-xl p-1">
               <button
                 onClick={() => handleQty(item.id, -1)}
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors"
+                disabled={soldOut}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Minus size={14} />
               </button>
               <span className="text-sm font-bold w-6 text-center">{qty}</span>
               <button
                 onClick={() => handleQty(item.id, 1)}
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors"
+                disabled={soldOut}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Plus size={14} />
               </button>
@@ -355,10 +364,10 @@ export default function ConciergePage() {
 
             <button
               onClick={() => handleSubmit(item.id)}
-              disabled={isSubmitting}
-              className="flex-1 bg-primary text-primary-foreground rounded-xl py-2.5 text-xs font-bold uppercase tracking-wide hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+              disabled={isSubmitting || soldOut}
+              className="flex-1 bg-primary text-primary-foreground rounded-xl py-2.5 text-xs font-bold uppercase tracking-wide hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              {isSubmitting ? (
+              {soldOut ? t.soldOut : isSubmitting ? (
                 <><Loader2 size={14} className="animate-spin" />{t.requesting}</>
               ) : t.requestItem}
             </button>

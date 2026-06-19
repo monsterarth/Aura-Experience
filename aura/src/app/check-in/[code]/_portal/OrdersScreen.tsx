@@ -30,6 +30,7 @@ const ORD = {
         consumption: "Consumo", loan: "Empréstimo",
         free: "Grátis", included: "incluso na hospedagem",
         lossPenalty: "Multa por extravio", notesPlaceholder: "Observação (opcional) · ex: entregar à noite",
+        soldOut: "Esgotado",
         request: "Solicitar", requested: (q: number, n: string) => `${q}× ${n} solicitado`,
         noItems: "Nenhum item disponível no momento.",
         searchPlaceholder: "Buscar item…", allCats: "Todos", noResults: "Nada encontrado para o filtro.",
@@ -50,6 +51,7 @@ const ORD = {
         consumption: "Consumption", loan: "Loan",
         free: "Free", included: "included in your stay",
         lossPenalty: "Loss penalty", notesPlaceholder: "Note (optional) · e.g. deliver at night",
+        soldOut: "Sold out",
         request: "Request", requested: (q: number, n: string) => `${q}× ${n} requested`,
         noItems: "No items available right now.",
         searchPlaceholder: "Search item…", allCats: "All", noResults: "Nothing matches your filter.",
@@ -70,6 +72,7 @@ const ORD = {
         consumption: "Consumo", loan: "Préstamo",
         free: "Gratis", included: "incluido en tu estadía",
         lossPenalty: "Penalización por extravío", notesPlaceholder: "Nota (opcional) · ej: entregar de noche",
+        soldOut: "Agotado",
         request: "Solicitar", requested: (q: number, n: string) => `${q}× ${n} solicitado`,
         noItems: "No hay ítems disponibles ahora.",
         searchPlaceholder: "Buscar ítem…", allCats: "Todos", noResults: "Nada encontrado para el filtro.",
@@ -132,9 +135,10 @@ function ConciergeItemCard({ item, lang, labels, onRequest }: {
     const [note, setNote] = React.useState("");
     const loan = item.category === "loan";
     const tone = loan ? "green" : "brand";
+    const soldOut = item.stockAvailable === false;
     const priceLabel = item.price === 0 ? (item.included_qty > 0 ? `${item.included_qty} ${labels.included}` : labels.free) : money(item.price);
     return (
-        <Card pad={13} style={{ display: "flex", gap: 13 }}>
+        <Card pad={13} style={{ display: "flex", gap: 13, opacity: soldOut ? 0.62 : 1 }}>
             <div style={{ width: 46, height: 46, borderRadius: 13, background: `var(--${tone}-soft)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden" }}>
                 {isEmojiUrl(item.image_url)
                     ? <span style={{ fontSize: 25, lineHeight: 1 }}>{emojiFromUrl(item.image_url)}</span>
@@ -150,11 +154,12 @@ function ConciergeItemCard({ item, lang, labels, onRequest }: {
                 {itemDesc(item, lang) && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{itemDesc(item, lang)}</div>}
                 {item.included_qty > 0 && item.price === 0 && <div style={{ fontSize: 10.5, color: "var(--green)", marginTop: 3, fontWeight: 700 }}>{priceLabel}</div>}
                 {loan && item.loss_price ? <div style={{ fontSize: 10.5, color: "var(--clay)", marginTop: 3 }}>{labels.lossPenalty}: {money(item.loss_price)}</div> : null}
+                {soldOut && <div style={{ fontSize: 10.5, color: "var(--clay)", marginTop: 3, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".04em" }}>{labels.soldOut}</div>}
                 <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={labels.notesPlaceholder} style={{ width: "100%", boxSizing: "border-box", marginTop: 9, background: "var(--surface-alt)", border: "1px solid var(--line)", borderRadius: 11, padding: "8px 11px", fontFamily: "inherit", fontSize: 12, color: "var(--ink)", outline: "none" }} />
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
                     <QtyStepper value={qty} onChange={setQty} min={1} max={9} size="sm" />
-                    <button onClick={() => onRequest(item, qty, note)} style={{ flex: 1, border: "none", background: "var(--brand)", color: "#fff", borderRadius: 12, padding: "11px 14px", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                        <Icon n="bell" s={15} c="#fff" />{labels.request}
+                    <button onClick={soldOut ? undefined : () => onRequest(item, qty, note)} disabled={soldOut} style={{ flex: 1, border: "none", background: soldOut ? "var(--line)" : "var(--brand)", color: soldOut ? "var(--muted)" : "#fff", borderRadius: 12, padding: "11px 14px", fontFamily: "inherit", fontSize: 13, fontWeight: 700, cursor: soldOut ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                        <Icon n="bell" s={15} c={soldOut ? "var(--muted)" : "#fff"} />{soldOut ? labels.soldOut : labels.request}
                     </button>
                 </div>
             </div>

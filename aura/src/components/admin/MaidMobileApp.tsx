@@ -209,14 +209,17 @@ function TaskDetailsPanel({ task, cabins, propertyId, userData }: { task: Housek
             <div className="divide-y divide-border/60">
               {maidItems.map(item => {
                 const qty = cart[item.id] || 0;
+                const soldOut = item.stockAvailable === false;
                 return (
                   <div key={item.id} className={cn(
                     "flex items-center gap-3 px-3 py-2.5 transition-colors",
-                    qty > 0 && "bg-orange-500/5"
+                    qty > 0 && "bg-orange-500/5",
+                    soldOut && "opacity-55"
                   )}>
                     <span className={cn("flex-1 text-xs font-medium", qty > 0 ? "text-foreground font-bold" : "text-muted-foreground")}>
                       {item.name}
                     </span>
+                    {soldOut && <span className="text-[9px] font-bold uppercase tracking-wide text-red-500 shrink-0">Esgotado</span>}
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={() => updateCart(item.id, -1)}
@@ -228,7 +231,8 @@ function TaskDetailsPanel({ task, cabins, propertyId, userData }: { task: Housek
                       <span className="w-4 text-center font-black text-xs">{qty}</span>
                       <button
                         onClick={() => updateCart(item.id, 1)}
-                        className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center hover:bg-orange-500/20 transition-colors"
+                        disabled={soldOut}
+                        className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:bg-orange-500/20 transition-colors"
                       >
                         <Plus size={12} />
                       </button>

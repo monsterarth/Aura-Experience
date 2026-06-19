@@ -134,9 +134,11 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-4">Selecione o que o hóspede consumiu:</p>
               {items.map((item) => {
                 const quantity = cart[item.id] || 0;
+                const soldOut = item.stockAvailable === false;
                 return (
                   <div key={item.id} className={cn(
                     "flex items-center justify-between p-3 rounded-xl border transition-all",
+                    soldOut ? "bg-background border-border opacity-60" :
                     quantity > 0 ? "bg-blue-500/5 border-blue-500/30" : "bg-background border-border hover:border-foreground/20"
                   )}>
                     <div className="flex-1 min-w-0">
@@ -146,7 +148,9 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
                       )}>
                         {item.name}
                       </span>
-                      <span className="text-[10px] text-muted-foreground">R$ {item.price.toFixed(2)}</span>
+                      {soldOut
+                        ? <span className="text-[10px] font-bold uppercase tracking-wide text-red-500">Esgotado</span>
+                        : <span className="text-[10px] text-muted-foreground">R$ {item.price.toFixed(2)}</span>}
                     </div>
 
                     <div className="flex items-center gap-3 shrink-0">
@@ -160,7 +164,8 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
                       <span className="w-4 text-center font-black text-sm">{quantity}</span>
                       <button
                         onClick={() => updateQuantity(item.id, 1)}
-                        className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-foreground hover:bg-blue-500 hover:text-white transition-colors"
+                        disabled={soldOut}
+                        className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center text-foreground disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-500 hover:text-white transition-colors"
                       >
                         <Plus size={14} />
                       </button>

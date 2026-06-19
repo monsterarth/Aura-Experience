@@ -6,7 +6,7 @@ import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { ConciergeService } from "@/services/concierge-service";
 import { StockClient } from "@/lib/stock-client";
-import { ConciergeRequest, ConciergeItem, ConciergeCategory, ConciergeGroup } from "@/types/aura";
+import { ConciergeRequest, ConciergeItem, ConciergeCategory, ConciergeGroup, ConciergeStockComponent } from "@/types/aura";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import EmojiPicker from "emoji-picker-react";
 import {
@@ -39,7 +39,8 @@ interface ItemForm {
   availableForGuest: boolean; availableForMaid: boolean;
   order: string;
   groupId: string;
-  productId: string;   // vínculo com produto do estoque (Fase 3)
+  deductFromStock: boolean;                    // toggle "Baixar do estoque" (Fase 4)
+  stockComponents: ConciergeStockComponent[];  // ficha técnica
 }
 
 interface GroupForm {
@@ -55,7 +56,8 @@ const defaultForm: ItemForm = {
   availableForGuest: true, availableForMaid: false,
   order: '0',
   groupId: '',
-  productId: '',
+  deductFromStock: false,
+  stockComponents: [],
 };
 
 const defaultGroupForm: GroupForm = { name: '', icon: '📦', color: '#9b6dff', order: '0' };
@@ -164,12 +166,16 @@ export default function AdminConciergePage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ItemForm>(defaultForm);
   const [stockProducts, setStockProducts] = useState<{ id: string; name: string; unit: string }[]>([]);
+  const [stockLocations, setStockLocations] = useState<{ id: string; name: string }[]>([]);
   const stockEnabled = property?.settings?.hasStock !== false;
   useEffect(() => {
-    if (!property?.id || !stockEnabled) { setStockProducts([]); return; }
+    if (!property?.id || !stockEnabled) { setStockProducts([]); setStockLocations([]); return; }
     StockClient.products(property.id)
       .then(ps => setStockProducts(ps.map(p => ({ id: p.id, name: p.name, unit: p.unit }))))
       .catch(() => setStockProducts([]));
+    StockClient.locations(property.id)
+      .then(ls => setStockLocations(ls.map(l => ({ id: l.id, name: l.name }))))
+      .catch(() => setStockLocations([]));
   }, [property?.id, stockEnabled]);
   const [saving, setSaving] = useState(false);
 
@@ -315,7 +321,11 @@ export default function AdminConciergePage() {
       active: item.active, availableForGuest: item.availableForGuest ?? true,
       availableForMaid: item.availableForMaid ?? false, order: String(item.order ?? 0),
       groupId: item.groupId || '',
-      productId: item.productId || '',
+      // Migra vínculo legado 1:1 (productId) para ficha técnica ao abrir o item.
+      deductFromStock: item.deductFromStock ?? (!!item.productId),
+      stockComponents: item.stockComponents?.length
+        ? item.stockComponents
+        : (item.productId ? [{ productId: item.productId, consumptionQty: 1 }] : []),
     });
     setEditingId(item.id);
     setShowForm(true);
@@ -368,7 +378,12 @@ export default function AdminConciergePage() {
         active: form.active, availableForGuest: form.availableForGuest, availableForMaid: form.availableForMaid,
         order: parseInt(form.order) || 0,
         groupId: form.groupId || undefined,
-        productId: form.productId || null,
+        deductFromStock: form.deductFromStock,
+        // Sanitiza: só linhas com produto e quantidade > 0. Vazio se toggle off.
+        stockComponents: form.deductFromStock
+          ? form.stockComponents.filter(c => c.productId && c.consumptionQty > 0)
+          : [],
+        productId: null,   // legado deprecado — leitura agora usa stockComponents
       };
       if (editingId) {
         await ConciergeService.updateItem(property.id, editingId, payload, userData.id, userData.fullName);
@@ -834,7 +849,7 @@ export default function AdminConciergePage() {
       {showForm && (
         <CatalogFormModal
           form={form} setForm={setForm} editingId={editingId} saving={saving}
-          groups={groups} stockProducts={stockProducts} stockEnabled={stockEnabled}
+          groups={groups} stockProducts={stockProducts} stockLocations={stockLocations} stockEnabled={stockEnabled}
           onClose={() => { setShowForm(false); setEditingId(null); }}
           onSave={handleSave}
         />
@@ -1108,6 +1123,9 @@ function CatalogCard({ item, onEdit, onToggleActive, onDelete, onRequest }: {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: item.price > 0 ? '#9b6dff' : '#2dd4bf' }}>{item.price > 0 ? `R$ ${item.price.toFixed(2)}` : 'Grátis'}</div>
           {item.included_qty > 0 && <span style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)' }}>· {item.included_qty} incluso(s)</span>}
+          {item.stockAvailable === false && (
+            <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: 999, background: 'rgba(248,113,113,0.1)', color: '#f87171', border: '1px solid rgba(248,113,113,0.28)' }}>Esgotado</span>
+          )}
         </div>
         {item.active && (
           <span style={{ marginTop: 6, display: 'inline-flex', padding: '2px 7px', borderRadius: 999, fontSize: 8, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', background: accessBg, color: accessColor, border: `1px solid ${accessBorder}` }}>{accessLabel}</span>
@@ -1410,13 +1428,14 @@ function NewRequestModal({ preset, onClose }: {
 
 type LangTab = 'pt' | 'en' | 'es';
 
-function CatalogFormModal({ form, setForm, editingId, saving, groups, stockProducts, stockEnabled, onClose, onSave }: {
+function CatalogFormModal({ form, setForm, editingId, saving, groups, stockProducts, stockLocations, stockEnabled, onClose, onSave }: {
   form: ItemForm;
   setForm: React.Dispatch<React.SetStateAction<ItemForm>>;
   editingId: string | null;
   saving: boolean;
   groups: ConciergeGroup[];
   stockProducts: { id: string; name: string; unit: string }[];
+  stockLocations: { id: string; name: string }[];
   stockEnabled: boolean;
   onClose: () => void;
   onSave: () => void;
@@ -1460,6 +1479,13 @@ function CatalogFormModal({ form, setForm, editingId, saving, groups, stockProdu
 
   const set = <K extends keyof ItemForm>(k: K, v: ItemForm[K]) =>
     setForm(prev => ({ ...prev, [k]: v }));
+
+  // ── Ficha técnica (estoque) ──
+  const addComp = () => set('stockComponents', [...form.stockComponents, { productId: '', consumptionQty: 1 }]);
+  const removeComp = (idx: number) => set('stockComponents', form.stockComponents.filter((_, i) => i !== idx));
+  const updateComp = (idx: number, patch: Partial<ConciergeStockComponent>) =>
+    set('stockComponents', form.stockComponents.map((c, i) => (i === idx ? { ...c, ...patch } : c)));
+  const unitOf = (productId: string) => stockProducts.find(p => p.id === productId)?.unit || '';
 
   const LANGS: { id: LangTab; flag: string; label: string }[] = [
     { id: 'pt', flag: '🇧🇷', label: 'PT' },
@@ -1826,24 +1852,95 @@ function CatalogFormModal({ form, setForm, editingId, saving, groups, stockProdu
             </div>
           )}
 
-          {/* ── Estoque (integração) ── */}
+          {/* ── Estoque · Ficha técnica (integração) ── */}
           {stockEnabled && (
             <div>
-              <div style={sectionLabel}>Estoque</div>
-              <label style={labelSt}>Produto vinculado</label>
-              <select
-                value={form.productId}
-                onChange={e => setForm(prev => ({ ...prev, productId: e.target.value }))}
-                style={{ ...inputSt }}
-              >
-                <option value="">Sem vínculo (não controla estoque)</option>
-                {stockProducts.map(p => <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>)}
-              </select>
-              <div style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)', marginTop: 4, lineHeight: 1.4 }}>
-                {form.category === 'loan'
-                  ? 'Ao marcar como perdido, dá baixa do produto vinculado no estoque.'
-                  : 'A cada entrega, dá baixa automática do produto vinculado no estoque.'}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div style={{ ...sectionLabel, marginBottom: 0 }}>Estoque · Baixar do estoque</div>
+                <button
+                  type="button"
+                  onClick={() => set('deductFromStock', !form.deductFromStock)}
+                  aria-pressed={form.deductFromStock}
+                  title="Baixar do estoque"
+                  style={{
+                    position: 'relative', width: 46, height: 25, borderRadius: 999, border: 'none', cursor: 'pointer', flexShrink: 0,
+                    background: form.deductFromStock ? 'linear-gradient(135deg,#9b6dff,#4ec9d4)' : 'rgba(255,255,255,0.12)',
+                    transition: 'background .2s',
+                  }}
+                >
+                  <span style={{
+                    position: 'absolute', top: 2.5, left: 2.5, width: 20, height: 20, borderRadius: '50%', background: '#fff',
+                    transform: form.deductFromStock ? 'translateX(21px)' : 'translateX(0)', transition: 'transform .2s',
+                    boxShadow: '0 2px 6px rgba(0,0,0,.4)',
+                  }} />
+                </button>
               </div>
+
+              <div style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)', marginBottom: form.deductFromStock ? 12 : 0, lineHeight: 1.4 }}>
+                {form.deductFromStock
+                  ? (form.category === 'loan'
+                      ? 'Ao marcar como perdido, baixa a ficha técnica abaixo do estoque.'
+                      : 'A cada entrega, baixa a ficha técnica do estoque. Sem insumo suficiente, o item fica indisponível para pedido (hóspede e camareira).')
+                  : 'Desligado: o item não controla estoque.'}
+              </div>
+
+              {form.deductFromStock && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {form.stockComponents.length === 0 && (
+                    <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', padding: '2px 0' }}>
+                      Nenhum produto na ficha. Adicione ao menos um.
+                    </div>
+                  )}
+                  {form.stockComponents.map((c, idx) => (
+                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 11, border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)' }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <select
+                          value={c.productId}
+                          onChange={e => updateComp(idx, { productId: e.target.value, unit: unitOf(e.target.value), name: stockProducts.find(p => p.id === e.target.value)?.name })}
+                          style={{ ...inputSt, flex: 1 }}
+                        >
+                          <option value="">Selecione o produto…</option>
+                          {stockProducts.map(p => <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>)}
+                        </select>
+                        <div style={{ position: 'relative', width: 104, flexShrink: 0 }}>
+                          <input
+                            type="number" min={0} step="any" value={c.consumptionQty}
+                            onChange={e => updateComp(idx, { consumptionQty: parseFloat(e.target.value) || 0 })}
+                            style={{ ...inputSt, paddingRight: unitOf(c.productId) ? 36 : 12, textAlign: 'right' }}
+                          />
+                          {unitOf(c.productId) && (
+                            <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'rgba(238,240,248,0.42)', pointerEvents: 'none' }}>{unitOf(c.productId)}</span>
+                          )}
+                        </div>
+                        <button type="button" onClick={() => removeComp(idx)} title="Remover"
+                          style={{ width: 34, height: 34, flexShrink: 0, borderRadius: 9, border: '1px solid rgba(248,113,113,0.25)', background: 'rgba(248,113,113,0.08)', color: '#f87171', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                      {stockLocations.length > 0 && (
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingLeft: 2 }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'rgba(238,240,248,0.42)', flexShrink: 0 }}>Baixar de</span>
+                          <select
+                            value={c.locationId || ''}
+                            onChange={e => updateComp(idx, { locationId: e.target.value || null })}
+                            style={{ ...inputSt, flex: 1, padding: '6px 10px', fontSize: 12 }}
+                          >
+                            <option value="">Padrão (local de consumo)</option>
+                            {stockLocations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <button type="button" onClick={addComp}
+                    style={{ alignSelf: 'flex-start', marginTop: 2, padding: '7px 12px', borderRadius: 9, border: '1px dashed rgba(155,109,255,0.4)', background: 'rgba(155,109,255,0.06)', color: '#9b6dff', fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+                    <Plus size={13} /> Adicionar produto
+                  </button>
+                  <div style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)', marginTop: 2, lineHeight: 1.4 }}>
+                    Quantidade consumida por unidade entregue.
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

@@ -2,6 +2,8 @@
 
 import { supabaseAdmin } from "@/lib/supabase";
 import { AuditService } from "@/services/audit-service";
+import { ConciergeService } from "@/services/concierge-service";
+import { ConciergeItem } from "@/types/aura";
 
 /**
  * Submit a concierge request from the guest portal.
@@ -30,6 +32,17 @@ export async function submitConciergeRequest(
   // 2. DND check
   if (stay.dnd_enabled) {
     return { success: false, dndActive: true };
+  }
+
+  // 2.5. Disponibilidade: item de consumo com ficha técnica não pode ser pedido sem estoque.
+  const { data: itemRow } = await supabaseAdmin
+    .from('concierge_items').select('*').eq('id', itemId).single();
+  if (itemRow) {
+    try {
+      await ConciergeService._assertAvailable(stay.propertyId, itemRow as ConciergeItem, quantity);
+    } catch {
+      return { success: false, error: 'Item indisponível no momento (sem estoque).' };
+    }
   }
 
   // 3. Check for existing pending request for the same item (idempotency guard)

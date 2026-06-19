@@ -1186,9 +1186,21 @@ export interface ConciergeItem {
   order?: number;
   groupId?: string;
   group?: ConciergeGroup;
-  productId?: string | null;     // vínculo com produto do estoque (Fase 3) — baixa no consumo
+  productId?: string | null;     // DEPRECADO (Fase 3): vínculo 1:1 antigo. Mantido p/ migração/rollback — leitura agora usa stockComponents.
+  deductFromStock?: boolean;     // toggle "Baixar do estoque" (Fase 4) — liga a ficha técnica
+  stockComponents?: ConciergeStockComponent[];  // ficha técnica: produtos baixados a cada unidade entregue
+  stockAvailable?: boolean;      // VIRTUAL (não persiste): item tem insumo suficiente p/ ≥1 unidade? Preenchido na leitura.
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+/** Linha da ficha técnica de um item de Concierge: um produto do estoque + quanto se consome por unidade. */
+export interface ConciergeStockComponent {
+  productId: string;
+  consumptionQty: number;   // qtd consumida por 1 unidade do item (na unidade do produto)
+  unit?: string;            // unidade do produto (denormalizada p/ exibição)
+  name?: string;            // nome do produto (denormalizado p/ exibição)
+  locationId?: string | null;  // "Baixar de" — local de estoque; null/ausente = PADRÃO (defaultSaleLocationId)
 }
 
 // (Frigobar aposentado na Fase 3B — itens migrados para Concierge, grupo "Frigobar".)

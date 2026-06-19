@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { ConciergeGroup, ConciergeItem, ConciergeRequest } from "@/types/aura";
 import { AuditService } from "./audit-service";
 import { StayService } from "./stay-service";
-import { StockIntegration } from "./stock-integration";
+import { StockIntegration, StockLevels } from "./stock-integration";
 
 export const ConciergeService = {
 
@@ -91,7 +91,7 @@ export const ConciergeService = {
       .eq('propertyId', propertyId)
       .eq('deleted', false)
       .order('order', { ascending: true });
-    return (data || []) as ConciergeItem[];
+    return this._annotateAvailability(propertyId, (data || []) as ConciergeItem[]);
   },
 
   async getConciergeItemsForGuest(propertyId: string): Promise<ConciergeItem[]> {
@@ -103,7 +103,7 @@ export const ConciergeService = {
       .eq('deleted', false)
       .eq('availableForGuest', true)
       .order('order', { ascending: true });
-    return (data || []) as ConciergeItem[];
+    return this._annotateAvailability(propertyId, (data || []) as ConciergeItem[]);
   },
 
   async getConciergeItemsForMaid(propertyId: string): Promise<ConciergeItem[]> {
@@ -115,7 +115,7 @@ export const ConciergeService = {
       .eq('deleted', false)
       .eq('availableForMaid', true)
       .order('order', { ascending: true });
-    return (data || []) as ConciergeItem[];
+    return this._annotateAvailability(propertyId, (data || []) as ConciergeItem[]);
   },
 
   async getArchivedItems(propertyId: string): Promise<ConciergeItem[]> {
@@ -328,8 +328,12 @@ export const ConciergeService = {
     actorId: string,
     actorName: string
   ): Promise<ConciergeRequest> {
-    // Estoque agora é gerido pelo módulo de Estoque (baixa na entrega). Pedido
-    // não bloqueia por falta de estoque — ver StockIntegration.consumeForSale.
+    // Disponibilidade: itens de consumo com ficha técnica não podem ser pedidos
+    // sem estoque (reforço servidor; fail-open se módulo off — ver _assertAvailable).
+    const { data: itemRow } = await supabase
+      .from('concierge_items').select('*').eq('id', data.itemId).single();
+    if (itemRow) await this._assertAvailable(data.propertyId, itemRow as ConciergeItem, data.quantity);
+
     const now = new Date().toISOString();
     const payload = {
       ...data,
@@ -432,13 +436,9 @@ export const ConciergeService = {
       .eq('id', requestId);
     if (updErr) throw updErr;
 
-    // 4. Baixa de estoque (integração) — consumo. No-op se módulo off ou item sem produto vinculado.
+    // 4. Baixa de estoque (integração) — explode a ficha técnica. No-op se módulo off ou sem vínculo.
     if (item.category === 'consumption') {
-      await StockIntegration.consumeForSale(
-        propertyId,
-        { productId: item.productId, quantity: req.quantity, referenceType: 'concierge', referenceId: requestId },
-        { id: actorId, name: actorName },
-      );
+      await this._deductStockForRequest(propertyId, item, req.quantity, requestId, { id: actorId, name: actorName });
     }
 
     // 5. Charge folio if applicable
@@ -543,11 +543,7 @@ export const ConciergeService = {
 
     // 3. Baixa de estoque (integração) — item de empréstimo extraviado (não retorna).
     if (item.category === 'loan') {
-      await StockIntegration.consumeForSale(
-        propertyId,
-        { productId: item.productId, quantity: req.quantity, referenceType: 'concierge', referenceId: requestId },
-        { id: actorId, name: actorName },
-      );
+      await this._deductStockForRequest(propertyId, item, req.quantity, requestId, { id: actorId, name: actorName });
     }
 
     // 4. Charge loss_price if defined
@@ -575,6 +571,74 @@ export const ConciergeService = {
       action: 'CONCIERGE_LOST', entity: 'CONCIERGE', entityId: requestId,
       details: `Item de empréstimo extraviado. loss_price=${item.loss_price ?? 0}`,
     });
+  },
+
+  // ==========================================
+  // ESTOQUE — ficha técnica (baixa) + disponibilidade
+  // ==========================================
+
+  /** Componentes efetivos da ficha técnica (com fallback ao vínculo legado 1:1). */
+  _stockComponents(item: ConciergeItem): { productId: string; consumptionQty: number; locationId?: string | null }[] {
+    if (item.stockComponents?.length) {
+      return item.stockComponents.filter(c => c.productId && c.consumptionQty > 0);
+    }
+    return item.productId ? [{ productId: item.productId, consumptionQty: 1 }] : [];
+  },
+
+  /** Item entra no gate de disponibilidade? (consumo + toggle ligado + tem ficha) */
+  _itemGatesStock(item: ConciergeItem): boolean {
+    return item.category === 'consumption'
+      && !!item.deductFromStock
+      && this._stockComponents(item).length > 0;
+  },
+
+  /** Há saldo p/ atender `quantity` unidades do item? Cada componente olha o seu local ("Baixar de"). */
+  _hasStockFor(item: ConciergeItem, quantity: number, levels: StockLevels): boolean {
+    if (!this._itemGatesStock(item)) return true;
+    return this._stockComponents(item).every(
+      c => StockIntegration.availableFor(levels, c.productId, c.locationId) >= c.consumptionQty * quantity,
+    );
+  },
+
+  /**
+   * Explode a ficha técnica do item e baixa cada insumo vinculado (best-effort).
+   * Com toggle ligado usa stockComponents; senão cai no vínculo legado 1:1.
+   */
+  async _deductStockForRequest(
+    propertyId: string,
+    item: ConciergeItem,
+    quantity: number,
+    requestId: string,
+    actor: { id: string; name: string },
+  ): Promise<void> {
+    if (!(quantity > 0)) return;
+    for (const c of this._stockComponents(item)) {
+      await StockIntegration.consumeForSale(
+        propertyId,
+        { productId: c.productId, quantity: c.consumptionQty * quantity, referenceType: 'concierge', referenceId: requestId, fromLocationId: c.locationId ?? null },
+        actor,
+      );
+    }
+  },
+
+  /** Marca cada item com stockAvailable. Fail-open: módulo off/erro → tudo disponível. */
+  async _annotateAvailability(propertyId: string, items: ConciergeItem[]): Promise<ConciergeItem[]> {
+    if (!items.some(i => this._itemGatesStock(i))) {
+      return items.map(i => ({ ...i, stockAvailable: true }));
+    }
+    const levels = await StockIntegration.getStockLevels(propertyId);
+    if (!levels) return items.map(i => ({ ...i, stockAvailable: true }));
+    return items.map(i => ({ ...i, stockAvailable: this._hasStockFor(i, 1, levels) }));
+  },
+
+  /** Lança se o item não tem estoque p/ a quantidade pedida (reforço anti-pedido). */
+  async _assertAvailable(propertyId: string, item: ConciergeItem, quantity: number): Promise<void> {
+    if (!this._itemGatesStock(item)) return;
+    const levels = await StockIntegration.getStockLevels(propertyId);
+    if (!levels) return; // fail-open: módulo off ou erro não bloqueia
+    if (!this._hasStockFor(item, quantity, levels)) {
+      throw new Error('Item indisponível no momento (sem estoque).');
+    }
   },
 
   // ==========================================
