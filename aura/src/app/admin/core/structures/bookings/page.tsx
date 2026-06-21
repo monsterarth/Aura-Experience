@@ -9,7 +9,6 @@ import { StructureService } from "@/services/structure-service";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { Structure, StructureBooking, TimeSlot, Stay } from "@/types/aura";
-import { StayService } from "@/services/stay-service";
 import { supabase, safeRemoveChannel } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 
@@ -51,13 +50,14 @@ export default function StructureBookingsPage() {
         try {
             const dateStr = format(currentDate, "yyyy-MM-dd");
 
-            const [allStructures, allBookings, allActiveStays] = await Promise.all([
-                StructureService.getBookableStructures(currentProperty.id),
-                StructureService.getAllBookingsByDate(currentProperty.id, dateStr),
-                StayService.getStaysByStatus(currentProperty.id, ['pending', 'pre_checkin_done', 'active', 'late_checkout'])
-            ]);
+            // Busca via rota server-side (supabaseAdmin, sem navigator.locks) — evita o
+            // congelamento no F5 que o browser client causava ao disputar o lock de sessão.
+            const params = new URLSearchParams({ propertyId: currentProperty.id, date: dateStr });
+            const res = await fetch(`/api/admin/structures/bookings?${params}`);
+            if (!res.ok) throw new Error('fetch-error');
+            const { structures: allStructures, bookings: allBookings, activeStays: allActiveStays } = await res.json();
 
-            const validStaysForDate = allActiveStays.filter(s => {
+            const validStaysForDate = (allActiveStays ?? []).filter((s: any) => {
                 const checkInDate = s.checkIn ? new Date(s.checkIn) : new Date();
                 const checkOutDate = s.checkOut ? new Date(s.checkOut) : new Date();
 
@@ -67,8 +67,8 @@ export default function StructureBookingsPage() {
                 return currentDate >= checkInDate && currentDate <= checkOutDate;
             });
 
-            setStructures(allStructures);
-            setBookings(allBookings);
+            setStructures(allStructures ?? []);
+            setBookings(allBookings ?? []);
             setActiveStays(validStaysForDate);
         } catch (error) {
             toast.error("Erro ao carregar agenda.");
