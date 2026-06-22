@@ -772,7 +772,7 @@ function AssignSheet({
                   display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 14, fontWeight: 800, color: on ? "#fff" : T.muted, flexShrink: 0,
                 }}>
-                  {maid.fullName.charAt(0)}
+                  {maid.fullName?.charAt(0) ?? "?"}
                 </div>
                 <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: T.text }}>{maid.fullName}</span>
                 <div style={{
@@ -1046,7 +1046,7 @@ function NewTaskSheet({
                         background: on ? "rgba(167,139,250,0.15)" : T.card2,
                         border: `1px solid ${on ? T.vBorder : T.border}`,
                         color: on ? T.v1 : T.muted,
-                      }}>{m.fullName.split(" ")[0]}</button>
+                      }}>{(m.fullName ?? "").split(" ")[0]}</button>
                     );
                   })}
                 </div>
@@ -1175,7 +1175,7 @@ function TaskCard({
 }) {
   const assignedArray = Array.isArray(task.assignedTo) ? task.assignedTo : [];
   const assignedNames = assignedArray.length > 0
-    ? assignedArray.map(id => maids.find(m => m.id === id)?.fullName.split(" ")[0]).filter(Boolean).join(", ")
+    ? assignedArray.map(id => maids.find(m => m.id === id)?.fullName?.split(" ")[0]).filter(Boolean).join(", ")
     : null;
 
   const isConference = task.status === "waiting_conference";
@@ -1526,40 +1526,53 @@ export default function GovernantaPage() {
         setCabins(cabinsDict);
         setAllCabins(cabinsData);
 
-        // Load active/upcoming stays for occupancy info on cabin cards
-        const todayStr = new Date().toISOString().split('T')[0];
-        const { data: staysRaw } = await supabase
-          .from('stays')
-          .select('id, cabinId, checkIn, checkOut, status, expectedArrivalTime, guestId, internalUse, internalLabel')
-          .eq('propertyId', property.id)
-          .in('status', ['active', 'pending', 'pre_checkin_done'])
-          .not('cabinId', 'is', null)
-          .gte('checkOut', todayStr);
+        // Ocupação para os cards de cabana — informativo e BEST-EFFORT: nunca pode travar a tela.
+        // Estas queries rodam no client Supabase do browser (RLS). Num F5/refresh, o access token
+        // pode ainda não ter sido renovado e a query fica pendente indefinidamente — sem o
+        // withTimeout, o setLoading(false) do finally nunca executa e o app congela no spinner
+        // (regressão do "F5 trava tudo"). O cap de 6s garante que o init() sempre conclui; em caso
+        // de timeout/erro a ocupação fica vazia (degrada o badge, não o app).
+        type Occ = { guestName: string; internalUse?: boolean; checkIn: string; checkOut: string; status: string; expectedArrivalTime?: string | null };
+        const staysMap = await withTimeout<Record<string, Occ>>(
+          (async (): Promise<Record<string, Occ>> => {
+            const todayStr = new Date().toISOString().split('T')[0];
+            const { data: staysRaw } = await supabase
+              .from('stays')
+              .select('id, cabinId, checkIn, checkOut, status, expectedArrivalTime, guestId, internalUse, internalLabel')
+              .eq('propertyId', property.id)
+              .in('status', ['active', 'pending', 'pre_checkin_done'])
+              .not('cabinId', 'is', null)
+              .gte('checkOut', todayStr);
+            if (!staysRaw || staysRaw.length === 0) return {};
 
-        if (staysRaw && staysRaw.length > 0) {
-          const guestIds = Array.from(new Set(staysRaw.map((s: any) => s.guestId).filter(Boolean))) as string[];
-          const { data: guestsRaw } = await supabase
-            .from('guests')
-            .select('id, fullName')
-            .in('id', guestIds);
-          const guestMap: Record<string, string> = {};
-          (guestsRaw ?? []).forEach((g: any) => { guestMap[g.id] = g.fullName; });
-
-          const staysMap: Record<string, { guestName: string; internalUse?: boolean; checkIn: string; checkOut: string; status: string; expectedArrivalTime?: string | null }> = {};
-          staysRaw.forEach((stay: any) => {
-            if (stay.cabinId) {
-              staysMap[stay.cabinId] = {
-                guestName: stay.internalUse ? (stay.internalLabel?.trim() || "Uso da Casa") : (guestMap[stay.guestId] ?? ""),
-                internalUse: !!stay.internalUse,
-                checkIn: stay.checkIn,
-                checkOut: stay.checkOut,
-                status: stay.status,
-                expectedArrivalTime: stay.expectedArrivalTime ?? null,
-              };
+            const guestIds = Array.from(new Set(staysRaw.map((s: any) => s.guestId).filter(Boolean))) as string[];
+            const guestMap: Record<string, string> = {};
+            if (guestIds.length > 0) {
+              const { data: guestsRaw } = await supabase
+                .from('guests')
+                .select('id, fullName')
+                .in('id', guestIds);
+              (guestsRaw ?? []).forEach((g: any) => { guestMap[g.id] = g.fullName; });
             }
-          });
-          setCabinStays(staysMap);
-        }
+
+            const map: Record<string, Occ> = {};
+            staysRaw.forEach((stay: any) => {
+              if (stay.cabinId) {
+                map[stay.cabinId] = {
+                  guestName: stay.internalUse ? (stay.internalLabel?.trim() || "Uso da Casa") : (guestMap[stay.guestId] ?? ""),
+                  internalUse: !!stay.internalUse,
+                  checkIn: stay.checkIn,
+                  checkOut: stay.checkOut,
+                  status: stay.status,
+                  expectedArrivalTime: stay.expectedArrivalTime ?? null,
+                };
+              }
+            });
+            return map;
+          })().catch((): Record<string, Occ> => ({})),
+          {}
+        );
+        if (Object.keys(staysMap).length > 0) setCabinStays(staysMap);
 
         const structuresDict: Record<string, Structure> = {};
         structuresData.forEach(s => { structuresDict[s.id] = s; });
@@ -1976,7 +1989,7 @@ export default function GovernantaPage() {
                         : { label: "Limpa",          color: T.green, bg: T.greenBg,               border: T.greenBorder };
 
                         const assignedNames = topTask?.assignedTo
-                          ?.map(id => maids.find(m => m.id === id)?.fullName.split(" ")[0])
+                          ?.map(id => maids.find(m => m.id === id)?.fullName?.split(" ")[0])
                           .filter(Boolean).join(", ");
 
                         const typeLabels: Record<string, string> = {
@@ -2145,7 +2158,7 @@ export default function GovernantaPage() {
                           };
                           const st = statusMap[task.status] ?? { label: task.status, color: T.muted };
                           const assignedNames = (task.assignedTo ?? [])
-                            .map(id => maids.find(m => m.id === id)?.fullName.split(" ")[0])
+                            .map(id => maids.find(m => m.id === id)?.fullName?.split(" ")[0])
                             .filter(Boolean).join(", ");
                           const dateStr = task.createdAt
                             ? new Date(task.createdAt as string).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })
