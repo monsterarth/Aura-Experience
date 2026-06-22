@@ -1502,6 +1502,14 @@ export default function GovernantaPage() {
     const init = async () => {
       setLoading(true);
       try {
+        // Warm-up do client do browser (REST): diferente do app da camareira — que ainda faz uma
+        // leitura de estruturas no init() e, de quebra, esquenta o token/lock do Supabase — a
+        // governanta passou a ler TUDO via rota server-side, deixando o client do browser FRIO.
+        // Aí o primeiro WRITE pelo browser (lançar frigobar, liberar cabana, atribuir) pendurava
+        // no refresh do token/lock frio — spinner infinito, "resolvia" com F5 (que reaquece). Esta
+        // leitura trivial em background força esse refresh cedo, antes do primeiro write.
+        void supabase.from('staff').select('id').eq('propertyId', property.id).limit(1).then(undefined, () => {});
+
         // Bootstrap server-side: cabanas, estruturas, camareiras, frigobar e ocupação numa única
         // rota (/api/field/governanta-bootstrap), com a sessão validada/renovada pelo middleware.
         // Antes essas leituras rodavam no client do browser (RLS) e, em refreshes seguidos,
