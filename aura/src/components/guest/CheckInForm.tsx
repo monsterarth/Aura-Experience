@@ -83,6 +83,8 @@ export const CheckInForm = () => {
         }],
         checkIn: new Date(),
         checkOut: new Date(Date.now() + 86400000),
+        checkInTime: property.settings?.checkInTime,
+        checkOutTime: property.settings?.checkOutTime,
         sendAutomations: false,
         actorId: "GUEST_PORTAL",
         actorName: data.fullName

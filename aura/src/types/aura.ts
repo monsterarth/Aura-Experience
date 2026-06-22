@@ -65,6 +65,8 @@ export interface Property {
     hasBreakfast: boolean;
     hasKDS: boolean;
     hasStock?: boolean;          // módulo Compras & Estoque (default: habilitado; off só se === false)
+    checkInTime?: string;        // horário padrão de check-in (HH:MM) — política da propriedade, default ao criar estadias
+    checkOutTime?: string;       // horário padrão de check-out (HH:MM)
     whatsappEnabled: boolean;
     whatsappNumber?: string;
     whatsappConfig?: {

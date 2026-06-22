@@ -3,6 +3,7 @@ import { Stay, Guest, Cabin, FolioItem, AutomationTriggerEvent, MessageTemplate 
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
 import { AutomationService } from "./automation-service";
+import { applyTimeToDate, DEFAULT_CHECK_IN_TIME, DEFAULT_CHECK_OUT_TIME } from "@/lib/stay-times";
 
 export const StayService = {
   async triggerAutomation(
@@ -125,6 +126,10 @@ export const StayService = {
     cabinConfigs: { cabinId: string | null, adults: number, children: number, babies: number }[];
     checkIn: Date;
     checkOut: Date;
+    /** Horário padrão da propriedade (HH:MM) carimbado na hora-do-dia de checkIn/checkOut.
+     *  Quando ausente, cai nos defaults (14:00 / 12:00). A data escolhida é preservada. */
+    checkInTime?: string;
+    checkOutTime?: string;
     sendAutomations: boolean;
     internalUse?: boolean;
     internalLabel?: string;
@@ -147,6 +152,10 @@ export const StayService = {
     const accessCode = await this.generateUniqueAccessCode(params.propertyId);
     const groupId = params.cabinConfigs.length > 1 ? `GRP-${uuidv4().slice(0, 8).toUpperCase()}` : null;
 
+    // Carimba a hora-do-dia prevista (política da propriedade) preservando a data escolhida.
+    const checkInIso = applyTimeToDate(params.checkIn, params.checkInTime, DEFAULT_CHECK_IN_TIME).toISOString();
+    const checkOutIso = applyTimeToDate(params.checkOut, params.checkOutTime, DEFAULT_CHECK_OUT_TIME).toISOString();
+
     const payloads = params.cabinConfigs.map(config => {
       const stayId = uuidv4();
 
@@ -168,8 +177,8 @@ export const StayService = {
         cabinId: config.cabinId ?? null,
         groupId,
         accessCode,
-        checkIn: params.checkIn.toISOString(),
-        checkOut: params.checkOut.toISOString(),
+        checkIn: checkInIso,
+        checkOut: checkOutIso,
         counts: { adults: config.adults, children: config.children, babies: config.babies },
         additionalGuests,
         internalUse: params.internalUse ?? false,

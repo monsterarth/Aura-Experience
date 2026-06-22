@@ -253,6 +253,8 @@ function NewStayPageContent() {
         cabinConfigs,
         checkIn: dateRange.from,
         checkOut: dateRange.to,
+        checkInTime: contextProperty.settings?.checkInTime,
+        checkOutTime: contextProperty.settings?.checkOutTime,
         sendAutomations,
         internalUse,
         internalLabel: internalUse ? (internalLabel.trim() || undefined) : undefined,

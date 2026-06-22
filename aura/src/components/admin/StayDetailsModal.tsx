@@ -23,6 +23,7 @@ import { sanitizeDocumentForFnrh } from "@/lib/utils-checkin";
 import { cn } from "@/lib/utils";
 import { stayDisplayName } from "@/lib/stay-display";
 import { supabase } from "@/lib/supabase";
+import { extractTimeHHMM, combineDateAndTimeISO, DEFAULT_CHECK_IN_TIME, DEFAULT_CHECK_OUT_TIME } from "@/lib/stay-times";
 import { Stay, Guest, Cabin, FolioItem } from "@/types/aura";
 
 interface StayDetailsModalProps {
@@ -39,14 +40,6 @@ const formatDateForInput = (timestamp: any) => {
   if (!timestamp) return "";
   const d = new Date(timestamp);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-
-const parseDateFromInput = (dateStr: string, originalTimestamp: any): string | null => {
-  if (!dateStr) return null;
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const d = originalTimestamp ? new Date(originalTimestamp) : new Date();
-  d.setFullYear(year, month - 1, day);
-  return d.toISOString();
 };
 
 const Label = ({ icon: Icon, children }: { icon: any, children: React.ReactNode }) => (
@@ -110,6 +103,8 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
   const [checkInStr, setCheckInStr] = useState("");
   const [checkOutStr, setCheckOutStr] = useState("");
+  const [checkInTimeStr, setCheckInTimeStr] = useState("");
+  const [checkOutTimeStr, setCheckOutTimeStr] = useState("");
 
   const isCoreFieldLocked = !isEditing || isGovOnly;
 
@@ -139,6 +134,8 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     if (stay && guest) {
       setCheckInStr(formatDateForInput(stay.checkIn));
       setCheckOutStr(formatDateForInput(stay.checkOut));
+      setCheckInTimeStr(extractTimeHHMM(stay.checkIn) || DEFAULT_CHECK_IN_TIME);
+      setCheckOutTimeStr(extractTimeHHMM(stay.checkOut) || DEFAULT_CHECK_OUT_TIME);
 
       setFormData({
         cabinId: stay.cabinId,
@@ -360,8 +357,8 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     const cleanHousekeeping = formData.housekeepingItems?.filter(i => i.label.trim() !== "") || [];
     setLoading(true);
     try {
-      const parsedCheckIn = parseDateFromInput(checkInStr, stay.checkIn);
-      const parsedCheckOut = parseDateFromInput(checkOutStr, stay.checkOut);
+      const parsedCheckIn = combineDateAndTimeISO(checkInStr, checkInTimeStr, DEFAULT_CHECK_IN_TIME);
+      const parsedCheckOut = combineDateAndTimeISO(checkOutStr, checkOutTimeStr, DEFAULT_CHECK_OUT_TIME);
 
       // Strip cabinId from general payload — transfer/unassign is handled separately
       const { cabinId: _cabinId, ...restFormData } = formData;
@@ -694,32 +691,46 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                 <span className="text-[11px] font-black uppercase tracking-widest text-foreground">Datas & Acomodação</span>
               </div>
               <div className="p-4 space-y-3">
-                {/* 3-col mini: Check-in | Check-out | Chegada Prevista */}
-                <div className="grid grid-cols-3 gap-2">
+                {/* Check-in | Check-out (data + horário previsto) */}
+                <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <Label icon={Clock}>Check-in</Label>
+                    <Label icon={LogIn}>Check-in</Label>
                     {isEditing ? (
-                      <Input disabled={isCoreFieldLocked} type="date" value={checkInStr} onChange={e => setCheckInStr(e.target.value)} />
+                      <div className="space-y-1.5">
+                        <Input disabled={isCoreFieldLocked} type="date" value={checkInStr} onChange={e => setCheckInStr(e.target.value)} />
+                        <Input disabled={isCoreFieldLocked} type="time" value={checkInTimeStr} onChange={e => setCheckInTimeStr(e.target.value)} />
+                      </div>
                     ) : (
                       <div className="text-foreground font-mono bg-secondary p-2 rounded-xl text-xs border border-border">
-                        {stay.checkIn ? format(new Date(stay.checkIn), "dd/MM/yy") : "—"}
+                        {stay.checkIn ? format(new Date(stay.checkIn), "dd/MM/yy · HH:mm") : "—"}
                       </div>
                     )}
                   </div>
                   <div>
-                    <Label icon={Clock}>Check-out</Label>
+                    <Label icon={LogOut}>Check-out</Label>
                     {isEditing ? (
-                      <Input disabled={isCoreFieldLocked} type="date" value={checkOutStr} onChange={e => setCheckOutStr(e.target.value)} />
+                      <div className="space-y-1.5">
+                        <Input disabled={isCoreFieldLocked} type="date" value={checkOutStr} onChange={e => setCheckOutStr(e.target.value)} />
+                        <Input disabled={isCoreFieldLocked} type="time" value={checkOutTimeStr} onChange={e => setCheckOutTimeStr(e.target.value)} />
+                      </div>
                     ) : (
                       <div className="text-foreground font-mono bg-secondary p-2 rounded-xl text-xs border border-border">
-                        {stay.checkOut ? format(new Date(stay.checkOut), "dd/MM/yy") : "—"}
+                        {stay.checkOut ? format(new Date(stay.checkOut), "dd/MM/yy · HH:mm") : "—"}
                       </div>
                     )}
                   </div>
-                  <div>
-                    <Label icon={Clock}>Chegada</Label>
+                </div>
+
+                {/* Chegada prevista (ETA informada pelo hóspede — usada nas mensagens de early/late check-in) */}
+                <div>
+                  <Label icon={Plane}>Chegada Prevista</Label>
+                  {isEditing ? (
                     <Input disabled={isCoreFieldLocked} type="time" value={formData.expectedArrivalTime} onChange={e => setFormData({ ...formData, expectedArrivalTime: e.target.value })} />
-                  </div>
+                  ) : (
+                    <div className="text-foreground font-mono bg-secondary p-2 rounded-xl text-xs border border-border">
+                      {formData.expectedArrivalTime || "—"}
+                    </div>
+                  )}
                 </div>
 
                 {/* Acomodação */}
