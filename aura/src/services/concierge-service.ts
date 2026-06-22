@@ -645,10 +645,20 @@ export const ConciergeService = {
   // FRIGOBAR (itens de Concierge no grupo "Frigobar")
   // ==========================================
 
-  /** Itens de frigobar = itens de concierge (disponíveis p/ camareira) no grupo "Frigobar". */
+  /** Itens de frigobar = itens do catálogo no grupo "Frigobar".
+   *  Critério é só o grupo: a conferência de checkout precisa de TODOS os produtos do frigobar
+   *  para lançar consumo, independentemente da flag availableForMaid (que governa reposição). */
   async getFrigobarItems(propertyId: string): Promise<ConciergeItem[]> {
-    const items = await this.getConciergeItemsForMaid(propertyId);
-    return items.filter(i => (i.group?.name || '').trim().toLowerCase() === 'frigobar');
+    const { data } = await supabase
+      .from('concierge_items')
+      .select('*, group:concierge_groups(*)')
+      .eq('propertyId', propertyId)
+      .eq('active', true)
+      .eq('deleted', false)
+      .order('order', { ascending: true });
+    const items = ((data || []) as ConciergeItem[])
+      .filter(i => (i.group?.name || '').trim().toLowerCase() === 'frigobar');
+    return this._annotateAvailability(propertyId, items);
   },
 
   /** Lança o consumo de frigobar pelo pipeline do concierge (folio + estoque + histórico). */

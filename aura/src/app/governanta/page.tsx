@@ -8,8 +8,6 @@ import { MinibarSheet } from "@/components/maid/MinibarSheet";
 import { HousekeepingTaskManagerModal } from "@/components/admin/HousekeepingTaskManagerModal";
 import { HousekeepingService } from "@/services/housekeeping-service";
 import { CabinService } from "@/services/cabin-service";
-import { StaffService } from "@/services/staff-service";
-import { StructureService } from "@/services/structure-service";
 import { StayService } from "@/services/stay-service";
 import { HousekeepingTask, Cabin, Staff, Structure, ConciergeItem } from "@/types/aura";
 import { ConciergeService } from "@/services/concierge-service";
@@ -1504,82 +1502,39 @@ export default function GovernantaPage() {
     const init = async () => {
       setLoading(true);
       try {
-        // Timeout de 6s: se alguma das queries travar, libera o loading com dados parciais/vazios
+        // Bootstrap server-side: cabanas, estruturas, camareiras, frigobar e ocupação numa única
+        // rota (/api/field/governanta-bootstrap), com a sessão validada/renovada pelo middleware.
+        // Antes essas leituras rodavam no client do browser (RLS) e, em refreshes seguidos,
+        // penduravam por contenção de lock/token do Supabase — só resolviam pelos timeouts de 6s
+        // (a tela demorava ~16s). Pela rota não há dependência de token no browser; o withTimeout
+        // fica só como rede de segurança (a rota não deve pendurar).
         const withTimeout = <T,>(p: Promise<T>, fallback: T) =>
-          Promise.race([p, new Promise<T>(resolve => setTimeout(() => resolve(fallback), 6000))]);
+          Promise.race([p, new Promise<T>(resolve => setTimeout(() => resolve(fallback), 8000))]);
 
-        const [cabinsData, staffData, structuresData, frigobarItems] = await Promise.all([
-          withTimeout(
-            fetch(`/api/field/cabins?propertyId=${encodeURIComponent(property.id)}`, { cache: 'no-store' })
-              .then(r => r.ok ? (r.json() as Promise<Cabin[]>) : ([] as Cabin[]))
-              .catch(() => [] as Cabin[]),
-            [] as Cabin[]
-          ),
-          withTimeout(StaffService.getStaffByProperty(property.id), []),
-          withTimeout(StructureService.getStructures(property.id), []),
-          withTimeout(ConciergeService.getFrigobarItems(property.id), [] as ConciergeItem[]),
-        ]);
-        setMinibarItems(frigobarItems as ConciergeItem[]);
-
-        const cabinsDict: Record<string, Cabin> = {};
-        cabinsData.forEach(c => { cabinsDict[c.id] = c; });
-        setCabins(cabinsDict);
-        setAllCabins(cabinsData);
-
-        // Ocupação para os cards de cabana — informativo e BEST-EFFORT: nunca pode travar a tela.
-        // Estas queries rodam no client Supabase do browser (RLS). Num F5/refresh, o access token
-        // pode ainda não ter sido renovado e a query fica pendente indefinidamente — sem o
-        // withTimeout, o setLoading(false) do finally nunca executa e o app congela no spinner
-        // (regressão do "F5 trava tudo"). O cap de 6s garante que o init() sempre conclui; em caso
-        // de timeout/erro a ocupação fica vazia (degrada o badge, não o app).
-        type Occ = { guestName: string; internalUse?: boolean; checkIn: string; checkOut: string; status: string; expectedArrivalTime?: string | null };
-        const staysMap = await withTimeout<Record<string, Occ>>(
-          (async (): Promise<Record<string, Occ>> => {
-            const todayStr = new Date().toISOString().split('T')[0];
-            const { data: staysRaw } = await supabase
-              .from('stays')
-              .select('id, cabinId, checkIn, checkOut, status, expectedArrivalTime, guestId, internalUse, internalLabel')
-              .eq('propertyId', property.id)
-              .in('status', ['active', 'pending', 'pre_checkin_done'])
-              .not('cabinId', 'is', null)
-              .gte('checkOut', todayStr);
-            if (!staysRaw || staysRaw.length === 0) return {};
-
-            const guestIds = Array.from(new Set(staysRaw.map((s: any) => s.guestId).filter(Boolean))) as string[];
-            const guestMap: Record<string, string> = {};
-            if (guestIds.length > 0) {
-              const { data: guestsRaw } = await supabase
-                .from('guests')
-                .select('id, fullName')
-                .in('id', guestIds);
-              (guestsRaw ?? []).forEach((g: any) => { guestMap[g.id] = g.fullName; });
-            }
-
-            const map: Record<string, Occ> = {};
-            staysRaw.forEach((stay: any) => {
-              if (stay.cabinId) {
-                map[stay.cabinId] = {
-                  guestName: stay.internalUse ? (stay.internalLabel?.trim() || "Uso da Casa") : (guestMap[stay.guestId] ?? ""),
-                  internalUse: !!stay.internalUse,
-                  checkIn: stay.checkIn,
-                  checkOut: stay.checkOut,
-                  status: stay.status,
-                  expectedArrivalTime: stay.expectedArrivalTime ?? null,
-                };
-              }
-            });
-            return map;
-          })().catch((): Record<string, Occ> => ({})),
-          {}
+        const boot = await withTimeout<any>(
+          fetch(`/api/field/governanta-bootstrap?propertyId=${encodeURIComponent(property.id)}`, { cache: 'no-store' })
+            .then(r => (r.ok ? r.json() : null))
+            .catch(() => null),
+          null
         );
-        if (Object.keys(staysMap).length > 0) setCabinStays(staysMap);
 
-        const structuresDict: Record<string, Structure> = {};
-        structuresData.forEach(s => { structuresDict[s.id] = s; });
-        setStructures(structuresDict);
-        setAllStructures(structuresData);
+        if (boot) {
+          const cabinsData: Cabin[] = boot.cabins ?? [];
+          const cabinsDict: Record<string, Cabin> = {};
+          cabinsData.forEach(c => { cabinsDict[c.id] = c; });
+          setCabins(cabinsDict);
+          setAllCabins(cabinsData);
 
-        setMaids(staffData.filter(s => s.active && (s.role === "maid" || (s.secondaryRoles ?? []).includes("maid"))));
+          const structuresData: Structure[] = boot.structures ?? [];
+          const structuresDict: Record<string, Structure> = {};
+          structuresData.forEach(s => { structuresDict[s.id] = s; });
+          setStructures(structuresDict);
+          setAllStructures(structuresData);
+
+          setMaids(boot.maids ?? []);
+          setMinibarItems(boot.frigobar ?? []);
+          setCabinStays(boot.occupancy ?? {});
+        }
 
         unsub = HousekeepingService.listenToActiveTasks(property.id, setTasks);
       } catch {

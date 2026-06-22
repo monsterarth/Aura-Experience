@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import { supabase } from "@/lib/supabase";
 import { StayService } from "@/services/stay-service";
 
 // Itens exibidos no passo de frigobar (origem: itens de Concierge do grupo "Frigobar").
@@ -105,6 +104,34 @@ export function Sheet({ onClose, children }: { onClose: () => void; children: Re
   );
 }
 
+// ─── Finalização via rota de campo ────────────────────────────────────────────
+// Tira os writes de finalização (stays: objetos esquecidos/emprestados; housekeeping_tasks:
+// cabinChecked) do client do browser, que penduravam no lock/token frio do Supabase no app de
+// campo (spinner travado / botão sem resposta). Timeout defensivo: nunca trava o fluxo.
+async function postCabinConference(payload: {
+  stayId?: string;
+  taskId?: string;
+  lostItems?: { description: string; photo: string | null };
+  loanedReturned?: boolean;
+  cabinChecked?: boolean;
+}): Promise<boolean> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 12000);
+  try {
+    const res = await fetch("/api/field/cabin-conference", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: ctrl.signal,
+    });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ─── MinibarSheet ─────────────────────────────────────────────────────────────
 
 export function MinibarSheet({
@@ -206,11 +233,10 @@ export function MinibarSheet({
   };
 
   const finishAll = async () => {
-    if (taskId) {
-      try {
-        await supabase.from("housekeeping_tasks").update({ cabinChecked: true, updatedAt: new Date().toISOString() }).eq("id", taskId);
-      } catch { /* non-blocking */ }
-    }
+    // Marca a cabana como conferida via rota de campo, em BACKGROUND (fire-and-forget): aguardar
+    // o write pendurava a finalização no lock/token frio do app — o botão "Não encontrei" parecia
+    // não-responsivo. O fluxo conclui na hora; a rota (server-side) persiste sozinha.
+    if (taskId) void postCabinConference({ taskId, cabinChecked: true });
     setPhase("fin");
     showToast?.("Conferência concluída!");
     setTimeout(onClose, 700);
@@ -224,30 +250,23 @@ export function MinibarSheet({
     }
     if (!lostDesc.trim()) return;
     setSavingLost(true);
-    try {
-      await supabase.from("stays").update({
-        lostItemsDescription: lostDesc.trim(),
-        lostItemsPhoto: lostPhoto,
-        lostItemsReportedAt: new Date().toISOString(),
-        lostItemsReportedBy: userId,
-      }).eq("id", stayId ?? "");
-      showToast?.("Objetos esquecidos registrados!", T.amber);
-    } catch { showToast?.("Erro ao registrar. Tente novamente.", T.red); }
-    finally {
-      setSavingLost(false);
-      if (parsedLoaned.length > 0) { setPhase("loaned"); } else { await finishAll(); }
-    }
+    // Persiste via rota de campo (server-side). Antes era write direto no Supabase do browser,
+    // que pendurava no lock frio — o spinner do "Registrar" travava e o fluxo não concluía.
+    const ok = await postCabinConference({
+      stayId: stayId ?? "",
+      lostItems: { description: lostDesc.trim(), photo: lostPhoto },
+    });
+    setSavingLost(false);
+    if (!ok) { showToast?.("Erro ao registrar. Tente novamente.", T.red); return; }
+    showToast?.("Objetos esquecidos registrados!", T.amber);
+    if (parsedLoaned.length > 0) { setPhase("loaned"); } else { await finishAll(); }
   };
 
   const submitLoaned = async () => {
     setSavingLoaned(true);
-    try {
-      await supabase.from("stays").update({
-        loanedItemsChecked: true,
-        loanedItemsCheckedAt: new Date().toISOString(),
-      }).eq("id", stayId ?? "");
-    } catch { /* non-blocking */ }
-    finally { setSavingLoaned(false); await finishAll(); }
+    await postCabinConference({ stayId: stayId ?? "", loanedReturned: true });
+    setSavingLoaned(false);
+    await finishAll();
   };
 
   // ── Key step ─────────────────────────────────────────────────────────────────
