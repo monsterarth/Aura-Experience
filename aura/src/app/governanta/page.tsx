@@ -1571,15 +1571,14 @@ export default function GovernantaPage() {
     if (!property) return;
     setConferBusy(true);
     try {
-      // Persiste o checklist atualizado pela governanta antes de aprovar
-      if (checklist.length > 0) {
-        await supabase.from("housekeeping_tasks")
-          .update({ checklist, updatedAt: new Date().toISOString() })
-          .eq("id", task.id);
-      }
-      await HousekeepingService.confirmTaskQuality(
-        property.id, task.id, obs || "Aprovado", userData?.id || "", userData?.fullName || "Governanta"
-      );
+      // Liberação via rota de campo (server-side): confirmTaskQuality rodava pelo client do
+      // browser e pendurava no lock/token frio do app — spinner infinito. A rota usa service-role.
+      const res = await fetch('/api/field/housekeeping-tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'confirm', taskId: task.id, observations: obs || "Aprovado", checklist }),
+      });
+      if (!res.ok) throw new Error('confirm_failed');
       showToast("Cabana liberada!", T.green);
       setConferTask(null);
     } catch {
@@ -1593,9 +1592,12 @@ export default function GovernantaPage() {
     if (!property) return;
     setConferBusy(true);
     try {
-      await HousekeepingService.rollbackTaskStatus(
-        property.id, task.id, "Reprovado na conferência", userData?.id || "", userData?.fullName || "Governanta"
-      );
+      const res = await fetch('/api/field/housekeeping-tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reject', taskId: task.id, observations: "Reprovado na conferência" }),
+      });
+      if (!res.ok) throw new Error('reject_failed');
       showToast("Enviado para repasse.", T.amber);
       setConferTask(null);
     } catch {
@@ -2350,7 +2352,13 @@ function BatchReleaseButton({
     setBusy(true);
     try {
       await Promise.all(
-        tasks.map(t => HousekeepingService.confirmTaskQuality(propertyId, t.id, "Liberado em lote", actorId, actorName))
+        tasks.map(t =>
+          fetch('/api/field/housekeeping-tasks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'confirm', taskId: t.id, observations: "Liberado em lote" }),
+          }).then(r => { if (!r.ok) throw new Error('batch_failed'); })
+        )
       );
       showToast(`${count} cabana${count > 1 ? "s" : ""} liberada${count > 1 ? "s" : ""}!`, T.green);
     } catch {

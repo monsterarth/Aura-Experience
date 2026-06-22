@@ -44,10 +44,12 @@ export async function GET(req: Request) {
 // sequência pela rede móvel + auditoria que podia se perder ao bloquear o celular. Aqui é
 // 1 round-trip a partir do dispositivo; o HousekeepingService roda com service-role (db()
 // detecta o servidor) e conclui update + cabana + auditoria/push de forma confiável.
-type TaskAction = 'start' | 'resume' | 'pause' | 'skip' | 'finish' | 'upgrade';
+type TaskAction = 'start' | 'resume' | 'pause' | 'skip' | 'finish' | 'upgrade' | 'confirm' | 'reject';
 
 export async function POST(req: Request) {
-  const auth = await requireAuth(['maid', 'super_admin', 'admin', 'manager']);
+  // 'governance' incluído para a conferência de qualidade (confirm/reject). 'maid' cobre a
+  // camareira com cargo SECUNDÁRIO de governanta (requireAuth só vê o cargo primário).
+  const auth = await requireAuth(['maid', 'governance', 'super_admin', 'admin', 'manager']);
   if (isAuthError(auth)) return auth;
 
   let body: { action?: TaskAction; taskId?: string; checklist?: unknown[]; observations?: string };
@@ -96,6 +98,20 @@ export async function POST(req: Request) {
         break;
       case 'upgrade':
         await HousekeepingService.upgradeToLinenChange(propertyId, taskId, actorId, actorName);
+        break;
+      case 'confirm': {
+        // Persiste o checklist ajustado pela governanta antes de aprovar (era write à parte no browser).
+        if (Array.isArray(body.checklist) && body.checklist.length > 0) {
+          await supabaseAdmin
+            .from('housekeeping_tasks')
+            .update({ checklist: body.checklist, updatedAt: new Date().toISOString() })
+            .eq('id', taskId);
+        }
+        await HousekeepingService.confirmTaskQuality(propertyId, taskId, body.observations || 'Aprovado', actorId, actorName);
+        break;
+      }
+      case 'reject':
+        await HousekeepingService.rollbackTaskStatus(propertyId, taskId, body.observations || 'Reprovado na conferência', actorId, actorName);
         break;
       case 'finish': {
         const status = await HousekeepingService.finishTask(

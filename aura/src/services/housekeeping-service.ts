@@ -334,10 +334,12 @@ export const HousekeepingService = {
   },
 
   async confirmTaskQuality(propertyId: string, taskId: string, observations: string, actorId: string, actorName: string) {
-    const { data: task } = await supabase.from('housekeeping_tasks').select('*').eq('id', taskId).single();
+    // db(): no servidor (rota de campo) usa service-role — antes rodava pelo client do browser e
+    // pendurava no lock/token frio do app da governanta (spinner infinito ao "Liberar Cabana").
+    const { data: task } = await db().from('housekeeping_tasks').select('*').eq('id', taskId).single();
     if (!task) throw new Error("Tarefa não encontrada");
 
-    await supabase.from('housekeeping_tasks')
+    await db().from('housekeeping_tasks')
       .update({
         status: 'completed',
         conferredBy: actorId,
@@ -347,11 +349,11 @@ export const HousekeepingService = {
       .eq('id', taskId);
 
     if (task.cabinId) {
-      const { data: cabin } = await supabase.from('cabins').select('currentStayId').eq('id', task.cabinId).single();
+      const { data: cabin } = await db().from('cabins').select('currentStayId').eq('id', task.cabinId).single();
       const cabinStatus = cabin?.currentStayId ? 'occupied' : 'available';
-      await supabase.from('cabins').update({ status: cabinStatus }).eq('id', task.cabinId);
+      await db().from('cabins').update({ status: cabinStatus }).eq('id', task.cabinId);
     } else if (task.structureId) {
-      await supabase.from('structures').update({ status: 'available' }).eq('id', task.structureId);
+      await db().from('structures').update({ status: 'available' }).eq('id', task.structureId);
     }
 
     const location = await resolveLocation(task.cabinId, task.structureId, task.customLocation);
@@ -362,10 +364,11 @@ export const HousekeepingService = {
   },
 
   async rollbackTaskStatus(propertyId: string, taskId: string, reason: string, actorId: string, actorName: string) {
-    const { data: task } = await supabase.from('housekeeping_tasks').select('*').eq('id', taskId).single();
+    // db(): server-side usa service-role (rota de campo) — evita o lock frio do browser.
+    const { data: task } = await db().from('housekeeping_tasks').select('*').eq('id', taskId).single();
     if (!task) throw new Error("Tarefa não encontrada.");
 
-    await supabase.from('housekeeping_tasks')
+    await db().from('housekeeping_tasks')
       .update({
         status: 'in_progress',
         observations: reason,
@@ -374,9 +377,9 @@ export const HousekeepingService = {
       .eq('id', taskId);
 
     if (task.cabinId) {
-      await supabase.from('cabins').update({ status: 'cleaning' }).eq('id', task.cabinId);
+      await db().from('cabins').update({ status: 'cleaning' }).eq('id', task.cabinId);
     } else if (task.structureId) {
-      await supabase.from('structures').update({ status: 'cleaning' }).eq('id', task.structureId);
+      await db().from('structures').update({ status: 'cleaning' }).eq('id', task.structureId);
     }
 
     const location = await resolveLocation(task.cabinId, task.structureId, task.customLocation);
