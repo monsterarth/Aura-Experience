@@ -19,6 +19,13 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     if (!stay) return NextResponse.json(null, { status: 404 });
 
+    // Escopo de propriedade (service-role ignora RLS): reception/governance só veem a própria;
+    // admin-tier pode cross-property. 404 (não 403) para não vazar existência.
+    const isAdminTier = ['super_admin', 'admin', 'manager'].includes(auth.staff.role);
+    if (!isAdminTier && stay.propertyId !== auth.staff.propertyId) {
+        return NextResponse.json(null, { status: 404 });
+    }
+
     const [gRes, cRes] = await Promise.all([
         stay.guestId
             ? supabaseAdmin.from('guests').select('*').eq('id', stay.guestId).maybeSingle()

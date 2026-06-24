@@ -207,7 +207,7 @@ export default function CorePropertiesPage() {
                       className="w-10 h-10 rounded-lg flex items-center justify-center text-foreground font-bold shadow-sm"
                       style={{ backgroundColor: p.theme?.colors?.primary || '#000' }}
                     >
-                      {p.name.charAt(0)}
+                      {p.name?.charAt(0) ?? "?"}
                     </div>
                     <div>
                       <h3 className="font-bold leading-none">{p.name}</h3>

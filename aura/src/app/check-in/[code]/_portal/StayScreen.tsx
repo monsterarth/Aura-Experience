@@ -74,7 +74,7 @@ export function StayScreen() {
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                             {guests.map((g, i) => (
                                 <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--surface-alt)", borderRadius: 999, padding: "5px 11px 5px 6px", fontSize: 12, fontWeight: 600, color: "var(--ink-soft)" }}>
-                                    <Avatar name={g.name} size={22} tone={avatarTones[i % avatarTones.length]} />{g.name.split(" ")[0]}
+                                    <Avatar name={g.name ?? ""} size={22} tone={avatarTones[i % avatarTones.length]} />{g.name?.split(" ")[0] ?? ""}
                                 </span>
                             ))}
                             {stay.hasPet && <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--gold-soft)", borderRadius: 999, padding: "5px 12px", fontSize: 12, fontWeight: 700, color: "#8a6512" }}><Icon n="paw" s={15} c="#8a6512" />{t.petLabel}</span>}

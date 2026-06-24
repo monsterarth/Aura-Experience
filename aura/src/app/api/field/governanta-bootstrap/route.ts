@@ -10,12 +10,10 @@ export const dynamic = 'force-dynamic';
 // browser pendurava as queries e a tela só destravava pelos timeouts de 6s (~16s no total).
 // Lendo via service-role no servidor não há essa dependência de token no browser.
 export async function GET(req: Request) {
-  // Sem lista de cargos (igual /api/field/cabins e /api/field/housekeeping-tasks): requireAuth
-  // só enxerga o cargo PRIMÁRIO, então uma lista tipo ['governance',...] barraria uma camareira
-  // com cargo SECUNDÁRIO de governanta (acessa o app via RoleSwitcher) — a página vinha sem
-  // cabanas e tudo virava "Local desconhecido". A leitura é escopada à propriedade do staff e a
-  // UI já é protegida pelo RoleGuard.
-  const auth = await requireAuth();
+  // requireAuth agora aceita cargo SECUNDÁRIO (espelha middleware/RoleGuard), então a camareira
+  // com cargo secundário de governanta passa aqui via o secundário — antes a lista barrava e a
+  // página vinha sem cabanas ("Local desconhecido"). Gate espelha o RoleGuard do layout.
+  const auth = await requireAuth(['governance', 'super_admin', 'admin', 'manager']);
   if (isAuthError(auth)) return auth;
 
   const { searchParams } = new URL(req.url);

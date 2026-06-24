@@ -782,7 +782,7 @@ export default function UnifiedPreCheckin() {
             <img src={propertyData.logoUrl} alt={propertyData.name} className="h-16 md:h-20 object-contain drop-shadow-md" />
           ) : (
             <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center text-primary-foreground font-black text-3xl shadow-lg">
-              {propertyData.name.charAt(0) || "A"}
+              {propertyData.name?.charAt(0) || "A"}
             </div>
           )}
           <div className="text-center mt-2">

@@ -768,10 +768,10 @@ function WeddingCard({ wedding, cabinsTotal, onOpen, view, showFinancial, highli
         </div>
         <div>
           <div style={{ fontSize: 15, fontWeight: 900, lineHeight: 1.25, marginBottom: 4 }}>
-            {wedding.bride.split(" ")[0]} <span style={{ color: T.rose }}>♥</span> {wedding.groom.split(" ")[0]}
+            {wedding.bride?.split(" ")[0] ?? ""} <span style={{ color: T.rose }}>♥</span> {wedding.groom?.split(" ")[0] ?? ""}
           </div>
           <div style={{ fontSize: 11, color: T.muted, fontWeight: 600 }}>
-            {wedding.bride.split(" ").slice(1).join(" ")} &amp; {wedding.groom.split(" ").slice(1).join(" ")}
+            {wedding.bride?.split(" ").slice(1).join(" ") ?? ""} &amp; {wedding.groom?.split(" ").slice(1).join(" ") ?? ""}
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>

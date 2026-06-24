@@ -15,6 +15,7 @@ export interface AuthResult {
         fullName: string;
         role: UserRole;
         propertyId: string | null;
+        secondaryRoles: UserRole[];
     };
 }
 
@@ -81,10 +82,10 @@ export async function requireAuth(allowedRoles?: UserRole[]): Promise<AuthResult
         );
     }
 
-    // Buscar dados do staff (role, propertyId)
+    // Buscar dados do staff (role + secondaryRoles + propertyId)
     const { data: staff, error } = await supabaseAdmin
         .from('staff')
-        .select('id, fullName, role, propertyId')
+        .select('id, fullName, role, propertyId, secondaryRoles')
         .eq('id', user.userId)
         .single();
 
@@ -95,8 +96,12 @@ export async function requireAuth(allowedRoles?: UserRole[]): Promise<AuthResult
         );
     }
 
-    // Verificar role se especificado
-    if (allowedRoles && !allowedRoles.includes(staff.role as UserRole)) {
+    const secondaryRoles = ((staff as any).secondaryRoles ?? []) as UserRole[];
+
+    // Verificar role se especificado — aceita cargo PRIMÁRIO ou SECUNDÁRIO (mesma regra do
+    // middleware e do RoleGuard). Antes só checava o primário, barrando ex.: camareira com
+    // cargo secundário de governanta numa rota gated por ['governance'].
+    if (allowedRoles && !hasRole(staff.role as UserRole, secondaryRoles, allowedRoles)) {
         return NextResponse.json(
             { error: `Acesso negado. Cargo '${staff.role}' não tem permissão para esta operação.` },
             { status: 403 }
@@ -111,6 +116,7 @@ export async function requireAuth(allowedRoles?: UserRole[]): Promise<AuthResult
             fullName: staff.fullName,
             role: staff.role as UserRole,
             propertyId: staff.propertyId,
+            secondaryRoles,
         },
     };
 }
@@ -120,4 +126,18 @@ export async function requireAuth(allowedRoles?: UserRole[]): Promise<AuthResult
  */
 export function isAuthError(result: AuthResult | NextResponse): result is NextResponse {
     return result instanceof NextResponse;
+}
+
+/**
+ * Acesso por cargo: true se o cargo PRIMÁRIO ou QUALQUER cargo secundário está na lista permitida.
+ * Fonte única de verdade usada por requireAuth — espelha o middleware (supabase-middleware.ts:134)
+ * e o RoleGuard (components/auth/RoleGuard.tsx). Function declaration → hoisted, pode ser usada acima.
+ */
+export function hasRole(
+    role: UserRole | null | undefined,
+    secondaryRoles: (UserRole | string)[] | null | undefined,
+    allowed: UserRole[]
+): boolean {
+    if (role && allowed.includes(role)) return true;
+    return (secondaryRoles ?? []).some(r => allowed.includes(r as UserRole));
 }

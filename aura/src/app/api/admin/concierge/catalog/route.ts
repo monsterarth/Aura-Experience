@@ -9,8 +9,12 @@ export async function GET(request: NextRequest) {
     if (isAuthError(auth)) return auth;
     if (!supabaseAdmin) return NextResponse.json(null, { status: 500 });
 
+    // Escopo de propriedade: admin-tier pode passar propertyId livre; demais cargos ficam presos
+    // à própria propriedade (antes qualquer staff autenticado lia o catálogo de qualquer propriedade).
+    const isAdminTier = ['super_admin', 'admin', 'manager'].includes(auth.staff.role);
     const { searchParams } = new URL(request.url);
-    const propertyId = searchParams.get('propertyId');
+    const requested = searchParams.get('propertyId');
+    const propertyId = isAdminTier && requested ? requested : auth.staff.propertyId;
     if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
 
     try {
