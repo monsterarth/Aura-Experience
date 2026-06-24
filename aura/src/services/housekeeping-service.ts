@@ -143,10 +143,11 @@ export const HousekeepingService = {
   },
 
   async updateTask(propertyId: string, taskId: string, updates: Partial<HousekeepingTask>, actorId: string, actorName: string) {
-    const { data: task } = await supabase.from('housekeeping_tasks')
+    // db(): server-side usa service-role (rota de campo) — evita o lock frio do browser.
+    const { data: task } = await db().from('housekeeping_tasks')
       .select('cabinId, structureId, customLocation, type').eq('id', taskId).single();
 
-    await supabase.from('housekeeping_tasks')
+    await db().from('housekeeping_tasks')
       .update({ ...updates, updatedAt: new Date().toISOString() })
       .eq('id', taskId);
 
@@ -172,12 +173,13 @@ export const HousekeepingService = {
   },
 
   async assignTask(propertyId: string, taskId: string, maidIds: string[], actorId: string, actorName: string) {
+    // db(): server-side usa service-role (rota de campo) — evita o lock frio do browser.
     const [{ data: task }, { data: staffRows }] = await Promise.all([
-      supabase.from('housekeeping_tasks').select('cabinId, structureId, customLocation, type').eq('id', taskId).single(),
-      supabase.from('staff').select('id, fullName').in('id', maidIds),
+      db().from('housekeeping_tasks').select('cabinId, structureId, customLocation, type').eq('id', taskId).single(),
+      db().from('staff').select('id, fullName').in('id', maidIds),
     ]);
 
-    await supabase.from('housekeeping_tasks')
+    await db().from('housekeeping_tasks')
       .update({ assignedTo: maidIds, updatedAt: new Date().toISOString() })
       .eq('id', taskId);
 

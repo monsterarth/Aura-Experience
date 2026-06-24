@@ -8,7 +8,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { HousekeepingService } from '@/services/housekeeping-service';
-import { notifyHousekeepingConference } from '@/lib/push-notify';
+import { notifyHousekeepingAssigned, notifyHousekeepingConference } from '@/lib/push-notify';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,7 +44,7 @@ export async function GET(req: Request) {
 // sequência pela rede móvel + auditoria que podia se perder ao bloquear o celular. Aqui é
 // 1 round-trip a partir do dispositivo; o HousekeepingService roda com service-role (db()
 // detecta o servidor) e conclui update + cabana + auditoria/push de forma confiável.
-type TaskAction = 'start' | 'resume' | 'pause' | 'skip' | 'finish' | 'upgrade' | 'confirm' | 'reject';
+type TaskAction = 'start' | 'resume' | 'pause' | 'skip' | 'finish' | 'upgrade' | 'confirm' | 'reject' | 'assign' | 'cancel';
 
 export async function POST(req: Request) {
   // 'governance' incluído para a conferência de qualidade (confirm/reject). 'maid' cobre a
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
   const auth = await requireAuth(['maid', 'governance', 'super_admin', 'admin', 'manager']);
   if (isAuthError(auth)) return auth;
 
-  let body: { action?: TaskAction; taskId?: string; checklist?: unknown[]; observations?: string };
+  let body: { action?: TaskAction; taskId?: string; checklist?: unknown[]; observations?: string; maidIds?: string[] };
   try {
     body = await req.json();
   } catch {
@@ -112,6 +112,14 @@ export async function POST(req: Request) {
       }
       case 'reject':
         await HousekeepingService.rollbackTaskStatus(propertyId, taskId, body.observations || 'Reprovado na conferência', actorId, actorName);
+        break;
+      case 'assign':
+        await HousekeepingService.assignTask(propertyId, taskId, body.maidIds ?? [], actorId, actorName);
+        // triggerTaskPush é no-op no servidor → dispara o push de atribuição aqui.
+        try { await notifyHousekeepingAssigned(taskId); } catch (e) { console.error('[field/housekeeping-tasks POST] push de atribuição:', e); }
+        break;
+      case 'cancel':
+        await HousekeepingService.updateTask(propertyId, taskId, { status: 'cancelled' }, actorId, actorName);
         break;
       case 'finish': {
         const status = await HousekeepingService.finishTask(

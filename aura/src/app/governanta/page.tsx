@@ -1611,7 +1611,14 @@ export default function GovernantaPage() {
     if (!property) return;
     setAssignBusy(true);
     try {
-      await HousekeepingService.assignTask(property.id, task.id, maidIds, userData?.id || "", userData?.fullName || "Governanta");
+      // Via rota de campo (server-side): assignTask escrevia pelo client do browser e pendurava
+      // no lock frio do app — botão "Confirmar" sem resposta. A rota dispara o push das camareiras.
+      const res = await fetch('/api/field/housekeeping-tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'assign', taskId: task.id, maidIds }),
+      });
+      if (!res.ok) throw new Error('assign_failed');
       showToast("Atribuído com sucesso!", T.green);
       setAssignTask(null);
     } catch {
@@ -1627,7 +1634,14 @@ export default function GovernantaPage() {
     if (!property || !cancelConfirmTask || cancelBusy) return;
     setCancelBusy(true);
     try {
-      await HousekeepingService.updateTask(property.id, cancelConfirmTask.id, { status: "cancelled" }, userData?.id || "", userData?.fullName || "Governanta");
+      // Via rota de campo (server-side): updateTask escrevia pelo client do browser e pendurava
+      // no lock frio do app — spinner de "remover" infinito.
+      const res = await fetch('/api/field/housekeeping-tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cancel', taskId: cancelConfirmTask.id }),
+      });
+      if (!res.ok) throw new Error('cancel_failed');
       showToast("Tarefa cancelada.", T.muted);
     } catch {
       showToast("Erro ao cancelar.", T.red);
