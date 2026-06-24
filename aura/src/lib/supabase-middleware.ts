@@ -75,11 +75,9 @@ export async function updateSession(request: NextRequest) {
     // https://supabase.com/docs/guides/auth/server-side/nextjs
     const { data: { user } } = await supabase.auth.getUser()
 
-    // Propagate validated userId to API routes so they skip a redundant getUser() call.
-    // API routes read x-user-id from headers() — eliminates double round-trip to Supabase Auth.
-    if (user) {
-        supabaseResponse.headers.set('x-user-id', user.id);
-    }
+    // (Removido: a injeção de x-user-id no response. Ele ia pro RESPONSE — nunca chegava às rotas
+    // como request header — e o header de entrada não era removido, então o cliente podia forjá-lo
+    // e se passar por qualquer staff. As rotas validam sempre pela sessão do cookie agora.)
 
     // PWA start_url = "/" — redirecionar autenticados para a tela inicial do cargo
     if (pathname === '/' && user) {
