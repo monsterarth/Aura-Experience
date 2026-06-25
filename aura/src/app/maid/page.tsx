@@ -9,7 +9,6 @@ import { HousekeepingService } from "@/services/housekeeping-service";
 import { CabinService } from "@/services/cabin-service";
 import { ConciergeService } from "@/services/concierge-service";
 import { StaffService } from "@/services/staff-service";
-import { StructureService } from "@/services/structure-service";
 import { supabase } from "@/lib/supabase";
 import { HousekeepingTask, Cabin, ConciergeItem, ConciergeRequest, Staff, Structure } from "@/types/aura";
 import { getTaskLabel } from "@/lib/task-ui";
@@ -1378,7 +1377,14 @@ export default function MaidPage() {
               .catch(() => [] as Cabin[]),
             [] as Cabin[]
           ),
-          withTimeout(StructureService.getStructures(property.id), []),
+          withTimeout(
+            // Estruturas via rota de campo (service-role). Lendo pelo client do browser, o lock
+            // frio do refresh mobile devolvia [] → faxina de estrutura mostrava o UUID cru.
+            fetch(`/api/field/structures?propertyId=${encodeURIComponent(property.id)}`, { cache: 'no-store' })
+              .then(r => r.ok ? (r.json() as Promise<Structure[]>) : ([] as Structure[]))
+              .catch(() => [] as Structure[]),
+            [] as Structure[]
+          ),
         ]);
         const cabinMap: Record<string, Cabin> = {};
         cabinsData.forEach(c => { cabinMap[c.id] = c; });
