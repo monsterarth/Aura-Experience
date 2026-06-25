@@ -4,9 +4,6 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { MaintenanceService } from "@/services/maintenance-service";
-import { CabinService } from "@/services/cabin-service";
-import { StructureService } from "@/services/structure-service";
-import { StaffService } from "@/services/staff-service";
 import { MaintenanceCompletionModal } from "@/components/admin/maintenance/MaintenanceCompletionModal";
 import { MaintenanceTask, Cabin, Structure, Staff } from "@/types/aura";
 import { supabase } from "@/lib/supabase";
@@ -1225,10 +1222,31 @@ export default function MaintenancePage() {
     const init = async () => {
       setDataLoading(true);
       try {
+        // Leituras via rotas de campo (service-role). Pelo client do browser, o lock frio do
+        // refresh mobile devolvia [] → cabana/estrutura sem nome ("Local desconhecido") e, sem
+        // timeout, o loader podia pendurar. Timeout de 6s espelha a app da camareira.
+        const pid = encodeURIComponent(property.id);
+        const withTimeout = <R,>(p: Promise<R>, fallback: R) =>
+          Promise.race([p, new Promise<R>(resolve => setTimeout(() => resolve(fallback), 6000))]);
         const [cabinsData, structuresData, staffData] = await Promise.all([
-          CabinService.getCabinsByProperty(property.id),
-          StructureService.getStructures(property.id),
-          StaffService.getStaffByProperty(property.id),
+          withTimeout(
+            fetch(`/api/field/cabins?propertyId=${pid}`, { cache: 'no-store' })
+              .then(r => r.ok ? (r.json() as Promise<Cabin[]>) : ([] as Cabin[]))
+              .catch(() => [] as Cabin[]),
+            [] as Cabin[]
+          ),
+          withTimeout(
+            fetch(`/api/field/structures?propertyId=${pid}`, { cache: 'no-store' })
+              .then(r => r.ok ? (r.json() as Promise<Structure[]>) : ([] as Structure[]))
+              .catch(() => [] as Structure[]),
+            [] as Structure[]
+          ),
+          withTimeout(
+            fetch(`/api/field/staff?propertyId=${pid}`, { cache: 'no-store' })
+              .then(r => r.ok ? (r.json() as Promise<Staff[]>) : ([] as Staff[]))
+              .catch(() => [] as Staff[]),
+            [] as Staff[]
+          ),
         ]);
         const cabinMap: Record<string, Cabin> = {};
         cabinsData.forEach(c => { cabinMap[c.id] = c; });

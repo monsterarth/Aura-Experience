@@ -82,8 +82,15 @@ function WaiterOrderDialog({
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    supabase.from('fb_categories').select('*').eq('property_id', propertyId).in('type', ['breakfast', 'both']).eq('ala_carte', true).then(({ data }: { data: any[] | null }) => setCategories((data || []).map(d => ({ id: d.id, propertyId: d.property_id, name: d.name, name_en: d.name_en, name_es: d.name_es, type: d.type, selectionTarget: d.selection_target, maxPerGuest: d.max_per_guest, alaCarte: d.ala_carte ?? false, order: d.order, imageUrl: d.image_url, createdAt: d.created_at } as FBCategory))));
-    supabase.from('fb_menu_items').select('*').eq('property_id', propertyId).eq('active', true).then(({ data }: { data: any[] | null }) => setMenuItems((data || []).map(d => ({ id: d.id, propertyId: d.property_id, categoryId: d.category_id, name: d.name, name_en: d.name_en, name_es: d.name_es, description: d.description, price: d.price, ingredients: d.ingredients || [], flavors: d.flavors, active: d.active, order: d.order, imageUrl: d.image_url, createdAt: d.created_at } as FBMenuItem))));
+    // Cardápio via rota de campo (service-role). Pelo client do browser, o lock frio do refresh
+    // mobile devolvia [] → cardápio vazio. O mapeamento snake→camel segue aqui (forma inalterada).
+    fetch(`/api/field/breakfast-menu?propertyId=${encodeURIComponent(propertyId)}`, { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : { categories: [], menuItems: [] })
+      .then(({ categories, menuItems }: { categories: any[]; menuItems: any[] }) => {
+        setCategories((categories || []).map(d => ({ id: d.id, propertyId: d.property_id, name: d.name, name_en: d.name_en, name_es: d.name_es, type: d.type, selectionTarget: d.selection_target, maxPerGuest: d.max_per_guest, alaCarte: d.ala_carte ?? false, order: d.order, imageUrl: d.image_url, createdAt: d.created_at } as FBCategory)));
+        setMenuItems((menuItems || []).map(d => ({ id: d.id, propertyId: d.property_id, categoryId: d.category_id, name: d.name, name_en: d.name_en, name_es: d.name_es, description: d.description, price: d.price, ingredients: d.ingredients || [], flavors: d.flavors, active: d.active, order: d.order, imageUrl: d.image_url, createdAt: d.created_at } as FBMenuItem)));
+      })
+      .catch(() => { /* mantém estado atual; loader não trava */ });
   }, [propertyId]);
 
   const openTables = tables.filter(t => t.status === 'open');
