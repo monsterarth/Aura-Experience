@@ -64,7 +64,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     const msgChannel = supabase
       .channel(`notifctx_messages_${propertyId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `propertyId=eq.${propertyId}` }, fetchAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `propertyId=eq.${propertyId}` }, (payload: any) => {
+        // A contagem só depende de mensagens recebidas; ignora o fluxo automatizado de saída e seus status
+        const direction = payload.new?.direction ?? payload.old?.direction;
+        if (direction !== 'inbound') return;
+        fetchAll();
+      })
       .subscribe();
 
     const conciergeChannel = supabase

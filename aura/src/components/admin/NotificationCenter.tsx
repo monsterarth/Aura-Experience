@@ -6,6 +6,8 @@ import { Bell, MessageSquare, ShoppingBag, Calendar, X, ChevronRight } from "luc
 import { createClientBrowser } from "@/lib/supabase-browser";
 import { useProperty } from "@/context/PropertyContext";
 import { useNotifications } from "@/context/NotificationContext";
+import { useAuth } from "@/context/AuthContext";
+import { NOTIFICATION_VISIBLE_ROLES, NOTIFICATION_ALERT_ROLES, hasAnyRole } from "@/lib/notifications";
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -86,6 +88,7 @@ function fireBrowserNotification(title: string, body: string, onClick?: () => vo
 export function NotificationCenter() {
   const { currentProperty: property } = useProperty();
   const { refetch: refetchNotifCounts } = useNotifications();
+  const { userData } = useAuth();
   const router = useRouter();
   const supabase = createClientBrowser();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -102,11 +105,29 @@ export function NotificationCenter() {
   const prevBookingsCount = useRef(0);
   const initialized = useRef(false);
 
+  // Coalescência (anti-parede): acumula chegadas e dispara um único toast por rajada
+  const waBuffer = useRef<WhatsAppNotif[]>([]);
+  const waTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const conciergeBuffer = useRef<ConciergeNotif[]>([]);
+  const conciergeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bookingsBuffer = useRef<BookingNotif[]>([]);
+  const bookingsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSoundAt = useRef(0);
+
   const propertyId = property?.id;
+
+  // ─── Roteamento por cargo ─────────────────────────────────────────────────────
+  // canSeeBell: vê o sininho/painel (canal passivo). canAlert: recebe toast/som/navegador.
+  const canSeeBell = hasAnyRole(userData?.role, userData?.secondaryRoles, NOTIFICATION_VISIBLE_ROLES);
+  const canAlert = hasAnyRole(userData?.role, userData?.secondaryRoles, NOTIFICATION_ALERT_ROLES);
 
   // ─── Audio ──────────────────────────────────────────────────────────────────
 
   const playSound = useCallback(() => {
+    // Rate-limit: no máximo um som a cada 4s, mesmo numa rajada
+    const now = Date.now();
+    if (now - lastSoundAt.current < 4000) return;
+    lastSoundAt.current = now;
     try {
       if (!audioRef.current) {
         audioRef.current = new Audio('/notification.mp3');
@@ -116,6 +137,102 @@ export function NotificationCenter() {
       audioRef.current.play().catch(() => { /* autoplay blocked */ });
     } catch { /* ignore */ }
   }, []);
+
+  // ─── Flush coalescido (um toast por rajada, id estável → substitui em vez de empilhar) ──
+
+  const flushWhatsapp = useCallback(() => {
+    const items = waBuffer.current;
+    waBuffer.current = [];
+    waTimer.current = null;
+    if (items.length === 0) return;
+
+    playSound();
+
+    let title: string;
+    let description: string;
+    if (items.length === 1) {
+      const m = items[0];
+      const sender = m.cabinName || 'Hóspede';
+      title = `💬 ${sender}`;
+      description = m.body.length > 80 ? m.body.slice(0, 80) + '…' : m.body;
+    } else {
+      title = `💬 ${items.length} novas mensagens`;
+      description = 'Toque para ver as conversas';
+    }
+
+    toast.message(title, {
+      id: 'notif-whatsapp',
+      description,
+      duration: 8000,
+      action: { label: 'Ver', onClick: () => router.push('/admin/comunicacao') },
+    });
+
+    if (document.visibilityState !== 'visible') {
+      fireBrowserNotification(title, description, () => router.push('/admin/comunicacao'));
+    }
+  }, [playSound, router]);
+
+  const flushConcierge = useCallback(() => {
+    const items = conciergeBuffer.current;
+    conciergeBuffer.current = [];
+    conciergeTimer.current = null;
+    if (items.length === 0) return;
+
+    playSound();
+
+    let title: string;
+    let description: string;
+    if (items.length === 1) {
+      const r = items[0];
+      title = `🛎️ Novo pedido de concierge`;
+      description = `${r.quantity}x ${r.itemName}${r.cabinName ? ` — ${r.cabinName}` : ''}`;
+    } else {
+      title = `🛎️ ${items.length} novos pedidos de concierge`;
+      description = 'Toque para ver os pedidos';
+    }
+
+    toast.message(title, {
+      id: 'notif-concierge',
+      description,
+      duration: 8000,
+      action: { label: 'Ver', onClick: () => router.push('/admin/concierge') },
+    });
+
+    if (document.visibilityState !== 'visible') {
+      fireBrowserNotification(title, description, () => router.push('/admin/concierge'));
+    }
+  }, [playSound, router]);
+
+  const flushBookings = useCallback(() => {
+    const items = bookingsBuffer.current;
+    bookingsBuffer.current = [];
+    bookingsTimer.current = null;
+    if (items.length === 0) return;
+
+    playSound();
+
+    let title: string;
+    let description: string;
+    if (items.length === 1) {
+      const b = items[0];
+      title = `📅 Novo agendamento pendente`;
+      description = `${b.structureName}${b.guestName ? ` — ${b.guestName}` : ''}: ${b.startTime}–${b.endTime}`;
+    } else {
+      title = `📅 ${items.length} novos agendamentos`;
+      description = 'Toque para ver os agendamentos';
+    }
+
+    toast.message(title, {
+      id: 'notif-bookings',
+      description,
+      duration: 8000,
+      action: { label: 'Ver', onClick: () => router.push('/admin/core/structures/bookings') },
+    });
+
+    if (document.visibilityState !== 'visible') {
+      fireBrowserNotification(title, description, () => router.push('/admin/core/structures/bookings'));
+    }
+  }, [playSound, router]);
 
   // ─── Fetch functions ────────────────────────────────────────────────────────
 
@@ -158,36 +275,19 @@ export function NotificationCenter() {
       cabinName: stayMap[m.stayId] || undefined,
     }));
 
-    // Detect genuinely new messages (not present before)
-    if (initialized.current) {
+    // Detect genuinely new messages (not present before) → buffer + debounce
+    if (initialized.current && canAlert) {
       const newMessages = enriched.filter(m => !prevWhatsappIds.current.has(m.id));
       if (newMessages.length > 0) {
-        playSound();
-        newMessages.forEach(m => {
-          const sender = m.cabinName || 'Hóspede';
-          const preview = m.body.length > 80 ? m.body.slice(0, 80) + '…' : m.body;
-
-          // In-app toast
-          toast.message(`💬 ${sender}`, {
-            description: preview,
-            duration: 8000,
-            action: {
-              label: 'Ver',
-              onClick: () => router.push('/admin/comunicacao'),
-            },
-          });
-
-          // Browser notification (when tab is not focused)
-          if (document.visibilityState !== 'visible') {
-            fireBrowserNotification(`💬 ${sender}`, preview, () => router.push('/admin/comunicacao'));
-          }
-        });
+        waBuffer.current.push(...newMessages);
+        if (waTimer.current) clearTimeout(waTimer.current);
+        waTimer.current = setTimeout(flushWhatsapp, 1500);
       }
     }
 
     prevWhatsappIds.current = new Set(enriched.map(m => m.id));
     setWhatsapp(enriched);
-  }, [propertyId, supabase, playSound, router]);
+  }, [propertyId, supabase, canAlert, flushWhatsapp]);
 
   const fetchConcierge = useCallback(async () => {
     if (!propertyId) return;
@@ -220,19 +320,16 @@ export function NotificationCenter() {
       createdAt: r.createdAt,
     }));
 
-    if (initialized.current && enriched.length > prevConciergeCount.current) {
-      playSound();
-      const newest = enriched[enriched.length - 1];
-      toast.message(`🛎️ Novo pedido de concierge`, {
-        description: `${newest.quantity}x ${newest.itemName}${newest.cabinName ? ` — ${newest.cabinName}` : ''}`,
-        duration: 8000,
-        action: { label: 'Ver', onClick: () => router.push('/admin/concierge') },
-      });
+    if (initialized.current && canAlert && enriched.length > prevConciergeCount.current) {
+      const delta = enriched.length - prevConciergeCount.current;
+      conciergeBuffer.current.push(...enriched.slice(enriched.length - delta));
+      if (conciergeTimer.current) clearTimeout(conciergeTimer.current);
+      conciergeTimer.current = setTimeout(flushConcierge, 1500);
     }
 
     prevConciergeCount.current = enriched.length;
     setConcierge(enriched);
-  }, [propertyId, supabase, playSound, router]);
+  }, [propertyId, supabase, canAlert, flushConcierge]);
 
   const fetchBookings = useCallback(async () => {
     if (!propertyId) return;
@@ -279,43 +376,56 @@ export function NotificationCenter() {
       createdAt: b.createdAt,
     }));
 
-    if (initialized.current && enriched.length > prevBookingsCount.current) {
-      playSound();
-      const newest = enriched[enriched.length - 1];
-      toast.message(`📅 Novo agendamento pendente`, {
-        description: `${newest.structureName}${newest.guestName ? ` — ${newest.guestName}` : ''}: ${newest.startTime}–${newest.endTime}`,
-        duration: 8000,
-        action: { label: 'Ver', onClick: () => router.push('/admin/core/structures/bookings') },
-      });
+    if (initialized.current && canAlert && enriched.length > prevBookingsCount.current) {
+      const delta = enriched.length - prevBookingsCount.current;
+      bookingsBuffer.current.push(...enriched.slice(enriched.length - delta));
+      if (bookingsTimer.current) clearTimeout(bookingsTimer.current);
+      bookingsTimer.current = setTimeout(flushBookings, 1500);
     }
 
     prevBookingsCount.current = enriched.length;
     setBookings(enriched);
-  }, [propertyId, supabase, playSound, router]);
+  }, [propertyId, supabase, canAlert, flushBookings]);
 
   // ─── Initial load ───────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!propertyId) return;
+    if (!propertyId || !canSeeBell) return;
     Promise.all([fetchWhatsapp(), fetchConcierge(), fetchBookings()]).then(() => {
       initialized.current = true;
     });
-  }, [propertyId, fetchWhatsapp, fetchConcierge, fetchBookings]);
+  }, [propertyId, canSeeBell, fetchWhatsapp, fetchConcierge, fetchBookings]);
 
-  // ─── Request browser notification permission on mount ───────────────────────
+  // ─── Request browser notification permission (only roles that get alerts) ───
 
   useEffect(() => {
+    if (!canAlert) return;
     requestBrowserPermission();
+  }, [canAlert]);
+
+  // ─── Cleanup dos timers de coalescência ─────────────────────────────────────
+
+  useEffect(() => {
+    return () => {
+      if (waTimer.current) clearTimeout(waTimer.current);
+      if (conciergeTimer.current) clearTimeout(conciergeTimer.current);
+      if (bookingsTimer.current) clearTimeout(bookingsTimer.current);
+    };
   }, []);
 
   // ─── Realtime subscriptions ─────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!propertyId) return;
+    if (!propertyId || !canSeeBell) return;
 
     const msgChannel = supabase
       .channel(`notif_messages_${propertyId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `propertyId=eq.${propertyId}` }, fetchWhatsapp)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `propertyId=eq.${propertyId}` }, (payload: any) => {
+        // Só reage a mensagens recebidas; ignora o fluxo automatizado de saída (e seus status)
+        const direction = payload.new?.direction ?? payload.old?.direction;
+        if (direction !== 'inbound') return;
+        fetchWhatsapp();
+      })
       .subscribe();
 
     const conciergeChannel = supabase
@@ -333,7 +443,7 @@ export function NotificationCenter() {
       supabase.removeChannel(conciergeChannel);
       supabase.removeChannel(bookingsChannel);
     };
-  }, [propertyId, supabase, fetchWhatsapp, fetchConcierge, fetchBookings]);
+  }, [propertyId, canSeeBell, supabase, fetchWhatsapp, fetchConcierge, fetchBookings]);
 
   // ─── Close on click outside ─────────────────────────────────────────────────
 
@@ -380,7 +490,7 @@ export function NotificationCenter() {
   // ─── Tab blinking when there are unread notifications ───────────────────────
 
   useEffect(() => {
-    if (total === 0) return;
+    if (total === 0 || !canAlert) return;
 
     const originalTitle = document.title;
     const alertTitle = `(${total}) Nova mensagem — Aura`;
@@ -421,7 +531,7 @@ export function NotificationCenter() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       stopBlinking();
     };
-  }, [total]);
+  }, [total, canAlert]);
 
   // ─── Navigate helpers ───────────────────────────────────────────────────────
 
@@ -432,7 +542,7 @@ export function NotificationCenter() {
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
-  if (!propertyId) return null;
+  if (!propertyId || !canSeeBell) return null;
 
   return (
     <div className="relative" ref={panelRef}>

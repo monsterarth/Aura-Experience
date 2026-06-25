@@ -78,6 +78,14 @@ function formatDateFull(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+// Último dia coberto pelo histórico de regras (string YMD) ou null se não há histórico.
+// A regra atual vale a partir do dia seguinte a esse corte.
+function lastHistoryEnd(config?: ScheduleConfig | null): string | null {
+  const h = config?.history;
+  if (!h || h.length === 0) return null;
+  return h.reduce((max, item) => (item.endDate > max ? item.endDate : max), h[0].endDate);
+}
+
 interface CellModalState {
   staffId: string;
   staffName: string;
@@ -306,7 +314,10 @@ export default function EscalasPage() {
     setConfigFixedDayOff(staff.scheduleConfig?.fixedDayOff ?? null);
     setConfigWeekdayOverrides(staff.scheduleConfig?.weekdayTimeOverrides || {});
     setConfigSundayOffCycle(staff.scheduleConfig?.sundayOffCycle ?? false);
-    setConfigEffectiveDate(toLocalYMD(new Date()));
+    // Abre mostrando desde quando a regra atual realmente vale (dia seguinte ao último
+    // corte do histórico). Sem histórico, assume hoje. Assim o campo "bate" ao reabrir.
+    const le = lastHistoryEnd(staff.scheduleConfig);
+    setConfigEffectiveDate(le ? toLocalYMD(addDays(new Date(le + 'T00:00:00'), 1)) : toLocalYMD(new Date()));
     setShowCheckpointForm(false);
     setCpEffectiveDate("");
     setCpReferenceDate("");
@@ -328,14 +339,22 @@ export default function EscalasPage() {
       const oldConfig = configModal.staff.scheduleConfig;
       let history = oldConfig?.history ? [...oldConfig.history] : [];
 
-      // Se havia uma configuração anterior, guarda ela no histórico
-      if (oldConfig) {
+      // Início de vigência da regra atual: dia seguinte ao último corte do histórico
+      // (null = sem histórico, ou seja, a regra atual vale "desde sempre").
+      const le = lastHistoryEnd(oldConfig);
+      const currentRuleStart = le ? toLocalYMD(addDays(new Date(le + 'T00:00:00'), 1)) : null;
+
+      // Só arquiva a regra atual no histórico quando a nova vigência REALMENTE divide a
+      // linha do tempo pra frente. Se a data == início da regra atual (caso de só reabrir
+      // e salvar de novo, ou corrigir a própria regra no lugar), substitui sem criar
+      // entrada duplicada/invertida no histórico.
+      if (oldConfig && (currentRuleStart === null || configEffectiveDate > currentRuleStart)) {
         const effectiveDateObj = new Date(configEffectiveDate + 'T00:00:00');
         const endDateStr = toLocalYMD(addDays(effectiveDateObj, -1));
-        
+
         // Remove 'history' do clone para não aninhar
         const { history: _, ...oldConfigData } = oldConfig;
-        
+
         history.push({
           ...oldConfigData,
           endDate: endDateStr,
@@ -1080,7 +1099,7 @@ export default function EscalasPage() {
                 className="field-input w-full"
               />
               <p className="text-[10px] text-white/30">
-                Se a regra anterior já estava em uso, ela será guardada no histórico e manterá o cálculo passado correto.
+                Mostra desde quando a regra atual vale. Para criar uma nova versão a partir de outra data, escolha uma data futura — a regra atual fica guardada no histórico até o dia anterior, mantendo o cálculo passado correto.
               </p>
             </div>
 
