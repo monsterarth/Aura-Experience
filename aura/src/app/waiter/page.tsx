@@ -6,7 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { useRouter } from "next/navigation";
 import { BreakfastSalonService } from "@/services/breakfast-salon-service";
-import { supabase } from "@/lib/supabase";
+import { supabase, safeRemoveChannel } from "@/lib/supabase";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import {
   BreakfastSession, BreakfastAttendance, BreakfastTable,
@@ -487,13 +487,14 @@ export default function WaiterPage() {
 
   useEffect(() => {
     if (!propertyId) return;
+    let subscribed = false;
     const channel = supabase.channel(`waiter_${propertyId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'breakfast_attendance', filter: `propertyId=eq.${propertyId}` }, loadData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'breakfast_tables', filter: `propertyId=eq.${propertyId}` }, loadData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'breakfast_visitors', filter: `propertyId=eq.${propertyId}` }, loadData)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'fb_orders', filter: `property_id=eq.${propertyId}` }, loadData)
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+      .subscribe((status: string) => { if (status === 'SUBSCRIBED') subscribed = true; });
+    return () => safeRemoveChannel(channel, subscribed);
   }, [propertyId, loadData]);
 
   const handleOpenSalon = async () => {

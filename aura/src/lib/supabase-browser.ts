@@ -55,6 +55,22 @@ function isInIframe(): boolean {
     try { return window.self !== window.top } catch { return true }
 }
 
+// fetch com timeout (15s) + no-store para os clients do browser. O @supabase/auth-js e o
+// postgrest-js não têm timeout próprio: uma request pendurada (refresh de token preso ou query
+// travada) trava PRA SEMPRE — é a raiz dos spinners infinitos no app. O AbortController aborta só
+// o que está genuinamente preso (request legítima resolve em <2s) e o client se recupera na
+// próxima chamada. Não afeta realtime (WebSocket, outro transporte). Respeita um signal do chamador.
+function fetchNoStoreWithTimeout(...args: Parameters<typeof fetch>): ReturnType<typeof fetch> {
+    const input = args[0];
+    const options = args[1] || {};
+    options.cache = 'no-store';
+    if (options.signal) return fetch(input, options);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    options.signal = controller.signal;
+    return fetch(input, options).finally(() => clearTimeout(timer));
+}
+
 export function createClientBrowser() {
     if (browserClient) return browserClient
 
@@ -66,11 +82,7 @@ export function createClientBrowser() {
                 lock: lockWithStealRecovery,
             },
             global: {
-                fetch: (...args) => {
-                    const options = args[1] || {};
-                    options.cache = 'no-store';
-                    return fetch(args[0], options);
-                }
+                fetch: fetchNoStoreWithTimeout,
             }
         }
     )
@@ -98,11 +110,7 @@ export function createClientBrowserIframe() {
                 lock: async (_name, _timeout, fn) => fn(),
             },
             global: {
-                fetch: (...args) => {
-                    const options = args[1] || {};
-                    options.cache = 'no-store';
-                    return fetch(args[0], options);
-                }
+                fetch: fetchNoStoreWithTimeout,
             }
         }
     )
