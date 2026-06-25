@@ -44,7 +44,7 @@ export async function GET(req: Request) {
 // sequência pela rede móvel + auditoria que podia se perder ao bloquear o celular. Aqui é
 // 1 round-trip a partir do dispositivo; o HousekeepingService roda com service-role (db()
 // detecta o servidor) e conclui update + cabana + auditoria/push de forma confiável.
-type TaskAction = 'start' | 'resume' | 'pause' | 'skip' | 'finish' | 'upgrade' | 'confirm' | 'reject' | 'assign' | 'cancel';
+type TaskAction = 'start' | 'resume' | 'pause' | 'skip' | 'finish' | 'upgrade' | 'confirm' | 'reject' | 'assign' | 'cancel' | 'create';
 
 export async function POST(req: Request) {
   // 'governance' incluído para a conferência de qualidade (confirm/reject). 'maid' cobre a
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
   const auth = await requireAuth(['maid', 'governance', 'super_admin', 'admin', 'manager']);
   if (isAuthError(auth)) return auth;
 
-  let body: { action?: TaskAction; taskId?: string; checklist?: unknown[]; observations?: string; maidIds?: string[] };
+  let body: { action?: TaskAction; taskId?: string; checklist?: unknown[]; observations?: string; maidIds?: string[]; task?: Record<string, any>; propertyId?: string };
   try {
     body = await req.json();
   } catch {
@@ -60,8 +60,37 @@ export async function POST(req: Request) {
   }
 
   const { action, taskId } = body;
-  if (!action || !taskId) {
-    return NextResponse.json({ error: 'action e taskId são obrigatórios.' }, { status: 400 });
+  if (!action) {
+    return NextResponse.json({ error: 'action é obrigatória.' }, { status: 400 });
+  }
+
+  const isAdminTier = ['super_admin', 'admin', 'manager'].includes(auth.staff.role);
+  const { id: actorId, fullName: actorName } = auth.staff;
+
+  // 'create' não tem taskId — cria tarefa nova (faxina manual de estrutura/cabana/custom).
+  // createTask pelo browser pendurava no lock frio do app de campo; aqui roda server-side (db()).
+  if (action === 'create') {
+    const createPropertyId = isAdminTier && body.propertyId ? body.propertyId : auth.staff.propertyId;
+    if (!createPropertyId) {
+      return NextResponse.json({ error: 'Sem propriedade.' }, { status: 400 });
+    }
+    const taskData: Record<string, any> = body.task ?? {};
+    try {
+      const newId = await HousekeepingService.createTask(createPropertyId, taskData as any, actorId, actorName);
+      if (Array.isArray(taskData.assignedTo) && taskData.assignedTo.length > 0) {
+        try { await notifyHousekeepingAssigned(newId); }
+        catch (e) { console.error('[field/housekeeping-tasks POST create] push:', e); }
+      }
+      return NextResponse.json({ ok: true, id: newId });
+    } catch (e: any) {
+      console.error('[field/housekeeping-tasks POST create]', e?.message ?? e);
+      return NextResponse.json({ error: 'Erro ao criar a tarefa.' }, { status: 500 });
+    }
+  }
+
+  // As demais ações operam sobre uma tarefa existente.
+  if (!taskId) {
+    return NextResponse.json({ error: 'taskId é obrigatório.' }, { status: 400 });
   }
 
   // service-role ignora RLS → validamos a posse da tarefa manualmente.
@@ -74,13 +103,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Tarefa não encontrada.' }, { status: 404 });
   }
 
-  const isAdminTier = ['super_admin', 'admin', 'manager'].includes(auth.staff.role);
   if (!isAdminTier && auth.staff.propertyId !== task.propertyId) {
     return NextResponse.json({ error: 'Acesso negado.' }, { status: 403 });
   }
 
   const propertyId = task.propertyId as string;
-  const { id: actorId, fullName: actorName } = auth.staff;
 
   try {
     switch (action) {

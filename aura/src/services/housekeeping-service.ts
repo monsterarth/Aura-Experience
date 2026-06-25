@@ -127,7 +127,8 @@ export const HousekeepingService = {
       assignedTo: data.assignedTo || []
     };
 
-    await supabase.from('housekeeping_tasks').insert(payload);
+    // db(): server-side usa service-role (rota de campo) — evita o lock frio do browser.
+    await db().from('housekeeping_tasks').insert(payload);
 
     const location = await resolveLocation(data.cabinId, data.structureId, data.customLocation);
     const typeLabel = TASK_TYPE_LABELS[data.type || ''] || data.type || 'limpeza';
@@ -140,6 +141,8 @@ export const HousekeepingService = {
     if (payload.assignedTo.length > 0) {
       triggerTaskPush('housekeeping', 'assigned', taskId);
     }
+
+    return taskId;
   },
 
   async updateTask(propertyId: string, taskId: string, updates: Partial<HousekeepingTask>, actorId: string, actorName: string) {

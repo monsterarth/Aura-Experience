@@ -917,18 +917,29 @@ function NewTaskSheet({
     if (!canSubmitCleaning || busy) return;
     setBusy(true);
     try {
-      await HousekeepingService.createTask(propertyId, {
-        type: taskType,
-        status: "pending",
-        cabinId: locType === "cabin" ? cabinId : undefined,
-        structureId: locType === "structure" ? structureId : undefined,
-        customLocation: locType === "custom" ? customLocation.trim() : undefined,
-        assignedTo: assignedIds,
-        observations: obs || undefined,
-        checklist: taskType === "custom" ? customChecklist : [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      }, actorId, actorName);
+      // Via rota de campo (server-side): createTask escrevia pelo client do browser e pendurava
+      // no lock frio — spinner infinito ao criar faxina manual (estrutura). A rota usa service-role.
+      const res = await fetch('/api/field/housekeeping-tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create',
+          propertyId,
+          task: {
+            type: taskType,
+            status: "pending",
+            cabinId: locType === "cabin" ? cabinId : undefined,
+            structureId: locType === "structure" ? structureId : undefined,
+            customLocation: locType === "custom" ? customLocation.trim() : undefined,
+            assignedTo: assignedIds,
+            observations: obs || undefined,
+            checklist: taskType === "custom" ? customChecklist : [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        }),
+      });
+      if (!res.ok) throw new Error('create_failed');
       showToast("Tarefa criada!", T.green);
       onCreated();
       onClose();
