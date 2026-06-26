@@ -826,11 +826,15 @@ function FaxinasScreen({
   onUpgrade: (taskId: string) => void;
 }) {
   const [detail, setDetail] = useState<string | null>(null);
+  const [confirmStart, setConfirmStart] = useState<string | null>(null);
+  const [confirmSkip, setConfirmSkip] = useState<string | null>(null);
 
   const inProg = tasks.filter(t => t.status === "in_progress");
   const pending = tasks.filter(t => t.status === "pending");
   const waiting = tasks.filter(t => t.status === "waiting_conference");
   const fullTask = detail ? tasks.find(t => t.id === detail) ?? null : null;
+  const confirmTask = confirmStart ? tasks.find(t => t.id === confirmStart) ?? null : null;
+  const skipTask = confirmSkip ? tasks.find(t => t.id === confirmSkip) ?? null : null;
 
   return (
     <>
@@ -965,14 +969,14 @@ function FaxinasScreen({
                 )}
                 <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 8 }}>
                   <button
-                    onPointerDown={(e) => { e.preventDefault(); if (!startingTaskId) onSkip(t.id); }}
+                    onPointerDown={(e) => { e.preventDefault(); if (!startingTaskId) setConfirmSkip(t.id); }}
                     disabled={startingTaskId !== null}
                     style={{ padding: "16px 18px", background: T.amberBg, border: `1px solid ${T.amberBorder}`, color: T.amber, fontFamily: "inherit", fontSize: 13, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase" as const, borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: startingTaskId ? 0.4 : 1 }}
                   >
                     <I n="x" s={15} c={T.amber} /> Pular
                   </button>
                   <button
-                    onPointerDown={(e) => { e.preventDefault(); onStart(t.id); }}
+                    onPointerDown={(e) => { e.preventDefault(); if (!startingTaskId) setConfirmStart(t.id); }}
                     disabled={startingTaskId !== null}
                     style={{ padding: 16, background: T.grad, color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: startingTaskId ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(155,109,255,0.35)", opacity: startingTaskId ? 0.7 : 1 }}
                   >
@@ -1016,6 +1020,56 @@ function FaxinasScreen({
           onChecklistLoaded={onChecklistLoaded}
           onFinish={onFinish} onPause={onPause} onUpgrade={onUpgrade}
         />
+      )}
+
+      {/* Confirmação de início — evita iniciar por toque acidental ao rolar a lista */}
+      {confirmTask && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 24 }}>
+          <div style={{ background: "#111827", border: `1px solid ${T.border2}`, borderRadius: 24, padding: 24, width: "100%", maxWidth: 340, boxShadow: "0 20px 60px rgba(0,0,0,0.7)" }}>
+            <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 6 }}>
+              {confirmTask.startedAt ? "Retomar esta faxina?" : "Iniciar esta faxina?"}
+            </div>
+            <div style={{ fontSize: 13, color: T.muted, marginBottom: 20 }}>
+              {confirmTask.cabinName || "Cabana"} · {getTaskLabel(confirmTask.type)}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setConfirmStart(null)} style={{ flex: 1, padding: 14, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 14, cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 700, color: T.muted }}>
+                Cancelar
+              </button>
+              <button
+                onPointerDown={(e) => { e.preventDefault(); const id = confirmStart; setConfirmStart(null); if (id && !startingTaskId) onStart(id); }}
+                disabled={startingTaskId !== null}
+                style={{ flex: 1, padding: 14, background: T.grad, color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 800, border: "none", borderRadius: 14, cursor: startingTaskId ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: startingTaskId ? 0.7 : 1 }}
+              >
+                <I n="check" s={17} c="#fff" w={2.5} /> {confirmTask.startedAt ? "Retomar" : "Iniciar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmação de pular — evita pular por toque acidental ao rolar a lista */}
+      {skipTask && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 24 }}>
+          <div style={{ background: "#111827", border: `1px solid ${T.border2}`, borderRadius: 24, padding: 24, width: "100%", maxWidth: 340, boxShadow: "0 20px 60px rgba(0,0,0,0.7)" }}>
+            <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 6 }}>Pular esta faxina?</div>
+            <div style={{ fontSize: 13, color: T.muted, marginBottom: 20 }}>
+              {skipTask.cabinName || "Cabana"} · {getTaskLabel(skipTask.type)}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setConfirmSkip(null)} style={{ flex: 1, padding: 14, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 14, cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 700, color: T.muted }}>
+                Cancelar
+              </button>
+              <button
+                onPointerDown={(e) => { e.preventDefault(); const id = confirmSkip; setConfirmSkip(null); if (id && !startingTaskId) onSkip(id); }}
+                disabled={startingTaskId !== null}
+                style={{ flex: 1, padding: 14, background: T.amberBg, color: T.amber, fontFamily: "inherit", fontSize: 14, fontWeight: 800, border: `1px solid ${T.amberBorder}`, borderRadius: 14, cursor: startingTaskId ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: startingTaskId ? 0.7 : 1 }}
+              >
+                <I n="x" s={17} c={T.amber} w={2.5} /> Pular
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
