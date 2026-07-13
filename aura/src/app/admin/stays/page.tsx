@@ -856,7 +856,8 @@ export default function StaysPage() {
           </>
         )}
 
-        {selectedStay && selectedGuest && (
+        {/* selectedGuest pode ser null (uso da casa) — o modal tolera e mostra o rótulo interno */}
+        {selectedStay && (
           <StayDetailsModal
             isOpen={isDetailsModalOpen}
             onClose={() => setIsDetailsModalOpen(false)}

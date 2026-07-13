@@ -1059,7 +1059,8 @@ export default function ReservationMapClient() {
                 {/* ==================== MODALS ==================== */}
 
                 {/* Stay Details Modal */}
-                {selectedStay && selectedGuest && (
+                {/* selectedGuest pode ser null (uso da casa) — o modal tolera e mostra o rótulo interno */}
+                {selectedStay && (
                     <StayDetailsModal
                         isOpen={isStayModalOpen}
                         onClose={() => setIsStayModalOpen(false)}

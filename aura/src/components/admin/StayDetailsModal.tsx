@@ -30,7 +30,7 @@ interface StayDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   stay: Stay & { guestName?: string; cabinName?: string };
-  guest: Guest;
+  guest: Guest | null; // null em estadias de uso da casa (internalUse, sem titular)
   onViewGuest?: (guestId: string) => void;
   onUpdate?: () => void;
 }
@@ -131,7 +131,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   }, [isOpen, stay?.propertyId]);
 
   const initData = useCallback(() => {
-    if (stay && guest) {
+    if (stay) {
       setCheckInStr(formatDateForInput(stay.checkIn));
       setCheckOutStr(formatDateForInput(stay.checkOut));
       setCheckInTimeStr(extractTimeHHMM(stay.checkIn) || DEFAULT_CHECK_IN_TIME);
@@ -156,17 +156,19 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
         areaConfigs: stay.areaConfigs || []
       });
 
+      // Uso da casa não tem titular — inicializa vazio para o modal abrir mesmo assim.
+      const g = guest ?? ({} as Partial<Guest>);
       setGuestData({
-        fullName: guest.fullName || "",
-        nationality: guest.nationality || "Brasil",
-        document: guest.document || { type: 'CPF', number: '' },
-        birthDate: guest.birthDate || "",
-        gender: guest.gender || "Outro",
-        raca: guest.raca || "NAO_DECLARADO",
-        occupation: guest.occupation || "",
-        email: guest.email || "",
-        phone: guest.phone || "",
-        address: guest.address || {
+        fullName: g.fullName || "",
+        nationality: g.nationality || "Brasil",
+        document: g.document || { type: 'CPF', number: '' },
+        birthDate: g.birthDate || "",
+        gender: g.gender || "Outro",
+        raca: g.raca || "NAO_DECLARADO",
+        occupation: g.occupation || "",
+        email: g.email || "",
+        phone: g.phone || "",
+        address: g.address || {
           street: "", number: "", neighborhood: "",
           city: "", state: "", zipCode: "", country: "Brasil",
           ibgeCityId: ""
@@ -312,14 +314,14 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const reassignDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!stay?.propertyId || !guest?.id) return;
+    if (!stay?.propertyId) return;
     if (reassignDebounceRef.current) clearTimeout(reassignDebounceRef.current);
     if (reassignSearch.trim().length < 2) { setReassignResults([]); return; }
     reassignDebounceRef.current = setTimeout(async () => {
       setReassignLoading(true);
       try {
         const results = await GuestService.listGuests(stay.propertyId, reassignSearch.trim());
-        setReassignResults(results.filter(g => g.id !== guest.id));
+        setReassignResults(results.filter(g => g.id !== guest?.id));
       } catch (err) {
         console.error('[ReassignSearch]', err);
         setReassignResults([]);
@@ -374,19 +376,22 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
         }))
       };
 
-      const fnrhGuestPayload: Partial<Guest> = {
-        id: guest.id,
-        ...guestData,
-        document: {
-          ...guestData.document!,
-          number: sanitizeDocumentForFnrh(guestData.document?.number)
-        }
-      };
-
       const ops: Promise<any>[] = [
         StayService.updateStayData(stay.propertyId, stay.id, fnrhStayPayload, userData?.id || "ADMIN", userData?.fullName || "Recepção"),
-        GuestService.upsertGuest(stay.propertyId, fnrhGuestPayload as Guest, userData?.id || "ADMIN", userData?.fullName || "Recepção")
       ];
+
+      // Uso da casa não tem titular — só sincroniza o hóspede quando ele existe.
+      if (guest) {
+        const fnrhGuestPayload: Partial<Guest> = {
+          id: guest.id,
+          ...guestData,
+          document: {
+            ...guestData.document!,
+            number: sanitizeDocumentForFnrh(guestData.document?.number)
+          }
+        };
+        ops.push(GuestService.upsertGuest(stay.propertyId, fnrhGuestPayload as Guest, userData?.id || "ADMIN", userData?.fullName || "Recepção"));
+      }
 
       // Handle unassign (remove cabin)
       if (unassignCabin) {
@@ -407,9 +412,9 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
       }
 
       // Migrate contact/messages if phone number changed
-      const oldPhone = guest.phone || "";
+      const oldPhone = guest?.phone || "";
       const newPhone = guestData.phone || "";
-      if (oldPhone && newPhone && ContactService.formatPhoneId(oldPhone) !== ContactService.formatPhoneId(newPhone)) {
+      if (guest && oldPhone && newPhone && ContactService.formatPhoneId(oldPhone) !== ContactService.formatPhoneId(newPhone)) {
         await ContactService.migrateContactPhone(stay.propertyId, oldPhone, newPhone, guestData.fullName || guest.fullName || "", guest.id);
       }
 
