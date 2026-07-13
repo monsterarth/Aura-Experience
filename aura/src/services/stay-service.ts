@@ -1,9 +1,14 @@
-import { supabase } from "@/lib/supabase";
+import { supabase, supabaseAdmin } from "@/lib/supabase";
 import { Stay, Guest, Cabin, FolioItem, AutomationTriggerEvent, MessageTemplate } from "@/types/aura";
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
 import { AutomationService } from "./automation-service";
 import { applyTimeToDate, DEFAULT_CHECK_IN_TIME, DEFAULT_CHECK_OUT_TIME } from "@/lib/stay-times";
+
+// No servidor (rotas de campo) usa service-role — o lançamento no fólio pendurava no lock frio
+// quando rodava pelo client do browser. Escopo atual: apenas addFolioItemManual (chamado pelo
+// launchFrigobar do concierge e pela conferência de checkout) usa db().
+const db = () => (typeof window === 'undefined' && supabaseAdmin ? supabaseAdmin : supabase);
 
 export const StayService = {
   async triggerAutomation(
@@ -737,15 +742,16 @@ export const StayService = {
 
   async addFolioItemManual(propertyId: string, stayId: string, item: Omit<FolioItem, 'id' | 'createdAt' | 'status'>, actorId: string, actorName: string) {
     const itemId = uuidv4();
-    await supabase.from('folio_items').insert({
+    const { error } = await db().from('folio_items').insert({
       ...item,
       id: itemId,
       propertyId,
       stayId,
       status: 'pending'
     });
+    if (error) throw error;
 
-    await supabase.from('stays').update({ hasOpenFolio: true }).eq('id', stayId);
+    await db().from('stays').update({ hasOpenFolio: true }).eq('id', stayId);
 
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,

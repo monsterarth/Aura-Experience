@@ -1,8 +1,15 @@
-import { supabase } from "@/lib/supabase";
+import { supabase, supabaseAdmin } from "@/lib/supabase";
 import { ConciergeGroup, ConciergeItem, ConciergeRequest } from "@/types/aura";
 import { AuditService } from "./audit-service";
 import { StayService } from "./stay-service";
 import { StockIntegration, StockLevels } from "./stock-integration";
+
+// No servidor (rota de campo) usa service-role — o lançamento de frigobar da conferência
+// pendurava no lock frio quando rodava pelo client do browser. No browser, mantém o client
+// autenticado (RLS). Mesmo padrão do housekeeping/maintenance-service. Escopo atual: apenas
+// a cadeia do launchFrigobar (createRequest → deliverRequest → _calculateConsumptionCost)
+// usa db(); os demais métodos só rodam no browser hoje.
+const db = () => (typeof window === 'undefined' && supabaseAdmin ? supabaseAdmin : supabase);
 
 export const ConciergeService = {
 
@@ -297,7 +304,7 @@ export const ConciergeService = {
     qty: number,
     item: ConciergeItem
   ): Promise<number> {
-    const { data } = await supabase
+    const { data } = await db()
       .from('concierge_requests')
       .select('quantity')
       .eq('stayId', stayId)
@@ -330,7 +337,7 @@ export const ConciergeService = {
   ): Promise<ConciergeRequest> {
     // Disponibilidade: itens de consumo com ficha técnica não podem ser pedidos
     // sem estoque (reforço servidor; fail-open se módulo off — ver _assertAvailable).
-    const { data: itemRow } = await supabase
+    const { data: itemRow } = await db()
       .from('concierge_items').select('*').eq('id', data.itemId).single();
     if (itemRow) await this._assertAvailable(data.propertyId, itemRow as ConciergeItem, data.quantity);
 
@@ -344,7 +351,7 @@ export const ConciergeService = {
       updatedAt: now,
     };
 
-    const { data: created, error } = await supabase
+    const { data: created, error } = await db()
       .from('concierge_requests')
       .insert(payload)
       .select()
@@ -356,18 +363,18 @@ export const ConciergeService = {
     let auditDetails = `Pedido de concierge: qty=${data.quantity}`;
     try {
       const [{ data: itemNameData }, cabinRes, stayRes] = await Promise.all([
-        supabase.from('concierge_items').select('name').eq('id', data.itemId).single(),
+        db().from('concierge_items').select('name').eq('id', data.itemId).single(),
         data.cabinId
-          ? supabase.from('cabins').select('number').eq('id', data.cabinId).single()
+          ? db().from('cabins').select('number').eq('id', data.cabinId).single()
           : Promise.resolve({ data: null }),
         data.stayId
-          ? supabase.from('stays').select('guestId').eq('id', data.stayId).single()
+          ? db().from('stays').select('guestId').eq('id', data.stayId).single()
           : Promise.resolve({ data: null }),
       ]);
       const itemName = itemNameData?.name || data.itemId;
       auditDetails = `Pedido de concierge: ${data.quantity}x ${itemName}`;
       if (cabinRes.data && stayRes.data) {
-        const { data: guestData } = await supabase
+        const { data: guestData } = await db()
           .from('guests').select('fullName').eq('id', stayRes.data.guestId).single();
         if (guestData) {
           const firstName = guestData.fullName.split(' ')[0];
@@ -406,14 +413,14 @@ export const ConciergeService = {
     actorName: string
   ): Promise<void> {
     // 1. Fetch request + item
-    const { data: req, error: reqErr } = await supabase
+    const { data: req, error: reqErr } = await db()
       .from('concierge_requests')
       .select('*')
       .eq('id', requestId)
       .single();
     if (reqErr || !req) throw new Error('Request not found');
 
-    const { data: itemRow } = await supabase
+    const { data: itemRow } = await db()
       .from('concierge_items')
       .select('*')
       .eq('id', req.itemId)
@@ -430,7 +437,7 @@ export const ConciergeService = {
     }
 
     // 3. Update request
-    const { error: updErr } = await supabase
+    const { error: updErr } = await db()
       .from('concierge_requests')
       .update({ status: 'delivered', total_price: totalPrice, updatedAt: new Date().toISOString() })
       .eq('id', requestId);
@@ -462,11 +469,11 @@ export const ConciergeService = {
     // 6. Audit — enriquecer com nome do item, hóspede e cabana
     let guestLabel = '';
     try {
-      const { data: stay } = await supabase.from('stays').select('guestId, cabinId').eq('id', req.stayId).single();
+      const { data: stay } = await db().from('stays').select('guestId, cabinId').eq('id', req.stayId).single();
       if (stay) {
         const [{ data: guest }, { data: cabin }] = await Promise.all([
-          stay.guestId ? supabase.from('guests').select('fullName').eq('id', stay.guestId).single() : Promise.resolve({ data: null }),
-          stay.cabinId ? supabase.from('cabins').select('name').eq('id', stay.cabinId).single() : Promise.resolve({ data: null }),
+          stay.guestId ? db().from('guests').select('fullName').eq('id', stay.guestId).single() : Promise.resolve({ data: null }),
+          stay.cabinId ? db().from('cabins').select('name').eq('id', stay.cabinId).single() : Promise.resolve({ data: null }),
         ]);
         const who = guest?.fullName?.split(' ')[0] || '';
         const where = cabin?.name || '';
@@ -520,14 +527,14 @@ export const ConciergeService = {
     actorName: string
   ): Promise<void> {
     // 1. Fetch request + item
-    const { data: req, error: reqErr } = await supabase
+    const { data: req, error: reqErr } = await db()
       .from('concierge_requests')
       .select('*')
       .eq('id', requestId)
       .single();
     if (reqErr || !req) throw new Error('Request not found');
 
-    const { data: itemRow } = await supabase
+    const { data: itemRow } = await db()
       .from('concierge_items')
       .select('*')
       .eq('id', req.itemId)

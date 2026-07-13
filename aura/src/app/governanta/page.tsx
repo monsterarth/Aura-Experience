@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { RoleSwitcher } from "@/components/auth/RoleSwitcher";
-import { MinibarSheet } from "@/components/maid/MinibarSheet";
+import { MinibarSheet, postCabinConference } from "@/components/maid/MinibarSheet";
 import { HousekeepingTaskManagerModal } from "@/components/admin/HousekeepingTaskManagerModal";
 import { HousekeepingService } from "@/services/housekeeping-service";
 import { CabinService } from "@/services/cabin-service";
@@ -1665,14 +1665,17 @@ export default function GovernantaPage() {
   const handleGovMiniSend = async (cart: Record<string, number>) => {
     const task = govMiniTarget;
     if (!task?.stayId || !property) return;
-    try {
-      await ConciergeService.launchFrigobar(
-        property.id,
-        { stayId: task.stayId, cabinId: task.cabinId, cart },
-        userData?.id || "", userData?.fullName || "Governanta",
-      );
-      showToast("Frigobar lançado!");
-    } catch { showToast("Erro ao lançar frigobar.", T.red); throw new Error("folio_failed"); }
+    // Via rota de campo (server-side): launchFrigobar pelo browser pendurava no lock frio —
+    // spinner infinito no "Lançar e continuar" da conferência. Ator e preços vêm do servidor.
+    const r = await postCabinConference({
+      stayId: task.stayId,
+      frigobar: { cabinId: task.cabinId, cart },
+    });
+    if (!r.ok) {
+      showToast(r.error || "Erro ao lançar frigobar.", T.red);
+      throw new Error("folio_failed"); // MinibarSheet mantém o passo atual para tentar de novo
+    }
+    showToast("Frigobar lançado!");
   };
 
   // ── Derived ───────────────────────────────────────────────────────────────────

@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import { StayService } from "@/services/stay-service";
 
 // Itens exibidos no passo de frigobar (origem: itens de Concierge do grupo "Frigobar").
 type FrigobarItem = { id: string; name: string; price: number };
@@ -105,28 +104,34 @@ export function Sheet({ onClose, children }: { onClose: () => void; children: Re
 }
 
 // ─── Finalização via rota de campo ────────────────────────────────────────────
-// Tira os writes de finalização (stays: objetos esquecidos/emprestados; housekeeping_tasks:
-// cabinChecked) do client do browser, que penduravam no lock/token frio do Supabase no app de
-// campo (spinner travado / botão sem resposta). Timeout defensivo: nunca trava o fluxo.
-async function postCabinConference(payload: {
+// Tira os writes de finalização (frigobar; chave; stays: objetos esquecidos/emprestados;
+// housekeeping_tasks: cabinChecked) do client do browser, que penduravam no lock/token frio do
+// Supabase no app de campo (spinner travado / botão sem resposta). Timeout defensivo: nunca
+// trava o fluxo. keepalive: o request sobrevive se o celular bloquear logo após o toque.
+export async function postCabinConference(payload: {
   stayId?: string;
   taskId?: string;
   lostItems?: { description: string; photo: string | null };
   loanedReturned?: boolean;
   cabinChecked?: boolean;
-}): Promise<boolean> {
+  frigobar?: { cabinId?: string; cart: Record<string, number> };
+  keyNotFound?: boolean;
+}): Promise<{ ok: boolean; error?: string }> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 12000);
+  const timer = setTimeout(() => ctrl.abort(), 15000);
   try {
     const res = await fetch("/api/field/cabin-conference", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
       signal: ctrl.signal,
+      keepalive: true,
     });
-    return res.ok;
+    if (res.ok) return { ok: true };
+    const body = await res.json().catch(() => ({} as any));
+    return { ok: false, error: typeof body?.error === "string" ? body.error : undefined };
   } catch {
-    return false;
+    return { ok: false };
   } finally {
     clearTimeout(timer);
   }
@@ -136,9 +141,8 @@ async function postCabinConference(payload: {
 
 export function MinibarSheet({
   cabinName, items, onClose, onSend,
-  keyLocation, stayId, propertyId, userId, userName, showToast,
+  keyLocation, stayId, showToast,
   loanedItems, taskId,
-  actorLabel = "Camareira",
 }: {
   cabinName: string;
   items: FrigobarItem[];
@@ -185,15 +189,12 @@ export function MinibarSheet({
   };
 
   const confirmKey = async (found: boolean) => {
-    if (!found && stayId && propertyId && userId) {
-      try {
-        await StayService.addFolioItemManual(
-          propertyId, stayId,
-          { description: "Chave não encontrada", quantity: 1, unitPrice: 0, totalPrice: 0, category: "services", addedBy: userId },
-          userId, userName ?? actorLabel,
-        );
-        showToast?.("Chave não encontrada registrada no fólio.", T.amber);
-      } catch { /* non-blocking */ }
+    if (!found && stayId) {
+      // Via rota de campo (server-side): addFolioItemManual pelo browser pendurava no lock frio.
+      // Fire-and-forget: o registro é best-effort e não pode travar o fluxo da conferência.
+      void postCabinConference({ stayId, keyNotFound: true }).then(r => {
+        if (r.ok) showToast?.("Chave não encontrada registrada no fólio.", T.amber);
+      });
     }
     setPhase("lost");
   };
@@ -252,12 +253,12 @@ export function MinibarSheet({
     setSavingLost(true);
     // Persiste via rota de campo (server-side). Antes era write direto no Supabase do browser,
     // que pendurava no lock frio — o spinner do "Registrar" travava e o fluxo não concluía.
-    const ok = await postCabinConference({
+    const r = await postCabinConference({
       stayId: stayId ?? "",
       lostItems: { description: lostDesc.trim(), photo: lostPhoto },
     });
     setSavingLost(false);
-    if (!ok) { showToast?.("Erro ao registrar. Tente novamente.", T.red); return; }
+    if (!r.ok) { showToast?.("Erro ao registrar. Tente novamente.", T.red); return; }
     showToast?.("Objetos esquecidos registrados!", T.amber);
     if (parsedLoaned.length > 0) { setPhase("loaned"); } else { await finishAll(); }
   };

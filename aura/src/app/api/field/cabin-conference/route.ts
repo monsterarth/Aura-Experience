@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { ConciergeService } from '@/services/concierge-service';
+import { StayService } from '@/services/stay-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +21,10 @@ export async function POST(req: Request) {
     lostItems?: { description: string; photo?: string | null };
     loanedReturned?: boolean;
     cabinChecked?: boolean;
+    // Passo 1 da conferência: lança o consumo de frigobar (preços vêm do catálogo no servidor).
+    frigobar?: { cabinId?: string; cart: Record<string, number> };
+    // Passo 2: chave não encontrada → item de rastreio (preço zero) no fólio.
+    keyNotFound?: boolean;
   };
   try {
     body = await req.json();
@@ -30,6 +36,44 @@ export async function POST(req: Request) {
   const now = new Date().toISOString();
 
   try {
+    // Frigobar / chave: operam sobre uma estadia — valida a posse antes (service-role ignora RLS).
+    if (body.stayId && (body.frigobar || body.keyNotFound)) {
+      const { data: stay } = await supabaseAdmin
+        .from('stays').select('propertyId').eq('id', body.stayId).single();
+      if (!stay?.propertyId) {
+        return NextResponse.json({ error: 'Estadia não encontrada.' }, { status: 404 });
+      }
+      if (!isAdminTier && stay.propertyId !== auth.staff.propertyId) {
+        return NextResponse.json({ error: 'Acesso negado.' }, { status: 403 });
+      }
+      const propertyId = stay.propertyId as string;
+      const { id: actorId, fullName: actorName } = auth.staff;
+
+      if (body.frigobar) {
+        try {
+          await ConciergeService.launchFrigobar(
+            propertyId,
+            { stayId: body.stayId, cabinId: body.frigobar.cabinId, cart: body.frigobar.cart ?? {} },
+            actorId, actorName,
+          );
+        } catch (e: any) {
+          // Estoque insuficiente é erro de negócio — devolve a mensagem para o toast.
+          if (typeof e?.message === 'string' && e.message.includes('indisponível')) {
+            return NextResponse.json({ error: e.message }, { status: 409 });
+          }
+          throw e;
+        }
+      }
+
+      if (body.keyNotFound) {
+        await StayService.addFolioItemManual(
+          propertyId, body.stayId,
+          { description: 'Chave não encontrada', quantity: 1, unitPrice: 0, totalPrice: 0, category: 'services', addedBy: actorId },
+          actorId, actorName,
+        );
+      }
+    }
+
     // Stays: objetos esquecidos e/ou emprestados. Escopado à propriedade do staff (exceto admin).
     if (body.stayId && (body.lostItems || body.loanedReturned)) {
       const stayUpdate: Record<string, any> = {};
