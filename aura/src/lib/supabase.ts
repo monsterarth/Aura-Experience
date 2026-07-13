@@ -63,6 +63,15 @@ if (typeof window === 'undefined' && process.env.NODE_ENV !== 'production' && su
 }
 
 /**
+ * Client para services isomórficos: service-role no SERVIDOR (rotas /api/field/* e afins),
+ * client autenticado (RLS) no browser. Fonte única do padrão que antes era copiado por
+ * service (`const db = ...` em housekeeping/maintenance/...) — evita o lock frio do browser
+ * quando o service roda no servidor e mantém RLS quando roda no client.
+ */
+export const db = (): SupabaseClient<any, "public", any> =>
+    ((typeof window === 'undefined' && supabaseAdmin) ? supabaseAdmin : supabase) as SupabaseClient<any, "public", any>;
+
+/**
  * Remove a Supabase Realtime channel safely.
  *
  * Calling supabase.removeChannel() on a channel that's still connecting (WebSocket

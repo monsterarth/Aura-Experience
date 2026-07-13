@@ -1,15 +1,12 @@
-import { supabase, supabaseAdmin } from "@/lib/supabase";
+// db() (de @/lib/supabase): service-role no servidor (rota de campo) — o lançamento de
+// frigobar da conferência pendurava no lock frio quando rodava pelo client do browser.
+// Escopo atual: a cadeia do launchFrigobar (createRequest → deliverRequest →
+// _calculateConsumptionCost) usa db(); os demais métodos só rodam no browser hoje.
+import { supabase, db } from "@/lib/supabase";
 import { ConciergeGroup, ConciergeItem, ConciergeRequest } from "@/types/aura";
 import { AuditService } from "./audit-service";
 import { StayService } from "./stay-service";
 import { StockIntegration, StockLevels } from "./stock-integration";
-
-// No servidor (rota de campo) usa service-role — o lançamento de frigobar da conferência
-// pendurava no lock frio quando rodava pelo client do browser. No browser, mantém o client
-// autenticado (RLS). Mesmo padrão do housekeeping/maintenance-service. Escopo atual: apenas
-// a cadeia do launchFrigobar (createRequest → deliverRequest → _calculateConsumptionCost)
-// usa db(); os demais métodos só rodam no browser hoje.
-const db = () => (typeof window === 'undefined' && supabaseAdmin ? supabaseAdmin : supabase);
 
 export const ConciergeService = {
 

@@ -1,8 +1,7 @@
 import React, { useState, useRef } from "react";
 import { X, Save, Camera, CheckSquare, XSquare, UploadCloud, MessageSquare, Trash2 } from "lucide-react";
 import { MaintenanceTask, Cabin, Structure } from "@/types/aura";
-import { MaintenanceService } from "@/services/maintenance-service";
-import { useAuth } from "@/context/AuthContext";
+import { postFieldAction } from "@/lib/field-api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
@@ -10,14 +9,13 @@ import Image from "next/image";
 interface MaintenanceCompletionModalProps {
     isOpen: boolean;
     onClose: () => void;
-    propertyId: string;
     task: MaintenanceTask | null;
     cabins: Record<string, Cabin>;
     structures: Record<string, Structure>;
 }
 
-export function MaintenanceCompletionModal({ isOpen, onClose, propertyId, task, cabins, structures }: MaintenanceCompletionModalProps) {
-    const { userData } = useAuth();
+// propertyId saiu das props: a rota de campo resolve a propriedade pela própria tarefa.
+export function MaintenanceCompletionModal({ isOpen, onClose, task, cabins, structures }: MaintenanceCompletionModalProps) {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [loading, setLoading] = useState(false);
@@ -64,17 +62,16 @@ export function MaintenanceCompletionModal({ isOpen, onClose, propertyId, task, 
     const handleComplete = async () => {
         setLoading(true);
         try {
-            await MaintenanceService.finishTask(propertyId, task.id, {
-                resolved,
-                needsCleaning,
-                notes,
-                photoUrl
-            }, userData?.id || "admin", userData?.fullName || "Admin");
+            // Via rota de campo (service-role): finishTask pelo browser pendurava no lock frio.
+            const r = await postFieldAction('/api/field/maintenance-tasks', {
+                action: 'finish',
+                taskId: task.id,
+                completion: { resolved, needsCleaning, notes, photoUrl },
+            });
+            if (!r.ok) { toast.error(r.error || "Erro ao finalizar manutenção."); return; }
 
-            toast.success(resolved ? "Mantenção concluída com sucesso!" : "Manutenção despachada para conferência.");
+            toast.success(resolved ? "Manutenção concluída com sucesso!" : "Manutenção despachada para conferência.");
             onClose();
-        } catch (e) {
-            toast.error("Erro ao finalizar manutenção.");
         } finally {
             setLoading(false);
         }

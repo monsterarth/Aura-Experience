@@ -83,12 +83,13 @@ Scheduled in `vercel.json` (UTC):
 |---|---|---|
 | `daily-automations` | `0 11 * * *` | 11:00 daily |
 | `daily-housekeeping` | `10 20 * * *` | 20:10 daily |
+| `maintenance` | `20 20 * * *` | 20:20 daily (preventivas) |
 | `evening-revalidation` | `30 20 * * *` | 20:30 daily |
 | `breakfast-attendance` | `0 8 * * *` | 08:00 daily |
 | `stock-expiry` | `0 9 * * *` | 09:00 daily |
 | `asset-depreciation` | `0 5 1 * *` | 05:00 on the 1st |
 
-Other cron-style routes exist in code but are **not** in `vercel.json` (triggered manually/externally): `process-messages`, `housekeeping-routines`, `maintenance`. All cron routes check the `CRON_SECRET` header in production. Details in `docs/CRON.md`.
+Other cron-style routes exist in code but are **not** in `vercel.json` (triggered manually/externally): `process-messages`, `housekeeping-routines`. All cron routes check the `CRON_SECRET` header in production. Details in `docs/CRON.md`.
 
 ### Mobile / field-staff apps
 
@@ -100,7 +101,12 @@ Separate Next.js route groups for operational mobile use (not under `/admin`):
 | `src/app/maid/` | `maid` |
 | `src/app/waiter/` | `waiter` |
 | `src/app/houseman/` | `houseman` |
-| `src/app/maintenance/` | `maintenance` / `technician` |
+| `src/app/maintenance/` | `technician` (execução em campo; coordenador também acessa) |
+| `src/app/maintenance-ops/` | `maintenance` (console de gestão do coordenador) |
+
+Field mutations go through `/api/field/*` routes (POST, service-role) via the `postFieldAction`
+helper in `src/lib/field-api.ts` — never direct browser Supabase writes (they hang on the cold
+lock; see `field-app-browser-write-hangs` history).
 
 These pages use API routes (not the admin pattern) and each has its own `layout.tsx` with auth guards.
 
@@ -154,6 +160,7 @@ Use `src/components/admin/ImageUpload.tsx` with props `value`, `onUploadSuccess`
 
 Deeper docs live in `docs/`, read on demand:
 
+- `docs/ROADMAP.md` — prospective product roadmap (Now/Next/Later) + the 26/06 direction-meeting evaluation. The DB changelog (`/admin/changelog`) is retrospective; this is where we're going.
 - `docs/ARCHITECTURE.md` — system overview, auth flow, multi-property model, realtime, notification stack, uploads.
 - `docs/MODULES.md` — catalog of every admin module, mobile app, portal page and API group (route · role · service).
 - `docs/DATABASE.md` — table glossary + ERD + RLS overview.

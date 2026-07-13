@@ -1,4 +1,6 @@
-import { supabase } from "@/lib/supabase";
+// db() (de @/lib/supabase): service-role no servidor (rota de campo), client autenticado
+// (RLS) no browser — evita o lock frio do browser que pendurava as escritas no app de campo.
+import { supabase, db } from "@/lib/supabase";
 import { MaintenanceTask, MaintenanceRule } from "@/types/aura";
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
@@ -33,7 +35,9 @@ export const MaintenanceService = {
     },
 
     async checkCabinMaintenanceConflict(cabinId: string, expectedStart: string, expectedEnd: string): Promise<void> {
-        const { data } = await supabase
+        // db(): no servidor o client de browser é anon/sem sessão e o RLS de stays devolvia
+        // 0 linhas — o guard passava em silêncio e criava manutenção em cima de estadia ativa.
+        const { data } = await db()
             .from('stays')
             .select('id')
             .eq('cabinId', cabinId)
@@ -54,7 +58,9 @@ export const MaintenanceService = {
 
         const taskId = uuidv4();
 
-        await supabase.from('maintenance_tasks').insert({
+        // supabase-js devolve { error } em vez de lançar — sem esta checagem a rota
+        // respondia ok:true (e a UI "Tarefa criada!") mesmo com o INSERT falhado.
+        const { error: insertError } = await db().from('maintenance_tasks').insert({
             ...data,
             id: taskId,
             propertyId,
@@ -62,6 +68,7 @@ export const MaintenanceService = {
             checklist: data.checklist || [],
             assignedTo: data.assignedTo || []
         });
+        if (insertError) throw insertError;
 
         await AuditService.log({
             propertyId, userId: actorId, userName: actorName, action: "CREATE", entity: "MAINTENANCE", entityId: taskId,
@@ -69,12 +76,15 @@ export const MaintenanceService = {
         });
 
         triggerTaskPush('maintenance', 'assigned', taskId);
+
+        return taskId;
     },
 
     async updateTask(propertyId: string, taskId: string, updates: Partial<MaintenanceTask>, actorId: string, actorName: string) {
-        await supabase.from('maintenance_tasks')
+        const { error } = await db().from('maintenance_tasks')
             .update({ ...updates, updatedAt: new Date().toISOString() })
             .eq('id', taskId);
+        if (error) throw error;
 
         await AuditService.log({
             propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "MAINTENANCE", entityId: taskId,
@@ -82,8 +92,18 @@ export const MaintenanceService = {
         });
     },
 
+    /** Toggle de checklist do app de campo: write leve, SEM audit log — um registro por
+     *  checkbox só enterra os eventos reais da auditoria. */
+    async updateChecklist(taskId: string, checklist: MaintenanceTask['checklist']) {
+        const { error } = await db().from('maintenance_tasks')
+            .update({ checklist: checklist || [], updatedAt: new Date().toISOString() })
+            .eq('id', taskId);
+        if (error) throw error;
+    },
+
     async deleteTask(propertyId: string, taskId: string, actorId: string, actorName: string) {
-        await supabase.from('maintenance_tasks').delete().eq('id', taskId).eq('propertyId', propertyId);
+        const { error } = await db().from('maintenance_tasks').delete().eq('id', taskId).eq('propertyId', propertyId);
+        if (error) throw error;
 
         await AuditService.log({
             propertyId, userId: actorId, userName: actorName, action: "DELETE", entity: "MAINTENANCE", entityId: taskId,
@@ -92,9 +112,10 @@ export const MaintenanceService = {
     },
 
     async assignTask(propertyId: string, taskId: string, techIds: string[], actorId: string, actorName: string) {
-        await supabase.from('maintenance_tasks')
+        const { error } = await db().from('maintenance_tasks')
             .update({ assignedTo: techIds, updatedAt: new Date().toISOString() })
             .eq('id', taskId);
+        if (error) throw error;
 
         await AuditService.log({
             propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "MAINTENANCE", entityId: taskId,
@@ -105,13 +126,13 @@ export const MaintenanceService = {
     },
 
     async startTask(propertyId: string, taskId: string, techId: string, actorName: string) {
-        const { data: task } = await supabase.from('maintenance_tasks').select('assignedTo').eq('id', taskId).single();
-        if (!task) return;
+        const { data: task } = await db().from('maintenance_tasks').select('assignedTo').eq('id', taskId).single();
+        if (!task) throw new Error("Tarefa não encontrada.");
 
         const currentAssignees = task.assignedTo || [];
         const newAssignees = Array.from(new Set([...currentAssignees, techId]));
 
-        await supabase.from('maintenance_tasks')
+        const { error } = await db().from('maintenance_tasks')
             .update({
                 status: 'in_progress',
                 assignedTo: newAssignees,
@@ -119,6 +140,7 @@ export const MaintenanceService = {
                 updatedAt: new Date().toISOString()
             })
             .eq('id', taskId);
+        if (error) throw error;
 
         await AuditService.log({
             propertyId, userId: techId, userName: actorName, action: "UPDATE", entity: "MAINTENANCE", entityId: taskId,
@@ -133,7 +155,7 @@ export const MaintenanceService = {
         actorId: string,
         actorName: string
     ) {
-        const { data: taskData } = await supabase.from('maintenance_tasks').select('*').eq('id', taskId).single();
+        const { data: taskData } = await db().from('maintenance_tasks').select('*').eq('id', taskId).single();
         if (!taskData) throw new Error("Tarefa não encontrada.");
 
         let finalStatus: MaintenanceTask['status'] = 'completed';
@@ -141,7 +163,7 @@ export const MaintenanceService = {
             finalStatus = 'waiting_conference';
         }
 
-        await supabase.from('maintenance_tasks')
+        const { error: finishError } = await db().from('maintenance_tasks')
             .update({
                 status: finalStatus,
                 completion: completionData,
@@ -149,6 +171,7 @@ export const MaintenanceService = {
                 updatedAt: new Date().toISOString()
             })
             .eq('id', taskId);
+        if (finishError) throw finishError;
 
         const applyStatus = async (cabinId?: string, structureId?: string, unitId?: string) => {
             if (!cabinId && !structureId) return;
@@ -156,9 +179,9 @@ export const MaintenanceService = {
             if (!newTargetStatus) return;
 
             if (cabinId) {
-                await supabase.from('cabins').update({ status: newTargetStatus }).eq('id', cabinId);
+                await db().from('cabins').update({ status: newTargetStatus }).eq('id', cabinId);
             } else if (structureId) {
-                await supabase.from('structures').update({ status: newTargetStatus }).eq('id', structureId);
+                await db().from('structures').update({ status: newTargetStatus }).eq('id', structureId);
             }
         };
 
@@ -171,10 +194,10 @@ export const MaintenanceService = {
     },
 
     async confirmTaskQuality(propertyId: string, taskId: string, notes: string, actorId: string, actorName: string) {
-        const { data: task } = await supabase.from('maintenance_tasks').select('*').eq('id', taskId).single();
+        const { data: task } = await db().from('maintenance_tasks').select('*').eq('id', taskId).single();
         if (!task) throw new Error("Tarefa não encontrada.");
 
-        await supabase.from('maintenance_tasks')
+        const { error: confirmError } = await db().from('maintenance_tasks')
             .update({
                 status: 'completed',
                 conferredBy: actorId,
@@ -182,9 +205,10 @@ export const MaintenanceService = {
                 updatedAt: new Date().toISOString()
             })
             .eq('id', taskId);
+        if (confirmError) throw confirmError;
 
         if (task.blocksCabin && task.cabinId) {
-            await supabase.from('cabins').update({ status: 'available' }).eq('id', task.cabinId);
+            await db().from('cabins').update({ status: 'available' }).eq('id', task.cabinId);
         }
 
         await AuditService.log({
@@ -194,12 +218,13 @@ export const MaintenanceService = {
     },
 
     async rollbackTaskStatus(propertyId: string, taskId: string, reason: string, actorId: string, actorName: string) {
-        await supabase.from('maintenance_tasks')
+        const { error } = await db().from('maintenance_tasks')
             .update({
                 status: 'pending',
                 updatedAt: new Date().toISOString()
             })
             .eq('id', taskId);
+        if (error) throw error;
 
         await AuditService.log({
             propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "MAINTENANCE", entityId: taskId,
@@ -223,7 +248,7 @@ export const MaintenanceService = {
         const ruleId = rule.id || uuidv4();
         const now = new Date().toISOString();
 
-        await supabase.from('maintenance_rules').upsert({
+        await db().from('maintenance_rules').upsert({
             ...rule,
             id: ruleId,
             propertyId,
@@ -240,8 +265,8 @@ export const MaintenanceService = {
     },
 
     async deleteRule(propertyId: string, ruleId: string, actorId: string, actorName: string) {
-        const { data: rule } = await supabase.from('maintenance_rules').select('name').eq('id', ruleId).single();
-        await supabase.from('maintenance_rules').delete().eq('id', ruleId).eq('propertyId', propertyId);
+        const { data: rule } = await db().from('maintenance_rules').select('name').eq('id', ruleId).single();
+        await db().from('maintenance_rules').delete().eq('id', ruleId).eq('propertyId', propertyId);
 
         await AuditService.log({
             propertyId, userId: actorId, userName: actorName, action: "DELETE", entity: "MAINTENANCE", entityId: ruleId,
@@ -250,7 +275,7 @@ export const MaintenanceService = {
     },
 
     async toggleRule(propertyId: string, ruleId: string, active: boolean, actorId: string, actorName: string) {
-        await supabase.from('maintenance_rules')
+        await db().from('maintenance_rules')
             .update({ active, updatedAt: new Date().toISOString() })
             .eq('id', ruleId)
             .eq('propertyId', propertyId);
@@ -262,7 +287,7 @@ export const MaintenanceService = {
     },
 
     async updateRuleLastTriggered(propertyId: string, ruleId: string, timestamp: string) {
-        await supabase.from('maintenance_rules')
+        await db().from('maintenance_rules')
             .update({ lastTriggeredAt: timestamp, updatedAt: timestamp })
             .eq('id', ruleId)
             .eq('propertyId', propertyId);

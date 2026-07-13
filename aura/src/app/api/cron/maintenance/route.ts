@@ -33,15 +33,17 @@ async function applyMaintenanceRules(propertyId: string): Promise<number> {
         const nextTrigger = getNextTriggerDate(rule);
         if (now < nextTrigger) continue;
 
-        // Dedup: skip if already created today for this rule
+        // Dedup: skip if already created today for this rule.
+        // limit(1)+array em vez de maybeSingle(): com 2+ clones no mesmo dia o maybeSingle
+        // devolvia { error, data: null } e o guard passava — as duplicatas compunham.
         const { data: existing } = await supabaseAdmin
             .from('maintenance_tasks')
             .select('id')
             .eq('recurrenceSourceId', rule.id)
             .eq('recurrenceDate', todayDate)
-            .maybeSingle();
+            .limit(1);
 
-        if (existing) continue;
+        if (existing && existing.length > 0) continue;
 
         const isoNow = now.toISOString();
         await supabaseAdmin.from('maintenance_tasks').insert({
@@ -161,15 +163,16 @@ export async function GET(request: Request) {
                 if (shouldCreate) {
                     const todayDate = today.toISOString().split('T')[0];
 
-                    // Guard against double-trigger: check if a clone was already created today
-                    const { data: existingClone } = await supabaseAdmin
+                    // Guard against double-trigger: check if a clone was already created today.
+                    // limit(1)+array — maybeSingle() com 2+ clones devolvia null e furava o guard.
+                    const { data: existingClones } = await supabaseAdmin
                         .from('maintenance_tasks')
                         .select('id')
                         .eq('recurrenceSourceId', parentTask.id)
                         .eq('recurrenceDate', todayDate)
-                        .maybeSingle();
+                        .limit(1);
 
-                    if (existingClone) continue;
+                    if (existingClones && existingClones.length > 0) continue;
 
                     const newTaskId = uuidv4();
                     const isoToday = new Date().toISOString();

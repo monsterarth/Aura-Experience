@@ -6,8 +6,8 @@ import { useProperty } from "@/context/PropertyContext";
 import { MaintenanceService } from "@/services/maintenance-service";
 import { MaintenanceCompletionModal } from "@/components/admin/maintenance/MaintenanceCompletionModal";
 import { MaintenanceTask, Cabin, Structure, Staff } from "@/types/aura";
-import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import { postFieldAction } from "@/lib/field-api";
 import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
 import { ScrapWall } from "@/components/admin/profile/ScrapWall";
 
@@ -255,14 +255,12 @@ function LocPicker({ lt, setLt, cid, setCid, sid, setSid, cust, setCust, cabins,
 // ─── New Task Sheet (coordinator only) ────────────────────────────────────────
 
 function NewMaintTaskSheet({
-  cabins, structures, staff, propertyId, actorId, actorName, onClose, onCreated, showToast,
+  cabins, structures, staff, propertyId, onClose, onCreated, showToast,
 }: {
   cabins: Record<string, Cabin>;
   structures: Record<string, Structure>;
   staff: Staff[];
   propertyId: string;
-  actorId: string;
-  actorName: string;
   onClose: () => void;
   onCreated: () => void;
   showToast: (m: string, c?: string) => void;
@@ -302,23 +300,26 @@ function NewMaintTaskSheet({
     if (!canSubmit || busy) return;
     setBusy(true);
     try {
-      await MaintenanceService.createTask(propertyId, {
-        title: title.trim(),
-        description: description.trim() || undefined,
-        priority,
-        cabinId: locType === "cabin" ? cabinId : undefined,
-        structureId: locType === "structure" ? structureId : undefined,
-        customLocation: locType === "custom" ? customLocation.trim() : undefined,
-        assignedTo: assignedIds,
-        checklist,
-        status: "pending",
-        isRecurring: false,
-      } as any, actorId, actorName);
+      const r = await postFieldAction('/api/field/maintenance-tasks', {
+        action: 'create',
+        propertyId,
+        task: {
+          title: title.trim(),
+          description: description.trim() || undefined,
+          priority,
+          cabinId: locType === "cabin" ? cabinId : undefined,
+          structureId: locType === "structure" ? structureId : undefined,
+          customLocation: locType === "custom" ? customLocation.trim() : undefined,
+          assignedTo: assignedIds,
+          checklist,
+          status: "pending",
+          isRecurring: false,
+        },
+      });
+      if (!r.ok) { showToast(r.error || "Erro ao criar tarefa.", T.red); return; }
       showToast("Tarefa criada!", T.green);
       onCreated();
       onClose();
-    } catch {
-      showToast("Erro ao criar tarefa.", T.red);
     } finally {
       setBusy(false);
     }
@@ -631,11 +632,15 @@ function TaskSheet({
   const loc = locationName(task, cabins, structures);
 
   const toggleItem = async (id: string) => {
+    const previous = checklist;
     const updated = checklist.map(c => c.id === id ? { ...c, checked: !c.checked } : c);
-    setChecklist(updated);
+    setChecklist(updated); // otimista — revertido abaixo se o save falhar
     setSavingItem(id);
     try {
-      await supabase.from("maintenance_tasks").update({ checklist: updated, updatedAt: new Date().toISOString() }).eq("id", task.id);
+      const r = await postFieldAction('/api/field/maintenance-tasks', {
+        action: 'update', taskId: task.id, updates: { checklist: updated },
+      });
+      if (!r.ok) setChecklist(previous); // sessão expirada/erro: não deixa o ✓ mentir
     } finally {
       setSavingItem(null);
     }
@@ -1277,45 +1282,43 @@ export default function MaintenancePage() {
   }, [property, propertyLoading, userData?.id, userData?.role]);
 
   const handleStart = useCallback(async (taskId: string) => {
-    if (!property || !userData) return;
-    try {
-      await MaintenanceService.startTask(property.id, taskId, userData.id, userData.fullName);
-      showToast("Manutenção iniciada!");
-    } catch { showToast("Erro ao iniciar tarefa.", T.red); }
-  }, [property, userData, showToast]);
+    const r = await postFieldAction('/api/field/maintenance-tasks', { action: 'start', taskId });
+    if (!r.ok) { showToast(r.error || "Erro ao iniciar tarefa.", T.red); return; }
+    showToast("Manutenção iniciada!");
+  }, [showToast]);
 
   const handleAssign = useCallback(async (techIds: string[]) => {
-    if (!property || !userData || !assigningTask) return;
+    if (!assigningTask) return;
     setAssignBusy(true);
     try {
-      await MaintenanceService.assignTask(property.id, assigningTask.id, techIds, userData.id, userData.fullName);
+      const r = await postFieldAction('/api/field/maintenance-tasks', { action: 'assign', taskId: assigningTask.id, techIds });
+      if (!r.ok) { showToast(r.error || "Erro ao atribuir.", T.red); return; }
       showToast("Técnico atribuído!");
       setAssigningTask(null);
-    } catch { showToast("Erro ao atribuir.", T.red); }
-    finally { setAssignBusy(false); }
-  }, [property, userData, assigningTask, showToast]);
+    } finally { setAssignBusy(false); }
+  }, [assigningTask, showToast]);
 
   const handleValidateApprove = useCallback(async (notes: string) => {
-    if (!property || !userData || !validatingTask) return;
+    if (!validatingTask) return;
     setValidateBusy(true);
     try {
-      await MaintenanceService.confirmTaskQuality(property.id, validatingTask.id, notes, userData.id, userData.fullName);
+      const r = await postFieldAction('/api/field/maintenance-tasks', { action: 'confirm', taskId: validatingTask.id, notes });
+      if (!r.ok) { showToast(r.error || "Erro ao aprovar.", T.red); return; }
       showToast("Tarefa aprovada!", T.green);
       setValidatingTask(null);
-    } catch { showToast("Erro ao aprovar.", T.red); }
-    finally { setValidateBusy(false); }
-  }, [property, userData, validatingTask, showToast]);
+    } finally { setValidateBusy(false); }
+  }, [validatingTask, showToast]);
 
   const handleValidateReject = useCallback(async (reason: string) => {
-    if (!property || !userData || !validatingTask) return;
+    if (!validatingTask) return;
     setValidateBusy(true);
     try {
-      await MaintenanceService.rollbackTaskStatus(property.id, validatingTask.id, reason, userData.id, userData.fullName);
+      const r = await postFieldAction('/api/field/maintenance-tasks', { action: 'reject', taskId: validatingTask.id, notes: reason });
+      if (!r.ok) { showToast(r.error || "Erro ao reprovar.", T.red); return; }
       showToast("Tarefa devolvida para repasse.", T.amber);
       setValidatingTask(null);
-    } catch { showToast("Erro ao reprovar.", T.red); }
-    finally { setValidateBusy(false); }
-  }, [property, userData, validatingTask, showToast]);
+    } finally { setValidateBusy(false); }
+  }, [validatingTask, showToast]);
 
   const handleLogout = () => {
     showToast("Saindo...");
@@ -1424,7 +1427,7 @@ export default function MaintenancePage() {
           {showNewTask && property && userData && (
             <NewMaintTaskSheet
               cabins={cabins} structures={structures} staff={staff}
-              propertyId={property.id} actorId={userData.id} actorName={userData.fullName}
+              propertyId={property.id}
               onClose={() => setShowNewTask(false)}
               onCreated={() => {}}
               showToast={showToast}
@@ -1453,7 +1456,6 @@ export default function MaintenancePage() {
         <MaintenanceCompletionModal
           isOpen={!!completionTask}
           onClose={() => setCompletionTask(null)}
-          propertyId={property.id}
           task={completionTask}
           cabins={cabins}
           structures={structures}

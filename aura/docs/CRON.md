@@ -15,6 +15,7 @@ Schedules in `vercel.json` are **UTC**. The resort runs on BRT (UTC−3), so e.g
 |------|----------------|--------------|
 | `daily-automations` | `0 11 * * *` | Queues WhatsApp automation messages |
 | `daily-housekeeping` | `10 20 * * *` | Generates next-day housekeeping tasks |
+| `maintenance` | `20 20 * * *` | Materializes recurring maintenance rules/tasks (preventivas) |
 | `evening-revalidation` | `30 20 * * *` | Re-syncs queued pre-checkout messages |
 | `breakfast-attendance` | `0 8 * * *` | Builds the day's breakfast attendance list |
 | `stock-expiry` | `0 9 * * *` | Flags expiring batches, auto-loss if enabled |
@@ -48,6 +49,12 @@ expiring/expired batches via `StockService.getExpiringBatches`. If `autoLossOnEx
 registers automatic `loss` movements (`lossType='expiry'`) for expired batches. **Writes to**
 stock movements/balances.
 
+### `maintenance`
+For each property: materializes due `maintenance_rules` into `maintenance_tasks` and clones
+`isRecurring` parent tasks per their `recurrenceRule` (daily/weekly/monthly). Dedup per day by
+`(recurrenceSourceId, recurrenceDate)`. **Writes to** `maintenance_tasks`, `maintenance_rules`
+(`lastTriggeredAt`).
+
 ### `asset-depreciation`
 Monthly. Posts linear depreciation for the current period (`YYYY-MM`) for each property via
 `AssetService.runDepreciation`. **Idempotent** per `(assetId, period)`. **Writes to**
@@ -63,7 +70,6 @@ seems "stuck", check whether an external trigger is actually hitting them.
 |------|--------------|-------|
 | `process-messages` | Drains the WhatsApp send queue: recovers messages stuck in `processing` >3 min, sends `pending` messages via the Evolution API (batches of 15) | Designed for a **short interval** (≈ every minute). Needs `EVOLUTION_API_*` |
 | `housekeeping-routines` | Applies fixed-interval housekeeping rules (`applyFixedIntervalRules`) per property | Complements `daily-housekeeping` |
-| `maintenance` | Materializes recurring `maintenance_rules` into `maintenance_tasks` (dedup by `recurrenceSourceId` + `recurrenceDate`) | — |
 
 ## Troubleshooting
 

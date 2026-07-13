@@ -1,15 +1,12 @@
-import { supabase, supabaseAdmin } from "@/lib/supabase";
+// db() (de @/lib/supabase): service-role no servidor (rota de campo
+// /api/field/housekeeping-tasks) — a mutação vira 1 round-trip a partir do dispositivo e
+// completa server-side mesmo se a camareira bloquear o celular logo após o toque. No
+// browser, client autenticado (RLS).
+import { supabase, db } from "@/lib/supabase";
 import { HousekeepingTask, HousekeepingRule } from "@/types/aura";
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
 import { triggerTaskPush } from "@/lib/push-trigger";
-
-// Resolve o client certo conforme o ambiente. No servidor (rota de campo
-// /api/field/housekeeping-tasks) usa service-role: a mutação vira 1 round-trip a partir do
-// dispositivo e o update + cabana + auditoria/push completam server-side, independente de a
-// camareira bloquear o celular logo após o toque. No browser, mantém o client autenticado do
-// usuário (RLS). Mesmo padrão do AuditService — por isso os métodos de escrita usam db().
-const db = () => (typeof window === 'undefined' && supabaseAdmin ? supabaseAdmin : supabase);
 
 // ─── Log helpers ─────────────────────────────────────────────────────────────
 

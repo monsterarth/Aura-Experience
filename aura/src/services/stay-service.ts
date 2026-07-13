@@ -1,14 +1,12 @@
-import { supabase, supabaseAdmin } from "@/lib/supabase";
+// db() (de @/lib/supabase): service-role no servidor (rotas de campo) — o lançamento no
+// fólio pendurava no lock frio quando rodava pelo client do browser. Escopo atual: apenas
+// addFolioItemManual (chamado pelo launchFrigobar do concierge e pela conferência) usa db().
+import { supabase, db } from "@/lib/supabase";
 import { Stay, Guest, Cabin, FolioItem, AutomationTriggerEvent, MessageTemplate } from "@/types/aura";
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
 import { AutomationService } from "./automation-service";
 import { applyTimeToDate, DEFAULT_CHECK_IN_TIME, DEFAULT_CHECK_OUT_TIME } from "@/lib/stay-times";
-
-// No servidor (rotas de campo) usa service-role — o lançamento no fólio pendurava no lock frio
-// quando rodava pelo client do browser. Escopo atual: apenas addFolioItemManual (chamado pelo
-// launchFrigobar do concierge e pela conferência de checkout) usa db().
-const db = () => (typeof window === 'undefined' && supabaseAdmin ? supabaseAdmin : supabase);
 
 export const StayService = {
   async triggerAutomation(

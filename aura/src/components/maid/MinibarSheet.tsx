@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from "react";
+import { postFieldAction } from "@/lib/field-api";
 
 // Itens exibidos no passo de frigobar (origem: itens de Concierge do grupo "Frigobar").
 type FrigobarItem = { id: string; name: string; price: number };
@@ -105,9 +106,8 @@ export function Sheet({ onClose, children }: { onClose: () => void; children: Re
 
 // ─── Finalização via rota de campo ────────────────────────────────────────────
 // Tira os writes de finalização (frigobar; chave; stays: objetos esquecidos/emprestados;
-// housekeeping_tasks: cabinChecked) do client do browser, que penduravam no lock/token frio do
-// Supabase no app de campo (spinner travado / botão sem resposta). Timeout defensivo: nunca
-// trava o fluxo. keepalive: o request sobrevive se o celular bloquear logo após o toque.
+// housekeeping_tasks: cabinChecked) do client do browser, que penduravam no lock/token frio
+// do Supabase no app de campo (spinner travado / botão sem resposta).
 export async function postCabinConference(payload: {
   stayId?: string;
   taskId?: string;
@@ -117,24 +117,7 @@ export async function postCabinConference(payload: {
   frigobar?: { cabinId?: string; cart: Record<string, number> };
   keyNotFound?: boolean;
 }): Promise<{ ok: boolean; error?: string }> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 15000);
-  try {
-    const res = await fetch("/api/field/cabin-conference", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: ctrl.signal,
-      keepalive: true,
-    });
-    if (res.ok) return { ok: true };
-    const body = await res.json().catch(() => ({} as any));
-    return { ok: false, error: typeof body?.error === "string" ? body.error : undefined };
-  } catch {
-    return { ok: false };
-  } finally {
-    clearTimeout(timer);
-  }
+  return postFieldAction("/api/field/cabin-conference", payload);
 }
 
 // ─── MinibarSheet ─────────────────────────────────────────────────────────────

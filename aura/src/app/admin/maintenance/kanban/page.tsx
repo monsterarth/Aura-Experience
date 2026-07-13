@@ -535,7 +535,6 @@ export default function MaintenanceKanbanPage() {
             <MaintenanceCompletionModal
                 isOpen={isCompletionOpen}
                 onClose={() => { setIsCompletionOpen(false); setSelectedTask(null); }}
-                propertyId={property.id}
                 task={selectedTask}
                 cabins={cabins}
                 structures={structures}

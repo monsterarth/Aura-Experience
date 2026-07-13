@@ -2,15 +2,19 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { UserRole } from "@/types/aura";
+import { ROLE_HOME } from "@/lib/role-routes";
 import { usePathname, useRouter } from "next/navigation";
 
-const ROLE_ROUTES: Partial<Record<UserRole, { path: string; label: string }>> = {
-  governance:  { path: "/governanta",  label: "Governanta" },
-  maid:        { path: "/maid",        label: "Camareira" },
-  waiter:      { path: "/waiter",      label: "Garçom" },
-  houseman:    { path: "/houseman",    label: "Houseman" },
-  maintenance: { path: "/maintenance", label: "Manutenção" },
-  technician:  { path: "/maintenance", label: "Técnico" },
+// Só os RÓTULOS são locais — o destino de cada cargo vem de ROLE_HOME (role-routes.ts,
+// a fonte única do roteamento por cargo). Antes havia um mapa de paths duplicado aqui,
+// que precisava ser editado em sincronia toda vez que um cargo mudava de casa.
+const ROLE_LABELS: Partial<Record<UserRole, string>> = {
+  governance:  "Governanta",
+  maid:        "Camareira",
+  waiter:      "Garçom",
+  houseman:    "Houseman",
+  maintenance: "Manutenção",
+  technician:  "Técnico",
 };
 
 export function RoleSwitcher() {
@@ -22,13 +26,15 @@ export function RoleSwitcher() {
 
   const allRoles: UserRole[] = [userData.role, ...(userData.secondaryRoles ?? [])];
   const areas = allRoles
-    .filter(r => r in ROLE_ROUTES)
-    .map(r => ({ role: r, ...ROLE_ROUTES[r]! }));
+    .filter(r => r in ROLE_LABELS && ROLE_HOME[r])
+    .map(r => ({ role: r, path: ROLE_HOME[r], label: ROLE_LABELS[r]! }));
 
   // Menos de 2 áreas — não há o que trocar
   if (areas.length < 2) return null;
 
-  const currentArea = areas.find(a => pathname.startsWith(a.path));
+  // Match exato ou por segmento — startsWith puro destacava "Técnico" (/maintenance)
+  // quando o usuário estava em /maintenance-ops.
+  const currentArea = areas.find(a => pathname === a.path || pathname.startsWith(a.path + "/"));
 
   return (
     <div style={{

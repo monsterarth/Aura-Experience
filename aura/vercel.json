@@ -13,6 +13,10 @@
       "schedule": "10 20 * * *"
     },
     {
+      "path": "/api/cron/maintenance",
+      "schedule": "20 20 * * *"
+    },
+    {
       "path": "/api/cron/breakfast-attendance",
       "schedule": "0 8 * * *"
     },

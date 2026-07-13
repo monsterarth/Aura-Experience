@@ -23,7 +23,7 @@ export const ROLE_HOME: Record<string, string> = {
   // Cargos operacionais mobile — caem direto no seu app de campo
   governance:  '/governanta',
   maid:        '/maid',
-  maintenance: '/maintenance',
+  maintenance: '/maintenance-ops', // coordenador → console de gestão
   technician:  '/maintenance',
   waiter:      '/waiter',
   houseman:    '/houseman',

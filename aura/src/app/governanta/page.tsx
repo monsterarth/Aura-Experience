@@ -5,13 +5,13 @@ import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { RoleSwitcher } from "@/components/auth/RoleSwitcher";
 import { MinibarSheet, postCabinConference } from "@/components/maid/MinibarSheet";
+import { postFieldAction } from "@/lib/field-api";
 import { HousekeepingTaskManagerModal } from "@/components/admin/HousekeepingTaskManagerModal";
 import { HousekeepingService } from "@/services/housekeeping-service";
 import { CabinService } from "@/services/cabin-service";
 import { StayService } from "@/services/stay-service";
 import { HousekeepingTask, Cabin, Staff, Structure, ConciergeItem } from "@/types/aura";
 import { ConciergeService } from "@/services/concierge-service";
-import { MaintenanceService } from "@/services/maintenance-service";
 import { supabase } from "@/lib/supabase";
 import { createClientBrowserAuto } from "@/lib/supabase-browser";
 import { useRouter } from "next/navigation";
@@ -293,8 +293,6 @@ function ConferSheet({
         locationName={locationName}
         task={task}
         propertyId={propertyId}
-        actorId={actorId}
-        actorName={actorName}
         onClose={() => setShowMaint(false)}
       />
     );
@@ -556,13 +554,11 @@ function GovReplenishSheet({
 // ─── Gov Maintenance Sheet ────────────────────────────────────────────────────
 
 function GovMaintenanceSheet({
-  locationName, task, propertyId, actorId, actorName, onClose,
+  locationName, task, propertyId, onClose,
 }: {
   locationName: string;
   task: HousekeepingTask;
   propertyId: string;
-  actorId: string;
-  actorName: string;
   onClose: () => void;
 }) {
   const [title, setTitle] = useState("");
@@ -578,11 +574,17 @@ function GovMaintenanceSheet({
     { value: "urgent", label: "Urgente", color: T.red },
   ];
 
+  const [error, setError] = useState<string | null>(null);
+
   const submit = async () => {
     if (!title.trim() || busy) return;
     setBusy(true);
-    try {
-      await MaintenanceService.createTask(propertyId, {
+    setError(null);
+    // Via rota de campo (service-role): createTask pelo browser pendurava no lock frio.
+    const r = await postFieldAction('/api/field/maintenance-tasks', {
+      action: 'create',
+      propertyId,
+      task: {
         title: title.trim(),
         description: description.trim() || undefined,
         priority,
@@ -593,13 +595,15 @@ function GovMaintenanceSheet({
         assignedTo: [],
         checklist: [],
         isRecurring: false,
-      } as any, actorId, actorName);
-      setSent(true);
-    } catch {
-      // mantém o formulário aberto para tentar novamente
-    } finally {
-      setBusy(false);
+      },
+    });
+    setBusy(false);
+    if (!r.ok) {
+      // mantém o formulário aberto para tentar novamente — mas AVISA que falhou
+      setError(r.error || "Não foi possível abrir o chamado. Tente novamente.");
+      return;
     }
+    setSent(true);
   };
 
   if (sent) {
@@ -694,6 +698,11 @@ function GovMaintenanceSheet({
       </div>
 
       <div style={{ padding: "12px 20px 24px", borderTop: `1px solid ${T.border}`, flexShrink: 0 }}>
+        {error && (
+          <div style={{ marginBottom: 10, padding: "10px 14px", background: T.redBg, border: `1px solid ${T.redBorder}`, borderRadius: 12, color: T.red, fontSize: 12, fontWeight: 600 }}>
+            {error}
+          </div>
+        )}
         <button
           disabled={!title.trim() || busy}
           onClick={submit}
@@ -865,14 +874,12 @@ function LocPicker({ lt, setLt, cid, setCid, sid, setSid, cust, setCust, cabins,
 // ─── New Task Sheet ────────────────────────────────────────────────────────────
 
 function NewTaskSheet({
-  cabins, structures, maids, propertyId, actorId, actorName, onClose, onCreated, showToast,
+  cabins, structures, maids, propertyId, onClose, onCreated, showToast,
 }: {
   cabins: Cabin[];
   structures: Structure[];
   maids: Staff[];
   propertyId: string;
-  actorId: string;
-  actorName: string;
   onClose: () => void;
   onCreated: () => void;
   showToast: (msg: string, color?: string) => void;
@@ -954,22 +961,25 @@ function NewTaskSheet({
     if (!canSubmitMaint || busy) return;
     setBusy(true);
     try {
-      await MaintenanceService.createTask(propertyId, {
-        title: maintTitle.trim(),
-        description: maintDesc.trim() || undefined,
-        priority: maintPriority,
-        cabinId: maintLocType === "cabin" ? maintCabinId : undefined,
-        structureId: maintLocType === "structure" ? maintStructureId : undefined,
-        customLocation: maintLocType === "custom" ? maintCustomLocation.trim() : undefined,
-        status: "pending",
-        assignedTo: [],
-        checklist: [],
-        isRecurring: false,
-      } as any, actorId, actorName);
+      const r = await postFieldAction('/api/field/maintenance-tasks', {
+        action: 'create',
+        propertyId,
+        task: {
+          title: maintTitle.trim(),
+          description: maintDesc.trim() || undefined,
+          priority: maintPriority,
+          cabinId: maintLocType === "cabin" ? maintCabinId : undefined,
+          structureId: maintLocType === "structure" ? maintStructureId : undefined,
+          customLocation: maintLocType === "custom" ? maintCustomLocation.trim() : undefined,
+          status: "pending",
+          assignedTo: [],
+          checklist: [],
+          isRecurring: false,
+        },
+      });
+      if (!r.ok) { showToast(r.error || "Erro ao abrir chamado.", T.red); return; }
       showToast("Chamado aberto!", T.green);
       onClose();
-    } catch {
-      showToast("Erro ao abrir chamado.", T.red);
     } finally {
       setBusy(false);
     }
@@ -1647,15 +1657,9 @@ export default function GovernantaPage() {
     try {
       // Via rota de campo (server-side): updateTask escrevia pelo client do browser e pendurava
       // no lock frio do app — spinner de "remover" infinito.
-      const res = await fetch('/api/field/housekeeping-tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'cancel', taskId: cancelConfirmTask.id }),
-      });
-      if (!res.ok) throw new Error('cancel_failed');
+      const r = await postFieldAction('/api/field/housekeeping-tasks', { action: 'cancel', taskId: cancelConfirmTask.id });
+      if (!r.ok) { showToast(r.error || "Erro ao cancelar.", T.red); return; }
       showToast("Tarefa cancelada.", T.muted);
-    } catch {
-      showToast("Erro ao cancelar.", T.red);
     } finally {
       setCancelConfirmTask(null);
       setCancelBusy(false);
@@ -1927,7 +1931,6 @@ export default function GovernantaPage() {
                     {/* Batch release */}
                     {conferenceTasks.length > 1 && (
                       <BatchReleaseButton count={conferenceTasks.length} tasks={conferenceTasks}
-                        propertyId={property.id} actorId={userData?.id || ""} actorName={userData?.fullName || "Governanta"}
                         showToast={showToast}
                       />
                     )}
@@ -2275,8 +2278,6 @@ export default function GovernantaPage() {
             structures={allStructures}
             maids={maids}
             propertyId={property.id}
-            actorId={userData?.id || ""}
-            actorName={userData?.fullName || "Governanta"}
             onClose={() => setShowNewTask(false)}
             onCreated={() => {}}
             showToast={showToast}
@@ -2364,13 +2365,10 @@ function Section({ title, color, count, children }: { title: string; color: stri
 // ─── Batch Release Button ─────────────────────────────────────────────────────
 
 function BatchReleaseButton({
-  count, tasks, propertyId, actorId, actorName, showToast,
+  count, tasks, showToast,
 }: {
   count: number;
   tasks: HousekeepingTask[];
-  propertyId: string;
-  actorId: string;
-  actorName: string;
   showToast: (msg: string, color?: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -2379,18 +2377,11 @@ function BatchReleaseButton({
     if (!confirm(`Liberar todas as ${count} cabanas de uma vez?`)) return;
     setBusy(true);
     try {
-      await Promise.all(
-        tasks.map(t =>
-          fetch('/api/field/housekeeping-tasks', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'confirm', taskId: t.id, observations: "Liberado em lote" }),
-          }).then(r => { if (!r.ok) throw new Error('batch_failed'); })
-        )
+      const results = await Promise.all(
+        tasks.map(t => postFieldAction('/api/field/housekeeping-tasks', { action: 'confirm', taskId: t.id, observations: "Liberado em lote" }))
       );
+      if (results.some(r => !r.ok)) { showToast("Erro ao liberar em lote.", T.red); return; }
       showToast(`${count} cabana${count > 1 ? "s" : ""} liberada${count > 1 ? "s" : ""}!`, T.green);
-    } catch {
-      showToast("Erro ao liberar em lote.", T.red);
     } finally {
       setBusy(false);
     }

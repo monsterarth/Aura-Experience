@@ -119,23 +119,32 @@ export async function updateSession(request: NextRequest) {
             '/governanta': ['governance'],
             '/waiter': ['waiter'],
             '/houseman': ['houseman'],
+            '/maintenance-ops': ['maintenance'], // console do coordenador
             '/maintenance': ['maintenance', 'technician'],
         };
 
         const ADMIN_BYPASS = ['super_admin', 'admin', 'manager'];
 
-        for (const [route, allowed] of Object.entries(roleForRoute)) {
-            if (pathname.startsWith(route)) {
-                const hasAccess = role && (
-                    ADMIN_BYPASS.includes(role) ||
-                    allowed.includes(role) ||
-                    secondaryRoles.some(r => allowed.includes(r))
-                );
-                if (!hasAccess) {
-                    const url = request.nextUrl.clone();
-                    url.pathname = '/admin/login';
-                    return NextResponse.redirect(url);
-                }
+        // Match por SEGMENTO (não startsWith cru — '/maintenance-ops' não é '/maintenance')
+        // e vence só o prefixo mais longo: a ordem das chaves do mapa é irrelevante.
+        let allowed: string[] | null = null;
+        let allowedLen = -1;
+        for (const [route, roles] of Object.entries(roleForRoute)) {
+            const hit = pathname === route || pathname.startsWith(route + '/');
+            if (hit && route.length > allowedLen) { allowed = roles; allowedLen = route.length; }
+        }
+
+        if (allowed) {
+            const routeRoles = allowed;
+            const hasAccess = role && (
+                ADMIN_BYPASS.includes(role) ||
+                routeRoles.includes(role) ||
+                secondaryRoles.some(r => routeRoles.includes(r))
+            );
+            if (!hasAccess) {
+                const url = request.nextUrl.clone();
+                url.pathname = '/admin/login';
+                return NextResponse.redirect(url);
             }
         }
     }

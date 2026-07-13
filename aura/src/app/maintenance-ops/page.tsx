@@ -8,6 +8,7 @@ import { CabinService } from "@/services/cabin-service";
 import { StaffService } from "@/services/staff-service";
 import { StructureService } from "@/services/structure-service";
 import { MaintenanceTask, Cabin, Staff, Structure } from "@/types/aura";
+import { postFieldAction } from "@/lib/field-api";
 import { v4 as uuidv4 } from "uuid";
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────
@@ -239,9 +240,9 @@ function LocPicker({ lt, setLt, cid, setCid, sid, setSid, cust, setCust, cabins,
 
 // ─── New Task Sheet ───────────────────────────────────────────────────────────
 
-function NewTaskSheet({ cabins, structures, technicians, propertyId, actorId, actorName, onClose, showToast }: {
+function NewTaskSheet({ cabins, structures, technicians, propertyId, onClose, showToast }: {
   cabins: Cabin[]; structures: Structure[]; technicians: Staff[];
-  propertyId: string; actorId: string; actorName: string;
+  propertyId: string;
   onClose: () => void;
   showToast: (msg: string, color?: string) => void;
 }) {
@@ -283,22 +284,25 @@ function NewTaskSheet({ cabins, structures, technicians, propertyId, actorId, ac
     if (!canSubmit || busy) return;
     setBusy(true);
     try {
-      await MaintenanceService.createTask(propertyId, {
-        title: title.trim(),
-        description: description.trim() || undefined,
-        priority,
-        cabinId: locType === "cabin" ? cabinId : undefined,
-        structureId: locType === "structure" ? structureId : undefined,
-        customLocation: locType === "custom" ? customLocation.trim() : undefined,
-        status: "pending",
-        assignedTo: assignedIds,
-        checklist,
-        isRecurring: false,
-      } as any, actorId, actorName);
+      const r = await postFieldAction('/api/field/maintenance-tasks', {
+        action: 'create',
+        propertyId,
+        task: {
+          title: title.trim(),
+          description: description.trim() || undefined,
+          priority,
+          cabinId: locType === "cabin" ? cabinId : undefined,
+          structureId: locType === "structure" ? structureId : undefined,
+          customLocation: locType === "custom" ? customLocation.trim() : undefined,
+          status: "pending",
+          assignedTo: assignedIds,
+          checklist,
+          isRecurring: false,
+        },
+      });
+      if (!r.ok) { showToast(r.error || "Erro ao criar tarefa.", T.red); return; }
       showToast("Tarefa criada!", T.green);
       onClose();
-    } catch {
-      showToast("Erro ao criar tarefa.", T.red);
     } finally {
       setBusy(false);
     }
@@ -797,11 +801,11 @@ export default function ManutencaoPage() {
     if (!property) return;
     setConferBusy(true);
     try {
-      await MaintenanceService.confirmTaskQuality(property.id, task.id, notes || "Aprovado", userData?.id || "", userData?.fullName || "Coordenador");
+      // notes cru — o default ("Aprovado") é responsabilidade da rota, uma fonte só.
+      const r = await postFieldAction('/api/field/maintenance-tasks', { action: 'confirm', taskId: task.id, notes });
+      if (!r.ok) { showToast(r.error || "Erro ao aprovar.", T.red); return; }
       showToast("OS aprovada!", T.green);
       setConferTask(null);
-    } catch {
-      showToast("Erro ao aprovar.", T.red);
     } finally {
       setConferBusy(false);
     }
@@ -811,11 +815,10 @@ export default function ManutencaoPage() {
     if (!property) return;
     setConferBusy(true);
     try {
-      await MaintenanceService.rollbackTaskStatus(property.id, task.id, "Reprovado na conferência", userData?.id || "", userData?.fullName || "Coordenador");
+      const r = await postFieldAction('/api/field/maintenance-tasks', { action: 'reject', taskId: task.id });
+      if (!r.ok) { showToast(r.error || "Erro ao reprovar.", T.red); return; }
       showToast("Enviada para retrabalho.", T.amber);
       setConferTask(null);
-    } catch {
-      showToast("Erro ao reprovar.", T.red);
     } finally {
       setConferBusy(false);
     }
@@ -825,11 +828,10 @@ export default function ManutencaoPage() {
     if (!property) return;
     setAssignBusy(true);
     try {
-      await MaintenanceService.assignTask(property.id, task.id, techIds, userData?.id || "", userData?.fullName || "Coordenador");
+      const r = await postFieldAction('/api/field/maintenance-tasks', { action: 'assign', taskId: task.id, techIds });
+      if (!r.ok) { showToast(r.error || "Erro ao atribuir.", T.red); return; }
       showToast("Técnico atribuído!", T.green);
       setAssignTask(null);
-    } catch {
-      showToast("Erro ao atribuir.", T.red);
     } finally {
       setAssignBusy(false);
     }
@@ -1100,7 +1102,7 @@ export default function ManutencaoPage() {
         {showNewTask && (
           <NewTaskSheet
             cabins={allCabins} structures={allStructures} technicians={technicians}
-            propertyId={property.id} actorId={userData?.id || ""} actorName={userData?.fullName || "Coordenador"}
+            propertyId={property.id}
             onClose={() => setShowNewTask(false)} showToast={showToast}
           />
         )}
