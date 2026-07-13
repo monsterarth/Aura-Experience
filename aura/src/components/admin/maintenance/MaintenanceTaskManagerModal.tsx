@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, Save, Plus, Trash2, CalendarClock, Hammer } from "lucide-react";
+import { X, Save, Plus, Trash2, Hammer } from "lucide-react";
 import { MaintenanceTask, Cabin, Structure, MaintenanceChecklistItem } from "@/types/aura";
 import { MaintenanceService } from "@/services/maintenance-service";
 import { useAuth } from "@/context/AuthContext";
@@ -335,32 +335,9 @@ export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task,
                         </div>
 
                         {/* RECORRÊNCIA */}
-                        <div className="p-4 bg-indigo-500/5 border border-indigo-500/20 rounded-2xl flex items-center gap-4">
-                            <div className="h-10 w-10 bg-indigo-500/10 text-indigo-500 rounded-xl flex items-center justify-center shrink-0">
-                                <CalendarClock size={20} />
-                            </div>
-                            <div className="flex-1 text-sm">
-                                <h4 className="font-bold text-foreground">Tarefa Recorrente?</h4>
-                                <p className="text-muted-foreground text-[10px]">O sistema criará automaticamente amanhã ou na próxima semana.</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <label className="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" className="sr-only peer" checked={formData.isRecurring} onChange={e => setFormData({ ...formData, isRecurring: e.target.checked })} />
-                                    <div className="w-11 h-6 bg-secondary border border-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500"></div>
-                                </label>
-                                {formData.isRecurring && (
-                                    <select
-                                        value={formData.recurrenceRule}
-                                        onChange={e => setFormData({ ...formData, recurrenceRule: e.target.value })}
-                                        className="bg-background border border-border p-2 rounded-lg text-xs outline-none focus:border-indigo-500"
-                                    >
-                                        <option value="daily">Diária</option>
-                                        <option value="weekly">Semanal</option>
-                                        <option value="monthly">Mensal</option>
-                                    </select>
-                                )}
-                            </div>
-                        </div>
+                        {/* Preventivas/recorrentes agora vivem SÓ nas Regras de Manutenção
+                            (botão "Regras" do kanban) — o checkbox "Tarefa Recorrente" foi
+                            aposentado junto com o mecanismo isRecurring do cron. */}
 
                     </form>
                 </div>

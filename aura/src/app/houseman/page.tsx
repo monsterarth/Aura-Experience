@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
 import { ScrapWall } from "@/components/admin/profile/ScrapWall";
+import { MaintenanceReportButton } from "@/components/field/MaintenanceReportSheet";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -780,6 +781,8 @@ function ProfileScreen({ userData, onLogout }: { userData: any; onLogout: () => 
           <ScrapWall profileStaffId={userData.id} isOwnProfile={true} propertyId={userData.propertyId} allowRecipientPicker={true} profileBasePath="/equipe" />
         </div>
       )}
+
+      <MaintenanceReportButton />
 
       <button onClick={onLogout} style={{ width: "100%", padding: 15, background: "rgba(248,113,113,0.08)", color: T.red, fontFamily: "inherit", fontSize: 14, fontWeight: 700, letterSpacing: "0.02em", textTransform: "uppercase" as const, border: `1px solid rgba(248,113,113,0.2)`, borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
         <I n="logout" s={18} c={T.red} /> Sair do aplicativo

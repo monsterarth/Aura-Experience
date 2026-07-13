@@ -14,6 +14,7 @@ import { HousekeepingTask, Cabin, ConciergeItem, ConciergeRequest, Staff, Struct
 import { getTaskLabel } from "@/lib/task-ui";
 import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
 import { ScrapWall } from "@/components/admin/profile/ScrapWall";
+import { MaintenanceReportButton } from "@/components/field/MaintenanceReportSheet";
 
 type EnrichedTask = HousekeepingTask & { cabinName?: string };
 import { useRouter } from "next/navigation";
@@ -1339,6 +1340,8 @@ function ProfileScreen({
           <ScrapWall profileStaffId={userData.id} isOwnProfile={true} propertyId={userData.propertyId} allowRecipientPicker={true} profileBasePath="/equipe" />
         </div>
       )}
+
+      <MaintenanceReportButton />
 
       <button onClick={onLogout} style={{ width: "100%", padding: 15, background: T.glass2, color: T.red, fontFamily: "inherit", fontSize: 14, fontWeight: 700, letterSpacing: "0.02em", textTransform: "uppercase" as const, border: `1px solid ${T.redBg}`, borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
         <I n="logout" s={18} c={T.red} /> Sair do aplicativo

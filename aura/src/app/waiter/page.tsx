@@ -18,6 +18,7 @@ import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
 import { ScrapWall } from "@/components/admin/profile/ScrapWall";
+import { MaintenanceReportButton } from "@/components/field/MaintenanceReportSheet";
 import {
   Users, UtensilsCrossed, ChefHat, Search, Plus, X,
   LogIn, ArrowRight, LogOut, Coffee, Check, Loader2,
@@ -437,6 +438,8 @@ function WaiterProfileTab({ userData, onLogout }: { userData: any; onLogout: () 
       {userData?.id && userData?.propertyId && (
         <ScrapWall profileStaffId={userData.id} isOwnProfile={true} propertyId={userData.propertyId} allowRecipientPicker={true} profileBasePath="/equipe" />
       )}
+
+      <MaintenanceReportButton />
 
       <button onClick={onLogout}
         className="w-full py-4 bg-red-500/10 text-red-400 text-sm font-black uppercase tracking-widest border border-red-500/20 rounded-2xl flex items-center justify-center gap-2">

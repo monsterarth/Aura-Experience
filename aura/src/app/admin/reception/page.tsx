@@ -18,6 +18,7 @@ import { HousekeepingService } from "@/services/housekeeping-service";
 import { ConciergeService } from "@/services/concierge-service";
 import { fbService } from "@/services/fb-service";
 import { HousekeepingTask, ConciergeRequest, FBOrder, StructureBooking, Structure, Cabin } from "@/types/aura";
+import { MaintenanceReportButton } from "@/components/field/MaintenanceReportSheet";
 import { toast } from "sonner";
 
 export default function ReceptionDashboard() {
@@ -268,15 +269,18 @@ export default function ReceptionDashboard() {
                     </p>
                 </div>
 
-                <div className="flex items-center gap-4 bg-muted border border-border px-4 py-2 rounded-2xl">
-                    <Clock className="w-5 h-5 text-primary" />
-                    <div className="text-right">
-                        <p className="font-bold text-lg leading-none">
-                            {currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-widest">
-                            {currentTime.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'long' })}
-                        </p>
+                <div className="flex items-center gap-3">
+                    <MaintenanceReportButton variant="admin" />
+                    <div className="flex items-center gap-4 bg-muted border border-border px-4 py-2 rounded-2xl">
+                        <Clock className="w-5 h-5 text-primary" />
+                        <div className="text-right">
+                            <p className="font-bold text-lg leading-none">
+                                {currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground uppercase tracking-widest">
+                                {currentTime.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'long' })}
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>

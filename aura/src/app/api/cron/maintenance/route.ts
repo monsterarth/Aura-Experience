@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { MaintenanceTask, MaintenanceRule } from '@/types/aura';
+import { MaintenanceRule } from '@/types/aura';
 import { v4 as uuidv4 } from 'uuid';
 
 function getNextTriggerDate(rule: MaintenanceRule): Date {
@@ -115,91 +115,11 @@ export async function GET(request: Request) {
           return NextResponse.json({ success: true, newTasks: 0 });
         }
 
+        // Preventivas vivem SÓ em maintenance_rules (tela de regras no kanban admin).
+        // O mecanismo antigo de tarefas-pai isRecurring foi aposentado em jul/2026 (zero
+        // registros em produção) para não haver duas fontes gerando a mesma preventiva.
         for (const prop of properties) {
-            const propertyId = prop.id;
-
-            // Apply rules-based recurring tasks
-            const rulesCreated = await applyMaintenanceRules(propertyId);
-            tasksCreated += rulesCreated;
-
-            const { data: activeTasks } = await supabaseAdmin
-                .from('maintenance_tasks')
-                .select('*')
-                .eq('propertyId', propertyId)
-                .eq('isRecurring', true);
-
-            if (!activeTasks) continue;
-
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-
-            for (const t of activeTasks) {
-                const parentTask = t as any as MaintenanceTask;
-
-                if (parentTask.lastRecurrenceCreated) {
-                    const lastCreated = new Date(parentTask.lastRecurrenceCreated);
-                    lastCreated.setHours(0, 0, 0, 0);
-                    if (lastCreated.getTime() === today.getTime()) {
-                        continue;
-                    }
-                }
-
-                let shouldCreate = false;
-
-                if (parentTask.recurrenceRule === 'daily') {
-                    shouldCreate = true;
-                } else if (parentTask.recurrenceRule === 'weekly') {
-                    const parentDayOfWeek = new Date(parentTask.createdAt).getDay();
-                    if (today.getDay() === parentDayOfWeek) {
-                        shouldCreate = true;
-                    }
-                } else if (parentTask.recurrenceRule === 'monthly') {
-                    const parentDate = new Date(parentTask.createdAt).getDate();
-                    if (today.getDate() === parentDate) {
-                        shouldCreate = true;
-                    }
-                }
-
-                if (shouldCreate) {
-                    const todayDate = today.toISOString().split('T')[0];
-
-                    // Guard against double-trigger: check if a clone was already created today.
-                    // limit(1)+array — maybeSingle() com 2+ clones devolvia null e furava o guard.
-                    const { data: existingClones } = await supabaseAdmin
-                        .from('maintenance_tasks')
-                        .select('id')
-                        .eq('recurrenceSourceId', parentTask.id)
-                        .eq('recurrenceDate', todayDate)
-                        .limit(1);
-
-                    if (existingClones && existingClones.length > 0) continue;
-
-                    const newTaskId = uuidv4();
-                    const isoToday = new Date().toISOString();
-                    const clone = {
-                        ...parentTask,
-                        id: newTaskId,
-                        status: 'pending',
-                        createdAt: isoToday,
-                        updatedAt: isoToday,
-                        startedAt: null,
-                        finishedAt: null,
-                        completion: null,
-                        isRecurring: false,
-                        recurrenceSourceId: parentTask.id,
-                        recurrenceDate: todayDate,
-                        title: `${parentTask.title} (Gerada ${today.toLocaleDateString('pt-BR')})`
-                    };
-
-                    await supabaseAdmin.from('maintenance_tasks').insert(clone as any);
-
-                    await supabaseAdmin.from('maintenance_tasks').update({
-                        lastRecurrenceCreated: isoToday
-                    }).eq('id', parentTask.id);
-
-                    tasksCreated++;
-                }
-            }
+            tasksCreated += await applyMaintenanceRules(prop.id);
         }
 
         const finishedAt = new Date().toISOString();

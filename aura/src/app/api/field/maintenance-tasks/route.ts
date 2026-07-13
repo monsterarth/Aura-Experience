@@ -41,14 +41,15 @@ export async function GET(req: Request) {
 type TaskAction = 'create' | 'assign' | 'start' | 'finish' | 'confirm' | 'reject' | 'update' | 'delete';
 
 // Autorização POR AÇÃO (service-role ignora RLS — a hierarquia precisa viver aqui):
-// técnico executa (criar/iniciar/finalizar/checklist); coordenação (maintenance) e a
-// governanta (que acumula a gerência de manutenção) também atribuem, conferem e apagam.
-// Admin-tier (super_admin/admin/manager) sempre passa. requireAuth/hasRole já aceitam
-// cargo primário OU secundário.
+// qualquer colaborador REPORTA (create); técnico executa (iniciar/finalizar/checklist);
+// coordenação (maintenance) e a governanta (que acumula a gerência de manutenção) também
+// atribuem, conferem e apagam. Admin-tier (super_admin/admin/manager) sempre passa.
+// requireAuth/hasRole já aceitam cargo primário OU secundário.
+const REPORTER_ROLES: UserRole[] = ['maintenance', 'technician', 'governance', 'maid', 'waiter', 'houseman', 'reception'];
 const FIELD_ROLES: UserRole[] = ['maintenance', 'technician', 'governance'];
 const COORD_ROLES: UserRole[] = ['maintenance', 'governance'];
 const ACTION_ROLES: Record<TaskAction, UserRole[]> = {
-  create:  FIELD_ROLES,
+  create:  REPORTER_ROLES,
   start:   FIELD_ROLES,
   finish:  FIELD_ROLES,
   update:  FIELD_ROLES, // hoje = só checklist (ver allowlist abaixo)
@@ -59,7 +60,7 @@ const ACTION_ROLES: Record<TaskAction, UserRole[]> = {
 };
 
 export async function POST(req: Request) {
-  const auth = await requireAuth(['maintenance', 'technician', 'governance', 'super_admin', 'admin', 'manager']);
+  const auth = await requireAuth([...REPORTER_ROLES, 'super_admin', 'admin', 'manager']);
   if (isAuthError(auth)) return auth;
 
   let body: {
