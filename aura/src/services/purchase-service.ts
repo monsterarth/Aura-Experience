@@ -57,7 +57,9 @@ export const PurchaseService = {
   async upsertPurchase(propertyId: string, payload: Partial<Purchase>, items: Partial<PurchaseItem>[], actor: Actor): Promise<string> {
     const isNew = !payload.id;
     const id = payload.id ?? crypto.randomUUID();
-    const totalValue = round2(items.reduce((s, i) => s + Number(i.quantity ?? 0) * Number(i.unitCost ?? 0), 0));
+    const subtotal = round2(items.reduce((s, i) => s + Number(i.quantity ?? 0) * Number(i.unitCost ?? 0), 0));
+    const discountValue = Math.min(round2(Math.max(0, Number(payload.discountValue ?? 0))), subtotal);
+    const totalValue = round2(subtotal - discountValue);
 
     const row = {
       id, propertyId,
@@ -70,6 +72,7 @@ export const PurchaseService = {
       orderDate: payload.orderDate ?? null,
       receivedDate: payload.receivedDate ?? null,
       totalValue,
+      discountValue,
       notes: payload.notes ?? null,
       updatedAt: now(),
       ...(isNew && { createdAt: now() }),

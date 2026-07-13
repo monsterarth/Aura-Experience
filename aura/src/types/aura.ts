@@ -1535,7 +1535,8 @@ export interface Purchase {
   isEmergency: boolean;
   orderDate?: string | null;      // YYYY-MM-DD
   receivedDate?: string | null;
-  totalValue: number;
+  totalValue: number;             // líquido (soma dos itens − desconto)
+  discountValue?: number;         // desconto da nota (R$)
   notes?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;

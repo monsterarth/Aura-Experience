@@ -24,11 +24,11 @@ const emptyItem: ItemRow = { productId: "", quantity: "", unitCost: "", expiryDa
 interface RecvRow { itemId: string; name: string; unit: string; trackExpiry: boolean; quantity: number; expiryDate: string; batchCode: string; }
 interface PForm {
   id?: string; status: PurchaseStatus; supplierId: string; locationId: string;
-  invoiceNumber: string; invoiceUrl: string; orderDate: string; isEmergency: boolean; notes: string; items: ItemRow[];
+  invoiceNumber: string; invoiceUrl: string; orderDate: string; isEmergency: boolean; discountValue: string; notes: string; items: ItemRow[];
 }
 const emptyForm: PForm = {
   status: "draft", supplierId: "", locationId: "", invoiceNumber: "", invoiceUrl: "", orderDate: "",
-  isEmergency: false, notes: "", items: [{ ...emptyItem }],
+  isEmergency: false, discountValue: "", notes: "", items: [{ ...emptyItem }],
 };
 
 export default function ComprasPage() {
@@ -75,14 +75,17 @@ export default function ComprasPage() {
   const openNew = () => setForm({ ...emptyForm, items: [{ ...emptyItem }] });
   const openEdit = (p: Purchase) => setForm({
     id: p.id, status: p.status, supplierId: p.supplierId ?? "", locationId: p.locationId ?? "",
-    invoiceNumber: p.invoiceNumber ?? "", invoiceUrl: p.invoiceUrl ?? "", orderDate: p.orderDate ?? "", isEmergency: p.isEmergency, notes: p.notes ?? "",
+    invoiceNumber: p.invoiceNumber ?? "", invoiceUrl: p.invoiceUrl ?? "", orderDate: p.orderDate ?? "", isEmergency: p.isEmergency,
+    discountValue: Number(p.discountValue ?? 0) > 0 ? String(p.discountValue) : "", notes: p.notes ?? "",
     items: (p.items ?? []).map((i) => ({ productId: i.productId, quantity: String(i.quantity), unitCost: String(i.unitCost), expiryDate: i.expiryDate ?? "", batchCode: i.batchCode ?? "" })),
   });
 
-  const grandTotal = useMemo(() => {
+  const subtotal = useMemo(() => {
     if (!form) return 0;
     return form.items.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unitCost || 0), 0);
   }, [form]);
+  const formDiscount = Math.min(Math.max(0, Number(form?.discountValue || 0)), subtotal);
+  const grandTotal = subtotal - formDiscount;
 
   const setItem = (idx: number, patch: Partial<ItemRow>) =>
     setForm((f) => f ? { ...f, items: f.items.map((it, i) => i === idx ? { ...it, ...patch } : it) } : f);
@@ -101,7 +104,8 @@ export default function ComprasPage() {
         propertyId: property.id, id: form.id, status: form.status,
         supplierId: form.supplierId || null, locationId: form.locationId || null,
         invoiceNumber: form.invoiceNumber || undefined, invoiceUrl: form.invoiceUrl || undefined,
-        orderDate: form.orderDate || null, isEmergency: form.isEmergency, notes: form.notes || undefined, items,
+        orderDate: form.orderDate || null, isEmergency: form.isEmergency,
+        discountValue: Number(form.discountValue || 0), notes: form.notes || undefined, items,
       });
       setForm(null); await load(); toast.success("Compra salva.");
     } catch (e) { toast.error((e as Error).message); } finally { setSaving(false); }
@@ -249,10 +253,7 @@ export default function ComprasPage() {
 
               {/* Itens */}
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="field-label mb-0">Itens</label>
-                  <button onClick={addItem} className="flex items-center gap-1 text-xs font-bold text-primary hover:underline"><Plus size={13} /> Adicionar item</button>
-                </div>
+                <label className="field-label">Itens</label>
                 <div className="space-y-2">
                   {form.items.map((it, idx) => (
                     <div key={idx} className="grid grid-cols-[1fr_80px_100px_28px] gap-2 items-center">
@@ -265,9 +266,25 @@ export default function ComprasPage() {
                       <button onClick={() => removeItem(idx)} className="p-1 text-muted-foreground hover:text-destructive"><Trash size={14} /></button>
                     </div>
                   ))}
+                  <button onClick={addItem} className="w-full flex items-center justify-center gap-1 py-2 text-xs font-bold text-primary border border-dashed border-border rounded-xl hover:bg-secondary/40">
+                    <Plus size={13} /> Adicionar item
+                  </button>
                   <p className="text-[10px] text-muted-foreground pl-1">A validade dos itens perecíveis é informada no <b>recebimento</b>.</p>
                 </div>
-                <div className="text-right mt-2 text-sm font-bold text-foreground">Total: R$ {grandTotal.toFixed(2)}</div>
+                <div className="mt-3 space-y-1.5 border-t border-border pt-3">
+                  <div className="flex justify-between items-center text-sm text-muted-foreground">
+                    <span>Subtotal</span>
+                    <span className="tabular-nums">R$ {subtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center gap-2 text-sm text-muted-foreground">
+                    <span>Desconto (R$)</span>
+                    <input type="number" min="0" step="0.01" className="field-input w-28 py-1 text-right" placeholder="0,00" value={form.discountValue} onChange={(e) => setForm({ ...form, discountValue: e.target.value })} />
+                  </div>
+                  <div className="flex justify-between items-center text-sm font-bold text-foreground">
+                    <span>Total</span>
+                    <span className="tabular-nums">R$ {grandTotal.toFixed(2)}</span>
+                  </div>
+                </div>
               </div>
 
               <div><label className="field-label">Observações</label>
@@ -373,9 +390,23 @@ export default function ComprasPage() {
                 </tbody>
               </table>
 
-              <div className="flex justify-between items-center border-t border-border pt-3">
-                <span className="text-sm font-bold text-foreground">Total</span>
-                <span className="text-lg font-bold tabular-nums text-foreground">R$ {Number(nota.totalValue).toFixed(2)}</span>
+              <div className="border-t border-border pt-3 space-y-1">
+                {Number(nota.discountValue ?? 0) > 0 && (
+                  <>
+                    <div className="flex justify-between items-center text-sm text-muted-foreground">
+                      <span>Subtotal</span>
+                      <span className="tabular-nums">R$ {(Number(nota.totalValue) + Number(nota.discountValue)).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm text-emerald-500">
+                      <span>Desconto</span>
+                      <span className="tabular-nums">− R$ {Number(nota.discountValue).toFixed(2)}</span>
+                    </div>
+                  </>
+                )}
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-bold text-foreground">Total</span>
+                  <span className="text-lg font-bold tabular-nums text-foreground">R$ {Number(nota.totalValue).toFixed(2)}</span>
+                </div>
               </div>
 
               {nota.notes && <p className="text-xs text-muted-foreground border-l-2 border-border pl-2">{nota.notes}</p>}
