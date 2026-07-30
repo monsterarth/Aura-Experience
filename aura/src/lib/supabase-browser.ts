@@ -64,9 +64,24 @@ function fetchNoStoreWithTimeout(...args: Parameters<typeof fetch>): ReturnType<
     const input = args[0];
     const options = args[1] || {};
     options.cache = 'no-store';
-    if (options.signal) return fetch(input, options);
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15000);
+
+    // Um signal do chamador NÃO dispensa o teto — ele se soma a ele. Antes havia um
+    // `if (options.signal) return fetch(...)` que devolvia a request SEM timeout nenhum:
+    // bastava um chamador passar o próprio signal (ex.: .abortSignal() do postgrest) para
+    // reabrir o buraco do pendura-pra-sempre que este wrapper existe para fechar.
+    const callerSignal = options.signal;
+    if (callerSignal) {
+        if (callerSignal.aborted) controller.abort((callerSignal as any).reason);
+        else callerSignal.addEventListener(
+            'abort',
+            () => controller.abort((callerSignal as any).reason),
+            { once: true },
+        );
+    }
+
     options.signal = controller.signal;
     return fetch(input, options).finally(() => clearTimeout(timer));
 }

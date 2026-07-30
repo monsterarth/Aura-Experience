@@ -1,7 +1,7 @@
 // src/app/admin/stays/new/page.tsx
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, useRef, Suspense } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { GuestService } from "@/services/guest-service";
@@ -10,7 +10,7 @@ import { CabinService } from "@/services/cabin-service";
 import { ContactService } from "@/services/contact-service"; // NOVO: Para já inserir na agenda
 import { chatwootSyncOnStayCreated } from "@/app/actions/chatwoot-actions";
 import { validateCPF } from "@/lib/utils-checkin";
-import { Cabin } from "@/types/aura";
+import { Cabin, Guest } from "@/types/aura";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import {
   UserSearch,
@@ -46,6 +46,30 @@ interface CabinSelection {
   babies: number;
 }
 
+/**
+ * Busca o hóspede pelo documento via rota de servidor (service-role).
+ *
+ * Antes chamava GuestService.findByDocument direto do browser: essa query passa pelo lock de
+ * auth do client e, quando o lock está frio, a promise nunca resolve — o spinner do campo de
+ * CPF girava pra sempre. O AbortController de 10s é a segunda trava: mesmo que a rota demore,
+ * a promise sempre termina e o spinner sempre para.
+ */
+async function lookupGuestByDoc(propertyId: string, doc: string): Promise<Guest | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await fetch(
+      `/api/admin/guests/lookup?propertyId=${encodeURIComponent(propertyId)}&doc=${encodeURIComponent(doc)}`,
+      { signal: controller.signal }
+    );
+    if (!res.ok) throw new Error(`Falha na consulta do documento (${res.status})`);
+    const json = await res.json();
+    return (json?.guest ?? null) as Guest | null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function NewStayPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -60,6 +84,7 @@ function NewStayPageContent() {
 
   const [loading, setLoading] = useState(false);
   const [searchingGuest, setSearchingGuest] = useState(false);
+  const searchInFlight = useRef(false);
   const [availableCabins, setAvailableCabins] = useState<Cabin[]>([]);
 
   const [docType, setDocType] = useState("CPF");
@@ -109,28 +134,37 @@ function NewStayPageContent() {
 
     // Pre-fill guest from guestId query param (comes from /admin/guests)
     if (prefilledGuestId) {
-      GuestService.findByDocument(contextProperty.id, prefilledGuestId).then(guest => {
+      lookupGuestByDoc(contextProperty.id, prefilledGuestId).then(guest => {
         if (guest) {
           setDocNumber(guest.id);
           setGuestData({ fullName: guest.fullName, email: guest.email || "", phone: guest.phone ? guest.phone.replace(/\D/g, '') : "", preferredLanguage: (guest.preferredLanguage as "pt" | "en" | "es") || "pt" });
         }
-      });
+      }).catch(() => { /* pré-preenchimento é best-effort; usuário digita os dados */ });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contextProperty?.id]);
 
   const handleSearchGuest = async () => {
     if (!docNumber || !contextProperty?.id) return;
+    // onBlur do campo + clique na lupa disparam a busca em sequência; o state ainda não
+    // atualizou no segundo disparo, então o guard tem que ser por ref.
+    if (searchInFlight.current) return;
+    searchInFlight.current = true;
     setSearchingGuest(true);
     try {
-      const guest = await GuestService.findByDocument(contextProperty.id, docNumber);
+      const guest = await lookupGuestByDoc(contextProperty.id, docNumber);
       if (guest) {
         setGuestData({ fullName: guest.fullName, email: guest.email || "", phone: guest.phone ? guest.phone.replace(/\D/g, '') : "", preferredLanguage: (guest.preferredLanguage as "pt" | "en" | "es") || "pt" });
         toast.info("Hóspede encontrado!");
       } else {
         toast.info("Hóspede novo. Preencha os dados.");
       }
-    } finally { setSearchingGuest(false); }
+    } catch {
+      toast.error("Não foi possível consultar o documento. Preencha os dados manualmente.");
+    } finally {
+      searchInFlight.current = false;
+      setSearchingGuest(false);
+    }
   };
 
   const toggleCabin = (cabin: Cabin) => {

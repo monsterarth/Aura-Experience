@@ -1,5 +1,6 @@
 // src/lib/field-api.ts
-// POST padrão dos apps de campo para as rotas /api/field/*.
+// POST padrão do browser para rotas de escrita server-side (/api/field/*, e escritas de admin
+// que não podem passar pelo client do browser).
 //
 // - keepalive: o request sobrevive se o celular bloquear logo após o toque — o motivo nº 1
 //   de essas rotas existirem (lock frio do client de browser). Mesma proteção do postAction

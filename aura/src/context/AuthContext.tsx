@@ -218,12 +218,37 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }, 1500);
 
     /**
+     * Busca o staff FORA do callback de onAuthStateChange.
+     *
+     * O auth-js dá `await` no nosso callback DENTRO do lock de auth (_notifyAllSubscribers).
+     * Se o callback consultar o Supabase, a query chama getSession() → _acquireLock vê
+     * lockAcquired=true e enfileira em pendingInLock atrás da própria operação que está
+     * esperando o callback terminar: espera circular. O lock nunca é liberado e, a partir
+     * daí, TODA query do client naquela aba pendura pra sempre — é o lock frio. Era isso que
+     * deixava o spinner do CPF girando sem parar.
+     *
+     * setTimeout(0) devolve o callback imediatamente e roda a busca no tick seguinte, já com
+     * o lock liberado. Regra a manter: nada de await de Supabase dentro deste callback.
+     */
+    const scheduleStaffFetch = (userId: string) => {
+      setTimeout(async () => {
+        const staff = await fetchStaffData(userId);
+        if (!mounted) return;
+        // Só sobrescreve com dado bom: falha transitória não pode apagar o staff do cache.
+        if (staff) setUserData(staff);
+        setUserDataReady(true);
+      }, 0);
+    };
+
+    /**
      * onAuthStateChange: fonte de verdade para eventos contínuos.
      * O fast-path acima cuida da sessão inicial; este listener cuida
      * de SIGNED_OUT, TOKEN_REFRESHED, SIGNED_IN e atualizações.
+     *
+     * NÃO tornar async: ver a nota de scheduleStaffFetch acima.
      */
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (event: AuthChangeEvent, session: Session | null) => {
+      (event: AuthChangeEvent, session: Session | null) => {
         if (!mounted) return;
 
         const currentUser = session?.user || null;
@@ -235,12 +260,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           if (currentUser) {
             setUser(currentUser);
             // Só busca staff se o fast-path ainda não resolveu
-            if (!userDataRef.current) {
-              // Timeout de 4s: se o DB travar, o finally do INITIAL_SESSION ainda chama setLoading(false)
-              const staffTimeout = new Promise<null>(resolve => setTimeout(() => resolve(null), 4000));
-              const staff = await Promise.race([fetchStaffData(currentUser.id), staffTimeout]);
-              if (mounted) { setUserData(staff); setUserDataReady(true); }
-            }
+            if (!userDataRef.current) scheduleStaffFetch(currentUser.id);
           } else {
             // Sem sessão válida (token expirado ou refresh falhou).
             // Limpa estado independentemente do cache local — se deixarmos userData do
@@ -290,8 +310,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             // TOKEN_REFRESHED garante token válido — sinaliza tokenReady se ainda não estava
             if (!tokenReadyRef.current && mounted) setTokenReady(true);
             if (currentUser.id !== userRef.current?.id || !userDataRef.current) {
-              const staff = await fetchStaffData(currentUser.id);
-              if (mounted && staff) { setUserData(staff); setUserDataReady(true); }
+              scheduleStaffFetch(currentUser.id);
             }
           }
           return;

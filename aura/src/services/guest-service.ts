@@ -1,5 +1,6 @@
-import { supabase } from "@/lib/supabase";
+import { supabase, db } from "@/lib/supabase";
 import { Guest } from "@/types/aura";
+import { postFieldAction } from "@/lib/field-api";
 import { AuditService } from "./audit-service";
 
 export const GuestService = {
@@ -9,8 +10,9 @@ export const GuestService = {
 
   async findByDocument(propertyId: string, docNumber: string): Promise<Guest | null> {
     const id = this.normalizeDocument(docNumber);
+    if (!id) return null;
 
-    const { data, error } = await supabase
+    const { data, error } = await db()
       .from('guests')
       .select('*')
       .eq('id', id)
@@ -21,7 +23,28 @@ export const GuestService = {
     return data as Guest;
   },
 
-  async upsertGuest(propertyId: string, guestData: Omit<Guest, "updatedAt">, actorId?: string, actorName?: string) {
+  /**
+   * Grava/atualiza a ficha do hóspede.
+   *
+   * No BROWSER delega para /api/admin/guests/upsert. Escrever direto pelo client do browser
+   * passa pelo lock de auth e, no lock frio, a promise nunca resolve — é o mesmo travamento do
+   * spinner de CPF, só que no "Confirmar Reserva", com a reserva já meio criada. No SERVIDOR
+   * (a própria rota) roda `upsertGuestDirect` com service-role.
+   */
+  async upsertGuest(propertyId: string, guestData: Omit<Guest, "updatedAt">, actorId?: string, actorName?: string): Promise<string> {
+    if (typeof window === 'undefined') {
+      return this.upsertGuestDirect(propertyId, guestData, actorId, actorName);
+    }
+
+    const res = await postFieldAction('/api/admin/guests/upsert', { propertyId, guestData });
+    if (!res.ok || !res.data?.id) {
+      throw new Error(res.error || "Falha ao salvar a ficha do hóspede. Tente novamente.");
+    }
+    return res.data.id as string;
+  },
+
+  /** Implementação real — só server-side (chamada pela rota). */
+  async upsertGuestDirect(propertyId: string, guestData: Omit<Guest, "updatedAt">, actorId?: string, actorName?: string): Promise<string> {
     const id = this.normalizeDocument(guestData.id);
 
     const payload = {
@@ -34,13 +57,13 @@ export const GuestService = {
       updatedAt: new Date().toISOString()
     };
 
-    const { data: existing } = await supabase
+    const { data: existing } = await db()
       .from('guests')
       .select('id')
       .eq('id', id)
       .maybeSingle();
 
-    const { error } = await supabase
+    const { error } = await db()
       .from('guests')
       .upsert(payload, { onConflict: 'id' });
 
