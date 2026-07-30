@@ -232,11 +232,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
      */
     const scheduleStaffFetch = (userId: string) => {
       setTimeout(async () => {
-        const staff = await fetchStaffData(userId);
-        if (!mounted) return;
-        // Só sobrescreve com dado bom: falha transitória não pode apagar o staff do cache.
-        if (staff) setUserData(staff);
-        setUserDataReady(true);
+        try {
+          const staff = await fetchStaffData(userId);
+          if (!mounted) return;
+          // Só sobrescreve com dado bom: falha transitória não pode apagar o staff do cache.
+          if (staff) setUserData(staff);
+        } finally {
+          // Quem libera o loading é AQUI, não o callback: o RoleGuard redireciona pro login
+          // quando vê `!loading && !userData`, então soltar o loading antes desta busca
+          // terminar jogaria o usuário pra tela de login no meio do carregamento.
+          if (mounted) { setUserDataReady(true); setLoading(false); }
+        }
       }, 0);
     };
 
@@ -257,10 +263,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           initialSessionReceived.current = true;
           clearTimeout(safetyTimeout);
 
+          // Só busca staff se o fast-path ainda não resolveu
+          const awaitingStaff = !!currentUser && !userDataRef.current;
+
           if (currentUser) {
             setUser(currentUser);
-            // Só busca staff se o fast-path ainda não resolveu
-            if (!userDataRef.current) scheduleStaffFetch(currentUser.id);
+            if (awaitingStaff) scheduleStaffFetch(currentUser.id);
           } else {
             // Sem sessão válida (token expirado ou refresh falhou).
             // Limpa estado independentemente do cache local — se deixarmos userData do
@@ -280,7 +288,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           }
 
           // currentUser definido — browser client tem token válido, queries por RLS podem prosseguir.
-          if (mounted) { setAuthConfirmed(true); setTokenReady(true); setLoading(false); }
+          // Com busca de staff pendente, quem solta o loading é o scheduleStaffFetch.
+          if (mounted) {
+            setAuthConfirmed(true);
+            setTokenReady(true);
+            if (!awaitingStaff) setLoading(false);
+          }
           return;
         }
 
