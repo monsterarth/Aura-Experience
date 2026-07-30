@@ -811,7 +811,7 @@ function HomeScreen({
 function FaxinasScreen({
   tasks, onStart, onSkip, showToast, onToggle,
   propertyId, userId, userName, onChecklistLoaded, repRequests,
-  startingTaskId, onFinish, onPause, onUpgrade,
+  startingTaskId, onFinish, onPause, onUpgrade, onConfer,
 }: {
   tasks: EnrichedTask[];
   onStart: (id: string) => void;
@@ -825,6 +825,8 @@ function FaxinasScreen({
   onFinish: (taskId: string, checklist: ChecklistItem[]) => void;
   onPause: (taskId: string) => void;
   onUpgrade: (taskId: string) => void;
+  /** Só quem acumula o cargo de governanta recebe: leva à conferência (app da governanta). */
+  onConfer?: () => void;
 }) {
   const [detail, setDetail] = useState<string | null>(null);
   const [confirmStart, setConfirmStart] = useState<string | null>(null);
@@ -993,13 +995,28 @@ function FaxinasScreen({
         {waiting.length > 0 && (
           <div style={{ marginBottom: 24 }}>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.amber, marginBottom: 10 }}>Aguardando governanta</div>
-            {waiting.map(t => (
+            {/* Card inerte para quem é só camareira (o ✓ antigo parecia botão de aprovar e não
+                fazia nada — ver histórico "camareira tentava liberar a própria faxina daqui").
+                Quem acumula o cargo de governanta ganha atalho para a conferência. */}
+            {waiting.map(t => onConfer ? (
+              <button
+                key={t.id}
+                onClick={onConfer}
+                style={{ width: "100%", textAlign: "left", cursor: "pointer", background: T.glass, border: `1px solid ${T.amberBorder}`, borderRadius: 16, marginBottom: 10, padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, fontFamily: "inherit" }}
+              >
+                <div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: T.amber }}>{t.cabinName || "Cabana"}</div>
+                  <div style={{ fontSize: 12, color: T.amber, opacity: 0.7, marginTop: 2 }}>Toque para conferir e liberar</div>
+                </div>
+                <I n="chevr" s={22} c={T.amber} />
+              </button>
+            ) : (
               <div key={t.id} style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 16, marginBottom: 10, padding: "14px 16px", opacity: 0.7, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div>
                   <div style={{ fontSize: 20, fontWeight: 900, color: T.amber }}>{t.cabinName || "Cabana"}</div>
                   <div style={{ fontSize: 12, color: T.amber, opacity: 0.7, marginTop: 2 }}>Aguardando aprovação</div>
                 </div>
-                <I n="check" s={28} c={T.amber} />
+                <I n="clock" s={24} c={T.amber} />
               </div>
             ))}
           </div>
@@ -1374,6 +1391,14 @@ export default function MaidPage() {
   const [skipBusy, setSkipBusy] = useState(false);
   const logoutRef = useRef(false);
 
+  // Camareira que também é governanta: as faxinas dela próprias ficam em "Aguardando
+  // governanta" aqui, e a conferência mora no app da governanta — sem este atalho ela
+  // ficava tocando no card (inerte) achando que o sistema não deixava liberar as suas.
+  // Mesma regra do RoleGuard/RoleSwitcher: cargo primário OU secundário.
+  const canConfer = !!userData && ["governance", "super_admin", "admin", "manager"].some(
+    r => userData.role === r || (userData.secondaryRoles ?? []).includes(r as typeof userData.role)
+  );
+
   const showToast = useCallback((msg: string, color = T.green) => {
     setToast({ msg, color });
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -1731,7 +1756,7 @@ export default function MaidPage() {
             </div>
             <RoleSwitcher />
             {tab === "home" && <HomeScreen tasks={tasks} cabins={cabins} onNav={setTab} userName={userData?.fullName ?? "Camareira"} />}
-            {tab === "tasks" && <FaxinasScreen tasks={tasks} onStart={handleStart} onSkip={setSkipConfirmTaskId} showToast={showToast} onToggle={handleToggle} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onChecklistLoaded={handleChecklistLoaded} repRequests={repRequests} startingTaskId={startingTaskId} onFinish={handleFinish} onPause={handlePause} onUpgrade={handleUpgrade} />}
+            {tab === "tasks" && <FaxinasScreen tasks={tasks} onStart={handleStart} onSkip={setSkipConfirmTaskId} showToast={showToast} onToggle={handleToggle} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onChecklistLoaded={handleChecklistLoaded} repRequests={repRequests} startingTaskId={startingTaskId} onFinish={handleFinish} onPause={handlePause} onUpgrade={handleUpgrade} onConfer={canConfer ? () => router.push("/governanta?screen=conference") : undefined} />}
             {tab === "profile" && <ProfileScreen userData={userData} showToast={showToast} onLogout={handleLogout} propertyId={property?.id ?? ""} />}
           </div>
 

@@ -1451,6 +1451,14 @@ export default function GovernantaPage() {
 
   const [screen, setScreen] = useState<Screen>("dashboard");
 
+  // Deep-link (?screen=conference) — usado pelo atalho do app da camareira para quem acumula o
+  // cargo de governanta. Lido de window.location em vez de useSearchParams para não exigir
+  // fronteira de Suspense no build.
+  useEffect(() => {
+    const s = new URLSearchParams(window.location.search).get("screen");
+    if (s === "conference" || s === "all" || s === "profile") setScreen(s);
+  }, []);
+
   const [minibarItems, setMinibarItems] = useState<ConciergeItem[]>([]);
   const [govMiniTarget, setGovMiniTarget] = useState<HousekeepingTask | null>(null);
 
