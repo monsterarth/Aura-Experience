@@ -259,7 +259,7 @@ export async function applyCheckinDayRules(propertyId: string, targetDate?: Date
     if (!stay.cabinId) continue;
 
     for (const rule of rules) {
-      // Guard: não criar duas vezes no mesmo dia para essa regra+cabana
+      // Guard 1: não criar duas vezes no mesmo dia para essa regra+cabana
       const { data: existing } = await supabaseAdmin
         .from('housekeeping_tasks')
         .select('id')
@@ -270,6 +270,23 @@ export async function applyCheckinDayRules(propertyId: string, targetDate?: Date
         .maybeSingle();
 
       if (existing) continue;
+
+      // Guard 2: já existe revisão de entrada ABERTA para esta cabana — inclusive criada à mão
+      // pela governanta (ruleId null), que o guard 1 não enxerga. Sem isto a mesma cabana
+      // aparecia duas vezes na fila de conferência no mesmo dia, e liberar uma deixava a outra.
+      // As obsoletas já foram encerradas antes desta etapa (varredura no cron), então o que
+      // sobra aqui é revisão viva de verdade.
+      const { data: openInspection } = await supabaseAdmin
+        .from('housekeeping_tasks')
+        .select('id')
+        .eq('propertyId', propertyId)
+        .eq('cabinId', stay.cabinId)
+        .eq('type', rule.taskType)
+        .in('status', ['pending', 'in_progress', 'paused', 'waiting_conference'])
+        .limit(1)
+        .maybeSingle();
+
+      if (openInspection) continue;
 
       await supabaseAdmin.from('housekeeping_tasks').insert(
         buildTaskPayload(rule, { cabinId: stay.cabinId, stayId: stay.id })

@@ -6,6 +6,7 @@ import { Stay, Guest, Cabin, FolioItem, AutomationTriggerEvent, MessageTemplate 
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
 import { AutomationService } from "./automation-service";
+import { HousekeepingService } from "./housekeeping-service";
 import { applyTimeToDate, DEFAULT_CHECK_IN_TIME, DEFAULT_CHECK_OUT_TIME } from "@/lib/stay-times";
 
 export const StayService = {
@@ -477,6 +478,16 @@ export const StayService = {
       supabase.from('stays').update(updates).eq('id', stayId).eq('propertyId', propertyId),
       supabase.from('cabins').update({ status: 'occupied', currentStayId: stayId }).eq('id', stay.cabinId),
     ]);
+
+    // A revisão de entrada perde a validade neste instante — a hóspede entrou, não há mais o que
+    // revisar. Sem isto elas ficavam abertas para sempre na fila de conferência da governanta.
+    try {
+      await HousekeepingService.closeObsoleteCheckinInspections(
+        propertyId, { cabinId: stay.cabinId }, { id: actorId, name: actorName },
+      );
+    } catch (e) {
+      console.error('[performCheckIn] falha ao encerrar revisões de entrada:', e);
+    }
 
     // Build human-readable audit details
     let guestFirstName = '';

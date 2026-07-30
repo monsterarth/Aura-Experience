@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { applyDailyRules, applyCheckinDayRules, applyCheckoutDayRules } from "@/lib/housekeeping-rule-engine";
+import { HousekeepingService } from "@/services/housekeeping-service";
 
 async function writeCronLog(action: string, entityId: string, details: string, newData: object) {
   try {
@@ -50,8 +51,22 @@ export async function GET(req: Request) {
     const targetDayStr = targetDay.toISOString().split('T')[0];
     console.log(`[CRON] Tarefas para: ${targetDayStr} (execução: ${runDayStr}) | Propriedades: ${(properties || []).length}`);
 
+    let inspectionsClosed = 0;
+
     for (const propData of (properties || [])) {
       const propertyId = propData.id;
+
+      // Rede de segurança para as revisões de entrada: o encerramento normal acontece no próprio
+      // check-in (StayService.performCheckIn), mas isto varre o que escapou — check-ins feitos
+      // antes desta regra existir, estadias canceladas e tarefas criadas à mão. Roda ANTES do
+      // corte por regras ativas: a limpeza do acumulado não depende de a propriedade ter regra.
+      try {
+        const closed = await HousekeepingService.closeObsoleteCheckinInspections(propertyId);
+        inspectionsClosed += closed;
+        if (closed > 0) console.log(`[CRON] Prop ${propertyId}: ${closed} revisão(ões) de entrada obsoleta(s) encerrada(s)`);
+      } catch (e) {
+        console.error(`[CRON] Prop ${propertyId}: falha ao encerrar revisões de entrada obsoletas:`, e);
+      }
 
       // Pular propriedades sem nenhuma regra ativa
       const { data: rules, count: rulesCount } = await supabaseAdmin
@@ -122,10 +137,10 @@ export async function GET(req: Request) {
     await writeCronLog(
       'CRON_DAILY_HOUSEKEEPING',
       'daily-housekeeping',
-      `${tasksCreated} tarefa(s) criada(s) em ${propertiesProcessed} propriedade(s)${stayErrors.length ? ` | ${stayErrors.length} erro(s)` : ''}`,
-      { tasksCreated, propertiesProcessed, startedAt, finishedAt, durationMs: duration, errors: stayErrors }
+      `${tasksCreated} tarefa(s) criada(s) em ${propertiesProcessed} propriedade(s)${inspectionsClosed ? ` | ${inspectionsClosed} revisão(ões) de entrada obsoleta(s) encerrada(s)` : ''}${stayErrors.length ? ` | ${stayErrors.length} erro(s)` : ''}`,
+      { tasksCreated, propertiesProcessed, inspectionsClosed, startedAt, finishedAt, durationMs: duration, errors: stayErrors }
     );
-    return NextResponse.json({ success: true, tasksCreated });
+    return NextResponse.json({ success: true, tasksCreated, inspectionsClosed });
 
   } catch (error: any) {
     console.error("❌ [CRON] Falha na rotina matinal de governança:", error);

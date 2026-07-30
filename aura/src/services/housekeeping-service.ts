@@ -391,6 +391,87 @@ export const HousekeepingService = {
     });
   },
 
+  // Uma revisão de entrada só tem sentido enquanto a hóspede não entrou — depois do check-in não
+  // há mais o que revisar. Sem encerramento ela ficava viva para sempre na fila de conferência
+  // (havia inspeções de 12 dias atrás ainda abertas), empurrando a do dia para baixo e alimentando
+  // a leitura de "liberei e continua lá". O gatilho é o check-in, não o calendário: a revisão pode
+  // legitimamente ser feita num dia diferente do da chegada.
+  //
+  // `scope.cabinId` = chamada no próprio check-in (tudo daquela cabana já está obsoleto).
+  // Sem escopo = varredura do cron: decide por estadia (já não está por chegar) ou, para tarefas
+  // criadas à mão sem estadia vinculada, por cabana já ocupada.
+  async closeObsoleteCheckinInspections(
+    propertyId: string,
+    scope: { cabinId?: string } = {},
+    actor: { id: string; name: string } = { id: 'cron', name: 'Sistema (Cron)' },
+  ): Promise<number> {
+    let q = db().from('housekeeping_tasks')
+      .select('id, cabinId, structureId, customLocation, stayId, observations, finishedAt')
+      .eq('propertyId', propertyId)
+      .eq('type', 'inspection_checkin')
+      .in('status', ['pending', 'in_progress', 'paused', 'waiting_conference']);
+    if (scope.cabinId) q = q.eq('cabinId', scope.cabinId);
+
+    const { data: tasks } = await q;
+    if (!tasks || tasks.length === 0) return 0;
+
+    let obsolete = tasks;
+    if (!scope.cabinId) {
+      const stayIds = Array.from(new Set(tasks.map(t => t.stayId).filter(Boolean))) as string[];
+      const cabinIds = Array.from(new Set(tasks.filter(t => !t.stayId).map(t => t.cabinId).filter(Boolean))) as string[];
+
+      const [staysRes, cabinsRes] = await Promise.all([
+        stayIds.length
+          ? db().from('stays').select('id, status').in('id', stayIds)
+          : Promise.resolve({ data: [] as any[] }),
+        cabinIds.length
+          ? db().from('cabins').select('id, currentStayId').in('id', cabinIds)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+      const stayStatus = new Map((staysRes.data ?? []).map((s: any) => [s.id, s.status]));
+      const occupied = new Set((cabinsRes.data ?? []).filter((c: any) => c.currentStayId).map((c: any) => c.id));
+
+      obsolete = tasks.filter(t => {
+        if (t.stayId) {
+          // Estadia sumiu ou saiu de "por chegar" → check-in feito (ou cancelada/encerrada).
+          const st = stayStatus.get(t.stayId);
+          return !st || !['pending', 'pre_checkin_done'].includes(st as string);
+        }
+        // Sem estadia vinculada: ter hóspede dentro da cabana é o sinal de que a entrada já passou.
+        return !!t.cabinId && occupied.has(t.cabinId);
+      });
+    }
+    if (obsolete.length === 0) return 0;
+
+    const now = new Date().toISOString();
+    const note = 'Encerrada automaticamente: check-in já realizado, sem conferência.';
+
+    for (const t of obsolete) {
+      // Update por tarefa (e não em lote) para preservar a observação da camareira, que é o
+      // registro do que ela viu na cabana.
+      await db().from('housekeeping_tasks')
+        .update({
+          status: 'cancelled',
+          observations: t.observations ? `${t.observations} — ${note}` : note,
+          updatedAt: now,
+        })
+        .eq('id', t.id);
+
+      const location = await resolveLocation(t.cabinId, t.structureId, t.customLocation);
+      // Distingue ruído (ninguém tocou) de trabalho real que ficou sem avaliação — o segundo é o
+      // sinal de qualidade que se perdeu, e é o que precisa aparecer no histórico da cabana.
+      await AuditService.log({
+        propertyId, userId: actor.id, userName: actor.name,
+        action: "UPDATE", entity: "CABIN", entityId: t.id,
+        details: t.finishedAt
+          ? `Revisão de entrada encerrada automaticamente (check-in já realizado): ${location}. Concluída pela camareira, mas sem conferência da governanta.`
+          : `Revisão de entrada encerrada automaticamente (check-in já realizado), sem ninguém ter conferido: ${location}.`,
+      });
+    }
+
+    return obsolete.length;
+  },
+
   async upgradeToLinenChange(propertyId: string, taskId: string, actorId: string, actorName: string) {
     const { data: task } = await db().from('housekeeping_tasks')
       .select('cabinId, structureId, customLocation').eq('id', taskId).single();
