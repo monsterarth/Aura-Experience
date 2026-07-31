@@ -7,17 +7,10 @@
  *   Sessão morta (Baileys):  { output: { statusCode: 428, payload: { error: "Precondition Required", message: "Connection Closed" } } }
  *   Erro interno/validação:  { status: 500, error: "Internal Server Error", response: { message: ["..."] } }
  *
- * No caso da sessão morta a instância continua respondendo `connectionStatus: "open"`
- * no `fetchInstances` — o socket é que está fechado. Por isso sinalizamos `sessionDown`:
- * é o único caso em que reenviar não adianta e alguém precisa reler o QR.
+ * O caso da sessão morta ganha um texto próprio porque é o único em que reenviar não
+ * adianta: a instância continua respondendo `connectionStatus: "open"` no `fetchInstances`
+ * — o socket é que está fechado — e só volta relendo o QR.
  */
-
-export interface EvolutionError {
-  /** Mensagem legível para gravar em `messages.errorMessage` e mostrar na fila. */
-  message: string;
-  /** Sessão do WhatsApp caiu — reenvio não resolve, precisa reconectar a instância. */
-  sessionDown: boolean;
-}
 
 function flatten(value: unknown): string | null {
   if (typeof value === "string" && value.trim()) return value.trim();
@@ -28,7 +21,7 @@ function flatten(value: unknown): string | null {
   return null;
 }
 
-export function parseEvolutionError(httpStatus: number, rawBody: string): EvolutionError {
+export function parseEvolutionError(httpStatus: number, rawBody: string): string {
   let parsed: any = null;
   try {
     parsed = JSON.parse(rawBody);
@@ -47,16 +40,13 @@ export function parseEvolutionError(httpStatus: number, rawBody: string): Evolut
     "sem resposta da Evolution API";
 
   const baileysStatus = parsed?.output?.payload?.statusCode ?? parsed?.output?.statusCode;
-  const sessionDown =
-    baileysStatus === 428 || /connection closed|connection failure/i.test(detail);
+  const sessionDown = baileysStatus === 428 || /connection closed|connection failure/i.test(detail);
 
   const codes = baileysStatus && baileysStatus !== httpStatus
     ? `HTTP ${httpStatus}/${baileysStatus}`
     : `HTTP ${httpStatus}`;
 
-  const message = sessionDown
+  return sessionDown
     ? `Sessão do WhatsApp desconectada (${detail}) — reconecte a instância lendo o QR novamente. [${codes}]`
     : `${detail} [${codes}]`;
-
-  return { message, sessionDown };
 }

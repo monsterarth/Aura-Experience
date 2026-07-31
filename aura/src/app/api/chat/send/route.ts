@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     if (!response.ok) {
       const rawText = await response.text();
       console.error("[chat/send] Evolution API error:", response.status, rawText);
-      const { message: errorMessage } = parseEvolutionError(response.status, rawText);
+      const errorMessage = parseEvolutionError(response.status, rawText);
       await supabaseAdmin
         .from("messages")
         .update({ status: "failed", errorMessage })

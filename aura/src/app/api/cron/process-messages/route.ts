@@ -137,7 +137,7 @@ export async function GET(request: Request) {
 
         if (!response.ok) {
           const errorText = await response.text();
-          const { message: errorMessage } = parseEvolutionError(response.status, errorText);
+          const errorMessage = parseEvolutionError(response.status, errorText);
           console.error(`[process-messages] Evolution API error (msg ${msg.id}):`, response.status, errorText);
           throw new Error(errorMessage);
         }
