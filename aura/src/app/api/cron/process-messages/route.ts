@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { WhatsAppMessage } from "@/types/aura";
+import { parseEvolutionError } from "@/lib/evolution-error";
 
 async function writeCronLog(action: string, entityId: string, details: string, newData: object) {
   try {
@@ -136,13 +137,8 @@ export async function GET(request: Request) {
 
         if (!response.ok) {
           const errorText = await response.text();
-          let errorMessage = "Erro na Evolution API";
-          try {
-            const errorJson = JSON.parse(errorText);
-            errorMessage = errorJson.error || errorMessage;
-          } catch {
-            errorMessage = errorText;
-          }
+          const { message: errorMessage } = parseEvolutionError(response.status, errorText);
+          console.error(`[process-messages] Evolution API error (msg ${msg.id}):`, response.status, errorText);
           throw new Error(errorMessage);
         }
 

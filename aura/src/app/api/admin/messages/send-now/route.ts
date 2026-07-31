@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { requireAuth, isAuthError } from "@/lib/api-auth";
+import { parseEvolutionError } from "@/lib/evolution-error";
 
 export async function POST(req: Request) {
   const auth = await requireAuth();
@@ -62,8 +63,7 @@ export async function POST(req: Request) {
   if (!response.ok) {
     const rawText = await response.text();
     console.error("[send-now] Evolution API error:", response.status, rawText);
-    let errorMessage = `HTTP ${response.status}`;
-    try { const j = JSON.parse(rawText); errorMessage = j.error || j.message || j.response?.message || rawText; } catch { errorMessage = rawText || errorMessage; }
+    const { message: errorMessage } = parseEvolutionError(response.status, rawText);
     await supabaseAdmin
       .from("messages")
       .update({ status: "failed", attempts: (msg.attempts || 0) + 1, errorMessage, lastAttemptAt: new Date().toISOString() })

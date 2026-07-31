@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { requireAuth, isAuthError } from "@/lib/api-auth";
+import { parseEvolutionError } from "@/lib/evolution-error";
 
 export async function POST(req: Request) {
   const auth = await requireAuth();
@@ -51,12 +52,14 @@ export async function POST(req: Request) {
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: "Erro desconhecido na Evolution API" }));
+      const rawText = await response.text();
+      console.error("[chat/send] Evolution API error:", response.status, rawText);
+      const { message: errorMessage } = parseEvolutionError(response.status, rawText);
       await supabaseAdmin
         .from("messages")
-        .update({ status: "failed", errorMessage: errorData.error || "Falha na comunicação com a Evolution API" })
+        .update({ status: "failed", errorMessage })
         .eq("id", messageId);
-      return NextResponse.json({ error: "Falha ao enviar via Evolution API" }, { status: response.status });
+      return NextResponse.json({ error: errorMessage }, { status: response.status });
     }
 
     const data = await response.json();
