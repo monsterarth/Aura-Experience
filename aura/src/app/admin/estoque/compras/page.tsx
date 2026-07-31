@@ -1,7 +1,7 @@
 // src/app/admin/estoque/compras/page.tsx
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { supabase } from "@/lib/supabase";
 import { StockClient } from "@/lib/stock-client";
@@ -89,8 +89,20 @@ export default function ComprasPage() {
 
   const setItem = (idx: number, patch: Partial<ItemRow>) =>
     setForm((f) => f ? { ...f, items: f.items.map((it, i) => i === idx ? { ...it, ...patch } : it) } : f);
-  const addItem = () => setForm((f) => f ? { ...f, items: [...f.items, { ...emptyItem }] } : f);
   const removeItem = (idx: number) => setForm((f) => f ? { ...f, items: f.items.filter((_, i) => i !== idx) } : f);
+
+  // Ao adicionar um item, rola o modal ate a linha nova para o botao continuar a vista.
+  const itemsEndRef = useRef<HTMLDivElement>(null);
+  const scrollAfterAdd = useRef(false);
+  const addItem = () => {
+    scrollAfterAdd.current = true;
+    setForm((f) => f ? { ...f, items: [...f.items, { ...emptyItem }] } : f);
+  };
+  useEffect(() => {
+    if (!scrollAfterAdd.current) return;
+    scrollAfterAdd.current = false;
+    itemsEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [form?.items.length]);
 
   const save = async () => {
     if (!property?.id || !form) return;
@@ -269,6 +281,8 @@ export default function ComprasPage() {
                   <button onClick={addItem} className="w-full flex items-center justify-center gap-1 py-2 text-xs font-bold text-primary border border-dashed border-border rounded-xl hover:bg-secondary/40">
                     <Plus size={13} /> Adicionar item
                   </button>
+                  {/* scroll-mb: o rodape "Cancelar/Salvar" e sticky e cobriria o botao */}
+                  <div ref={itemsEndRef} aria-hidden className="h-px scroll-mb-24" />
                   <p className="text-[10px] text-muted-foreground pl-1">A validade dos itens perecíveis é informada no <b>recebimento</b>.</p>
                 </div>
                 <div className="mt-3 space-y-1.5 border-t border-border pt-3">
