@@ -18,6 +18,8 @@ export interface SurveyMetrics {
     recommend?: "no" | "maybe" | "yes";
     overall?: number;
     highlights?: string[];
+    highlightsPositive?: string[];
+    highlightsImprove?: string[];
     commentShared?: boolean;
 }
 
@@ -30,8 +32,16 @@ export function computeSurveyMetrics(template: SurveyTemplate, answers: Answer[]
         const overallRaw = Number(val("overall"));
         const overall = !isNaN(overallRaw) && overallRaw > 0 ? overallRaw : undefined;
         const recommend = (["no", "maybe", "yes"] as const).find(r => r === val("recommend"));
-        const highlightsRaw = val("highlights");
-        const highlights = Array.isArray(highlightsRaw) && highlightsRaw.length ? (highlightsRaw as string[]) : undefined;
+        const strArr = (id: string) => {
+            const raw = val(id);
+            return Array.isArray(raw) && raw.length ? (raw as string[]) : undefined;
+        };
+        // A polaridade vem separada desde o Survey 2.1; `highlights` continua sendo a união
+        // (respostas antigas só têm ela — o dashboard reclassifica pelo template).
+        const highlightsPositive = strArr("highlightsPositive");
+        const highlightsImprove = strArr("highlightsImprove");
+        const highlights = strArr("highlights")
+            ?? (highlightsPositive || highlightsImprove ? [...(highlightsPositive ?? []), ...(highlightsImprove ?? [])] : undefined);
         const commentShared = val("commentShared") === true ? true : undefined;
 
         const categoryRatings: Record<string, number> = {};
@@ -59,7 +69,7 @@ export function computeSurveyMetrics(template: SurveyTemplate, answers: Answer[]
         if (isDetractor) npsScore = 3;
 
         const averageRating = ratingCount > 0 ? Number((totalRating / ratingCount).toFixed(1)) : undefined;
-        return { npsScore, averageRating, categoryRatings, isDetractor, recommend, overall, highlights, commentShared };
+        return { npsScore, averageRating, categoryRatings, isDetractor, recommend, overall, highlights, highlightsPositive, highlightsImprove, commentShared };
     }
 
     // Legado (builder) — idêntico ao cálculo histórico

@@ -153,11 +153,18 @@ export function CuratedSurvey({ stay, property, template, lang }: {
         if (overall > 0) answers.overall = overall;
         Object.entries(catRatings).forEach(([id, v]) => { if (v > 0) answers[`cat:${id}`] = v; });
         if (recommend) answers.recommend = recommend;
-        const chosen: string[] = [];
-        [...hlPositive, ...hlImprove].forEach((c) => { if (highlights.includes(c.id)) chosen.push(c.label); });
-        if (otherPosOn && otherPosText.trim()) chosen.push(otherPosText.trim());
-        if (otherImpOn && otherImpText.trim()) chosen.push(otherImpText.trim());
-        if (chosen.length) answers.highlights = chosen;
+        // Guarda a polaridade: sem isso "Café da manhã" (elogio) e "Café da manhã"
+        // (a melhorar) chegam iguais no dashboard.
+        const positives: string[] = [];
+        const improves: string[] = [];
+        hlPositive.forEach((c) => { if (highlights.includes(c.id)) positives.push(c.label); });
+        hlImprove.forEach((c) => { if (highlights.includes(c.id)) improves.push(c.label); });
+        if (otherPosOn && otherPosText.trim()) positives.push(otherPosText.trim());
+        if (otherImpOn && otherImpText.trim()) improves.push(otherImpText.trim());
+        const chosen = [...positives, ...improves];
+        if (chosen.length) answers.highlights = chosen;              // união (compatibilidade)
+        if (positives.length) answers.highlightsPositive = positives;
+        if (improves.length) answers.highlightsImprove = improves;
         if (comment.trim()) answers.comment = comment.trim();
         try {
             const res = await fetch("/api/guest/survey", {

@@ -607,7 +607,9 @@ export interface SurveyResponse {
     // Survey 2.0 (curado) — campos ricos para evolução futura do dashboard
     recommend?: 'no' | 'maybe' | 'yes';
     overall?: number;       // impressão geral 1-5 (faces)
-    highlights?: string[];  // ids/labels dos chips escolhidos
+    highlights?: string[];  // labels dos chips escolhidos (união — mantido p/ compatibilidade)
+    highlightsPositive?: string[]; // "o que mais gostou" (só respostas novas)
+    highlightsImprove?: string[];  // "o que podemos melhorar" (só respostas novas)
     commentShared?: boolean; // intenção de publicar no Google (best-effort)
   };
 

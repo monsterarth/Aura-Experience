@@ -5,12 +5,12 @@ import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
-import { SurveyResponse } from "@/types/aura";
+import { SurveyResponse, SurveyTemplate } from "@/types/aura";
 import { SurveyService } from "@/services/survey-service";
 import { Button } from "@/components/ui/button";
 import {
     Star, TrendingUp, MessageSquare, Loader2, Inbox, Bot, Search, Sparkles,
-    X, Trash2, Tag, ThumbsUp, Heart, MapPin, Gauge, Settings2,
+    X, Trash2, Tag, ThumbsUp, Heart, MapPin, Gauge, Settings2, Wrench,
 } from "lucide-react";
 
 type Recommend = "yes" | "maybe" | "no";
@@ -30,6 +30,18 @@ const AREA_STATUS: Record<string, { label: string; cls: string }> = {
     approved: { label: "Aprovada", cls: "bg-emerald-100 text-emerald-700" },
     hidden: { label: "Oculta", cls: "bg-muted text-muted-foreground" },
 };
+// Estilo por polaridade do destaque — elogio nunca pode parecer crítica (e vice-versa).
+const HL_STYLE = {
+    positive: { title: "Elogios", full: "O que mais gostou", text: "text-emerald-600", bar: "bg-emerald-500", chip: "bg-emerald-500/10 text-emerald-600" },
+    improve: { title: "A melhorar", full: "O que podemos melhorar", text: "text-rose-600", bar: "bg-rose-500", chip: "bg-rose-500/10 text-rose-600" },
+    unknown: { title: "Outros", full: "Outros destaques", text: "text-muted-foreground", bar: "bg-muted-foreground/40", chip: "bg-muted text-foreground/80" },
+} as const;
+const HL_GROUPS = [
+    { key: "hlPositive", p: "positive", icon: <ThumbsUp className="w-3.5 h-3.5" /> },
+    { key: "hlImprove", p: "improve", icon: <Wrench className="w-3.5 h-3.5" /> },
+    { key: "hlOther", p: "unknown", icon: <Tag className="w-3.5 h-3.5" /> },
+] as const;
+
 const scoreColor = (a: number) => (a >= 4.5 ? "text-emerald-600" : a >= 3.5 ? "text-yellow-600" : "text-rose-600");
 const barColor = (a: number) => (a >= 4.5 ? "bg-emerald-500" : a >= 3.5 ? "bg-yellow-400" : "bg-rose-500");
 
@@ -42,9 +54,31 @@ const recommendOf = (r: SurveyResponse): Recommend | undefined => {
 };
 const overallOf = (r: SurveyResponse): number =>
     r.metrics?.overall ?? (Number(r.answers?.find(a => a.questionId === "overall")?.value) || 0);
-const highlightsOf = (r: SurveyResponse): string[] => {
-    const h = r.metrics?.highlights ?? r.answers?.find(a => a.questionId === "highlights")?.value;
-    return Array.isArray(h) ? (h as string[]) : [];
+// Destaques têm polaridade: os chips vêm de dois grupos ("o que mais gostou" x "o que
+// podemos melhorar"). Respostas antigas gravaram só a união, então reclassificamos pelo
+// label usando os templates da propriedade; texto livre ("Outro") fica sem polaridade.
+type Polarity = "positive" | "improve" | "unknown";
+interface SplitHighlights { positive: string[]; improve: string[]; unknown: string[]; all: string[] }
+const normLabel = (s: string) => s.trim().toLowerCase();
+const HL_EMPTY: SplitHighlights = { positive: [], improve: [], unknown: [], all: [] };
+
+const splitHighlights = (r: SurveyResponse, polarity: Map<string, Polarity>): SplitHighlights => {
+    const m = r.metrics || ({} as SurveyResponse["metrics"]);
+    const arr = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
+    const ans = (id: string) => r.answers?.find(a => a.questionId === id)?.value;
+    const positive = arr(m.highlightsPositive ?? ans("highlightsPositive"));
+    const improve = arr(m.highlightsImprove ?? ans("highlightsImprove"));
+    const all = arr(m.highlights ?? ans("highlights"));
+
+    // Resposta nova: a polaridade já veio gravada.
+    if (positive.length || improve.length) {
+        const known = new Set([...positive, ...improve]);
+        return { positive, improve, unknown: all.filter(h => !known.has(h)), all: all.length ? all : [...positive, ...improve] };
+    }
+    // Resposta antiga (união): reclassifica pelo template.
+    const out: SplitHighlights = { positive: [], improve: [], unknown: [], all };
+    all.forEach(h => out[polarity.get(normLabel(h)) ?? "unknown"].push(h));
+    return out;
 };
 const commentOf = (r: SurveyResponse): string => {
     const c = r.answers?.find(a => a.questionId === "comment")?.value;
@@ -63,6 +97,7 @@ export default function SurveysDashboardPage() {
     const [loading, setLoading] = useState(true);
     const [selected, setSelected] = useState<SurveyResponse | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [polarity, setPolarity] = useState<Map<string, Polarity>>(new Map());
 
     // Aura AI
     const [askStartDate, setAskStartDate] = useState("");
@@ -76,12 +111,22 @@ export default function SurveysDashboardPage() {
             if (!property?.id) return;
             setLoading(true);
             try {
-                const [resp, areaRes] = await Promise.all([
+                const [resp, areaRes, templates] = await Promise.all([
                     SurveyService.getResponses(property.id),
                     fetch(`/api/admin/area-reviews?propertyId=${property.id}`).then(r => (r.ok ? r.json() : { reviews: [] })).catch(() => ({ reviews: [] })),
+                    SurveyService.getTemplates(property.id).catch(() => [] as SurveyTemplate[]),
                 ]);
                 setResponses(resp);
                 setAreaReviews(Array.isArray(areaRes?.reviews) ? areaRes.reviews : []);
+
+                // Mapa label → polaridade (todos os templates, p/ cobrir respostas antigas).
+                // "improve" por último: se um label existir nos dois grupos, vale o negativo.
+                const map = new Map<string, Polarity>();
+                const feed = (chips: { label: string; label_en?: string; label_es?: string }[] | undefined, p: Polarity) =>
+                    (chips ?? []).forEach(c => [c?.label, c?.label_en, c?.label_es].forEach(l => { if (l) map.set(normLabel(l), p); }));
+                templates.forEach(t => feed(t.config?.highlights?.positive, "positive"));
+                templates.forEach(t => feed(t.config?.highlights?.improve, "improve"));
+                setPolarity(map);
             } catch (e) {
                 console.error("Erro ao buscar indicadores:", e);
             } finally {
@@ -111,7 +156,7 @@ export default function SurveysDashboardPage() {
         let yes = 0, maybe = 0, no = 0, recTotal = 0;
         let sumOverall = 0, nOverall = 0, sumRating = 0, nRating = 0, detractors = 0;
         const catAgg: Record<string, { sum: number; count: number }> = {};
-        const hlAgg: Record<string, number> = {};
+        const hlPos: Record<string, number> = {}, hlImp: Record<string, number> = {}, hlUnk: Record<string, number> = {};
         responses.forEach(r => {
             const rec = recommendOf(r);
             if (rec) { recTotal++; if (rec === "yes") yes++; else if (rec === "maybe") maybe++; else no++; }
@@ -123,8 +168,13 @@ export default function SurveysDashboardPage() {
                 if (!catAgg[k]) catAgg[k] = { sum: 0, count: 0 };
                 catAgg[k].sum += v as number; catAgg[k].count++;
             });
-            highlightsOf(r).forEach(h => { hlAgg[h] = (hlAgg[h] || 0) + 1; });
+            const hl = splitHighlights(r, polarity);
+            hl.positive.forEach(h => { hlPos[h] = (hlPos[h] || 0) + 1; });
+            hl.improve.forEach(h => { hlImp[h] = (hlImp[h] || 0) + 1; });
+            hl.unknown.forEach(h => { hlUnk[h] = (hlUnk[h] || 0) + 1; });
         });
+        const rank = (agg: Record<string, number>) =>
+            Object.entries(agg).map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count);
         const pct = (n: number) => (recTotal ? Math.round((n / recTotal) * 100) : 0);
         return {
             total: responses.length, yes, maybe, no, recTotal,
@@ -132,9 +182,9 @@ export default function SurveysDashboardPage() {
             avgOverall: nOverall ? sumOverall / nOverall : 0,
             avgRating: nRating ? sumRating / nRating : 0, ratingN: nRating, detractors,
             categories: Object.entries(catAgg).map(([name, x]) => ({ name, avg: x.sum / x.count })).sort((a, b) => b.avg - a.avg),
-            highlights: Object.entries(hlAgg).map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count),
+            hlPositive: rank(hlPos), hlImprove: rank(hlImp), hlOther: rank(hlUnk),
         };
-    }, [responses]);
+    }, [responses, polarity]);
 
     // ---- Áreas ----
     const area = useMemo(() => {
@@ -298,7 +348,7 @@ export default function SurveysDashboardPage() {
                         )}
 
                         {/* Categorias + Destaques (pesquisa) */}
-                        {d && (d.categories.length > 0 || d.highlights.length > 0) && (
+                        {d && (d.categories.length > 0 || d.hlPositive.length + d.hlImprove.length + d.hlOther.length > 0) && (
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                 {d.categories.length > 0 && (
                                     <div className="bg-background rounded-xl p-5 border shadow-sm">
@@ -313,17 +363,28 @@ export default function SurveysDashboardPage() {
                                         </div>
                                     </div>
                                 )}
-                                {d.highlights.length > 0 && (
+                                {d.hlPositive.length + d.hlImprove.length + d.hlOther.length > 0 && (
                                     <div className="bg-background rounded-xl p-5 border shadow-sm">
                                         <h3 className="text-base font-bold text-foreground mb-5 border-b pb-3 flex items-center gap-2"><Tag className="w-4 h-4 text-primary" /> Destaques mais citados</h3>
-                                        <div className="space-y-3">
-                                            {d.highlights.slice(0, 10).map(h => (
-                                                <div key={h.label} className="flex items-center gap-3">
-                                                    <span className="text-sm text-foreground truncate flex-1">{h.label}</span>
-                                                    <div className="h-2 w-28 bg-muted rounded-full overflow-hidden"><div style={{ width: `${(h.count / d.highlights[0].count) * 100}%` }} className="h-full bg-primary transition-all duration-700" /></div>
-                                                    <span className="text-xs font-bold text-muted-foreground w-6 text-right">{h.count}</span>
-                                                </div>
-                                            ))}
+                                        <div className="space-y-5">
+                                            {HL_GROUPS.map(g => {
+                                                const list = d[g.key], st = HL_STYLE[g.p];
+                                                if (!list.length) return null;
+                                                return (
+                                                    <div key={g.key}>
+                                                        <h4 className={`text-xs font-bold uppercase tracking-wider mb-3 flex items-center gap-1.5 ${st.text}`}>{g.icon} {st.title}</h4>
+                                                        <div className="space-y-3">
+                                                            {list.slice(0, 8).map(h => (
+                                                                <div key={h.label} className="flex items-center gap-3">
+                                                                    <span className="text-sm text-foreground truncate flex-1">{h.label}</span>
+                                                                    <div className="h-2 w-28 bg-muted rounded-full overflow-hidden"><div style={{ width: `${(h.count / list[0].count) * 100}%` }} className={`h-full transition-all duration-700 ${st.bar}`} /></div>
+                                                                    <span className="text-xs font-bold text-muted-foreground w-6 text-right">{h.count}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 )}
@@ -380,7 +441,12 @@ export default function SurveysDashboardPage() {
                                 {mural.map(item => item.kind === "survey" ? (() => {
                                     const r = item.survey!;
                                     const det = r.metrics?.isDetractor;
-                                    const rec = recommendOf(r), ov = overallOf(r), hls = highlightsOf(r), comment = commentOf(r);
+                                    const rec = recommendOf(r), ov = overallOf(r), hls = splitHighlights(r, polarity), comment = commentOf(r);
+                                    const chips: { label: string; p: Polarity }[] = [
+                                        ...hls.positive.map(h => ({ label: h, p: "positive" as Polarity })),
+                                        ...hls.improve.map(h => ({ label: h, p: "improve" as Polarity })),
+                                        ...hls.unknown.map(h => ({ label: h, p: "unknown" as Polarity })),
+                                    ];
                                     return (
                                         <div key={`s-${r.id}`} className={`bg-background rounded-xl border flex flex-col shadow-sm transition-all hover:shadow-md ${det ? "border-rose-500/40 bg-rose-500/5" : "border-border"}`}>
                                             <div className="p-5 pb-3 border-b border-white/5 flex justify-between items-start">
@@ -394,8 +460,8 @@ export default function SurveysDashboardPage() {
                                                 </div>
                                             </div>
                                             <div className="p-5 flex-1 flex flex-col gap-3">
-                                                {hls.length > 0 && <div className="flex flex-wrap gap-1.5">{hls.slice(0, 6).map((h, i) => <span key={i} className="text-[11px] bg-muted text-foreground/80 rounded-full px-2 py-0.5">{h}</span>)}</div>}
-                                                {comment ? <p className="text-sm text-foreground/90 italic leading-relaxed line-clamp-4 bg-muted/40 p-3 rounded-lg">{comment}</p> : hls.length === 0 ? <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm py-4 italic">Sem comentário.</div> : null}
+                                                {chips.length > 0 && <div className="flex flex-wrap gap-1.5">{chips.slice(0, 6).map((c, i) => <span key={i} className={`text-[11px] rounded-full px-2 py-0.5 font-medium ${HL_STYLE[c.p].chip}`}>{c.p === "improve" ? "▾ " : c.p === "positive" ? "▴ " : ""}{c.label}</span>)}</div>}
+                                                {comment ? <p className="text-sm text-foreground/90 italic leading-relaxed line-clamp-4 bg-muted/40 p-3 rounded-lg">{comment}</p> : chips.length === 0 ? <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm py-4 italic">Sem comentário.</div> : null}
                                             </div>
                                             <div className="p-4 pt-0 mt-auto flex items-center gap-2">
                                                 <Button variant={det ? "destructive" : "secondary"} className="flex-1 h-9 text-xs font-bold" onClick={() => setSelected(r)}>Abrir avaliação</Button>
@@ -432,7 +498,7 @@ export default function SurveysDashboardPage() {
 
             {/* Modal de pesquisa */}
             {selected && (() => {
-                const rec = recommendOf(selected), ov = overallOf(selected), hls = highlightsOf(selected), comment = commentOf(selected);
+                const rec = recommendOf(selected), ov = overallOf(selected), hls = splitHighlights(selected, polarity), comment = commentOf(selected);
                 const cats = selected.metrics?.categoryRatings ? Object.entries(selected.metrics.categoryRatings) : [];
                 return (
                     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
@@ -450,7 +516,20 @@ export default function SurveysDashboardPage() {
                                 {cats.length > 0 && (
                                     <div><h3 className="text-sm font-bold border-b pb-2 mb-3">Por categoria</h3><div className="space-y-2">{cats.map(([name, score]) => (<div key={name} className="flex items-center justify-between bg-muted/20 rounded-lg px-3 py-2"><span className="text-sm text-foreground">{name}</span><div className="flex gap-0.5">{[1, 2, 3, 4, 5].map(s => <Star key={s} className={`w-4 h-4 ${s <= Number(score) ? "text-yellow-400 fill-yellow-400" : "text-muted-foreground/30"}`} />)}</div></div>))}</div></div>
                                 )}
-                                {hls.length > 0 && (<div><h3 className="text-sm font-bold border-b pb-2 mb-3">Destaques</h3><div className="flex flex-wrap gap-2">{hls.map((h, i) => <span key={i} className="text-xs bg-primary/10 text-primary rounded-full px-3 py-1 font-medium">{h}</span>)}</div></div>)}
+                                {hls.all.length > 0 && (
+                                    <div className="space-y-4">
+                                        {HL_GROUPS.map(g => {
+                                            const list = hls[g.p], st = HL_STYLE[g.p];
+                                            if (!list.length) return null;
+                                            return (
+                                                <div key={g.p}>
+                                                    <h3 className={`text-sm font-bold border-b pb-2 mb-3 flex items-center gap-2 ${st.text}`}>{g.icon} {st.full}</h3>
+                                                    <div className="flex flex-wrap gap-2">{list.map((h, i) => <span key={i} className={`text-xs rounded-full px-3 py-1 font-medium ${st.chip}`}>{h}</span>)}</div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                                 {comment && (<div><h3 className="text-sm font-bold border-b pb-2 mb-3">Comentário</h3><p className="text-sm text-muted-foreground italic bg-muted/30 p-4 rounded-lg leading-relaxed">{comment}</p></div>)}
                             </div>
                             <div className="p-4 bg-muted/30 border-t flex justify-between items-center gap-3">
