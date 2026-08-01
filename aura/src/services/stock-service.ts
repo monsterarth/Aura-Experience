@@ -9,12 +9,16 @@ import { supabase, supabaseAdmin } from "@/lib/supabase";
 import { AuditService } from "./audit-service";
 import {
   AuditLog,
+  CabinLinkCandidate,
+  CabinLinkProposal,
+  CabinLinkReport,
   StockCategory,
   StockLocation,
   StockProduct,
   StockMovement,
   StockMovementType,
   StockStaffOption,
+  UserRole,
   StockSettings,
   StockBatch,
   StockBalance,
@@ -33,6 +37,16 @@ const now = () => new Date().toISOString();
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const round4 = (n: number) => Math.round((n + Number.EPSILON) * 10000) / 10000;
 
+/** "Cabana  01 " → "CABANA 01": sem acento, maiúsculo, espaços colapsados. */
+const normalizeLocName = (s: string) =>
+  s.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
+
+/** Último número do nome: "CABANA 14" → 14, "CABANAS" → null. Casa "CABANA 1" com number "01". */
+const trailingNumber = (s: string): number | null => {
+  const m = normalizeLocName(s).match(/(\d+)\s*$/);
+  return m ? Number(m[1]) : null;
+};
+
 interface Actor { id: string; name: string; }
 
 interface MovementInput {
@@ -44,6 +58,7 @@ interface MovementInput {
   toLocationId?: string | null;
   fromStaffId?: string | null;   // colaborador, quando o local de origem é do tipo 'staff'
   toStaffId?: string | null;     // colaborador, quando o local de destino é do tipo 'staff'
+  responsibleId?: string | null; // quem responde pela ação; default = quem operou
   lossType?: StockMovement["lossType"];
   referenceType?: StockMovement["referenceType"];
   referenceId?: string | null;
@@ -51,6 +66,7 @@ interface MovementInput {
   allowNegative?: boolean;     // confirma explicitamente deixar o saldo do local negativo
   expiryDate?: string | null;  // validade do lote (entrada de produto com trackExpiry)
   batchCode?: string | null;
+  batchRef?: string | null;    // agrupa as movimentações lançadas juntas em lote
 }
 
 /** Erro lançado quando a operação levaria o saldo do local abaixo de zero. */
@@ -126,7 +142,7 @@ export const StockService = {
   async upsertLocation(propertyId: string, payload: Partial<StockLocation>, actor: Actor): Promise<string> {
     const isNew = !payload.id;
     const id = payload.id ?? crypto.randomUUID();
-    const row = {
+    const row: Record<string, unknown> = {
       ...payload,
       id,
       propertyId,
@@ -135,6 +151,9 @@ export const StockService = {
       updatedAt: now(),
       ...(isNew && { createdAt: now() }),
     };
+    // cabinId é vínculo de identidade com a cabana: só applyCabinLinks e
+    // _resolveCabinLocation escrevem nele. Nunca pelo formulário de local.
+    delete row.cabinId;
     const { error } = await db().from("stock_locations").upsert(row);
     if (error) throw error;
     await AuditService.log({
@@ -145,13 +164,187 @@ export const StockService = {
     return id;
   },
 
+  /**
+   * Excluir um local é destrutivo e silencioso no banco: stock_balances é
+   * ON DELETE CASCADE (o saldo some) e stock_movements é ON DELETE SET NULL (o
+   * histórico fica cego). Então só deixa excluir local sem saldo e sem histórico
+   * — o resto se desativa.
+   */
   async deleteLocation(propertyId: string, id: string, actor: Actor): Promise<void> {
-    const { error } = await db().from("stock_locations").delete().eq("id", id).eq("propertyId", propertyId);
+    const client = db();
+    const [{ data: balances }, { count: movementCount }] = await Promise.all([
+      client.from("stock_balances").select("quantity").eq("propertyId", propertyId).eq("locationId", id),
+      client.from("stock_movements").select("id", { count: "exact", head: true })
+        .eq("propertyId", propertyId).or(`fromLocationId.eq.${id},toLocationId.eq.${id}`),
+    ]);
+    const units = ((balances ?? []) as { quantity: number }[]).reduce((s, b) => s + Math.abs(Number(b.quantity)), 0);
+    if (units > 0 || (movementCount ?? 0) > 0) {
+      const reasons = [
+        units > 0 ? `${units} un. em saldo` : null,
+        (movementCount ?? 0) > 0 ? `${movementCount} movimentação(ões)` : null,
+      ].filter(Boolean).join(" e ");
+      throw new Error(`Este local tem ${reasons} — excluir apagaria o saldo e cegaria o histórico. Desative o local em vez de excluir.`);
+    }
+
+    const { error } = await client.from("stock_locations").delete().eq("id", id).eq("propertyId", propertyId);
     if (error) throw error;
     await AuditService.log({
       propertyId, userId: actor.id, userName: actor.name,
       action: "DELETE", entity: "STOCK", entityId: id, details: "Local de estoque removido.",
     });
+  },
+
+  // ── CABANAS COMO LOCAIS ──────────────────────────────────────────────────────
+  /**
+   * Propõe o casamento entre cada cabana e um local de estoque existente.
+   * SOMENTE LEITURA — não grava nada. Cada proposta vem com o peso do local
+   * candidato (saldo e histórico) para o usuário decidir com o dado na frente.
+   */
+  async getCabinLinkReport(propertyId: string): Promise<CabinLinkReport> {
+    const client = db();
+    const [{ data: cabins }, { data: locations }] = await Promise.all([
+      client.from("cabins").select("id, number, category, name").eq("propertyId", propertyId),
+      client.from("stock_locations").select("*").eq("propertyId", propertyId),
+    ]);
+
+    const cabinRows = ((cabins ?? []) as { id: string; number: string; category: string; name: string }[])
+      .sort((a, b) => (Number(a.number) - Number(b.number)) || a.number.localeCompare(b.number));
+    const locRows = (locations ?? []) as StockLocation[];
+
+    // Candidatos: locais tipo 'cabin' (é onde as cabanas foram cadastradas à mão)
+    // + qualquer local já vinculado, mesmo que tenham retipado depois.
+    const candidateRows = locRows.filter((l) => l.type === "cabin" || l.cabinId);
+    const candidates = await this._describeLocations(client, propertyId, candidateRows);
+
+    const byCabinId = new Map(candidateRows.filter((l) => l.cabinId).map((l) => [l.cabinId as string, l]));
+    const taken = new Set(byCabinId.values());
+
+    const proposals: CabinLinkProposal[] = cabinRows.map((cabin) => {
+      const linked = byCabinId.get(cabin.id);
+      if (linked) {
+        return { cabin, linkedLocationId: linked.id, suggestedLocationId: null, matchKind: "linked" as const };
+      }
+      const free = candidateRows.filter((l) => !taken.has(l) && !l.cabinId);
+      const wanted = normalizeLocName(`CABANA ${cabin.number}`);
+      const exact = free.find((l) => normalizeLocName(l.name) === wanted);
+      if (exact) {
+        taken.add(exact);
+        return { cabin, linkedLocationId: null, suggestedLocationId: exact.id, matchKind: "exact-name" as const };
+      }
+      const n = Number(cabin.number);
+      const byNumber = Number.isFinite(n) ? free.find((l) => trailingNumber(l.name) === n) : undefined;
+      if (byNumber) {
+        taken.add(byNumber);
+        return { cabin, linkedLocationId: null, suggestedLocationId: byNumber.id, matchKind: "number" as const };
+      }
+      return { cabin, linkedLocationId: null, suggestedLocationId: null, matchKind: "none" as const };
+    });
+
+    const unmatched = candidateRows
+      .filter((l) => !taken.has(l) && !l.cabinId)
+      .map((l) => candidates[l.id])
+      .filter(Boolean);
+
+    return { proposals, unmatched, candidates };
+  },
+
+  /**
+   * Aplica os vínculos confirmados pelo usuário. Grava SOMENTE "cabinId" (e o
+   * nome, se pedido): não apaga, não funde e não encosta em saldo — por isso é
+   * reversível, basta desvincular. Valida tudo ANTES da primeira escrita, senão
+   * o índice único estouraria no meio deixando metade aplicada.
+   */
+  async applyCabinLinks(
+    propertyId: string,
+    links: { cabinId: string; locationId: string | null; rename?: boolean }[],
+    actor: Actor,
+  ): Promise<{ linked: number; unlinked: number }> {
+    const client = db();
+    if (links.length === 0) return { linked: 0, unlinked: 0 };
+
+    const targets = links.filter((l) => l.locationId);
+    const dupLoc = targets.map((l) => l.locationId!).find((id, i, arr) => arr.indexOf(id) !== i);
+    if (dupLoc) throw new Error("O mesmo local foi apontado para duas cabanas. Ajuste antes de confirmar.");
+    const dupCabin = links.map((l) => l.cabinId).find((id, i, arr) => arr.indexOf(id) !== i);
+    if (dupCabin) throw new Error("A mesma cabana aparece duas vezes na confirmação.");
+
+    const [{ data: cabins }, { data: locs }] = await Promise.all([
+      client.from("cabins").select("id, number").eq("propertyId", propertyId).in("id", links.map((l) => l.cabinId)),
+      client.from("stock_locations").select("id, name, cabinId").eq("propertyId", propertyId)
+        .in("id", targets.length ? targets.map((l) => l.locationId!) : ["__none__"]),
+    ]);
+    const cabinMap = new Map(((cabins ?? []) as { id: string; number: string }[]).map((c) => [c.id, c]));
+    const locMap = new Map(((locs ?? []) as { id: string; name: string; cabinId: string | null }[]).map((l) => [l.id, l]));
+
+    for (const link of links) {
+      if (!cabinMap.has(link.cabinId)) throw new Error("Cabana não encontrada nesta propriedade.");
+      if (!link.locationId) continue;
+      const loc = locMap.get(link.locationId);
+      if (!loc) throw new Error("Local não encontrado nesta propriedade.");
+      if (loc.cabinId && loc.cabinId !== link.cabinId) {
+        throw new Error(`O local "${loc.name}" já está vinculado a outra cabana. Desvincule antes.`);
+      }
+    }
+
+    let linked = 0, unlinked = 0;
+    for (const link of links) {
+      if (link.locationId) {
+        const cabin = cabinMap.get(link.cabinId)!;
+        const patch: Record<string, unknown> = { cabinId: link.cabinId, type: "cabin", updatedAt: now() };
+        if (link.rename) patch.name = `Cabana ${cabin.number}`;
+        const { error } = await client.from("stock_locations").update(patch)
+          .eq("id", link.locationId).eq("propertyId", propertyId);
+        if (error) throw error;
+        linked++;
+      } else {
+        // Desvincular: qualquer local que aponte para esta cabana volta a ser solto.
+        const { error } = await client.from("stock_locations")
+          .update({ cabinId: null, updatedAt: now() })
+          .eq("propertyId", propertyId).eq("cabinId", link.cabinId);
+        if (error) throw error;
+        unlinked++;
+      }
+    }
+
+    await AuditService.log({
+      propertyId, userId: actor.id, userName: actor.name,
+      action: "UPDATE", entity: "STOCK", entityId: propertyId,
+      details: `Cabanas × locais de estoque: ${linked} vinculada(s), ${unlinked} desvinculada(s).`,
+    });
+    return { linked, unlinked };
+  },
+
+  /** Saldo e histórico de cada local — o "peso" que a UI mostra antes do clique. */
+  async _describeLocations(client: DB, propertyId: string, locs: StockLocation[]): Promise<Record<string, CabinLinkCandidate>> {
+    const out: Record<string, CabinLinkCandidate> = {};
+    if (locs.length === 0) return out;
+    const ids = locs.map((l) => l.id);
+    const [{ data: balances }, { data: moves }] = await Promise.all([
+      client.from("stock_balances").select("locationId, quantity").eq("propertyId", propertyId).in("locationId", ids),
+      client.from("stock_movements").select("fromLocationId, toLocationId").eq("propertyId", propertyId)
+        .or(`fromLocationId.in.(${ids.join(",")}),toLocationId.in.(${ids.join(",")})`),
+    ]);
+
+    const rows = new Map<string, { rows: number; units: number }>();
+    for (const b of (balances ?? []) as { locationId: string; quantity: number }[]) {
+      const cur = rows.get(b.locationId) ?? { rows: 0, units: 0 };
+      rows.set(b.locationId, { rows: cur.rows + 1, units: cur.units + Number(b.quantity) });
+    }
+    const movs = new Map<string, number>();
+    for (const m of (moves ?? []) as { fromLocationId: string | null; toLocationId: string | null }[]) {
+      for (const id of [m.fromLocationId, m.toLocationId]) {
+        if (id && ids.includes(id)) movs.set(id, (movs.get(id) ?? 0) + 1);
+      }
+    }
+
+    for (const l of locs) {
+      const b = rows.get(l.id) ?? { rows: 0, units: 0 };
+      out[l.id] = {
+        id: l.id, name: l.name, type: l.type, active: l.active, cabinId: l.cabinId ?? null,
+        balanceRows: b.rows, totalUnits: b.units, movementCount: movs.get(l.id) ?? 0,
+      };
+    }
+    return out;
   },
 
   // ── PRODUTOS ────────────────────────────────────────────────────────────────
@@ -371,13 +564,13 @@ export const StockService = {
    */
   async getStaffOptions(propertyId: string): Promise<StockStaffOption[]> {
     const all = await this._staffRows(propertyId);
-    return all.filter((s) => s.active).map(({ id, name }) => ({ id, name }));
+    return all.filter((s) => s.active).map(({ id, name, role }) => ({ id, name, role }));
   },
 
-  async _staffRows(propertyId: string): Promise<{ id: string; name: string; active: boolean }[]> {
-    const { data } = await db().from("staff").select("id, fullName, active").eq("propertyId", propertyId).order("fullName");
-    return ((data ?? []) as { id: string; fullName: string; active: boolean | null }[])
-      .map((s) => ({ id: s.id, name: s.fullName, active: s.active !== false }));
+  async _staffRows(propertyId: string): Promise<{ id: string; name: string; role?: UserRole; active: boolean }[]> {
+    const { data } = await db().from("staff").select("id, fullName, role, active").eq("propertyId", propertyId).order("fullName");
+    return ((data ?? []) as { id: string; fullName: string; role: UserRole | null; active: boolean | null }[])
+      .map((s) => ({ id: s.id, name: s.fullName, role: s.role ?? undefined, active: s.active !== false }));
   },
 
   /** Resolve o nome do colaborador de um lado da movimentação (inclui inativos). */
@@ -430,6 +623,10 @@ export const StockService = {
 
     // Local do tipo 'staff' exige informar QUAL colaborador.
     await this._assertStaffDetail(client, propertyId, input);
+
+    // Responsável pela ação: default = quem operou. O NOME é sempre resolvido no
+    // servidor — o cliente manda só o id, como já vale para performedBy.
+    const responsible = await this._resolveResponsible(client, propertyId, input.responsibleId, actor);
 
     const qty = Number(input.quantity);
     const fallbackCost = Number(product.averageCost) || 0;
@@ -498,6 +695,9 @@ export const StockService = {
       referenceId: input.referenceId ?? null,
       performedBy: actor.id,
       performedByName: actor.name,
+      responsibleId: responsible.id,
+      responsibleName: responsible.name,
+      batchRef: input.batchRef ?? null,
       notes: input.notes ?? null,
       createdAt: now(),
     });
@@ -544,6 +744,19 @@ export const StockService = {
   async _totalQty(client: DB, productId: string): Promise<number> {
     const { data } = await client.from("stock_balances").select("quantity").eq("productId", productId);
     return ((data ?? []) as { quantity: number }[]).reduce((s, b) => s + Number(b.quantity), 0);
+  },
+
+  /**
+   * Responsável pela ação. Aceita só o id vindo do cliente e busca o nome no
+   * banco — nome enviado pelo cliente é ignorado (mesma regra de performedBy).
+   * Sem id, ou id que não é da propriedade, cai no ator da sessão.
+   */
+  async _resolveResponsible(client: DB, propertyId: string, responsibleId: string | null | undefined, actor: Actor): Promise<Actor> {
+    if (!responsibleId || responsibleId === actor.id) return actor;
+    const { data } = await client.from("staff")
+      .select("id, fullName").eq("id", responsibleId).eq("propertyId", propertyId).maybeSingle();
+    if (!data) return actor;
+    return { id: data.id as string, name: data.fullName as string };
   },
 
   /**

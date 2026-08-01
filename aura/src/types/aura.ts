@@ -1474,11 +1474,14 @@ export interface StockMovement {
   fromStaffId?: string | null;
   toStaffId?: string | null;
   batchId?: string | null;        // usado a partir da Fase 2
+  batchRef?: string | null;       // agrupa as movimentações lançadas em lote
   lossType?: StockLossType | null;
   referenceType: StockReferenceType;
   referenceId?: string | null;
-  performedBy?: string;
+  performedBy?: string;           // quem OPEROU o sistema (sessão, não forjável)
   performedByName?: string;
+  responsibleId?: string | null;  // quem RESPONDE pela ação (default = quem operou)
+  responsibleName?: string | null;
   notes?: string;
   createdAt: Timestamp;
   // Joined / virtual
@@ -1489,10 +1492,42 @@ export interface StockMovement {
   toStaffName?: string;           // nome do colaborador de destino
 }
 
-/** Colaborador selecionável como origem/destino de uma movimentação. */
+/**
+ * Reconciliação entre a coleção `cabins` e os locais de estoque do tipo cabana.
+ * Uma proposta NUNCA é aplicada sozinha — o usuário confirma linha a linha.
+ */
+export interface CabinLinkProposal {
+  cabin: { id: string; number: string; category: string; name: string };
+  linkedLocationId: string | null;              // já vinculado (cabinId gravado)
+  suggestedLocationId: string | null;           // candidato, ainda não vinculado
+  matchKind: 'linked' | 'exact-name' | 'number' | 'none';
+}
+
+/** Local de estoque candidato/órfão, com o peso do que ele carrega. */
+export interface CabinLinkCandidate {
+  id: string;
+  name: string;
+  type: StockLocationType;
+  active: boolean;
+  cabinId?: string | null;
+  balanceRows: number;
+  totalUnits: number;
+  movementCount: number;
+}
+
+export interface CabinLinkReport {
+  proposals: CabinLinkProposal[];
+  /** Locais tipo 'cabin' que não casaram com nenhuma cabana (inclui o "CABANAS" genérico). */
+  unmatched: CabinLinkCandidate[];
+  /** Todos os candidatos por id, para a UI mostrar saldo/histórico de cada proposta. */
+  candidates: Record<string, CabinLinkCandidate>;
+}
+
+/** Colaborador selecionável como origem/destino ou responsável de uma movimentação. */
 export interface StockStaffOption {
   id: string;
   name: string;
+  role?: UserRole;   // agrupa o select por cargo
 }
 
 export interface StockSettings {

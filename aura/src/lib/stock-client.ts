@@ -2,6 +2,7 @@
 // Wrapper HTTP tipado para as páginas do módulo Estoque/Patrimônio consumirem as
 // rotas em /api/admin/* (que validam sessão e usam service-role no servidor).
 import {
+  CabinLinkReport,
   StockCategory, StockLocation, StockProduct, StockMovement, StockStaffOption, StockSettings,
   Supplier, Purchase, PurchaseItem, Asset, StockBatch, InventoryCount, ProductDetail, SupplierDetail, StockDashboard,
 } from "@/types/aura";
@@ -37,6 +38,9 @@ export const StockClient = {
   deleteCategory: (pid: string, id: string) => del("estoque/categories", pid, id),
   // locais
   locations: (pid: string) => get<StockLocation[]>("estoque/locations", pid),
+  cabinLinks: (pid: string) => get<CabinLinkReport>("estoque/locations", pid, "&cabins=1"),
+  linkCabins: (propertyId: string, links: { cabinId: string; locationId: string | null; rename?: boolean }[]) =>
+    post<{ linked: number; unlinked: number }>("estoque/locations", { propertyId, action: "linkCabins", links }),
   saveLocation: (body: WithProp<StockLocation>) => post("estoque/locations", body),
   deleteLocation: (pid: string, id: string) => del("estoque/locations", pid, id),
   // produtos

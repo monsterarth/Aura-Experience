@@ -4,13 +4,20 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { StockClient } from "@/lib/stock-client";
-import { StockCategory, StockLocation, StockSettings, StockCategoryScope, StockLocationType } from "@/types/aura";
+import { CabinLinkReport, StockCategory, StockLocation, StockSettings, StockCategoryScope, StockLocationType } from "@/types/aura";
 import StockLocationSelect from "@/components/admin/StockLocationSelect";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Plus, Trash2, Save, Loader2, Pencil, X, Sparkles, Tag, MapPin, SlidersHorizontal } from "lucide-react";
+import { Plus, Trash2, Save, Loader2, Pencil, X, Sparkles, Tag, MapPin, SlidersHorizontal, Home, Link2, AlertTriangle } from "lucide-react";
 
-type Tab = "categorias" | "locais" | "parametros";
+type Tab = "categorias" | "locais" | "cabanas" | "parametros";
+
+const MATCH_META: Record<string, { label: string; cls: string }> = {
+  linked:       { label: "Vinculada",        cls: "bg-emerald-500/15 text-emerald-500" },
+  "exact-name": { label: "Nome idêntico",    cls: "bg-blue-500/15 text-blue-500" },
+  number:       { label: "Casou pelo número", cls: "bg-amber-500/15 text-amber-500" },
+  none:         { label: "Sem candidato",    cls: "bg-secondary text-muted-foreground" },
+};
 
 const SCOPE_LABEL: Record<StockCategoryScope, string> = {
   consumable: "Consumível", asset: "Patrimônio", both: "Ambos",
@@ -40,7 +47,11 @@ export default function EstoqueConfigPage() {
   const [categories, setCategories] = useState<StockCategory[]>([]);
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [settings, setSettings] = useState<StockSettings | null>(null);
+  const [cabinReport, setCabinReport] = useState<CabinLinkReport | null>(null);
   const [loading, setLoading] = useState(true);
+  // Escolha do usuário por cabana: undefined = segue a proposta; "" = não vincular.
+  const [cabinChoice, setCabinChoice] = useState<Record<string, string>>({});
+  const [renameCabins, setRenameCabins] = useState(false);
 
   const [catForm, setCatForm] = useState<Partial<StockCategory> | null>(null);
   const [locForm, setLocForm] = useState<Partial<StockLocation> | null>(null);
@@ -50,12 +61,13 @@ export default function EstoqueConfigPage() {
     if (!property?.id) return;
     setLoading(true);
     try {
-      const [cats, locs, sett] = await Promise.all([
+      const [cats, locs, sett, cabins] = await Promise.all([
         StockClient.categories(property.id),
         StockClient.locations(property.id),
         StockClient.settings(property.id),
+        StockClient.cabinLinks(property.id),
       ]);
-      setCategories(cats); setLocations(locs); setSettings(sett);
+      setCategories(cats); setLocations(locs); setSettings(sett); setCabinReport(cabins);
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -103,6 +115,44 @@ export default function EstoqueConfigPage() {
     catch (e) { toast.error((e as Error).message); }
   };
 
+  // ── Cabanas × locais ─────────────────────────────────────────────────────────
+  /** Local escolhido para uma cabana: a escolha manual vence a proposta. */
+  const chosenFor = (cabinId: string, fallback: string | null) =>
+    cabinChoice[cabinId] !== undefined ? cabinChoice[cabinId] : (fallback ?? "");
+
+  const applyCabinLinks = async () => {
+    if (!property?.id || !cabinReport) return;
+    const links = cabinReport.proposals.map((p) => ({
+      cabinId: p.cabin.id,
+      locationId: chosenFor(p.cabin.id, p.linkedLocationId ?? p.suggestedLocationId) || null,
+      rename: renameCabins,
+    }));
+    const toLink = links.filter((l) => l.locationId).length;
+    if (!confirm(
+      `Vincular ${toLink} cabana(s) ao seu local de estoque?\n\n` +
+      `Só o vínculo é gravado — nenhum saldo, produto ou histórico é alterado. ` +
+      `Dá para desfazer depois trocando o local para "— não vincular —".`
+    )) return;
+    setSaving(true);
+    try {
+      const r = await StockClient.linkCabins(property.id, links);
+      setCabinChoice({});
+      await load();
+      toast.success(`${r.linked} vinculada(s), ${r.unlinked} desvinculada(s).`);
+    } catch (e) { toast.error((e as Error).message); } finally { setSaving(false); }
+  };
+
+  /** Tira o local do grupo "Cabanas" sem apagar nada — para o CABANAS genérico. */
+  const retypeToOther = async (loc: { id: string; name: string }) => {
+    if (!property?.id) return;
+    if (!confirm(`Mudar "${loc.name}" para o tipo Outro?\n\nEle sai do grupo Cabanas do seletor e continua com todo o saldo e histórico.`)) return;
+    setSaving(true);
+    try {
+      await StockClient.saveLocation({ propertyId: property.id, id: loc.id, name: loc.name, type: "other" });
+      await load(); toast.success("Local retipado.");
+    } catch (e) { toast.error((e as Error).message); } finally { setSaving(false); }
+  };
+
   // ── Parâmetros ───────────────────────────────────────────────────────────────
   const saveSettings = async () => {
     if (!property?.id || !settings) return;
@@ -123,7 +173,7 @@ export default function EstoqueConfigPage() {
       </header>
 
       <div className="flex gap-1 mb-6 bg-secondary/40 p-1 rounded-xl w-fit">
-        {([["categorias", "Categorias", Tag], ["locais", "Locais", MapPin], ["parametros", "Parâmetros", SlidersHorizontal]] as const).map(([id, label, Icon]) => (
+        {([["categorias", "Categorias", Tag], ["locais", "Locais", MapPin], ["cabanas", "Cabanas", Home], ["parametros", "Parâmetros", SlidersHorizontal]] as const).map(([id, label, Icon]) => (
           <button key={id} onClick={() => setTab(id)}
             className={cn("flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors",
               tab === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
@@ -247,6 +297,107 @@ export default function EstoqueConfigPage() {
               <p className="text-sm text-muted-foreground py-8 text-center">Nenhum local ainda. Crie ao menos um (ex.: Almoxarifado).</p>
             )}
           </div>
+        </section>
+      ) : tab === "cabanas" ? (
+        <section className="space-y-4">
+          <div className="bg-secondary/40 border border-border rounded-2xl p-4 text-sm text-muted-foreground">
+            Aqui as cabanas do cadastro são amarradas aos locais de estoque. O sistema <b className="text-foreground">propõe</b> o
+            casamento pelo nome/número e você confirma. Confirmar grava <b className="text-foreground">só o vínculo</b> —
+            nenhum saldo, produto ou histórico é tocado, e dá para desfazer. Saldo e movimentações aparecem em cada
+            linha para você ver o que não é lixo antes de decidir.
+          </div>
+
+          {!cabinReport ? (
+            <div className="flex justify-center py-12"><Loader2 className="animate-spin text-primary" /></div>
+          ) : (
+            <>
+              <div className="bg-card border border-border rounded-2xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
+                      <th className="text-left px-4 py-3">Cabana</th>
+                      <th className="text-left px-4 py-3">Local proposto</th>
+                      <th className="text-left px-4 py-3">Match</th>
+                      <th className="text-right px-4 py-3">Saldo</th>
+                      <th className="text-right px-4 py-3">Movim.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cabinReport.proposals.map((p) => {
+                      const chosen = chosenFor(p.cabin.id, p.linkedLocationId ?? p.suggestedLocationId);
+                      const c = chosen ? cabinReport.candidates[chosen] : undefined;
+                      const meta = MATCH_META[p.matchKind];
+                      // Locais disponíveis: os não vinculados + o que já é desta cabana.
+                      const available = Object.values(cabinReport.candidates)
+                        .filter((x) => !x.cabinId || x.cabinId === p.cabin.id);
+                      return (
+                        <tr key={p.cabin.id} className="border-b border-border/50 last:border-0">
+                          <td className="px-4 py-3 text-foreground font-medium whitespace-nowrap">{p.cabin.name}</td>
+                          <td className="px-4 py-3">
+                            <select className="field-input w-full py-1.5 text-xs" value={chosen}
+                              onChange={(e) => setCabinChoice({ ...cabinChoice, [p.cabin.id]: e.target.value })}>
+                              <option value="">— não vincular —</option>
+                              {available.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                            </select>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={cn("text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md whitespace-nowrap", meta.cls)}>{meta.label}</span>
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-muted-foreground text-xs whitespace-nowrap">
+                            {c ? `${c.totalUnits} un · ${c.balanceRows} item(ns)` : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-muted-foreground text-xs">{c?.movementCount ?? "—"}</td>
+                        </tr>
+                      );
+                    })}
+                    {cabinReport.proposals.length === 0 && (
+                      <tr><td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">Nenhuma cabana cadastrada nesta propriedade.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {cabinReport.unmatched.length > 0 && (
+                <div className="bg-card border border-border rounded-2xl p-4">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
+                    <AlertTriangle size={13} className="text-amber-500" /> Locais de cabana sem cabana correspondente
+                  </h3>
+                  <div className="space-y-1.5">
+                    {cabinReport.unmatched.map((u) => (
+                      <div key={u.id} className="flex items-center gap-3 text-sm">
+                        <MapPin size={14} className="text-muted-foreground shrink-0" />
+                        <span className="flex-1 text-foreground">{u.name}</span>
+                        <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                          {u.totalUnits} un · {u.movementCount} movim.
+                        </span>
+                        <button onClick={() => retypeToOther(u)} disabled={saving}
+                          className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-secondary text-muted-foreground hover:text-foreground whitespace-nowrap">
+                          Mudar p/ Outro
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-3">
+                    Provavelmente o <b>CABANAS</b> genérico e sobras. <b>Não exclua</b>: local com saldo ou histórico guarda
+                    dado real. Mudar para o tipo <b>Outro</b> tira ele do grupo Cabanas do seletor sem perder nada — depois
+                    dá para transferir o saldo para as cabanas certas com calma e só então desativar.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-muted-foreground">
+                  <input type="checkbox" checked={renameCabins} onChange={(e) => setRenameCabins(e.target.checked)}
+                    className="w-4 h-4 accent-primary" />
+                  Padronizar os nomes para &quot;Cabana N&quot;
+                </label>
+                <button onClick={applyCabinLinks} disabled={saving || cabinReport.proposals.length === 0}
+                  className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground disabled:opacity-50">
+                  {saving ? <Loader2 size={15} className="animate-spin" /> : <Link2 size={15} />} Confirmar vínculos
+                </button>
+              </div>
+            </>
+          )}
         </section>
       ) : settings ? (
         <section className="bg-card border border-border rounded-2xl p-5 space-y-4 max-w-lg">

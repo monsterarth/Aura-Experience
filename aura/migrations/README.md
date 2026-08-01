@@ -57,4 +57,6 @@ record**. There is **no migration runner** — each file was applied manually vi
 | 2026-06-19 | `add_poi_instagram.sql` | Instagram field on POIs |
 | 2026-06-19 | `stock_phase4.sql` | Stock module — phase 4 |
 | 2026-08-01 | `stock_movement_targets.sql` | Movimentações: destino "colaborador" (`fromStaffId`/`toStaffId`) |
+| 2026-08-01 | `stock_phase6_responsible.sql` | Movimentações: responsável pela ação + `batchRef` (lote) |
+| 2026-08-01 | `stock_phase6_cabin_locations.sql` | Índices para cabanas como locais derivados (só índices, sem UPDATE) |
 | 2026-08-01 | `add_housekeeping_skip_columns.sql` | `skippedAt` + `guestName` em `housekeeping_tasks` (faxina não realizada) |

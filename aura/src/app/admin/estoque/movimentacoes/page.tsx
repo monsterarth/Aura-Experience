@@ -3,10 +3,12 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useProperty } from "@/context/PropertyContext";
+import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { StockClient } from "@/lib/stock-client";
 import { StockProduct, StockLocation, StockMovement, StockMovementType, StockLossType, StockStaffOption } from "@/types/aura";
 import StockLocationSelect from "@/components/admin/StockLocationSelect";
+import StaffSelect from "@/components/admin/StaffSelect";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Loader2, ArrowLeftRight, ArrowDownToLine, ArrowUpFromLine, Repeat, SlidersHorizontal, AlertOctagon, Save } from "lucide-react";
@@ -29,16 +31,18 @@ interface MovForm {
   expiryDate: string; batchCode: string;
   // colaborador, quando o local escolhido é do tipo 'staff'
   fromStaffId: string; toStaffId: string;
+  responsibleId: string;   // quem responde pela ação; default = usuário logado
 }
 const emptyMov: MovForm = {
   productId: "", type: "entry", quantity: "", unitCost: "",
   fromLocationId: "", toLocationId: "", lossType: "expiry", notes: "",
-  expiryDate: "", batchCode: "", fromStaffId: "", toStaffId: "",
+  expiryDate: "", batchCode: "", fromStaffId: "", toStaffId: "", responsibleId: "",
 };
 
 
 export default function EstoqueMovimentacoesPage() {
   const { currentProperty: property } = useProperty();
+  const { userData } = useAuth();
   const [products, setProducts] = useState<StockProduct[]>([]);
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
@@ -77,6 +81,14 @@ export default function EstoqueMovimentacoesPage() {
   const selectedProduct = products.find((p) => p.id === form.productId);
   const showExpiry = form.type === "entry" && !!selectedProduct?.trackExpiry;
 
+  // Responsável: começa no usuário logado e pode ser trocado. O logado entra na
+  // lista mesmo se não for da propriedade (super admin), senão o select fica vazio.
+  const responsibleOptions = React.useMemo(() => {
+    if (!userData?.id || staffOptions.some((s) => s.id === userData.id)) return staffOptions;
+    return [{ id: userData.id, name: userData.fullName, role: userData.role }, ...staffOptions];
+  }, [staffOptions, userData?.id, userData?.fullName, userData?.role]);
+  const responsibleId = form.responsibleId || userData?.id || "";
+
   const locationOf = (id: string) => locations.find((l) => l.id === id);
   // Locais do tipo "Colaboradores" pedem um segundo select: quem recebeu/devolveu.
   const askFromStaff = showFrom && locationOf(form.fromLocationId)?.type === "staff";
@@ -102,6 +114,7 @@ export default function EstoqueMovimentacoesPage() {
       toLocationId: showTo ? form.toLocationId : undefined,
       fromStaffId: askFromStaff ? form.fromStaffId : undefined,
       toStaffId: askToStaff ? form.toStaffId : undefined,
+      responsibleId: responsibleId || undefined,
       lossType: form.type === "loss" ? form.lossType : undefined,
       expiryDate: showExpiry ? (form.expiryDate || undefined) : undefined,
       batchCode: showExpiry ? (form.batchCode || undefined) : undefined,
@@ -112,7 +125,8 @@ export default function EstoqueMovimentacoesPage() {
     const send = async (allowNegative: boolean) => {
       await StockClient.registerMovement({ ...payload, allowNegative });
       toast.success(allowNegative ? "Registrada — estoque ficou negativo." : "Movimentação registrada.");
-      setForm({ ...emptyMov, type: form.type });
+      // Mantém tipo e responsável: quem lança em nome de outro costuma lançar vários seguidos.
+      setForm({ ...emptyMov, type: form.type, responsibleId: form.responsibleId });
     };
 
     setSaving(true);
@@ -215,11 +229,8 @@ export default function EstoqueMovimentacoesPage() {
             {askFromStaff && (
               <div>
                 <label className="field-label">Colaborador (origem)</label>
-                <select className="field-input w-full" value={form.fromStaffId}
-                  onChange={(e) => setForm({ ...form, fromStaffId: e.target.value })}>
-                  <option value="">Selecione…</option>
-                  {staffOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
+                <StaffSelect staff={staffOptions} value={form.fromStaffId}
+                  onChange={(id) => setForm({ ...form, fromStaffId: id })} />
               </div>
             )}
             {showTo && (
@@ -232,11 +243,8 @@ export default function EstoqueMovimentacoesPage() {
             {askToStaff && (
               <div>
                 <label className="field-label">Colaborador</label>
-                <select className="field-input w-full" value={form.toStaffId}
-                  onChange={(e) => setForm({ ...form, toStaffId: e.target.value })}>
-                  <option value="">Selecione…</option>
-                  {staffOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
+                <StaffSelect staff={staffOptions} value={form.toStaffId}
+                  onChange={(id) => setForm({ ...form, toStaffId: id })} />
               </div>
             )}
             {form.type === "loss" && (
@@ -248,7 +256,12 @@ export default function EstoqueMovimentacoesPage() {
                 </select>
               </div>
             )}
-            <div className="col-span-2">
+            <div>
+              <label className="field-label">Responsável</label>
+              <StaffSelect staff={responsibleOptions} value={responsibleId}
+                onChange={(id) => setForm({ ...form, responsibleId: id })} />
+            </div>
+            <div>
               <label className="field-label">Observações</label>
               <input className="field-input w-full" value={form.notes}
                 onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Opcional" />
@@ -278,6 +291,7 @@ export default function EstoqueMovimentacoesPage() {
                 <th className="text-left px-4 py-3">Produto</th>
                 <th className="text-right px-4 py-3">Qtd.</th>
                 <th className="text-left px-4 py-3">Local</th>
+                <th className="text-left px-4 py-3">Responsável</th>
                 <th className="text-right px-4 py-3">Custo</th>
               </tr>
             </thead>
@@ -300,6 +314,9 @@ export default function EstoqueMovimentacoesPage() {
                       {m.fromLocation?.name && m.toLocation?.name && <span> → </span>}
                       {m.toLocation?.name && <span>{m.toLocation.name}{m.toStaffName ? ` · ${m.toStaffName}` : ""}</span>}
                     </td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">
+                      {m.responsibleName ?? m.performedByName ?? "—"}
+                    </td>
                     <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
                       {Number(m.totalCost) > 0 ? `R$ ${Number(m.totalCost).toFixed(2)}` : "—"}
                     </td>
@@ -307,7 +324,7 @@ export default function EstoqueMovimentacoesPage() {
                 );
               })}
               {movements.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">Nenhuma movimentação ainda.</td></tr>
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">Nenhuma movimentação ainda.</td></tr>
               )}
             </tbody>
           </table>
