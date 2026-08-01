@@ -1489,9 +1489,15 @@ export default function MaidPage() {
 
         unsubscribe = HousekeepingService.listenToActiveTasks(property.id, allTasks => {
           const myId = userData?.id;
+          // Fora do quadro da camareira: concluída/cancelada, a que ela pulou ('skipped') e a
+          // pausada pelo DND do hóspede ('paused'). Nenhuma delas tem ação possível aqui — se
+          // ficarem na lista viram cartão fantasma (contam em "N atribuída(s) hoje" e aparecem
+          // como "Pendente" no Início, sem nada em PARA FAZER). Governanta e admin continuam
+          // vendo as puladas em "Não Realizadas".
+          const isOffBoard = (s: string) => s === "completed" || s === "cancelled" || s === "skipped" || s === "paused";
           const myTasks = (userData?.role === "maid" && myId)
-            ? allTasks.filter(t => t.assignedTo?.includes(myId) && t.status !== "completed" && t.status !== "cancelled")
-            : allTasks.filter(t => t.status !== "completed" && t.status !== "cancelled");
+            ? allTasks.filter(t => t.assignedTo?.includes(myId) && !isOffBoard(t.status))
+            : allTasks.filter(t => !isOffBoard(t.status));
 
           const enriched: EnrichedTask[] = myTasks.map(t => ({
             ...t,

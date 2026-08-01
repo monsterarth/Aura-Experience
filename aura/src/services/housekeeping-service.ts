@@ -242,9 +242,14 @@ export const HousekeepingService = {
       .select('cabinId, structureId, customLocation, type').eq('id', taskId).single();
 
     const now = new Date().toISOString();
-    await db().from('housekeeping_tasks')
+    // Erro checado de propósito: quando o UPDATE falha em silêncio (foi o caso da coluna
+    // skippedAt inexistente), a app removia o cartão de forma otimista, a auditoria
+    // registrava o skip e a tarefa voltava 'pending' no refetch seguinte — a camareira
+    // pulava a mesma faxina de novo e de novo. Falhou, a ação inteira falha.
+    const { error } = await db().from('housekeeping_tasks')
       .update({ status: 'skipped', skippedAt: now, updatedAt: now })
       .eq('id', taskId);
+    if (error) throw new Error(`skipTask: ${error.message}`);
 
     const location = await resolveLocation(task?.cabinId, task?.structureId, task?.customLocation);
     await AuditService.log({

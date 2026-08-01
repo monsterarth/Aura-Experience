@@ -56,3 +56,4 @@ record**. There is **no migration runner** — each file was applied manually vi
 | 2026-06-19 | `add_breakfast_venue.sql` | Breakfast venue / salão do café |
 | 2026-06-19 | `add_poi_instagram.sql` | Instagram field on POIs |
 | 2026-06-19 | `stock_phase4.sql` | Stock module — phase 4 (latest, work in progress) |
+| 2026-08-01 | `add_housekeeping_skip_columns.sql` | `skippedAt` + `guestName` em `housekeeping_tasks` (faxina não realizada) |
