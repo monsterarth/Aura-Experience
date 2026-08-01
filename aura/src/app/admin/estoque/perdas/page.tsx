@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { StockClient } from "@/lib/stock-client";
 import { StockMovement, StockBatch, StockLossType } from "@/types/aura";
+import ProductDetailModal from "@/components/admin/ProductDetailModal";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Loader2, AlertOctagon, CalendarClock } from "lucide-react";
@@ -23,6 +24,7 @@ export default function PerdasPage() {
   const [losses, setLosses] = useState<StockMovement[]>([]);
   const [expiring, setExpiring] = useState<StockBatch[]>([]);
   const [loading, setLoading] = useState(true);
+  const [productId, setProductId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!property?.id) return;
@@ -84,7 +86,8 @@ export default function PerdasPage() {
                 {expiring.map((b) => {
                   const expired = !!b.expiryDate && b.expiryDate < todayStr;
                   return (
-                    <div key={b.id} className="flex items-center justify-between text-sm">
+                    <div key={b.id} onClick={() => b.productId && setProductId(b.productId)}
+                      className="flex items-center justify-between text-sm cursor-pointer hover:bg-secondary/30 -mx-2 px-2 py-0.5 rounded">
                       <span className="text-foreground">{b.product?.name ?? "—"} <span className="text-xs text-muted-foreground">· {b.location?.name ?? ""}</span></span>
                       <span className="flex items-center gap-3">
                         <span className="text-muted-foreground tabular-nums">{Number(b.quantity)} {b.product?.unit ?? ""}</span>
@@ -143,7 +146,8 @@ export default function PerdasPage() {
                 {losses.map((l) => {
                   const meta = LOSS_META[(l.lossType ?? "other")];
                   return (
-                    <tr key={l.id} className="border-b border-border/50 last:border-0 hover:bg-secondary/30">
+                    <tr key={l.id} onClick={() => l.productId && setProductId(l.productId)}
+                      className="border-b border-border/50 last:border-0 hover:bg-secondary/30 cursor-pointer">
                       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{fmtDate(l.createdAt)}</td>
                       <td className="px-4 py-3 text-foreground">{l.product?.name ?? "—"}</td>
                       <td className="px-4 py-3"><span className="font-bold" style={{ color: meta.color }}>{meta.label}</span></td>
@@ -159,6 +163,10 @@ export default function PerdasPage() {
             </table>
           </section>
         </div>
+      )}
+
+      {productId && property && (
+        <ProductDetailModal propertyId={property.id} productId={productId} onClose={() => setProductId(null)} />
       )}
     </div>
   );

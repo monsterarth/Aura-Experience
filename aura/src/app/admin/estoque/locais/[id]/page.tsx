@@ -8,6 +8,7 @@ import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { StockClient } from "@/lib/stock-client";
 import { StockLocationDetail, StockLocationType } from "@/types/aura";
+import ProductDetailModal from "@/components/admin/ProductDetailModal";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -38,6 +39,7 @@ export default function EstoqueLocalPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [fix, setFix] = useState<FixDraft | null>(null);
+  const [productId, setProductId] = useState<string | null>(null);
   const [manage, setManage] = useState<{ name: string; type: StockLocationType; active: boolean } | null>(null);
 
   const load = useCallback(async () => {
@@ -170,7 +172,8 @@ export default function EstoqueLocalPage() {
           </thead>
           <tbody>
             {detail.items.map((it) => (
-              <tr key={it.productId} className="border-b border-border/50 last:border-0 hover:bg-secondary/30">
+              <tr key={it.productId} onClick={() => setProductId(it.productId)}
+                className="border-b border-border/50 last:border-0 hover:bg-secondary/30 cursor-pointer">
                 <td className="px-4 py-3 text-foreground">
                   {it.belowMin && <AlertTriangle size={13} className="inline mr-1.5 text-amber-500" />}
                   {it.name} <span className="text-xs text-muted-foreground">{it.unit}</span>
@@ -179,7 +182,7 @@ export default function EstoqueLocalPage() {
                 <td className={cn("px-4 py-3 text-right tabular-nums font-medium", it.belowMin && "text-amber-500")}>{it.quantity}</td>
                 <td className="px-4 py-3 text-right tabular-nums text-muted-foreground text-xs">{money(it.averageCost)}</td>
                 <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{money(it.value)}</td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                   <button onClick={() => setFix({ productId: it.productId, name: it.name, current: it.quantity, unit: it.unit, qty: String(it.quantity), reason: "" })}
                     className="p-1.5 text-muted-foreground hover:text-foreground" title="Corrigir saldo">
                     <Pencil size={14} />
@@ -216,7 +219,8 @@ export default function EstoqueLocalPage() {
             {detail.movements.map((m) => {
               const entering = m.toLocationId === locationId;
               return (
-                <tr key={m.id} className="border-b border-border/50 last:border-0">
+                <tr key={m.id} onClick={() => m.productId && setProductId(m.productId)}
+                  className="border-b border-border/50 last:border-0 hover:bg-secondary/30 cursor-pointer">
                   <td className="px-4 py-3 text-muted-foreground whitespace-nowrap text-xs">{fmtDate(m.createdAt)}</td>
                   <td className="px-4 py-3 text-foreground">{m.product?.name ?? "—"}</td>
                   <td className={cn("px-4 py-3 text-right tabular-nums font-medium", entering ? "text-emerald-500" : "text-orange-500")}>
@@ -235,6 +239,12 @@ export default function EstoqueLocalPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Ficha do produto — destaca o saldo deste estoque */}
+      {productId && (
+        <ProductDetailModal propertyId={property.id} productId={productId}
+          highlightLocationId={locationId} onClose={() => setProductId(null)} />
+      )}
 
       {/* Correção de saldo */}
       {fix && (

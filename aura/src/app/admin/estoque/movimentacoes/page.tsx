@@ -10,6 +10,7 @@ import { StockProduct, StockLocation, StockMovement, StockMovementType, StockLos
 import StockLocationPicker from "@/components/admin/StockLocationPicker";
 import StaffSelect from "@/components/admin/StaffSelect";
 import BatchMovementModal from "@/components/admin/BatchMovementModal";
+import ProductDetailModal from "@/components/admin/ProductDetailModal";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Loader2, ArrowLeftRight, ArrowDownToLine, ArrowUpFromLine, Repeat, SlidersHorizontal, AlertOctagon, Save, Layers } from "lucide-react";
@@ -56,6 +57,7 @@ export default function EstoqueMovimentacoesPage() {
   const [form, setForm] = useState<MovForm>(emptyMov);
   const [saving, setSaving] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
+  const [productId, setProductId] = useState<string | null>(null);
 
   const loadStatic = useCallback(async () => {
     if (!property?.id) return;
@@ -208,6 +210,10 @@ export default function EstoqueMovimentacoesPage() {
         </button>
       </header>
 
+      {productId && property && (
+        <ProductDetailModal propertyId={property.id} productId={productId} onClose={() => setProductId(null)} />
+      )}
+
       {batchOpen && property && (
         <BatchMovementModal
           propertyId={property.id} products={products} locations={locations}
@@ -355,7 +361,8 @@ export default function EstoqueMovimentacoesPage() {
                 const meta = typeMeta(m.type);
                 const Icon = meta.icon;
                 return (
-                  <tr key={m.id} className="border-b border-border/50 last:border-0 hover:bg-secondary/30">
+                  <tr key={m.id} onClick={() => m.productId && setProductId(m.productId)}
+                    className="border-b border-border/50 last:border-0 hover:bg-secondary/30 cursor-pointer">
                     <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{fmtDate(m.createdAt)}</td>
                     <td className="px-4 py-3">
                       <span className={cn("inline-flex items-center gap-1.5 font-bold", meta.color)}>
@@ -365,7 +372,7 @@ export default function EstoqueMovimentacoesPage() {
                     <td className="px-4 py-3 text-foreground">
                       {m.product?.name ?? "—"}
                       {m.batchRef && (
-                        <button onClick={() => revertBatch(m.batchRef!)} disabled={saving}
+                        <button onClick={(e) => { e.stopPropagation(); revertBatch(m.batchRef!); }} disabled={saving}
                           title="Movimentação lançada em lote — clique para estornar o lote inteiro"
                           className="ml-1.5 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hover:text-foreground align-middle">
                           Lote
