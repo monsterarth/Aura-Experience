@@ -9,6 +9,9 @@ import { supabase, supabaseAdmin } from "@/lib/supabase";
 import { AuditService } from "./audit-service";
 import {
   AuditLog,
+  BatchLineError,
+  BatchMovementInput,
+  BatchMovementResult,
   CabinLinkCandidate,
   CabinLinkProposal,
   CabinLinkReport,
@@ -16,6 +19,9 @@ import {
   StockLocation,
   StockProduct,
   StockMovement,
+  StockCabinOption,
+  StockLocationDetail,
+  StockLocationOverview,
   StockMovementType,
   StockStaffOption,
   UserRole,
@@ -56,6 +62,8 @@ interface MovementInput {
   unitCost?: number;           // entry: custo da compra; demais: default = averageCost
   fromLocationId?: string | null;
   toLocationId?: string | null;
+  fromCabinId?: string | null;   // cabana de origem; resolvida para fromLocationId
+  toCabinId?: string | null;     // cabana de destino; resolvida para toLocationId
   fromStaffId?: string | null;   // colaborador, quando o local de origem é do tipo 'staff'
   toStaffId?: string | null;     // colaborador, quando o local de destino é do tipo 'staff'
   responsibleId?: string | null; // quem responde pela ação; default = quem operou
@@ -314,6 +322,47 @@ export const StockService = {
     return { linked, unlinked };
   },
 
+  /** Cabanas escolhíveis como origem/destino, com o local já vinculado (se houver). */
+  async getCabinOptions(propertyId: string): Promise<StockCabinOption[]> {
+    const client = db();
+    const [{ data: cabins }, { data: locs }] = await Promise.all([
+      client.from("cabins").select("id, number, name").eq("propertyId", propertyId),
+      client.from("stock_locations").select("id, cabinId").eq("propertyId", propertyId).not("cabinId", "is", null),
+    ]);
+    const byCabin = new Map(((locs ?? []) as { id: string; cabinId: string }[]).map((l) => [l.cabinId, l.id]));
+    return ((cabins ?? []) as { id: string; number: string; name: string }[])
+      .map((c) => ({ id: c.id, number: c.number, name: c.name, locationId: byCabin.get(c.id) ?? null }))
+      .sort((a, b) => (Number(a.number) - Number(b.number)) || a.number.localeCompare(b.number, undefined, { numeric: true }));
+  },
+
+  /**
+   * Local de estoque de uma cabana, criado na hora se ainda não existir.
+   * É o que permite cabana nova receber material sem cadastro manual de local —
+   * e cabana que nunca recebe nada nunca gera linha em stock_locations.
+   */
+  async _resolveCabinLocation(client: DB, propertyId: string, cabinId: string, actor: Actor): Promise<string> {
+    const { data: existing } = await client.from("stock_locations")
+      .select("id").eq("propertyId", propertyId).eq("cabinId", cabinId).maybeSingle();
+    if (existing) return existing.id as string;
+
+    const { data: cabin } = await client.from("cabins")
+      .select("id, number").eq("id", cabinId).eq("propertyId", propertyId).maybeSingle();
+    if (!cabin) throw new Error("Cabana não encontrada nesta propriedade.");
+
+    const id = crypto.randomUUID();
+    const { error } = await client.from("stock_locations").insert({
+      id, propertyId, name: `Cabana ${cabin.number}`, type: "cabin", cabinId,
+      active: true, createdAt: now(), updatedAt: now(),
+    });
+    if (error) throw error;
+    await AuditService.log({
+      propertyId, userId: actor.id, userName: actor.name,
+      action: "CREATE", entity: "STOCK", entityId: id,
+      details: `Local de estoque criado automaticamente para a Cabana ${cabin.number}.`,
+    });
+    return id;
+  },
+
   /** Saldo e histórico de cada local — o "peso" que a UI mostra antes do clique. */
   async _describeLocations(client: DB, propertyId: string, locs: StockLocation[]): Promise<Record<string, CabinLinkCandidate>> {
     const out: Record<string, CabinLinkCandidate> = {};
@@ -345,6 +394,151 @@ export const StockService = {
       };
     }
     return out;
+  },
+
+  // ── VISÃO POR ESTOQUE (LOCAL) ────────────────────────────────────────────────
+  /** Um card por local ativo: quanto tem dentro, quanto vale, quantos no mínimo. */
+  async getLocationsOverview(propertyId: string): Promise<StockLocationOverview[]> {
+    const client = db();
+    const [{ data: locations }, { data: balances }, { data: products }, { data: cabins }, { data: moves }] = await Promise.all([
+      client.from("stock_locations").select("*").eq("propertyId", propertyId).eq("active", true).order("name"),
+      client.from("stock_balances").select("locationId, productId, quantity").eq("propertyId", propertyId),
+      client.from("stock_products").select("id, averageCost, minStock, active").eq("propertyId", propertyId).eq("deleted", false),
+      client.from("cabins").select("id, number").eq("propertyId", propertyId),
+      client.from("stock_movements").select("fromLocationId, toLocationId, createdAt")
+        .eq("propertyId", propertyId).order("createdAt", { ascending: false }).limit(500),
+    ]);
+
+    const pMap = new Map(((products ?? []) as { id: string; averageCost: number; minStock: number; active: boolean }[]).map((p) => [p.id, p]));
+    const cabinMap = new Map(((cabins ?? []) as { id: string; number: string }[]).map((c) => [c.id, c.number]));
+
+    const lastMove = new Map<string, string>();
+    for (const m of (moves ?? []) as { fromLocationId: string | null; toLocationId: string | null; createdAt: string }[]) {
+      for (const id of [m.fromLocationId, m.toLocationId]) {
+        if (id && !lastMove.has(id)) lastMove.set(id, m.createdAt);
+      }
+    }
+
+    const agg = new Map<string, { products: number; units: number; value: number; belowMin: number }>();
+    for (const b of (balances ?? []) as { locationId: string; productId: string; quantity: number }[]) {
+      const qty = Number(b.quantity);
+      if (qty === 0) continue;
+      const p = pMap.get(b.productId);
+      const cur = agg.get(b.locationId) ?? { products: 0, units: 0, value: 0, belowMin: 0 };
+      cur.products += 1;
+      cur.units += qty;
+      cur.value += qty * Number(p?.averageCost ?? 0);
+      // Aproximação: minStock é global do produto, não por local.
+      if (p && Number(p.minStock) > 0 && qty < Number(p.minStock)) cur.belowMin += 1;
+      agg.set(b.locationId, cur);
+    }
+
+    return ((locations ?? []) as StockLocation[]).map((l) => {
+      const a = agg.get(l.id) ?? { products: 0, units: 0, value: 0, belowMin: 0 };
+      return {
+        location: l,
+        cabinNumber: l.cabinId ? (cabinMap.get(l.cabinId) ?? null) : null,
+        productCount: a.products,
+        totalUnits: round2(a.units),
+        totalValue: round2(a.value),
+        belowMinCount: a.belowMin,
+        lastMovementAt: lastMove.get(l.id) ?? null,
+      };
+    });
+  },
+
+  /** Conteúdo de um estoque + histórico daquele local. Espelho do getProductDetail. */
+  async getLocationDetail(propertyId: string, locationId: string, movementLimit = 60): Promise<StockLocationDetail> {
+    const client = db();
+    const [{ data: location }, { data: balances }, { data: products }, { data: categories }, { data: movements }, { data: locations }, staffName] = await Promise.all([
+      client.from("stock_locations").select("*").eq("id", locationId).eq("propertyId", propertyId).single(),
+      client.from("stock_balances").select("productId, quantity").eq("propertyId", propertyId).eq("locationId", locationId),
+      client.from("stock_products").select("*").eq("propertyId", propertyId).eq("deleted", false),
+      client.from("stock_categories").select("id, name").eq("propertyId", propertyId),
+      client.from("stock_movements").select("*").eq("propertyId", propertyId)
+        .or(`fromLocationId.eq.${locationId},toLocationId.eq.${locationId}`)
+        .order("createdAt", { ascending: false }).limit(movementLimit),
+      client.from("stock_locations").select("id, name").eq("propertyId", propertyId),
+      this._staffNamer(propertyId),
+    ]);
+    if (!location) throw new Error("Local não encontrado.");
+
+    const pMap = new Map(((products ?? []) as StockProduct[]).map((p) => [p.id, p]));
+    const catMap = new Map(((categories ?? []) as { id: string; name: string }[]).map((c) => [c.id, c.name]));
+    const lMap = new Map(((locations ?? []) as { id: string; name: string }[]).map((l) => [l.id, l]));
+
+    const items = ((balances ?? []) as { productId: string; quantity: number }[])
+      .map((b) => {
+        const p = pMap.get(b.productId);
+        if (!p) return null;
+        const quantity = Number(b.quantity);
+        const averageCost = Number(p.averageCost) || 0;
+        const minStock = Number(p.minStock) || 0;
+        return {
+          productId: p.id,
+          name: p.name,
+          unit: p.unit,
+          categoryName: p.categoryId ? catMap.get(p.categoryId) : undefined,
+          quantity,
+          averageCost,
+          value: round2(quantity * averageCost),
+          minStock,
+          belowMin: minStock > 0 && quantity < minStock,
+        };
+      })
+      .filter(Boolean) as StockLocationDetail["items"];
+    items.sort((a, b) => a.name.localeCompare(b.name));
+
+    return {
+      location: location as StockLocation,
+      items,
+      movements: ((movements ?? []) as StockMovement[]).map((m) => ({
+        ...m,
+        product: pMap.get(m.productId) as StockProduct | undefined,
+        fromLocation: m.fromLocationId ? (lMap.get(m.fromLocationId) as StockLocation | undefined) : undefined,
+        toLocation: m.toLocationId ? (lMap.get(m.toLocationId) as StockLocation | undefined) : undefined,
+        fromStaffName: staffName(m.fromStaffId),
+        toStaffName: staffName(m.toStaffId),
+      })),
+      totals: {
+        units: round2(items.reduce((s, i) => s + i.quantity, 0)),
+        value: round2(items.reduce((s, i) => s + i.value, 0)),
+        belowMin: items.filter((i) => i.belowMin).length,
+      },
+    };
+  },
+
+  /**
+   * Corrige o saldo de um produto num local. A diferença vira uma movimentação
+   * de AJUSTE — nunca escreve em stock_balances direto, senão o razão para de
+   * explicar o saldo. Mesma forma do fechamento de inventário.
+   */
+  async adjustBalance(
+    propertyId: string,
+    input: { locationId: string; productId: string; newQuantity: number; reason: string; responsibleId?: string | null; staffId?: string | null },
+    actor: Actor,
+  ): Promise<{ movementId: string | null; delta: number }> {
+    const client = db();
+    const current = await this._balanceAt(client, input.productId, input.locationId);
+    const delta = round2(Number(input.newQuantity) - current);
+    if (delta === 0) return { movementId: null, delta: 0 };
+    if (!input.reason?.trim()) throw new Error("Informe o motivo da correção.");
+
+    const movementId = await this.registerMovement(propertyId, {
+      productId: input.productId,
+      type: "adjustment",
+      quantity: delta,
+      toLocationId: input.locationId,
+      // 'inventory' e não 'manual': a correção não passa pelo formulário de
+      // movimentação, então não faz sentido exigir o colaborador do local staff.
+      referenceType: "inventory",
+      responsibleId: input.responsibleId ?? null,
+      toStaffId: input.staffId ?? null,
+      notes: `Correção de saldo: ${input.reason.trim()}`,
+      allowNegative: true,   // o usuário está declarando o saldo que existe de fato
+    }, actor);
+
+    return { movementId, delta };
   },
 
   // ── PRODUTOS ────────────────────────────────────────────────────────────────
@@ -611,6 +805,11 @@ export const StockService = {
       .from("stock_products").select("*").eq("id", input.productId).eq("propertyId", propertyId).single();
     if (!product) throw new Error("Produto não encontrado.");
 
+    // Cabana → local. Resolve ANTES da validação abaixo, senão uma movimentação
+    // que só informa a cabana falharia com "exige local de destino".
+    if (input.fromCabinId) input.fromLocationId = await this._resolveCabinLocation(client, propertyId, input.fromCabinId, actor);
+    if (input.toCabinId) input.toLocationId = await this._resolveCabinLocation(client, propertyId, input.toCabinId, actor);
+
     // Validação mínima de locais por tipo
     if ((input.type === "exit" || input.type === "loss") && !input.fromLocationId)
       throw new Error("Saída/perda exige local de origem.");
@@ -739,6 +938,178 @@ export const StockService = {
       details: `${input.type.toUpperCase()} de ${qty} ${product.unit} — ${product.name}.`,
     });
     return id;
+  },
+
+  // ── LANÇAMENTO EM LOTE ───────────────────────────────────────────────────────
+  /**
+   * Lança N linhas de uma vez. Não há transação (registerMovement é uma sequência
+   * de round-trips), então a estratégia é: PRÉ-VOO somente-leitura pega quase toda
+   * falha real antes de existir uma única linha; e se algo escapar, a execução para
+   * na hora e devolve o que gravou, o que falhou e o que sobrou — o operador nunca
+   * ouve "salvo" com metade no banco. Todas as linhas compartilham um batchRef,
+   * o que permite estornar o lote inteiro depois.
+   */
+  async registerMovementBatch(propertyId: string, input: BatchMovementInput, actor: Actor): Promise<BatchMovementResult> {
+    const client = db();
+    const batchRef = input.batchRef ?? crypto.randomUUID();
+    if (input.lines.length === 0) throw new Error("Nenhuma linha para lançar.");
+
+    // Cabana → local uma vez só, e não uma vez por linha.
+    const fromLocationId = input.fromCabinId
+      ? await this._resolveCabinLocation(client, propertyId, input.fromCabinId, actor)
+      : input.fromLocationId ?? null;
+    const toLocationId = input.toCabinId
+      ? await this._resolveCabinLocation(client, propertyId, input.toCabinId, actor)
+      : input.toLocationId ?? null;
+
+    const preflight = await this._preflightBatch(client, propertyId, { ...input, fromLocationId, toLocationId });
+    if (preflight.length > 0) {
+      return { batchRef, ok: [], failed: null, remaining: input.lines.map((_, i) => i), preflight };
+    }
+
+    const ok: BatchMovementResult["ok"] = [];
+    for (let i = 0; i < input.lines.length; i++) {
+      const line = input.lines[i];
+      try {
+        const movementId = await this.registerMovement(propertyId, {
+          productId: line.productId,
+          type: input.type,
+          quantity: line.quantity,
+          unitCost: line.unitCost,
+          fromLocationId, toLocationId,
+          fromStaffId: input.fromStaffId, toStaffId: input.toStaffId,
+          responsibleId: input.responsibleId,
+          lossType: input.lossType,
+          notes: input.notes,
+          expiryDate: line.expiryDate, batchCode: line.batchCode,
+          referenceType: "manual",
+          allowNegative: input.allowNegative,
+          batchRef,
+        }, actor);
+        ok.push({ index: i, productId: line.productId, movementId });
+      } catch (e) {
+        const err = e as Error & { code?: string; available?: number; resulting?: number };
+        return {
+          batchRef, ok, preflight: [],
+          failed: { index: i, productId: line.productId, error: err.message, code: err.code, available: err.available, resulting: err.resulting },
+          remaining: input.lines.map((_, idx) => idx).filter((idx) => idx > i),
+        };
+      }
+    }
+
+    await AuditService.log({
+      propertyId, userId: actor.id, userName: actor.name,
+      action: AUDIT_ACTION[input.type], entity: "STOCK", entityId: batchRef,
+      details: `Lançamento em lote: ${ok.length} linha(s) de ${input.type}.`,
+    });
+    return { batchRef, ok, failed: null, remaining: [], preflight: [] };
+  },
+
+  /**
+   * Valida o lote inteiro sem gravar nada. O ponto não óbvio é o razão simulado:
+   * duas linhas do mesmo produto no mesmo local podem passar sozinhas e juntas
+   * derrubarem o saldo — é isso que o `simulated` pega.
+   */
+  async _preflightBatch(
+    client: DB, propertyId: string,
+    input: BatchMovementInput & { fromLocationId: string | null; toLocationId: string | null },
+  ): Promise<BatchLineError[]> {
+    const errors: BatchLineError[] = [];
+    const { data: products } = await client.from("stock_products")
+      .select("id, name, deleted, active").eq("propertyId", propertyId)
+      .in("id", input.lines.map((l) => l.productId).filter(Boolean));
+    const pMap = new Map(((products ?? []) as { id: string; name: string; deleted: boolean; active: boolean }[]).map((p) => [p.id, p]));
+
+    // Locais exigidos por tipo — mesma regra do registerMovement, só que antecipada.
+    const need = (cond: boolean, msg: string) => { if (cond) errors.push({ index: -1, productId: "", error: msg }); };
+    need((input.type === "exit" || input.type === "loss") && !input.fromLocationId, "Saída/perda exige local de origem.");
+    need(input.type === "entry" && !input.toLocationId, "Entrada exige local de destino.");
+    need(input.type === "transfer" && (!input.fromLocationId || !input.toLocationId), "Transferência exige origem e destino.");
+    need(input.type === "adjustment" && !input.toLocationId && !input.fromLocationId, "Ajuste exige um local.");
+    if (errors.length > 0) return errors;
+
+    const simulated = new Map<string, number>();
+    const balanceOf = async (productId: string, locationId: string) => {
+      const key = `${productId}|${locationId}`;
+      if (!simulated.has(key)) simulated.set(key, await this._balanceAt(client, productId, locationId));
+      return simulated.get(key)!;
+    };
+
+    for (let i = 0; i < input.lines.length; i++) {
+      const line = input.lines[i];
+      const p = pMap.get(line.productId);
+      if (!line.productId || !p) { errors.push({ index: i, productId: line.productId, error: "Produto não encontrado." }); continue; }
+      if (p.deleted) { errors.push({ index: i, productId: line.productId, error: `"${p.name}" foi excluído.` }); continue; }
+      const qty = Number(line.quantity);
+      if (!Number.isFinite(qty) || qty === 0) { errors.push({ index: i, productId: line.productId, error: `Quantidade inválida em "${p.name}".` }); continue; }
+      if (input.type !== "adjustment" && qty < 0) { errors.push({ index: i, productId: line.productId, error: `Quantidade negativa em "${p.name}".` }); continue; }
+
+      // Razão simulado: o saldo previsto já considera as linhas anteriores do lote.
+      const guard = this._negativeGuard(
+        { productId: line.productId, type: input.type, quantity: qty, fromLocationId: input.fromLocationId, toLocationId: input.toLocationId },
+        qty,
+      );
+      if (guard && guard.delta < 0) {
+        const current = await balanceOf(line.productId, guard.locationId);
+        const resulting = round2(current + guard.delta);
+        if (resulting < 0 && !input.allowNegative) {
+          errors.push({
+            index: i, productId: line.productId, code: "NEGATIVE_STOCK",
+            error: `"${p.name}" ficaria com saldo ${resulting} neste local (disponível ${current}).`,
+            available: current, resulting,
+          });
+        }
+        simulated.set(`${line.productId}|${guard.locationId}`, resulting);
+      } else if (guard) {
+        const current = await balanceOf(line.productId, guard.locationId);
+        simulated.set(`${line.productId}|${guard.locationId}`, round2(current + guard.delta));
+      }
+    }
+    return errors;
+  },
+
+  /**
+   * Estorna um lote gerando movimentações INVERSAS — nunca apaga do razão, que é
+   * justamente o que faz o razão valer alguma coisa.
+   */
+  async revertBatch(propertyId: string, batchRef: string, actor: Actor): Promise<{ reverted: number }> {
+    const client = db();
+    const { data: moves } = await client.from("stock_movements").select("*")
+      .eq("propertyId", propertyId).eq("batchRef", batchRef).order("createdAt");
+    const rows = (moves ?? []) as StockMovement[];
+    if (rows.length === 0) throw new Error("Lote não encontrado.");
+
+    const INVERSE: Record<StockMovementType, StockMovementType> = {
+      entry: "exit", exit: "entry", transfer: "transfer", adjustment: "adjustment", loss: "entry",
+    };
+
+    let reverted = 0;
+    for (const m of rows) {
+      const type = INVERSE[m.type];
+      await this.registerMovement(propertyId, {
+        productId: m.productId,
+        type,
+        quantity: m.type === "adjustment" ? -Number(m.quantity) : Number(m.quantity),
+        unitCost: Number(m.unitCost),
+        // Transferência estorna com os lados trocados; os demais espelham o lado que sobrou.
+        fromLocationId: m.type === "transfer" ? m.toLocationId : (m.toLocationId ?? m.fromLocationId),
+        toLocationId: m.type === "transfer" ? m.fromLocationId : (m.fromLocationId ?? m.toLocationId),
+        fromStaffId: m.type === "transfer" ? m.toStaffId : m.toStaffId,
+        toStaffId: m.type === "transfer" ? m.fromStaffId : m.fromStaffId,
+        responsibleId: m.responsibleId,
+        referenceType: "manual",
+        notes: `Estorno do lote ${batchRef.slice(0, 8)}`,
+        allowNegative: true,
+      }, actor);
+      reverted++;
+    }
+
+    await AuditService.log({
+      propertyId, userId: actor.id, userName: actor.name,
+      action: "UPDATE", entity: "STOCK", entityId: batchRef,
+      details: `Lote estornado: ${reverted} movimentação(ões) invertida(s).`,
+    });
+    return { reverted };
   },
 
   async _totalQty(client: DB, productId: string): Promise<number> {

@@ -10,6 +10,8 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Plus, Loader2, Pencil, Trash2, Save, X, ShoppingCart, PackageCheck, Zap, Trash, Paperclip } from "lucide-react";
 import { FileUpload } from "@/components/admin/FileUpload";
+import StockLocationSelect from "@/components/admin/StockLocationSelect";
+import { splitLocations } from "@/lib/stock-locations";
 import { useDiscardGuard } from "@/lib/use-discard-guard";
 
 const STATUS: Record<PurchaseStatus, { label: string; cls: string }> = {
@@ -79,6 +81,9 @@ export default function ComprasPage() {
     discountValue: Number(p.discountValue ?? 0) > 0 ? String(p.discountValue) : "", notes: p.notes ?? "",
     items: (p.items ?? []).map((i) => ({ productId: i.productId, quantity: String(i.quantity), unitCost: String(i.unitCost), expiryDate: i.expiryDate ?? "", batchCode: i.batchCode ?? "" })),
   });
+
+  // Locais derivados de cabana ficam de fora: NF não é recebida numa cabana.
+  const flatLocations = useMemo(() => splitLocations(locations).flat, [locations]);
 
   const subtotal = useMemo(() => {
     if (!form) return 0;
@@ -241,10 +246,9 @@ export default function ComprasPage() {
                     {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select></div>
                 <div><label className="field-label">Local de recebimento</label>
-                  <select className="field-input w-full" value={form.locationId} onChange={(e) => setForm({ ...form, locationId: e.target.value })}>
-                    <option value="">—</option>
-                    {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </select></div>
+                  {/* sem cabanas: NF não é recebida numa cabana */}
+                  <StockLocationSelect locations={flatLocations} value={form.locationId} placeholder="—"
+                    onChange={(id) => setForm({ ...form, locationId: id })} /></div>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div><label className="field-label">Nº da NF</label>

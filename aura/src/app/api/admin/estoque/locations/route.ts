@@ -13,6 +13,22 @@ export async function GET(request: NextRequest) {
   if (url.searchParams.get('cabins')) {
     return NextResponse.json(await StockService.getCabinLinkReport(propertyId));
   }
+  // ?cabinOptions=1 → cabanas escolhíveis no seletor de dois passos
+  if (url.searchParams.get('cabinOptions')) {
+    return NextResponse.json(await StockService.getCabinOptions(propertyId));
+  }
+  // ?overview=1 → um card por estoque; ?detail=<id> → conteúdo de um estoque
+  if (url.searchParams.get('overview')) {
+    return NextResponse.json(await StockService.getLocationsOverview(propertyId));
+  }
+  const detail = url.searchParams.get('detail');
+  if (detail) {
+    try {
+      return NextResponse.json(await StockService.getLocationDetail(propertyId, detail));
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 404 });
+    }
+  }
   return NextResponse.json(await StockService.getLocations(propertyId));
 }
 

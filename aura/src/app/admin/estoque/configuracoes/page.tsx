@@ -6,6 +6,7 @@ import { useProperty } from "@/context/PropertyContext";
 import { StockClient } from "@/lib/stock-client";
 import { CabinLinkReport, StockCategory, StockLocation, StockSettings, StockCategoryScope, StockLocationType } from "@/types/aura";
 import StockLocationSelect from "@/components/admin/StockLocationSelect";
+import { splitLocations } from "@/lib/stock-locations";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Plus, Trash2, Save, Loader2, Pencil, X, Sparkles, Tag, MapPin, SlidersHorizontal, Home, Link2, AlertTriangle } from "lucide-react";
@@ -114,6 +115,9 @@ export default function EstoqueConfigPage() {
     try { await StockClient.deleteLocation(property.id, id); await load(); toast.success("Local removido."); }
     catch (e) { toast.error((e as Error).message); }
   };
+
+  // Locais derivados de cabana são gerenciados na aba Cabanas, não na lista de locais.
+  const { flat: flatLocations, cabinBacked } = React.useMemo(() => splitLocations(locations), [locations]);
 
   // ── Cabanas × locais ─────────────────────────────────────────────────────────
   /** Local escolhido para uma cabana: a escolha manual vence a proposta. */
@@ -245,7 +249,7 @@ export default function EstoqueConfigPage() {
       ) : tab === "locais" ? (
         <section className="space-y-3">
           <div className="flex justify-between items-center">
-            <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{locations.length} local(is)</span>
+            <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{flatLocations.length} local(is)</span>
             <button onClick={() => setLocForm({ type: "warehouse", active: true })}
               className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg bg-primary text-primary-foreground hover:opacity-90">
               <Plus size={14} /> Novo local
@@ -282,7 +286,7 @@ export default function EstoqueConfigPage() {
           )}
 
           <div className="space-y-1.5">
-            {locations.map((l) => (
+            {flatLocations.map((l) => (
               <div key={l.id} className="flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-3">
                 <MapPin size={16} className="text-muted-foreground" />
                 <span className="flex-1 font-medium text-foreground">{l.name}</span>
@@ -293,7 +297,17 @@ export default function EstoqueConfigPage() {
                 <button onClick={() => deleteLocation(l.id)} className="p-1.5 text-muted-foreground hover:text-destructive"><Trash2 size={14} /></button>
               </div>
             ))}
-            {locations.length === 0 && !locForm && (
+            {cabinBacked.length > 0 && (
+              <button onClick={() => setTab("cabanas")}
+                className="w-full flex items-center gap-3 bg-card border border-border border-dashed rounded-xl px-4 py-3 text-left hover:bg-secondary/30">
+                <Home size={16} className="text-muted-foreground" />
+                <span className="flex-1 font-medium text-muted-foreground">
+                  {cabinBacked.length} local(is) de cabana
+                </span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Ver na aba Cabanas</span>
+              </button>
+            )}
+            {flatLocations.length === 0 && !locForm && (
               <p className="text-sm text-muted-foreground py-8 text-center">Nenhum local ainda. Crie ao menos um (ex.: Almoxarifado).</p>
             )}
           </div>
@@ -403,7 +417,8 @@ export default function EstoqueConfigPage() {
         <section className="bg-card border border-border rounded-2xl p-5 space-y-4 max-w-lg">
           <div>
             <label className="field-label">Local de consumo padrão (baixa de Concierge/F&B)</label>
-            <StockLocationSelect locations={locations} value={settings.defaultSaleLocationId ?? ""}
+            {/* sem cabanas: rotearia todo o consumo de F&B pelo saldo de uma cabana */}
+            <StockLocationSelect locations={flatLocations} value={settings.defaultSaleLocationId ?? ""}
               placeholder="— (sem baixa automática)"
               onChange={(id) => setSettings({ ...settings, defaultSaleLocationId: id || null })} />
           </div>

@@ -6,12 +6,13 @@ import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { StockClient } from "@/lib/stock-client";
-import { StockProduct, StockLocation, StockMovement, StockMovementType, StockLossType, StockStaffOption } from "@/types/aura";
-import StockLocationSelect from "@/components/admin/StockLocationSelect";
+import { StockProduct, StockLocation, StockMovement, StockMovementType, StockLossType, StockStaffOption, StockCabinOption } from "@/types/aura";
+import StockLocationPicker from "@/components/admin/StockLocationPicker";
 import StaffSelect from "@/components/admin/StaffSelect";
+import BatchMovementModal from "@/components/admin/BatchMovementModal";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Loader2, ArrowLeftRight, ArrowDownToLine, ArrowUpFromLine, Repeat, SlidersHorizontal, AlertOctagon, Save } from "lucide-react";
+import { Loader2, ArrowLeftRight, ArrowDownToLine, ArrowUpFromLine, Repeat, SlidersHorizontal, AlertOctagon, Save, Layers } from "lucide-react";
 
 const TYPES: { value: StockMovementType; label: string; icon: React.ElementType; color: string }[] = [
   { value: "entry", label: "Entrada", icon: ArrowDownToLine, color: "text-emerald-500" },
@@ -29,6 +30,8 @@ interface MovForm {
   productId: string; type: StockMovementType; quantity: string; unitCost: string;
   fromLocationId: string; toLocationId: string; lossType: StockLossType; notes: string;
   expiryDate: string; batchCode: string;
+  // cabana, quando a origem/destino é uma cabana (o local é resolvido no servidor)
+  fromCabinId: string; toCabinId: string;
   // colaborador, quando o local escolhido é do tipo 'staff'
   fromStaffId: string; toStaffId: string;
   responsibleId: string;   // quem responde pela ação; default = usuário logado
@@ -36,7 +39,8 @@ interface MovForm {
 const emptyMov: MovForm = {
   productId: "", type: "entry", quantity: "", unitCost: "",
   fromLocationId: "", toLocationId: "", lossType: "expiry", notes: "",
-  expiryDate: "", batchCode: "", fromStaffId: "", toStaffId: "", responsibleId: "",
+  expiryDate: "", batchCode: "", fromCabinId: "", toCabinId: "",
+  fromStaffId: "", toStaffId: "", responsibleId: "",
 };
 
 
@@ -47,16 +51,20 @@ export default function EstoqueMovimentacoesPage() {
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [staffOptions, setStaffOptions] = useState<StockStaffOption[]>([]);
+  const [cabinOptions, setCabinOptions] = useState<StockCabinOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<MovForm>(emptyMov);
   const [saving, setSaving] = useState(false);
+  const [batchOpen, setBatchOpen] = useState(false);
 
   const loadStatic = useCallback(async () => {
     if (!property?.id) return;
-    const [prods, locs, staff] = await Promise.all([
-      StockClient.products(property.id), StockClient.locations(property.id), StockClient.movementStaff(property.id),
+    const [prods, locs, staff, cabins] = await Promise.all([
+      StockClient.products(property.id), StockClient.locations(property.id),
+      StockClient.movementStaff(property.id), StockClient.cabinOptions(property.id),
     ]);
-    setProducts(prods.filter((p) => p.active)); setLocations(locs.filter((l) => l.active)); setStaffOptions(staff);
+    setProducts(prods.filter((p) => p.active)); setLocations(locs.filter((l) => l.active));
+    setStaffOptions(staff); setCabinOptions(cabins);
   }, [property?.id]);
 
   const loadMovements = useCallback(async () => {
@@ -64,6 +72,19 @@ export default function EstoqueMovimentacoesPage() {
     try { setMovements(await StockClient.movements(property.id, 80)); }
     finally { setLoading(false); }
   }, [property?.id]);
+
+  // Prefill vindo da página de um estoque ("dar saída daqui" / "movimentar para cá").
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const from = params.get("from"), to = params.get("to");
+    if (!from && !to) return;
+    setForm((f) => ({
+      ...f,
+      type: from ? "exit" : "entry",
+      fromLocationId: from ?? f.fromLocationId,
+      toLocationId: to ?? f.toLocationId,
+    }));
+  }, []);
 
   useEffect(() => {
     if (!property?.id) return;
@@ -99,8 +120,8 @@ export default function EstoqueMovimentacoesPage() {
     if (!form.productId) { toast.error("Selecione o produto."); return; }
     const qty = Number(form.quantity);
     if (!qty || (form.type !== "adjustment" && qty <= 0)) { toast.error("Quantidade inválida."); return; }
-    if (showFrom && !form.fromLocationId) { toast.error("Selecione o local de origem."); return; }
-    if (showTo && !form.toLocationId) { toast.error("Selecione o local de destino."); return; }
+    if (showFrom && !form.fromLocationId && !form.fromCabinId) { toast.error("Selecione o local (ou a cabana) de origem."); return; }
+    if (showTo && !form.toLocationId && !form.toCabinId) { toast.error("Selecione o local (ou a cabana) de destino."); return; }
     if (askFromStaff && !form.fromStaffId) { toast.error("Selecione o colaborador de origem."); return; }
     if (askToStaff && !form.toStaffId) { toast.error("Selecione o colaborador de destino."); return; }
 
@@ -110,8 +131,10 @@ export default function EstoqueMovimentacoesPage() {
       type: form.type,
       quantity: qty,
       unitCost: showCost ? Number(form.unitCost || 0) : undefined,
-      fromLocationId: showFrom ? form.fromLocationId : undefined,
-      toLocationId: showTo ? form.toLocationId : undefined,
+      fromLocationId: showFrom ? form.fromLocationId || undefined : undefined,
+      toLocationId: showTo ? form.toLocationId || undefined : undefined,
+      fromCabinId: showFrom ? form.fromCabinId || undefined : undefined,
+      toCabinId: showTo ? form.toCabinId || undefined : undefined,
       fromStaffId: askFromStaff ? form.fromStaffId : undefined,
       toStaffId: askToStaff ? form.toStaffId : undefined,
       responsibleId: responsibleId || undefined,
@@ -151,6 +174,22 @@ export default function EstoqueMovimentacoesPage() {
     }
   };
 
+  /** Estorna um lote inteiro gerando movimentações inversas — nada é apagado. */
+  const revertBatch = async (batchRef: string) => {
+    if (!property?.id) return;
+    const count = movements.filter((m) => m.batchRef === batchRef).length;
+    if (!confirm(
+      `Estornar este lote?\n\n${count} movimentação(ões) visível(is) neste lote receberão uma movimentação inversa. ` +
+      `Nada é apagado do histórico — o estorno entra como lançamento novo.`
+    )) return;
+    setSaving(true);
+    try {
+      const r = await StockClient.revertBatch(property.id, batchRef);
+      await loadMovements();
+      toast.success(`${r.reverted} movimentação(ões) estornada(s).`);
+    } catch (e) { toast.error((e as Error).message); } finally { setSaving(false); }
+  };
+
   const typeMeta = (t: StockMovementType) => TYPES.find((x) => x.value === t)!;
   const fmtDate = (s: string) => new Date(s).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
@@ -158,10 +197,24 @@ export default function EstoqueMovimentacoesPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><ArrowLeftRight size={22} /> Movimentações</h1>
-        <p className="text-sm text-muted-foreground">Entradas, saídas, transferências, ajustes e perdas.</p>
+      <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><ArrowLeftRight size={22} /> Movimentações</h1>
+          <p className="text-sm text-muted-foreground">Entradas, saídas, transferências, ajustes e perdas.</p>
+        </div>
+        <button onClick={() => setBatchOpen(true)} disabled={products.length === 0 || locations.length === 0}
+          className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-secondary text-foreground hover:bg-secondary/70 disabled:opacity-50">
+          <Layers size={16} /> Lançar em lote
+        </button>
       </header>
+
+      {batchOpen && property && (
+        <BatchMovementModal
+          propertyId={property.id} products={products} locations={locations}
+          cabins={cabinOptions} staff={responsibleOptions} defaultResponsibleId={responsibleId}
+          onClose={() => setBatchOpen(false)} onSaved={loadMovements}
+        />
+      )}
 
       {products.length === 0 || locations.length === 0 ? (
         <div className="bg-amber-500/10 border border-amber-500/30 text-amber-600 rounded-2xl p-4 text-sm mb-6">
@@ -222,8 +275,9 @@ export default function EstoqueMovimentacoesPage() {
             {showFrom && (
               <div>
                 <label className="field-label">Origem</label>
-                <StockLocationSelect locations={locations} value={form.fromLocationId}
-                  onChange={(id) => setForm({ ...form, fromLocationId: id, fromStaffId: "" })} />
+                <StockLocationPicker locations={locations} cabins={cabinOptions} cabinLabel="Cabana de origem"
+                  value={{ locationId: form.fromLocationId, cabinId: form.fromCabinId }}
+                  onChange={(p) => setForm({ ...form, fromLocationId: p.locationId, fromCabinId: p.cabinId, fromStaffId: "" })} />
               </div>
             )}
             {askFromStaff && (
@@ -236,8 +290,9 @@ export default function EstoqueMovimentacoesPage() {
             {showTo && (
               <div>
                 <label className="field-label">Destino</label>
-                <StockLocationSelect locations={locations} value={form.toLocationId}
-                  onChange={(id) => setForm({ ...form, toLocationId: id, toStaffId: "" })} />
+                <StockLocationPicker locations={locations} cabins={cabinOptions}
+                  value={{ locationId: form.toLocationId, cabinId: form.toCabinId }}
+                  onChange={(p) => setForm({ ...form, toLocationId: p.locationId, toCabinId: p.cabinId, toStaffId: "" })} />
               </div>
             )}
             {askToStaff && (
@@ -307,7 +362,16 @@ export default function EstoqueMovimentacoesPage() {
                         <Icon size={14} /> {meta.label}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-foreground">{m.product?.name ?? "—"}</td>
+                    <td className="px-4 py-3 text-foreground">
+                      {m.product?.name ?? "—"}
+                      {m.batchRef && (
+                        <button onClick={() => revertBatch(m.batchRef!)} disabled={saving}
+                          title="Movimentação lançada em lote — clique para estornar o lote inteiro"
+                          className="ml-1.5 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hover:text-foreground align-middle">
+                          Lote
+                        </button>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right tabular-nums font-medium">{Number(m.quantity)}</td>
                     <td className="px-4 py-3 text-muted-foreground text-xs">
                       {m.fromLocation?.name && <span>{m.fromLocation.name}{m.fromStaffName ? ` · ${m.fromStaffName}` : ""}</span>}

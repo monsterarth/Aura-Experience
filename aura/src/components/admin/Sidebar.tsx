@@ -217,6 +217,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "estoque_fornec",   label: "Fornecedores",   icon: Truck,             href: "/admin/estoque/fornecedores",   roles: ["super_admin","admin","manager","compras"] },
       { id: "estoque_inventario", label: "Inventário",   icon: ClipboardList,     href: "/admin/estoque/inventario",     roles: ["super_admin","admin","manager","compras"] },
       { id: "estoque_perdas",   label: "Perdas",         icon: AlertOctagon,      href: "/admin/estoque/perdas",         roles: ["super_admin","admin","manager","compras"] },
+      { id: "estoque_relat",    label: "Relatórios",     icon: FileText,          href: "/admin/estoque/relatorios",     roles: ["super_admin","admin","manager","compras"] },
       { id: "patrimonio",       label: "Patrimônio",     icon: Landmark,          href: "/admin/patrimonio",             roles: ["super_admin","admin","manager","compras"] },
     ],
   },

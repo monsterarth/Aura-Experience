@@ -2,7 +2,9 @@
 // Wrapper HTTP tipado para as páginas do módulo Estoque/Patrimônio consumirem as
 // rotas em /api/admin/* (que validam sessão e usam service-role no servidor).
 import {
-  CabinLinkReport,
+  BatchMovementInput, BatchMovementResult,
+  StockReport, StockReportFilters, StockReportKind,
+  CabinLinkReport, StockCabinOption, StockLocationDetail, StockLocationOverview,
   StockCategory, StockLocation, StockProduct, StockMovement, StockStaffOption, StockSettings,
   Supplier, Purchase, PurchaseItem, Asset, StockBatch, InventoryCount, ProductDetail, SupplierDetail, StockDashboard,
 } from "@/types/aura";
@@ -39,6 +41,11 @@ export const StockClient = {
   // locais
   locations: (pid: string) => get<StockLocation[]>("estoque/locations", pid),
   cabinLinks: (pid: string) => get<CabinLinkReport>("estoque/locations", pid, "&cabins=1"),
+  cabinOptions: (pid: string) => get<StockCabinOption[]>("estoque/locations", pid, "&cabinOptions=1"),
+  locationsOverview: (pid: string) => get<StockLocationOverview[]>("estoque/locations", pid, "&overview=1"),
+  locationDetail: (pid: string, id: string) => get<StockLocationDetail>("estoque/locations", pid, `&detail=${encodeURIComponent(id)}`),
+  adjustBalance: (body: { propertyId: string; locationId: string; productId: string; newQuantity: number; reason: string; responsibleId?: string | null; staffId?: string | null }) =>
+    post<{ movementId: string | null; delta: number }>("estoque/movements", { action: "adjustBalance", ...body }),
   linkCabins: (propertyId: string, links: { cabinId: string; locationId: string | null; rename?: boolean }[]) =>
     post<{ linked: number; unlinked: number }>("estoque/locations", { propertyId, action: "linkCabins", links }),
   saveLocation: (body: WithProp<StockLocation>) => post("estoque/locations", body),
@@ -54,6 +61,13 @@ export const StockClient = {
   movements: (pid: string, limit = 100) => get<StockMovement[]>("estoque/movements", pid, `&limit=${limit}`),
   movementStaff: (pid: string) => get<StockStaffOption[]>("estoque/movements", pid, "&staff=1"),
   registerMovement: (body: Record<string, unknown> & { propertyId: string }) => post("estoque/movements", body),
+  registerBatch: (body: BatchMovementInput & { propertyId: string }) =>
+    post<BatchMovementResult>("estoque/movements", { action: "batch", ...body }),
+  revertBatch: (propertyId: string, batchRef: string) =>
+    post<{ reverted: number }>("estoque/movements", { propertyId, action: "revertBatch", batchRef }),
+  // relatórios (POST: a lista de ids selecionados não cabe em query string)
+  report: (propertyId: string, kind: StockReportKind, filters: StockReportFilters) =>
+    post<StockReport>("estoque/reports", { propertyId, kind, filters }),
   // dashboard (visão geral)
   dashboard: (pid: string, days = 30) => get<StockDashboard>("estoque/overview", pid, `&days=${days}`),
   // parâmetros

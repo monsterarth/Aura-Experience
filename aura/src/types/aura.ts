@@ -1515,6 +1515,121 @@ export interface CabinLinkCandidate {
   movementCount: number;
 }
 
+// ── RELATÓRIOS DE ESTOQUE ─────────────────────────────────────────────────────
+export type StockReportKind = 'position' | 'movements' | 'losses';
+
+export interface StockReportFilters {
+  /** Vazio = todos. Ids de stock_locations. */
+  locationIds?: string[];
+  /** Vazio = todos. Ids de stock_products. */
+  productIds?: string[];
+  categoryIds?: string[];
+  /** Só para movimentações/perdas. */
+  from?: string | null;
+  to?: string | null;
+  types?: StockMovementType[];
+  /** position: esconde linhas com saldo zero. */
+  hideZero?: boolean;
+}
+
+/**
+ * Linhas estruturadas — nunca CSV pronto. O mesmo payload alimenta a tabela na
+ * tela, o arquivo CSV e a versão de impressão.
+ */
+export interface StockReport {
+  kind: StockReportKind;
+  columns: { key: string; label: string; align?: 'left' | 'right' }[];
+  rows: Record<string, string | number | null>[];
+  totals: Record<string, number>;
+  meta: { generatedAt: string; filterSummary: string; rowCount: number };
+}
+
+// ── LANÇAMENTO EM LOTE ────────────────────────────────────────────────────────
+/** Uma linha do lote. O cabeçalho (tipo, locais, responsável) é comum a todas. */
+export interface BatchMovementLine {
+  productId: string;
+  quantity: number;
+  unitCost?: number;
+  expiryDate?: string | null;
+  batchCode?: string | null;
+}
+
+export interface BatchMovementInput {
+  type: StockMovementType;
+  fromLocationId?: string | null;
+  toLocationId?: string | null;
+  fromCabinId?: string | null;
+  toCabinId?: string | null;
+  fromStaffId?: string | null;
+  toStaffId?: string | null;
+  responsibleId?: string | null;
+  notes?: string;
+  lossType?: StockLossType;
+  lines: BatchMovementLine[];
+  allowNegative?: boolean;
+  /** Continua um lote que falhou no meio, mantendo o mesmo agrupamento. */
+  batchRef?: string | null;
+}
+
+export interface BatchLineError {
+  index: number;
+  productId: string;
+  error: string;
+  code?: string;
+  available?: number;
+  resulting?: number;
+}
+
+export interface BatchMovementResult {
+  batchRef: string;
+  /** Índices (na lista enviada) que gravaram, com o id da movimentação. */
+  ok: { index: number; productId: string; movementId: string }[];
+  /** A linha que parou o lote — só uma, porque a execução para na primeira falha. */
+  failed: BatchLineError | null;
+  /** Índices que nem chegaram a ser tentados. */
+  remaining: number[];
+  /** Erros do pré-voo: quando vem preenchido, NADA foi gravado. */
+  preflight: BatchLineError[];
+}
+
+/** Card de um estoque na visão geral: o que tem dentro, em uma linha. */
+export interface StockLocationOverview {
+  location: StockLocation;
+  cabinNumber?: string | null;
+  productCount: number;
+  totalUnits: number;
+  totalValue: number;
+  belowMinCount: number;
+  lastMovementAt?: string | null;
+}
+
+/** Conteúdo de um estoque: produtos com saldo ali + histórico do local. */
+export interface StockLocationDetail {
+  location: StockLocation;
+  items: {
+    productId: string;
+    name: string;
+    unit: StockUnit;
+    categoryName?: string;
+    quantity: number;
+    averageCost: number;
+    value: number;
+    minStock: number;
+    belowMin: boolean;
+  }[];
+  movements: StockMovement[];
+  totals: { units: number; value: number; belowMin: number };
+}
+
+/** Cabana escolhível como origem/destino de movimentação (passo 2 do seletor). */
+export interface StockCabinOption {
+  id: string;
+  number: string;
+  name: string;
+  /** Local de estoque já existente; null = será criado na primeira movimentação. */
+  locationId: string | null;
+}
+
 export interface CabinLinkReport {
   proposals: CabinLinkProposal[];
   /** Locais tipo 'cabin' que não casaram com nenhuma cabana (inclui o "CABANAS" genérico). */

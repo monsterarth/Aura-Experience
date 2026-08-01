@@ -6,6 +6,7 @@ import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { ConciergeService } from "@/services/concierge-service";
 import { StockClient } from "@/lib/stock-client";
+import { splitLocations } from "@/lib/stock-locations";
 import { ConciergeRequest, ConciergeItem, ConciergeCategory, ConciergeGroup, ConciergeStockComponent } from "@/types/aura";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import EmojiPicker from "emoji-picker-react";
@@ -174,7 +175,8 @@ export default function AdminConciergePage() {
       .then(ps => setStockProducts(ps.map(p => ({ id: p.id, name: p.name, unit: p.unit }))))
       .catch(() => setStockProducts([]));
     StockClient.locations(property.id)
-      .then(ls => setStockLocations(ls.map(l => ({ id: l.id, name: l.name }))))
+      // sem locais de cabana: a baixa de um item de concierge sai do estoque, não de uma cabana
+      .then(ls => setStockLocations(splitLocations(ls).flat.map(l => ({ id: l.id, name: l.name }))))
       .catch(() => setStockLocations([]));
   }, [property?.id, stockEnabled]);
   const [saving, setSaving] = useState(false);

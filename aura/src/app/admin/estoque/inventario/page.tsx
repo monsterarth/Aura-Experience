@@ -4,8 +4,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { StockClient } from "@/lib/stock-client";
-import { InventoryCount, InventoryCountStatus, StockCategory, StockLocation } from "@/types/aura";
-import StockLocationSelect from "@/components/admin/StockLocationSelect";
+import { InventoryCount, InventoryCountStatus, StockCabinOption, StockCategory, StockLocation } from "@/types/aura";
+import StockLocationPicker from "@/components/admin/StockLocationPicker";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useDiscardGuard } from "@/lib/use-discard-guard";
@@ -22,7 +22,12 @@ export default function InventarioPage() {
   const [counts, setCounts] = useState<InventoryCount[]>([]);
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [categories, setCategories] = useState<StockCategory[]>([]);
+  const [cabinOptions, setCabinOptions] = useState<StockCabinOption[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Só cabana que já tem local: cabana sem local não tem saldo para contar.
+  const countableCabins = React.useMemo(() => cabinOptions.filter((c) => c.locationId), [cabinOptions]);
+  const cabinOf = (locationId: string) => countableCabins.find((c) => c.locationId === locationId)?.id ?? "";
 
   const [newForm, setNewForm] = useState<{ locationId: string; scope: string[] } | null>(null);
   const [creating, setCreating] = useState(false);
@@ -35,10 +40,11 @@ export default function InventarioPage() {
   const load = useCallback(async () => {
     if (!property?.id) return;
     try {
-      const [c, l, cat] = await Promise.all([
-        StockClient.inventoryCounts(property.id), StockClient.locations(property.id), StockClient.categories(property.id),
+      const [c, l, cat, cabins] = await Promise.all([
+        StockClient.inventoryCounts(property.id), StockClient.locations(property.id),
+        StockClient.categories(property.id), StockClient.cabinOptions(property.id),
       ]);
-      setCounts(c); setLocations(l.filter((x) => x.active)); setCategories(cat);
+      setCounts(c); setLocations(l.filter((x) => x.active)); setCategories(cat); setCabinOptions(cabins);
     } catch (e) { toast.error((e as Error).message); }
     finally { setLoading(false); }
   }, [property?.id]);
@@ -165,8 +171,16 @@ export default function InventarioPage() {
             <div className="p-5 space-y-4">
               <div>
                 <label className="field-label">Local *</label>
-                <StockLocationSelect locations={locations} value={newForm.locationId}
-                  onChange={(id) => setNewForm({ ...newForm, locationId: id })} />
+                {/* Com cabanas: contar o enxoval de uma cabana é caso de uso real. Só as que
+                    já têm local aparecem — cabana sem local não tem o que contar. */}
+                <StockLocationPicker locations={locations} cabins={countableCabins}
+                  value={{ locationId: newForm.locationId, cabinId: cabinOf(newForm.locationId) }}
+                  onChange={(p) => setNewForm({
+                    ...newForm,
+                    locationId: p.cabinId
+                      ? (countableCabins.find((c) => c.id === p.cabinId)?.locationId ?? "")
+                      : p.locationId,
+                  })} />
               </div>
               <div>
                 <label className="field-label">Categorias (vazio = todas)</label>

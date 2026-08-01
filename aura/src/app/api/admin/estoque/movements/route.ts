@@ -20,10 +20,20 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(['super_admin', 'admin', 'manager', 'compras']);
   if (isAuthError(auth)) return auth;
-  const { propertyId, ...input } = await request.json();
+  const { propertyId, action, ...input } = await request.json();
   if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
+  const actor = { id: auth.staff.id, name: auth.staff.fullName };
   try {
-    const id = await StockService.registerMovement(propertyId, input, { id: auth.staff.id, name: auth.staff.fullName });
+    if (action === 'adjustBalance') {
+      return NextResponse.json(await StockService.adjustBalance(propertyId, input, actor));
+    }
+    if (action === 'batch') {
+      return NextResponse.json(await StockService.registerMovementBatch(propertyId, input, actor));
+    }
+    if (action === 'revertBatch') {
+      return NextResponse.json(await StockService.revertBatch(propertyId, input.batchRef, actor));
+    }
+    const id = await StockService.registerMovement(propertyId, input, actor);
     return NextResponse.json({ id });
   } catch (e) {
     const err = e as Error & { code?: string; available?: number; requested?: number; resulting?: number };

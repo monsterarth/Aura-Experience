@@ -27,18 +27,24 @@ interface Props {
   locations: StockLocation[];
   className?: string;
   placeholder?: string;
+  /** Opção sintética extra (usada pelo StockLocationPicker para abrir as cabanas). */
+  extraOption?: { value: string; label: string; group: string };
 }
 
-export default function StockLocationSelect({ value, onChange, locations, className, placeholder = "Selecione…" }: Props) {
+export default function StockLocationSelect({
+  value, onChange, locations, className, placeholder = "Selecione…", extraOption,
+}: Props) {
   return (
     <select className={className ?? "field-input w-full"} value={value} onChange={(e) => onChange(e.target.value)}>
       <option value="">{placeholder}</option>
       {GROUPS.map(({ type, label }) => {
         const group = locations.filter((l) => (type === "other" ? l.type === "other" || !KNOWN.has(l.type) : l.type === type));
-        if (group.length === 0) return null;
+        const extra = extraOption?.group === label ? extraOption : null;
+        if (group.length === 0 && !extra) return null;
         return (
           <optgroup key={type} label={label}>
             {group.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            {extra && <option value={extra.value}>{extra.label}</option>}
           </optgroup>
         );
       })}
