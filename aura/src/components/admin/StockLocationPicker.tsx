@@ -1,7 +1,7 @@
 // src/components/admin/StockLocationPicker.tsx
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { StockCabinOption, StockLocation } from "@/types/aura";
 import { CABIN_SENTINEL, splitLocations } from "@/lib/stock-locations";
 import StockLocationSelect from "./StockLocationSelect";
@@ -35,7 +35,20 @@ export default function StockLocationPicker({
 }: Props) {
   const { flat } = splitLocations(locations);
   const showCabins = allowCabins && cabins.length > 0;
-  const step1 = value.cabinId ? CABIN_SENTINEL : value.locationId;
+
+  /**
+   * "Estou no ramo das cabanas" é estado PRÓPRIO do componente: escolher
+   * "Cabanas…" ainda não define cabana nenhuma, então não dá para deduzir isso
+   * do value — deduzir fazia o select rebater para vazio e o passo 2 nunca
+   * aparecer. O value só volta a mandar quando já existe uma cabana escolhida.
+   */
+  const [cabinMode, setCabinMode] = useState(!!value.cabinId);
+  useEffect(() => {
+    if (value.cabinId) setCabinMode(true);
+    else if (value.locationId) setCabinMode(false);
+  }, [value.cabinId, value.locationId]);
+
+  const step1 = cabinMode ? CABIN_SENTINEL : value.locationId;
 
   return (
     <>
@@ -43,16 +56,17 @@ export default function StockLocationPicker({
         locations={flat}
         value={step1}
         extraOption={showCabins ? { value: CABIN_SENTINEL, label: "Cabanas…", group: "Cabanas" } : undefined}
-        onChange={(id) =>
-          onChange(id === CABIN_SENTINEL ? { locationId: "", cabinId: "" } : { locationId: id, cabinId: "" })
-        }
+        onChange={(id) => {
+          if (id === CABIN_SENTINEL) { setCabinMode(true); onChange({ locationId: "", cabinId: "" }); }
+          else { setCabinMode(false); onChange({ locationId: id, cabinId: "" }); }
+        }}
       />
-      {step1 === CABIN_SENTINEL && (
+      {cabinMode && (
         <div className="mt-2">
           <label className="field-label">{cabinLabel}</label>
-          <select className="field-input w-full" value={value.cabinId}
+          <select className="field-input w-full" value={value.cabinId} autoFocus
             onChange={(e) => onChange({ locationId: "", cabinId: e.target.value })}>
-            <option value="">Selecione…</option>
+            <option value="">Selecione a cabana…</option>
             {cabins.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>

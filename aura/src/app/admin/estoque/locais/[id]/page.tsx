@@ -89,7 +89,7 @@ export default function EstoqueLocalPage() {
     try {
       await StockClient.deleteLocation(property.id, detail.location.id);
       toast.success("Local removido.");
-      router.push("/admin/estoque");
+      router.push("/admin/estoque/locais");
     } catch (e) { toast.error((e as Error).message); setSaving(false); }
   };
 
@@ -102,8 +102,8 @@ export default function EstoqueLocalPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
-      <Link href="/admin/estoque" className="inline-flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground mb-4">
-        <ArrowLeft size={14} /> Visão geral
+      <Link href="/admin/estoque/locais" className="inline-flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground mb-4">
+        <ArrowLeft size={14} /> Estoques
       </Link>
 
       <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">

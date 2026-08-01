@@ -14,7 +14,7 @@ import {
   Users, Home, Wrench,
   Sparkles, Building, ChevronDown, LogOut,
   MessageSquare, Settings, Globe, X,
-  Star, ClipboardList, Bot, FileText,
+  Star, ClipboardList, Bot, FileText, Warehouse,
   Loader2, ChevronLeft, ChevronRight, Coffee,
   CalendarDays, UserSearch,
   ClipboardCheck, Map, MapPinned, Gift, Flag, Phone,
@@ -211,7 +211,8 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Compras & Estoque",
     collapsible: true,
     items: [
-      { id: "estoque_produtos", label: "Estoque",        icon: Package,           href: "/admin/estoque/produtos",       roles: ["super_admin","admin","manager","compras"] },
+      { id: "estoque_produtos", label: "Produtos",       icon: Package,           href: "/admin/estoque/produtos",       roles: ["super_admin","admin","manager","compras"] },
+      { id: "estoque_locais",   label: "Estoques",       icon: Warehouse,         href: "/admin/estoque/locais",         roles: ["super_admin","admin","manager","compras"] },
       { id: "estoque_mov",      label: "Movimentações",  icon: ArrowLeftRight,    href: "/admin/estoque/movimentacoes",  roles: ["super_admin","admin","manager","compras"] },
       { id: "estoque_compras",  label: "Compras",        icon: ShoppingCart,      href: "/admin/estoque/compras",        roles: ["super_admin","admin","manager","compras"] },
       { id: "estoque_fornec",   label: "Fornecedores",   icon: Truck,             href: "/admin/estoque/fornecedores",   roles: ["super_admin","admin","manager","compras"] },

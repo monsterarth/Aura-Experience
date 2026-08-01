@@ -2,15 +2,14 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import Link from "next/link";
 import { useProperty } from "@/context/PropertyContext";
 import { StockClient } from "@/lib/stock-client";
-import { StockDashboard, StockLocationOverview, StockMovementType } from "@/types/aura";
+import { StockDashboard, StockMovementType } from "@/types/aura";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
   Loader2, Package, DollarSign, AlertTriangle, Clock, ShoppingCart, CalendarClock,
-  Target, TrendingDown, Receipt, Home, ChevronRight,
+  Target, TrendingDown, Receipt,
 } from "lucide-react";
 import {
   ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, AreaChart, Area, CartesianGrid,
@@ -25,75 +24,6 @@ const money = (n: number) => `R$ ${Number(n || 0).toLocaleString("pt-BR", { mini
 const shortDate = (s: string) => s.slice(8, 10) + "/" + s.slice(5, 7);
 
 const tooltipStyle = { background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 12, fontSize: 12, color: "hsl(var(--foreground))" };
-
-/**
- * Grade de estoques. Cabanas viram um card agregado (com ~30 delas, listar uma a
- * uma afogaria os almoxarifados, que é o que se olha todo dia); expandir mostra
- * cada cabana.
- */
-function StocksGrid({ stocks }: { stocks: StockLocationOverview[] }) {
-  const [showCabins, setShowCabins] = useState(false);
-  const flat = stocks.filter((s) => !s.location.cabinId);
-  const cabins = stocks.filter((s) => !!s.location.cabinId);
-  const cabinTotals = cabins.reduce(
-    (acc, c) => ({ units: acc.units + c.totalUnits, value: acc.value + c.totalValue, below: acc.below + c.belowMinCount }),
-    { units: 0, value: 0, below: 0 },
-  );
-
-  const Card = ({ s }: { s: StockLocationOverview }) => (
-    <Link href={`/admin/estoque/locais/${s.location.id}`}
-      className="bg-card border border-border rounded-2xl p-4 hover:border-primary/40 transition-colors group">
-      <div className="flex items-start justify-between gap-2">
-        <p className="font-bold text-foreground text-sm leading-tight">{s.location.name}</p>
-        <ChevronRight size={15} className="text-muted-foreground group-hover:text-foreground shrink-0" />
-      </div>
-      <p className="text-lg font-bold text-foreground tabular-nums mt-2">{money(s.totalValue)}</p>
-      <p className="text-xs text-muted-foreground tabular-nums">
-        {s.productCount} item(ns) · {s.totalUnits} un
-      </p>
-      {s.belowMinCount > 0 && (
-        <p className="text-[11px] font-bold text-amber-500 mt-1.5 flex items-center gap-1">
-          <AlertTriangle size={11} /> {s.belowMinCount} no mínimo
-        </p>
-      )}
-    </Link>
-  );
-
-  if (stocks.length === 0) return null;
-
-  return (
-    <div>
-      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">Estoques</h2>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {flat.map((s) => <Card key={s.location.id} s={s} />)}
-        {cabins.length > 0 && !showCabins && (
-          <button onClick={() => setShowCabins(true)}
-            className="bg-card border border-border border-dashed rounded-2xl p-4 text-left hover:border-primary/40 transition-colors">
-            <div className="flex items-start justify-between gap-2">
-              <p className="font-bold text-foreground text-sm leading-tight flex items-center gap-1.5">
-                <Home size={14} /> Cabanas
-              </p>
-              <ChevronRight size={15} className="text-muted-foreground shrink-0" />
-            </div>
-            <p className="text-lg font-bold text-foreground tabular-nums mt-2">{money(cabinTotals.value)}</p>
-            <p className="text-xs text-muted-foreground tabular-nums">{cabins.length} cabana(s) · {cabinTotals.units} un</p>
-            {cabinTotals.below > 0 && (
-              <p className="text-[11px] font-bold text-amber-500 mt-1.5 flex items-center gap-1">
-                <AlertTriangle size={11} /> {cabinTotals.below} no mínimo
-              </p>
-            )}
-          </button>
-        )}
-        {showCabins && cabins.map((s) => <Card key={s.location.id} s={s} />)}
-      </div>
-      {showCabins && (
-        <button onClick={() => setShowCabins(false)} className="text-xs font-bold text-muted-foreground hover:text-foreground mt-2">
-          Recolher cabanas
-        </button>
-      )}
-    </div>
-  );
-}
 
 function Kpi({ icon: Icon, label, value, sub, tone = "default" }: { icon: React.ElementType; label: string; value: string; sub?: string; tone?: "default" | "amber" | "red" | "emerald" }) {
   const toneCls = tone === "amber" ? "text-amber-500" : tone === "red" ? "text-red-500" : tone === "emerald" ? "text-emerald-500" : "text-foreground";
@@ -113,19 +43,12 @@ export default function EstoqueDashboardPage() {
   const { currentProperty: property } = useProperty();
   const [days, setDays] = useState(30);
   const [data, setData] = useState<StockDashboard | null>(null);
-  const [stocks, setStocks] = useState<StockLocationOverview[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     if (!property?.id) return;
     setLoading(true);
-    try {
-      const [d, s] = await Promise.all([
-        StockClient.dashboard(property.id, days),
-        StockClient.locationsOverview(property.id),
-      ]);
-      setData(d); setStocks(s);
-    }
+    try { setData(await StockClient.dashboard(property.id, days)); }
     catch (e) { toast.error((e as Error).message); }
     finally { setLoading(false); }
   }, [property?.id, days]);
@@ -167,9 +90,6 @@ export default function EstoqueDashboardPage() {
             <Kpi icon={ShoppingCart} label={`Compras (${days}d)`} value={money(k.purchasesTotal)} sub={`${k.purchasesCount} recebidas`} />
             <Kpi icon={CalendarClock} label="Validade próxima" value={String(k.expiringCount)} sub="lotes vencendo/vencidos" tone={k.expiringCount > 0 ? "amber" : "default"} />
           </div>
-
-          {/* Estoques — a dimensão "por local", que faltava */}
-          <StocksGrid stocks={stocks} />
 
           {/* Charts row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
