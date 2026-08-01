@@ -358,7 +358,9 @@ export default function EstoqueProdutosPage() {
                                 <td className="py-1.5 pr-2"><span className={cn("font-bold", meta.color)}>{meta.label}</span></td>
                                 <td className="py-1.5 text-right tabular-nums pr-2">{Number(m.quantity)}</td>
                                 <td className="py-1.5 text-xs text-muted-foreground">
-                                  {m.fromLocation?.name}{m.fromLocation?.name && m.toLocation?.name ? " → " : ""}{m.toLocation?.name}
+                                  {m.fromLocation?.name}{m.fromStaffName ? ` · ${m.fromStaffName}` : ""}
+                                  {m.fromLocation?.name && m.toLocation?.name ? " → " : ""}
+                                  {m.toLocation?.name}{m.toStaffName ? ` · ${m.toStaffName}` : ""}
                                 </td>
                               </tr>
                             );

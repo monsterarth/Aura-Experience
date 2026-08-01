@@ -14,6 +14,7 @@ import {
   StockProduct,
   StockMovement,
   StockMovementType,
+  StockStaffOption,
   StockSettings,
   StockBatch,
   StockBalance,
@@ -41,6 +42,8 @@ interface MovementInput {
   unitCost?: number;           // entry: custo da compra; demais: default = averageCost
   fromLocationId?: string | null;
   toLocationId?: string | null;
+  fromStaffId?: string | null;   // colaborador, quando o local de origem é do tipo 'staff'
+  toStaffId?: string | null;     // colaborador, quando o local de destino é do tipo 'staff'
   lossType?: StockMovement["lossType"];
   referenceType?: StockMovement["referenceType"];
   referenceId?: string | null;
@@ -175,12 +178,13 @@ export const StockService = {
 
   /** Ficha do produto: saldo por local, lotes com saldo e histórico de movimentação. */
   async getProductDetail(propertyId: string, productId: string) {
-    const [{ data: product }, { data: balances }, { data: batches }, { data: movements }, { data: locations }] = await Promise.all([
+    const [{ data: product }, { data: balances }, { data: batches }, { data: movements }, { data: locations }, staffName] = await Promise.all([
       db().from("stock_products").select("*").eq("id", productId).eq("propertyId", propertyId).single(),
       db().from("stock_balances").select("*").eq("propertyId", propertyId).eq("productId", productId),
       db().from("stock_batches").select("*").eq("propertyId", propertyId).eq("productId", productId).gt("quantity", 0).order("expiryDate", { ascending: true, nullsFirst: false }),
       db().from("stock_movements").select("*").eq("propertyId", propertyId).eq("productId", productId).order("createdAt", { ascending: false }).limit(100),
       db().from("stock_locations").select("id, name").eq("propertyId", propertyId),
+      this._staffNamer(propertyId),
     ]);
     const lMap = new Map((locations ?? []).map((l: { id: string; name: string }) => [l.id, l]));
     const name = (id?: string | null) => (id ? (lMap.get(id)?.name ?? "—") : "—");
@@ -192,6 +196,8 @@ export const StockService = {
         ...m,
         fromLocation: m.fromLocationId ? (lMap.get(m.fromLocationId) as StockLocation | undefined) : undefined,
         toLocation: m.toLocationId ? (lMap.get(m.toLocationId) as StockLocation | undefined) : undefined,
+        fromStaffName: staffName(m.fromStaffId),
+        toStaffName: staffName(m.toStaffId),
       })),
     };
   },
@@ -339,11 +345,12 @@ export const StockService = {
 
   // ── MOVIMENTAÇÕES ────────────────────────────────────────────────────────────
   async getMovements(propertyId: string, limit = 100): Promise<StockMovement[]> {
-    const [{ data: moves }, { data: products }, { data: locations }] = await Promise.all([
+    const [{ data: moves }, { data: products }, { data: locations }, staffName] = await Promise.all([
       db().from("stock_movements").select("*").eq("propertyId", propertyId)
         .order("createdAt", { ascending: false }).limit(limit),
       db().from("stock_products").select("id, name").eq("propertyId", propertyId),
       db().from("stock_locations").select("id, name").eq("propertyId", propertyId),
+      this._staffNamer(propertyId),
     ]);
     const pMap = new Map((products ?? []).map((p: { id: string; name: string }) => [p.id, p]));
     const lMap = new Map((locations ?? []).map((l: { id: string; name: string }) => [l.id, l]));
@@ -352,7 +359,32 @@ export const StockService = {
       product: pMap.get(m.productId) as StockProduct | undefined,
       fromLocation: m.fromLocationId ? (lMap.get(m.fromLocationId) as StockLocation | undefined) : undefined,
       toLocation: m.toLocationId ? (lMap.get(m.toLocationId) as StockLocation | undefined) : undefined,
+      fromStaffName: staffName(m.fromStaffId),
+      toStaffName: staffName(m.toStaffId),
     }));
+  },
+
+  /**
+   * Colaboradores ATIVOS — alimentam o select que aparece quando o local
+   * escolhido é do tipo 'staff'. O histórico resolve nomes por outro caminho
+   * (_staffNamer), então quem sai da equipe não some das movimentações antigas.
+   */
+  async getStaffOptions(propertyId: string): Promise<StockStaffOption[]> {
+    const all = await this._staffRows(propertyId);
+    return all.filter((s) => s.active).map(({ id, name }) => ({ id, name }));
+  },
+
+  async _staffRows(propertyId: string): Promise<{ id: string; name: string; active: boolean }[]> {
+    const { data } = await db().from("staff").select("id, fullName, active").eq("propertyId", propertyId).order("fullName");
+    return ((data ?? []) as { id: string; fullName: string; active: boolean | null }[])
+      .map((s) => ({ id: s.id, name: s.fullName, active: s.active !== false }));
+  },
+
+  /** Resolve o nome do colaborador de um lado da movimentação (inclui inativos). */
+  async _staffNamer(propertyId: string) {
+    const rows = await this._staffRows(propertyId);
+    const map = new Map(rows.map((s) => [s.id, s.name]));
+    return (staffId?: string | null): string | undefined => (staffId ? map.get(staffId) : undefined);
   },
 
   /** Histórico de ENTRADAS (para explicar o custo médio): qtd, custo e data por produto. */
@@ -395,6 +427,9 @@ export const StockService = {
       throw new Error("Transferência exige origem e destino.");
     if (input.type === "adjustment" && !input.toLocationId && !input.fromLocationId)
       throw new Error("Ajuste exige um local.");
+
+    // Local do tipo 'staff' exige informar QUAL colaborador.
+    await this._assertStaffDetail(client, propertyId, input);
 
     const qty = Number(input.quantity);
     const fallbackCost = Number(product.averageCost) || 0;
@@ -455,6 +490,8 @@ export const StockService = {
       totalCost,
       fromLocationId: input.fromLocationId ?? null,
       toLocationId: input.toLocationId ?? null,
+      fromStaffId: input.fromStaffId ?? null,
+      toStaffId: input.toStaffId ?? null,
       batchId,
       lossType: input.lossType ?? null,
       referenceType: input.referenceType ?? "manual",
@@ -507,6 +544,31 @@ export const StockService = {
   async _totalQty(client: DB, productId: string): Promise<number> {
     const { data } = await client.from("stock_balances").select("quantity").eq("productId", productId);
     return ((data ?? []) as { quantity: number }[]).reduce((s, b) => s + Number(b.quantity), 0);
+  },
+
+  /**
+   * Só locais do tipo 'staff' carregam colaborador — normaliza o input zerando o
+   * que não se aplica. O colaborador é OBRIGATÓRIO apenas na movimentação manual
+   * (formulário): as baixas automáticas (compra, inventário, consumo, validade)
+   * não têm onde informá-lo.
+   */
+  async _assertStaffDetail(client: DB, propertyId: string, input: MovementInput): Promise<void> {
+    const ids = [input.fromLocationId, input.toLocationId].filter(Boolean) as string[];
+    if (ids.length === 0) return;
+    const required = (input.referenceType ?? "manual") === "manual";
+    const { data } = await client.from("stock_locations")
+      .select("id, name, type").eq("propertyId", propertyId).in("id", ids);
+    const map = new Map(((data ?? []) as StockLocation[]).map((l) => [l.id, l]));
+
+    for (const side of ["from", "to"] as const) {
+      const loc = map.get((side === "from" ? input.fromLocationId : input.toLocationId) ?? "");
+      const staffKey = `${side}StaffId` as const;
+      if (loc?.type === "staff") {
+        if (required && !input[staffKey]) throw new Error(`Selecione o colaborador em "${loc.name}".`);
+      } else {
+        input[staffKey] = null;
+      }
+    }
   },
 
   /** Local + delta a verificar contra saldo negativo (null quando não se aplica). */

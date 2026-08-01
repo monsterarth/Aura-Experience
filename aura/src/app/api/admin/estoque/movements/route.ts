@@ -9,6 +9,10 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const propertyId = url.searchParams.get('propertyId');
   if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
+  // ?staff=1 → colaboradores selecionáveis em locais do tipo 'staff'
+  if (url.searchParams.get('staff')) {
+    return NextResponse.json(await StockService.getStaffOptions(propertyId));
+  }
   const limit = Number(url.searchParams.get('limit') ?? 100);
   return NextResponse.json(await StockService.getMovements(propertyId, limit));
 }

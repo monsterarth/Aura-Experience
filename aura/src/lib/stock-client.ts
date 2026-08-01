@@ -2,7 +2,7 @@
 // Wrapper HTTP tipado para as páginas do módulo Estoque/Patrimônio consumirem as
 // rotas em /api/admin/* (que validam sessão e usam service-role no servidor).
 import {
-  StockCategory, StockLocation, StockProduct, StockMovement, StockSettings,
+  StockCategory, StockLocation, StockProduct, StockMovement, StockStaffOption, StockSettings,
   Supplier, Purchase, PurchaseItem, Asset, StockBatch, InventoryCount, ProductDetail, SupplierDetail, StockDashboard,
 } from "@/types/aura";
 
@@ -48,6 +48,7 @@ export const StockClient = {
   deleteProduct: (pid: string, id: string) => del("estoque/products", pid, id),
   // movimentações
   movements: (pid: string, limit = 100) => get<StockMovement[]>("estoque/movements", pid, `&limit=${limit}`),
+  movementStaff: (pid: string) => get<StockStaffOption[]>("estoque/movements", pid, "&staff=1"),
   registerMovement: (body: Record<string, unknown> & { propertyId: string }) => post("estoque/movements", body),
   // dashboard (visão geral)
   dashboard: (pid: string, days = 30) => get<StockDashboard>("estoque/overview", pid, `&days=${days}`),

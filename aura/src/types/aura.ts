@@ -1393,7 +1393,7 @@ export interface ChangelogEntry {
 // ==========================================
 
 export type StockCategoryScope = 'consumable' | 'asset' | 'both';
-export type StockLocationType   = 'warehouse' | 'kitchen' | 'bar' | 'laundry' | 'cabin' | 'other';
+export type StockLocationType   = 'warehouse' | 'kitchen' | 'bar' | 'laundry' | 'cabin' | 'staff' | 'other';
 export type StockUnit           = 'un' | 'kg' | 'g' | 'L' | 'ml' | 'cx' | 'pct' | 'par' | 'rolo';
 export type StockMovementType   = 'entry' | 'exit' | 'transfer' | 'adjustment' | 'loss';
 export type StockLossType       = 'expiry' | 'damage' | 'handling' | 'other';
@@ -1469,6 +1469,10 @@ export interface StockMovement {
   totalCost: number;
   fromLocationId?: string | null;
   toLocationId?: string | null;
+  // Detalhe do local do tipo 'staff' (rastreabilidade; não gera saldo próprio):
+  // qual colaborador recebeu / devolveu.
+  fromStaffId?: string | null;
+  toStaffId?: string | null;
   batchId?: string | null;        // usado a partir da Fase 2
   lossType?: StockLossType | null;
   referenceType: StockReferenceType;
@@ -1481,6 +1485,14 @@ export interface StockMovement {
   product?: StockProduct;
   fromLocation?: StockLocation;
   toLocation?: StockLocation;
+  fromStaffName?: string;         // nome do colaborador de origem
+  toStaffName?: string;           // nome do colaborador de destino
+}
+
+/** Colaborador selecionável como origem/destino de uma movimentação. */
+export interface StockStaffOption {
+  id: string;
+  name: string;
 }
 
 export interface StockSettings {

@@ -5,7 +5,8 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { supabase } from "@/lib/supabase";
 import { StockClient } from "@/lib/stock-client";
-import { StockProduct, StockLocation, StockMovement, StockMovementType, StockLossType } from "@/types/aura";
+import { StockProduct, StockLocation, StockMovement, StockMovementType, StockLossType, StockStaffOption } from "@/types/aura";
+import StockLocationSelect from "@/components/admin/StockLocationSelect";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Loader2, ArrowLeftRight, ArrowDownToLine, ArrowUpFromLine, Repeat, SlidersHorizontal, AlertOctagon, Save } from "lucide-react";
@@ -26,26 +27,32 @@ interface MovForm {
   productId: string; type: StockMovementType; quantity: string; unitCost: string;
   fromLocationId: string; toLocationId: string; lossType: StockLossType; notes: string;
   expiryDate: string; batchCode: string;
+  // colaborador, quando o local escolhido é do tipo 'staff'
+  fromStaffId: string; toStaffId: string;
 }
 const emptyMov: MovForm = {
   productId: "", type: "entry", quantity: "", unitCost: "",
   fromLocationId: "", toLocationId: "", lossType: "expiry", notes: "",
-  expiryDate: "", batchCode: "",
+  expiryDate: "", batchCode: "", fromStaffId: "", toStaffId: "",
 };
+
 
 export default function EstoqueMovimentacoesPage() {
   const { currentProperty: property } = useProperty();
   const [products, setProducts] = useState<StockProduct[]>([]);
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [movements, setMovements] = useState<StockMovement[]>([]);
+  const [staffOptions, setStaffOptions] = useState<StockStaffOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<MovForm>(emptyMov);
   const [saving, setSaving] = useState(false);
 
   const loadStatic = useCallback(async () => {
     if (!property?.id) return;
-    const [prods, locs] = await Promise.all([StockClient.products(property.id), StockClient.locations(property.id)]);
-    setProducts(prods.filter((p) => p.active)); setLocations(locs.filter((l) => l.active));
+    const [prods, locs, staff] = await Promise.all([
+      StockClient.products(property.id), StockClient.locations(property.id), StockClient.movementStaff(property.id),
+    ]);
+    setProducts(prods.filter((p) => p.active)); setLocations(locs.filter((l) => l.active)); setStaffOptions(staff);
   }, [property?.id]);
 
   const loadMovements = useCallback(async () => {
@@ -70,6 +77,11 @@ export default function EstoqueMovimentacoesPage() {
   const selectedProduct = products.find((p) => p.id === form.productId);
   const showExpiry = form.type === "entry" && !!selectedProduct?.trackExpiry;
 
+  const locationOf = (id: string) => locations.find((l) => l.id === id);
+  // Locais do tipo "Colaboradores" pedem um segundo select: quem recebeu/devolveu.
+  const askFromStaff = showFrom && locationOf(form.fromLocationId)?.type === "staff";
+  const askToStaff = showTo && locationOf(form.toLocationId)?.type === "staff";
+
   const submit = async () => {
     if (!property?.id) return;
     if (!form.productId) { toast.error("Selecione o produto."); return; }
@@ -77,6 +89,8 @@ export default function EstoqueMovimentacoesPage() {
     if (!qty || (form.type !== "adjustment" && qty <= 0)) { toast.error("Quantidade inválida."); return; }
     if (showFrom && !form.fromLocationId) { toast.error("Selecione o local de origem."); return; }
     if (showTo && !form.toLocationId) { toast.error("Selecione o local de destino."); return; }
+    if (askFromStaff && !form.fromStaffId) { toast.error("Selecione o colaborador de origem."); return; }
+    if (askToStaff && !form.toStaffId) { toast.error("Selecione o colaborador de destino."); return; }
 
     const payload = {
       propertyId: property.id,
@@ -86,6 +100,8 @@ export default function EstoqueMovimentacoesPage() {
       unitCost: showCost ? Number(form.unitCost || 0) : undefined,
       fromLocationId: showFrom ? form.fromLocationId : undefined,
       toLocationId: showTo ? form.toLocationId : undefined,
+      fromStaffId: askFromStaff ? form.fromStaffId : undefined,
+      toStaffId: askToStaff ? form.toStaffId : undefined,
       lossType: form.type === "loss" ? form.lossType : undefined,
       expiryDate: showExpiry ? (form.expiryDate || undefined) : undefined,
       batchCode: showExpiry ? (form.batchCode || undefined) : undefined,
@@ -192,20 +208,34 @@ export default function EstoqueMovimentacoesPage() {
             {showFrom && (
               <div>
                 <label className="field-label">Origem</label>
-                <select className="field-input w-full" value={form.fromLocationId}
-                  onChange={(e) => setForm({ ...form, fromLocationId: e.target.value })}>
+                <StockLocationSelect locations={locations} value={form.fromLocationId}
+                  onChange={(id) => setForm({ ...form, fromLocationId: id, fromStaffId: "" })} />
+              </div>
+            )}
+            {askFromStaff && (
+              <div>
+                <label className="field-label">Colaborador (origem)</label>
+                <select className="field-input w-full" value={form.fromStaffId}
+                  onChange={(e) => setForm({ ...form, fromStaffId: e.target.value })}>
                   <option value="">Selecione…</option>
-                  {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  {staffOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>
             )}
             {showTo && (
               <div>
                 <label className="field-label">Destino</label>
-                <select className="field-input w-full" value={form.toLocationId}
-                  onChange={(e) => setForm({ ...form, toLocationId: e.target.value })}>
+                <StockLocationSelect locations={locations} value={form.toLocationId}
+                  onChange={(id) => setForm({ ...form, toLocationId: id, toStaffId: "" })} />
+              </div>
+            )}
+            {askToStaff && (
+              <div>
+                <label className="field-label">Colaborador</label>
+                <select className="field-input w-full" value={form.toStaffId}
+                  onChange={(e) => setForm({ ...form, toStaffId: e.target.value })}>
                   <option value="">Selecione…</option>
-                  {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  {staffOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>
             )}
@@ -266,9 +296,9 @@ export default function EstoqueMovimentacoesPage() {
                     <td className="px-4 py-3 text-foreground">{m.product?.name ?? "—"}</td>
                     <td className="px-4 py-3 text-right tabular-nums font-medium">{Number(m.quantity)}</td>
                     <td className="px-4 py-3 text-muted-foreground text-xs">
-                      {m.fromLocation?.name && <span>{m.fromLocation.name}</span>}
+                      {m.fromLocation?.name && <span>{m.fromLocation.name}{m.fromStaffName ? ` · ${m.fromStaffName}` : ""}</span>}
                       {m.fromLocation?.name && m.toLocation?.name && <span> → </span>}
-                      {m.toLocation?.name && <span>{m.toLocation.name}</span>}
+                      {m.toLocation?.name && <span>{m.toLocation.name}{m.toStaffName ? ` · ${m.toStaffName}` : ""}</span>}
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
                       {Number(m.totalCost) > 0 ? `R$ ${Number(m.totalCost).toFixed(2)}` : "—"}

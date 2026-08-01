@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { StockClient } from "@/lib/stock-client";
 import { StockCategory, StockLocation, StockSettings, StockCategoryScope, StockLocationType } from "@/types/aura";
+import StockLocationSelect from "@/components/admin/StockLocationSelect";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Plus, Trash2, Save, Loader2, Pencil, X, Sparkles, Tag, MapPin, SlidersHorizontal } from "lucide-react";
@@ -17,7 +18,8 @@ const SCOPE_LABEL: Record<StockCategoryScope, string> = {
 const LOCATION_TYPES: { value: StockLocationType; label: string }[] = [
   { value: "warehouse", label: "Almoxarifado" }, { value: "kitchen", label: "Cozinha" },
   { value: "bar", label: "Bar" }, { value: "laundry", label: "Lavanderia" },
-  { value: "cabin", label: "Cabana" }, { value: "other", label: "Outro" },
+  { value: "cabin", label: "Cabanas" }, { value: "staff", label: "Colaboradores" },
+  { value: "other", label: "Outro" },
 ];
 
 const SEED_CATEGORIES: Partial<StockCategory>[] = [
@@ -212,6 +214,13 @@ export default function EstoqueConfigPage() {
                     {LOCATION_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select></div>
               </div>
+              {locForm.type === "staff" && (
+                <p className="text-xs text-muted-foreground">
+                  Ao movimentar para este local, o formulário vai pedir <b>qual colaborador</b> recebeu.
+                  Basta um local desses (ex.: &quot;COLABORADORES&quot;) — o saldo continua sendo do local,
+                  e o nome de quem levou fica no histórico da movimentação.
+                </p>
+              )}
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setLocForm(null)} className="px-3 py-2 text-xs font-bold text-muted-foreground hover:text-foreground"><X size={14} /></button>
                 <button onClick={saveLocation} disabled={saving}
@@ -243,11 +252,9 @@ export default function EstoqueConfigPage() {
         <section className="bg-card border border-border rounded-2xl p-5 space-y-4 max-w-lg">
           <div>
             <label className="field-label">Local de consumo padrão (baixa de Concierge/F&B)</label>
-            <select className="field-input w-full" value={settings.defaultSaleLocationId ?? ""}
-              onChange={(e) => setSettings({ ...settings, defaultSaleLocationId: e.target.value || null })}>
-              <option value="">— (sem baixa automática)</option>
-              {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </select>
+            <StockLocationSelect locations={locations} value={settings.defaultSaleLocationId ?? ""}
+              placeholder="— (sem baixa automática)"
+              onChange={(id) => setSettings({ ...settings, defaultSaleLocationId: id || null })} />
           </div>
           <div>
             <label className="field-label">Dias sem giro (alerta de baixa rotatividade)</label>

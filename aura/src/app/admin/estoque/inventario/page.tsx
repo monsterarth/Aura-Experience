@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { StockClient } from "@/lib/stock-client";
 import { InventoryCount, InventoryCountStatus, StockCategory, StockLocation } from "@/types/aura";
+import StockLocationSelect from "@/components/admin/StockLocationSelect";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useDiscardGuard } from "@/lib/use-discard-guard";
@@ -164,10 +165,8 @@ export default function InventarioPage() {
             <div className="p-5 space-y-4">
               <div>
                 <label className="field-label">Local *</label>
-                <select className="field-input w-full" value={newForm.locationId} onChange={(e) => setNewForm({ ...newForm, locationId: e.target.value })}>
-                  <option value="">Selecione…</option>
-                  {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-                </select>
+                <StockLocationSelect locations={locations} value={newForm.locationId}
+                  onChange={(id) => setNewForm({ ...newForm, locationId: id })} />
               </div>
               <div>
                 <label className="field-label">Categorias (vazio = todas)</label>
