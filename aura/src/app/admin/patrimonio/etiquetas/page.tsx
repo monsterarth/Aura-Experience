@@ -30,9 +30,15 @@ type LabelSize = "large" | "small";
  */
 const AURA_FALLBACK_HOST = "aaura.app.br";
 
-const SIZES: Record<LabelSize, { label: string; cols: number; qr: number; hint: string }> = {
-  large: { label: "Grande (2 colunas)", cols: 2, qr: 120, hint: "≈ 90 × 45 mm — equipamentos maiores" },
-  small: { label: "Pequena (3 colunas)", cols: 3, qr: 84, hint: "≈ 60 × 35 mm — móveis e eletrônicos pequenos" },
+/**
+ * `width` é a largura REAL impressa: A4 retrato (210mm) menos as margens de
+ * 12mm do PrintReport = 186mm de área útil, dividida pelas colunas, menos o
+ * gap. A prévia usa esse número para mostrar a etiqueta no tamanho que sai no
+ * papel — com uma largura inventada, o texto parece caber e depois estoura.
+ */
+const SIZES: Record<LabelSize, { label: string; cols: number; qr: number; width: number; hint: string }> = {
+  large: { label: "Grande (2 colunas)", cols: 2, qr: 120, width: 344, hint: "≈ 91 × 45 mm — equipamentos maiores" },
+  small: { label: "Pequena (3 colunas)", cols: 3, qr: 80, width: 224, hint: "≈ 59 × 35 mm — móveis e eletrônicos pequenos" },
 };
 
 export default function EtiquetasPage() {
@@ -172,7 +178,7 @@ export default function EtiquetasPage() {
             Prévia
           </p>
           <div className="inline-block rounded-2xl bg-white p-4 text-black">
-            <div style={{ width: size === "small" ? 260 : 340 }}>
+            <div style={{ width: cfg.width }}>
               <AssetLabelCard
                 label={toPrint[0]}
                 propertyName={property.name}
