@@ -9,31 +9,25 @@
 //
 // SOBRE A MARCA NO CENTRO: cobrir módulos só é seguro porque o nível de
 // correção de erro sobe de M (~15% de recuperação) para H (~30%) quando o logo
-// entra. A marca ocupa ~22% da largura, então sobra mais margem de erro do que
+// entra. A marca ocupa ~24% da largura, então sobra mais margem de erro do que
 // havia antes SEM logo — a plaqueta fica mais tolerante a risco e sujeira, não
-// menos. `excavate` limpa os módulos sob a arte para não confundir o leitor.
-//
-// A marca é desenhada aqui em preto e branco puro, em vez de usar
-// public/logo_transp.PNG (o camaleão): a 26px o camaleão vira borrão, e os
-// tons pastel dele somem contra o branco do QR e viram cinza na impressora
-// monocromática. Centro de QR pede forma sólida e alto contraste.
+// menos. `excavate` limpa os módulos sob a arte, deixando branco onde o PNG é
+// transparente: o resultado é o camaleão preto sobre branco, alto contraste.
 "use client";
 
 import React from "react";
 import { QRCodeSVG } from "qrcode.react";
 
-/** Quadrado preto com o "A" vazado — data URI para não depender de arquivo. */
-const AURA_MARK =
-  "data:image/svg+xml," +
-  encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' +
-    '<rect width="32" height="32" rx="7" fill="#000000"/>' +
-    '<path fill="#ffffff" fill-rule="evenodd" d="M16 5 L28.5 27.5 L3.5 27.5 Z M16 13.8 L10.8 22.2 L21.2 22.2 Z"/>' +
-    "</svg>",
-  );
+/**
+ * Camaleão da Aura em preto sobre fundo transparente — a silhueta sólida é
+ * justamente o que um centro de QR pede. Serve de public/, mesma origem.
+ */
+const AURA_MARK = "/logo_flat.png";
 
 /** Fração da largura do QR ocupada pela marca. Acima de ~0.25 a leitura sofre. */
-const MARK_RATIO = 0.22;
+const MARK_RATIO = 0.24;
+/** Proporção da arte (2248 × 1888) — sem isto o camaleão sai achatado. */
+const MARK_ASPECT = 1888 / 2248;
 
 interface Props {
   /** URL completa da plaqueta (ex.: https://aura.fazendadorosa.com.br/p/K7M4XQ2R). */
@@ -46,7 +40,8 @@ interface Props {
 
 export default function AssetQr({ url, size = 96, className, withMark = false }: Props) {
   if (!url) return null;
-  const mark = Math.round(size * MARK_RATIO);
+  const markW = Math.round(size * MARK_RATIO);
+  const markH = Math.round(markW * MARK_ASPECT);
 
   return (
     <QRCodeSVG
@@ -59,7 +54,7 @@ export default function AssetQr({ url, size = 96, className, withMark = false }:
       className={className}
       imageSettings={
         withMark
-          ? { src: AURA_MARK, height: mark, width: mark, excavate: true }
+          ? { src: AURA_MARK, height: markH, width: markW, excavate: true }
           : undefined
       }
     />
