@@ -605,6 +605,15 @@ export default function PropertySettingsPage() {
                                         className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
                                     />
                                     <p className="text-xs text-muted-foreground">Deixe vazio para usar o domínio padrão <span className="font-mono">aaura.app.br</span>. Os links enviados aos hóspedes usarão este endereço.</p>
+                                    <div className="flex gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                                        <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-500" />
+                                        <p className="text-xs text-muted-foreground">
+                                            <b className="text-foreground">As plaquetas de patrimônio já gravadas apontam para este domínio.</b>{" "}
+                                            Trocá-lo faz todo QR Code já colado em equipamento parar de funcionar — o código do
+                                            ativo é imutável, mas o endereço não. Se precisar migrar, mantenha o domínio antigo
+                                            redirecionando para o novo.
+                                        </p>
+                                    </div>
                                 </div>
                             </section>
 

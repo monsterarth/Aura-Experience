@@ -13,12 +13,22 @@ import { StockClient } from "@/lib/stock-client";
 import { AssetLabel } from "@/types/aura";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Loader2, Printer, Search, CheckSquare, Square } from "lucide-react";
+import { ArrowLeft, Loader2, Printer, Search, CheckSquare, Square, ShieldAlert } from "lucide-react";
 import PrintReport from "@/components/admin/PrintReport";
 import AssetQr from "@/components/admin/AssetQr";
 import PatrimonioTabs from "../PatrimonioTabs";
 
 type LabelSize = "large" | "small";
+
+/**
+ * Host de fallback do Aura — o que `publicBaseUrl` (asset-service) usa quando a
+ * propriedade não tem `settings.customDomain`. Gravar ESTE domínio numa plaqueta
+ * de metal amarra o patrimônio ao Aura para sempre: se um dia a pousada trocar de
+ * sistema, não há como repontar. Por isso a impressão é bloqueada aqui.
+ * Duplicado de propósito: asset-service importa supabaseAdmin e não pode vir para
+ * o bundle do cliente só por causa de uma string.
+ */
+const AURA_FALLBACK_HOST = "aaura.app.br";
 
 const SIZES: Record<LabelSize, { label: string; cols: number; qr: number; hint: string }> = {
   large: { label: "Grande (2 colunas)", cols: 2, qr: 108, hint: "≈ 90 × 45 mm — equipamentos maiores" },
@@ -61,6 +71,9 @@ export default function EtiquetasPage() {
     try { return u ? new URL(u).origin : ""; } catch { return ""; }
   }, [labels]);
 
+  // Sem domínio próprio, a plaqueta nasce presa ao Aura. Bloqueia a impressão.
+  const onFallbackDomain = !!origin && origin.includes(AURA_FALLBACK_HOST);
+
   const toggle = (id: string) => setSelected((s) => {
     const next = new Set(s);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -93,7 +106,7 @@ export default function EtiquetasPage() {
 
       <PatrimonioTabs active="etiquetas" />
 
-      {origin && (
+      {origin && !onFallbackDomain && (
         <div className="mt-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
           <p className="text-sm text-foreground">
             Os QRs desta folha apontam para <b className="font-mono">{origin}/p/…</b>
@@ -102,6 +115,30 @@ export default function EtiquetasPage() {
             Esse endereço fica gravado na plaqueta física e não pode ser trocado depois. Confira antes de mandar
             imprimir. Para mudar, ajuste o domínio da propriedade em Configurações antes de gerar as etiquetas.
           </p>
+        </div>
+      )}
+
+      {onFallbackDomain && (
+        <div className="mt-4 rounded-2xl border border-destructive/40 bg-destructive/10 p-4">
+          <p className="text-sm font-bold text-foreground flex items-center gap-2">
+            <ShieldAlert size={16} className="text-destructive" /> Impressão bloqueada: sem domínio próprio
+          </p>
+          <p className="text-xs text-muted-foreground mt-1.5">
+            Os QRs sairiam apontando para <b className="font-mono">{origin}</b>, que é o domínio do Aura. Como a
+            plaqueta é gravada em metal e não pode ser reimpressa, isso amarraria o patrimônio de{" "}
+            <b className="text-foreground">{property.name}</b> a este sistema para sempre — se um dia vocês trocarem
+            de software, não haveria como repontar os códigos.
+          </p>
+          <p className="text-xs text-muted-foreground mt-2">
+            Cadastre um domínio da própria pousada (ex.: <span className="font-mono">aura.suapousada.com.br</span>)
+            em Configurações da propriedade e volte aqui. As etiquetas passam a apontar para ele automaticamente.
+          </p>
+          <Link
+            href={`/admin/core/properties/${property.id}`}
+            className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-secondary text-foreground hover:opacity-90"
+          >
+            Configurar domínio da propriedade
+          </Link>
         </div>
       )}
 
@@ -117,8 +154,9 @@ export default function EtiquetasPage() {
         </select>
         <button
           onClick={() => setPrinting(true)}
-          disabled={toPrint.length === 0}
-          className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground disabled:opacity-50"
+          disabled={toPrint.length === 0 || onFallbackDomain}
+          title={onFallbackDomain ? "Cadastre um domínio próprio da pousada antes de gerar plaquetas." : undefined}
+          className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Printer size={15} /> Imprimir {toPrint.length} etiqueta(s)
         </button>
