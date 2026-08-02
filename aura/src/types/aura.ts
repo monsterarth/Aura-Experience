@@ -59,6 +59,7 @@ export interface Property {
   id: string;
   name: string;
   slug: string;
+  /** Logo simplificada (marca/símbolo). Usada no app, no portal e em espaços pequenos. */
   logoUrl?: string;
   theme: PropertyTheme;
   settings: {
@@ -97,6 +98,14 @@ export interface Property {
 
     // Domínio personalizado para o portal do hóspede (ex: aura.fazendadorosa.com.br)
     customDomain?: string;
+
+    /**
+     * Logo COMPLETA (marca + nome escrito), para peças onde há largura e o
+     * símbolo sozinho não identifica a pousada — etiqueta de patrimônio grande,
+     * cabeçalho de relatório impresso. A `logoUrl` de cima continua sendo a
+     * simplificada, para espaços pequenos.
+     */
+    logoFullUrl?: string;
 
     // Configuração do Mapa Interativo do Resort (camada espacial sobre as Structures)
     mapConfig?: {
@@ -2096,6 +2105,36 @@ export interface AssetPublicReportInput {
 export type AssetPublicReportResult =
   | { ok: true; merged?: boolean }
   | { ok: false; error: string };
+
+/** Personalização da etiqueta de patrimônio. */
+export interface AssetLabelOptions {
+  size: 'large' | 'small';
+  /** Exibir a logo da pousada. */
+  showLogo: boolean;
+  /** 'full' = logo completa (marca + nome); 'simple' = só a marca. */
+  logoVariant: 'full' | 'simple';
+  /** Exibir o nome do ativo abaixo do número. */
+  showName: boolean;
+  /** Moldura em volta do bloco "PATRIMÔNIO + número". */
+  framed: boolean;
+  /** Imprime a logo em preto e branco (o resto da etiqueta já é monocromático). */
+  monochrome: boolean;
+  /** Camaleão da Aura no centro do QR. */
+  auraMark: boolean;
+  /** Assinatura "Powered by Aura" no rodapé. */
+  poweredBy: boolean;
+}
+
+export const DEFAULT_ASSET_LABEL_OPTIONS: AssetLabelOptions = {
+  size: 'large',
+  showLogo: true,
+  logoVariant: 'full',
+  showName: false,
+  framed: true,
+  monochrome: false,
+  auraMark: true,
+  poweredBy: true,
+};
 
 /** Uma etiqueta na folha A4 de impressão. */
 export interface AssetLabel {

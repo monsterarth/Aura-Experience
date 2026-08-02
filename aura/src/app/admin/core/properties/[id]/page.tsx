@@ -88,6 +88,7 @@ export default function PropertySettingsPage() {
         whatsappEnabled: false,
         whatsappConfig: { apiUrl: "", apiKey: "", instanceName: "", chatwootUrl: "", chatwootAccountId: "", chatwootApiToken: "", chatwootInboxId: 0 },
         customDomain: "",
+        logoFullUrl: "",  // logo com o nome escrito (etiqueta de patrimônio, impressos)
         hasStock: true,   // módulo Compras & Estoque (SaaS)
         checkInTime: "14:00",
         checkOutTime: "12:00",
@@ -504,13 +505,27 @@ export default function PropertySettingsPage() {
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">URL da Logo (PNG, SVG, JPG)</label>
+                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">URL da Logo simplificada (PNG, SVG, JPG)</label>
                                         <input
                                             value={basicInfo.logoUrl}
                                             onChange={e => setBasicInfo({ ...basicInfo, logoUrl: e.target.value })}
                                             placeholder="https://..."
                                             className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
                                         />
+                                        <p className="text-xs text-muted-foreground">Só a marca/símbolo. Usada no app, no portal do hóspede e em espaços pequenos.</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">URL da Logo completa (marca + nome)</label>
+                                        <input
+                                            value={settings.logoFullUrl ?? ""}
+                                            onChange={e => setSettings({ ...settings, logoFullUrl: e.target.value })}
+                                            placeholder="https://..."
+                                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                            Versão com o nome da pousada escrito, para peças onde o símbolo sozinho não identifica —
+                                            etiqueta de patrimônio grande, cabeçalho impresso. Deixe vazio para usar a simplificada.
+                                        </p>
                                     </div>
                                 </div>
                             </section>

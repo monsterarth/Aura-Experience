@@ -1,24 +1,30 @@
 // src/app/admin/patrimonio/etiquetas/page.tsx
-// Folha A4 de etiquetas de patrimônio (QR + nº + nome) para colar nas plaquetas.
+// Folha A4 de etiquetas de patrimônio, com painel de personalização.
 //
-// O domínio impresso aparece em destaque na tela ANTES de imprimir: ele vai
-// gravado no metal e não muda depois. Quem manda o arquivo para o gravador
-// precisa ver qual endereço está indo.
+// O domínio impresso aparece em destaque ANTES de imprimir: ele vai gravado na
+// plaqueta física e não muda depois. Quem manda o arquivo para o gravador
+// precisa ver qual endereço está indo — e sem domínio próprio a impressão é
+// bloqueada, não só avisada.
+//
+// As preferências ficam em localStorage, por propriedade: são de quem imprime,
+// e gravá-las em properties.settings daqui exigiria reescrever o objeto inteiro
+// de configurações da propriedade, com risco de sobrescrever o que outra aba
+// estivesse editando.
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useProperty } from "@/context/PropertyContext";
 import { StockClient } from "@/lib/stock-client";
-import { AssetLabel } from "@/types/aura";
+import { AssetLabel, AssetLabelOptions, DEFAULT_ASSET_LABEL_OPTIONS } from "@/types/aura";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Loader2, Printer, Search, CheckSquare, Square, ShieldAlert } from "lucide-react";
+import {
+  ArrowLeft, Loader2, Printer, Search, CheckSquare, Square, ShieldAlert, SlidersHorizontal, RotateCcw,
+} from "lucide-react";
 import PrintReport from "@/components/admin/PrintReport";
 import AssetLabelCard from "@/components/admin/AssetLabelCard";
 import PatrimonioTabs from "../PatrimonioTabs";
-
-type LabelSize = "large" | "small";
 
 /**
  * Host de fallback do Aura — o que `publicBaseUrl` (asset-service) usa quando a
@@ -36,10 +42,30 @@ const AURA_FALLBACK_HOST = "aaura.app.br";
  * gap. A prévia usa esse número para mostrar a etiqueta no tamanho que sai no
  * papel — com uma largura inventada, o texto parece caber e depois estoura.
  */
-const SIZES: Record<LabelSize, { label: string; cols: number; qr: number; width: number; hint: string }> = {
-  large: { label: "Grande (2 colunas)", cols: 2, qr: 120, width: 344, hint: "≈ 91 × 45 mm — equipamentos maiores" },
-  small: { label: "Pequena (3 colunas)", cols: 3, qr: 80, width: 224, hint: "≈ 59 × 35 mm — móveis e eletrônicos pequenos" },
+const SIZES: Record<AssetLabelOptions["size"], { label: string; cols: number; qr: number; width: number; hint: string }> = {
+  large: { label: "Grande · 2 por linha", cols: 2, qr: 120, width: 344, hint: "≈ 91 × 45 mm — equipamentos maiores" },
+  small: { label: "Pequena · 3 por linha", cols: 3, qr: 80, width: 224, hint: "≈ 59 × 35 mm — móveis e eletrônicos pequenos" },
 };
+
+const storageKey = (propertyId: string) => `aura:assetLabel:${propertyId}`;
+
+/** Alterna simples, para o painel de personalização. */
+function Toggle({ label, hint, checked, disabled, onChange }: {
+  label: string; hint?: string; checked: boolean; disabled?: boolean; onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className={cn("flex items-start gap-2.5 cursor-pointer", disabled && "opacity-50 cursor-not-allowed")}>
+      <input
+        type="checkbox" checked={checked} disabled={disabled} className="mt-0.5"
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span className="min-w-0">
+        <span className="block text-sm text-foreground leading-tight">{label}</span>
+        {hint && <span className="block text-xs text-muted-foreground mt-0.5">{hint}</span>}
+      </span>
+    </label>
+  );
+}
 
 export default function EtiquetasPage() {
   const { currentProperty: property } = useProperty();
@@ -47,8 +73,10 @@ export default function EtiquetasPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [size, setSize] = useState<LabelSize>("large");
   const [printing, setPrinting] = useState(false);
+  const [options, setOptions] = useState<AssetLabelOptions>(DEFAULT_ASSET_LABEL_OPTIONS);
+
+  const logoFullUrl = property?.settings?.logoFullUrl;
 
   const load = useCallback(async () => {
     if (!property?.id) return;
@@ -61,6 +89,33 @@ export default function EtiquetasPage() {
   }, [property?.id]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Restaura as preferências salvas desta propriedade.
+  useEffect(() => {
+    if (!property?.id) return;
+    try {
+      const raw = window.localStorage.getItem(storageKey(property.id));
+      if (raw) setOptions({ ...DEFAULT_ASSET_LABEL_OPTIONS, ...JSON.parse(raw) });
+      else setOptions(DEFAULT_ASSET_LABEL_OPTIONS);
+    } catch { setOptions(DEFAULT_ASSET_LABEL_OPTIONS); }
+  }, [property?.id]);
+
+  const setOpt = (patch: Partial<AssetLabelOptions>) => {
+    setOptions((o) => {
+      const next = { ...o, ...patch };
+      if (property?.id) {
+        try { window.localStorage.setItem(storageKey(property.id), JSON.stringify(next)); } catch { /* quota/privado */ }
+      }
+      return next;
+    });
+  };
+
+  const resetOptions = () => {
+    setOptions(DEFAULT_ASSET_LABEL_OPTIONS);
+    if (property?.id) {
+      try { window.localStorage.removeItem(storageKey(property.id)); } catch { /* noop */ }
+    }
+  };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -95,7 +150,7 @@ export default function EtiquetasPage() {
 
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
-  const cfg = SIZES[size];
+  const cfg = SIZES[options.size];
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -106,7 +161,7 @@ export default function EtiquetasPage() {
       <header className="mb-4">
         <h1 className="text-2xl font-bold text-foreground">Etiquetas de patrimônio</h1>
         <p className="text-sm text-muted-foreground">
-          Cada etiqueta traz o QR da plaqueta, o nº de patrimônio e o nome do ativo.
+          Monte a etiqueta, veja a prévia no tamanho real e imprima a folha A4.
         </p>
       </header>
 
@@ -148,16 +203,120 @@ export default function EtiquetasPage() {
         </div>
       )}
 
-      <div className="flex gap-3 flex-wrap items-center my-4">
+      {/* Personalização + prévia lado a lado: mexeu, viu. */}
+      <div className="grid lg:grid-cols-[1fr_auto] gap-5 my-5 items-start">
+        <div className="bg-card border border-border rounded-2xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
+              <SlidersHorizontal size={13} /> Personalização
+            </p>
+            <button onClick={resetOptions} className="flex items-center gap-1 text-[11px] font-bold text-muted-foreground hover:text-foreground">
+              <RotateCcw size={11} /> Padrão
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <label className="field-label">Tamanho</label>
+              <select
+                className="field-input w-full"
+                value={options.size}
+                onChange={(e) => setOpt({ size: e.target.value as AssetLabelOptions["size"] })}
+              >
+                {(Object.entries(SIZES) as [AssetLabelOptions["size"], { label: string }][]).map(([v, s]) => (
+                  <option key={v} value={v}>{s.label}</option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground mt-1">{cfg.hint}</p>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-3 pt-1">
+              <Toggle
+                label="Logo da pousada"
+                hint={options.showLogo ? undefined : "Sem logo, entra o nome escrito"}
+                checked={options.showLogo}
+                onChange={(v) => setOpt({ showLogo: v })}
+              />
+              <Toggle
+                label="Nome do ativo"
+                hint="Ex.: NOTEBOOK ARTHUR"
+                checked={options.showName}
+                onChange={(v) => setOpt({ showName: v })}
+              />
+              <Toggle
+                label="Moldura no número"
+                checked={options.framed}
+                onChange={(v) => setOpt({ framed: v })}
+              />
+              <Toggle
+                label="Logo em preto e branco"
+                disabled={!options.showLogo}
+                checked={options.monochrome}
+                onChange={(v) => setOpt({ monochrome: v })}
+              />
+              <Toggle
+                label="Camaleão no centro do QR"
+                checked={options.auraMark}
+                onChange={(v) => setOpt({ auraMark: v })}
+              />
+              <Toggle
+                label="“Powered by Aura”"
+                checked={options.poweredBy}
+                onChange={(v) => setOpt({ poweredBy: v })}
+              />
+            </div>
+
+            {options.showLogo && (
+              <div className="pt-1">
+                <label className="field-label">Versão da logo</label>
+                <select
+                  className="field-input w-full"
+                  value={options.logoVariant}
+                  onChange={(e) => setOpt({ logoVariant: e.target.value as AssetLabelOptions["logoVariant"] })}
+                >
+                  <option value="full">Completa (marca + nome)</option>
+                  <option value="simple">Simplificada (só a marca)</option>
+                </select>
+                {options.logoVariant === "full" && !logoFullUrl && (
+                  <p className="text-xs text-amber-500 mt-1">
+                    Logo completa não cadastrada — está usando a simplificada.{" "}
+                    <Link href={`/admin/core/properties/${property.id}`} className="underline">Cadastrar</Link>
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Prévia no tamanho impresso. Fundo branco fixo: é assim que sai no papel. */}
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+            Prévia · tamanho real
+          </p>
+          <div className="inline-block rounded-2xl bg-white p-4 text-black">
+            <div style={{ width: cfg.width }}>
+              {toPrint.length > 0 ? (
+                <AssetLabelCard
+                  label={toPrint[0]}
+                  options={options}
+                  propertyName={property.name}
+                  logoUrl={property.logoUrl}
+                  logoFullUrl={logoFullUrl}
+                  qrSize={cfg.qr}
+                />
+              ) : (
+                <p className="text-xs text-neutral-500 py-8 text-center">Selecione ao menos um ativo.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-3 flex-wrap items-center mb-4">
         <div className="relative flex-1 min-w-[220px] max-w-sm">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input className="field-input w-full pl-9" placeholder="Buscar…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <select className="field-input text-sm" value={size} onChange={(e) => setSize(e.target.value as LabelSize)}>
-          {(Object.entries(SIZES) as [LabelSize, { label: string }][]).map(([v, s]) => (
-            <option key={v} value={v}>{s.label}</option>
-          ))}
-        </select>
         <button
           onClick={() => setPrinting(true)}
           disabled={toPrint.length === 0 || onFallbackDomain}
@@ -167,29 +326,6 @@ export default function EtiquetasPage() {
           <Printer size={15} /> Imprimir {toPrint.length} etiqueta(s)
         </button>
       </div>
-      <p className="text-xs text-muted-foreground -mt-2 mb-4">{cfg.hint}</p>
-
-      {/* Prévia: a etiqueta como sai no papel, sem precisar abrir a impressão.
-          Fundo branco fixo porque é assim que ela é impressa — no tema escuro do
-          admin, uma prévia "clara" é o que corresponde ao resultado real. */}
-      {toPrint.length > 0 && (
-        <div className="mb-5">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
-            Prévia
-          </p>
-          <div className="inline-block rounded-2xl bg-white p-4 text-black">
-            <div style={{ width: cfg.width }}>
-              <AssetLabelCard
-                label={toPrint[0]}
-                propertyName={property.name}
-                logoUrl={property.logoUrl}
-                qrSize={cfg.qr}
-                compact={size === "small"}
-              />
-            </div>
-          </div>
-        </div>
-      )}
 
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
@@ -234,10 +370,11 @@ export default function EtiquetasPage() {
               <AssetLabelCard
                 key={l.id}
                 label={l}
+                options={options}
                 propertyName={property.name}
                 logoUrl={property.logoUrl}
+                logoFullUrl={logoFullUrl}
                 qrSize={cfg.qr}
-                compact={size === "small"}
               />
             ))}
           </div>
