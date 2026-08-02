@@ -60,3 +60,5 @@ record**. There is **no migration runner** — each file was applied manually vi
 | 2026-08-01 | `stock_phase6_responsible.sql` | Movimentações: responsável pela ação + `batchRef` (lote) |
 | 2026-08-01 | `stock_phase6_cabin_locations.sql` | Índices para cabanas como locais derivados (só índices, sem UPDATE) |
 | 2026-08-01 | `add_housekeeping_skip_columns.sql` | `skippedAt` + `guestName` em `housekeeping_tasks` (faxina não realizada) |
+| 2026-08-02 | `patrimonio_phase1.sql` | Patrimônio: `publicCode` (plaqueta QR, imutável), baixa/alienação, `asset_movements`, nº sequencial e `maintenance_tasks."assetId"` |
+| 2026-08-02 | `patrimonio_phase3_inventario.sql` | Patrimônio: conferência física (`asset_inventory_counts` / `asset_inventory_items`) |

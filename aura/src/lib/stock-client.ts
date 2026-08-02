@@ -7,6 +7,9 @@ import {
   CabinLinkReport, StockCabinOption, StockLocationDetail, StockLocationOverview,
   StockCategory, StockLocation, StockProduct, StockMovement, StockStaffOption, StockSettings,
   Supplier, Purchase, PurchaseItem, Asset, StockBatch, InventoryCount, ProductDetail, SupplierDetail, StockDashboard,
+  AssetDetail, AssetLabel, AssetDisposalInput, AssetTransferInput,
+  AssetInventoryCount, AssetInventoryItemStatus, AssetInventoryItemUpdate,
+  AssetReport, AssetReportFilters, AssetReportKind,
 } from "@/types/aura";
 
 const BASE = "/api/admin";
@@ -85,9 +88,35 @@ export const StockClient = {
   receivePurchase: (propertyId: string, purchaseId: string, overrides?: Record<string, { expiryDate?: string | null; batchCode?: string | null }>) =>
     post("estoque/purchases/receive", { propertyId, purchaseId, overrides }),
   // patrimônio
-  assets: (pid: string) => get<Asset[]>("patrimonio", pid),
+  assets: (pid: string, includeDisposed = false) =>
+    get<Asset[]>("patrimonio", pid, includeDisposed ? "&includeDisposed=1" : ""),
+  assetDetail: (pid: string, id: string) => get<AssetDetail>("patrimonio", pid, `&detail=${encodeURIComponent(id)}`),
+  assetLabels: (pid: string, ids: string[]) => get<AssetLabel[]>("patrimonio", pid, `&labels=${ids.join(",")}`),
   saveAsset: (body: WithProp<Asset>) => post("patrimonio", body),
+  disposeAsset: (propertyId: string, id: string, disposal: AssetDisposalInput) =>
+    post<{ ok: true }>("patrimonio", { propertyId, action: "dispose", id, ...disposal }),
+  reinstateAsset: (propertyId: string, id: string, reason: string) =>
+    post<{ ok: true }>("patrimonio", { propertyId, action: "reinstate", id, reason }),
+  moveAsset: (propertyId: string, id: string, to: AssetTransferInput) =>
+    post<{ movementId: string }>("patrimonio", { propertyId, action: "move", id, ...to }),
   deleteAsset: (pid: string, id: string) => del("patrimonio", pid, id),
+  // conferência de patrimônio
+  assetCounts: (pid: string) => get<AssetInventoryCount[]>("patrimonio/inventario", pid),
+  assetCount: (pid: string, id: string) => get<AssetInventoryCount>("patrimonio/inventario", pid, `&id=${encodeURIComponent(id)}`),
+  createAssetCount: (propertyId: string, opts: { locationId?: string | null; cabinId?: string | null; scope?: string[]; applyMoves?: boolean }) =>
+    post<{ id: string }>("patrimonio/inventario", { propertyId, action: "create", ...opts }),
+  saveAssetCountItems: (propertyId: string, countId: string, items: AssetInventoryItemUpdate[]) =>
+    post<{ ok: true }>("patrimonio/inventario", { propertyId, action: "saveItems", countId, items }),
+  markAssetByCode: (propertyId: string, countId: string, code: string) =>
+    post<{ assetId: string; status: AssetInventoryItemStatus; name: string; assetTag?: string | null }>(
+      "patrimonio/inventario", { propertyId, action: "markByCode", countId, code }),
+  closeAssetCount: (propertyId: string, countId: string) =>
+    post<{ accuracy: number; found: number; missing: number; moved: number; unexpected: number }>(
+      "patrimonio/inventario", { propertyId, action: "close", countId }),
+  deleteAssetCount: (pid: string, id: string) => del("patrimonio/inventario", pid, id),
+  // relatórios de patrimônio
+  assetReport: (propertyId: string, kind: AssetReportKind, filters: AssetReportFilters) =>
+    post<AssetReport>("patrimonio/reports", { propertyId, kind, filters }),
   // validade / lotes
   expiringBatches: (pid: string, days = 30) => get<StockBatch[]>("estoque/batches", pid, `&expiring=${days}`),
   // perdas

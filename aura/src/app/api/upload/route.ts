@@ -14,11 +14,12 @@ export async function POST(request: Request): Promise<NextResponse> {
         const file = formData.get('file') as File;
         const stayId = formData.get('stayId') as string;
         const accessCode = formData.get('accessCode') as string;
+        const assetCode = formData.get('assetCode') as string;
 
         // Auth authorization
         let isAuthorized = false;
         const auth = await requireAuth();
-        
+
         if (!isAuthError(auth)) {
             isAuthorized = true; // Equipe autenticada
         } else if (stayId && accessCode) {
@@ -31,6 +32,17 @@ export async function POST(request: Request): Promise<NextResponse> {
                 .single();
 
             if (stayCheck) isAuthorized = true;
+        } else if (assetCode) {
+            // Plaqueta de patrimônio: quem está com o QR na frente do equipamento
+            // pode anexar a foto do defeito. O código é a única credencial, e só
+            // habilita upload — nenhuma leitura de dado do ativo acontece aqui.
+            const { data: assetCheck } = await supabaseAdmin
+                .from('assets')
+                .select('id')
+                .eq('publicCode', assetCode.toUpperCase())
+                .maybeSingle();
+
+            if (assetCheck) isAuthorized = true;
         }
 
         if (!isAuthorized) {

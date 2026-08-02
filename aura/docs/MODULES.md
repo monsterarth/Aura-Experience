@@ -27,7 +27,11 @@ are admin/manager (+ the relevant operational role).
 | `food-and-beverage` (`menu`, `orders`) | `fb-service` | Restaurant menu + orders |
 | `cafe-salao` (+`kds`) | `breakfast-salon-service` | Breakfast salon, tables, kitchen display |
 | `estoque` (`produtos`, `inventario`, `compras`, `fornecedores`, `movimentacoes`, `perdas`, `configuracoes`) | `stock-service`, `inventory-service`, `purchase-service`, `supplier-service`, `stock-integration` | Inventory / procurement (see [[stock-module]]) |
-| `patrimonio` | `asset-service` | Fixed assets + depreciation |
+| `patrimonio` | `asset-service` | Fixed assets: ficha, depreciation, disposal, movements, QR plaque |
+| `patrimonio/[id]` | `asset-service` | Asset detail sheet (maintenance, movements, depreciation ledger, audit) |
+| `patrimonio/inventario` | `asset-inventory-service` | Physical asset count by location (scan or type the plaque code) |
+| `patrimonio/relatorios` | `asset-report-service` | Position, depreciation ledger, warranties, maintenance cost, disposals |
+| `patrimonio/etiquetas` | `asset-service` | A4 sheet of QR labels for the physical plaques |
 | `surveys` (`new`, `edit`, `curated`, `responses`, `area-reviews`) | `survey-service` | Guest surveys (Survey 2.0) + area reviews |
 | `comunicacao` (`automations`, `automations/settings`) | `automation-service`, `chatwoot-service`, `message-queue-service` | Automated messaging, templates, WhatsApp |
 | `staff` · `hr` | `staff-service` | Staff records, HR |

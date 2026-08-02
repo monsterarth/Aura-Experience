@@ -11,6 +11,16 @@ const supabaseAdmin = createClient(
 export async function updateSession(request: NextRequest) {
     const pathname = request.nextUrl.pathname;
 
+    // ── Plaqueta de patrimônio: URL pública e permanente ───────────────────────
+    // O QR gravado na plaqueta física resolve /p/<code>. Não há sessão e não há
+    // domínio custom a resolver (o próprio código identifica a propriedade), então
+    // o retorno é seco: sem esta linha, cada escaneada pagaria um round-trip ao
+    // servidor de Auth do Supabase. A barra final evita capturar um futuro
+    // /patrimonio de primeiro nível.
+    if (pathname.startsWith('/p/')) {
+        return NextResponse.next({ request });
+    }
+
     // ── Rotas públicas do hóspede: não exigem sessão ───────────────────────────
     // /check-in e /feedback são acessadas por hóspedes não autenticados. Pular o
     // supabase.auth.getUser() (round-trip ao servidor de Auth do Supabase) reduz a

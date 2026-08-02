@@ -10,6 +10,12 @@ interface ImageUploadProps {
     path?: string;
     stayId?: string;
     accessCode?: string;
+    /**
+     * Código da plaqueta de patrimônio (publicCode). Autoriza o upload sem sessão
+     * para quem está com o QR na frente do equipamento. Incompatível com `direct`
+     * — a rota de URL assinada exige sessão.
+     */
+    assetCode?: string;
     /** Limite de tamanho em MB (padrão 5). */
     maxSizeMb?: number;
     /**
@@ -20,7 +26,7 @@ interface ImageUploadProps {
     direct?: boolean;
 }
 
-export function ImageUpload({ value, onUploadSuccess, className = '', path = 'profiles', stayId, accessCode, maxSizeMb = 5, direct = false }: ImageUploadProps) {
+export function ImageUpload({ value, onUploadSuccess, className = '', path = 'profiles', stayId, accessCode, assetCode, maxSizeMb = 5, direct = false }: ImageUploadProps) {
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -75,6 +81,7 @@ export function ImageUpload({ value, onUploadSuccess, className = '', path = 'pr
             formData.append('path', path);
             if (stayId) formData.append('stayId', stayId);
             if (accessCode) formData.append('accessCode', accessCode);
+            if (assetCode) formData.append('assetCode', assetCode);
 
             const response = await fetch('/api/upload', {
                 method: 'POST',

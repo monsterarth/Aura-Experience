@@ -19,7 +19,7 @@ No test framework is configured. Use `pnpm build` to catch type errors.
 
 ### Roles
 
-`UserRole` (defined in `src/types/aura.ts`): `super_admin` · `admin` · `manager` · `reception` · `governance` · `maid` · `maintenance` · `technician` · `kitchen` · `waiter` · `porter` · `houseman` · `marketing`
+`UserRole` (defined in `src/types/aura.ts`): `super_admin` · `admin` · `manager` · `reception` · `governance` · `maid` · `maintenance` · `technician` · `kitchen` · `waiter` · `porter` · `houseman` · `marketing` · `compras`
 
 ### Key conventions
 

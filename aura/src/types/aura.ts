@@ -469,6 +469,13 @@ export interface MaintenanceTask {
   customLocation?: string; // Free-form location (e.g., "Recepção", "Área da Piscina")
   stayId?: string; // If applicable during a specific stay
 
+  /** Ativo de patrimônio ao qual esta tarefa se refere (ficha + custo acumulado). */
+  assetId?: string | null;
+  /** Origem do chamado. 'qr' = plaqueta pública do patrimônio, sem login. */
+  reportSource?: 'qr' | 'staff' | 'guest';
+  /** Custo do reparo (R$) — alimenta o custo acumulado de manutenção do ativo. */
+  cost?: number | null;
+
   blocksCabin?: boolean; // Determines if this task blocks the cabin from being rented
   expectedStart?: string; // ISO String (start date/time of the block)
   expectedEnd?: string; // ISO String (end date/time of the block)
@@ -817,11 +824,13 @@ export interface AuditLog {
   | 'STOCK_ENTRY' | 'STOCK_EXIT' | 'STOCK_TRANSFER' | 'STOCK_ADJUSTMENT' | 'STOCK_LOSS'
   | 'PURCHASE_CREATED' | 'PURCHASE_RECEIVED' | 'PURCHASE_CANCELLED'
   | 'SUPPLIER_CREATED' | 'SUPPLIER_UPDATED' | 'SUPPLIER_DELETED'
-  | 'ASSET_CREATED' | 'ASSET_UPDATED' | 'ASSET_DISPOSED'
+  | 'ASSET_CREATED' | 'ASSET_UPDATED' | 'ASSET_DISPOSED' | 'ASSET_DELETED'
+  | 'ASSET_REINSTATED' | 'ASSET_MOVED' | 'ASSET_CUSTODY_CHANGED' | 'ASSET_PUBLIC_REPORT'
+  | 'ASSET_INVENTORY_OPENED' | 'ASSET_INVENTORY_CLOSED'
   | 'INVENTORY_OPENED' | 'INVENTORY_CLOSED'
   | 'CRON_STOCK_LOW' | 'CRON_STOCK_EXPIRY' | 'CRON_ASSET_DEPRECIATION'
   | 'STRUCTURE_REVIEW_LOW';
-  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'STRUCTURE_REVIEW' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER' | 'CONTACT' | 'AUTOMATION' | 'BREAKFAST' | 'CRON' | 'SUPPLIER' | 'ASSET' | 'PURCHASE' | 'INVENTORY';
+  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'STRUCTURE_REVIEW' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER' | 'CONTACT' | 'AUTOMATION' | 'BREAKFAST' | 'CRON' | 'SUPPLIER' | 'ASSET' | 'ASSET_INVENTORY' | 'PURCHASE' | 'INVENTORY';
   entityId: string;
   oldData?: any;
   newData?: any;
@@ -1651,6 +1660,8 @@ export interface StockSettings {
   expiryAlertLeadDays: number;    // antecedência do alerta de validade (default 30)
   autoLossOnExpiry: boolean;
   defaultSaleLocationId?: string | null;  // local de onde concierge/F&B dão baixa (Fase 3)
+  assetTagPrefix?: string;                // prefixo do nº de patrimônio (default 'PAT')
+  assetTagPadding?: number;               // dígitos do sufixo (default 4 → PAT-0042)
   updatedAt: Timestamp;
 }
 
@@ -1720,6 +1731,8 @@ export interface SupplierDetail {
 // ── Fase 1: Patrimônio ───────────────────────────────────────────────────────
 export type AssetStatus = 'active' | 'maintenance' | 'inactive' | 'disposed' | 'written_off';
 export type AssetDepreciationMethod = 'linear' | 'none';
+export type AssetDisposalType = 'sale' | 'donation' | 'scrap' | 'loss' | 'theft' | 'trade_in';
+export type AssetWarrantyStatus = 'active' | 'expiring' | 'expired' | 'none';
 
 export interface Asset {
   id: string;
@@ -1750,13 +1763,34 @@ export interface Asset {
   specImageUrl?: string;          // foto da etiqueta de especificações
   invoiceUrl?: string;            // nota fiscal (PDF/imagem)
   notes?: string;
+  /** Código curto da plaqueta física (QR). IMUTÁVEL — a placa não se reimprime. */
+  publicCode?: string;
+  /** Custodiante: quem responde pelo ativo. TEXT sem FK (ver migration). */
+  custodianId?: string | null;
+  custodianName?: string | null;
+  // Baixa / alienação — substitui o DELETE físico
+  disposalDate?: string | null;
+  disposalType?: AssetDisposalType | null;
+  disposalReason?: string;
+  disposalValue?: number | null;
+  disposalDocUrl?: string;
+  /** Valor contábil congelado na data da baixa — não recalcular depois. */
+  bookValueAtDisposal?: number | null;
+  disposedBy?: string;
+  disposedByName?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
-  // Joined / computed
+  // Joined / computed — NUNCA persistir (ver VIRTUAL_ASSET_FIELDS em asset-service)
   category?: StockCategory;
+  location?: StockLocation;
+  cabinName?: string;
   monthlyDepreciation?: number;
   accumulatedDepreciation?: number;
   bookValue?: number;             // valor contábil atual
+  maintenanceCost?: number;       // soma de maintenance_tasks.cost
+  openMaintenanceCount?: number;
+  warrantyStatus?: AssetWarrantyStatus;
+  disposalResult?: number;        // disposalValue − bookValueAtDisposal (ganho/perda)
 }
 
 // ── Fase 2: Lotes / Validade ─────────────────────────────────────────────────
@@ -1855,4 +1889,190 @@ export interface AssetDepreciationEntry {
   accumulatedDepreciation: number;
   bookValue: number;
   createdAt: Timestamp;
+}
+
+// ── Patrimônio: movimentações do ativo ───────────────────────────────────────
+export type AssetMovementType = 'transfer' | 'custody' | 'status' | 'disposal' | 'inventory';
+
+export interface AssetMovement {
+  id: string;
+  propertyId: string;
+  assetId: string;
+  type: AssetMovementType;
+  fromLocationId?: string | null;   toLocationId?: string | null;
+  fromCabinId?: string | null;      toCabinId?: string | null;
+  fromCustodianId?: string | null;  fromCustodianName?: string | null;
+  toCustodianId?: string | null;    toCustodianName?: string | null;
+  fromStatus?: AssetStatus | null;  toStatus?: AssetStatus | null;
+  reason?: string;
+  referenceType?: 'inventory' | 'disposal' | null;
+  referenceId?: string | null;
+  performedBy?: string;
+  performedByName?: string;
+  createdAt: Timestamp;
+  // Joined / virtual
+  fromLocationName?: string; toLocationName?: string;
+  fromCabinName?: string;    toCabinName?: string;
+}
+
+export interface AssetDisposalInput {
+  disposalDate: string;             // YYYY-MM-DD
+  disposalType: AssetDisposalType;
+  disposalReason: string;
+  disposalValue?: number | null;
+  disposalDocUrl?: string;
+}
+
+export interface AssetTransferInput {
+  toLocationId?: string | null;
+  toCabinId?: string | null;
+  toCustodianId?: string | null;
+  toCustodianName?: string | null;
+  toStatus?: AssetStatus | null;
+  reason?: string;
+}
+
+/** Ficha do ativo: payload composto, montado em consultas paralelas. */
+export interface AssetDetail {
+  asset: Asset;
+  depreciation: AssetDepreciationEntry[];
+  maintenance: MaintenanceTask[];
+  maintenanceCost: number;
+  movements: AssetMovement[];
+  audit: AuditLog[];
+  /** URL completa da plaqueta, com o domínio já resolvido. */
+  publicUrl: string;
+}
+
+// ── Patrimônio: conferência (inventário físico) ──────────────────────────────
+export type AssetInventoryStatus = 'open' | 'counting' | 'closed';
+/** Ativo não tem quantidade, tem presença — por isso status em vez de contagem. */
+export type AssetInventoryItemStatus = 'pending' | 'found' | 'missing' | 'moved' | 'unexpected';
+
+export interface AssetInventoryCount {
+  id: string;
+  propertyId: string;
+  locationId?: string | null;
+  cabinId?: string | null;
+  scope: string[];                 // categoryIds; [] = todas
+  status: AssetInventoryStatus;
+  expectedCount: number;
+  foundCount?: number | null;
+  missingCount?: number | null;
+  movedCount?: number | null;
+  unexpectedCount?: number | null;
+  accuracy?: number | null;
+  applyMoves: boolean;
+  createdBy?: string;
+  createdByName?: string;
+  startedAt: Timestamp;
+  closedAt?: string | null;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  // Joined / virtual
+  location?: StockLocation;
+  items?: AssetInventoryItem[];
+  itemCount?: number;
+}
+
+export interface AssetInventoryItem {
+  id: string;
+  countId: string;
+  assetId: string;
+  expectedLocationId?: string | null;
+  expectedCabinId?: string | null;
+  status: AssetInventoryItemStatus;
+  foundLocationId?: string | null;
+  foundCabinId?: string | null;
+  checkedAt?: string | null;
+  checkedBy?: string;
+  checkedByName?: string;
+  notes?: string;
+  createdAt?: Timestamp;
+  // Joined / virtual
+  asset?: Asset;
+}
+
+export interface AssetInventoryItemUpdate {
+  id: string;
+  status: AssetInventoryItemStatus;
+  foundLocationId?: string | null;
+  notes?: string;
+}
+
+// ── Patrimônio: relatórios ───────────────────────────────────────────────────
+export type AssetReportKind =
+  | 'asset_position' | 'asset_depreciation' | 'asset_warranty'
+  | 'asset_maintenance' | 'asset_disposals';
+
+export interface AssetReportFilters {
+  categoryIds?: string[];
+  locationIds?: string[];
+  statuses?: AssetStatus[];
+  custodianIds?: string[];
+  from?: string | null;            // YYYY-MM-DD (ou YYYY-MM na depreciação)
+  to?: string | null;
+  /** Garantias: janela em dias à frente (default 90). */
+  warrantyWindowDays?: number;
+  includeDisposed?: boolean;       // default false
+}
+
+/**
+ * Mesmo contrato de StockReport — o encanamento de CSV (lib/csv.ts) e de
+ * impressão (PrintReport) não sabe nem precisa saber de que módulo veio.
+ * O Omit<'kind'> é deliberado: reaproveita columns/rows/totals/meta SEM mexer em
+ * StockReportKind, então o switch do stock-report-service segue exaustivo.
+ */
+export interface AssetReport extends Omit<StockReport, 'kind'> {
+  kind: AssetReportKind;
+}
+
+// ── Patrimônio: página pública da plaqueta (/p/<code>) ───────────────────────
+/**
+ * TUDO que a rota pública devolve. É a allowlist de colunas em forma de tipo:
+ * o que não está aqui não sai do servidor.
+ *
+ * NUNCA adicionar custo de aquisição, valor contábil, depreciação, fornecedor,
+ * nota fiscal, observações, dados de baixa — nem o NÚMERO DE SÉRIE, que é
+ * exatamente o que se precisa para fraudar uma garantia ou receptar o item.
+ */
+export interface AssetPublicView {
+  id: string;
+  publicCode: string;
+  name: string;
+  assetTag?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  status: AssetStatus;
+  imageUrl?: string | null;
+  categoryName?: string | null;
+  locationName?: string | null;
+  cabinName?: string | null;
+  warrantyUntil?: string | null;
+  warrantyStatus: AssetWarrantyStatus;
+  property: { id: string; name: string; logoUrl?: string; theme?: PropertyTheme };
+}
+
+export interface AssetPublicReportInput {
+  description: string;
+  reporterName?: string;
+  imageUrl?: string;
+  /** Honeypot — se vier preenchido, a resposta é ok e nada é gravado. */
+  website?: string;
+  /** ms desde a abertura do formulário; abaixo de 2000 é bot. */
+  elapsedMs?: number;
+}
+
+export type AssetPublicReportResult =
+  | { ok: true; merged?: boolean }
+  | { ok: false; error: string };
+
+/** Uma etiqueta na folha A4 de impressão. */
+export interface AssetLabel {
+  id: string;
+  name: string;
+  assetTag: string;
+  publicCode: string;
+  url: string;
+  locationName?: string;
 }

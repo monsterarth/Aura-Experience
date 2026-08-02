@@ -69,8 +69,16 @@ erDiagram
 **Stock / procurement / assets** (see [[stock-module]])
 `stock_categories`, `stock_locations`, `stock_products`, stock balances/`stock_movements`,
 `stock_batches`, `stock_settings`, `suppliers`, `purchases` + items, `assets`,
-`asset_depreciation_entries`, inventory counts. Entities: `StockProduct`, `StockMovement`,
-`StockBatch`, `Supplier`, `Purchase`, `Asset`, `InventoryCount`.
+`asset_depreciation_entries`, `asset_movements`, `asset_tag_counters`,
+`asset_inventory_counts` + `asset_inventory_items`, inventory counts. Entities:
+`StockProduct`, `StockMovement`, `StockBatch`, `Supplier`, `Purchase`, `Asset`,
+`AssetMovement`, `AssetInventoryCount`, `InventoryCount`.
+
+> `assets."publicCode"` is the **immutable** short code engraved on the physical QR
+> plaque (`/p/<code>`). A `BEFORE UPDATE` trigger raises if it ever changes — the plaque
+> cannot be reprinted. `assets."assetTag"` is unique per property and allocated from
+> `asset_tag_counters` (atomic bump, not `SELECT max`). `maintenance_tasks."assetId"`
+> links a work order to the asset that raised it.
 
 **Concierge**
 `concierge_groups`, `concierge_items`, `concierge_requests` (+ stock components). Entities:
