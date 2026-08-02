@@ -19,6 +19,12 @@ interface ImageUploadProps {
     /** Limite de tamanho em MB (padrão 5). */
     maxSizeMb?: number;
     /**
+     * Como a prévia preenche a caixa. 'cover' (padrão) corta para preencher —
+     * certo para foto. 'contain' mostra a imagem inteira — obrigatório para
+     * LOGO, senão a marca aparece cortada e parece que o upload deu errado.
+     */
+    fit?: 'cover' | 'contain';
+    /**
      * Upload direto navegador → Supabase Storage via URL assinada.
      * Use para arquivos grandes (ex.: imagem do mapa em alta resolução) que
      * ultrapassam o limite de ~4.5MB de corpo das serverless functions da Vercel.
@@ -26,7 +32,7 @@ interface ImageUploadProps {
     direct?: boolean;
 }
 
-export function ImageUpload({ value, onUploadSuccess, className = '', path = 'profiles', stayId, accessCode, assetCode, maxSizeMb = 5, direct = false }: ImageUploadProps) {
+export function ImageUpload({ value, onUploadSuccess, className = '', path = 'profiles', stayId, accessCode, assetCode, maxSizeMb = 5, fit = 'cover', direct = false }: ImageUploadProps) {
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -117,7 +123,7 @@ export function ImageUpload({ value, onUploadSuccess, className = '', path = 'pr
 
             {value ? (
                 <>
-                    <img src={value} alt="Preview" className="w-full h-full object-cover" />
+                    <img src={value} alt="Preview" className={`w-full h-full ${fit === 'contain' ? 'object-contain' : 'object-cover'}`} />
                     <div
                         className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
                         onClick={() => fileInputRef.current?.click()}

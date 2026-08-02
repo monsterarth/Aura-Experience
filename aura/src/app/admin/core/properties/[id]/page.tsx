@@ -15,6 +15,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
+import { ImageUpload } from "@/components/admin/ImageUpload";
 
 // Função auxiliar para converter HEX -> HSL (Para o Preview)
 function hexToHSL(hex: string): string {
@@ -505,27 +506,75 @@ export default function PropertySettingsPage() {
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">URL da Logo simplificada (PNG, SVG, JPG)</label>
-                                        <input
-                                            value={basicInfo.logoUrl}
-                                            onChange={e => setBasicInfo({ ...basicInfo, logoUrl: e.target.value })}
-                                            placeholder="https://..."
-                                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
-                                        />
-                                        <p className="text-xs text-muted-foreground">Só a marca/símbolo. Usada no app, no portal do hóspede e em espaços pequenos.</p>
+                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Logo simplificada</label>
+                                        <div className="flex gap-4 items-start">
+                                            {/* Caixa quadrada: a marca simplificada costuma ser quadrada. */}
+                                            <div className="h-28 w-28 shrink-0 rounded-xl overflow-hidden border border-border bg-background">
+                                                <ImageUpload
+                                                    value={basicInfo.logoUrl}
+                                                    onUploadSuccess={url => setBasicInfo({ ...basicInfo, logoUrl: url })}
+                                                    path="logos"
+                                                    fit="contain"
+                                                />
+                                            </div>
+                                            <div className="flex-1 min-w-0 space-y-2">
+                                                <p className="text-xs text-muted-foreground">
+                                                    Só a marca/símbolo. Usada no app, no portal do hóspede, no centro do QR e em espaços pequenos.
+                                                    PNG com fundo transparente é o ideal.
+                                                </p>
+                                                <input
+                                                    value={basicInfo.logoUrl}
+                                                    onChange={e => setBasicInfo({ ...basicInfo, logoUrl: e.target.value })}
+                                                    placeholder="ou cole uma URL…"
+                                                    className="w-full bg-background border border-border px-3 py-2 rounded-lg outline-none focus:border-primary/50 text-foreground font-mono text-xs"
+                                                />
+                                                {basicInfo.logoUrl && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setBasicInfo({ ...basicInfo, logoUrl: "" })}
+                                                        className="text-xs text-muted-foreground hover:text-destructive"
+                                                    >
+                                                        Remover logo
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
+
                                     <div className="space-y-2">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">URL da Logo completa (marca + nome)</label>
-                                        <input
-                                            value={settings.logoFullUrl ?? ""}
-                                            onChange={e => setSettings({ ...settings, logoFullUrl: e.target.value })}
-                                            placeholder="https://..."
-                                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
-                                        />
-                                        <p className="text-xs text-muted-foreground">
-                                            Versão com o nome da pousada escrito, para peças onde o símbolo sozinho não identifica —
-                                            etiqueta de patrimônio grande, cabeçalho impresso. Deixe vazio para usar a simplificada.
-                                        </p>
+                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Logo completa (marca + nome)</label>
+                                        <div className="flex gap-4 items-start">
+                                            {/* Caixa larga: a logo completa carrega o nome escrito ao lado da marca. */}
+                                            <div className="h-28 w-48 shrink-0 rounded-xl overflow-hidden border border-border bg-background">
+                                                <ImageUpload
+                                                    value={settings.logoFullUrl ?? ""}
+                                                    onUploadSuccess={url => setSettings({ ...settings, logoFullUrl: url })}
+                                                    path="logos"
+                                                    fit="contain"
+                                                />
+                                            </div>
+                                            <div className="flex-1 min-w-0 space-y-2">
+                                                <p className="text-xs text-muted-foreground">
+                                                    Versão com o nome da pousada escrito, para peças onde o símbolo sozinho não identifica —
+                                                    etiqueta de patrimônio grande, cabeçalho impresso. Deixe vazio para usar a simplificada.
+                                                </p>
+                                                <input
+                                                    value={settings.logoFullUrl ?? ""}
+                                                    onChange={e => setSettings({ ...settings, logoFullUrl: e.target.value })}
+                                                    placeholder="ou cole uma URL…"
+                                                    className="w-full bg-background border border-border px-3 py-2 rounded-lg outline-none focus:border-primary/50 text-foreground font-mono text-xs"
+                                                />
+                                                {settings.logoFullUrl && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSettings({ ...settings, logoFullUrl: "" })}
+                                                        className="text-xs text-muted-foreground hover:text-destructive"
+                                                    >
+                                                        Remover logo
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </section>
