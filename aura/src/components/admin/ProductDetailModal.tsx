@@ -10,7 +10,7 @@ import { ProductDetail } from "@/types/aura";
 import { StockClient } from "@/lib/stock-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Loader2, X, Package, MapPin, CalendarClock, History, ChevronRight } from "lucide-react";
+import { Loader2, X, Package, MapPin, CalendarClock, History, ChevronRight, MessageSquareText } from "lucide-react";
 
 const MOV_LABEL: Record<string, { label: string; color: string }> = {
   entry: { label: "Entrada", color: "text-emerald-500" },
@@ -72,14 +72,14 @@ export default function ProductDetailModal({ propertyId, productId, onClose, hig
                   </div>
                 </div>
                 <div className="bg-secondary/40 rounded-xl p-3">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Custo médio</div>
-                  <div className="text-lg font-bold tabular-nums text-foreground">
-                    {Number(detail.product.averageCost) > 0 ? `R$ ${Number(detail.product.averageCost).toFixed(2)}` : "—"}
-                  </div>
-                </div>
-                <div className="bg-secondary/40 rounded-xl p-3">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Estoque mínimo</div>
                   <div className="text-lg font-bold tabular-nums text-foreground">{Number(detail.product.minStock)}</div>
+                </div>
+                <div className="bg-secondary/40 rounded-xl p-3">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Locais com saldo</div>
+                  <div className="text-lg font-bold tabular-nums text-foreground">
+                    {detail.balances.filter((b) => Number(b.quantity) !== 0).length}
+                  </div>
                 </div>
               </div>
 
@@ -140,23 +140,41 @@ export default function ProductDetailModal({ propertyId, productId, onClose, hig
               )}
 
               <div>
-                <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1.5"><History size={13} /> Histórico de movimentação</h3>
+                <div className="flex items-baseline justify-between gap-3 mb-2">
+                  <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5"><History size={13} /> Histórico de movimentação</h3>
+                  <Link href={`/admin/estoque/movimentacoes/historico?productId=${encodeURIComponent(productId)}`} onClick={onClose}
+                    className="text-xs font-bold text-muted-foreground hover:text-foreground shrink-0">
+                    Ver tudo →
+                  </Link>
+                </div>
                 {detail.movements.length ? (
                   <table className="w-full text-sm">
                     <tbody>
                       {detail.movements.map((m) => {
                         const meta = MOV_LABEL[m.type] ?? { label: m.type, color: "text-foreground" };
                         return (
-                          <tr key={m.id} className="border-b border-border/40 last:border-0">
-                            <td className="py-1.5 text-muted-foreground whitespace-nowrap pr-2">{fmtDateTime(m.createdAt)}</td>
-                            <td className="py-1.5 pr-2"><span className={cn("font-bold", meta.color)}>{meta.label}</span></td>
-                            <td className="py-1.5 text-right tabular-nums pr-2">{Number(m.quantity)}</td>
-                            <td className="py-1.5 text-xs text-muted-foreground">
-                              {m.fromLocation?.name}{m.fromStaffName ? ` · ${m.fromStaffName}` : ""}
-                              {m.fromLocation?.name && m.toLocation?.name ? " → " : ""}
-                              {m.toLocation?.name}{m.toStaffName ? ` · ${m.toStaffName}` : ""}
-                            </td>
-                          </tr>
+                          <React.Fragment key={m.id}>
+                            <tr className={cn(!m.notes && "border-b border-border/40")}>
+                              <td className="py-1.5 text-muted-foreground whitespace-nowrap pr-2">{fmtDateTime(m.createdAt)}</td>
+                              <td className="py-1.5 pr-2"><span className={cn("font-bold", meta.color)}>{meta.label}</span></td>
+                              <td className="py-1.5 text-right tabular-nums pr-2">{Number(m.quantity)}</td>
+                              <td className="py-1.5 text-xs text-muted-foreground">
+                                {m.fromLocation?.name}{m.fromStaffName ? ` · ${m.fromStaffName}` : ""}
+                                {m.fromLocation?.name && m.toLocation?.name ? " → " : ""}
+                                {m.toLocation?.name}{m.toStaffName ? ` · ${m.toStaffName}` : ""}
+                              </td>
+                            </tr>
+                            {m.notes && (
+                              <tr className="border-b border-border/40">
+                                <td colSpan={4} className="pb-1.5">
+                                  <p className="flex items-start gap-1.5 text-xs text-foreground/80 bg-secondary/40 rounded-lg px-2 py-1">
+                                    <MessageSquareText size={12} className="shrink-0 mt-0.5 text-muted-foreground" />
+                                    <span className="whitespace-pre-wrap">{m.notes}</span>
+                                  </p>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
                         );
                       })}
                     </tbody>

@@ -1502,6 +1502,36 @@ export interface StockMovement {
 }
 
 /**
+ * Filtros do histórico de movimentações (tela "Histórico", paginada).
+ * Tudo opcional: sem filtro nenhum devolve a primeira página do histórico inteiro.
+ */
+export interface StockMovementHistoryFilters {
+  from?: string;                  // 'YYYY-MM-DD' — inclusive
+  to?: string;                    // 'YYYY-MM-DD' — inclusive (o dia inteiro)
+  types?: StockMovementType[];
+  productId?: string;
+  /** Casa como ORIGEM ou como DESTINO. */
+  locationId?: string;
+  /** Responsável pela ação; cai no operador quando a movimentação não tem responsável. */
+  responsibleId?: string;
+  referenceType?: StockReferenceType;
+  /** Texto livre dentro das observações. */
+  search?: string;
+  /** Só movimentações que têm observação escrita. */
+  onlyWithNotes?: boolean;
+  page?: number;                  // 1-based
+  pageSize?: number;
+}
+
+/** Uma página do histórico + o total, para a paginação saber onde está. */
+export interface StockMovementHistory {
+  rows: StockMovement[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/**
  * Reconciliação entre a coleção `cabins` e os locais de estoque do tipo cabana.
  * Uma proposta NUNCA é aplicada sozinha — o usuário confirma linha a linha.
  */

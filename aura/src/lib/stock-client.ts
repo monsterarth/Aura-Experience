@@ -6,6 +6,7 @@ import {
   StockReport, StockReportFilters, StockReportKind,
   CabinLinkReport, StockCabinOption, StockLocationDetail, StockLocationOverview,
   StockCategory, StockLocation, StockProduct, StockMovement, StockStaffOption, StockSettings,
+  StockMovementHistory, StockMovementHistoryFilters,
   Supplier, Purchase, PurchaseItem, Asset, StockBatch, InventoryCount, ProductDetail, SupplierDetail, StockDashboard,
   AssetDetail, AssetLabel, AssetDisposalInput, AssetTransferInput,
   AssetInventoryCount, AssetInventoryItemStatus, AssetInventoryItemUpdate,
@@ -62,6 +63,21 @@ export const StockClient = {
   deleteProduct: (pid: string, id: string) => del("estoque/products", pid, id),
   // movimentações
   movements: (pid: string, limit = 100) => get<StockMovement[]>("estoque/movements", pid, `&limit=${limit}`),
+  movementHistory: (pid: string, f: StockMovementHistoryFilters) => {
+    const p = new URLSearchParams({ history: "1" });
+    if (f.from) p.set("from", f.from);
+    if (f.to) p.set("to", f.to);
+    if (f.types?.length) p.set("types", f.types.join(","));
+    if (f.productId) p.set("productId", f.productId);
+    if (f.locationId) p.set("locationId", f.locationId);
+    if (f.responsibleId) p.set("responsibleId", f.responsibleId);
+    if (f.referenceType) p.set("referenceType", f.referenceType);
+    if (f.search) p.set("search", f.search);
+    if (f.onlyWithNotes) p.set("onlyWithNotes", "1");
+    p.set("page", String(f.page ?? 1));
+    p.set("pageSize", String(f.pageSize ?? 50));
+    return get<StockMovementHistory>("estoque/movements", pid, `&${p.toString()}`);
+  },
   movementStaff: (pid: string) => get<StockStaffOption[]>("estoque/movements", pid, "&staff=1"),
   registerMovement: (body: Record<string, unknown> & { propertyId: string }) => post("estoque/movements", body),
   registerBatch: (body: BatchMovementInput & { propertyId: string }) =>

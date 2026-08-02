@@ -19,10 +19,13 @@ import {
   StockLocation,
   StockProduct,
   StockMovement,
+  StockMovementHistory,
+  StockMovementHistoryFilters,
   StockCabinOption,
   StockLocationDetail,
   StockLocationOverview,
   StockMovementType,
+  StockReferenceType,
   StockStaffOption,
   UserRole,
   StockSettings,
@@ -32,6 +35,10 @@ import {
 } from "@/types/aura";
 
 interface BatchChunk { qty: number; unitCost: number; expiryDate: string | null; batchCode: string | null; purchaseId: string | null; }
+
+/** Valores aceitos nos filtros do histórico — barra lixo vindo da query string. */
+const MOVEMENT_TYPES: StockMovementType[] = ["entry", "exit", "transfer", "adjustment", "loss"];
+const REFERENCE_TYPES: StockReferenceType[] = ["purchase", "consumption", "manual", "inventory", "concierge", "minibar", "fb"];
 
 type DB = NonNullable<typeof supabaseAdmin>;
 function db(): DB {
@@ -749,6 +756,69 @@ export const StockService = {
       fromStaffName: staffName(m.fromStaffId),
       toStaffName: staffName(m.toStaffId),
     }));
+  },
+
+  /**
+   * Histórico de movimentações com filtros e paginação — a visão "tudo que já
+   * aconteceu", onde as OBSERVAÇÕES ficam legíveis (getMovements só entrega as
+   * últimas N para o formulário de lançamento).
+   */
+  async getMovementHistory(
+    propertyId: string,
+    f: StockMovementHistoryFilters = {},
+  ): Promise<StockMovementHistory> {
+    const pageSize = Math.min(Math.max(Number(f.pageSize) || 50, 1), 200);
+    const page = Math.max(Number(f.page) || 1, 1);
+    const offset = (page - 1) * pageSize;
+
+    // Os filtros chegam da query string, e locationId/responsibleId entram num
+    // or() montado à mão — só passa o que for UUID/enum de verdade.
+    const uuid = (v?: string) => (v && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v) ? v : undefined);
+    const types = f.types?.filter((t) => MOVEMENT_TYPES.includes(t));
+    const locationId = uuid(f.locationId);
+    const responsibleId = uuid(f.responsibleId);
+
+    let q = db().from("stock_movements").select("*", { count: "exact" }).eq("propertyId", propertyId);
+    if (f.from) q = q.gte("createdAt", `${f.from.slice(0, 10)}T00:00:00.000Z`);
+    if (f.to) q = q.lte("createdAt", `${f.to.slice(0, 10)}T23:59:59.999Z`);
+    if (types?.length) q = q.in("type", types);
+    if (uuid(f.productId)) q = q.eq("productId", f.productId);
+    if (f.referenceType && REFERENCE_TYPES.includes(f.referenceType)) q = q.eq("referenceType", f.referenceType);
+    // Um local casa dos dois lados: quem olha "Almoxarifado" quer ver o que entrou E o que saiu.
+    if (locationId) q = q.or(`fromLocationId.eq.${locationId},toLocationId.eq.${locationId}`);
+    // Responsável: quando ninguém foi indicado, quem responde é quem operou.
+    if (responsibleId) {
+      q = q.or(`responsibleId.eq.${responsibleId},and(responsibleId.is.null,performedBy.eq.${responsibleId})`);
+    }
+    if (f.onlyWithNotes) q = q.not("notes", "is", null).neq("notes", "");
+    if (f.search?.trim()) q = q.ilike("notes", `%${f.search.trim()}%`);
+
+    const { data: moves, count, error } = await q
+      .order("createdAt", { ascending: false })
+      .range(offset, offset + pageSize - 1);
+    if (error) { console.error("getMovementHistory", error); return { rows: [], total: 0, page, pageSize }; }
+
+    const [{ data: products }, { data: locations }, staffName] = await Promise.all([
+      db().from("stock_products").select("id, name, unit").eq("propertyId", propertyId),
+      db().from("stock_locations").select("id, name").eq("propertyId", propertyId),
+      this._staffNamer(propertyId),
+    ]);
+    const pMap = new Map((products ?? []).map((p: { id: string; name: string }) => [p.id, p]));
+    const lMap = new Map((locations ?? []).map((l: { id: string; name: string }) => [l.id, l]));
+
+    return {
+      rows: ((moves ?? []) as StockMovement[]).map((m) => ({
+        ...m,
+        product: pMap.get(m.productId) as StockProduct | undefined,
+        fromLocation: m.fromLocationId ? (lMap.get(m.fromLocationId) as StockLocation | undefined) : undefined,
+        toLocation: m.toLocationId ? (lMap.get(m.toLocationId) as StockLocation | undefined) : undefined,
+        fromStaffName: staffName(m.fromStaffId),
+        toStaffName: staffName(m.toStaffId),
+      })),
+      total: count ?? 0,
+      page,
+      pageSize,
+    };
   },
 
   /**

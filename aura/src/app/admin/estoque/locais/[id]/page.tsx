@@ -23,7 +23,8 @@ const LOCATION_TYPES: { value: StockLocationType; label: string }[] = [
   { value: "other", label: "Outro" },
 ];
 
-const money = (n: number) => `R$ ${Number(n).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// Tela operacional: saldo, mínimo e histórico. Custo/valor ficam na Visão Geral,
+// em Compras e nos Relatórios.
 const fmtDate = (s: string) => new Date(s).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
 /** Correção de saldo em andamento: a diferença vira um ajuste. */
@@ -135,7 +136,7 @@ export default function EstoqueLocalPage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-3 gap-3 mb-6">
         <div className="bg-card border border-border rounded-2xl p-4">
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Itens</p>
           <p className="text-xl font-bold text-foreground tabular-nums">{detail.items.length}</p>
@@ -143,10 +144,6 @@ export default function EstoqueLocalPage() {
         <div className="bg-card border border-border rounded-2xl p-4">
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Unidades</p>
           <p className="text-xl font-bold text-foreground tabular-nums">{detail.totals.units}</p>
-        </div>
-        <div className="bg-card border border-border rounded-2xl p-4">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Valor</p>
-          <p className="text-xl font-bold text-foreground tabular-nums">{money(detail.totals.value)}</p>
         </div>
         <div className={cn("bg-card border rounded-2xl p-4", detail.totals.belowMin > 0 ? "border-amber-500/40" : "border-border")}>
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Abaixo do mínimo</p>
@@ -165,8 +162,7 @@ export default function EstoqueLocalPage() {
               <th className="text-left px-4 py-3">Produto</th>
               <th className="text-left px-4 py-3">Categoria</th>
               <th className="text-right px-4 py-3">Saldo</th>
-              <th className="text-right px-4 py-3">Custo médio</th>
-              <th className="text-right px-4 py-3">Valor</th>
+              <th className="text-right px-4 py-3">Mínimo</th>
               <th className="px-4 py-3"></th>
             </tr>
           </thead>
@@ -180,8 +176,7 @@ export default function EstoqueLocalPage() {
                 </td>
                 <td className="px-4 py-3 text-muted-foreground text-xs">{it.categoryName ?? "—"}</td>
                 <td className={cn("px-4 py-3 text-right tabular-nums font-medium", it.belowMin && "text-amber-500")}>{it.quantity}</td>
-                <td className="px-4 py-3 text-right tabular-nums text-muted-foreground text-xs">{money(it.averageCost)}</td>
-                <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{money(it.value)}</td>
+                <td className="px-4 py-3 text-right tabular-nums text-muted-foreground text-xs">{Number(it.minStock)}</td>
                 <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                   <button onClick={() => setFix({ productId: it.productId, name: it.name, current: it.quantity, unit: it.unit, qty: String(it.quantity), reason: "" })}
                     className="p-1.5 text-muted-foreground hover:text-foreground" title="Corrigir saldo">
@@ -191,7 +186,7 @@ export default function EstoqueLocalPage() {
               </tr>
             ))}
             {detail.items.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">Nenhum produto com saldo neste estoque.</td></tr>
+              <tr><td colSpan={5} className="px-4 py-12 text-center text-muted-foreground">Nenhum produto com saldo neste estoque.</td></tr>
             )}
           </tbody>
         </table>
@@ -203,7 +198,13 @@ export default function EstoqueLocalPage() {
       )}
 
       {/* Histórico do local */}
-      <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">Movimentações deste local</h2>
+      <div className="flex items-baseline justify-between gap-3 mb-2">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Movimentações deste local</h2>
+        <Link href={`/admin/estoque/movimentacoes/historico?locationId=${encodeURIComponent(locationId)}`}
+          className="text-xs font-bold text-muted-foreground hover:text-foreground">
+          Ver histórico completo →
+        </Link>
+      </div>
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>

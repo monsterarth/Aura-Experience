@@ -213,7 +213,9 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: "estoque_produtos", label: "Produtos",       icon: Package,           href: "/admin/estoque/produtos",       roles: ["super_admin","admin","manager","compras"] },
       { id: "estoque_locais",   label: "Estoques",       icon: Warehouse,         href: "/admin/estoque/locais",         roles: ["super_admin","admin","manager","compras"] },
-      { id: "estoque_mov",      label: "Movimentações",  icon: ArrowLeftRight,    href: "/admin/estoque/movimentacoes",  roles: ["super_admin","admin","manager","compras"] },
+      // exactMatch: senão "Movimentações" também acende quando se está no Histórico (subrota).
+      { id: "estoque_mov",      label: "Movimentações",  icon: ArrowLeftRight,    href: "/admin/estoque/movimentacoes",  roles: ["super_admin","admin","manager","compras"], exactMatch: true },
+      { id: "estoque_hist",     label: "Histórico",      icon: History,           href: "/admin/estoque/movimentacoes/historico", roles: ["super_admin","admin","manager","compras"] },
       { id: "estoque_compras",  label: "Compras",        icon: ShoppingCart,      href: "/admin/estoque/compras",        roles: ["super_admin","admin","manager","compras"] },
       { id: "estoque_fornec",   label: "Fornecedores",   icon: Truck,             href: "/admin/estoque/fornecedores",   roles: ["super_admin","admin","manager","compras"] },
       { id: "estoque_inventario", label: "Inventário",   icon: ClipboardList,     href: "/admin/estoque/inventario",     roles: ["super_admin","admin","manager","compras"] },

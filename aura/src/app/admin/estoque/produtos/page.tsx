@@ -14,8 +14,6 @@ import { Plus, Loader2, Pencil, Trash2, Save, X, Package, AlertTriangle, Search 
 
 const UNITS: StockUnit[] = ["un", "kg", "g", "L", "ml", "cx", "pct", "par", "rolo"];
 
-interface EntryRow { productId: string; quantity: number; unitCost: number; createdAt: string; }
-
 const emptyForm: Partial<StockProduct> = {
   name: "", unit: "un", minStock: 0, trackExpiry: false, active: true,
 };
@@ -28,30 +26,20 @@ export default function EstoqueProdutosPage() {
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<Partial<StockProduct> | null>(null);
   const [saving, setSaving] = useState(false);
-  const [entries, setEntries] = useState<Map<string, EntryRow[]>>(new Map());
-  const [hover, setHover] = useState<{ product: StockProduct; x: number; y: number } | null>(null);
   const requestClose = useDiscardGuard(form, () => setForm(null));
   const [detailId, setDetailId] = useState<string | null>(null);
 
-  const openDetail = (id: string) => { setHover(null); setDetailId(id); };
+  const openDetail = (id: string) => setDetailId(id);
   const closeDetail = () => setDetailId(null);
 
   const load = useCallback(async () => {
     if (!property?.id) return;
     try {
-      const [prods, cats, ents] = await Promise.all([
+      const [prods, cats] = await Promise.all([
         StockClient.products(property.id),
         StockClient.categories(property.id),
-        StockClient.entryHistory(property.id),
       ]);
       setProducts(prods); setCategories(cats);
-      const map = new Map<string, EntryRow[]>();
-      for (const e of ents) {
-        const arr = map.get(e.productId) ?? [];
-        arr.push(e);
-        map.set(e.productId, arr);
-      }
-      setEntries(map);
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -131,7 +119,7 @@ export default function EstoqueProdutosPage() {
                 <th className="text-left px-4 py-3">Categoria</th>
                 <th className="text-right px-4 py-3">Saldo</th>
                 <th className="text-right px-4 py-3">Mínimo</th>
-                <th className="text-right px-4 py-3">Custo médio</th>
+                <th className="text-left px-4 py-3">Unidade</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
@@ -154,17 +142,7 @@ export default function EstoqueProdutosPage() {
                       {qty} <span className="text-xs font-normal text-muted-foreground">{p.unit}</span>
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{Number(p.minStock)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                      {Number(p.averageCost) > 0 ? (
-                        <span
-                          className="cursor-help border-b border-dashed border-muted-foreground/40"
-                          onMouseEnter={(e) => { const r = e.currentTarget.getBoundingClientRect(); setHover({ product: p, x: r.right, y: r.bottom }); }}
-                          onMouseLeave={() => setHover(null)}
-                        >
-                          R$ {Number(p.averageCost).toFixed(2)}
-                        </span>
-                      ) : "—"}
-                    </td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">{p.unit}</td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-1">
                         <button onClick={() => setForm(p)} className="p-1.5 text-muted-foreground hover:text-foreground"><Pencil size={14} /></button>
@@ -263,35 +241,6 @@ export default function EstoqueProdutosPage() {
         <ProductDetailModal propertyId={property.id} productId={detailId} onClose={closeDetail} />
       )}
 
-      {/* Tooltip do custo médio (fixed — escapa do overflow da tabela) */}
-      {hover && (() => {
-        const p = hover.product;
-        const rows = (entries.get(p.id) ?? []).slice(0, 5);
-        const avg = Number(p.averageCost);
-        const last = Number(p.lastPurchaseCost ?? 0);
-        const left = Math.max(8, Math.min(hover.x - 256, (typeof window !== "undefined" ? window.innerWidth : 1200) - 264));
-        return (
-          <div className="fixed z-50 w-64 bg-card border border-border rounded-xl shadow-2xl p-3 pointer-events-none" style={{ top: hover.y + 8, left }}>
-            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">Custo médio ponderado</div>
-            <div className="flex justify-between text-sm mb-0.5"><span className="text-muted-foreground">Atual</span><b className="text-foreground tabular-nums">R$ {avg.toFixed(2)}</b></div>
-            {last > 0 && <div className="flex justify-between text-xs"><span className="text-muted-foreground">Última compra</span><span className="tabular-nums">R$ {last.toFixed(2)}</span></div>}
-            <div className="border-t border-border my-2" />
-            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">Últimas entradas</div>
-            {rows.length ? (
-              <div className="space-y-0.5">
-                {rows.map((r, i) => (
-                  <div key={i} className="flex justify-between text-xs gap-2">
-                    <span className="text-muted-foreground">{new Date(r.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })}</span>
-                    <span className="tabular-nums">{Number(r.quantity)} {p.unit} × R$ {Number(r.unitCost).toFixed(2)}</span>
-                  </div>
-                ))}
-              </div>
-            ) : <div className="text-xs text-muted-foreground">Sem entradas registradas.</div>}
-            <div className="border-t border-border my-2" />
-            <div className="text-[10px] text-muted-foreground leading-snug">A cada entrada: <b className="text-foreground/80">(saldo × média + qtd × custo) ÷ (saldo + qtd)</b>. Saídas não alteram a média.</div>
-          </div>
-        );
-      })()}
     </div>
   );
 }

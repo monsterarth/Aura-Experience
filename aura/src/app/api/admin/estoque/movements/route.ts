@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { StockService } from '@/services/stock-service';
+import { StockMovementType, StockReferenceType } from '@/types/aura';
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(['super_admin', 'admin', 'manager', 'compras']);
@@ -12,6 +13,24 @@ export async function GET(request: NextRequest) {
   // ?staff=1 → colaboradores selecionáveis em locais do tipo 'staff'
   if (url.searchParams.get('staff')) {
     return NextResponse.json(await StockService.getStaffOptions(propertyId));
+  }
+  // ?history=1 → histórico paginado com filtros (tela "Histórico")
+  if (url.searchParams.get('history')) {
+    const p = url.searchParams;
+    const types = p.get('types')?.split(',').filter(Boolean) as StockMovementType[] | undefined;
+    return NextResponse.json(await StockService.getMovementHistory(propertyId, {
+      from: p.get('from') ?? undefined,
+      to: p.get('to') ?? undefined,
+      types: types?.length ? types : undefined,
+      productId: p.get('productId') ?? undefined,
+      locationId: p.get('locationId') ?? undefined,
+      responsibleId: p.get('responsibleId') ?? undefined,
+      referenceType: (p.get('referenceType') as StockReferenceType | null) ?? undefined,
+      search: p.get('search') ?? undefined,
+      onlyWithNotes: p.get('onlyWithNotes') === '1',
+      page: Number(p.get('page') ?? 1),
+      pageSize: Number(p.get('pageSize') ?? 50),
+    }));
   }
   const limit = Number(url.searchParams.get('limit') ?? 100);
   return NextResponse.json(await StockService.getMovements(propertyId, limit));

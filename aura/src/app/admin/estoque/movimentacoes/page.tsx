@@ -13,7 +13,8 @@ import BatchMovementModal from "@/components/admin/BatchMovementModal";
 import ProductDetailModal from "@/components/admin/ProductDetailModal";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Loader2, ArrowLeftRight, ArrowDownToLine, ArrowUpFromLine, Repeat, SlidersHorizontal, AlertOctagon, Save, Layers } from "lucide-react";
+import Link from "next/link";
+import { Loader2, ArrowLeftRight, ArrowDownToLine, ArrowUpFromLine, Repeat, SlidersHorizontal, AlertOctagon, Save, Layers, History } from "lucide-react";
 
 const TYPES: { value: StockMovementType; label: string; icon: React.ElementType; color: string }[] = [
   { value: "entry", label: "Entrada", icon: ArrowDownToLine, color: "text-emerald-500" },
@@ -204,10 +205,16 @@ export default function EstoqueMovimentacoesPage() {
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><ArrowLeftRight size={22} /> Movimentações</h1>
           <p className="text-sm text-muted-foreground">Entradas, saídas, transferências, ajustes e perdas.</p>
         </div>
-        <button onClick={() => setBatchOpen(true)} disabled={products.length === 0 || locations.length === 0}
-          className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-secondary text-foreground hover:bg-secondary/70 disabled:opacity-50">
-          <Layers size={16} /> Lançar em lote
-        </button>
+        <div className="flex gap-2">
+          <Link href="/admin/estoque/movimentacoes/historico"
+            className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-secondary text-foreground hover:bg-secondary/70">
+            <History size={16} /> Histórico
+          </Link>
+          <button onClick={() => setBatchOpen(true)} disabled={products.length === 0 || locations.length === 0}
+            className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-secondary text-foreground hover:bg-secondary/70 disabled:opacity-50">
+            <Layers size={16} /> Lançar em lote
+          </button>
+        </div>
       </header>
 
       {productId && property && (
@@ -353,7 +360,7 @@ export default function EstoqueMovimentacoesPage() {
                 <th className="text-right px-4 py-3">Qtd.</th>
                 <th className="text-left px-4 py-3">Local</th>
                 <th className="text-left px-4 py-3">Responsável</th>
-                <th className="text-right px-4 py-3">Custo</th>
+                <th className="text-left px-4 py-3">Observação</th>
               </tr>
             </thead>
             <tbody>
@@ -388,8 +395,8 @@ export default function EstoqueMovimentacoesPage() {
                     <td className="px-4 py-3 text-muted-foreground text-xs">
                       {m.responsibleName ?? m.performedByName ?? "—"}
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
-                      {Number(m.totalCost) > 0 ? `R$ ${Number(m.totalCost).toFixed(2)}` : "—"}
+                    <td className="px-4 py-3 text-muted-foreground text-xs max-w-[16rem]">
+                      <span className="block truncate" title={m.notes || undefined}>{m.notes || "—"}</span>
                     </td>
                   </tr>
                 );

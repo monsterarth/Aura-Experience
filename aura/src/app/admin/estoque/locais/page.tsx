@@ -25,8 +25,8 @@ const TYPE_META: Record<StockLocationType, { label: string; plural: string; icon
 };
 const GROUP_ORDER: StockLocationType[] = ["warehouse", "kitchen", "bar", "laundry", "other", "staff", "cabin"];
 
-const money = (n: number) => `R$ ${Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
+// Tela operacional: o que importa aqui é O QUE TEM, não quanto vale.
+// Valor em R$ vive na Visão Geral, em Compras e nos Relatórios.
 function StockCard({ s }: { s: StockLocationOverview }) {
   const meta = TYPE_META[s.location.type] ?? TYPE_META.other;
   const Icon = meta.icon;
@@ -45,11 +45,11 @@ function StockCard({ s }: { s: StockLocationOverview }) {
 
       <div>
         <p className={cn("text-lg font-bold tabular-nums leading-none", empty ? "text-muted-foreground" : "text-foreground")}>
-          {money(s.totalValue)}
+          {empty ? "vazio" : <>{s.productCount} <span className="text-sm font-normal text-muted-foreground">item(ns)</span></>}
         </p>
-        <p className="text-xs text-muted-foreground tabular-nums mt-1">
-          {empty ? "vazio" : `${s.productCount} item(ns) · ${s.totalUnits} un`}
-        </p>
+        {!empty && (
+          <p className="text-xs text-muted-foreground tabular-nums mt-1">{s.totalUnits} unidades</p>
+        )}
       </div>
 
       {s.belowMinCount > 0 && (
@@ -87,7 +87,7 @@ export default function EstoquesPage() {
     .filter((g) => g.items.length > 0), [filtered]);
 
   const totals = useMemo(() => ({
-    value: stocks.reduce((s, x) => s + x.totalValue, 0),
+    units: stocks.reduce((s, x) => s + x.totalUnits, 0),
     below: stocks.reduce((s, x) => s + x.belowMinCount, 0),
   }), [stocks]);
 
@@ -99,7 +99,7 @@ export default function EstoquesPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><Warehouse size={22} /> Estoques</h1>
           <p className="text-sm text-muted-foreground">
-            {stocks.length} local(is) · {money(totals.value)} em estoque
+            {stocks.length} local(is) · {totals.units} unidades em estoque
             {totals.below > 0 && <span className="text-amber-500 font-bold"> · {totals.below} item(ns) no mínimo</span>}
           </p>
         </div>
@@ -136,7 +136,6 @@ export default function EstoquesPage() {
             const collapsible = items.length > 6;
             const open = openGroups[type] ?? !collapsible;
             const shown = collapsible && !open ? items.slice(0, 4) : items;
-            const groupValue = items.reduce((s, x) => s + x.totalValue, 0);
             const groupBelow = items.reduce((s, x) => s + x.belowMinCount, 0);
 
             return (
@@ -146,7 +145,6 @@ export default function EstoquesPage() {
                   <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
                     {items.length === 1 ? meta.label : meta.plural} · {items.length}
                   </h2>
-                  <span className="text-xs text-muted-foreground tabular-nums">{money(groupValue)}</span>
                   {groupBelow > 0 && (
                     <span className="text-[11px] font-bold text-amber-500 flex items-center gap-1">
                       <AlertTriangle size={11} /> {groupBelow}
