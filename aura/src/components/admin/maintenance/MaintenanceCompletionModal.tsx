@@ -4,6 +4,7 @@ import { MaintenanceTask, Cabin, Structure } from "@/types/aura";
 import { postFieldAction } from "@/lib/field-api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import Image from "next/image";
 
 interface MaintenanceCompletionModalProps {
@@ -25,6 +26,11 @@ export function MaintenanceCompletionModal({ isOpen, onClose, task, cabins, stru
     const [needsCleaning, setNeedsCleaning] = useState(false);
     const [notes, setNotes] = useState("");
     const [photoUrl, setPhotoUrl] = useState("");
+
+    const { requestClose, guardProps } = useCloseGuard(onClose, {
+        open: isOpen,
+        dirty: !!photoUrl || !resolved || needsCleaning,
+    });
 
     if (!isOpen || !task) return null;
 
@@ -78,8 +84,11 @@ export function MaintenanceCompletionModal({ isOpen, onClose, task, cabins, stru
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-md">
-            <div className="bg-background w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col">
+        <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-md"
+            onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
+        >
+            <div className="bg-background w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col" {...guardProps}>
                 <div className="flex justify-between items-center p-6 border-b border-border bg-card">
                     <div className="flex items-center gap-3">
                         <div className="h-10 w-10 bg-primary/10 text-primary rounded-full flex items-center justify-center">
@@ -90,7 +99,7 @@ export function MaintenanceCompletionModal({ isOpen, onClose, task, cabins, stru
                             <p className="text-xs text-muted-foreground font-medium mt-1">{task.title}</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"><X size={20} /></button>
+                    <button onClick={requestClose} className="p-2 text-muted-foreground hover:bg-secondary rounded-full transition-colors"><X size={20} /></button>
                 </div>
 
                 <div className="p-6 space-y-6">
@@ -174,7 +183,7 @@ export function MaintenanceCompletionModal({ isOpen, onClose, task, cabins, stru
                 </div>
 
                 <div className="p-4 bg-card/50 border-t border-border flex gap-2">
-                    <button onClick={onClose} className="flex-1 py-3 rounded-xl font-bold uppercase tracking-widest text-xs bg-secondary text-foreground hover:bg-muted transition-colors">Cancelar</button>
+                    <button onClick={requestClose} className="flex-1 py-3 rounded-xl font-bold uppercase tracking-widest text-xs bg-secondary text-foreground hover:bg-muted transition-colors">Cancelar</button>
                     <button onClick={handleComplete} disabled={loading} className="flex-1 py-3 rounded-xl font-bold uppercase tracking-widest text-xs bg-primary text-primary-foreground hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-sm disabled:opacity-50">
                         {loading ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Confirmar Envio'}
                     </button>

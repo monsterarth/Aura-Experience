@@ -11,6 +11,7 @@ import { ConciergeService } from "@/services/concierge-service";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 
 interface MinibarModalProps {
   isOpen: boolean;
@@ -25,6 +26,12 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
   const [loadingItems, setLoadingItems] = useState(false);
   const [items, setItems] = useState<ConciergeItem[]>([]);
   const [cart, setCart] = useState<Record<string, number>>({});
+  // Carrinho montado a botão: a sujeira vem do próprio carrinho.
+  const { requestClose } = useCloseGuard(onClose, {
+    open: isOpen,
+    dirty: Object.values(cart).some((q) => q > 0),
+    message: "Sair sem lançar? Os itens marcados serão descartados.",
+  });
 
   useEffect(() => {
     if (isOpen && task?.propertyId) {
@@ -91,7 +98,10 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300"
+      onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
+    >
       <div className="bg-card border border-border w-full max-w-md rounded-[32px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
 
         {/* HEADER */}
@@ -105,7 +115,7 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
               {cabinName}
             </p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-xl transition-colors">
+          <button onClick={requestClose} className="p-2 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-xl transition-colors">
             <X size={20} />
           </button>
         </div>
@@ -185,7 +195,7 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
           </div>
 
           <div className="flex gap-2">
-            <button onClick={onClose} className="px-4 py-3 font-bold text-xs uppercase text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={requestClose} className="px-4 py-3 font-bold text-xs uppercase text-muted-foreground hover:text-foreground transition-colors">
               Cancelar
             </button>
             <button

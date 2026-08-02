@@ -11,6 +11,7 @@ import StaffSelect from "./StaffSelect";
 import { StockClient } from "@/lib/stock-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import { Loader2, Plus, Save, Trash, X, CheckCircle2, AlertTriangle } from "lucide-react";
 
 const TYPES: { value: StockMovementType; label: string }[] = [
@@ -51,6 +52,10 @@ export default function BatchMovementModal({
   const [rows, setRows] = useState<Row[]>([{ ...emptyRow }]);
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<BatchMovementResult | null>(null);
+  // Linhas já preenchidas contam como edição mesmo sem digitação em input.
+  const { requestClose, guardProps } = useCloseGuard(onClose, {
+    dirty: rows.some((r) => r.productId || r.quantity || r.unitCost),
+  });
 
   const showFrom = type === "exit" || type === "loss" || type === "transfer";
   const showTo = type === "entry" || type === "transfer" || type === "adjustment";
@@ -156,14 +161,14 @@ export default function BatchMovementModal({
   const headerError = (result?.preflight ?? []).find((e) => e.index === -1);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-card border border-border w-full max-w-3xl rounded-3xl shadow-2xl max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={requestClose}>
+      <div className="bg-card border border-border w-full max-w-3xl rounded-3xl shadow-2xl max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()} {...guardProps}>
         <div className="p-5 border-b border-border flex justify-between items-center shrink-0">
           <div>
             <h2 className="text-lg font-bold text-foreground">Lançamento em lote</h2>
             <p className="text-xs text-muted-foreground">Um cabeçalho, várias linhas — como uma nota de compra.</p>
           </div>
-          <button onClick={onClose} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
+          <button onClick={requestClose} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
         </div>
 
         <div className="p-5 overflow-y-auto space-y-4">
@@ -288,7 +293,7 @@ export default function BatchMovementModal({
         </div>
 
         <div className="p-5 border-t border-border flex justify-between gap-2 shrink-0">
-          <button onClick={onClose} className="px-4 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground">
+          <button onClick={requestClose} className="px-4 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground">
             {result && result.ok.length > 0 ? "Fechar" : "Cancelar"}
           </button>
           <button onClick={() => submit(false)} disabled={saving}

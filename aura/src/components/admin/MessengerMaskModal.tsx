@@ -5,6 +5,7 @@ import { X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/context/AuthContext";
 import { StaffService } from "@/services/staff-service";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import { toast } from "sonner";
 
 const COLOR_OPTIONS = [
@@ -30,6 +31,10 @@ export function MessengerMaskModal({ onClose, onSave }: MessengerMaskModalProps)
   const [loading, setLoading] = useState(false);
 
   const selectedColor = COLOR_OPTIONS.find(c => c.key === messengerColor) ?? COLOR_OPTIONS[7];
+  // A cor é escolhida por botão — entra na sujeira via `dirty`.
+  const { requestClose, guardProps } = useCloseGuard(onClose, {
+    dirty: messengerColor !== (userData?.messengerColor ?? 'slate'),
+  });
 
   const handleSave = async () => {
     if (!userData) return;
@@ -50,12 +55,15 @@ export function MessengerMaskModal({ onClose, onSave }: MessengerMaskModalProps)
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-card border rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget && !loading) requestClose(); }}
+    >
+      <div className="bg-card border rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden" {...guardProps}>
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="text-base font-semibold">Minha Máscara de Mensageiro</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+          <button onClick={requestClose} className="text-muted-foreground hover:text-foreground transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -115,7 +123,7 @@ export function MessengerMaskModal({ onClose, onSave }: MessengerMaskModalProps)
 
         {/* Footer */}
         <div className="flex gap-2 p-4 border-t justify-end">
-          <Button variant="outline" onClick={onClose} disabled={loading}>
+          <Button variant="outline" onClick={requestClose} disabled={loading}>
             Cancelar
           </Button>
           <Button onClick={handleSave} disabled={loading}>

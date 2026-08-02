@@ -9,6 +9,7 @@ import { StaffService } from "@/services/staff-service";
 import { StructureService } from "@/services/structure-service";
 import { MaintenanceTask, Cabin, Staff, Structure } from "@/types/aura";
 import { postFieldAction } from "@/lib/field-api";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import { v4 as uuidv4 } from "uuid";
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────
@@ -257,6 +258,11 @@ function NewTaskSheet({ cabins, structures, technicians, propertyId, onClose, sh
   const [checklist, setChecklist] = useState<{ id: string; label: string; checked: boolean }[]>([]);
   const [checklistInput, setChecklistInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const { requestClose } = useCloseGuard(onClose, {
+    dirty: !!title.trim() || !!description.trim() || !!customLocation.trim()
+      || assignedIds.length > 0 || checklist.length > 0 || !!checklistInput.trim(),
+    message: "Descartar a ordem de serviço não salva?",
+  });
 
   const PRIOS: { value: MaintenanceTask["priority"]; label: string; color: string }[] = [
     { value: "low",    label: "Baixa",   color: T.blue },
@@ -309,10 +315,10 @@ function NewTaskSheet({ cabins, structures, technicians, propertyId, onClose, sh
   };
 
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={requestClose}>
       <div style={{ padding: "20px 20px 8px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontSize: 16, fontWeight: 800, color: T.text }}>Nova Ordem de Serviço</span>
-        <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
+        <button onClick={requestClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
           <I n="x" s={16} />
         </button>
       </div>
@@ -412,13 +418,14 @@ function ConferSheet({ task, locationName, onClose, onApprove, onReject, busy }:
   busy: boolean;
 }) {
   const [notes, setNotes] = useState("");
+  const { requestClose } = useCloseGuard(onClose, { dirty: !!notes.trim() });
 
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={requestClose}>
       <div style={{ padding: "20px 20px 8px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ fontSize: 16, fontWeight: 800, color: T.text }}>Validação da OS</span>
-          <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
+          <button onClick={requestClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
             <I n="x" s={16} />
           </button>
         </div>
@@ -514,19 +521,23 @@ function AssignSheet({ task, locationName, technicians, onClose, onAssign, busy 
 }) {
   const current = Array.isArray(task.assignedTo) ? task.assignedTo : [];
   const [selected, setSelected] = useState<Set<string>>(new Set(current));
+  const { requestClose } = useCloseGuard(onClose, {
+    dirty: selected.size !== current.length || current.some((id: string) => !selected.has(id)),
+    message: "Descartar a atribuição não salva?",
+  });
 
   const toggle = (id: string) => setSelected(prev => {
     const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
   });
 
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={requestClose}>
       <div style={{ padding: "20px 20px 8px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <span style={{ fontSize: 16, fontWeight: 800, color: T.text }}>Atribuir Técnico</span>
           <p style={{ fontSize: 13, color: T.muted, marginTop: 2 }}>{locationName}</p>
         </div>
-        <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
+        <button onClick={requestClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
           <I n="x" s={16} />
         </button>
       </div>

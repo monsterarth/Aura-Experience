@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
 import { ScrapWall } from "@/components/admin/profile/ScrapWall";
 import { MaintenanceReportButton } from "@/components/field/MaintenanceReportSheet";
@@ -81,6 +82,10 @@ function WaiterOrderDialog({
   const [selectedAttendanceName, setSelectedAttendanceName] = useState<string | null>(null);
   const [selections, setSelections] = useState<Record<string, ItemSelection>>({});
   const [submitting, setSubmitting] = useState(false);
+  const { requestClose } = useCloseGuard(onClose, {
+    dirty: Object.keys(selections).length > 0,
+    message: "Sair sem enviar? O pedido montado será descartado.",
+  });
 
   useEffect(() => {
     // Cardápio via rota de campo (service-role). Pelo client do browser, o lock frio do refresh
@@ -126,11 +131,11 @@ function WaiterOrderDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-end bg-black/60 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) requestClose(); }}>
       <div className="bg-background w-full rounded-t-[28px] max-h-[85vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300">
         <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-white/5">
           <h2 className="font-black text-foreground">Novo Pedido</h2>
-          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-xl"><X size={18} /></button>
+          <button onClick={requestClose} className="p-2 hover:bg-white/5 rounded-xl"><X size={18} /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           <div>
@@ -217,6 +222,7 @@ function AssignTableDialog({
 }) {
   const [newTableName, setNewTableName] = useState("");
   const [loading, setLoading] = useState(false);
+  const { requestClose } = useCloseGuard(onClose, { dirty: !!newTableName.trim() });
   const openTables = tables.filter(t => t.status === 'open');
 
   const handleAssign = async (tableId: string) => {
@@ -236,11 +242,11 @@ function AssignTableDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-end bg-black/60 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) requestClose(); }}>
       <div className="bg-background w-full rounded-t-[28px] p-5 animate-in slide-in-from-bottom duration-300">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-black text-foreground">Sentar — {attendance.guestName}</h2>
-          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-xl"><X size={18} /></button>
+          <button onClick={requestClose} className="p-2 hover:bg-white/5 rounded-xl"><X size={18} /></button>
         </div>
         {openTables.length > 0 && (
           <div className="mb-4 space-y-2">
@@ -287,6 +293,7 @@ function VisitorDialog({
   const [tableId, setTableId] = useState("");
   const [newTableName, setNewTableName] = useState("");
   const [loading, setLoading] = useState(false);
+  const { requestClose } = useCloseGuard(onClose, { dirty: !!name.trim() || !!newTableName.trim() });
   const openTables = tables.filter(t => t.status === 'open');
 
   const handleAdd = async () => {
@@ -303,11 +310,11 @@ function VisitorDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-end bg-black/60 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) requestClose(); }}>
       <div className="bg-background w-full rounded-t-[28px] p-5 space-y-4 animate-in slide-in-from-bottom duration-300">
         <div className="flex items-center justify-between">
           <h2 className="font-black text-foreground">Adicionar Visitante</h2>
-          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-xl"><X size={18} /></button>
+          <button onClick={requestClose} className="p-2 hover:bg-white/5 rounded-xl"><X size={18} /></button>
         </div>
         <div>
           <p className="text-[9px] font-black text-foreground/30 uppercase tracking-widest mb-1">Nome</p>

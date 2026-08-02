@@ -7,6 +7,7 @@ import { MaintenanceService } from "@/services/maintenance-service";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import { v4 as uuidv4 } from "uuid";
 
 interface Props {
@@ -55,6 +56,7 @@ export function MaintenanceRulesModal({ isOpen, onClose, propertyId, cabins, str
     const [editingRule, setEditingRule] = useState<Partial<MaintenanceRule> | null>(null);
     const [localType, setLocalType] = useState<LocalType>('custom');
     const [newChecklistLabel, setNewChecklistLabel] = useState('');
+    const { requestClose, confirmDiscard, guardProps, reset } = useCloseGuard(onClose, { open: isOpen });
 
     const loadRules = async () => {
         setLoading(true);
@@ -86,9 +88,16 @@ export function MaintenanceRulesModal({ isOpen, onClose, propertyId, cabins, str
         setNewChecklistLabel('');
     };
 
+    // Sem pergunta: usar só depois de salvar.
     const closeForm = () => {
+        reset();
         setEditingRule(null);
         setNewChecklistLabel('');
+    };
+
+    // Botão "Cancelar" do formulário — confirma se houve edição.
+    const cancelForm = () => {
+        if (confirmDiscard()) closeForm();
     };
 
     const handleSave = async () => {
@@ -191,8 +200,11 @@ export function MaintenanceRulesModal({ isOpen, onClose, propertyId, cabins, str
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-            <div className="bg-card border border-border w-full max-w-2xl rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+        <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
+            onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
+        >
+            <div className="bg-card border border-border w-full max-w-2xl rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[90vh]" {...guardProps}>
                 <header className="p-6 border-b border-border flex justify-between items-center shrink-0">
                     <div>
                         <h2 className="text-xl font-black uppercase text-foreground tracking-tighter flex items-center gap-2">
@@ -202,7 +214,7 @@ export function MaintenanceRulesModal({ isOpen, onClose, propertyId, cabins, str
                             Defina regras para gerar tarefas recorrentes automaticamente.
                         </p>
                     </div>
-                    <button onClick={onClose} className="p-2 bg-secondary text-muted-foreground hover:text-foreground rounded-full hover:bg-white/5 transition-colors">
+                    <button onClick={requestClose} className="p-2 bg-secondary text-muted-foreground hover:text-foreground rounded-full hover:bg-white/5 transition-colors">
                         <X size={20} />
                     </button>
                 </header>
@@ -483,7 +495,7 @@ export function MaintenanceRulesModal({ isOpen, onClose, propertyId, cabins, str
                 {editingRule && (
                     <footer className="p-6 border-t border-border flex gap-3 shrink-0">
                         <button
-                            onClick={closeForm}
+                            onClick={cancelForm}
                             className="flex-1 py-3 bg-secondary text-foreground font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-accent transition-colors"
                         >
                             Cancelar

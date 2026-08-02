@@ -7,6 +7,7 @@ import { HousekeepingService } from "@/services/housekeeping-service";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 
 interface Props {
   isOpen: boolean;
@@ -144,6 +145,7 @@ export function HousekeepingRulesModal({ isOpen, onClose, propertyId, cabins, st
   const [localType, setLocalType] = useState<LocalType>('cabin');
   const [customLocationInput, setCustomLocationInput] = useState('');
   const [newChecklistItem, setNewChecklistItem] = useState('');
+  const { requestClose, confirmDiscard, guardProps, reset } = useCloseGuard(onClose, { open: isOpen });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -183,11 +185,18 @@ export function HousekeepingRulesModal({ isOpen, onClose, propertyId, cabins, st
     setShowForm(true);
   };
 
-  const cancelForm = () => {
+  // Fecha o formulário sem perguntar nada — usar só depois de salvar.
+  const closeForm = () => {
+    reset();
     setShowForm(false);
     setEditingRule(null);
     setFormData(emptyForm());
     setCustomLocationInput('');
+  };
+
+  const cancelForm = () => {
+    if (!confirmDiscard()) return;
+    closeForm();
   };
 
   const handleTriggerChange = (trigger: HousekeepingRuleTrigger) => {
@@ -263,7 +272,7 @@ export function HousekeepingRulesModal({ isOpen, onClose, propertyId, cabins, st
       };
       await HousekeepingService.saveRule(propertyId, payload, userData?.id || "admin", userData?.fullName || "Admin");
       toast.success(editingRule ? "Regra atualizada!" : "Regra criada!");
-      cancelForm();
+      closeForm();
       loadRules();
     } catch {
       toast.error("Erro ao salvar regra.");
@@ -286,8 +295,11 @@ export function HousekeepingRulesModal({ isOpen, onClose, propertyId, cabins, st
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-      <div className="bg-card border border-border w-full max-w-2xl rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
+    >
+      <div className="bg-card border border-border w-full max-w-2xl rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[90vh]" {...guardProps}>
 
         <header className="p-6 border-b border-border flex justify-between items-center shrink-0">
           <div>
@@ -299,7 +311,7 @@ export function HousekeepingRulesModal({ isOpen, onClose, propertyId, cabins, st
               Defina quando e como as tarefas de governança são geradas automaticamente.
             </p>
           </div>
-          <button onClick={onClose} className="p-2 bg-secondary text-muted-foreground hover:text-foreground rounded-full hover:bg-white/5 transition-colors">
+          <button onClick={requestClose} className="p-2 bg-secondary text-muted-foreground hover:text-foreground rounded-full hover:bg-white/5 transition-colors">
             <X size={20} />
           </button>
         </header>

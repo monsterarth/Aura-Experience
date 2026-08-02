@@ -11,6 +11,7 @@ import {
     Pencil, Plus, Minus, Save, Copy
 } from "lucide-react";
 import { toast } from "sonner";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import { cn } from "@/lib/utils";
 
 type StayInfo = { cabinName: string; guestName: string };
@@ -273,6 +274,11 @@ function OrderDetailModal({
     const [pendingAdd, setPendingAdd] = useState<{ mi: FBMenuItem; flavor: string; guestName: string } | null>(null);
     const [editObs, setEditObs] = useState('');
     const [editTime, setEditTime] = useState(order.deliveryTime ?? '');
+    // Em modo edição, fechar (X, clique fora ou "Cancelar") confirma antes.
+    const { requestClose, confirmDiscard, guardProps, reset } = useCloseGuard(onClose, {
+        dirty: editing,
+        message: 'Descartar as alterações deste pedido?',
+    });
 
     const enterEdit = () => {
         setEditItems(getRegularItems(order).map(it => ({ ...it })));
@@ -390,6 +396,7 @@ function OrderDetailModal({
                 if (!res.ok) throw new Error('Erro ao salvar');
                 toast.success('Pedido atualizado!');
                 onOrderUpdated({ ...order, items, totalPrice, deliveryTime: editTime || order.deliveryTime });
+                reset();
                 setEditing(false);
             }
         } catch {
@@ -411,7 +418,11 @@ function OrderDetailModal({
     };
 
     return (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+            onClick={e => { if (e.target === e.currentTarget) requestClose(); }}
+            {...guardProps}
+        >
             <div className="bg-card w-full sm:max-w-lg rounded-t-[32px] sm:rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[92dvh] animate-in slide-in-from-bottom-4 sm:zoom-in duration-200">
 
                 {/* Header */}
@@ -434,7 +445,7 @@ function OrderDetailModal({
                         <h2 className="text-2xl font-black tracking-tight leading-none">{cabinName}</h2>
                         <p className="text-sm text-muted-foreground mt-1">{guestName}</p>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-secondary rounded-xl transition-colors text-muted-foreground hover:text-foreground">
+                    <button onClick={requestClose} className="p-2 hover:bg-secondary rounded-xl transition-colors text-muted-foreground hover:text-foreground">
                         <X size={20} />
                     </button>
                 </div>
@@ -680,7 +691,7 @@ function OrderDetailModal({
                         /* ── Botões modo edição ── */
                         <div className="flex gap-2">
                             <button
-                                onClick={() => setEditing(false)}
+                                onClick={() => { if (confirmDiscard()) setEditing(false); }}
                                 className="flex-1 py-3 rounded-xl font-bold text-sm border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
                             >
                                 Cancelar

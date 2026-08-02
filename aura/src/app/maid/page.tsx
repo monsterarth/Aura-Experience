@@ -5,6 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { RoleSwitcher } from "@/components/auth/RoleSwitcher";
 import { Sheet } from "@/components/maid/MinibarSheet";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import { HousekeepingService } from "@/services/housekeeping-service";
 import { CabinService } from "@/services/cabin-service";
 import { ConciergeService } from "@/services/concierge-service";
@@ -210,6 +211,10 @@ function ReplenishSheet({
   const [cart, setCart] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState("");
+  const { requestClose } = useCloseGuard(onClose, {
+    dirty: Object.values(cart).some(q => q > 0),
+    message: "Sair sem enviar? Os itens marcados serão descartados.",
+  });
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
 
   const adj = (id: string, d: number) =>
@@ -244,14 +249,14 @@ function ReplenishSheet({
   }, [maidItems, activeGroup, search]);
 
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={requestClose}>
       {/* Header */}
       <div style={{ padding: "4px 16px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 900 }}>{cabinName}</div>
           <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>Solicitar reposição</div>
         </div>
-        <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border2}`, borderRadius: 12, padding: "10px 12px", cursor: "pointer", color: T.text, display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700 }}>
+        <button onClick={requestClose} style={{ background: T.glass2, border: `1px solid ${T.border2}`, borderRadius: 12, padding: "10px 12px", cursor: "pointer", color: T.text, display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700 }}>
           <I n="x" s={15} /> Fechar
         </button>
       </div>

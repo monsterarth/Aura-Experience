@@ -10,6 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 
 interface ChecklistModalProps {
   isOpen: boolean;
@@ -25,6 +26,7 @@ export function HousekeepingChecklistModal({ isOpen, onClose, task, cabinName, o
   const [fetchingTemplate, setFetchingTemplate] = useState(false);
   const [checklist, setChecklist] = useState<{ id: string; label: string; checked: boolean; source?: 'global' | 'cabin' | 'stay' }[]>([]);
   const [observations, setObservations] = useState("");
+  const { requestClose, guardProps } = useCloseGuard(onClose, { open: isOpen });
 
   useEffect(() => {
     if (isOpen && task) {
@@ -119,8 +121,11 @@ export function HousekeepingChecklistModal({ isOpen, onClose, task, cabinName, o
   const allChecked = checklist.every(item => item.checked);
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="bg-card border border-border w-full max-w-lg rounded-[32px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300"
+      onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
+    >
+      <div className="bg-card border border-border w-full max-w-lg rounded-[32px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300" {...guardProps}>
 
         <div className="p-6 border-b border-border bg-secondary/50 flex justify-between items-center">
           <div>
@@ -132,7 +137,7 @@ export function HousekeepingChecklistModal({ isOpen, onClose, task, cabinName, o
               {cabinName} • {getTaskLabel(task.type)}
             </p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-xl transition-colors">
+          <button onClick={requestClose} className="p-2 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-xl transition-colors">
             <X size={20} />
           </button>
         </div>
@@ -199,7 +204,7 @@ export function HousekeepingChecklistModal({ isOpen, onClose, task, cabinName, o
         </div>
 
         <div className="p-6 border-t border-border bg-secondary/30 flex justify-end gap-3">
-          <button onClick={onClose} className="px-6 py-3 font-bold text-xs uppercase text-muted-foreground hover:text-foreground transition-colors">
+          <button onClick={requestClose} className="px-6 py-3 font-bold text-xs uppercase text-muted-foreground hover:text-foreground transition-colors">
             Cancelar
           </button>
           <button

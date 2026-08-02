@@ -63,7 +63,7 @@ export interface PortalStrings {
     // sheets — report
     reportTitle: string; whatAttention: string; typeCabin: string; typeArea: string; typeBug: string;
     describeIssue: string; attachPhoto: string; canEnterNow: string; sendReport: string;
-    reportSent: string; selectArea: string;
+    reportSent: string; selectArea: string; discardReport: string;
     // sheets — late checkout
     lateTitle: string; lateBody: string; requestReception: string; lateSent: string;
     // sheets — map
@@ -118,6 +118,7 @@ export const portalI18n: Record<Lang, PortalStrings> = {
         reportTitle: "Reportar problema", whatAttention: "O que precisa de atenção?", typeCabin: "Problema na cabana", typeArea: "Área comum", typeBug: "Algo no app",
         describeIssue: "Descreva o problema…", attachPhoto: "Anexar foto (opcional)", canEnterNow: "A equipe pode entrar agora?", sendReport: "Enviar relatório",
         reportSent: "Relatório enviado · obrigado!", selectArea: "Selecione a área",
+        discardReport: "Descartar o que você escreveu?",
         lateTitle: "Late check-out", lateBody: "Seu check-out é às {time}. Para qual horário gostaria de estender? Confirmamos conforme disponibilidade.", requestReception: "Pedir à recepção", lateSent: "Pedido enviado · a recepção confirma em breve",
         mapTitle: "Mapa da propriedade", openFullMap: "Abrir mapa interativo completo", youAreHere: "Você está aqui",
     },
@@ -168,6 +169,7 @@ export const portalI18n: Record<Lang, PortalStrings> = {
         reportTitle: "Report a problem", whatAttention: "What needs attention?", typeCabin: "Cabin problem", typeArea: "Common area", typeBug: "Something in the app",
         describeIssue: "Describe the problem…", attachPhoto: "Attach photo (optional)", canEnterNow: "Can the team enter now?", sendReport: "Send report",
         reportSent: "Report sent · thank you!", selectArea: "Select the area",
+        discardReport: "Discard what you wrote?",
         lateTitle: "Late check-out", lateBody: "Your check-out is at {time}. Until when would you like to extend? We'll confirm based on availability.", requestReception: "Ask reception", lateSent: "Request sent · reception will confirm shortly",
         mapTitle: "Property map", openFullMap: "Open full interactive map", youAreHere: "You are here",
     },
@@ -218,6 +220,7 @@ export const portalI18n: Record<Lang, PortalStrings> = {
         reportTitle: "Reportar problema", whatAttention: "¿Qué necesita atención?", typeCabin: "Problema en la cabaña", typeArea: "Área común", typeBug: "Algo en la app",
         describeIssue: "Describe el problema…", attachPhoto: "Adjuntar foto (opcional)", canEnterNow: "¿El equipo puede entrar ahora?", sendReport: "Enviar reporte",
         reportSent: "Reporte enviado · ¡gracias!", selectArea: "Selecciona el área",
+        discardReport: "¿Descartar lo que escribiste?",
         lateTitle: "Late check-out", lateBody: "Tu check-out es a las {time}. ¿Hasta qué hora deseas extender? Confirmamos según disponibilidad.", requestReception: "Pedir a recepción", lateSent: "Pedido enviado · recepción confirmará pronto",
         mapTitle: "Mapa de la propiedad", openFullMap: "Abrir mapa interactivo completo", youAreHere: "Estás aquí",
     },

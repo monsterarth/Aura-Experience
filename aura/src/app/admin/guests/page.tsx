@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   UserSearch, Search, MapPin, Phone, Mail, FileText,
@@ -123,6 +124,7 @@ function MergeModal({
   const [secondary, setSecondary] = useState<Guest | null>(null);
   const [secondaryStays, setSecondaryStays] = useState(0);
   const [merging, setMerging] = useState(false);
+  const { requestClose } = useCloseGuard(onClose, { dirty: !!secondary });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -160,7 +162,10 @@ function MergeModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      onClick={e => { if (e.target === e.currentTarget) requestClose(); }}
+    >
       <div className="bg-background border border-border w-full max-w-lg rounded-[28px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
 
         {/* Header */}
@@ -174,7 +179,7 @@ function MergeModal({
               <p className="text-xs text-foreground/40">Manter: <span className="font-bold text-foreground">{primary.fullName}</span></p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-xl transition-colors text-foreground/40 hover:text-foreground">
+          <button onClick={requestClose} className="p-2 hover:bg-white/5 rounded-xl transition-colors text-foreground/40 hover:text-foreground">
             <X size={18} />
           </button>
         </div>

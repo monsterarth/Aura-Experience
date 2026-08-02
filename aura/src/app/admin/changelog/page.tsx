@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { toast } from "sonner";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import {
   Plus, Trash2, X, History,
   Sparkles, TrendingUp, Wrench,
@@ -180,6 +181,10 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
   const [label,   setLabel]     = useState("");
   const [date,    setDate]      = useState(new Date().toISOString().slice(0, 10));
   const [highlight, setHighlight] = useState("");
+  const { requestClose, guardProps } = useCloseGuard(onClose, {
+    dirty: !!mdText.trim() || !!parsed,
+    message: "Descartar a importação em andamento?",
+  });
 
   function handleParse() {
     if (!mdText.trim()) return;
@@ -263,8 +268,11 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
   const includedCount = parsed?.entries.filter(e => e.include).length ?? 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <div className="w-full max-w-5xl max-h-[90vh] flex flex-col rounded-2xl border border-white/10 bg-[#1a1a1a] overflow-hidden shadow-2xl">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+      onClick={e => { if (e.target === e.currentTarget) requestClose(); }}
+    >
+      <div className="w-full max-w-5xl max-h-[90vh] flex flex-col rounded-2xl border border-white/10 bg-[#1a1a1a] overflow-hidden shadow-2xl" {...guardProps}>
 
         {/* header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 shrink-0">
@@ -286,7 +294,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
                 <RotateCcw size={11} /> Reeditar
               </button>
             )}
-            <button onClick={onClose} className="p-1 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors">
+            <button onClick={requestClose} className="p-1 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors">
               <X size={16} />
             </button>
           </div>
@@ -328,7 +336,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
                 />
               </div>
               <div className="flex justify-end gap-3">
-                <button onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:text-white transition-colors">
+                <button onClick={requestClose} className="px-4 py-2 text-sm text-gray-500 hover:text-white transition-colors">
                   Cancelar
                 </button>
                 <button

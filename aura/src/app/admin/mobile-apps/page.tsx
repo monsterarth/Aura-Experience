@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Smartphone, ExternalLink, UtensilsCrossed, X, ArrowRight, Key } from "lucide-react";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { useState, useRef, useEffect } from "react";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 
 const APPS = [
   { id: "diretoria",  label: "Diretoria",          description: "Dashboard estratégico para proprietários e diretores",    color: "#9b6dff", icon: "staff" },
@@ -19,6 +20,7 @@ const APPS = [
 function GuestCodeModal({ onConfirm, onClose }: { onConfirm: (code: string) => void; onClose: () => void }) {
   const [code, setCode] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const { requestClose } = useCloseGuard(onClose, { dirty: code.trim().length > 0 });
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -33,14 +35,14 @@ function GuestCodeModal({ onConfirm, onClose }: { onConfirm: (code: string) => v
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(6px)" }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
     >
       <div
         className="w-full max-w-sm rounded-2xl p-6 space-y-6 relative"
         style={{ background: "#1c1c1c", border: "1px solid rgba(45,212,191,0.25)", boxShadow: "0 32px 64px rgba(0,0,0,0.5)" }}
       >
         <button
-          onClick={onClose}
+          onClick={requestClose}
           className="absolute top-4 right-4 p-1.5 rounded-lg transition-colors hover:bg-white/10"
           style={{ color: "rgba(255,255,255,0.4)" }}
         >

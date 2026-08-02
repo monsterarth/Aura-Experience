@@ -6,6 +6,7 @@ import { useProperty } from "@/context/PropertyContext";
 import { RoleSwitcher } from "@/components/auth/RoleSwitcher";
 import { MinibarSheet, postCabinConference } from "@/components/maid/MinibarSheet";
 import { postFieldAction } from "@/lib/field-api";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import { HousekeepingTaskManagerModal } from "@/components/admin/HousekeepingTaskManagerModal";
 import { HousekeepingService } from "@/services/housekeeping-service";
 import { CabinService } from "@/services/cabin-service";
@@ -252,6 +253,7 @@ function ConferSheet({
   const [repItems, setRepItems] = useState<ConciergeItem[]>([]);
   const [loadingRep, setLoadingRep] = useState(false);
   const [showMaint, setShowMaint] = useState(false);
+  const { requestClose } = useCloseGuard(onClose, { dirty: !!obs.trim() });
 
   const toggleItem = (id: string) =>
     setChecklist(prev => prev.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
@@ -299,11 +301,11 @@ function ConferSheet({
   }
 
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={requestClose}>
       <div style={{ padding: "20px 20px 8px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ fontSize: 16, fontWeight: 800, color: T.text }}>Conferência de Qualidade</span>
-          <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
+          <button onClick={requestClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
             <I n="x" s={16} />
           </button>
         </div>
@@ -467,6 +469,10 @@ function GovReplenishSheet({
 }) {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
+  const { requestClose } = useCloseGuard(onClose, {
+    dirty: Object.values(cart).some(q => q > 0),
+    message: "Sair sem lançar? Os itens marcados serão descartados.",
+  });
 
   const adj = (id: string, d: number) =>
     setCart(p => { const n = { ...p }, v = Math.max(0, (p[id] ?? 0) + d); if (!v) delete n[id]; else n[id] = v; return n; });
@@ -482,13 +488,13 @@ function GovReplenishSheet({
   };
 
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={requestClose}>
       <div style={{ padding: "0 20px 14px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 900 }}>{locationName}</div>
           <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>Solicitar reposição</div>
         </div>
-        <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
+        <button onClick={requestClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
           <I n="x" s={15} />
         </button>
       </div>
@@ -575,6 +581,11 @@ function GovMaintenanceSheet({
   ];
 
   const [error, setError] = useState<string | null>(null);
+  const { requestClose } = useCloseGuard(onClose, {
+    open: !sent,
+    dirty: !!title.trim() || !!description.trim(),
+    message: "Descartar este chamado sem abrir?",
+  });
 
   const submit = async () => {
     if (!title.trim() || busy) return;
@@ -608,7 +619,7 @@ function GovMaintenanceSheet({
 
   if (sent) {
     return (
-      <Sheet onClose={onClose}>
+      <Sheet onClose={requestClose}>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 24px", gap: 16 }}>
           <div style={{ width: 56, height: 56, borderRadius: "50%", background: T.greenBg, border: `2px solid ${T.green}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <I n="check" s={24} c={T.green} />
@@ -616,7 +627,7 @@ function GovMaintenanceSheet({
           <div style={{ fontSize: 16, fontWeight: 800, color: T.text }}>Chamado aberto!</div>
           <div style={{ fontSize: 13, color: T.muted, textAlign: "center" }}>A equipe de manutenção foi notificada.</div>
           <button
-            onClick={onClose}
+            onClick={requestClose}
             style={{ marginTop: 8, padding: "12px 32px", background: T.greenG, color: "#021a17", border: "none", borderRadius: 14, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 800 }}
           >
             Fechar
@@ -627,11 +638,11 @@ function GovMaintenanceSheet({
   }
 
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={requestClose}>
       <div style={{ padding: "20px 20px 8px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ fontSize: 16, fontWeight: 800, color: T.text }}>Chamado de Manutenção</span>
-          <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
+          <button onClick={requestClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
             <I n="x" s={16} />
           </button>
         </div>
@@ -736,6 +747,10 @@ function AssignSheet({
 }) {
   const current = Array.isArray(task.assignedTo) ? task.assignedTo : [];
   const [selected, setSelected] = useState<Set<string>>(new Set(current));
+  const { requestClose } = useCloseGuard(onClose, {
+    dirty: selected.size !== current.length || current.some((id: string) => !selected.has(id)),
+    message: "Descartar a atribuição não salva?",
+  });
 
   const toggle = (id: string) => setSelected(prev => {
     const n = new Set(prev);
@@ -744,11 +759,11 @@ function AssignSheet({
   });
 
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={requestClose}>
       <div style={{ padding: "20px 20px 8px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ fontSize: 16, fontWeight: 800, color: T.text }}>Atribuir Camareira</span>
-          <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
+          <button onClick={requestClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
             <I n="x" s={16} />
           </button>
         </div>
@@ -906,6 +921,12 @@ function NewTaskSheet({
   const [maintCustomLocation, setMaintCustomLocation] = useState("");
 
   const [busy, setBusy] = useState(false);
+  const { requestClose } = useCloseGuard(onClose, {
+    dirty: !!obs.trim() || !!customLocation.trim() || assignedIds.length > 0
+      || customChecklist.length > 0 || !!maintTitle.trim() || !!maintDesc.trim()
+      || !!maintCustomLocation.trim(),
+    message: "Descartar a tarefa não salva?",
+  });
 
   const toggleMaid = (id: string) =>
     setAssignedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -993,11 +1014,11 @@ function NewTaskSheet({
   ];
 
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={requestClose}>
       <div style={{ padding: "20px 20px 8px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ fontSize: 16, fontWeight: 800, color: T.text }}>Nova Tarefa</span>
-          <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
+          <button onClick={requestClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
             <I n="x" s={16} />
           </button>
         </div>

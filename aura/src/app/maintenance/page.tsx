@@ -8,6 +8,7 @@ import { MaintenanceCompletionModal } from "@/components/admin/maintenance/Maint
 import { MaintenanceTask, Cabin, Structure, Staff } from "@/types/aura";
 import { useRouter } from "next/navigation";
 import { postFieldAction } from "@/lib/field-api";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
 import { ScrapWall } from "@/components/admin/profile/ScrapWall";
 
@@ -275,6 +276,11 @@ function NewMaintTaskSheet({
   const [assignedIds, setAssignedIds] = useState<string[]>([]);
   const [checklist, setChecklist] = useState<{ id: string; label: string; checked: boolean }[]>([]);
   const [busy, setBusy] = useState(false);
+  const { requestClose } = useCloseGuard(onClose, {
+    dirty: !!title.trim() || !!description.trim() || !!customLocation.trim()
+      || checklist.length > 0 || assignedIds.length > 0,
+    message: "Descartar este chamado sem abrir?",
+  });
 
   const techs = staff.filter(s => s.role === "maintenance" || s.role === "technician");
   const cabinsArr = Object.values(cabins);
@@ -326,11 +332,11 @@ function NewMaintTaskSheet({
   };
 
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={requestClose}>
       <div style={{ padding: "20px 20px 8px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ fontSize: 16, fontWeight: 800, color: T.text }}>Nova Tarefa</span>
-          <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
+          <button onClick={requestClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
             <I n="x" s={16} />
           </button>
         </div>
@@ -437,6 +443,10 @@ function AssignTechSheet({
   const current = Array.isArray(task.assignedTo) ? task.assignedTo : [];
   const [selected, setSelected] = useState<Set<string>>(new Set(current));
   const techs = staff.filter(s => s.role === "maintenance" || s.role === "technician");
+  const { requestClose } = useCloseGuard(onClose, {
+    dirty: selected.size !== current.length || current.some(id => !selected.has(id)),
+    message: "Descartar a atribuição não salva?",
+  });
 
   const toggle = (id: string) => setSelected(prev => {
     const n = new Set(prev);
@@ -445,11 +455,11 @@ function AssignTechSheet({
   });
 
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={requestClose}>
       <div style={{ padding: "20px 20px 8px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ fontSize: 16, fontWeight: 800, color: T.text }}>Atribuir Técnico</span>
-          <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
+          <button onClick={requestClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
             <I n="x" s={16} />
           </button>
         </div>
@@ -516,16 +526,17 @@ function ValidateSheet({
   busy: boolean;
 }) {
   const [notes, setNotes] = useState("");
+  const { requestClose } = useCloseGuard(onClose, { dirty: !!notes.trim() });
   const loc = locationName(task, cabins, structures);
   const checksDone = (task.checklist || []).filter(c => c.checked).length;
   const checksTotal = (task.checklist || []).length;
 
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={requestClose}>
       <div style={{ padding: "20px 20px 8px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ fontSize: 16, fontWeight: 800, color: T.text }}>Validar Execução</span>
-          <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
+          <button onClick={requestClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
             <I n="x" s={16} />
           </button>
         </div>

@@ -18,6 +18,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 
 interface GuestContactModalProps {
   propertyId: string;
@@ -63,6 +64,10 @@ export function GuestContactModal({ propertyId, guest, stay, cabin, onClose }: G
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [chatwootContactUrl, setChatwootContactUrl] = useState<string | null>(null);
+  // Mensagem digitada e ainda não enviada não pode sumir com um clique fora.
+  const { requestClose, guardProps } = useCloseGuard(onClose, {
+    dirty: message.trim().length > 0 && !success,
+  });
 
   const cleanPhone = guest.phone.replace(/\D/g, '');
 
@@ -161,8 +166,11 @@ export function GuestContactModal({ propertyId, guest, stay, cabin, onClose }: G
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-background rounded-xl w-full max-w-md shadow-xl overflow-hidden flex flex-col">
+    <div
+      className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in"
+      onClick={(e) => { if (e.target === e.currentTarget && !sending) requestClose(); }}
+    >
+      <div className="bg-background rounded-xl w-full max-w-md shadow-xl overflow-hidden flex flex-col" {...guardProps}>
 
         <div className="flex justify-between items-center p-4 border-b bg-muted/10">
           <div className="flex items-center gap-2">
@@ -174,7 +182,7 @@ export function GuestContactModal({ propertyId, guest, stay, cabin, onClose }: G
               <p className="text-xs text-muted-foreground">+{cleanPhone}</p>
             </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose} disabled={sending}><X className="w-5 h-5" /></Button>
+          <Button variant="ghost" size="icon" onClick={requestClose} disabled={sending}><X className="w-5 h-5" /></Button>
         </div>
 
         <div className="p-5 space-y-4">

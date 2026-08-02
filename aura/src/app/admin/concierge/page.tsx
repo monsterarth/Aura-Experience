@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import Image from "next/image";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1158,6 +1159,7 @@ function NewRequestModal({ preset, onClose }: {
   const [catalogItems, setCatalogItems] = useState<ConciergeItem[]>([]);
   const [itemId, setItemId] = useState(preset?.id || '');
   const [qty, setQty] = useState(1);
+  const { requestClose, guardProps } = useCloseGuard(onClose);
   const [notes, setNotes] = useState('');
   const [urgent, setUrgent] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1238,10 +1240,10 @@ function NewRequestModal({ preset, onClose }: {
   return (
     <div
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', backdropFilter: 'blur(8px)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-      onClick={onClose}
+      onClick={requestClose}
     >
       <div
-        onClick={e => e.stopPropagation()}
+        onClick={e => e.stopPropagation()} {...guardProps}
         style={{ background: '#0b0e18', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 24, width: 500, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 32px 100px rgba(0,0,0,.8)', animation: 'concierge-fade-in .2s ease' }}
       >
         {/* ── Header ── */}
@@ -1254,7 +1256,7 @@ function NewRequestModal({ preset, onClose }: {
               <div style={{ fontSize: 16, fontWeight: 900, color: '#eef0f8' }}>Novo Pedido</div>
               <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', marginTop: 2 }}>Registrar solicitação manualmente</div>
             </div>
-            <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)', flexShrink: 0 }}>
+            <button onClick={requestClose} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)', flexShrink: 0 }}>
               <X size={13} />
             </button>
           </div>
@@ -1402,7 +1404,7 @@ function NewRequestModal({ preset, onClose }: {
         {/* ── Footer ── */}
         <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8, flexShrink: 0 }}>
           <button
-            onClick={onClose}
+            onClick={requestClose}
             style={{ flex: 1, padding: '12px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: 'rgba(238,240,248,0.42)' }}
           >Cancelar</button>
           <button
@@ -1448,6 +1450,7 @@ function CatalogFormModal({ form, setForm, editingId, saving, groups, stockProdu
   const [emoji, setEmoji] = useState(initialEmoji);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const emojiPickerRef = React.useRef<HTMLDivElement>(null);
+  const { requestClose, guardProps } = useCloseGuard(onClose);
 
   const isLoan = form.category === 'loan';
   // active is derived: at least one audience must be selected
@@ -1519,10 +1522,10 @@ function CatalogFormModal({ form, setForm, editingId, saving, groups, stockProdu
   return (
     <div
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', backdropFilter: 'blur(8px)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-      onClick={onClose}
+      onClick={requestClose}
     >
       <div
-        onClick={e => e.stopPropagation()}
+        onClick={e => e.stopPropagation()} {...guardProps}
         style={{ background: '#0b0e18', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 24, width: 560, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 32px 100px rgba(0,0,0,.8)', animation: 'concierge-fade-in .2s ease' }}
       >
         {/* ── Header ── */}
@@ -1535,7 +1538,7 @@ function CatalogFormModal({ form, setForm, editingId, saving, groups, stockProdu
               <div style={{ fontSize: 16, fontWeight: 900, color: '#eef0f8' }}>{editingId ? 'Editar Item do Catálogo' : 'Novo Item do Catálogo'}</div>
               <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', marginTop: 2 }}>Preencha os dados do item em todos os idiomas</div>
             </div>
-            <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)', flexShrink: 0 }}>
+            <button onClick={requestClose} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)', flexShrink: 0 }}>
               <X size={13} />
             </button>
           </div>
@@ -1960,7 +1963,7 @@ function CatalogFormModal({ form, setForm, editingId, saving, groups, stockProdu
             {!isActive && <span style={{ flexShrink: 0, padding: '1px 6px', borderRadius: 999, fontSize: 8, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', background: 'rgba(248,113,113,0.08)', color: '#f87171', border: '1px solid rgba(248,113,113,0.22)' }}>inativo</span>}
           </div>
           <div style={{ flex: 1 }} />
-          <button onClick={onClose} style={{ padding: '10px 18px', borderRadius: 11, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: 'rgba(238,240,248,0.42)' }}>
+          <button onClick={requestClose} style={{ padding: '10px 18px', borderRadius: 11, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: 'rgba(238,240,248,0.42)' }}>
             Cancelar
           </button>
           <button onClick={onSave} disabled={!canSave || saving} style={{
@@ -1991,6 +1994,7 @@ function GroupFormModal({ form, setForm, editingId, saving, onClose, onSave }: {
 }) {
   const [emojiOpen, setEmojiOpen] = useState(false);
   const emojiRef = React.useRef<HTMLDivElement>(null);
+  const { requestClose, guardProps } = useCloseGuard(onClose);
 
   React.useEffect(() => {
     if (!emojiOpen) return;
@@ -2009,8 +2013,8 @@ function GroupFormModal({ form, setForm, editingId, saving, onClose, onSave }: {
   const canSave = form.name.trim().length > 0;
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', backdropFilter: 'blur(8px)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#0b0e18', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 24, width: 420, display: 'flex', flexDirection: 'column', boxShadow: '0 32px 100px rgba(0,0,0,.8)', animation: 'concierge-fade-in .2s ease' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', backdropFilter: 'blur(8px)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={requestClose}>
+      <div onClick={e => e.stopPropagation()} {...guardProps} style={{ background: '#0b0e18', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 24, width: 420, display: 'flex', flexDirection: 'column', boxShadow: '0 32px 100px rgba(0,0,0,.8)', animation: 'concierge-fade-in .2s ease' }}>
         {/* Header */}
         <div style={{ padding: '22px 24px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 38, height: 38, borderRadius: 11, background: 'rgba(155,109,255,0.12)', border: '1px solid rgba(155,109,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -2020,7 +2024,7 @@ function GroupFormModal({ form, setForm, editingId, saving, onClose, onSave }: {
             <div style={{ fontSize: 16, fontWeight: 900, color: '#eef0f8' }}>{editingId ? 'Editar Grupo' : 'Novo Grupo'}</div>
             <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', marginTop: 2 }}>Grupos organizam os itens do catálogo</div>
           </div>
-          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)' }}>
+          <button onClick={requestClose} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)' }}>
             <X size={13} />
           </button>
         </div>
@@ -2070,7 +2074,7 @@ function GroupFormModal({ form, setForm, editingId, saving, onClose, onSave }: {
 
         {/* Footer */}
         <div style={{ padding: '14px 24px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: '10px', borderRadius: 11, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: 'rgba(238,240,248,0.42)' }}>Cancelar</button>
+          <button onClick={requestClose} style={{ flex: 1, padding: '10px', borderRadius: 11, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: 'rgba(238,240,248,0.42)' }}>Cancelar</button>
           <button onClick={onSave} disabled={!canSave || saving} style={{ flex: 2, padding: '10px', borderRadius: 11, border: 'none', cursor: canSave && !saving ? 'pointer' : 'default', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, color: '#fff', background: canSave ? 'linear-gradient(135deg,#9b6dff,#4ec9d4)' : 'rgba(155,109,255,0.3)', opacity: saving ? 0.7 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
             {editingId ? 'Salvar' : 'Criar Grupo'}

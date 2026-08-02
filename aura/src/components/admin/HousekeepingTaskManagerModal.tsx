@@ -8,6 +8,7 @@ import { HousekeepingService } from "@/services/housekeeping-service";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 
 interface TaskManagerModalProps {
   isOpen: boolean;
@@ -37,6 +38,8 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
     assignedTo: [],
     observations: ''
   });
+
+  const { requestClose, guardProps } = useCloseGuard(onClose, { open: isOpen });
 
   useEffect(() => {
     if (isOpen) {
@@ -147,8 +150,11 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
   const isEditing = !!task;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="bg-card border border-border w-full max-w-xl rounded-[32px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh]">
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300"
+      onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
+    >
+      <div className="bg-card border border-border w-full max-w-xl rounded-[32px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh]" {...guardProps}>
 
         <div className="p-6 border-b border-border bg-secondary/50 flex justify-between items-center shrink-0">
           <div>
@@ -158,7 +164,7 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
             </h2>
             {isEditing && <p className="text-xs text-muted-foreground font-mono mt-1">ID: {task.id}</p>}
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-xl transition-colors">
+          <button onClick={requestClose} className="p-2 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-xl transition-colors">
             <X size={20} />
           </button>
         </div>
@@ -365,7 +371,7 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
           ) : <div />}
 
           <div className="flex gap-2">
-            <button onClick={onClose} className="px-4 py-3 font-bold text-xs uppercase text-muted-foreground hover:text-foreground transition-colors">
+            <button onClick={requestClose} className="px-4 py-3 font-bold text-xs uppercase text-muted-foreground hover:text-foreground transition-colors">
               Cancelar
             </button>
             <button

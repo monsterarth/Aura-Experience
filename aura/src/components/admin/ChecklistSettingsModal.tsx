@@ -7,6 +7,7 @@ import { HousekeepingService } from "@/services/housekeeping-service";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import { v4 as uuidv4 } from "uuid";
 
 type TabType = 'turnover' | 'inspection_checkout' | 'inspection_checkin' | 'daily' | 'linen_change' | 'custom';
@@ -37,6 +38,8 @@ export function ChecklistSettingsModal({ isOpen, onClose, propertyId }: Checklis
     title: "Faxina (Padrão)",
     items: []
   });
+
+  const { requestClose, guardProps, markDirty } = useCloseGuard(onClose, { open: isOpen });
 
   useEffect(() => {
     if (isOpen && propertyId) {
@@ -69,6 +72,7 @@ export function ChecklistSettingsModal({ isOpen, onClose, propertyId }: Checklis
   };
 
   const addItem = () => {
+    markDirty();
     setTemplate({ ...template, items: [...template.items, { id: uuidv4(), label: "", required: true }] });
   };
 
@@ -77,6 +81,7 @@ export function ChecklistSettingsModal({ isOpen, onClose, propertyId }: Checklis
   };
 
   const removeItem = (id: string) => {
+    markDirty();
     setTemplate({ ...template, items: template.items.filter((item: any) => item.id !== id) });
   };
 
@@ -104,8 +109,11 @@ export function ChecklistSettingsModal({ isOpen, onClose, propertyId }: Checklis
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="bg-card border border-border w-full max-w-2xl rounded-[32px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300"
+      onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
+    >
+      <div className="bg-card border border-border w-full max-w-2xl rounded-[32px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300" {...guardProps}>
 
         {/* HEADER */}
         <div className="p-6 border-b border-border bg-secondary/50 flex justify-between items-center">
@@ -118,7 +126,7 @@ export function ChecklistSettingsModal({ isOpen, onClose, propertyId }: Checklis
               Configure o que a equipe verá no momento de executar cada tipo de tarefa.
             </p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-xl transition-colors">
+          <button onClick={requestClose} className="p-2 hover:bg-destructive/10 text-muted-foreground hover:text-destructive rounded-xl transition-colors">
             <X size={20} />
           </button>
         </div>
@@ -188,7 +196,7 @@ export function ChecklistSettingsModal({ isOpen, onClose, propertyId }: Checklis
 
         {/* FOOTER */}
         <div className="p-6 border-t border-border bg-secondary/30 flex justify-end gap-3">
-          <button onClick={onClose} className="px-6 py-3 font-bold text-xs uppercase text-muted-foreground hover:text-foreground transition-colors">
+          <button onClick={requestClose} className="px-6 py-3 font-bold text-xs uppercase text-muted-foreground hover:text-foreground transition-colors">
             Cancelar
           </button>
           <button

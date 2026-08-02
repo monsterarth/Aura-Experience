@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useProperty } from "@/context/PropertyContext";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import { supabase } from "@/lib/supabase";
 import { Wedding, WeddingCabinAssignment, WeddingStatus } from "@/types/aura";
 import { toast } from "sonner";
@@ -240,6 +241,7 @@ function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }: {
   const [tab, setTab] = useState<FormTab>('casal');
   const [form, setForm] = useState<WeddingFormData>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const { requestClose, guardProps } = useCloseGuard(onClose, { open });
 
   useEffect(() => {
     if (open) {
@@ -304,8 +306,8 @@ function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }: {
   ];
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 580, background: T.card, borderRadius: 20, border: `1px solid ${T.border2}`, display: 'flex', flexDirection: 'column', maxHeight: '90vh', animation: 'wedding-fade-in .2s ease', boxShadow: '0 32px 80px rgba(0,0,0,.7)' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={requestClose}>
+      <div onClick={e => e.stopPropagation()} {...guardProps} style={{ width: '100%', maxWidth: 580, background: T.card, borderRadius: 20, border: `1px solid ${T.border2}`, display: 'flex', flexDirection: 'column', maxHeight: '90vh', animation: 'wedding-fade-in .2s ease', boxShadow: '0 32px 80px rgba(0,0,0,.7)' }}>
         {/* Header */}
         <div style={{ padding: '20px 24px 0', borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -313,7 +315,7 @@ function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }: {
               <div style={{ fontSize: 16, fontWeight: 900 }}>{initial ? 'Editar casamento' : 'Novo casamento'}</div>
               {initial && <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>{initial.bride} ♥ {initial.groom}</div>}
             </div>
-            <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 9, border: `1px solid ${T.border2}`, background: T.glass, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.muted }}>
+            <button onClick={requestClose} style={{ width: 32, height: 32, borderRadius: 9, border: `1px solid ${T.border2}`, background: T.glass, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.muted }}>
               <X size={14} />
             </button>
           </div>
@@ -382,7 +384,7 @@ function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }: {
 
         {/* Footer */}
         <div style={{ padding: '14px 24px', borderTop: `1px solid ${T.border}`, display: 'flex', gap: 8, flexShrink: 0 }}>
-          <button onClick={onClose} style={{ flex: 1, padding: 10, borderRadius: 11, border: `1px solid ${T.border2}`, background: T.glass, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: T.muted }}>
+          <button onClick={requestClose} style={{ flex: 1, padding: 10, borderRadius: 11, border: `1px solid ${T.border2}`, background: T.glass, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: T.muted }}>
             Cancelar
           </button>
           <button onClick={handleSave} disabled={saving} style={{ flex: 2, padding: 10, borderRadius: 11, border: 'none', background: T.grad, cursor: saving ? 'default' : 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, opacity: saving ? .7 : 1, boxShadow: '0 4px 14px rgba(155,109,255,.3)' }}>

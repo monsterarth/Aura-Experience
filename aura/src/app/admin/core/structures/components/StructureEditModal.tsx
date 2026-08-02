@@ -7,6 +7,7 @@ import { StructureService } from "@/services/structure-service";
 import { AutomationService } from "@/services/automation-service";
 import { Structure, MessageTemplate } from "@/types/aura";
 import { cn } from "@/lib/utils";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import { v4 as uuidv4 } from "uuid";
 
 interface StructureEditModalProps {
@@ -48,6 +49,7 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
     }, [structure, isOpen]);
 
     const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+    const { requestClose, guardProps } = useCloseGuard(onClose, { open: isOpen });
     useEffect(() => {
         if (currentProperty?.id && isOpen) AutomationService.getTemplates(currentProperty.id).then(setTemplates);
     }, [currentProperty?.id, isOpen]);
@@ -118,8 +120,11 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
         setFormData(p => ({ ...p, operatingHours: { ...p.operatingHours!, [field]: value } }));
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
-            <div className="bg-card w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden border border-border animate-in zoom-in-95 duration-300">
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300"
+            onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
+        >
+            <div className="bg-card w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden border border-border animate-in zoom-in-95 duration-300" {...guardProps}>
 
                 <header className="p-6 border-b border-border bg-secondary/50 flex justify-between items-center shrink-0">
                     <div>
@@ -128,7 +133,7 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
                             {isMapOnly ? "Local informativo — aparece no mapa sem agendamento." : "Configure as regras de operação e agendamentos."}
                         </p>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-destructive/10 hover:text-destructive text-muted-foreground rounded-xl transition-all"><X size={20} /></button>
+                    <button onClick={requestClose} className="p-2 hover:bg-destructive/10 hover:text-destructive text-muted-foreground rounded-xl transition-all"><X size={20} /></button>
                 </header>
 
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-background">
@@ -425,7 +430,7 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
                 </div>
 
                 <footer className="p-4 border-t border-border bg-secondary/30 flex justify-end gap-3 shrink-0">
-                    <button type="button" onClick={onClose} className="px-5 py-2.5 hover:bg-accent rounded-xl text-muted-foreground font-bold text-xs uppercase tracking-wider transition-all">Cancelar</button>
+                    <button type="button" onClick={requestClose} className="px-5 py-2.5 hover:bg-accent rounded-xl text-muted-foreground font-bold text-xs uppercase tracking-wider transition-all">Cancelar</button>
                     <button type="submit" form="structureForm" disabled={loading} className="px-6 py-2.5 bg-primary text-primary-foreground font-bold rounded-xl text-xs uppercase tracking-wider hover:opacity-90 transition-all flex items-center gap-2">
                         {loading ? "Salvando…" : <><Save size={16} /> Salvar Estrutura</>}
                     </button>

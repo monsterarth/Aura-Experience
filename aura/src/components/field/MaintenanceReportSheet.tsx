@@ -8,6 +8,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { postFieldAction } from "@/lib/field-api";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import { I, T } from "@/components/maid/MinibarSheet";
 
 type Option = { id: string; name: string };
@@ -100,6 +101,8 @@ export function MaintenanceReportSheet({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [cabins, setCabins] = useState<Option[]>([]);
   const [structures, setStructures] = useState<Option[]>([]);
+  // Chamado já enviado (sent) não tem mais o que perder.
+  const { requestClose, guardProps } = useCloseGuard(onClose, { dirty: !!photoUrl && !sent, open: !sent });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -177,9 +180,9 @@ export function MaintenanceReportSheet({ onClose }: { onClose: () => void }) {
         background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)",
         display: "flex", flexDirection: "column", justifyContent: "flex-end",
       }}
-      onClick={e => e.target === e.currentTarget && onClose()}
+      onClick={e => { if (e.target === e.currentTarget) requestClose(); }}
     >
-      <div style={{
+      <div {...guardProps} style={{
         background: "#0d1020", border: `1px solid ${T.border2}`, borderBottom: "none",
         borderRadius: "28px 28px 0 0", maxHeight: "92dvh", display: "flex", flexDirection: "column",
         color: T.text, fontFamily: "inherit", margin: "0 auto", width: "100%", maxWidth: 560,
@@ -201,7 +204,7 @@ export function MaintenanceReportSheet({ onClose }: { onClose: () => void }) {
           <>
             <div style={{ padding: "8px 20px", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <span style={{ fontSize: 16, fontWeight: 800 }}>Reportar Manutenção</span>
-              <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
+              <button onClick={requestClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
                 <I n="x" s={16} />
               </button>
             </div>

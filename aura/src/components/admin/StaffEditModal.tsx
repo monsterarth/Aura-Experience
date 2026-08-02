@@ -8,6 +8,7 @@ import { StaffService } from "@/services/staff-service";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { ImageUpload } from "./ImageUpload";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 
 interface StaffEditModalProps {
   staff: Staff;
@@ -57,6 +58,7 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
   // --- Delete tab ---
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const { requestClose, guardProps, markDirty } = useCloseGuard(onClose);
 
   const isSelf = userData?.id === staff.id;
   const canDelete =
@@ -177,8 +179,11 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-card w-full max-w-2xl rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
+    >
+      <div className="bg-card w-full max-w-2xl rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]" {...guardProps}>
 
         {/* Header */}
         <div className="p-4 border-b border-border flex justify-between items-center bg-muted/30 shrink-0">
@@ -195,7 +200,7 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
               <p className="text-xs text-muted-foreground">{roleLabels[staff.role] || staff.role}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-muted rounded-full transition-colors">
+          <button onClick={requestClose} className="p-2 hover:bg-muted rounded-full transition-colors">
             <X size={18} />
           </button>
         </div>
@@ -230,7 +235,7 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
                   <label className="text-xs font-bold uppercase text-muted-foreground self-start">Foto de Perfil</label>
                   <div className="w-full aspect-square relative rounded-2xl overflow-hidden border-2 border-dashed border-border group hover:border-primary/50 transition-colors">
                     <ImageUpload
-                      onUploadSuccess={(url: string) => setFormData(prev => ({ ...prev, profilePictureUrl: url }))}
+                      onUploadSuccess={(url: string) => { markDirty(); setFormData(prev => ({ ...prev, profilePictureUrl: url })); }}
                       value={formData.profilePictureUrl || undefined}
                     />
                   </div>
@@ -382,7 +387,7 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t border-border">
-                <button type="button" onClick={onClose} disabled={savingProfile} className="px-4 py-2 font-bold hover:bg-muted rounded-xl transition-colors">
+                <button type="button" onClick={requestClose} disabled={savingProfile} className="px-4 py-2 font-bold hover:bg-muted rounded-xl transition-colors">
                   Cancelar
                 </button>
                 <button

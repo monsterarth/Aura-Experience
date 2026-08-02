@@ -7,6 +7,7 @@ import { usePortal, type SheetName, type Lang } from "./context";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import { reportCabinIssue, reportStructureIssue, reportAppBug } from "@/app/actions/issue-actions";
 import { StructureService } from "@/services/structure-service";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import type { Structure, Event } from "@/types/aura";
 import { formatEventDate, eventTitle, eventDesc, eventPrice } from "./eventHelpers";
 
@@ -209,6 +210,10 @@ function ReportSheet() {
     const [imageUrl, setImageUrl] = React.useState("");
     const [structures, setStructures] = React.useState<Structure[]>([]);
     const [loading, setLoading] = React.useState(false);
+    const { requestClose } = useCloseGuard(closeSheet, {
+        dirty: !!desc.trim() || !!imageUrl,
+        message: t.discardReport,
+    });
 
     React.useEffect(() => {
         if (type === "area" && structures.length === 0) {
@@ -252,7 +257,7 @@ function ReportSheet() {
     };
 
     return (
-        <Sheet onClose={closeSheet} title={t.reportTitle} icon="flag" iconTone="clay">
+        <Sheet onClose={requestClose} title={t.reportTitle} icon="flag" iconTone="clay">
             {!type ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     <p style={{ margin: "0 0 4px", fontSize: 13.5, color: "var(--muted)" }}>{t.whatAttention}</p>

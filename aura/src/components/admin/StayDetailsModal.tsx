@@ -21,6 +21,7 @@ import { ContactService } from "@/services/contact-service";
 import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import { sanitizeDocumentForFnrh } from "@/lib/utils-checkin";
 import { cn } from "@/lib/utils";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import { stayDisplayName } from "@/lib/stay-display";
 import { supabase } from "@/lib/supabase";
 import { extractTimeHHMM, combineDateAndTimeISO, DEFAULT_CHECK_IN_TIME, DEFAULT_CHECK_OUT_TIME } from "@/lib/stay-times";
@@ -114,6 +115,8 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const [folioItems, setFolioItems] = useState<FolioItem[]>([]);
   const [loadingFolio, setLoadingFolio] = useState(false);
   const [newFolioItem, setNewFolioItem] = useState({ description: "", quantity: 1, unitPrice: 0 });
+  // Esc fica de fora: este modal abre sub-modais (check-out, transferência).
+  const { requestClose, confirmDiscard, guardProps, reset } = useCloseGuard(onClose, { open: isOpen, escape: false });
 
   useEffect(() => {
     if (isOpen && stay?.propertyId) {
@@ -332,6 +335,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   if (!isOpen || !stay) return null;
 
   const handleCancel = () => {
+    if (!confirmDiscard()) return;
     initData();
     setIsEditing(false);
     setShowReassign(false);
@@ -419,6 +423,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
       }
 
       toast.success("Ficha da hospedagem atualizada!");
+      reset();
       setIsEditing(false);
       if (onUpdate) onUpdate();
     } catch (error: any) {
@@ -628,8 +633,11 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
   return (
     <>
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="bg-card border border-border w-full max-w-5xl rounded-[32px] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-300">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300"
+      onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
+    >
+      <div className="bg-card border border-border w-full max-w-5xl rounded-[32px] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-300" {...guardProps}>
 
         <header className="p-6 border-b border-border bg-secondary/50 flex justify-between items-center shrink-0">
           <div className="flex items-center gap-4">
@@ -692,7 +700,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
             >
               <FileText size={16} /> Ficha Completa
             </button>
-            <button onClick={onClose} className="p-3 hover:bg-destructive/10 hover:text-destructive text-muted-foreground rounded-xl transition-all"><X size={20} /></button>
+            <button onClick={requestClose} className="p-3 hover:bg-destructive/10 hover:text-destructive text-muted-foreground rounded-xl transition-all"><X size={20} /></button>
           </div>
         </header>
 

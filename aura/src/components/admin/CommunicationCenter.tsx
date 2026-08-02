@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 
 const EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
   { label: "Frequentes", emojis: ["😊","😄","😂","🤣","😍","🥰","😎","🤩","😘","😉","😀","😁","🙂","😌","🥳","🤗","👍","👏","🙏","❤️","🔥","✨","🎉","💯","👋","🤝"] },
@@ -117,6 +118,10 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
   const [activeContext, setActiveContext] = useState<ContactContext | null>(null);
   const [isNewContactOpen, setIsNewContactOpen] = useState(false);
   const [newContactData, setNewContactData] = useState({ name: "", phone: "" });
+  const newContactGuard = useCloseGuard(() => setIsNewContactOpen(false), {
+    open: isNewContactOpen,
+    dirty: !!newContactData.name.trim() || !!newContactData.phone.trim(),
+  });
   const [savingContact, setSavingContact] = useState(false);
   const [showOriginal, setShowOriginal] = useState<Record<string, boolean>>({});
 
@@ -1174,11 +1179,14 @@ export function CommunicationCenter({ propertyId, messengerName, messengerColor 
 
       {/* MODAL NOVO CONTATO */}
       {isNewContactOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+        <div
+          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+          onClick={e => { if (e.target === e.currentTarget && !savingContact) newContactGuard.requestClose(); }}
+        >
           <div className="bg-background rounded-xl p-6 w-full max-w-sm">
             <div className="flex justify-between items-center mb-5 border-b pb-2">
               <h2 className="text-lg font-bold">Novo Contato</h2>
-              <Button variant="ghost" size="icon" onClick={() => { if (!savingContact) setIsNewContactOpen(false); }}><X className="w-5 h-5" /></Button>
+              <Button variant="ghost" size="icon" onClick={() => { if (!savingContact) newContactGuard.requestClose(); }}><X className="w-5 h-5" /></Button>
             </div>
             <div className="space-y-4">
               <div>

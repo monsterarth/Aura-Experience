@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ImageUpload } from "@/components/admin/ImageUpload";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 
 interface MaintenanceTaskManagerModalProps {
     isOpen: boolean;
@@ -42,6 +43,7 @@ export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task,
     });
 
     const [checklist, setChecklist] = useState<MaintenanceChecklistItem[]>([]);
+    const { requestClose, guardProps, markDirty } = useCloseGuard(onClose, { open: isOpen });
 
     useEffect(() => {
         if (isOpen) {
@@ -127,8 +129,11 @@ export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task,
     const isEditing = !!task;
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-            <div className="bg-background w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+        <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+            onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
+        >
+            <div className="bg-background w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]" {...guardProps}>
                 <div className="p-6 border-b border-border flex justify-between items-center bg-card">
                     <div>
                         <h2 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
@@ -136,7 +141,7 @@ export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task,
                         </h2>
                         <p className="text-sm text-muted-foreground mt-1">Defina prioridade, local e cronograma.</p>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-muted rounded-full transition-colors text-muted-foreground hover:text-foreground">
+                    <button onClick={requestClose} className="p-2 hover:bg-muted rounded-full transition-colors text-muted-foreground hover:text-foreground">
                         <X size={20} />
                     </button>
                 </div>
@@ -174,7 +179,7 @@ export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task,
                                 <div className="h-32 bg-secondary border border-border rounded-xl overflow-hidden relative">
                                     <ImageUpload
                                         value={formData.imageUrl}
-                                        onUploadSuccess={(url) => setFormData({ ...formData, imageUrl: url })}
+                                        onUploadSuccess={(url) => { markDirty(); setFormData({ ...formData, imageUrl: url }); }}
                                     />
                                     {!formData.imageUrl && (
                                         <div className="absolute inset-0 pointer-events-none flex items-center justify-center opacity-50">
@@ -343,7 +348,7 @@ export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task,
                 </div>
 
                 <div className="p-6 border-t border-border flex justify-end gap-3 bg-card/50">
-                    <button type="button" onClick={onClose} className="px-6 py-2.5 rounded-xl font-bold uppercase tracking-widest text-xs text-muted-foreground hover:bg-secondary transition-colors">Cancelar</button>
+                    <button type="button" onClick={requestClose} className="px-6 py-2.5 rounded-xl font-bold uppercase tracking-widest text-xs text-muted-foreground hover:bg-secondary transition-colors">Cancelar</button>
                     <button type="submit" form="maintenance-form" disabled={loading} className="px-6 py-2.5 rounded-xl font-bold uppercase tracking-widest text-xs border border-blue-500 bg-blue-500/10 text-blue-600 hover:bg-blue-500 hover:text-white transition-all flex items-center gap-2 disabled:opacity-50">
                         {loading ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div> : <Save size={16} />}
                         Salvar

@@ -2,6 +2,7 @@
 
 import React, { useState, useRef } from "react";
 import { postFieldAction } from "@/lib/field-api";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 
 // Itens exibidos no passo de frigobar (origem: itens de Concierge do grupo "Frigobar").
 type FrigobarItem = { id: string; name: string; price: number };
@@ -155,6 +156,12 @@ export function MinibarSheet({
     : [];
   const [loanedChecks, setLoanedChecks] = useState<{ id: string; label: string; checked: boolean }[]>(parsedLoaned);
   const [savingLoaned, setSavingLoaned] = useState(false);
+  // Carrinho montado e descrição de achado não podem sumir num toque fora.
+  const { requestClose } = useCloseGuard(onClose, {
+    open: phase !== "fin",
+    dirty: Object.values(cart).some(q => q > 0) || !!lostDesc.trim() || !!lostPhoto,
+    message: "Sair sem concluir? O que você marcou será descartado.",
+  });
 
   const adj = (id: string, d: number) =>
     setCart(p => { const n = { ...p }, v = Math.max(0, (p[id] ?? 0) + d); if (!v) delete n[id]; else n[id] = v; return n; });
@@ -256,7 +263,7 @@ export function MinibarSheet({
   // ── Key step ─────────────────────────────────────────────────────────────────
   if (phase === "key") {
     return (
-      <Sheet onClose={onClose}>
+      <Sheet onClose={requestClose}>
         <div style={{ padding: "0 20px 14px", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
             <div style={{ width: 44, height: 44, borderRadius: 14, background: T.amberBg, border: `1px solid ${T.amberBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -302,7 +309,7 @@ export function MinibarSheet({
   if (phase === "loaned") {
     const allChecked = loanedChecks.every(i => i.checked);
     return (
-      <Sheet onClose={onClose}>
+      <Sheet onClose={requestClose}>
         <div style={{ padding: "0 20px 14px", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
             <div style={{ width: 44, height: 44, borderRadius: 14, background: T.amberBg, border: `1px solid ${T.amberBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -371,7 +378,7 @@ export function MinibarSheet({
   // ── Lost items step ───────────────────────────────────────────────────────────
   if (phase === "lost") {
     return (
-      <Sheet onClose={onClose}>
+      <Sheet onClose={requestClose}>
         <div style={{ padding: "0 20px 14px", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
             <div style={{ width: 44, height: 44, borderRadius: 14, background: T.blueBg, border: `1px solid ${T.blueBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -455,13 +462,13 @@ export function MinibarSheet({
 
   // ── Cart step ─────────────────────────────────────────────────────────────────
   return (
-    <Sheet onClose={onClose}>
+    <Sheet onClose={requestClose}>
       <div style={{ padding: "0 20px 14px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexShrink: 0 }}>
         <div>
           <div style={{ fontSize: 20, fontWeight: 900 }}>{cabinName}</div>
           <div style={{ fontSize: 12, color: T.muted, marginTop: 3, fontWeight: 500 }}>Conferência da cabana</div>
         </div>
-        <button onClick={onClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
+        <button onClick={requestClose} style={{ background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 10, padding: 8, cursor: "pointer", color: T.muted }}>
           <I n="x" s={15} />
         </button>
       </div>
