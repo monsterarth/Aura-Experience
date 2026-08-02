@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, Loader2, Printer, Search, CheckSquare, Square, ShieldAlert } from "lucide-react";
 import PrintReport from "@/components/admin/PrintReport";
-import AssetQr from "@/components/admin/AssetQr";
+import AssetLabelCard from "@/components/admin/AssetLabelCard";
 import PatrimonioTabs from "../PatrimonioTabs";
 
 type LabelSize = "large" | "small";
@@ -31,8 +31,8 @@ type LabelSize = "large" | "small";
 const AURA_FALLBACK_HOST = "aaura.app.br";
 
 const SIZES: Record<LabelSize, { label: string; cols: number; qr: number; hint: string }> = {
-  large: { label: "Grande (2 colunas)", cols: 2, qr: 108, hint: "≈ 90 × 45 mm — equipamentos maiores" },
-  small: { label: "Pequena (3 colunas)", cols: 3, qr: 78, hint: "≈ 60 × 35 mm — móveis e eletrônicos pequenos" },
+  large: { label: "Grande (2 colunas)", cols: 2, qr: 120, hint: "≈ 90 × 45 mm — equipamentos maiores" },
+  small: { label: "Pequena (3 colunas)", cols: 3, qr: 84, hint: "≈ 60 × 35 mm — móveis e eletrônicos pequenos" },
 };
 
 export default function EtiquetasPage() {
@@ -163,6 +163,28 @@ export default function EtiquetasPage() {
       </div>
       <p className="text-xs text-muted-foreground -mt-2 mb-4">{cfg.hint}</p>
 
+      {/* Prévia: a etiqueta como sai no papel, sem precisar abrir a impressão.
+          Fundo branco fixo porque é assim que ela é impressa — no tema escuro do
+          admin, uma prévia "clara" é o que corresponde ao resultado real. */}
+      {toPrint.length > 0 && (
+        <div className="mb-5">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground mb-2">
+            Prévia
+          </p>
+          <div className="inline-block rounded-2xl bg-white p-4 text-black">
+            <div style={{ width: size === "small" ? 260 : 340 }}>
+              <AssetLabelCard
+                label={toPrint[0]}
+                propertyName={property.name}
+                logoUrl={property.logoUrl}
+                qrSize={cfg.qr}
+                compact={size === "small"}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
       ) : labels.length === 0 ? (
@@ -203,19 +225,14 @@ export default function EtiquetasPage() {
         >
           <div className={cn("grid gap-3", cfg.cols === 2 ? "grid-cols-2" : "grid-cols-3")}>
             {toPrint.map((l) => (
-              <div
+              <AssetLabelCard
                 key={l.id}
-                style={{ breakInside: "avoid" }}
-                className="flex items-center gap-3 border border-black/40 rounded-lg p-2.5"
-              >
-                <AssetQr url={l.url} size={cfg.qr} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-bold uppercase tracking-widest">Patrimônio</p>
-                  <p className="font-mono text-base font-bold leading-tight">{l.assetTag || l.publicCode}</p>
-                  <p className="text-[11px] leading-snug break-words">{l.name}</p>
-                  <p className="font-mono text-[10px] tracking-widest opacity-70">{l.publicCode}</p>
-                </div>
-              </div>
+                label={l}
+                propertyName={property.name}
+                logoUrl={property.logoUrl}
+                qrSize={cfg.qr}
+                compact={size === "small"}
+              />
             ))}
           </div>
         </PrintReport>
