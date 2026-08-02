@@ -443,9 +443,21 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
       chatwootSyncOnCheckIn(stay.id).catch(() => {});
       toast.success("Check-in realizado com sucesso!");
       if (onUpdate) onUpdate();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error("Erro ao realizar check-in.");
+      const msg = error?.message ?? '';
+      if (msg.startsWith('CABIN_NOT_AVAILABLE')) {
+        const statusMap: Record<string, string> = {
+          occupied: 'ocupada por outra estadia',
+          cleaning: 'em limpeza',
+          maintenance: 'em manutenção',
+        };
+        toast.error(`Check-in bloqueado: acomodação ${statusMap[msg.split(':')[1] ?? ''] ?? 'indisponível'}. Verifique antes de prosseguir.`);
+      } else if (msg.startsWith('CHECKIN_')) {
+        toast.error("Check-in não foi gravado. Nada foi alterado — tente novamente.");
+      } else {
+        toast.error("Erro ao realizar check-in.");
+      }
     } finally {
       setLoading(false);
     }

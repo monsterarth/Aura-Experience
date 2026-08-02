@@ -520,6 +520,8 @@ export default function StaysPage() {
                                       };
                                       const cabinStatus = msg.split(':')[1] ?? '';
                                       toast.error(`Check-in bloqueado: acomodação ${statusMap[cabinStatus] ?? 'indisponível'}. Verifique antes de prosseguir.`);
+                                    } else if (msg.startsWith('CHECKIN_')) {
+                                      toast.error("Check-in não foi gravado. Nada foi alterado — tente novamente.");
                                     } else {
                                       toast.error("Erro ao realizar check-in.");
                                     }

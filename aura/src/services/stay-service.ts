@@ -450,7 +450,7 @@ export const StayService = {
   async performCheckIn(propertyId: string, stayId: string, actorId: string, actorName: string) {
     // 1. Buscar dados da estadia (incluindo guestId para enriquecer o log)
     const { data: stay } = await supabase
-      .from('stays').select('cabinId, checkIn, guestId').eq('id', stayId).single();
+      .from('stays').select('cabinId, checkIn, guestId, status, checkInActual').eq('id', stayId).single();
     if (!stay) throw new Error('STAY_NOT_FOUND');
 
     if (!stay.cabinId) throw new Error('CABIN_REQUIRED_FOR_CHECKIN');
@@ -473,11 +473,25 @@ export const StayService = {
       updates.checkIn = now.toISOString();
     }
 
-    // 4. Atualizar estadia e cabin em paralelo
-    await Promise.all([
-      supabase.from('stays').update(updates).eq('id', stayId).eq('propertyId', propertyId),
-      supabase.from('cabins').update({ status: 'occupied', currentStayId: stayId }).eq('id', stay.cabinId),
-    ]);
+    // 4. Atualizar estadia e cabin — em sequência, nunca em paralelo.
+    // Antes as duas escritas iam num Promise.all sem checagem de erro: quando a da estadia
+    // falhava calada (ou casava zero linhas), a cabana ficava travada em 'occupied' apontando
+    // para uma reserva ainda 'pending', e nenhum check-in seguinte passava pelo guard do passo 2.
+    // Agora a estadia é a fonte da verdade: só ocupamos a cabana depois de confirmar a linha.
+    const { data: updatedStay, error: stayError } = await supabase
+      .from('stays').update(updates).eq('id', stayId).eq('propertyId', propertyId).select('id');
+    if (stayError) throw new Error(`CHECKIN_STAY_UPDATE_FAILED:${stayError.message}`);
+    if (!updatedStay || updatedStay.length === 0) throw new Error('CHECKIN_STAY_UPDATE_FAILED:no_rows');
+
+    const { error: cabinError } = await supabase
+      .from('cabins').update({ status: 'occupied', currentStayId: stayId }).eq('id', stay.cabinId);
+    if (cabinError) {
+      // Desfaz a estadia para não deixar hóspede ativo numa cabana que o painel mostra livre.
+      await supabase.from('stays')
+        .update({ status: stay.status, checkInActual: stay.checkInActual, checkIn: stay.checkIn })
+        .eq('id', stayId).eq('propertyId', propertyId);
+      throw new Error(`CHECKIN_CABIN_UPDATE_FAILED:${cabinError.message}`);
+    }
 
     // A revisão de entrada perde a validade neste instante — a hóspede entrou, não há mais o que
     // revisar. Sem isto elas ficavam abertas para sempre na fila de conferência da governanta.
