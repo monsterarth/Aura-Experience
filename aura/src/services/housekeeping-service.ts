@@ -59,6 +59,9 @@ export interface StayCrew {
 }
 
 // Conferência de saída: quem fechou frigobar/chave/achados antes da faxina.
+// Só existe DEPOIS do check-out — a faxina que aparece no preparo é a da estadia anterior,
+// e a conferência dela é do hóspede anterior; por isso o chamador só passa por aqui na
+// fase 'saida'.
 // Conferências gravadas antes da coluna `cabinCheckedBy` não têm autor; nesses casos, se a
 // estadia registrou objetos esquecidos, quem reportou É quem estava conferindo — devolvemos
 // o nome marcado como deduzido ('lost_items'), para a tela dizer de onde veio.
@@ -695,9 +698,23 @@ export const HousekeepingService = {
       for (const s of ((staff || []) as { id: string; fullName: string }[])) nameById.set(s.id, s.fullName);
     }
 
+    // A faxina de troca DESTA estadia é, por definição, a de saída — mesmo quando o balcão
+    // processa o check-out antes da hora prevista em `stays.checkOut` (aí a data sozinha
+    // classificaria como "durante a estadia"). Tarefa vinda da janela da cabana pertence à
+    // estadia anterior: é preparo, nunca saída.
+    const phaseOf = (t: HousekeepingTask): StayCrewTask['phase'] => {
+      const ref = refDate(t);
+      if (t.stayId === stayId && (t.type === 'turnover' || t.cabinChecked)) return 'saida';
+      if (t.stayId !== stayId) return 'preparo';
+      if (checkIn && ref && ref.getTime() < checkIn.getTime()) return 'preparo';
+      if (checkOut && ref && ref.getTime() > checkOut.getTime()) return 'saida';
+      return 'estadia';
+    };
+
     const crewTasks = tasks
       .map<StayCrewTask>(t => {
         const ref = refDate(t);
+        const phase = phaseOf(t);
         return {
           id: t.id,
           type: t.type,
@@ -705,14 +722,15 @@ export const HousekeepingService = {
           status: t.status,
           statusLabel: TASK_STATUS_LABELS[t.status] || t.status,
           date: ref ? ref.toISOString() : null,
-          phase: checkIn && ref && ref.getTime() < checkIn.getTime() ? 'preparo'
-            : checkOut && ref && ref.getTime() > checkOut.getTime() ? 'saida'
-              : 'estadia',
+          phase,
           // Id sem staff correspondente = pessoa removida da equipe: melhor dizer isso do
           // que inventar "equipe" e o gestor achar que o nome se perdeu no caminho.
           cleaners: (t.assignedTo || []).map(id => nameById.get(id) || 'Não identificado'),
           conferredBy: t.conferredBy ? (nameById.get(t.conferredBy) || 'Não identificado') : null,
-          checked: checkedOf(t, stay as { lostItemsReportedBy?: string; lostItemsReportedAt?: string }, nameById),
+          // Conferência de saída só na fase de saída: nas outras a tarefa é de outro hóspede.
+          checked: phase === 'saida'
+            ? checkedOf(t, stay as { lostItemsReportedBy?: string; lostItemsReportedAt?: string }, nameById)
+            : null,
         };
       })
       .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
