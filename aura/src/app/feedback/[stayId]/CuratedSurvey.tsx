@@ -4,6 +4,7 @@ import React from "react";
 import type { Stay, Property, SurveyTemplate, SurveyChip } from "@/types/aura";
 import { getPortalThemeVars } from "@/app/check-in/[code]/_portal/theme";
 import { Icon, Card, PrimaryBtn, GhostBtn, IconBtn, Chip } from "@/app/check-in/[code]/_portal/ui";
+import { MAX_HIGHLIGHT_LEN } from "@/lib/survey-metrics";
 
 /* ============================================================
    Survey 2.0 — fluxo curado do hóspede (faces → categorias →
@@ -14,12 +15,39 @@ import { Icon, Card, PrimaryBtn, GhostBtn, IconBtn, Chip } from "@/app/check-in/
 type Lang = "pt" | "en" | "es";
 const LOCALE: Record<Lang, string> = { pt: "pt-BR", en: "en-US", es: "es-ES" };
 
+// "Outro…" é rótulo curto, não desabafo: o campo trava no limite do chip e aponta o
+// espaço de recado para quem quer escrever mais. Texto longo que ainda assim chegue ao
+// servidor (cliente antigo, colagem) é dobrado no comentário na gravação.
+function OtherField({ value, onChange, placeholder, hint, style }: {
+    value: string; onChange: (v: string) => void; placeholder: string; hint: string; style: React.CSSProperties;
+}) {
+    const near = value.length >= MAX_HIGHLIGHT_LEN - 15;
+    return (
+        <div>
+            <input
+                value={value}
+                onChange={(e) => onChange(e.target.value.slice(0, MAX_HIGHLIGHT_LEN))}
+                maxLength={MAX_HIGHLIGHT_LEN}
+                placeholder={placeholder}
+                style={style}
+            />
+            {value.length > 0 && (
+                <p style={{ margin: "6px 2px 0", fontSize: 11.5, color: "var(--muted)", display: "flex", justifyContent: "space-between", gap: 10 }}>
+                    <span>{near ? hint : ""}</span>
+                    <span style={{ flexShrink: 0 }}>{value.length}/{MAX_HIGHLIGHT_LEN}</span>
+                </p>
+            )}
+        </div>
+    );
+}
+
 const TXT = {
     pt: {
         brand: "Sua opinião", overallQ: "Como foi sua estadia", overallSub: "Sua opinião molda a experiência dos próximos hóspedes.",
         catsQ: "Avalie por item", catsSub: (n: number) => `Toque nas estrelas. Avalie ao menos ${n}.`,
         hlQ: "O que se destacou?", hlSub: "Escolha tudo que combina com sua experiência.",
-        hlLiked: "O que mais gostou?", hlImprove: "O que podemos melhorar?", other: "Outro…", otherPlaceholder: "Conte pra gente",
+        hlLiked: "O que mais gostou?", hlImprove: "O que podemos melhorar?", other: "Outro…", otherPlaceholder: "Em poucas palavras",
+        otherHint: "Quer contar mais? Use o espaço de recado no fim.",
         recQ: (p: string) => `Recomendaria ${p}?`, recSub: "Quase lá!",
         commentLabelPublic: "Quer deixar um recado?", commentLabelPrivate: "Conte o que podemos melhorar", commentOptional: "(opcional)",
         commentPlaceholder: "Escreva aqui…",
@@ -35,7 +63,8 @@ const TXT = {
         brand: "Your feedback", overallQ: "How was your stay", overallSub: "Your opinion shapes the next guests' experience.",
         catsQ: "Rate by item", catsSub: (n: number) => `Tap the stars. Rate at least ${n}.`,
         hlQ: "What stood out?", hlSub: "Pick everything that matches your experience.",
-        hlLiked: "What did you like most?", hlImprove: "What can we improve?", other: "Other…", otherPlaceholder: "Tell us",
+        hlLiked: "What did you like most?", hlImprove: "What can we improve?", other: "Other…", otherPlaceholder: "In a few words",
+        otherHint: "Want to say more? Use the note field at the end.",
         recQ: (p: string) => `Would you recommend ${p}?`, recSub: "Almost there!",
         commentLabelPublic: "Want to leave a note?", commentLabelPrivate: "Tell us what we can improve", commentOptional: "(optional)",
         commentPlaceholder: "Write here…",
@@ -51,7 +80,8 @@ const TXT = {
         brand: "Tu opinión", overallQ: "¿Cómo fue tu estadía", overallSub: "Tu opinión moldea la experiencia de los próximos huéspedes.",
         catsQ: "Evalúa por ítem", catsSub: (n: number) => `Toca las estrellas. Evalúa al menos ${n}.`,
         hlQ: "¿Qué se destacó?", hlSub: "Elige todo lo que combine con tu experiencia.",
-        hlLiked: "¿Qué te gustó más?", hlImprove: "¿Qué podemos mejorar?", other: "Otro…", otherPlaceholder: "Cuéntanos",
+        hlLiked: "¿Qué te gustó más?", hlImprove: "¿Qué podemos mejorar?", other: "Otro…", otherPlaceholder: "En pocas palabras",
+        otherHint: "¿Quieres contar más? Usa el mensaje al final.",
         recQ: (p: string) => `¿Recomendarías ${p}?`, recSub: "¡Casi listo!",
         commentLabelPublic: "¿Quieres dejar un mensaje?", commentLabelPrivate: "Cuéntanos qué podemos mejorar", commentOptional: "(opcional)",
         commentPlaceholder: "Escribe aquí…",
@@ -314,7 +344,7 @@ export function CuratedSurvey({ stay, property, template, lang }: {
                                         ); })}
                                         {otherPositive && <button onClick={() => setOtherPosOn(v => !v)} style={chipStyle(otherPosOn)}>{otherPosOn && <Icon n="check" s={15} c="var(--brand)" w={2.5} />}{t.other}</button>}
                                     </div>
-                                    {otherPositive && otherPosOn && <input value={otherPosText} onChange={(e) => setOtherPosText(e.target.value)} placeholder={t.otherPlaceholder} style={otherInput} />}
+                                    {otherPositive && otherPosOn && <OtherField value={otherPosText} onChange={setOtherPosText} placeholder={t.otherPlaceholder} hint={t.otherHint} style={otherInput} />}
                                 </div>
                             )}
 
@@ -327,7 +357,7 @@ export function CuratedSurvey({ stay, property, template, lang }: {
                                         ); })}
                                         {otherImprove && <button onClick={() => setOtherImpOn(v => !v)} style={chipStyle(otherImpOn)}>{otherImpOn && <Icon n="check" s={15} c="var(--brand)" w={2.5} />}{t.other}</button>}
                                     </div>
-                                    {otherImprove && otherImpOn && <input value={otherImpText} onChange={(e) => setOtherImpText(e.target.value)} placeholder={t.otherPlaceholder} style={otherInput} />}
+                                    {otherImprove && otherImpOn && <OtherField value={otherImpText} onChange={setOtherImpText} placeholder={t.otherPlaceholder} hint={t.otherHint} style={otherInput} />}
                                 </div>
                             )}
                         </div>

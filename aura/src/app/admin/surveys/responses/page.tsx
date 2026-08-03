@@ -5,97 +5,35 @@ import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
-import { SurveyResponse, SurveyTemplate } from "@/types/aura";
+import { SurveyResponseWithStay, SurveyTemplate } from "@/types/aura";
 import { SurveyService } from "@/services/survey-service";
 import { Button } from "@/components/ui/button";
+import { StayCrewPanel } from "@/components/admin/StayCrewPanel";
+import {
+    AreaReview, Polarity, FACES, RECO, AREA_STATUS, HL_STYLE, SEVERITY, scoreColor, barColor,
+    recommendOf, overallOf, splitHighlights, commentOf, buildPolarityMap, sortDateOf, fmtDate,
+    severityOf, severityOfRating, severityLabel, shortHighlight,
+} from "@/lib/survey-view";
 import {
     Star, TrendingUp, MessageSquare, Loader2, Inbox, Bot, Search, Sparkles,
-    X, Trash2, Tag, ThumbsUp, Heart, MapPin, Gauge, Settings2, Wrench,
+    X, Trash2, Tag, ThumbsUp, Heart, MapPin, Gauge, Settings2, Wrench, Home, ListFilter,
 } from "lucide-react";
 
-type Recommend = "yes" | "maybe" | "no";
-interface AreaReview {
-    id: string; structureId: string; structureName?: string; rating: number;
-    comment?: string; guestName?: string; status?: string; createdAt?: string;
-}
-
-const FACES = ["", "😞", "😕", "🙂", "😃", "🤩"];
-const RECO: Record<Recommend, { label: string; emoji: string; text: string; bar: string; soft: string }> = {
-    yes: { label: "Com certeza", emoji: "💚", text: "text-emerald-600", bar: "bg-emerald-500", soft: "bg-emerald-100 text-emerald-700" },
-    maybe: { label: "Talvez", emoji: "😐", text: "text-yellow-600", bar: "bg-yellow-400", soft: "bg-yellow-100 text-yellow-700" },
-    no: { label: "Não", emoji: "🙁", text: "text-rose-600", bar: "bg-rose-500", soft: "bg-rose-100 text-rose-700" },
-};
-const AREA_STATUS: Record<string, { label: string; cls: string }> = {
-    pending: { label: "Pendente", cls: "bg-yellow-100 text-yellow-700" },
-    approved: { label: "Aprovada", cls: "bg-emerald-100 text-emerald-700" },
-    hidden: { label: "Oculta", cls: "bg-muted text-muted-foreground" },
-};
-// Estilo por polaridade do destaque — elogio nunca pode parecer crítica (e vice-versa).
-const HL_STYLE = {
-    positive: { title: "Elogios", full: "O que mais gostou", text: "text-emerald-600", bar: "bg-emerald-500", chip: "bg-emerald-500/10 text-emerald-600" },
-    improve: { title: "A melhorar", full: "O que podemos melhorar", text: "text-rose-600", bar: "bg-rose-500", chip: "bg-rose-500/10 text-rose-600" },
-    unknown: { title: "Outros", full: "Outros destaques", text: "text-muted-foreground", bar: "bg-muted-foreground/40", chip: "bg-muted text-foreground/80" },
-} as const;
 const HL_GROUPS = [
     { key: "hlPositive", p: "positive", icon: <ThumbsUp className="w-3.5 h-3.5" /> },
     { key: "hlImprove", p: "improve", icon: <Wrench className="w-3.5 h-3.5" /> },
     { key: "hlOther", p: "unknown", icon: <Tag className="w-3.5 h-3.5" /> },
 ] as const;
 
-const scoreColor = (a: number) => (a >= 4.5 ? "text-emerald-600" : a >= 3.5 ? "text-yellow-600" : "text-rose-600");
-const barColor = (a: number) => (a >= 4.5 ? "bg-emerald-500" : a >= 3.5 ? "bg-yellow-400" : "bg-rose-500");
-
-// --- extratores tolerantes (curado + fallback legado) ---
-const recommendOf = (r: SurveyResponse): Recommend | undefined => {
-    const m = r.metrics || ({} as SurveyResponse["metrics"]);
-    if (m.recommend) return m.recommend;
-    if (typeof m.npsScore === "number") return m.npsScore >= 9 ? "yes" : m.npsScore >= 7 ? "maybe" : "no";
-    return undefined;
-};
-const overallOf = (r: SurveyResponse): number =>
-    r.metrics?.overall ?? (Number(r.answers?.find(a => a.questionId === "overall")?.value) || 0);
-// Destaques têm polaridade: os chips vêm de dois grupos ("o que mais gostou" x "o que
-// podemos melhorar"). Respostas antigas gravaram só a união, então reclassificamos pelo
-// label usando os templates da propriedade; texto livre ("Outro") fica sem polaridade.
-type Polarity = "positive" | "improve" | "unknown";
-interface SplitHighlights { positive: string[]; improve: string[]; unknown: string[]; all: string[] }
-const normLabel = (s: string) => s.trim().toLowerCase();
-const HL_EMPTY: SplitHighlights = { positive: [], improve: [], unknown: [], all: [] };
-
-const splitHighlights = (r: SurveyResponse, polarity: Map<string, Polarity>): SplitHighlights => {
-    const m = r.metrics || ({} as SurveyResponse["metrics"]);
-    const arr = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
-    const ans = (id: string) => r.answers?.find(a => a.questionId === id)?.value;
-    const positive = arr(m.highlightsPositive ?? ans("highlightsPositive"));
-    const improve = arr(m.highlightsImprove ?? ans("highlightsImprove"));
-    const all = arr(m.highlights ?? ans("highlights"));
-
-    // Resposta nova: a polaridade já veio gravada.
-    if (positive.length || improve.length) {
-        const known = new Set([...positive, ...improve]);
-        return { positive, improve, unknown: all.filter(h => !known.has(h)), all: all.length ? all : [...positive, ...improve] };
-    }
-    // Resposta antiga (união): reclassifica pelo template.
-    const out: SplitHighlights = { positive: [], improve: [], unknown: [], all };
-    all.forEach(h => out[polarity.get(normLabel(h)) ?? "unknown"].push(h));
-    return out;
-};
-const commentOf = (r: SurveyResponse): string => {
-    const c = r.answers?.find(a => a.questionId === "comment")?.value;
-    if (typeof c === "string" && c.trim()) return c.trim();
-    const legacy = r.answers?.find(a => a.questionId !== "recommend" && typeof a.value === "string" && a.value.trim().length > 3)?.value;
-    return typeof legacy === "string" ? legacy.trim() : "";
-};
-
 export default function SurveysDashboardPage() {
     const router = useRouter();
     const { currentProperty: property } = useProperty();
     const { isSuperAdmin } = useAuth();
 
-    const [responses, setResponses] = useState<SurveyResponse[]>([]);
+    const [responses, setResponses] = useState<SurveyResponseWithStay[]>([]);
     const [areaReviews, setAreaReviews] = useState<AreaReview[]>([]);
     const [loading, setLoading] = useState(true);
-    const [selected, setSelected] = useState<SurveyResponse | null>(null);
+    const [selected, setSelected] = useState<SurveyResponseWithStay | null>(null);
     const [deletingId, setDeletingId] = useState<string | null>(null);
     const [polarity, setPolarity] = useState<Map<string, Polarity>>(new Map());
 
@@ -111,22 +49,14 @@ export default function SurveysDashboardPage() {
             if (!property?.id) return;
             setLoading(true);
             try {
-                const [resp, areaRes, templates] = await Promise.all([
-                    SurveyService.getResponses(property.id),
+                const [respRes, areaRes, templates] = await Promise.all([
+                    fetch(`/api/admin/survey-responses?propertyId=${property.id}`).then(r => (r.ok ? r.json() : { responses: [] })).catch(() => ({ responses: [] })),
                     fetch(`/api/admin/area-reviews?propertyId=${property.id}`).then(r => (r.ok ? r.json() : { reviews: [] })).catch(() => ({ reviews: [] })),
                     SurveyService.getTemplates(property.id).catch(() => [] as SurveyTemplate[]),
                 ]);
-                setResponses(resp);
+                setResponses(Array.isArray(respRes?.responses) ? respRes.responses : []);
                 setAreaReviews(Array.isArray(areaRes?.reviews) ? areaRes.reviews : []);
-
-                // Mapa label → polaridade (todos os templates, p/ cobrir respostas antigas).
-                // "improve" por último: se um label existir nos dois grupos, vale o negativo.
-                const map = new Map<string, Polarity>();
-                const feed = (chips: { label: string; label_en?: string; label_es?: string }[] | undefined, p: Polarity) =>
-                    (chips ?? []).forEach(c => [c?.label, c?.label_en, c?.label_es].forEach(l => { if (l) map.set(normLabel(l), p); }));
-                templates.forEach(t => feed(t.config?.highlights?.positive, "positive"));
-                templates.forEach(t => feed(t.config?.highlights?.improve, "improve"));
-                setPolarity(map);
+                setPolarity(buildPolarityMap(templates));
             } catch (e) {
                 console.error("Erro ao buscar indicadores:", e);
             } finally {
@@ -154,7 +84,7 @@ export default function SurveysDashboardPage() {
     const d = useMemo(() => {
         if (!responses.length) return null;
         let yes = 0, maybe = 0, no = 0, recTotal = 0;
-        let sumOverall = 0, nOverall = 0, sumRating = 0, nRating = 0, detractors = 0;
+        let sumOverall = 0, nOverall = 0, sumRating = 0, nRating = 0, detractors = 0, attention = 0;
         const catAgg: Record<string, { sum: number; count: number }> = {};
         const hlPos: Record<string, number> = {}, hlImp: Record<string, number> = {}, hlUnk: Record<string, number> = {};
         responses.forEach(r => {
@@ -163,7 +93,8 @@ export default function SurveysDashboardPage() {
             const ov = overallOf(r);
             if (ov > 0) { sumOverall += ov; nOverall++; }
             if (typeof r.metrics?.averageRating === "number") { sumRating += r.metrics.averageRating; nRating++; }
-            if (r.metrics?.isDetractor) detractors++;
+            const sev = severityOf(r);
+            if (sev === "detractor") detractors++; else if (sev === "attention") attention++;
             if (r.metrics?.categoryRatings) Object.entries(r.metrics.categoryRatings).forEach(([k, v]) => {
                 if (!catAgg[k]) catAgg[k] = { sum: 0, count: 0 };
                 catAgg[k].sum += v as number; catAgg[k].count++;
@@ -180,7 +111,7 @@ export default function SurveysDashboardPage() {
             total: responses.length, yes, maybe, no, recTotal,
             yesPerc: pct(yes), maybePerc: pct(maybe), noPerc: pct(no), recommendRate: pct(yes),
             avgOverall: nOverall ? sumOverall / nOverall : 0,
-            avgRating: nRating ? sumRating / nRating : 0, ratingN: nRating, detractors,
+            avgRating: nRating ? sumRating / nRating : 0, ratingN: nRating, detractors, attention,
             categories: Object.entries(catAgg).map(([name, x]) => ({ name, avg: x.sum / x.count })).sort((a, b) => b.avg - a.avg),
             hlPositive: rank(hlPos), hlImprove: rank(hlImp), hlOther: rank(hlUnk),
         };
@@ -213,10 +144,10 @@ export default function SurveysDashboardPage() {
         return { score: (sAvg * sN + aAvg * aN) / n, surveyN: sN, areaN: aN };
     }, [d, area]);
 
-    // ---- Mural unificado (cronológico) ----
+    // ---- Mural unificado (mais recente primeiro: check-out da estadia / data da avaliação de área) ----
     const mural = useMemo(() => {
-        const items: { kind: "survey" | "area"; date: number; survey?: SurveyResponse; area?: AreaReview }[] = [];
-        responses.forEach(r => items.push({ kind: "survey", date: r.createdAt ? new Date(r.createdAt).getTime() : 0, survey: r }));
+        const items: { kind: "survey" | "area"; date: number; survey?: SurveyResponseWithStay; area?: AreaReview }[] = [];
+        responses.forEach(r => items.push({ kind: "survey", date: sortDateOf(r), survey: r }));
         areaReviews.forEach(a => items.push({ kind: "area", date: a.createdAt ? new Date(a.createdAt).getTime() : 0, area: a }));
         return items.sort((x, y) => y.date - x.date);
     }, [responses, areaReviews]);
@@ -265,9 +196,14 @@ export default function SurveysDashboardPage() {
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">Pesquisas de satisfação + avaliações de áreas, unificadas</p>
                 </div>
-                <Button variant="outline" className="gap-2 shadow-sm" onClick={() => router.push("/admin/surveys/area-reviews")}>
-                    <Settings2 className="w-4 h-4" /> Moderar avaliações de áreas
-                </Button>
+                <div className="flex items-center gap-2">
+                    <Button className="gap-2 shadow-sm" onClick={() => router.push("/admin/surveys/avaliacoes")}>
+                        <ListFilter className="w-4 h-4" /> Todas as avaliações
+                    </Button>
+                    <Button variant="outline" className="gap-2 shadow-sm" onClick={() => router.push("/admin/surveys/area-reviews")}>
+                        <Settings2 className="w-4 h-4" /> Moderar áreas
+                    </Button>
+                </div>
             </header>
 
             <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
@@ -322,7 +258,10 @@ export default function SurveysDashboardPage() {
                                 <div className="bg-background rounded-xl p-5 border shadow-sm flex flex-col">
                                     <h3 className="text-sm font-medium text-muted-foreground mb-1">Respostas</h3>
                                     <span className="text-4xl font-black tracking-tighter text-foreground mt-2">{d.total}</span>
-                                    <div className="mt-4 text-xs font-medium"><span className={d.detractors ? "text-rose-600" : "text-muted-foreground"}>{d.detractors} detrator(es)</span></div>
+                                    <div className="mt-4 text-xs font-medium flex flex-wrap gap-x-2">
+                                        <span className={d.detractors ? "text-rose-600" : "text-muted-foreground"}>{d.detractors} detrator(es)</span>
+                                        <span className={d.attention ? "text-orange-600" : "text-muted-foreground"}>· {d.attention} em atenção</span>
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -376,7 +315,7 @@ export default function SurveysDashboardPage() {
                                                         <div className="space-y-3">
                                                             {list.slice(0, 8).map(h => (
                                                                 <div key={h.label} className="flex items-center gap-3">
-                                                                    <span className="text-sm text-foreground truncate flex-1">{h.label}</span>
+                                                                    <span className="text-sm text-foreground truncate flex-1" title={h.label}>{shortHighlight(h.label)}</span>
                                                                     <div className="h-2 w-28 bg-muted rounded-full overflow-hidden"><div style={{ width: `${(h.count / list[0].count) * 100}%` }} className={`h-full transition-all duration-700 ${st.bar}`} /></div>
                                                                     <span className="text-xs font-bold text-muted-foreground w-6 text-right">{h.count}</span>
                                                                 </div>
@@ -436,11 +375,14 @@ export default function SurveysDashboardPage() {
 
                         {/* Mural unificado */}
                         <div className="mt-8">
-                            <h2 className="text-lg font-bold text-foreground flex items-center gap-2 mb-4"><MessageSquare className="w-5 h-5 text-muted-foreground" /> Mural (pesquisas + áreas)</h2>
+                            <div className="flex items-baseline justify-between gap-3 mb-4">
+                                <h2 className="text-lg font-bold text-foreground flex items-center gap-2"><MessageSquare className="w-5 h-5 text-muted-foreground" /> Mural (pesquisas + áreas)</h2>
+                                <span className="text-xs text-muted-foreground">Mais recentes primeiro (check-out da estadia)</span>
+                            </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                                 {mural.map(item => item.kind === "survey" ? (() => {
                                     const r = item.survey!;
-                                    const det = r.metrics?.isDetractor;
+                                    const sev = severityOf(r);
                                     const rec = recommendOf(r), ov = overallOf(r), hls = splitHighlights(r, polarity), comment = commentOf(r);
                                     const chips: { label: string; p: Polarity }[] = [
                                         ...hls.positive.map(h => ({ label: h, p: "positive" as Polarity })),
@@ -448,11 +390,12 @@ export default function SurveysDashboardPage() {
                                         ...hls.unknown.map(h => ({ label: h, p: "unknown" as Polarity })),
                                     ];
                                     return (
-                                        <div key={`s-${r.id}`} className={`bg-background rounded-xl border flex flex-col shadow-sm transition-all hover:shadow-md ${det ? "border-rose-500/40 bg-rose-500/5" : "border-border"}`}>
+                                        <div key={`s-${r.id}`} className={`bg-background rounded-xl border flex flex-col shadow-sm transition-all hover:shadow-md ${SEVERITY[sev].card}`}>
                                             <div className="p-5 pb-3 border-b border-white/5 flex justify-between items-start">
-                                                <div>
-                                                    <h4 className="font-bold text-sm text-foreground flex items-center gap-2"><span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold uppercase">Pesquisa</span>{det && <span className="bg-rose-100 text-rose-700 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase">Detrator</span>}</h4>
-                                                    <p className="text-xs text-muted-foreground mt-1">Reserva {r.stayId.slice(0, 6).toUpperCase()} · {r.createdAt ? new Date(r.createdAt).toLocaleDateString("pt-BR") : ""}</p>
+                                                <div className="min-w-0">
+                                                    <h4 className="font-bold text-sm text-foreground flex items-center gap-2 flex-wrap"><span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold uppercase">Pesquisa</span>{sev !== "ok" && <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${SEVERITY[sev].chip}`}>{severityLabel(sev)}</span>}</h4>
+                                                    <p className="text-sm font-semibold text-foreground mt-1.5 flex items-center gap-1.5 truncate"><Home className="w-3.5 h-3.5 text-muted-foreground shrink-0" />{r.cabinName || "Cabana não informada"}</p>
+                                                    <p className="text-xs text-muted-foreground mt-0.5 truncate">{r.checkOut ? `Saída ${fmtDate(r.checkOut as string)}` : `Enviada ${fmtDate(r.createdAt as string)}`}{r.guestName ? ` · ${r.guestName}` : ""}</p>
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     {ov > 0 && <span className="text-2xl">{FACES[ov]}</span>}
@@ -460,11 +403,11 @@ export default function SurveysDashboardPage() {
                                                 </div>
                                             </div>
                                             <div className="p-5 flex-1 flex flex-col gap-3">
-                                                {chips.length > 0 && <div className="flex flex-wrap gap-1.5">{chips.slice(0, 6).map((c, i) => <span key={i} className={`text-[11px] rounded-full px-2 py-0.5 font-medium ${HL_STYLE[c.p].chip}`}>{c.p === "improve" ? "▾ " : c.p === "positive" ? "▴ " : ""}{c.label}</span>)}</div>}
+                                                {chips.length > 0 && <div className="flex flex-wrap gap-1.5">{chips.slice(0, 6).map((c, i) => <span key={i} title={c.label} className={`text-[11px] rounded-full px-2 py-0.5 font-medium ${HL_STYLE[c.p].chip}`}>{c.p === "improve" ? "▾ " : c.p === "positive" ? "▴ " : ""}{shortHighlight(c.label, 40)}</span>)}</div>}
                                                 {comment ? <p className="text-sm text-foreground/90 italic leading-relaxed line-clamp-4 bg-muted/40 p-3 rounded-lg">{comment}</p> : chips.length === 0 ? <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm py-4 italic">Sem comentário.</div> : null}
                                             </div>
                                             <div className="p-4 pt-0 mt-auto flex items-center gap-2">
-                                                <Button variant={det ? "destructive" : "secondary"} className="flex-1 h-9 text-xs font-bold" onClick={() => setSelected(r)}>Abrir avaliação</Button>
+                                                <Button variant={sev === "detractor" ? "destructive" : "secondary"} className="flex-1 h-9 text-xs font-bold" onClick={() => setSelected(r)}>Abrir avaliação</Button>
                                                 {isSuperAdmin && <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 text-rose-500 hover:bg-rose-500/10" disabled={deletingId === r.id} onClick={() => handleDelete(r.id)} title="Excluir (super admin)">{deletingId === r.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}</Button>}
                                             </div>
                                         </div>
@@ -472,9 +415,9 @@ export default function SurveysDashboardPage() {
                                 })() : (() => {
                                     const a = item.area!;
                                     const st = AREA_STATUS[a.status || "pending"];
-                                    const low = a.rating <= 2;
+                                    const sev = severityOfRating(a.rating);
                                     return (
-                                        <div key={`a-${a.id}`} className={`bg-background rounded-xl border flex flex-col shadow-sm ${low ? "border-rose-500/40 bg-rose-500/5" : "border-border"}`}>
+                                        <div key={`a-${a.id}`} className={`bg-background rounded-xl border flex flex-col shadow-sm ${SEVERITY[sev].card}`}>
                                             <div className="p-5 pb-3 border-b border-white/5 flex justify-between items-start">
                                                 <div>
                                                     <h4 className="font-bold text-sm text-foreground flex items-center gap-2"><span className="text-[10px] bg-muted text-muted-foreground px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1"><MapPin className="w-3 h-3" />Área</span></h4>
@@ -504,7 +447,14 @@ export default function SurveysDashboardPage() {
                     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
                         <div className="bg-background rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl border overflow-hidden">
                             <div className="flex justify-between items-center p-6 bg-muted/30 border-b">
-                                <div><h2 className="text-lg font-black text-foreground">Ficha de avaliação</h2><p className="text-sm text-muted-foreground">Reserva: {selected.stayId}</p></div>
+                                <div>
+                                    <h2 className="text-lg font-black text-foreground">Ficha de avaliação</h2>
+                                    <p className="text-sm text-muted-foreground">
+                                        {selected.cabinName || "Cabana não informada"}
+                                        {selected.checkIn && selected.checkOut ? ` · ${fmtDate(selected.checkIn as string)} → ${fmtDate(selected.checkOut as string)}` : ""}
+                                        {selected.guestName ? ` · ${selected.guestName}` : ""}
+                                    </p>
+                                </div>
                                 <Button variant="ghost" size="icon" onClick={() => setSelected(null)} className="rounded-full hover:bg-muted"><X className="w-5 h-5" /></Button>
                             </div>
                             <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
@@ -530,7 +480,8 @@ export default function SurveysDashboardPage() {
                                         })}
                                     </div>
                                 )}
-                                {comment && (<div><h3 className="text-sm font-bold border-b pb-2 mb-3">Comentário</h3><p className="text-sm text-muted-foreground italic bg-muted/30 p-4 rounded-lg leading-relaxed">{comment}</p></div>)}
+                                {comment && (<div><h3 className="text-sm font-bold border-b pb-2 mb-3">Comentário</h3><p className="text-sm text-muted-foreground italic bg-muted/30 p-4 rounded-lg leading-relaxed whitespace-pre-wrap">{comment}</p></div>)}
+                                <StayCrewPanel stayId={selected.stayId} propertyId={property?.id} />
                             </div>
                             <div className="p-4 bg-muted/30 border-t flex justify-between items-center gap-3">
                                 <span className="text-xs text-muted-foreground truncate">Enviada em {selected.createdAt ? new Date(selected.createdAt).toLocaleString("pt-BR") : ""}</span>

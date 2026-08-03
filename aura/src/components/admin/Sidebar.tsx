@@ -21,7 +21,7 @@ import {
   LayoutGrid, LayoutTemplate,
   UserCircle2, Smartphone, Heart, History,
   Package, ArrowLeftRight, SlidersHorizontal,
-  ShoppingCart, Truck, Landmark, AlertOctagon,
+  ShoppingCart, Truck, Landmark, AlertOctagon, ListFilter,
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import Image from "next/image";
@@ -234,7 +234,8 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "resort_map", label: "Mapa do Resort",     icon: MapPinned,        href: "/admin/core/resort-map", roles: ["super_admin","admin","manager"] },
       { id: "escalas",    label: "Escalas",            icon: ClipboardCheck,   href: "/admin/escalas",         roles: ["super_admin","admin","manager"] },
       { id: "logs",       label: "Logs de Auditoria",  icon: FileText,         href: "/admin/logs",            roles: ["super_admin","admin","manager"] },
-      { id: "avaliacoes", label: "Avaliações",         icon: Star,             href: "/admin/surveys/responses", roles: ["super_admin","admin","reception","marketing","manager"] },
+      { id: "avaliacoes", label: "Avaliações",         icon: Star,             href: "/admin/surveys/responses", roles: ["super_admin","admin","reception","marketing","manager"], exactMatch: true },
+      { id: "avaliacoes_todas", label: "Todas as avaliações", icon: ListFilter, href: "/admin/surveys/avaliacoes", roles: ["super_admin","admin","reception","marketing","manager"] },
     ],
   },
   {

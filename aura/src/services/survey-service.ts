@@ -1,6 +1,6 @@
-import { supabase } from "@/lib/supabase";
-import { SurveyResponse, SurveyTemplate, Stay, SurveyCategoryItem } from "@/types/aura";
-import { computeSurveyMetrics } from "@/lib/survey-metrics";
+import { supabase, db } from "@/lib/supabase";
+import { SurveyResponse, SurveyResponseWithStay, SurveyTemplate, Stay, SurveyCategoryItem } from "@/types/aura";
+import { computeSurveyMetrics, normalizeSurveyAnswers } from "@/lib/survey-metrics";
 
 export interface SurveyInsight {
   id: string;
@@ -197,7 +197,10 @@ export class SurveyService {
         return { success: false, error: "Esta pesquisa já foi respondida." };
       }
 
-      const answers = Object.entries(answersRecord).map(([questionId, value]) => ({ questionId, value }));
+      // Destaque livre longo vira comentário (chip precisa ser rótulo) — igual à rota do hóspede.
+      const answers = normalizeSurveyAnswers(
+        Object.entries(answersRecord).map(([questionId, value]) => ({ questionId, value }))
+      );
       const metrics = computeSurveyMetrics(template, answers);
 
       const id = crypto.randomUUID();
@@ -216,6 +219,54 @@ export class SurveyService {
   static async getResponses(propertyId: string): Promise<SurveyResponse[]> {
     const { data } = await supabase.from('survey_responses').select('*').eq('propertyId', propertyId).order('createdAt', { ascending: false });
     return (data || []) as SurveyResponse[];
+  }
+
+  // Respostas + contexto da estadia (cabana, hóspede, datas). O painel mostra a cabana
+  // e ordena por check-out: o id da reserva não diz nada para quem lê o card.
+  static async getResponsesWithStay(propertyId: string): Promise<SurveyResponseWithStay[]> {
+    const client = db();
+    const { data } = await client
+      .from('survey_responses').select('*').eq('propertyId', propertyId)
+      .order('createdAt', { ascending: false });
+
+    const responses = (data || []) as SurveyResponse[];
+    if (!responses.length) return [];
+
+    const uniq = (xs: (string | null)[]) => Array.from(new Set(xs.filter(Boolean) as string[]));
+
+    const stayIds = uniq(responses.map(r => r.stayId));
+    if (!stayIds.length) return responses as SurveyResponseWithStay[];
+
+    const { data: staysData } = await client
+      .from('stays').select('id, cabinId, guestId, checkIn, checkOut').in('id', stayIds);
+    const stays = (staysData || []) as { id: string; cabinId: string | null; guestId: string | null; checkIn: string; checkOut: string }[];
+
+    const cabinIds = uniq(stays.map(s => s.cabinId));
+    const guestIds = uniq(stays.map(s => s.guestId));
+
+    const [cabinsRes, guestsRes] = await Promise.all([
+      cabinIds.length ? client.from('cabins').select('id, name').in('id', cabinIds) : Promise.resolve({ data: [] }),
+      guestIds.length ? client.from('guests').select('id, fullName').in('id', guestIds) : Promise.resolve({ data: [] }),
+    ]);
+
+    const cabinName = new Map<string, string>();
+    for (const c of ((cabinsRes.data || []) as { id: string; name: string }[])) cabinName.set(c.id, c.name);
+    const guestName = new Map<string, string>();
+    for (const g of ((guestsRes.data || []) as { id: string; fullName: string }[])) guestName.set(g.id, g.fullName);
+
+    const stayById = new Map(stays.map(s => [s.id, s]));
+
+    return responses.map(r => {
+      const stay = stayById.get(r.stayId);
+      if (!stay) return r as SurveyResponseWithStay;
+      return {
+        ...r,
+        cabinName: stay.cabinId ? cabinName.get(stay.cabinId) : undefined,
+        guestName: stay.guestId ? guestName.get(stay.guestId) : undefined,
+        checkIn: stay.checkIn,
+        checkOut: stay.checkOut,
+      } as SurveyResponseWithStay;
+    });
   }
 
   static async getLatestInsight(propertyId: string, period: 'daily' | 'weekly' | 'monthly' | 'yearly' = 'daily'): Promise<SurveyInsight | null> {

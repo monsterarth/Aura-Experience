@@ -632,6 +632,16 @@ export interface SurveyResponse {
   createdAt: Timestamp;
 }
 
+// Resposta + contexto da estadia, montado no servidor (não existe no banco).
+// O painel mostra a cabana e ordena por check-out — o id da reserva não diz
+// nada para quem lê o card.
+export interface SurveyResponseWithStay extends SurveyResponse {
+  cabinName?: string;
+  guestName?: string;
+  checkIn?: Timestamp;
+  checkOut?: Timestamp;
+}
+
 // --- ENTIDADE ESTADIA ---
 export interface Stay {
   id: string;

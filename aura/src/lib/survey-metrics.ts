@@ -25,6 +25,54 @@ export interface SurveyMetrics {
 
 type Answer = { questionId: string; value: unknown };
 
+// Limite de um destaque: chip precisa ser rótulo, não texto.
+export const MAX_HIGHLIGHT_LEN = 60;
+
+// O campo "Outro…" é livre: quando o hóspede escreve um desabafo ali, aquilo não é um
+// destaque — não agrupa no ranking e estoura o layout do painel. Texto acima do limite
+// sai da lista de chips e vira comentário (com o rótulo da polaridade preservado);
+// o que for curto continua sendo chip normal.
+// Roda nos DOIS caminhos de gravação (rota /api/guest/survey e SurveyService.submitSurvey).
+export function normalizeSurveyAnswers(answers: Answer[]): Answer[] {
+    const LISTS = [
+        { id: "highlightsPositive", label: "O que mais gostou" },
+        { id: "highlightsImprove", label: "O que podemos melhorar" },
+        { id: "highlights", label: "Destaque" },
+    ];
+
+    const values = new Map<string, unknown>(answers.map(a => [a.questionId, a.value]));
+    const folded = new Map<string, string>(); // texto longo → rótulo (1ª polaridade vence)
+
+    for (const list of LISTS) {
+        const raw = values.get(list.id);
+        if (!Array.isArray(raw)) continue;
+        const kept: string[] = [];
+        for (const item of raw as unknown[]) {
+            const s = typeof item === "string" ? item.trim() : "";
+            if (!s) continue;
+            if (s.length > MAX_HIGHLIGHT_LEN) { if (!folded.has(s)) folded.set(s, list.label); }
+            else kept.push(s);
+        }
+        values.set(list.id, kept);
+    }
+
+    if (folded.size === 0) return answers;
+
+    const previous = typeof values.get("comment") === "string" ? (values.get("comment") as string).trim() : "";
+    const lines = Array.from(folded.entries()).map(([text, label]) => `${label}: ${text}`);
+    values.set("comment", [previous, ...lines].filter(Boolean).join("\n\n"));
+
+    const isList = (id: string) => LISTS.some(l => l.id === id);
+    const out = answers
+        .filter(a => !(isList(a.questionId) && (values.get(a.questionId) as string[]).length === 0))
+        .map(a => ({ questionId: a.questionId, value: values.get(a.questionId) }));
+
+    if (!answers.some(a => a.questionId === "comment")) {
+        out.push({ questionId: "comment", value: values.get("comment") });
+    }
+    return out;
+}
+
 export function computeSurveyMetrics(template: SurveyTemplate, answers: Answer[]): SurveyMetrics {
     if (template.version === "curated") {
         const val = (id: string) => answers.find(a => a.questionId === id)?.value;

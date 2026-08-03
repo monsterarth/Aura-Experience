@@ -25,6 +25,30 @@ const TASK_STATUS_LABELS: Record<string, string> = {
   cancelled: 'Cancelada',
 };
 
+// Dias antes do check-in em que o preparo da cabana ainda conta como "desta estadia".
+const PREP_WINDOW_DAYS = 3;
+
+// Tarefa de governança resumida para a ficha da avaliação (nomes já resolvidos).
+export interface StayCrewTask {
+  id: string;
+  type: string;
+  typeLabel: string;
+  status: string;
+  statusLabel: string;
+  date: string | null;
+  phase: 'preparo' | 'estadia' | 'saida';
+  cleaners: string[];
+  conferredBy: string | null;
+}
+
+// Data que representa a tarefa: quando terminou; senão quando foi criada.
+const refDate = (t: HousekeepingTask): Date | null => {
+  const raw = (t.finishedAt || t.updatedAt || t.createdAt) as string | undefined;
+  if (!raw) return null;
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+};
+
 async function resolveLocation(cabinId?: string | null, structureId?: string | null, customLocation?: string | null): Promise<string> {
   if (cabinId) {
     const { data } = await db().from('cabins').select('name').eq('id', cabinId).single();
@@ -556,5 +580,74 @@ export const HousekeepingService = {
       propertyId, userId: actorId, userName: actorName, action: "DELETE", entity: "CABIN", entityId: ruleId,
       details: "Regra de automação de governança excluída."
     });
+  },
+
+  // Quem cuidou da cabana de uma estadia: camareiras (assignedTo) e a governanta que
+  // liberou (conferredBy). Usado na ficha da avaliação — quando o hóspede reclama da
+  // limpeza, o gestor precisa ver o nome sem caçar na fila de governança.
+  // Pega tanto as tarefas amarradas à estadia (inspeção de entrada, diárias) quanto o
+  // preparo da cabana antes da chegada, que pertence à estadia anterior.
+  async getStayCrew(propertyId: string, stayId: string): Promise<StayCrewTask[]> {
+    const client = db();
+
+    const { data: stay } = await client
+      .from('stays').select('id, cabinId, checkIn, checkOut').eq('id', stayId).eq('propertyId', propertyId).maybeSingle();
+    if (!stay) return [];
+
+    const checkIn = stay.checkIn ? new Date(stay.checkIn as string) : null;
+    const checkOut = stay.checkOut ? new Date(stay.checkOut as string) : null;
+    // Janela: o preparo começa antes da chegada (faxina da saída anterior) e o que
+    // interessa termina no check-out — faxina posterior é da próxima estadia.
+    const windowStart = checkIn ? new Date(checkIn.getTime() - PREP_WINDOW_DAYS * 864e5) : null;
+    const windowEnd = checkOut ?? new Date();
+
+    const byStay = client.from('housekeeping_tasks').select('*').eq('propertyId', propertyId).eq('stayId', stayId);
+    // Do vizinho de janela só interessa o PREPARO (faxina de troca e revisão de entrada):
+    // arrumação diária da estadia anterior é a rotina do outro hóspede, não desta cabana-avaliação.
+    const byCabin = stay.cabinId && windowStart
+      ? client.from('housekeeping_tasks').select('*').eq('propertyId', propertyId).eq('cabinId', stay.cabinId)
+        .in('type', ['turnover', 'inspection_checkin'])
+        .gte('createdAt', windowStart.toISOString()).lte('createdAt', windowEnd.toISOString())
+      : Promise.resolve({ data: [] as HousekeepingTask[] });
+
+    const [stayRes, cabinRes] = await Promise.all([byStay, byCabin]);
+
+    const merged = new Map<string, HousekeepingTask>();
+    for (const t of ([...(stayRes.data || []), ...(cabinRes.data || [])] as HousekeepingTask[])) merged.set(t.id, t);
+
+    const tasks = Array.from(merged.values()).filter(t => {
+      if (t.status === 'cancelled' || t.status === 'skipped') return false;
+      // Tarefa da PRÓXIMA estadia (faxina depois da saída) não conta para esta avaliação.
+      const ref = refDate(t);
+      return !(checkOut && ref && ref.getTime() > checkOut.getTime() && t.stayId !== stayId);
+    });
+
+    const staffIds = Array.from(new Set(tasks.flatMap(t => [...(t.assignedTo || []), t.conferredBy || ""]).filter(Boolean)));
+    const nameById = new Map<string, string>();
+    if (staffIds.length) {
+      const { data: staff } = await client.from('staff').select('id, fullName').in('id', staffIds);
+      for (const s of ((staff || []) as { id: string; fullName: string }[])) nameById.set(s.id, s.fullName);
+    }
+
+    return tasks
+      .map<StayCrewTask>(t => {
+        const ref = refDate(t);
+        return {
+          id: t.id,
+          type: t.type,
+          typeLabel: TASK_TYPE_LABELS[t.type] || t.type,
+          status: t.status,
+          statusLabel: TASK_STATUS_LABELS[t.status] || t.status,
+          date: ref ? ref.toISOString() : null,
+          phase: checkIn && ref && ref.getTime() < checkIn.getTime() ? 'preparo'
+            : checkOut && ref && ref.getTime() > checkOut.getTime() ? 'saida'
+              : 'estadia',
+          // Id sem staff correspondente = pessoa removida da equipe: melhor dizer isso do
+          // que inventar "equipe" e o gestor achar que o nome se perdeu no caminho.
+          cleaners: (t.assignedTo || []).map(id => nameById.get(id) || 'Não identificado'),
+          conferredBy: t.conferredBy ? (nameById.get(t.conferredBy) || 'Não identificado') : null,
+        };
+      })
+      .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   }
 };

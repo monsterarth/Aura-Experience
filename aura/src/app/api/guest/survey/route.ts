@@ -4,7 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { SurveyTemplate } from "@/types/aura";
-import { computeSurveyMetrics } from "@/lib/survey-metrics";
+import { computeSurveyMetrics, normalizeSurveyAnswers } from "@/lib/survey-metrics";
 
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
@@ -106,7 +106,10 @@ export async function POST(request: NextRequest) {
     }
 
     const template = templateData as SurveyTemplate;
-    const answers = Object.entries(answersRecord).map(([questionId, value]) => ({ questionId, value }));
+    // Destaque livre longo vira comentário antes de tudo (chip precisa ser rótulo).
+    const answers = normalizeSurveyAnswers(
+        Object.entries(answersRecord).map(([questionId, value]) => ({ questionId, value }))
+    );
     // Métricas: curado (deriva de overall/recommend/categorias) ou legado (questions[]).
     const metrics = computeSurveyMetrics(template, answers);
 
