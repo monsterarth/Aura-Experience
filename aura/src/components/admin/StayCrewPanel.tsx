@@ -5,7 +5,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Sparkles, UserCheck, Users, LogIn, LogOut, ConciergeBell } from "lucide-react";
+import { Loader2, Sparkles, UserCheck, Users, LogIn, LogOut, ConciergeBell, ClipboardCheck } from "lucide-react";
 import type { CrewActor, StayCrewTask } from "@/services/housekeeping-service";
 
 const PHASE_LABEL: Record<string, string> = {
@@ -119,8 +119,21 @@ export function StayCrewPanel({ stayId, propertyId }: { stayId?: string; propert
                                                         </span>
                                                         <span className="flex items-center gap-1.5 text-foreground/80">
                                                             <UserCheck className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                                                            {t.conferredBy ? `Conferida por ${t.conferredBy}` : `Sem conferência registrada · ${t.statusLabel}`}
+                                                            {t.conferredBy ? `Liberada por ${t.conferredBy}` : `Sem liberação registrada · ${t.statusLabel}`}
                                                         </span>
+                                                        {t.checked && (
+                                                            <span className="flex items-start gap-1.5 text-foreground/80">
+                                                                <ClipboardCheck className="w-3.5 h-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                                                                <span>
+                                                                    {t.checked.by
+                                                                        ? <>Conferência de saída (frigobar, chave e achados) por <strong className="font-semibold">{t.checked.by}</strong>{t.checked.at ? ` · ${fmtStamp(t.checked.at)}` : ""}</>
+                                                                        : "Conferência de saída concluída, sem autor registrado"}
+                                                                    {t.checked.source === "lost_items" && (
+                                                                        <span className="block text-[11px] text-muted-foreground">deduzido de quem registrou os objetos esquecidos</span>
+                                                                    )}
+                                                                </span>
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
                                             ))}

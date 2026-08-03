@@ -3,6 +3,7 @@ import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { ConciergeService } from '@/services/concierge-service';
 import { StayService } from '@/services/stay-service';
+import { AuditService } from '@/services/audit-service';
 
 export const dynamic = 'force-dynamic';
 
@@ -93,15 +94,46 @@ export async function POST(req: Request) {
       if (error) throw error;
     }
 
-    // Marca a tarefa de faxina como conferida (sai do quadro de checkout).
+    // Marca a tarefa de faxina como conferida (sai do quadro de checkout) e grava QUEM
+    // conferiu: a conferência de saída sempre tem um responsável, e sem isto não sobrava
+    // rastro nenhum quando o hóspede contesta um frigobar ou um objeto não devolvido.
+    // O ator vem da sessão, nunca do corpo da requisição.
     if (body.taskId && body.cabinChecked) {
-      let q = supabaseAdmin
-        .from('housekeeping_tasks')
-        .update({ cabinChecked: true, updatedAt: now })
-        .eq('id', body.taskId);
-      if (!isAdminTier) q = q.eq('propertyId', auth.staff.propertyId);
-      const { error } = await q;
-      if (error) throw error;
+      const markChecked = (payload: Record<string, unknown>) => {
+        let q = supabaseAdmin!.from('housekeeping_tasks').update(payload).eq('id', body.taskId!);
+        if (!isAdminTier) q = q.eq('propertyId', auth.staff.propertyId);
+        return q;
+      };
+
+      const { error } = await markChecked({
+        cabinChecked: true, cabinCheckedBy: auth.staff.id, cabinCheckedAt: now, updatedAt: now,
+      });
+      if (error) {
+        // Ponte até add_cabin_conference_author.sql ser aplicada: sem as colunas o PostgREST
+        // rejeita o update inteiro, e a conferência da camareira ficaria por marcar. Regrava
+        // sem o autor em vez de derrubar o fluxo de campo.
+        console.error('[field/cabin-conference] update com autor falhou, tentando sem:', error.message);
+        const retry = await markChecked({ cabinChecked: true, updatedAt: now });
+        if (retry.error) throw retry.error;
+      }
+
+      // Trilha de auditoria: o nome fica legível em /admin/logs mesmo se a tarefa for apagada.
+      const { data: task } = await supabaseAdmin
+        .from('housekeeping_tasks').select('propertyId, cabinId').eq('id', body.taskId).maybeSingle();
+      if (task?.propertyId) {
+        const { data: cabin } = task.cabinId
+          ? await supabaseAdmin.from('cabins').select('name').eq('id', task.cabinId).maybeSingle()
+          : { data: null };
+        await AuditService.log({
+          propertyId: task.propertyId,
+          userId: auth.staff.id,
+          userName: auth.staff.fullName,
+          action: 'UPDATE',
+          entity: 'CABIN',
+          entityId: body.taskId,
+          details: `Conferência de saída concluída (frigobar, chave, achados e empréstimos): ${cabin?.name || 'cabana'}.`,
+        });
+      }
     }
 
     return NextResponse.json({ ok: true });

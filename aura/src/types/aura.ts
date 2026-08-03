@@ -378,6 +378,8 @@ export interface HousekeepingTask {
   needsConference?: boolean; // Para tarefas custom: exige conferência da governanta antes de concluir
   keyLocation?: 'reception' | 'cabin' | 'unknown';
   cabinChecked?: boolean;         // true após a camareira concluir a conferência (frigobar + chave + achados + empréstimos)
+  cabinCheckedBy?: string;        // staff.id de quem conferiu — vem da sessão no servidor, nunca do cliente
+  cabinCheckedAt?: Timestamp;     // quando a conferência de saída foi concluída
   observations?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;

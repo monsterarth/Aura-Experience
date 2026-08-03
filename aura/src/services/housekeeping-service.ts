@@ -43,6 +43,10 @@ export interface StayCrewTask {
   phase: 'preparo' | 'estadia' | 'saida';
   cleaners: string[];
   conferredBy: string | null;
+  // Conferência de saída (frigobar, chave, achados) — o passo que antecede a faxina.
+  // `source: 'lost_items'` = autor deduzido de quem registrou os objetos esquecidos,
+  // para conferências anteriores à coluna `cabinCheckedBy`.
+  checked: { by: string | null; at: string | null; source: 'conference' | 'lost_items' } | null;
 }
 
 // Quem operou o balcão. Check-in e check-out não gravam autor na estadia — quem registra
@@ -53,6 +57,33 @@ export interface StayCrew {
   tasks: StayCrewTask[];
   reception: { checkIn: CrewActor | null; checkOut: CrewActor | null };
 }
+
+// Conferência de saída: quem fechou frigobar/chave/achados antes da faxina.
+// Conferências gravadas antes da coluna `cabinCheckedBy` não têm autor; nesses casos, se a
+// estadia registrou objetos esquecidos, quem reportou É quem estava conferindo — devolvemos
+// o nome marcado como deduzido ('lost_items'), para a tela dizer de onde veio.
+const checkedOf = (
+  t: HousekeepingTask,
+  stay: { lostItemsReportedBy?: string; lostItemsReportedAt?: string },
+  nameById: Map<string, string>,
+): StayCrewTask['checked'] => {
+  if (!t.cabinChecked) return null;
+  if (t.cabinCheckedBy) {
+    return {
+      by: nameById.get(t.cabinCheckedBy) || 'Não identificado',
+      at: (t.cabinCheckedAt as string) || null,
+      source: 'conference',
+    };
+  }
+  if (stay.lostItemsReportedBy) {
+    return {
+      by: nameById.get(stay.lostItemsReportedBy) || 'Não identificado',
+      at: stay.lostItemsReportedAt || null,
+      source: 'lost_items',
+    };
+  }
+  return { by: null, at: null, source: 'conference' };
+};
 
 // Data que representa a tarefa: quando terminou; senão quando foi criada.
 const refDate = (t: HousekeepingTask): Date | null => {
@@ -606,7 +637,8 @@ export const HousekeepingService = {
     const empty: StayCrew = { tasks: [], reception: { checkIn: null, checkOut: null } };
 
     const { data: stay } = await client
-      .from('stays').select('id, cabinId, checkIn, checkOut').eq('id', stayId).eq('propertyId', propertyId).maybeSingle();
+      .from('stays').select('id, cabinId, checkIn, checkOut, lostItemsReportedBy, lostItemsReportedAt')
+      .eq('id', stayId).eq('propertyId', propertyId).maybeSingle();
     if (!stay) return empty;
 
     const checkIn = stay.checkIn ? new Date(stay.checkIn as string) : null;
@@ -652,7 +684,11 @@ export const HousekeepingService = {
       return !(checkOut && ref && ref.getTime() > checkOut.getTime() && t.stayId !== stayId);
     });
 
-    const staffIds = Array.from(new Set(tasks.flatMap(t => [...(t.assignedTo || []), t.conferredBy || ""]).filter(Boolean)));
+    const staffIds = Array.from(new Set(
+      tasks.flatMap(t => [...(t.assignedTo || []), t.conferredBy || "", t.cabinCheckedBy || ""])
+        .concat([(stay.lostItemsReportedBy as string) || ""])
+        .filter(Boolean)
+    ));
     const nameById = new Map<string, string>();
     if (staffIds.length) {
       const { data: staff } = await client.from('staff').select('id, fullName').in('id', staffIds);
@@ -676,6 +712,7 @@ export const HousekeepingService = {
           // que inventar "equipe" e o gestor achar que o nome se perdeu no caminho.
           cleaners: (t.assignedTo || []).map(id => nameById.get(id) || 'Não identificado'),
           conferredBy: t.conferredBy ? (nameById.get(t.conferredBy) || 'Não identificado') : null,
+          checked: checkedOf(t, stay as { lostItemsReportedBy?: string; lostItemsReportedAt?: string }, nameById),
         };
       })
       .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
