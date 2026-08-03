@@ -1,6 +1,6 @@
 // src/app/api/admin/survey-responses/housekeeping/route.ts
-// Quem limpou e conferiu a cabana da estadia avaliada.
-// Carregado sob demanda ao abrir a ficha da avaliação — não pesa a listagem.
+// Quem atendeu no balcão (check-in/check-out) e quem limpou/conferiu a cabana da
+// estadia avaliada. Carregado sob demanda ao abrir a ficha — não pesa a listagem.
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isAuthError } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -19,8 +19,8 @@ export async function GET(req: NextRequest) {
     if (!stayId || !propertyId) return NextResponse.json({ error: "Missing stayId" }, { status: 400 });
 
     try {
-        const tasks = await HousekeepingService.getStayCrew(propertyId, stayId);
-        return NextResponse.json({ tasks });
+        const crew = await HousekeepingService.getStayCrew(propertyId, stayId);
+        return NextResponse.json(crew);
     } catch (e) {
         console.error("Erro ao buscar equipe da estadia:", e);
         return NextResponse.json({ error: "Falha ao carregar a equipe." }, { status: 500 });

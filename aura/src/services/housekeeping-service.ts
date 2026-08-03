@@ -20,6 +20,10 @@ const TASK_TYPE_LABELS: Record<string, string> = {
 };
 
 const TASK_STATUS_LABELS: Record<string, string> = {
+  pending: 'Pendente',
+  in_progress: 'Em andamento',
+  paused: 'Pausada',
+  awaiting_checkout: 'Aguardando check-out',
   waiting_conference: 'Aguardando conferência',
   completed: 'Concluída',
   cancelled: 'Cancelada',
@@ -39,6 +43,15 @@ export interface StayCrewTask {
   phase: 'preparo' | 'estadia' | 'saida';
   cleaners: string[];
   conferredBy: string | null;
+}
+
+// Quem operou o balcão. Check-in e check-out não gravam autor na estadia — quem registra
+// é o log de auditoria (ação CHECKIN/CHECKOUT sobre a estadia), então é de lá que vem.
+export interface CrewActor { name: string; at: string | null }
+
+export interface StayCrew {
+  tasks: StayCrewTask[];
+  reception: { checkIn: CrewActor | null; checkOut: CrewActor | null };
 }
 
 // Data que representa a tarefa: quando terminou; senão quando foi criada.
@@ -582,17 +595,19 @@ export const HousekeepingService = {
     });
   },
 
-  // Quem cuidou da cabana de uma estadia: camareiras (assignedTo) e a governanta que
-  // liberou (conferredBy). Usado na ficha da avaliação — quando o hóspede reclama da
-  // limpeza, o gestor precisa ver o nome sem caçar na fila de governança.
-  // Pega tanto as tarefas amarradas à estadia (inspeção de entrada, diárias) quanto o
-  // preparo da cabana antes da chegada, que pertence à estadia anterior.
-  async getStayCrew(propertyId: string, stayId: string): Promise<StayCrewTask[]> {
+  // Quem cuidou da cabana de uma estadia: recepção (check-in/check-out), camareiras
+  // (assignedTo) e a governanta que liberou (conferredBy). Usado na ficha da avaliação —
+  // quando o hóspede reclama, o gestor precisa ver o nome sem caçar na fila de governança
+  // nem no log de auditoria.
+  // Pega tanto as tarefas amarradas à estadia (inspeção de entrada, diárias, faxina de
+  // saída) quanto o preparo da cabana antes da chegada, que pertence à estadia anterior.
+  async getStayCrew(propertyId: string, stayId: string): Promise<StayCrew> {
     const client = db();
+    const empty: StayCrew = { tasks: [], reception: { checkIn: null, checkOut: null } };
 
     const { data: stay } = await client
       .from('stays').select('id, cabinId, checkIn, checkOut').eq('id', stayId).eq('propertyId', propertyId).maybeSingle();
-    if (!stay) return [];
+    if (!stay) return empty;
 
     const checkIn = stay.checkIn ? new Date(stay.checkIn as string) : null;
     const checkOut = stay.checkOut ? new Date(stay.checkOut as string) : null;
@@ -610,7 +625,22 @@ export const HousekeepingService = {
         .gte('createdAt', windowStart.toISOString()).lte('createdAt', windowEnd.toISOString())
       : Promise.resolve({ data: [] as HousekeepingTask[] });
 
-    const [stayRes, cabinRes] = await Promise.all([byStay, byCabin]);
+    // Recepção: o autor do balcão só existe no log de auditoria. Se o check-out foi
+    // refeito, vale o mais recente.
+    const receptionQ = client.from('audit_logs')
+      .select('action, userName, timestamp')
+      .eq('propertyId', propertyId).eq('entityId', stayId)
+      .in('action', ['CHECKIN', 'CHECKOUT'])
+      .order('timestamp', { ascending: false });
+
+    const [stayRes, cabinRes, receptionRes] = await Promise.all([byStay, byCabin, receptionQ]);
+
+    const logs = (receptionRes.data || []) as { action: string; userName: string | null; timestamp: string | null }[];
+    const actorOf = (action: string): CrewActor | null => {
+      const hit = logs.find(l => l.action === action);
+      return hit ? { name: hit.userName || 'Não identificado', at: hit.timestamp } : null;
+    };
+    const reception = { checkIn: actorOf('CHECKIN'), checkOut: actorOf('CHECKOUT') };
 
     const merged = new Map<string, HousekeepingTask>();
     for (const t of ([...(stayRes.data || []), ...(cabinRes.data || [])] as HousekeepingTask[])) merged.set(t.id, t);
@@ -629,7 +659,7 @@ export const HousekeepingService = {
       for (const s of ((staff || []) as { id: string; fullName: string }[])) nameById.set(s.id, s.fullName);
     }
 
-    return tasks
+    const crewTasks = tasks
       .map<StayCrewTask>(t => {
         const ref = refDate(t);
         return {
@@ -649,5 +679,7 @@ export const HousekeepingService = {
         };
       })
       .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+
+    return { tasks: crewTasks, reception };
   }
 };
