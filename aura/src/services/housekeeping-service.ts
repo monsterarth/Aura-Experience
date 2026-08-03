@@ -43,38 +43,44 @@ export interface StayCrewTask {
   phase: 'preparo' | 'estadia' | 'saida';
   cleaners: string[];
   conferredBy: string | null;
-  // Conferência de saída (frigobar, chave, achados) — o passo que antecede a faxina.
-  // `source: 'lost_items'` = autor deduzido de quem registrou os objetos esquecidos,
-  // para conferências anteriores à coluna `cabinCheckedBy`.
-  checked: { by: string | null; at: string | null; source: 'conference' | 'lost_items' } | null;
 }
 
 // Quem operou o balcão. Check-in e check-out não gravam autor na estadia — quem registra
 // é o log de auditoria (ação CHECKIN/CHECKOUT sobre a estadia), então é de lá que vem.
 export interface CrewActor { name: string; at: string | null }
 
+// Conferência de frigobar/chave/achados: é um evento da ESTADIA, não um atributo da faxina.
+// Acontece uma vez, logo após o check-out e antes de qualquer limpeza — por isso vem
+// separada das tarefas. `source: 'lost_items'` = autor deduzido de quem registrou os
+// objetos esquecidos, para conferências anteriores à coluna `cabinCheckedBy`.
+export interface CrewConference { by: string | null; at: string | null; source: 'conference' | 'lost_items' }
+
 export interface StayCrew {
   tasks: StayCrewTask[];
   reception: { checkIn: CrewActor | null; checkOut: CrewActor | null };
+  conference: CrewConference | null;
 }
 
-// Conferência de saída: quem fechou frigobar/chave/achados antes da faxina.
-// Só existe DEPOIS do check-out — a faxina que aparece no preparo é a da estadia anterior,
-// e a conferência dela é do hóspede anterior; por isso o chamador só passa por aqui na
-// fase 'saida'.
+// Conferência de frigobar/chave/achados da estadia. A marca (`cabinChecked`) vive na faxina
+// de saída, mas o evento é da estadia: acontece uma vez, antes de qualquer limpeza. Só vale
+// a faxina de SAÍDA — a do preparo é da estadia anterior, e a conferência dela é do hóspede
+// anterior.
 // Conferências gravadas antes da coluna `cabinCheckedBy` não têm autor; nesses casos, se a
 // estadia registrou objetos esquecidos, quem reportou É quem estava conferindo — devolvemos
 // o nome marcado como deduzido ('lost_items'), para a tela dizer de onde veio.
-const checkedOf = (
-  t: HousekeepingTask,
+const conferenceOf = (
+  checkoutTasks: HousekeepingTask[],
   stay: { lostItemsReportedBy?: string; lostItemsReportedAt?: string },
   nameById: Map<string, string>,
-): StayCrewTask['checked'] => {
-  if (!t.cabinChecked) return null;
-  if (t.cabinCheckedBy) {
+): CrewConference | null => {
+  const done = checkoutTasks.filter(t => t.cabinChecked);
+  if (!done.length) return null;
+
+  const withAuthor = done.find(t => t.cabinCheckedBy);
+  if (withAuthor?.cabinCheckedBy) {
     return {
-      by: nameById.get(t.cabinCheckedBy) || 'Não identificado',
-      at: (t.cabinCheckedAt as string) || null,
+      by: nameById.get(withAuthor.cabinCheckedBy) || 'Não identificado',
+      at: (withAuthor.cabinCheckedAt as string) || null,
       source: 'conference',
     };
   }
@@ -637,7 +643,7 @@ export const HousekeepingService = {
   // saída) quanto o preparo da cabana antes da chegada, que pertence à estadia anterior.
   async getStayCrew(propertyId: string, stayId: string): Promise<StayCrew> {
     const client = db();
-    const empty: StayCrew = { tasks: [], reception: { checkIn: null, checkOut: null } };
+    const empty: StayCrew = { tasks: [], reception: { checkIn: null, checkOut: null }, conference: null };
 
     const { data: stay } = await client
       .from('stays').select('id, cabinId, checkIn, checkOut, lostItemsReportedBy, lostItemsReportedAt')
@@ -727,14 +733,16 @@ export const HousekeepingService = {
           // que inventar "equipe" e o gestor achar que o nome se perdeu no caminho.
           cleaners: (t.assignedTo || []).map(id => nameById.get(id) || 'Não identificado'),
           conferredBy: t.conferredBy ? (nameById.get(t.conferredBy) || 'Não identificado') : null,
-          // Conferência de saída só na fase de saída: nas outras a tarefa é de outro hóspede.
-          checked: phase === 'saida'
-            ? checkedOf(t, stay as { lostItemsReportedBy?: string; lostItemsReportedAt?: string }, nameById)
-            : null,
         };
       })
       .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
 
-    return { tasks: crewTasks, reception };
+    const conference = conferenceOf(
+      tasks.filter(t => phaseOf(t) === 'saida'),
+      stay as { lostItemsReportedBy?: string; lostItemsReportedAt?: string },
+      nameById,
+    );
+
+    return { tasks: crewTasks, reception, conference };
   }
 };
