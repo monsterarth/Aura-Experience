@@ -231,6 +231,7 @@ export default function StructureBookingsPage() {
         completed: "bg-green-500/20 text-green-600 border-green-500/30",
         rejected: "bg-red-500/20 text-red-600 border-red-500/30",
         cancelled: "bg-zinc-500/20 text-zinc-500 border-zinc-500/30",
+        expired: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
     };
 
     const statusLabels: any = {
@@ -239,6 +240,7 @@ export default function StructureBookingsPage() {
         completed: "Finalizado",
         rejected: "Rejeitado",
         cancelled: "Cancelado",
+        expired: "Expirado sem resposta",
     };
 
     return (

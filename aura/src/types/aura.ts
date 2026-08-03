@@ -267,7 +267,9 @@ export interface StructureBooking {
   date: string; // YYYY-MM-DD
   startTime: string; // HH:mm
   endTime: string;   // HH:mm
-  status: 'pending' | 'approved' | 'rejected' | 'completed' | 'cancelled';
+  // 'expired' = pedido pendente que passou da data sem resposta da recepção.
+  // Status terminal, aplicado pelo cron — nunca dispara mensagem ao hóspede.
+  status: 'pending' | 'approved' | 'rejected' | 'completed' | 'cancelled' | 'expired';
   source: 'admin' | 'guest';
   type: 'booking' | 'maintenance_block';
   unitId?: string; // If the structure has multiple units

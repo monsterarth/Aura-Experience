@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabase";
+import { supabase, supabaseAdmin } from "@/lib/supabase";
 import { Structure, StructureBooking, TimeSlot } from "@/types/aura";
 import { AuditService } from "./audit-service";
 
@@ -218,7 +218,7 @@ export const StructureService = {
             const currentEndStr = minutesToTime(start + slotDurationMinutes);
 
             const conflictingBooking = existingBookings.find(b => {
-                if (b.status === 'cancelled' || b.status === 'rejected') return false;
+                if (b.status === 'cancelled' || b.status === 'rejected' || b.status === 'expired') return false;
                 // Bookings sem unitId bloqueiam todas as unidades (retrocompatibilidade).
                 // Bookings com unitId diferente do filtro não geram conflito.
                 if (unitId && b.unitId && b.unitId !== unitId) return false;
@@ -254,7 +254,7 @@ export const StructureService = {
         const end = timeToMinutes(endTime);
 
         return existingBookings.some(b => {
-            if (b.status === 'cancelled' || b.status === 'rejected') return false;
+            if (b.status === 'cancelled' || b.status === 'rejected' || b.status === 'expired') return false;
             if (unitId && b.unitId && b.unitId !== unitId) return false;
 
             const bStart = timeToMinutes(b.startTime);
@@ -371,6 +371,53 @@ export const StructureService = {
         });
 
         return id;
+    },
+
+    // Caducidade automática: pedido do hóspede que ficou 'pending' e cuja data já passou
+    // vira 'expired'. Sem isso a solicitação fica presa para sempre na fila de aprovação —
+    // e responder depois (aprovar/rejeitar) dispararia mensagem ao hóspede fora de hora.
+    // 'expired' é terminal e silencioso: não notifica ninguém e libera o horário.
+    // Server-only (usa supabaseAdmin) — chamado pelo cron.
+    async expireStaleBookings(): Promise<number> {
+        if (!supabaseAdmin) throw new Error('expireStaleBookings: server-only');
+
+        const todayBRT = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'America/Sao_Paulo',
+            year: 'numeric', month: '2-digit', day: '2-digit'
+        }).format(new Date());
+
+        const { data, error } = await supabaseAdmin
+            .from('structure_bookings')
+            .update({ status: 'expired' })
+            .eq('status', 'pending')
+            .lt('date', todayBRT)
+            .select('id, propertyId, structureId, date, startTime, endTime, guestName');
+
+        if (error) throw error;
+
+        const expired = (data ?? []) as Pick<StructureBooking,
+            'id' | 'propertyId' | 'structureId' | 'date' | 'startTime' | 'endTime' | 'guestName'>[];
+        if (expired.length === 0) return 0;
+
+        // Nome da estrutura para o log ficar legível
+        const structureIds = Array.from(new Set(expired.map(b => b.structureId)));
+        const { data: structs } = await supabaseAdmin
+            .from('structures').select('id, name').in('id', structureIds);
+        const nameMap = new Map<string, string>((structs ?? []).map((s: any) => [s.id, s.name]));
+
+        for (const b of expired) {
+            await AuditService.log({
+                propertyId: b.propertyId,
+                userId: 'cron',
+                userName: 'Sistema (Cron)',
+                action: "STRUCTURE_BOOKING_STATUS_CHANGED",
+                entity: "STRUCTURE_BOOKING",
+                entityId: b.id,
+                details: `Solicitação em ${nameMap.get(b.structureId) ?? b.structureId}${b.guestName ? ` de ${b.guestName}` : ''} expirou sem resposta: ${b.date} ${b.startTime}–${b.endTime} → expired`
+            });
+        }
+
+        return expired.length;
     },
 
     async updateBooking(propertyId: string, bookingId: string, updates: Partial<StructureBooking>, actorId: string, actorName: string): Promise<void> {

@@ -391,7 +391,7 @@ export default function CalendarioPage() {
           .eq("propertyId", property.id)
           .gte("date", start)
           .lte("date", end)
-          .not("status", "in", '("cancelled","rejected")'),
+          .not("status", "in", '("cancelled","rejected","expired")'),
       ]);
 
       setEvents(eventsData);

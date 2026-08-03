@@ -90,10 +90,10 @@ export async function GET(request: NextRequest) {
                 .eq('propertyId', propertyId).eq('status', 'available').eq('ignoreInOccupancy', false),
             // Estruturas
             supabaseAdmin.from('structures').select('*').eq('propertyId', propertyId),
-            // Reservas de estruturas hoje (exceto canceladas/rejeitadas)
+            // Reservas de estruturas hoje (exceto canceladas/rejeitadas/expiradas)
             supabaseAdmin.from('structure_bookings').select('*')
                 .eq('propertyId', propertyId).eq('date', today)
-                .not('status', 'in', '("cancelled","rejected")'),
+                .not('status', 'in', '("cancelled","rejected","expired")'),
             // Pesquisas de satisfação nas últimas 48h
             supabaseAdmin.from('survey_responses').select('id, stayId, metrics, createdAt')
                 .eq('propertyId', propertyId).gte('createdAt', since48h).order('createdAt', { ascending: false }),

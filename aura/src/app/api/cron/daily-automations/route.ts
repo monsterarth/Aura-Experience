@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { Stay, Guest, Cabin, AutomationRule, MessageTemplate, Property } from "@/types/aura";
 import { AutomationService } from "@/services/automation-service";
 import { ChatwootService } from "@/services/chatwoot-service";
+import { StructureService } from "@/services/structure-service";
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -34,15 +35,24 @@ export async function GET(request: Request) {
 
   const startedAt = new Date().toISOString();
   const errors: string[] = [];
+  let expiredBookings = 0;
 
   try {
+    // Varre solicitações de estrutura que ficaram pendentes e cuja data já passou.
+    // Roda antes das automações: é independente delas e não deve ser bloqueada por erro lá.
+    try {
+      expiredBookings = await StructureService.expireStaleBookings();
+    } catch (e: any) {
+      errors.push(`expireStaleBookings: ${e?.message ?? e}`);
+    }
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const { data: propertiesSnap } = await supabaseAdmin.from("properties").select("*");
     let queuedCount = 0;
 
-    if (!propertiesSnap) return NextResponse.json({ success: true, queuedCount: 0 });
+    if (!propertiesSnap) return NextResponse.json({ success: true, queuedCount: 0, expiredBookings });
 
     for (const propertyDoc of propertiesSnap) {
       const propertyId = propertyDoc.id;
@@ -192,10 +202,10 @@ export async function GET(request: Request) {
     await writeCronLog(
       'CRON_DAILY_AUTOMATIONS',
       'daily-automations',
-      `${queuedCount} mensagem(ns) enfileirada(s)${errors.length ? ` | ${errors.length} erro(s)` : ''}`,
-      { queuedCount, startedAt, finishedAt, durationMs: duration, errors }
+      `${queuedCount} mensagem(ns) enfileirada(s)${expiredBookings ? ` | ${expiredBookings} solicitação(ões) de estrutura expirada(s)` : ''}${errors.length ? ` | ${errors.length} erro(s)` : ''}`,
+      { queuedCount, expiredBookings, startedAt, finishedAt, durationMs: duration, errors }
     );
-    return NextResponse.json({ success: true, queuedCount, message: `Varredura concluída. ${queuedCount} mensagens enfileiradas.` });
+    return NextResponse.json({ success: true, queuedCount, expiredBookings, message: `Varredura concluída. ${queuedCount} mensagens enfileiradas.` });
   } catch (error: any) {
     const finishedAt = new Date().toISOString();
     await writeCronLog(
