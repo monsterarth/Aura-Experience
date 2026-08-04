@@ -21,6 +21,7 @@ Schedules in `vercel.json` are **UTC**. The resort runs on BRT (UTC−3), so e.g
 | `stock-expiry` | `0 9 * * *` | Flags expiring batches, auto-loss if enabled |
 | `asset-depreciation` | `0 5 1 * *` | Monthly asset depreciation entries |
 | `daily-lodging` | `15 8 * * *` | Posts due nightly lodging charges (diárias) to stay folios |
+| `wedding-status` | `30 8 * * *` | Marks past **confirmed** weddings as `completed` |
 
 ### `daily-automations`
 For each property: loads active `automation_rules` (those with a `templateId`) and
@@ -60,6 +61,13 @@ For each property: materializes due `maintenance_rules` into `maintenance_tasks`
 Monthly. Posts linear depreciation for the current period (`YYYY-MM`) for each property via
 `AssetService.runDepreciation`. **Idempotent** per `(assetId, period)`. **Writes to**
 `asset_depreciation_entries`.
+
+### `wedding-status`
+Runs at 08:30 UTC. Promotes weddings whose `weddingDate` is in the past (property-local date,
+America/Sao_Paulo) **and** whose status is `confirmed` to `completed`, via
+`WeddingService.completePastWeddings`. **Deliberately skips `tentative`**: a negotiation that
+lapsed is a lost deal, not a delivered wedding — promoting it would inflate the module's
+revenue total. **Writes to** `weddings.status`, `audit_logs`.
 
 ### `daily-lodging`
 Runs at 08:15 UTC (05:15 BRT). For every stay with `nightlyRate` set (linked from a Tarifário
