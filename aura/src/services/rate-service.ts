@@ -12,7 +12,7 @@ import {
   RateTable,
   RateAvailability,
 } from "@/types/aura";
-import { findOverlaps, resolveFill, resolveOverwrite } from "@/lib/rate-engine";
+import { findOverlaps, nightsBetween, resolveFill, resolveOverwrite } from "@/lib/rate-engine";
 import { AuditService } from "./audit-service";
 import { GuestService } from "./guest-service";
 
@@ -472,6 +472,81 @@ export const RateService = {
 
     await this.updateQuote(propertyId, id, { status: "won", guestId });
     return { guestId, checkIn: quote.checkIn, checkOut: quote.checkOut };
+  },
+
+  /**
+   * Fecha o ciclo orçamento → estadia: grava o stayId no orçamento e leva o
+   * preço congelado para a estadia (nightlyRate/lodgingTotal), de onde o cron
+   * lança as diárias no fólio. A opção do snapshot é resolvida pela CATEGORIA
+   * DA CABANA escolhida na estadia; fallback: opção marcada no funil → opção
+   * única → finalValue.
+   */
+  async linkQuoteToStay(
+    propertyId: string,
+    quoteId: string,
+    stayId: string,
+    actorId: string,
+    actorName: string
+  ): Promise<{ linked: boolean; nightlyRate?: number; lodgingTotal?: number }> {
+    const admin = supabaseAdmin!;
+
+    const [{ data: quoteRow }, { data: stayRow }] = await Promise.all([
+      admin.from("rate_quotes").select("*").eq("id", quoteId).eq("propertyId", propertyId).maybeSingle(),
+      admin.from("stays").select("id, cabinId, checkIn, checkOut").eq("id", stayId).eq("propertyId", propertyId).maybeSingle(),
+    ]);
+    if (!quoteRow || !stayRow) throw new Error("Orçamento ou estadia não encontrados.");
+    const quote = quoteRow as RateQuoteRecord;
+    const stay = stayRow as { id: string; cabinId: string | null; checkIn: string; checkOut: string };
+
+    const snapshot = quote.snapshot || [];
+    let chosen = undefined as (typeof snapshot)[number] | undefined;
+
+    if (stay.cabinId) {
+      const { data: cabin } = await admin
+        .from("cabins").select("categoryId").eq("id", stay.cabinId).maybeSingle();
+      if (cabin?.categoryId) chosen = snapshot.find((c) => c.categoryId === cabin.categoryId);
+    }
+    if (!chosen && quote.selectedCategory) {
+      chosen = snapshot.find(
+        (c) => c.category === quote.selectedCategory || c.categoryId === quote.selectedCategory
+      );
+    }
+    if (!chosen && snapshot.length === 1) chosen = snapshot[0];
+
+    const total = chosen ? chosen.finalTotal
+      : typeof quote.finalValue === "number" ? quote.finalValue : null;
+
+    await this.updateQuote(propertyId, quoteId, {
+      stayId,
+      status: "won",
+      selectedCategory: chosen?.category ?? quote.selectedCategory ?? null,
+      finalValue: total,
+    });
+
+    if (total == null || total <= 0) return { linked: true };
+
+    const quoteNights = nightsBetween(quote.checkIn, quote.checkOut) || chosen?.nights || 1;
+    const nightlyRate = Math.round((total / quoteNights) * 100) / 100;
+    const stayNights = nightsBetween(stay.checkIn.slice(0, 10), stay.checkOut.slice(0, 10));
+    // Datas iguais às do orçamento → total exato; ajustadas → diária × noites reais.
+    const lodgingTotal = stayNights === quoteNights
+      ? total
+      : Math.round(nightlyRate * Math.max(1, stayNights) * 100) / 100;
+
+    const { error } = await admin
+      .from("stays")
+      .update({ rateQuoteId: quoteId, nightlyRate, lodgingTotal, updatedAt: new Date().toISOString() })
+      .eq("id", stayId)
+      .eq("propertyId", propertyId);
+    if (error) throw new Error(error.message);
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName,
+      action: "RATE_QUOTE_LINKED", entity: "STAY", entityId: stayId,
+      details: `Orçamento vinculado: ${chosen?.category ?? "valor manual"} — R$ ${total.toFixed(2)} (${quoteNights} noites, diária R$ ${nightlyRate.toFixed(2)}).`,
+    });
+
+    return { linked: true, nightlyRate, lodgingTotal };
   },
 
   // ── Importação do backup do SIT ────────────────────────────────────────────

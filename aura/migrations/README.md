@@ -66,3 +66,4 @@ record**. There is **no migration runner** — each file was applied manually vi
 | 2026-08-04 | `tarifario_phase1.sql` | Tarifário: tabelas de preço (`rate_tables`), regras de calendário (`rate_periods`) e config comercial (`rate_settings`) — port do SIT |
 | 2026-08-04 | `tarifario_phase2_orcamentos.sql` | Tarifário fase 2: orçamentos salvos + funil de vendas (`rate_quotes`) com cliente/lead vinculável a hóspede e estadia |
 | 2026-08-04 | `cabin_categories.sql` | Categoria de cabana vira entidade (`cabin_categories`): `cabins."categoryId"`, `rate_tables.prices` reindexado por id, consolidação das grafias divergentes e migração dos links do site |
+| 2026-08-04 | `financeiro_phase1_diarias.sql` | Financeiro fase 1: fólio vira extrato (`folio_items.type` debit/credit + `refDate` p/ diárias idempotentes) e estadia ganha `nightlyRate`/`lodgingTotal`/`rateQuoteId` |

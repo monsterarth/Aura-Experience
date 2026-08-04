@@ -58,6 +58,18 @@ export function formatBRL(v: number): string {
   return v.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 }
 
+/**
+ * Divide o total da hospedagem em diárias: média truncada em centavos e a
+ * última noite absorve a sobra — a soma bate exatamente com o total.
+ */
+export function splitNightly(total: number, nights: number): number[] {
+  if (nights <= 0 || total <= 0) return [];
+  const avg = Math.floor((total / nights) * 100) / 100;
+  const values = Array.from({ length: nights }, () => avg);
+  values[nights - 1] = Math.round((total - avg * (nights - 1)) * 100) / 100;
+  return values;
+}
+
 export function formatDateBR(iso: string): string {
   return iso.split('-').reverse().join('/');
 }

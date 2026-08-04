@@ -88,6 +88,7 @@ Scheduled in `vercel.json` (UTC):
 | `breakfast-attendance` | `0 8 * * *` | 08:00 daily |
 | `stock-expiry` | `0 9 * * *` | 09:00 daily |
 | `asset-depreciation` | `0 5 1 * *` | 05:00 on the 1st |
+| `daily-lodging` | `15 8 * * *` | 08:15 daily (lança diárias vencidas no fólio) |
 
 Other cron-style routes exist in code but are **not** in `vercel.json` (triggered manually/externally): `process-messages`, `housekeeping-routines`. All cron routes check the `CRON_SECRET` header in production. Details in `docs/CRON.md`.
 

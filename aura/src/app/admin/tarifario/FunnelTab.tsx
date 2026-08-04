@@ -106,7 +106,11 @@ export default function FunnelTab({ propertyId, bundle, active, refreshSignal }:
         await load();
         toast.success(data.guestId ? "Ganhou! Hóspede vinculado." : "Ganhou! (sem CPF para criar o hóspede)");
         if (confirm("Criar a estadia agora, já pré-preenchida?")) {
-          const params = new URLSearchParams({ checkIn: data.checkIn, checkOut: data.checkOut });
+          const params = new URLSearchParams({
+            checkIn: data.checkIn,
+            checkOut: data.checkOut,
+            quoteId: r.id, // fecha o ciclo: a estadia criada volta vinculada ao orçamento
+          });
           if (data.guestId) params.set("guestId", data.guestId);
           router.push(`/admin/stays/new?${params}`);
         }

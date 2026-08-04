@@ -365,7 +365,11 @@ export interface FolioItem {
   quantity: number;
   unitPrice: number;
   totalPrice: number;
-  category: 'minibar' | 'restaurant' | 'services' | 'other';
+  category: 'minibar' | 'restaurant' | 'services' | 'lodging' | 'payment' | 'other';
+  /** debit = cobrança (diária, consumo) · credit = pagamento. Ausente = debit (legado). */
+  type?: 'debit' | 'credit';
+  /** Noite a que a diária se refere (YYYY-MM-DD) — só category 'lodging'. */
+  refDate?: string | null;
   addedBy: string; // ID de quem lançou (ex: ID da camareira ou "SYSTEM")
   createdAt: Timestamp;
 }
@@ -752,7 +756,14 @@ export interface Stay {
 
   housekeepingItems?: { id: string; label: string }[];
   hasOpenFolio?: boolean;
-  billClosedAt?: string;          // Timestamp do encerramento manual da conta (zeriza aba pendente)
+  billClosedAt?: string;
+  // ── Financeiro (fase 1): elo com o orçamento do Tarifário ──
+  /** rate_quotes.id que originou a estadia (sem FK). */
+  rateQuoteId?: string | null;
+  /** Valor da diária média — o cron lança 1 débito por noite no fólio. */
+  nightlyRate?: number | null;
+  /** Total da hospedagem (arredondamento acerta na última noite). */
+  lodgingTotal?: number | null;          // Timestamp do encerramento manual da conta (zeriza aba pendente)
   lostItemsDescription?: string;
   lostItemsPhoto?: string;
   lostItemsReportedAt?: string;
@@ -881,7 +892,8 @@ export interface AuditLog {
   | 'INVENTORY_OPENED' | 'INVENTORY_CLOSED'
   | 'CRON_STOCK_LOW' | 'CRON_STOCK_EXPIRY' | 'CRON_ASSET_DEPRECIATION'
   | 'STRUCTURE_REVIEW_LOW'
-  | 'RATE_TABLE_DELETED' | 'RATE_SIT_IMPORTED';
+  | 'RATE_TABLE_DELETED' | 'RATE_SIT_IMPORTED'
+  | 'RATE_QUOTE_LINKED' | 'CRON_DAILY_LODGING';
   entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'STRUCTURE_REVIEW' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER' | 'CONTACT' | 'AUTOMATION' | 'BREAKFAST' | 'CRON' | 'SUPPLIER' | 'ASSET' | 'ASSET_INVENTORY' | 'PURCHASE' | 'INVENTORY' | 'RATE_TABLE';
   entityId: string;
   oldData?: any;

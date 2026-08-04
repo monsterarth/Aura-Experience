@@ -76,11 +76,12 @@ function NewStayPageContent() {
   const { userData } = useAuth();
   const { currentProperty: contextProperty } = useProperty();
 
-  // Query params from reservation map drag-to-create and guests page
+  // Query params from reservation map drag-to-create, guests page and sales funnel
   const prefilledCabinId = searchParams.get('cabinId');
   const prefilledCheckIn = searchParams.get('checkIn');
   const prefilledCheckOut = searchParams.get('checkOut');
   const prefilledGuestId = searchParams.get('guestId');
+  const prefilledQuoteId = searchParams.get('quoteId');
 
   const [loading, setLoading] = useState(false);
   const [searchingGuest, setSearchingGuest] = useState(false);
@@ -297,6 +298,34 @@ function NewStayPageContent() {
       });
 
       if (savedGuestId) chatwootSyncOnStayCreated(contextProperty.id, savedGuestId, result.stayId).catch(() => {});
+
+      // Veio do funil de vendas: fecha o ciclo orçamento → estadia (stayId no
+      // funil + preço congelado vira diária; o cron lança as noites no fólio).
+      if (prefilledQuoteId) {
+        try {
+          const linkRes = await fetch('/api/admin/tarifario/quotes/link-stay', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              propertyId: contextProperty.id,
+              quoteId: prefilledQuoteId,
+              stayId: result.stayId,
+            }),
+          });
+          if (linkRes.ok) {
+            const link = await linkRes.json().catch(() => null);
+            toast.success(
+              link?.nightlyRate
+                ? `Orçamento vinculado — diária de R$ ${Number(link.nightlyRate).toFixed(2)} programada no fólio.`
+                : 'Orçamento vinculado à estadia.'
+            );
+          } else {
+            toast.warning('Estadia criada, mas não consegui vincular o orçamento (faça pelo Funil).');
+          }
+        } catch {
+          toast.warning('Estadia criada, mas não consegui vincular o orçamento (faça pelo Funil).');
+        }
+      }
 
       setCreatedInfo({ code: result.accessCode });
     } catch (error: any) {

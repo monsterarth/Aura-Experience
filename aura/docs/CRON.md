@@ -20,6 +20,7 @@ Schedules in `vercel.json` are **UTC**. The resort runs on BRT (UTC−3), so e.g
 | `breakfast-attendance` | `0 8 * * *` | Builds the day's breakfast attendance list |
 | `stock-expiry` | `0 9 * * *` | Flags expiring batches, auto-loss if enabled |
 | `asset-depreciation` | `0 5 1 * *` | Monthly asset depreciation entries |
+| `daily-lodging` | `15 8 * * *` | Posts due nightly lodging charges (diárias) to stay folios |
 
 ### `daily-automations`
 For each property: loads active `automation_rules` (those with a `templateId`) and
@@ -59,6 +60,14 @@ For each property: materializes due `maintenance_rules` into `maintenance_tasks`
 Monthly. Posts linear depreciation for the current period (`YYYY-MM`) for each property via
 `AssetService.runDepreciation`. **Idempotent** per `(assetId, period)`. **Writes to**
 `asset_depreciation_entries`.
+
+### `daily-lodging`
+Runs at 08:15 UTC (05:15 BRT). For every stay with `nightlyRate` set (linked from a Tarifário
+quote or set manually on the stay) and status not cancelled/archived: posts one `lodging`
+debit per elapsed night to `folio_items` via `FinanceService.postDueLodgingAll`. Nightly
+values come from `splitNightly(lodgingTotal, nights)` (last night absorbs rounding).
+**Idempotent** per `(stayId, refDate)` — a missed run is caught up by the next one.
+**Writes to** `folio_items`, `stays.hasOpenFolio`.
 
 ## Exists in code but NOT scheduled in `vercel.json`
 

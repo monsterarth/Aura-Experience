@@ -14,6 +14,7 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { StayService } from "@/services/stay-service";
+import { FinanceService } from "@/services/finance-service";
 import { chatwootSyncOnCabinTransfer, chatwootSyncOnCheckIn, chatwootSyncOnCheckOut } from "@/app/actions/chatwoot-actions";
 import { GuestService } from "@/services/guest-service";
 import { CabinService } from "@/services/cabin-service";
@@ -115,6 +116,11 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const [folioItems, setFolioItems] = useState<FolioItem[]>([]);
   const [loadingFolio, setLoadingFolio] = useState(false);
   const [newFolioItem, setNewFolioItem] = useState({ description: "", quantity: 1, unitPrice: 0 });
+  // kind: consumo (débito) ou pagamento (crédito) — fólio como extrato
+  const [newFolioKind, setNewFolioKind] = useState<"debit" | "credit">("debit");
+  // Diária de estadia avulsa (sem orçamento do funil)
+  const [rateInput, setRateInput] = useState("");
+  const [savingRate, setSavingRate] = useState(false);
   // Esc fica de fora: este modal abre sub-modais (check-out, transferência).
   const { requestClose, confirmDiscard, guardProps, reset } = useCloseGuard(onClose, { open: isOpen, escape: false });
 
@@ -221,28 +227,67 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     }
     setLoadingFolio(true);
     try {
-      await StayService.addFolioItemManual(
-        stay.propertyId,
-        stay.id,
-        {
-          description: newFolioItem.description,
-          quantity: newFolioItem.quantity,
-          unitPrice: newFolioItem.unitPrice,
-          totalPrice: newFolioItem.quantity * newFolioItem.unitPrice,
-          category: 'other',
-          addedBy: userData?.id || "SYSTEM"
-        },
-        userData?.id || "unknown",
-        userData?.fullName || "Recepção"
-      );
-      toast.success("Item adicionado à conta.");
+      if (newFolioKind === "credit") {
+        await FinanceService.addPayment(
+          stay.propertyId, stay.id,
+          newFolioItem.description,
+          newFolioItem.quantity * newFolioItem.unitPrice,
+          userData?.id || "unknown", userData?.fullName || "Recepção"
+        );
+        toast.success("Pagamento lançado como crédito.");
+      } else {
+        await StayService.addFolioItemManual(
+          stay.propertyId,
+          stay.id,
+          {
+            description: newFolioItem.description,
+            quantity: newFolioItem.quantity,
+            unitPrice: newFolioItem.unitPrice,
+            totalPrice: newFolioItem.quantity * newFolioItem.unitPrice,
+            category: 'other',
+            addedBy: userData?.id || "SYSTEM"
+          },
+          userData?.id || "unknown",
+          userData?.fullName || "Recepção"
+        );
+        toast.success("Item adicionado à conta.");
+      }
       setNewFolioItem({ description: "", quantity: 1, unitPrice: 0 });
+      setNewFolioKind("debit");
       loadFolio();
       if (onUpdate) onUpdate(); // Atualiza lista de estadias (para o ícone de alerta)
     } catch (error) {
-      toast.error("Erro ao adicionar item.");
+      toast.error(newFolioKind === "credit" ? "Erro ao lançar pagamento." : "Erro ao adicionar item.");
     } finally {
       setLoadingFolio(false);
+    }
+  };
+
+  // Estadia avulsa: define a diária e já lança as noites vencidas
+  const handleSetRate = async () => {
+    const nightly = parseFloat(rateInput);
+    if (!(nightly > 0)) return toast.error("Informe o valor da diária.");
+    const nights = Math.max(1, Math.round(
+      (new Date(stay.checkOut.slice(0, 10) + "T12:00:00").getTime() -
+       new Date(stay.checkIn.slice(0, 10) + "T12:00:00").getTime()) / 86400000
+    ));
+    setSavingRate(true);
+    try {
+      const posted = await FinanceService.setStayRate(
+        stay.propertyId, stay.id, nightly, Math.round(nightly * nights * 100) / 100,
+        userData?.id || "unknown", userData?.fullName || "Recepção"
+      );
+      stay.nightlyRate = nightly; // reflete sem esperar reload do pai
+      stay.lodgingTotal = Math.round(nightly * nights * 100) / 100;
+      toast.success(posted > 0
+        ? `Diária definida — ${posted} noite(s) vencida(s) lançada(s).`
+        : "Diária definida — as noites entram no fólio automaticamente.");
+      setRateInput("");
+      loadFolio();
+    } catch {
+      toast.error("Erro ao definir a diária.");
+    } finally {
+      setSavingRate(false);
     }
   };
 
@@ -571,7 +616,9 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   };
   const currentStatus = statusMap[stay.status] || { label: stay.status, class: 'text-muted-foreground border-border' };
 
-  const totalFolio = folioItems.reduce((acc, item) => acc + item.totalPrice, 0);
+  // Fólio como extrato: débitos (diárias + consumo) − créditos (pagamentos)
+  const { debits: folioDebits, credits: folioCredits, balance: folioBalance } =
+    FinanceService.summarize(folioItems);
 
   const selectedCabin = cabins.find(c => c.id === (formData.cabinId || stay.cabinId));
 
@@ -902,17 +949,51 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                   <Receipt size={13} className="text-primary" />
                   <span className="text-[11px] font-black uppercase tracking-widest text-foreground">Conta & Consumo</span>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-4">
                   <div className="text-right">
-                    <p className="text-[9px] font-bold uppercase text-muted-foreground">Total</p>
-                    <p className="text-base font-black text-primary leading-none">R$ {totalFolio.toFixed(2)}</p>
+                    <p className="text-[9px] font-bold uppercase text-muted-foreground">Débitos</p>
+                    <p className="text-sm font-black text-foreground leading-none">R$ {folioDebits.toFixed(2)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[9px] font-bold uppercase text-muted-foreground">Créditos</p>
+                    <p className="text-sm font-black text-green-500 leading-none">R$ {folioCredits.toFixed(2)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[9px] font-bold uppercase text-muted-foreground">Saldo</p>
+                    <p className={cn("text-base font-black leading-none",
+                      folioBalance > 0.009 ? "text-red-500" : "text-green-500")}>
+                      R$ {folioBalance.toFixed(2)}
+                    </p>
                   </div>
                   <button onClick={loadFolio} disabled={loadingFolio} className="p-1.5 rounded-lg bg-secondary hover:bg-accent transition-all disabled:opacity-50">
                     <RefreshCw size={13} className={loadingFolio ? "animate-spin" : ""} />
                   </button>
                 </div>
               </div>
-              <div className="p-4">
+              <div className="p-4 space-y-3">
+                {/* Hospedagem: diária vinculada (funil) ou definida à mão (avulsa) */}
+                {Number(stay.nightlyRate) > 0 ? (
+                  <div className="flex items-center gap-2 text-xs bg-primary/5 border border-primary/20 rounded-xl px-3 py-2">
+                    <span className="font-bold text-primary uppercase text-[9px] tracking-widest shrink-0">Hospedagem</span>
+                    <span className="text-muted-foreground">
+                      R$ {Number(stay.nightlyRate).toFixed(2)}/noite · total R$ {Number(stay.lodgingTotal ?? 0).toFixed(2)}
+                      {stay.rateQuoteId ? " · via orçamento" : ""} — as diárias entram no fólio automaticamente a cada noite.
+                    </span>
+                  </div>
+                ) : !isGovOnly && (
+                  <div className="flex items-center gap-2 text-xs bg-secondary/60 border border-dashed border-border rounded-xl px-3 py-2">
+                    <span className="font-bold text-muted-foreground uppercase text-[9px] tracking-widest shrink-0">Diária</span>
+                    <span className="text-muted-foreground hidden sm:inline">Estadia sem valor de hospedagem —</span>
+                    <input type="number" step="0.01" min="0" placeholder="R$ / noite" value={rateInput}
+                      onChange={e => setRateInput(e.target.value)}
+                      className="w-28 bg-background border border-border px-2 py-1.5 rounded-lg text-xs outline-none focus:border-primary text-foreground" />
+                    <button type="button" onClick={handleSetRate} disabled={savingRate}
+                      className="px-3 py-1.5 bg-primary text-primary-foreground font-black text-[9px] uppercase tracking-widest rounded-lg hover:opacity-90 disabled:opacity-50">
+                      {savingRate ? "..." : "Ativar diárias"}
+                    </button>
+                  </div>
+                )}
+
                 <div className="flex gap-4 items-start flex-col xl:flex-row">
                   <div className="flex-1 min-w-0 border border-border rounded-xl overflow-hidden">
                     <table className="w-full text-left">
@@ -940,7 +1021,15 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                                   </button>
                                 )}
                                 <div>
-                                  <span className={item.status === "paid" ? "line-through text-muted-foreground" : ""}>{item.description}</span>
+                                  <span className={item.status === "paid" && item.type !== "credit" ? "line-through text-muted-foreground" : ""}>
+                                    {item.description}
+                                    {item.category === "lodging" && (
+                                      <span className="ml-1.5 text-[8px] font-black uppercase bg-primary/10 text-primary px-1.5 py-0.5 rounded">Diária</span>
+                                    )}
+                                    {item.type === "credit" && (
+                                      <span className="ml-1.5 text-[8px] font-black uppercase bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded">Crédito</span>
+                                    )}
+                                  </span>
                                   <p className="text-[10px] text-muted-foreground font-normal mt-0.5 flex items-center gap-1">
                                     <Clock size={9} /> {item.createdAt ? format(new Date(item.createdAt), "dd/MM HH:mm") : "—"}
                                   </p>
@@ -949,7 +1038,9 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                             </td>
                             <td className="px-3 py-3 text-center text-muted-foreground font-medium">{item.quantity}×</td>
                             <td className="px-3 py-3 text-right text-muted-foreground">R$ {item.unitPrice.toFixed(2)}</td>
-                            <td className="px-3 py-3 text-right font-black">R$ {item.totalPrice.toFixed(2)}</td>
+                            <td className={cn("px-3 py-3 text-right font-black", item.type === "credit" && "text-green-500")}>
+                              {item.type === "credit" ? "−" : ""}R$ {item.totalPrice.toFixed(2)}
+                            </td>
                             {!isGovOnly && (
                               <td className="pr-3 py-3 text-right">
                                 <button onClick={() => handleDeleteFolioItem(item.id, item.description)} className="p-1.5 text-destructive/60 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"><Trash2 size={13} /></button>
@@ -964,10 +1055,25 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                   {!isGovOnly && (
                     <form onSubmit={handleAddFolioItem} className="xl:w-60 w-full bg-secondary/50 border border-border p-4 rounded-xl space-y-3 shrink-0">
                       <h4 className="font-bold flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-primary"><ShoppingCart size={13} /> Lançamento</h4>
+                      <div className="grid grid-cols-2 gap-1 p-1 bg-background border border-border rounded-xl">
+                        <button type="button" onClick={() => setNewFolioKind("debit")}
+                          className={cn("py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
+                            newFolioKind === "debit" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
+                          Consumo
+                        </button>
+                        <button type="button" onClick={() => setNewFolioKind("credit")}
+                          className={cn("py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
+                            newFolioKind === "credit" ? "bg-green-500 text-white" : "text-muted-foreground hover:text-foreground")}>
+                          Pagamento
+                        </button>
+                      </div>
                       <div>
-                        <label className="text-[9px] font-bold uppercase text-muted-foreground">Produto / Serviço</label>
+                        <label className="text-[9px] font-bold uppercase text-muted-foreground">
+                          {newFolioKind === "credit" ? "Descrição do pagamento" : "Produto / Serviço"}
+                        </label>
                         <input required value={newFolioItem.description} onChange={e => setNewFolioItem({ ...newFolioItem, description: e.target.value })}
-                          placeholder="Ex: Lenha extra" className="mt-0.5 w-full bg-background border border-border px-3 py-2 rounded-xl text-xs outline-none focus:border-primary text-foreground" />
+                          placeholder={newFolioKind === "credit" ? "Ex: Pix hospedagem" : "Ex: Lenha extra"}
+                          className="mt-0.5 w-full bg-background border border-border px-3 py-2 rounded-xl text-xs outline-none focus:border-primary text-foreground" />
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
@@ -981,8 +1087,10 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                             className="mt-0.5 w-full bg-background border border-border px-3 py-2 rounded-xl text-xs outline-none focus:border-primary text-foreground" />
                         </div>
                       </div>
-                      <button type="submit" disabled={loadingFolio} className="w-full py-2 bg-primary text-primary-foreground font-black text-[10px] uppercase tracking-widest rounded-xl hover:opacity-90 disabled:opacity-50">
-                        Adicionar à Conta
+                      <button type="submit" disabled={loadingFolio}
+                        className={cn("w-full py-2 font-black text-[10px] uppercase tracking-widest rounded-xl hover:opacity-90 disabled:opacity-50",
+                          newFolioKind === "credit" ? "bg-green-500 text-white" : "bg-primary text-primary-foreground")}>
+                        {newFolioKind === "credit" ? "Lançar Pagamento" : "Adicionar à Conta"}
                       </button>
                     </form>
                   )}
