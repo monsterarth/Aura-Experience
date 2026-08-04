@@ -7,8 +7,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
-  AlertTriangle, Check, Copy, Heart, Home, Loader2, PartyPopper, PawPrint,
-  Save, Search, X,
+  AlertTriangle, Check, CheckSquare, Copy, Heart, Home, Loader2, PartyPopper,
+  PawPrint, Save, Search, Square, X,
 } from "lucide-react";
 import { Guest, RateAvailability, RateQuoteCategory, RateQuoteInput } from "@/types/aura";
 import { GuestService } from "@/services/guest-service";
@@ -203,13 +203,22 @@ export default function QuoteTab({ propertyId, bundle, attendantName, onQuoteSav
   const toggleDiscount = (id: string) =>
     setDiscountIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
-  const toggleSelected = (category: string) =>
+  const toggleSelected = (categoryId: string) =>
     setDeselected((prev) => {
       const next = new Set(prev);
-      if (next.has(category)) next.delete(category);
-      else next.add(category);
+      if (next.has(categoryId)) next.delete(categoryId);
+      else next.add(categoryId);
       return next;
     });
+
+  // Contagem sobre as categorias VISÍVEIS: `deselected` pode guardar ids de uma
+  // consulta anterior (outras datas/pax), que não valem para o resultado atual.
+  const selectedCount = quote.categories.filter((c) => !deselected.has(c.categoryId)).length;
+  const allSelected = quote.categories.length > 0 && selectedCount === quote.categories.length;
+
+  /** Marca todas ou desmarca todas — o botão alterna conforme o estado atual. */
+  const toggleAll = () =>
+    setDeselected(allSelected ? new Set(quote.categories.map((c) => c.categoryId)) : new Set());
 
   const msgCtx = { attendantName, input, isWedding: !!weddingId };
 
@@ -557,11 +566,14 @@ export default function QuoteTab({ propertyId, bundle, attendantName, onQuoteSav
               📝 Detalhar cálculos na mensagem
             </label>
             <div className="flex flex-wrap justify-center gap-2">
-              <Button variant="secondary" onClick={() => setDeselected(new Set())}>
-                <Check size={15} className="mr-1.5" /> Selecionar tudo
+              <Button variant="secondary" onClick={toggleAll}>
+                {allSelected
+                  ? <><Square size={15} className="mr-1.5" /> Desmarcar tudo</>
+                  : <><CheckSquare size={15} className="mr-1.5" /> Selecionar tudo</>}
               </Button>
-              <Button className="px-8" onClick={copyFull}>
-                <Copy size={15} className="mr-1.5" /> Copiar WhatsApp
+              <Button className="px-8" onClick={copyFull} disabled={selectedCount === 0}>
+                <Copy size={15} className="mr-1.5" />
+                Copiar WhatsApp{selectedCount > 0 ? ` (${selectedCount})` : ""}
               </Button>
             </div>
           </div>
