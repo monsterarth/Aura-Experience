@@ -2291,3 +2291,48 @@ export interface RateAvailability {
   freeCabins: string[];      // nomes das cabanas livres
 }
 
+/** Estágio do funil de vendas de um orçamento salvo. */
+export type RateQuoteStatus = 'open' | 'sent' | 'negotiating' | 'won' | 'lost';
+
+/**
+ * Orçamento salvo no funil (CRM leve): dados do cliente são todos opcionais —
+ * é um lead. `guestId` liga ao hóspede (guests.id = documento normalizado),
+ * `stayId` à estadia criada na conversão. `snapshot` congela os preços
+ * calculados no momento (tabelas mudam; o valor prometido não).
+ */
+export interface RateQuoteRecord {
+  id: string;
+  propertyId: string;
+  // Cliente (lead)
+  clientName?: string | null;
+  clientDocument?: string | null;
+  clientPhone?: string | null;
+  clientEmail?: string | null;
+  guestId?: string | null;
+  stayId?: string | null;
+  weddingId?: string | null;
+  // Parâmetros da consulta
+  checkIn: string;           // YYYY-MM-DD
+  checkOut: string;          // YYYY-MM-DD
+  adults: number;
+  children: number;
+  babies: number;
+  pets: number;
+  fluctuationPct: number;
+  discountIds: string[];
+  adhocValue: number;
+  adhocType: 'pct' | 'brl';
+  // Resultado congelado
+  snapshot: RateQuoteCategory[];
+  selectedCategory?: string | null;
+  finalValue?: number | null;
+  // Funil
+  status: RateQuoteStatus;
+  lostReason?: string | null;
+  notes?: string | null;
+  createdBy?: string | null;
+  createdByName?: string | null;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+

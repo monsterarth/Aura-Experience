@@ -64,3 +64,4 @@ record**. There is **no migration runner** — each file was applied manually vi
 | 2026-08-02 | `patrimonio_phase3_inventario.sql` | Patrimônio: conferência física (`asset_inventory_counts` / `asset_inventory_items`) |
 | 2026-08-03 | `add_cabin_conference_author.sql` | `cabinCheckedBy` + `cabinCheckedAt` em `housekeeping_tasks` (autor da conferência de saída) |
 | 2026-08-04 | `tarifario_phase1.sql` | Tarifário: tabelas de preço (`rate_tables`), regras de calendário (`rate_periods`) e config comercial (`rate_settings`) — port do SIT |
+| 2026-08-04 | `tarifario_phase2_orcamentos.sql` | Tarifário fase 2: orçamentos salvos + funil de vendas (`rate_quotes`) com cliente/lead vinculável a hóspede e estadia |

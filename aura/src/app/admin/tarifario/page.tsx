@@ -10,17 +10,19 @@ import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { cn } from "@/lib/utils";
-import { Calculator, CalendarRange, Loader2, Percent, Table2 } from "lucide-react";
+import { Calculator, CalendarRange, Filter, Loader2, Percent, Table2 } from "lucide-react";
 import type { RateBundle } from "@/services/rate-service";
 import QuoteTab from "./QuoteTab";
+import FunnelTab from "./FunnelTab";
 import TablesTab from "./TablesTab";
 import CalendarTab from "./CalendarTab";
 import CommercialTab from "./CommercialTab";
 
-type TabId = "orcamento" | "tabelas" | "calendario" | "comercial";
+type TabId = "orcamento" | "funil" | "tabelas" | "calendario" | "comercial";
 
 const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: "orcamento", label: "Orçamento", icon: Calculator },
+  { id: "funil", label: "Funil", icon: Filter },
   { id: "tabelas", label: "Tabelas", icon: Table2 },
   { id: "calendario", label: "Calendário", icon: CalendarRange },
   { id: "comercial", label: "Comercial", icon: Percent },
@@ -34,6 +36,8 @@ function TarifarioPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [tab, setTab] = useState<TabId>("orcamento");
+  // Sinal para a aba Funil recarregar quando o Orçamento salva um lead novo.
+  const [funnelSignal, setFunnelSignal] = useState(0);
 
   const load = useCallback(async () => {
     if (!property?.id) return;
@@ -113,6 +117,15 @@ function TarifarioPage() {
               propertyId={property.id}
               bundle={bundle}
               attendantName={userData?.fullName || "Recepção"}
+              onQuoteSaved={() => setFunnelSignal((n) => n + 1)}
+            />
+          </div>
+          <div style={{ display: tab === "funil" ? "block" : "none" }}>
+            <FunnelTab
+              propertyId={property.id}
+              bundle={bundle}
+              active={tab === "funil"}
+              refreshSignal={funnelSignal}
             />
           </div>
           <div style={{ display: tab === "tabelas" ? "block" : "none" }}>

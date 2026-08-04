@@ -3,13 +3,15 @@
 // cópia da mensagem de WhatsApp (simples ou detalhada).
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
-  AlertTriangle, Check, Copy, Heart, Home, PartyPopper, PawPrint,
+  AlertTriangle, Check, Copy, Heart, Home, Loader2, PartyPopper, PawPrint,
+  Save, Search, X,
 } from "lucide-react";
-import { RateAvailability, RateQuoteCategory, RateQuoteInput } from "@/types/aura";
+import { Guest, RateAvailability, RateQuoteCategory, RateQuoteInput } from "@/types/aura";
+import { GuestService } from "@/services/guest-service";
 import type { RateBundle } from "@/services/rate-service";
 import {
   addDays, buildCategoryBlock, buildEventNotices, computeQuote, dateToIso, formatBRL,
@@ -20,12 +22,14 @@ interface Props {
   propertyId: string;
   bundle: RateBundle;
   attendantName: string;
+  /** Notifica a aba Funil que um orçamento novo foi salvo. */
+  onQuoteSaved?: () => void;
 }
 
 // Data LOCAL (não UTC): à noite no fuso do Brasil, toISOString já virou o dia seguinte.
 const todayIso = () => dateToIso(new Date());
 
-export default function QuoteTab({ propertyId, bundle, attendantName }: Props) {
+export default function QuoteTab({ propertyId, bundle, attendantName, onQuoteSaved }: Props) {
   const { settings } = bundle;
 
   const [checkIn, setCheckIn] = useState(todayIso());
@@ -50,6 +54,44 @@ export default function QuoteTab({ propertyId, bundle, attendantName }: Props) {
   const [availability, setAvailability] = useState<Record<string, RateAvailability>>({});
   const [events, setEvents] = useState<{ title: string; date: string }[]>([]);
 
+  // ── Cliente (lead) — todos opcionais; vinculável a um hóspede existente ────
+  const [clientName, setClientName] = useState("");
+  const [clientDocument, setClientDocument] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [linkedGuest, setLinkedGuest] = useState<{ id: string; name: string } | null>(null);
+  const [guestQuery, setGuestQuery] = useState("");
+  const [guestResults, setGuestResults] = useState<Guest[]>([]);
+  const [searchingGuest, setSearchingGuest] = useState(false);
+  const [savingQuote, setSavingQuote] = useState(false);
+  const [saved, setSaved] = useState<{ id: string; key: string } | null>(null);
+  const guestDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (guestDebounce.current) clearTimeout(guestDebounce.current);
+    if (guestQuery.trim().length < 2) { setGuestResults([]); return; }
+    guestDebounce.current = setTimeout(async () => {
+      setSearchingGuest(true);
+      const data = await GuestService.listGuests(propertyId, guestQuery.trim());
+      setGuestResults(data.slice(0, 6));
+      setSearchingGuest(false);
+    }, 300);
+  }, [guestQuery, propertyId]);
+
+  const selectGuest = (g: Guest) => {
+    setLinkedGuest({ id: g.id, name: g.fullName });
+    setClientName(g.fullName || "");
+    setClientDocument(g.document?.number || "");
+    setClientPhone(g.phone || "");
+    setClientEmail(g.email || "");
+    setGuestQuery("");
+    setGuestResults([]);
+  };
+
+  const hasClient = Boolean(
+    linkedGuest || clientName.trim() || clientDocument.trim() || clientPhone.trim() || clientEmail.trim()
+  );
+
   const input: RateQuoteInput = useMemo(
     () => ({
       checkIn, checkOut, adults, children, babies, pets,
@@ -65,6 +107,66 @@ export default function QuoteTab({ propertyId, bundle, attendantName }: Props) {
     () => computeQuote(input, { tables: bundle.tables, periods: bundle.periods, settings }),
     [input, bundle.tables, bundle.periods, settings]
   );
+
+  // Identidade do orçamento atual: mudou parâmetro ou cliente = orçamento novo.
+  const quoteKey = useMemo(
+    () => JSON.stringify([input, clientName, clientDocument, clientPhone, clientEmail, linkedGuest?.id ?? null, weddingId]),
+    [input, clientName, clientDocument, clientPhone, clientEmail, linkedGuest, weddingId]
+  );
+  const isSavedCurrent = saved?.key === quoteKey;
+
+  const saveToFunnel = async (status: "open" | "sent"): Promise<string | null> => {
+    if (quote.categories.length === 0) {
+      toast.error("Calcule um orçamento válido antes de salvar.");
+      return null;
+    }
+    if (!hasClient) {
+      toast.error("Informe ao menos um dado do cliente para salvar no funil.");
+      return null;
+    }
+    setSavingQuote(true);
+    try {
+      const res = await fetch("/api/admin/tarifario/quotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          propertyId,
+          quote: {
+            clientName, clientDocument, clientPhone, clientEmail,
+            guestId: linkedGuest?.id ?? null,
+            weddingId: weddingId || null,
+            checkIn, checkOut, adults, children, babies, pets,
+            fluctuationPct,
+            discountIds,
+            adhocValue: parseFloat(adhocValue) || 0,
+            adhocType,
+            snapshot: quote.categories,
+            status,
+          },
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error);
+      setSaved({ id: data.id, key: quoteKey });
+      onQuoteSaved?.();
+      return data.id as string;
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : "Erro ao salvar o orçamento.");
+      return null;
+    } finally {
+      setSavingQuote(false);
+    }
+  };
+
+  const markSent = (id: string) => {
+    fetch("/api/admin/tarifario/quotes", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ propertyId, id, patch: { status: "sent" } }),
+    })
+      .then(() => onQuoteSaved?.())
+      .catch(() => {});
+  };
 
   // Disponibilidade real + eventos publicados no período.
   useEffect(() => {
@@ -125,7 +227,7 @@ export default function QuoteTab({ propertyId, bundle, attendantName }: Props) {
     copyToClipboard(processTemplate(block, msgCtx) + extras, `${cat.category} copiada!`);
   };
 
-  const copyFull = () => {
+  const copyFull = async () => {
     const selected = quote.categories.filter((c) => !deselected.has(c.category));
     if (selected.length === 0) return toast.error("Selecione pelo menos uma categoria.");
     const resumo = selected
@@ -140,7 +242,17 @@ export default function QuoteTab({ propertyId, bundle, attendantName }: Props) {
       .join("\n");
     const avisos = buildEventNotices(events, settings.eventTemplate);
     const msg = processTemplate(settings.msgTemplate || DEFAULT_MSG_TEMPLATE, msgCtx, resumo, avisos);
-    copyToClipboard(msg, detailed ? "Cotação detalhada copiada!" : "Cotação copiada!");
+    await copyToClipboard(msg, detailed ? "Cotação detalhada copiada!" : "Cotação copiada!");
+
+    // CRM: cliente preenchido → registra o envio no funil.
+    if (hasClient && quote.categories.length > 0) {
+      if (isSavedCurrent && saved) {
+        markSent(saved.id);
+      } else {
+        const id = await saveToFunnel("sent");
+        if (id) toast.success("Orçamento salvo no funil como Enviado.");
+      }
+    }
   };
 
   return (
@@ -241,6 +353,95 @@ export default function QuoteTab({ propertyId, bundle, attendantName }: Props) {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Cliente / funil de vendas */}
+      <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <h3 className="font-semibold text-foreground">
+            🤝 Cliente{" "}
+            <span className="text-xs font-normal text-muted-foreground">
+              (opcional — alimenta o funil de vendas)
+            </span>
+          </h3>
+          {isSavedCurrent ? (
+            <span className="text-xs font-bold text-emerald-600">Salvo no funil ✓</span>
+          ) : (
+            <Button size="sm" variant="secondary"
+              disabled={savingQuote || !hasClient || quote.categories.length === 0}
+              onClick={async () => {
+                const id = await saveToFunnel("open");
+                if (id) toast.success("Orçamento salvo no funil.");
+              }}>
+              {savingQuote
+                ? <Loader2 size={13} className="mr-1 animate-spin" />
+                : <Save size={13} className="mr-1" />}
+              Salvar no funil
+            </Button>
+          )}
+        </div>
+
+        <div className="relative max-w-md">
+          <label className="field-label">Buscar hóspede existente</label>
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input className="field-input !pl-9" placeholder="Nome, CPF, telefone…"
+              value={guestQuery} onChange={(e) => setGuestQuery(e.target.value)} />
+            {searchingGuest && (
+              <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground" />
+            )}
+          </div>
+          {guestResults.length > 0 && (
+            <div className="absolute z-20 mt-1 w-full bg-background border border-border rounded-xl shadow-xl overflow-hidden">
+              {guestResults.map((g) => (
+                <button key={g.id}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-secondary transition-colors"
+                  onClick={() => selectGuest(g)}>
+                  <span className="font-semibold">{g.fullName}</span>
+                  <span className="text-xs text-muted-foreground"> · {g.document?.type} {g.document?.number}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {linkedGuest && (
+          <div className="flex items-center gap-2 text-sm bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-3 py-2">
+            <Check size={14} className="shrink-0" />
+            <span>Vinculado ao hóspede <b>{linkedGuest.name}</b></span>
+            <button className="ml-auto hover:text-red-600" title="Desvincular"
+              onClick={() => setLinkedGuest(null)}>
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div>
+            <label className="field-label">Nome do cliente</label>
+            <input className="field-input" value={clientName}
+              onChange={(e) => setClientName(e.target.value)} placeholder="Nome" />
+          </div>
+          <div>
+            <label className="field-label">CPF / documento</label>
+            <input className="field-input" value={clientDocument}
+              onChange={(e) => setClientDocument(e.target.value)} placeholder="000.000.000-00" />
+          </div>
+          <div>
+            <label className="field-label">Telefone / WhatsApp</label>
+            <input className="field-input" value={clientPhone}
+              onChange={(e) => setClientPhone(e.target.value.replace(/\D/g, ""))}
+              placeholder="5548999999999" />
+          </div>
+          <div>
+            <label className="field-label">E-mail</label>
+            <input className="field-input" type="email" value={clientEmail}
+              onChange={(e) => setClientEmail(e.target.value)} placeholder="email@exemplo.com" />
+          </div>
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          Copiar o WhatsApp com cliente preenchido salva/atualiza o orçamento no funil como <b>Enviado</b>.
+        </p>
       </div>
 
       {/* Avisos */}

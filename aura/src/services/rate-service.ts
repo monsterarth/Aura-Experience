@@ -3,13 +3,27 @@
 // importação do backup do SIT (sistema offline que este módulo substitui).
 import { supabaseAdmin } from "@/lib/supabase";
 import {
+  Guest,
   RatePeriod,
+  RateQuoteRecord,
+  RateQuoteStatus,
   RateSettings,
   RateTable,
   RateAvailability,
 } from "@/types/aura";
 import { findOverlaps, resolveFill, resolveOverwrite } from "@/lib/rate-engine";
 import { AuditService } from "./audit-service";
+import { GuestService } from "./guest-service";
+
+const QUOTE_STATUSES: RateQuoteStatus[] = ["open", "sent", "negotiating", "won", "lost"];
+
+/** Campos de rate_quotes que o PATCH pode alterar (whitelist). */
+const QUOTE_PATCH_FIELDS = [
+  "clientName", "clientDocument", "clientPhone", "clientEmail",
+  "guestId", "stayId", "weddingId",
+  "selectedCategory", "finalValue",
+  "status", "lostReason", "notes",
+] as const;
 
 export const DEFAULT_RATE_SETTINGS = (propertyId: string): RateSettings => ({
   propertyId,
@@ -299,6 +313,163 @@ export const RateService = {
       .map((e) => ({ title: e.title, date: e.startDate }));
 
     return { availability, events };
+  },
+
+  // ── Orçamentos salvos / funil de vendas ────────────────────────────────────
+
+  async listQuotes(propertyId: string): Promise<RateQuoteRecord[]> {
+    const admin = supabaseAdmin!;
+    const { data, error } = await admin
+      .from("rate_quotes")
+      .select("*")
+      .eq("propertyId", propertyId)
+      .order("createdAt", { ascending: false })
+      .limit(400);
+    if (error) throw new Error(error.message);
+    return (data || []) as RateQuoteRecord[];
+  },
+
+  async saveQuote(
+    propertyId: string,
+    payload: Partial<RateQuoteRecord>,
+    actorId: string,
+    actorName: string
+  ): Promise<string> {
+    const admin = supabaseAdmin!;
+    const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+    if (!ISO_DATE.test(payload.checkIn || "") || !ISO_DATE.test(payload.checkOut || "")) {
+      throw new Error("Datas inválidas.");
+    }
+    const status: RateQuoteStatus =
+      payload.status && QUOTE_STATUSES.includes(payload.status) ? payload.status : "open";
+
+    const id = crypto.randomUUID();
+    const { error } = await admin.from("rate_quotes").insert({
+      id,
+      propertyId,
+      clientName: payload.clientName?.trim() || null,
+      clientDocument: payload.clientDocument?.trim() || null,
+      clientPhone: payload.clientPhone ? payload.clientPhone.replace(/\D/g, "") : null,
+      clientEmail: payload.clientEmail?.trim() || null,
+      guestId: payload.guestId || null,
+      weddingId: payload.weddingId || null,
+      checkIn: payload.checkIn,
+      checkOut: payload.checkOut,
+      adults: payload.adults ?? 2,
+      children: payload.children ?? 0,
+      babies: payload.babies ?? 0,
+      pets: payload.pets ?? 0,
+      fluctuationPct: payload.fluctuationPct ?? 0,
+      discountIds: Array.isArray(payload.discountIds) ? payload.discountIds : [],
+      adhocValue: payload.adhocValue ?? 0,
+      adhocType: payload.adhocType === "brl" ? "brl" : "pct",
+      snapshot: Array.isArray(payload.snapshot) ? payload.snapshot : [],
+      selectedCategory: payload.selectedCategory || null,
+      finalValue: typeof payload.finalValue === "number" ? payload.finalValue : null,
+      status,
+      notes: payload.notes?.trim() || null,
+      createdBy: actorId,
+      createdByName: actorName,
+    });
+    if (error) throw new Error(error.message);
+    return id;
+  },
+
+  async updateQuote(
+    propertyId: string,
+    id: string,
+    patch: Partial<RateQuoteRecord>
+  ): Promise<void> {
+    const admin = supabaseAdmin!;
+    const clean: Record<string, unknown> = {};
+    for (const field of QUOTE_PATCH_FIELDS) {
+      if (!(field in patch)) continue;
+      clean[field] = patch[field] ?? null;
+    }
+    if ("status" in clean && !QUOTE_STATUSES.includes(clean.status as RateQuoteStatus)) {
+      delete clean.status;
+    }
+    if (typeof clean.clientPhone === "string") {
+      clean.clientPhone = clean.clientPhone.replace(/\D/g, "") || null;
+    }
+    if ("finalValue" in clean && typeof clean.finalValue !== "number") clean.finalValue = null;
+    if (Object.keys(clean).length === 0) return;
+
+    const { error } = await admin
+      .from("rate_quotes")
+      .update({ ...clean, updatedAt: new Date().toISOString() })
+      .eq("id", id)
+      .eq("propertyId", propertyId);
+    if (error) throw new Error(error.message);
+  },
+
+  async deleteQuote(propertyId: string, id: string): Promise<void> {
+    const admin = supabaseAdmin!;
+    const { error } = await admin
+      .from("rate_quotes")
+      .delete()
+      .eq("id", id)
+      .eq("propertyId", propertyId);
+    if (error) throw new Error(error.message);
+  },
+
+  /**
+   * Conversão (ganhou): garante o hóspede — usa o vinculado, encontra pelo
+   * documento ou cria a ficha a partir dos dados do lead — e marca o orçamento
+   * como 'won'. Devolve o necessário para abrir /admin/stays/new pré-preenchida.
+   */
+  async convertQuote(
+    propertyId: string,
+    id: string,
+    actorId: string,
+    actorName: string
+  ): Promise<{ guestId: string | null; checkIn: string; checkOut: string }> {
+    const admin = supabaseAdmin!;
+    const { data } = await admin
+      .from("rate_quotes")
+      .select("*")
+      .eq("id", id)
+      .eq("propertyId", propertyId)
+      .maybeSingle();
+    if (!data) throw new Error("Orçamento não encontrado.");
+    const quote = data as RateQuoteRecord;
+
+    let guestId = quote.guestId || null;
+
+    if (!guestId && quote.clientDocument) {
+      const normId = GuestService.normalizeDocument(quote.clientDocument);
+      if (normId) {
+        const { data: existing } = await admin
+          .from("guests")
+          .select("id")
+          .eq("id", normId)
+          .eq("propertyId", propertyId)
+          .maybeSingle();
+        if (existing) {
+          guestId = existing.id as string;
+        } else if (quote.clientName) {
+          const newGuest: Omit<Guest, "updatedAt"> = {
+            id: quote.clientDocument,
+            propertyId,
+            fullName: quote.clientName,
+            email: quote.clientEmail || "",
+            phone: quote.clientPhone || "",
+            nationality: "Brasileira",
+            birthDate: "",
+            gender: "NAO_INFORMADO",
+            occupation: "",
+            document: { type: "CPF", number: quote.clientDocument },
+            address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", country: "Brasil" },
+            allergies: [],
+            preferredLanguage: "pt",
+          };
+          guestId = await GuestService.upsertGuestDirect(propertyId, newGuest, actorId, actorName);
+        }
+      }
+    }
+
+    await this.updateQuote(propertyId, id, { status: "won", guestId });
+    return { guestId, checkIn: quote.checkIn, checkOut: quote.checkOut };
   },
 
   // ── Importação do backup do SIT ────────────────────────────────────────────
