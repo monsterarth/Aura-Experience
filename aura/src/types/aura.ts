@@ -763,7 +763,11 @@ export interface Stay {
   /** Valor da diária média — o cron lança 1 débito por noite no fólio. */
   nightlyRate?: number | null;
   /** Total da hospedagem (arredondamento acerta na última noite). */
-  lodgingTotal?: number | null;          // Timestamp do encerramento manual da conta (zeriza aba pendente)
+  lodgingTotal?: number | null;
+  /** true = cron não lança diárias desta estadia. */
+  lodgingPaused?: boolean;
+  /** Valor por noite: { "YYYY-MM-DD": 890 }. Valor 0 = noite não cobrada. */
+  nightlyOverrides?: Record<string, number>;          // Timestamp do encerramento manual da conta (zeriza aba pendente)
   lostItemsDescription?: string;
   lostItemsPhoto?: string;
   lostItemsReportedAt?: string;
@@ -893,7 +897,8 @@ export interface AuditLog {
   | 'CRON_STOCK_LOW' | 'CRON_STOCK_EXPIRY' | 'CRON_ASSET_DEPRECIATION'
   | 'STRUCTURE_REVIEW_LOW'
   | 'RATE_TABLE_DELETED' | 'RATE_SIT_IMPORTED'
-  | 'RATE_QUOTE_LINKED' | 'CRON_DAILY_LODGING';
+  | 'RATE_QUOTE_LINKED' | 'CRON_DAILY_LODGING'
+  | 'LODGING_PAUSED' | 'LODGING_RESUMED' | 'LODGING_NIGHT_OVERRIDDEN';
   entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'STRUCTURE_REVIEW' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER' | 'CONTACT' | 'AUTOMATION' | 'BREAKFAST' | 'CRON' | 'SUPPLIER' | 'ASSET' | 'ASSET_INVENTORY' | 'PURCHASE' | 'INVENTORY' | 'RATE_TABLE';
   entityId: string;
   oldData?: any;
@@ -2331,6 +2336,24 @@ export interface RateAvailability {
   total: number;
   free: number;
   freeCabins: string[];      // nomes das cabanas livres
+}
+
+/** Uma noite da estadia na visão financeira (painel de diárias). */
+export interface LodgingNight {
+  /** YYYY-MM-DD — a noite (data de entrada dela). */
+  date: string;
+  /** Valor efetivo: override quando houver, senão o rateio do total. */
+  value: number;
+  /** Valor que sairia do rateio, sem override (para mostrar "de/por"). */
+  baseValue: number;
+  /** Há valor negociado para esta noite. */
+  overridden: boolean;
+  /** Já lançada no fólio. */
+  posted: boolean;
+  /** id do item no fólio, quando lançada. */
+  folioItemId?: string | null;
+  /** A noite já terminou (elegível para lançamento). */
+  due: boolean;
 }
 
 /** Estágio do funil de vendas de um orçamento salvo. */

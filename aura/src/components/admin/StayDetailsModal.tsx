@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { StayService } from "@/services/stay-service";
 import { FinanceService } from "@/services/finance-service";
+import { LodgingPanel } from "./LodgingPanel";
 import { chatwootSyncOnCabinTransfer, chatwootSyncOnCheckIn, chatwootSyncOnCheckOut } from "@/app/actions/chatwoot-actions";
 import { GuestService } from "@/services/guest-service";
 import { CabinService } from "@/services/cabin-service";
@@ -973,13 +974,11 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
               <div className="p-4 space-y-3">
                 {/* Hospedagem: diária vinculada (funil) ou definida à mão (avulsa) */}
                 {Number(stay.nightlyRate) > 0 ? (
-                  <div className="flex items-center gap-2 text-xs bg-primary/5 border border-primary/20 rounded-xl px-3 py-2">
-                    <span className="font-bold text-primary uppercase text-[9px] tracking-widest shrink-0">Hospedagem</span>
-                    <span className="text-muted-foreground">
-                      R$ {Number(stay.nightlyRate).toFixed(2)}/noite · total R$ {Number(stay.lodgingTotal ?? 0).toFixed(2)}
-                      {stay.rateQuoteId ? " · via orçamento" : ""} — as diárias entram no fólio automaticamente a cada noite.
-                    </span>
-                  </div>
+                  <LodgingPanel
+                    propertyId={stay.propertyId}
+                    stayId={stay.id}
+                    onChanged={() => { loadFolio(); if (onUpdate) onUpdate(); }}
+                  />
                 ) : !isGovOnly && (
                   <div className="flex items-center gap-2 text-xs bg-secondary/60 border border-dashed border-border rounded-xl px-3 py-2">
                     <span className="font-bold text-muted-foreground uppercase text-[9px] tracking-widest shrink-0">Diária</span>
