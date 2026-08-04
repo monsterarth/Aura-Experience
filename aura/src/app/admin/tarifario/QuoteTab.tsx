@@ -104,9 +104,17 @@ export default function QuoteTab({ propertyId, bundle, attendantName, onQuoteSav
   );
 
   const quote = useMemo(
-    () => computeQuote(input, { tables: bundle.tables, periods: bundle.periods, settings }),
-    [input, bundle.tables, bundle.periods, settings]
+    () => computeQuote(input, {
+      tables: bundle.tables, periods: bundle.periods, settings, categories: bundle.categories,
+    }),
+    [input, bundle.tables, bundle.periods, settings, bundle.categories]
   );
+
+  /** Link do site: da categoria (fonte atual) com fallback no config legado. */
+  const linkOf = (q: RateQuoteCategory) =>
+    bundle.categories.find((c) => c.id === q.categoryId)?.siteUrl ||
+    settings.categoryLinks?.[q.category] ||
+    undefined;
 
   // Identidade do orçamento atual: mudou parâmetro ou cliente = orçamento novo.
   const quoteKey = useMemo(
@@ -217,7 +225,7 @@ export default function QuoteTab({ propertyId, bundle, attendantName, onQuoteSav
   const copySingle = (cat: RateQuoteCategory) => {
     const block = buildCategoryBlock(
       cat,
-      settings.categoryLinks?.[cat.category],
+      linkOf(cat),
       settings.msgSingleTemplate || DEFAULT_MSG_SINGLE_TEMPLATE,
       detailed
     );
@@ -228,13 +236,13 @@ export default function QuoteTab({ propertyId, bundle, attendantName, onQuoteSav
   };
 
   const copyFull = async () => {
-    const selected = quote.categories.filter((c) => !deselected.has(c.category));
+    const selected = quote.categories.filter((c) => !deselected.has(c.categoryId));
     if (selected.length === 0) return toast.error("Selecione pelo menos uma categoria.");
     const resumo = selected
       .map((c) =>
         buildCategoryBlock(
           c,
-          settings.categoryLinks?.[c.category],
+          linkOf(c),
           settings.msgSingleTemplate || DEFAULT_MSG_SINGLE_TEMPLATE,
           detailed
         )
@@ -478,14 +486,14 @@ export default function QuoteTab({ propertyId, bundle, attendantName, onQuoteSav
         <>
           <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {quote.categories.map((c) => {
-              const avail = availability[c.category];
-              const selected = !deselected.has(c.category);
+              const avail = availability[c.categoryId];
+              const selected = !deselected.has(c.categoryId);
               const showOldPrice = Math.abs(c.finalTotal - c.rawTotal) > 5;
               return (
-                <div key={c.category}
+                <div key={c.categoryId}
                   className="bg-card border border-border rounded-2xl overflow-hidden flex flex-col">
                   <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-secondary/50">
-                    <input type="checkbox" checked={selected} onChange={() => toggleSelected(c.category)}
+                    <input type="checkbox" checked={selected} onChange={() => toggleSelected(c.categoryId)}
                       className="w-4 h-4 cursor-pointer" />
                     <Home size={15} className="text-muted-foreground" />
                     <span className="font-semibold text-sm text-foreground flex-1">{c.category}</span>

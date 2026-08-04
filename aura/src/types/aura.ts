@@ -171,13 +171,41 @@ export interface CabinArea {
   configs: CabinBed[][]; // Cada array interno é uma variante de montagem alternativa
 }
 
+/**
+ * Categoria de cabana — entidade canônica por propriedade.
+ *
+ * Fonte única da verdade para "que tipo de unidade é esta": as cabanas apontam
+ * para ela por `categoryId` e as tabelas de preço do Tarifário indexam por esse
+ * mesmo id. Antes disso a categoria era texto livre digitado em cada cabana, o
+ * que gerava grafias divergentes ("Jardim - 2 Dormitórios" × "Jardim 2
+ * Dormitórios") e quebrava o cruzamento preço × disponibilidade.
+ */
+export interface CabinCategory {
+  id: string;
+  propertyId: string;
+  /** Nome operacional — compõe o `name` da cabana ("01 - Praia - 2 Dormitórios"). */
+  name: string;
+  /** Nome comercial curto usado em orçamentos e WhatsApp (ex.: "Praia 2"). */
+  shortName?: string | null;
+  /** Link da categoria no site, usado no template de orçamento. */
+  siteUrl?: string | null;
+  order: number;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+  /** Virtual: quantas cabanas usam esta categoria (preenchido em listagens). */
+  cabinCount?: number;
+}
+
 // --- ENTIDADE CABANA ---
 export interface Cabin {
   id: string;
   propertyId: string;
   number: string;     // Ex: "01"
-  category: string;   // Ex: "Praia 2 dormitórios"
-  name: string;       // Gerado: "01 - Praia 2 dormitórios"
+  /** FK para `cabin_categories` — fonte da verdade da categoria. */
+  categoryId?: string | null;
+  /** Nome da categoria, desnormalizado a partir de `categoryId` (leitura/exibição). */
+  category: string;   // Ex: "Praia - 2 Dormitórios"
+  name: string;       // Gerado: "01 - Praia - 2 Dormitórios"
   capacity: number;
   status: 'available' | 'occupied' | 'maintenance' | 'cleaning';
   ignoreInOccupancy?: boolean; // true → não conta na taxa de ocupação (extra / uso da casa)
@@ -2167,9 +2195,9 @@ export interface AssetLabel {
 
 /**
  * Tabela de preços: diária por categoria de cabana × nº de pagantes (1..6).
- * `prices` = { "<categoria>": { "1": 990, "2": 1090, ... } } — a chave externa
- * é a MESMA string de `Cabin.category` (é assim que orçamento e disponibilidade
- * se encontram).
+ * `prices` = { "<categoryId>": { "1": 990, "2": 1090, ... } } — a chave é o id
+ * de `CabinCategory`, o mesmo que a cabana referencia. É por isso que preço e
+ * disponibilidade não têm como divergir (antes se encontravam por string).
  */
 export interface RateTable {
   id: string;
@@ -2230,7 +2258,7 @@ export interface RateSettings {
   fluctuations: RateFluctuation[];
   discounts: RateDiscount[];
   promos: RatePromo[];
-  /** Link do site por categoria, usado no template de WhatsApp. */
+  /** @deprecated Migrado para `CabinCategory.siteUrl`; mantido só para linhas antigas. */
   categoryLinks: Record<string, string>;
   msgTemplate?: string | null;
   msgSingleTemplate?: string | null;
@@ -2263,6 +2291,8 @@ export interface RateBreakdownItem {
 
 /** Resultado do orçamento para uma categoria de cabana. */
 export interface RateQuoteCategory {
+  categoryId: string;
+  /** Nome comercial para exibição/mensagem (shortName ?? name). */
   category: string;
   nights: number;
   rawTotal: number;          // tabela pura + taxa pet (comparativo "de/por")

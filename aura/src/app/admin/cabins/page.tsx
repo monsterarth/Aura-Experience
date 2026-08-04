@@ -5,13 +5,176 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { CabinService } from "@/services/cabin-service";
-import { Cabin, CabinArea, CabinBed } from "@/types/aura";
+import { Cabin, CabinArea, CabinBed, CabinCategory } from "@/types/aura";
 import {
   Home, Plus, Wifi, Trash2, Edit3, Users, X, Hammer, Hash, Layers,
-  Building2, PlusCircle, BedDouble, Sparkles, Copy, Loader2
+  Building2, PlusCircle, BedDouble, Sparkles, Copy, Loader2, Tag, Link2, AlertTriangle
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
+// ==========================================
+// GERENCIADOR DE CATEGORIAS
+// ==========================================
+// Categoria é entidade canônica: cabanas e tabelas de preço do Tarifário
+// apontam para o mesmo id. Renomear aqui reescreve o nome das cabanas.
+
+function CategoryManagerModal({
+  propertyId, categories, onClose, onChanged,
+}: {
+  propertyId: string;
+  categories: CabinCategory[];
+  onClose: () => void;
+  onChanged: (createdId?: string) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState<Partial<CabinCategory>>({ name: "", shortName: "", siteUrl: "" });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const reset = () => { setDraft({ name: "", shortName: "", siteUrl: "" }); setEditingId(null); };
+
+  const save = async () => {
+    if (!draft.name?.trim()) return toast.error("Informe o nome da categoria.");
+    setSaving(true);
+    try {
+      const id = await CabinService.saveCategory(propertyId, {
+        id: editingId ?? undefined,
+        name: draft.name,
+        shortName: draft.shortName,
+        siteUrl: draft.siteUrl,
+        order: draft.order ?? categories.length,
+      });
+      toast.success(editingId ? "Categoria atualizada." : "Categoria criada.");
+      const wasNew = !editingId;
+      reset();
+      await onChanged(wasNew ? id : undefined);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar a categoria.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (c: CabinCategory) => {
+    if (!confirm(`Excluir a categoria "${c.name}"?`)) return;
+    try {
+      await CabinService.deleteCategory(propertyId, c.id);
+      toast.success("Categoria excluída.");
+      await onChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao excluir.");
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-background/80 backdrop-blur-sm p-6"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-card border border-border w-full max-w-2xl rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
+        <header className="p-8 border-b border-border flex justify-between items-center shrink-0">
+          <div>
+            <h2 className="text-2xl font-black uppercase tracking-tighter italic text-foreground">Categorias</h2>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold mt-1">
+              Usadas pelas cabanas e pelo tarifário
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="p-2 bg-secondary text-muted-foreground rounded-full hover:bg-accent hover:text-foreground transition-colors">
+            <X />
+          </button>
+        </header>
+
+        <div className="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1">
+          <div className="bg-secondary/50 border border-dashed border-border p-6 rounded-[24px] space-y-4">
+            <h3 className="text-[10px] font-black uppercase text-primary tracking-widest">
+              {editingId ? "Editar categoria" : "Nova categoria"}
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-[9px] font-black uppercase text-muted-foreground ml-1">Nome operacional *</label>
+                <input
+                  value={draft.name ?? ""}
+                  onChange={e => setDraft({ ...draft, name: e.target.value })}
+                  placeholder="Ex: Praia - 2 Dormitórios"
+                  className="w-full bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-primary text-foreground"
+                />
+                <p className="text-[9px] text-muted-foreground ml-1">Compõe o nome da cabana: &quot;01 - Praia - 2 Dormitórios&quot;.</p>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] font-black uppercase text-muted-foreground ml-1">Nome comercial</label>
+                <input
+                  value={draft.shortName ?? ""}
+                  onChange={e => setDraft({ ...draft, shortName: e.target.value })}
+                  placeholder="Ex: Praia 2"
+                  className="w-full bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-primary text-foreground"
+                />
+                <p className="text-[9px] text-muted-foreground ml-1">Usado nos orçamentos e no WhatsApp.</p>
+              </div>
+              <div className="space-y-1 md:col-span-2">
+                <label className="text-[9px] font-black uppercase text-muted-foreground ml-1 flex items-center gap-1">
+                  <Link2 size={10} /> Link no site
+                </label>
+                <input
+                  value={draft.siteUrl ?? ""}
+                  onChange={e => setDraft({ ...draft, siteUrl: e.target.value })}
+                  placeholder="https://…"
+                  className="w-full bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-primary text-foreground"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              {editingId && (
+                <button type="button" onClick={reset} className="px-4 py-2 text-[10px] font-black uppercase text-muted-foreground hover:text-foreground">
+                  Cancelar
+                </button>
+              )}
+              <button type="button" onClick={save} disabled={saving}
+                className="px-6 py-3 bg-primary text-primary-foreground font-black uppercase text-[10px] rounded-xl active:scale-95 transition-all disabled:opacity-50 flex items-center gap-2">
+                {saving && <Loader2 size={12} className="animate-spin" />}
+                {editingId ? "Atualizar" : "Criar categoria"}
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {categories.length === 0 && (
+              <div className="text-xs text-muted-foreground p-6 bg-secondary rounded-xl border border-dashed border-border text-center">
+                Nenhuma categoria cadastrada ainda.
+              </div>
+            )}
+            {categories.map(c => (
+              <div key={c.id} className="flex items-center gap-3 bg-secondary border border-border p-4 rounded-2xl">
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm text-foreground truncate">{c.name}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">
+                    {c.shortName ? `“${c.shortName}” · ` : ""}
+                    {c.cabinCount ?? 0} cabana(s)
+                    {c.siteUrl ? " · link ok" : ""}
+                  </p>
+                </div>
+                <button type="button" title="Editar"
+                  onClick={() => { setEditingId(c.id); setDraft({ name: c.name, shortName: c.shortName ?? "", siteUrl: c.siteUrl ?? "", order: c.order }); }}
+                  className="p-2 bg-background text-muted-foreground rounded-xl hover:text-primary transition-colors">
+                  <Edit3 size={15} />
+                </button>
+                <button type="button" title="Excluir" onClick={() => remove(c)}
+                  className="p-2 bg-background text-muted-foreground rounded-xl hover:text-red-500 transition-colors">
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-start gap-3 bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4">
+            <AlertTriangle size={15} className="text-amber-500 shrink-0 mt-0.5" />
+            <p className="text-[11px] text-muted-foreground">
+              Renomear uma categoria reescreve o nome de todas as cabanas dela. Os preços do
+              tarifário acompanham automaticamente, porque apontam para o id — não para o texto.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function CabinsPage() {
   const { currentProperty: property, loading: propertyLoading } = useProperty();
@@ -21,12 +184,14 @@ export default function CabinsPage() {
   const isGovOnly = userData?.role === 'governance';
 
   const [cabins, setCabins] = useState<Cabin[]>([]);
+  const [categories, setCategories] = useState<CabinCategory[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCabin, setEditingCabin] = useState<Partial<Cabin> | null>(null);
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [batchNumbers, setBatchNumbers] = useState("");
+  const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
 
   // Normaliza layout legado (area.beds → area.configs) para compatibilidade com dados antigos
   const normalizeLayout = (layout?: any[]): any[] | undefined => {
@@ -41,8 +206,12 @@ export default function CabinsPage() {
     if (!property?.id) return;
     setLoading(true);
     try {
-      const data = await CabinService.getCabinsByProperty(property.id);
+      const [data, cats] = await Promise.all([
+        CabinService.getCabinsByProperty(property.id),
+        CabinService.getCategories(property.id),
+      ]);
       setCabins(data);
+      setCategories(cats);
     } catch (error) {
       toast.error("Erro ao carregar unidades.");
     } finally {
@@ -72,7 +241,7 @@ export default function CabinsPage() {
     } else {
       setEditingCabin(cabin ? { ...cabin, layout: normalizeLayout(cabin.layout) } : {
         number: "",
-        category: "",
+        categoryId: "",
         capacity: 2,
         status: "available",
         ignoreInOccupancy: false,
@@ -89,7 +258,7 @@ export default function CabinsPage() {
 
   const handleOpenBatchModal = () => {
     setEditingCabin({
-      category: "",
+      categoryId: "",
       capacity: 2,
       status: "available",
       ignoreInOccupancy: false,
@@ -105,8 +274,8 @@ export default function CabinsPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!property?.id || !editingCabin?.category) {
-      return toast.error("Preencha todos os campos obrigatórios.");
+    if (!property?.id || !editingCabin?.categoryId) {
+      return toast.error("Selecione a categoria da unidade.");
     }
 
     if (!isBatchMode && !editingCabin?.number) {
@@ -262,6 +431,12 @@ export default function CabinsPage() {
         {!isGovOnly && (
           <div className="flex gap-3">
             <button
+              onClick={() => setIsCategoryManagerOpen(true)}
+              className="bg-secondary text-foreground font-black px-6 py-4 rounded-2xl flex items-center gap-2 hover:bg-accent transition-all active:scale-95"
+            >
+              Categorias <Tag size={20} />
+            </button>
+            <button
               onClick={() => handleOpenBatchModal()}
               className="bg-secondary text-foreground font-black px-6 py-4 rounded-2xl flex items-center gap-2 hover:bg-accent transition-all active:scale-95"
             >
@@ -348,6 +523,21 @@ export default function CabinsPage() {
         </div>
       )}
 
+      {isCategoryManagerOpen && property?.id && (
+        <CategoryManagerModal
+          propertyId={property.id}
+          categories={categories}
+          onClose={() => setIsCategoryManagerOpen(false)}
+          onChanged={async (createdId) => {
+            await loadCabins();
+            // Categoria criada de dentro do formulário da cabana já entra selecionada.
+            if (createdId && isModalOpen) {
+              setEditingCabin(c => ({ ...c!, categoryId: createdId }));
+            }
+          }}
+        />
+      )}
+
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-6">
           <form onSubmit={handleSave} className="bg-card border border-border w-full max-w-4xl rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in duration-300 flex flex-col h-[90vh]">
@@ -389,13 +579,24 @@ export default function CabinsPage() {
                   <label className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
                     <Layers size={12} /> Categoria
                   </label>
-                  <input
+                  <select
                     disabled={isGovOnly}
-                    value={editingCabin?.category}
-                    onChange={e => setEditingCabin({ ...editingCabin!, category: e.target.value })}
-                    placeholder="Ex: Praia"
+                    value={editingCabin?.categoryId ?? ""}
+                    onChange={e => {
+                      if (e.target.value === "__new__") {
+                        setIsCategoryManagerOpen(true);
+                        return;
+                      }
+                      setEditingCabin({ ...editingCabin!, categoryId: e.target.value });
+                    }}
                     className="w-full bg-background border border-border p-4 rounded-2xl outline-none focus:border-primary text-xl font-bold text-foreground disabled:opacity-50"
-                  />
+                  >
+                    <option value="" disabled>Selecione…</option>
+                    {categories.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                    {!isGovOnly && <option value="__new__">+ Nova categoria…</option>}
+                  </select>
                 </div>
                 {!isBatchMode && (
                   <div className="space-y-2">

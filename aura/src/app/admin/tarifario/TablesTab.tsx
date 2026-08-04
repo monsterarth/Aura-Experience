@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Copy, FileSpreadsheet, Loader2, Plus, Trash2, Upload, X } from "lucide-react";
-import { RateTable } from "@/types/aura";
+import { CabinCategory, RateTable } from "@/types/aura";
 import type { RateBundle } from "@/services/rate-service";
 import { MAX_PAX } from "@/lib/rate-engine";
 
@@ -25,40 +25,64 @@ function parseBRLCell(raw: string): number {
   return isNaN(v) ? 0 : v;
 }
 
-function parseExcelPaste(raw: string, knownCategories: string[]): RateTable["prices"] {
+const normKey = (s: string) =>
+  s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+/**
+ * Colagem do Excel: 1ª coluna é o nome da categoria, que precisa casar com uma
+ * categoria cadastrada (nome operacional ou comercial). Linha sem correspondente
+ * é reportada em `unmatched` em vez de virar categoria fantasma.
+ */
+function parseExcelPaste(
+  raw: string,
+  categories: CabinCategory[]
+): { prices: RateTable["prices"]; unmatched: string[] } {
+  const byKey: { key: string; id: string }[] = [];
+  for (const c of categories) {
+    byKey.push({ key: normKey(c.name), id: c.id });
+    if (c.shortName) byKey.push({ key: normKey(c.shortName), id: c.id });
+  }
+
   const prices: RateTable["prices"] = {};
+  const unmatched: string[] = [];
+
   for (const line of raw.split("\n")) {
     const cells = line.split("\t");
     if (cells.length < 2) continue;
     const rawName = cells[0].trim();
     if (!rawName) continue;
-    const lower = rawName.toLowerCase();
-    const match =
-      knownCategories.find((c) => c.toLowerCase() === lower) ||
-      knownCategories.find((c) => c.toLowerCase().includes(lower) || lower.includes(c.toLowerCase()));
+
     const row: Record<string, number> = {};
     for (let i = 1; i <= MAX_PAX && i < cells.length; i++) {
       const v = parseBRLCell(cells[i]);
       if (v > 0) row[String(i)] = v;
     }
-    if (Object.keys(row).length > 0) prices[match || rawName] = row;
+    if (Object.keys(row).length === 0) continue;
+
+    const key = normKey(rawName);
+    const catId =
+      byKey.find((e) => e.key === key)?.id ??
+      byKey.find((e) => e.key.includes(key) || key.includes(e.key))?.id;
+
+    if (catId) prices[catId] = row;
+    else unmatched.push(rawName);
   }
-  return prices;
+  return { prices, unmatched };
 }
 
 function TableCard({
-  propertyId, table, knownCategories, onRefresh,
+  propertyId, table, categories, onRefresh,
 }: {
   propertyId: string;
   table: RateTable;
-  knownCategories: string[];
+  categories: CabinCategory[];
   onRefresh: Props["onRefresh"];
 }) {
   const [name, setName] = useState(table.name);
   const [prices, setPrices] = useState<RateTable["prices"]>(table.prices || {});
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [newCategory, setNewCategory] = useState("");
+  const [newCategoryId, setNewCategoryId] = useState("");
 
   // Sincroniza com o servidor quando não há edição local pendente.
   useEffect(() => {
@@ -68,31 +92,30 @@ function TableCard({
     }
   }, [table, dirty]);
 
-  const setPrice = (cat: string, pax: string, value: string) => {
+  const setPrice = (catId: string, pax: string, value: string) => {
     setDirty(true);
     setPrices((prev) => {
-      const next = { ...prev, [cat]: { ...(prev[cat] || {}) } };
+      const next = { ...prev, [catId]: { ...(prev[catId] || {}) } };
       const v = parseFloat(value);
-      if (!value || isNaN(v) || v <= 0) delete next[cat][pax];
-      else next[cat][pax] = v;
+      if (!value || isNaN(v) || v <= 0) delete next[catId][pax];
+      else next[catId][pax] = v;
       return next;
     });
   };
 
   const addCategory = () => {
-    const cat = newCategory.trim();
-    if (!cat) return;
-    if (prices[cat]) return toast.error("Categoria já está na tabela.");
+    if (!newCategoryId) return;
+    if (prices[newCategoryId]) return toast.error("Categoria já está na tabela.");
     setDirty(true);
-    setPrices((prev) => ({ ...prev, [cat]: {} }));
-    setNewCategory("");
+    setPrices((prev) => ({ ...prev, [newCategoryId]: {} }));
+    setNewCategoryId("");
   };
 
-  const removeCategory = (cat: string) => {
+  const removeCategory = (catId: string) => {
     setDirty(true);
     setPrices((prev) => {
       const next = { ...prev };
-      delete next[cat];
+      delete next[catId];
       return next;
     });
   };
@@ -149,8 +172,10 @@ function TableCard({
     }
   };
 
-  const categories = Object.keys(prices);
-  const suggestions = knownCategories.filter((c) => !prices[c]);
+  const catById = new Map(categories.map((c) => [c.id, c]));
+  // Só linhas de categorias que ainda existem (chave órfã fica escondida).
+  const rowIds = Object.keys(prices).filter((id) => catById.has(id));
+  const available = categories.filter((c) => !prices[c.id]);
 
   return (
     <div className="bg-card border border-border rounded-2xl p-5">
@@ -186,29 +211,31 @@ function TableCard({
             </tr>
           </thead>
           <tbody>
-            {categories.length === 0 && (
+            {rowIds.length === 0 && (
               <tr>
                 <td colSpan={MAX_PAX + 2} className="text-center text-muted-foreground text-sm py-6">
                   Tabela vazia — adicione categorias abaixo.
                 </td>
               </tr>
             )}
-            {categories.map((cat) => (
-              <tr key={cat} className="border-t border-border">
-                <td className="px-2 py-1.5 font-medium text-foreground whitespace-nowrap">{cat}</td>
+            {rowIds.map((catId) => (
+              <tr key={catId} className="border-t border-border">
+                <td className="px-2 py-1.5 font-medium text-foreground whitespace-nowrap">
+                  {catById.get(catId)!.name}
+                </td>
                 {PAX_COLS.map((pax) => (
                   <td key={pax} className="px-1 py-1">
                     <input
                       type="number"
                       className="w-full text-center font-semibold text-blue-600 bg-secondary/40 rounded-md px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300"
-                      value={prices[cat]?.[pax] ?? ""}
-                      onChange={(e) => setPrice(cat, pax, e.target.value)}
+                      value={prices[catId]?.[pax] ?? ""}
+                      onChange={(e) => setPrice(catId, pax, e.target.value)}
                       placeholder="—"
                     />
                   </td>
                 ))}
                 <td className="text-center">
-                  <button onClick={() => removeCategory(cat)} title="Remover categoria"
+                  <button onClick={() => removeCategory(catId)} title="Remover da tabela"
                     className="text-muted-foreground hover:text-red-600">
                     <X size={14} />
                   </button>
@@ -220,23 +247,21 @@ function TableCard({
       </div>
 
       <div className="flex flex-wrap gap-2 mt-3 items-center">
-        <input
-          className="field-input !w-64"
-          list={`cats-${table.id}`}
-          placeholder="Nova categoria (ex.: Praia 2 dormitórios)"
-          value={newCategory}
-          onChange={(e) => setNewCategory(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && addCategory()}
-        />
-        <datalist id={`cats-${table.id}`}>
-          {suggestions.map((c) => <option key={c} value={c} />)}
-        </datalist>
-        <Button variant="outline" size="sm" onClick={addCategory}>
-          <Plus size={13} className="mr-1" /> Adicionar categoria
+        <select className="field-input !w-72" value={newCategoryId}
+          onChange={(e) => setNewCategoryId(e.target.value)}>
+          <option value="">Adicionar categoria…</option>
+          {available.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+        <Button variant="outline" size="sm" onClick={addCategory} disabled={!newCategoryId}>
+          <Plus size={13} className="mr-1" /> Adicionar
         </Button>
-        <span className="text-[11px] text-muted-foreground">
-          Use o MESMO nome da categoria das cabanas para casar com a disponibilidade.
-        </span>
+        {available.length === 0 && (
+          <span className="text-[11px] text-muted-foreground">
+            Todas as categorias da propriedade já estão nesta tabela.
+          </span>
+        )}
       </div>
     </div>
   );
@@ -251,9 +276,7 @@ export default function TablesTab({ propertyId, bundle, onRefresh }: Props) {
   const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const knownCategories = Array.from(
-    new Set([...bundle.cabinCategories, ...bundle.tables.flatMap((t) => Object.keys(t.prices || {}))])
-  ).sort();
+  const categories = bundle.categories;
 
   const createTable = async () => {
     if (!newName.trim()) return toast.error("Dê um nome à tabela.");
@@ -276,9 +299,16 @@ export default function TablesTab({ propertyId, bundle, onRefresh }: Props) {
   };
 
   const processExcel = async () => {
-    const prices = parseExcelPaste(excelText, knownCategories);
+    const { prices, unmatched } = parseExcelPaste(excelText, categories);
     if (Object.keys(prices).length === 0) {
-      return toast.error("Nada reconhecido — cole as células direto do Excel (com TAB entre colunas).");
+      return toast.error(
+        unmatched.length
+          ? `Nenhuma categoria reconhecida: ${unmatched.join(", ")}. Cadastre-as em Cabanas → Categorias.`
+          : "Nada reconhecido — cole as células direto do Excel (com TAB entre colunas)."
+      );
+    }
+    if (unmatched.length) {
+      toast.warning(`Ignoradas (sem categoria cadastrada): ${unmatched.join(", ")}`, { duration: 8000 });
     }
     try {
       const res = await fetch("/api/admin/tarifario/tables", {
@@ -313,6 +343,13 @@ export default function TablesTab({ propertyId, bundle, onRefresh }: Props) {
         `SIT importado: ${data.tables} tabelas, ${data.periods} regras, ${data.promos} promoções, ${data.discounts} descontos.` +
         (data.skippedWeddings ? ` ${data.skippedWeddings} casamentos ignorados (use o módulo Casamentos).` : "")
       );
+      if (data.unmatchedCategories?.length) {
+        toast.warning(
+          `Sem categoria cadastrada (preços descartados): ${data.unmatchedCategories.join(", ")}. ` +
+          `Cadastre em Cabanas → Categorias (use o nome comercial) e importe de novo.`,
+          { duration: 12000 }
+        );
+      }
       await onRefresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Arquivo inválido.");
@@ -359,7 +396,7 @@ export default function TablesTab({ propertyId, bundle, onRefresh }: Props) {
       ) : (
         bundle.tables.map((t) => (
           <TableCard key={t.id} propertyId={propertyId} table={t}
-            knownCategories={knownCategories} onRefresh={onRefresh} />
+            categories={categories} onRefresh={onRefresh} />
         ))
       )}
 

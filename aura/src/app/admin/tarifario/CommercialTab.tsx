@@ -46,13 +46,7 @@ export default function CommercialTab({ propertyId, bundle, onRefresh }: Props) 
     name: "", pct: "", startDate: "", endDate: "", minNights: "1", dayType: "all" as RatePromo["dayType"],
   });
 
-  const categories = useMemo(
-    () =>
-      Array.from(
-        new Set([...bundle.cabinCategories, ...bundle.tables.flatMap((t) => Object.keys(t.prices || {}))])
-      ).sort(),
-    [bundle.cabinCategories, bundle.tables]
-  );
+  const categories = bundle.categories;
 
   const addFluct = () => {
     const pct = parseFloat(newFluct.pct);
@@ -220,21 +214,25 @@ export default function CommercialTab({ propertyId, bundle, onRefresh }: Props) 
               <Link2 size={16} /> Links por categoria (site)
             </h3>
             <p className="text-xs text-muted-foreground">
-              Entram na mensagem de WhatsApp em {"{CABANA_LINK}"}. Sem link, a linha é omitida.
+              Os links do site agora vivem na própria categoria, junto do nome comercial —
+              cadastre em <b>Cabanas → Categorias</b>. Eles entram na mensagem em {"{CABANA_LINK}"}.
             </p>
-            {categories.length === 0 && (
-              <p className="text-sm text-muted-foreground">Nenhuma categoria conhecida ainda.</p>
-            )}
-            {categories.map((cat) => (
-              <div key={cat}>
-                <label className="field-label">{cat}</label>
-                <input className="field-input" placeholder="https://…"
-                  value={draft.categoryLinks?.[cat] || ""}
-                  onChange={(e) =>
-                    patch({ categoryLinks: { ...draft.categoryLinks, [cat]: e.target.value } })
-                  } />
-              </div>
-            ))}
+            <div className="space-y-1.5">
+              {categories.map((cat) => (
+                <div key={cat.id} className="flex items-center gap-2 text-sm bg-secondary rounded-lg px-3 py-2">
+                  <span className="flex-1 truncate">
+                    {cat.name}
+                    {cat.shortName && <span className="text-muted-foreground"> · “{cat.shortName}”</span>}
+                  </span>
+                  {cat.siteUrl
+                    ? <span className="text-xs font-bold text-emerald-600 shrink-0">link ok</span>
+                    : <span className="text-xs text-muted-foreground shrink-0">sem link</span>}
+                </div>
+              ))}
+              {categories.length === 0 && (
+                <p className="text-sm text-muted-foreground">Nenhuma categoria cadastrada ainda.</p>
+              )}
+            </div>
           </div>
 
           <div className="bg-card border border-border rounded-2xl p-5 space-y-3">

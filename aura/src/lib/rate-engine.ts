@@ -5,6 +5,7 @@
 // servidor pode reusar o mesmo motor para futuras cotações públicas.
 
 import {
+  CabinCategory,
   RateBreakdownItem,
   RatePeriod,
   RatePromo,
@@ -67,6 +68,13 @@ interface RateData {
   tables: RateTable[];
   periods: RatePeriod[];
   settings: RateSettings;
+  /** Categorias da propriedade — resolvem id → nome comercial. */
+  categories: CabinCategory[];
+}
+
+/** Nome a exibir/mandar no WhatsApp: comercial quando houver, senão operacional. */
+export function displayNameOf(category: CabinCategory): string {
+  return category.shortName?.trim() || category.name;
 }
 
 function promoAppliesToNight(promo: RatePromo, iso: string, nights: number): boolean {
@@ -91,7 +99,7 @@ function findRule(periods: RatePeriod[], iso: string): RatePeriod | undefined {
  *   (uncoveredDates preenchido, categories vazio).
  */
 export function computeQuote(input: RateQuoteInput, data: RateData): RateQuoteResult {
-  const { tables, periods, settings } = data;
+  const { tables, periods, settings, categories } = data;
   const nights = nightsBetween(input.checkIn, input.checkOut);
   const empty: RateQuoteResult = { categories: [], uncoveredDates: [], minNightsRequired: 1, nights };
   if (nights <= 0) return empty;
@@ -111,9 +119,12 @@ export function computeQuote(input: RateQuoteInput, data: RateData): RateQuoteRe
 
   const pax = Math.min(MAX_PAX, Math.max(1, (input.adults || 0) + (input.children || 0)));
   const tableById = new Map(tables.map((t) => [t.id, t]));
-  const categories = Array.from(
+  const categoryById = new Map(categories.map((c) => [c.id, c]));
+  // Só categorias que ainda existem: chave órfã (categoria excluída) some do
+  // orçamento em vez de virar uma linha sem nome.
+  const categoryIds = Array.from(
     new Set(tables.flatMap((t) => Object.keys(t.prices || {})))
-  );
+  ).filter((id) => categoryById.has(id));
 
   const activeDiscounts = (settings.discounts || []).filter((d) =>
     input.discountIds.includes(d.id)
@@ -122,7 +133,7 @@ export function computeQuote(input: RateQuoteInput, data: RateData): RateQuoteRe
 
   const results: RateQuoteCategory[] = [];
 
-  for (const category of categories) {
+  for (const categoryId of categoryIds) {
     let rawTotal = 0;
     let accumulated = 0;
     let daysWithoutPrice = 0;
@@ -133,7 +144,7 @@ export function computeQuote(input: RateQuoteInput, data: RateData): RateQuoteRe
       const rule = findRule(sorted, iso)!;
       const tableId = isWeekendNight(iso) ? rule.weekendTableId : rule.weekdayTableId;
       const table = tableId ? tableById.get(tableId) : undefined;
-      const dailyRaw = Number(table?.prices?.[category]?.[String(pax)]) || 0;
+      const dailyRaw = Number(table?.prices?.[categoryId]?.[String(pax)]) || 0;
 
       rawTotal += dailyRaw;
       if (dailyRaw <= 0) daysWithoutPrice++;
@@ -191,7 +202,8 @@ export function computeQuote(input: RateQuoteInput, data: RateData): RateQuoteRe
 
     const finalTotal = total + petFee;
     results.push({
-      category,
+      categoryId,
+      category: displayNameOf(categoryById.get(categoryId)!),
       nights,
       rawTotal: rawTotal + petFee,
       finalTotal,

@@ -3,6 +3,7 @@
 // importação do backup do SIT (sistema offline que este módulo substitui).
 import { supabaseAdmin } from "@/lib/supabase";
 import {
+  CabinCategory,
   Guest,
   RatePeriod,
   RateQuoteRecord,
@@ -41,8 +42,8 @@ export interface RateBundle {
   tables: RateTable[];
   periods: RatePeriod[];
   settings: RateSettings;
-  /** Categorias distintas das cabanas cadastradas (sugestões p/ tabelas). */
-  cabinCategories: string[];
+  /** Categorias canônicas da propriedade — chaves das tabelas de preço. */
+  categories: CabinCategory[];
   /** Casamentos não-cancelados com saída futura (vínculo no orçamento). */
   weddings: { id: string; couple: string; checkin: string; checkout: string; status: string }[];
 }
@@ -60,6 +61,8 @@ export interface SitImportResult {
   fluctuations: number;
   skippedWeddings: number;
   skippedEvents: number;
+  /** Categorias do backup sem correspondente cadastrado (preços descartados). */
+  unmatchedCategories: string[];
 }
 
 export const RateService = {
@@ -67,11 +70,11 @@ export const RateService = {
     const admin = supabaseAdmin!;
     const today = new Date().toISOString().slice(0, 10);
 
-    const [tablesRes, periodsRes, settingsRes, cabinsRes, weddingsRes] = await Promise.all([
+    const [tablesRes, periodsRes, settingsRes, categoriesRes, weddingsRes] = await Promise.all([
       admin.from("rate_tables").select("*").eq("propertyId", propertyId).order("createdAt"),
       admin.from("rate_periods").select("*").eq("propertyId", propertyId).order("startDate"),
       admin.from("rate_settings").select("*").eq("propertyId", propertyId).maybeSingle(),
-      admin.from("cabins").select("category").eq("propertyId", propertyId),
+      admin.from("cabin_categories").select("*").eq("propertyId", propertyId).order("order"),
       admin
         .from("weddings")
         .select("id, bride, groom, checkin, checkout, status")
@@ -82,9 +85,7 @@ export const RateService = {
     ]);
 
     const settings = (settingsRes.data as RateSettings) || DEFAULT_RATE_SETTINGS(propertyId);
-    const cabinCategories = Array.from(
-      new Set(((cabinsRes.data || []) as { category: string }[]).map((c) => c.category).filter(Boolean))
-    ).sort();
+    const categories = (categoriesRes.data || []) as CabinCategory[];
 
     const weddings = ((weddingsRes.data || []) as {
       id: string; bride: string; groom: string; checkin: string; checkout: string; status: string;
@@ -107,7 +108,7 @@ export const RateService = {
         promos: settings.promos || [],
         categoryLinks: settings.categoryLinks || {},
       },
-      cabinCategories,
+      categories,
       weddings,
     };
   },
@@ -270,7 +271,7 @@ export const RateService = {
     const admin = supabaseAdmin!;
 
     const [cabinsRes, staysRes, eventsRes] = await Promise.all([
-      admin.from("cabins").select("id, name, category").eq("propertyId", propertyId),
+      admin.from("cabins").select("id, name, categoryId").eq("propertyId", propertyId),
       admin
         .from("stays")
         .select("cabinId, checkIn, checkOut, status")
@@ -297,14 +298,15 @@ export const RateService = {
       if (sIn < checkOut && sOut > checkIn) occupied.add(s.cabinId);
     }
 
+    // Indexada por categoryId — o mesmo id que as tabelas de preço usam.
     const availability: Record<string, RateAvailability> = {};
-    for (const c of (cabinsRes.data || []) as { id: string; name: string; category: string }[]) {
-      if (!c.category) continue;
-      if (!availability[c.category]) availability[c.category] = { total: 0, free: 0, freeCabins: [] };
-      availability[c.category].total++;
+    for (const c of (cabinsRes.data || []) as { id: string; name: string; categoryId: string | null }[]) {
+      if (!c.categoryId) continue;
+      if (!availability[c.categoryId]) availability[c.categoryId] = { total: 0, free: 0, freeCabins: [] };
+      availability[c.categoryId].total++;
       if (!occupied.has(c.id)) {
-        availability[c.category].free++;
-        availability[c.category].freeCabins.push(c.name);
+        availability[c.categoryId].free++;
+        availability[c.categoryId].freeCabins.push(c.name);
       }
     }
 
@@ -494,6 +496,38 @@ export const RateService = {
     // Monta e VALIDA tudo antes de tocar no banco — um backup malformado não
     // pode destruir o tarifário vivo.
     const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+    // Preços do SIT vêm indexados por NOME de categoria; aqui viram categoryId.
+    // Casa por nome comercial (shortName) ou operacional, sem caixa/acento-sensível.
+    const { data: catRows } = await admin
+      .from("cabin_categories")
+      .select("id, name, shortName")
+      .eq("propertyId", propertyId);
+    const key = (s: string) =>
+      s.trim().toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+    const catByKey = new Map<string, string>();
+    for (const c of (catRows || []) as { id: string; name: string; shortName: string | null }[]) {
+      catByKey.set(key(c.name), c.id);
+      if (c.shortName) catByKey.set(key(c.shortName), c.id);
+    }
+    // Índice auxiliar para o "contém" (sem depender de iterar o Map).
+    const catKeys: { key: string; id: string }[] = [];
+    catByKey.forEach((id, k) => catKeys.push({ key: k, id }));
+    const unmatched = new Set<string>();
+
+    const remapPrices = (raw: unknown): RateTable["prices"] => {
+      const out: RateTable["prices"] = {};
+      if (!raw || typeof raw !== "object") return out;
+      for (const [catName, row] of Object.entries(raw as Record<string, unknown>)) {
+        const k = key(catName);
+        const catId =
+          catByKey.get(k) ??
+          catKeys.find((e) => e.key.includes(k) || k.includes(e.key))?.id;
+        if (!catId) { unmatched.add(catName); continue; }
+        out[catId] = row as Record<string, number>;
+      }
+      return out;
+    };
+
     const idMap = new Map<string, string>();
     const tableRows = rawTables.map((t) => {
       const id = crypto.randomUUID();
@@ -502,7 +536,7 @@ export const RateService = {
         id,
         propertyId,
         name: String(t.nome || "Tabela importada").trim(),
-        prices: (typeof t.precos === "object" && t.precos ? t.precos : {}) as RateTable["prices"],
+        prices: remapPrices(t.precos),
       };
     });
     const periodRows = rawPeriods
@@ -580,6 +614,7 @@ export const RateService = {
       fluctuations: fluctuations.length,
       skippedWeddings: Array.isArray(backup.casamentos) ? backup.casamentos.length : 0,
       skippedEvents: Array.isArray(backup.eventos_festivos) ? backup.eventos_festivos.length : 0,
+      unmatchedCategories: Array.from(unmatched).sort(),
     };
 
     await AuditService.log({
