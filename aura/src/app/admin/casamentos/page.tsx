@@ -4,13 +4,13 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { useProperty } from "@/context/PropertyContext";
 import { useCloseGuard } from "@/lib/use-discard-guard";
 import { supabase } from "@/lib/supabase";
-import { Wedding, WeddingCabinAssignment, WeddingStatus } from "@/types/aura";
+import { Wedding, WeddingCabinAssignment, WeddingStatus, WEDDING_LOST_REASONS } from "@/types/aura";
 import { toast } from "sonner";
 import {
   Heart, Shield, Clock, Sparkles, Search, Grid3X3, List,
   ChevronRight, X, Plus, Bed, Users, Globe,
   Camera, Music, Mic, Flower2, Coffee, Star, Truck, Sun,
-  Check, DollarSign, Calendar, Loader2, Trash2, Save, CheckCircle2,
+  Check, DollarSign, Calendar, Loader2, Trash2, Save, CheckCircle2, Archive,
 } from "lucide-react";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -72,6 +72,8 @@ const STATUS_CFG: Record<WeddingStatus, { label: string; pillBg: string; pillCol
   tentative: { label: "Em negociação", pillBg: T.amberBg,  pillColor: T.amber,  pillBorder: T.amberBorder  },
   completed: { label: "Realizado",     pillBg: T.glass2,   pillColor: T.muted,  pillBorder: T.border2      },
   cancelled: { label: "Cancelado",     pillBg: T.redBg,    pillColor: T.red,    pillBorder: T.redBorder    },
+  // Perdido ≠ cancelado: negociação que nunca virou contrato.
+  lost:      { label: "Perdido",       pillBg: T.glass2,   pillColor: T.muted2, pillBorder: T.border2      },
 };
 
 const VENDOR_ICONS: Record<string, React.ElementType> = {
@@ -406,14 +408,80 @@ function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }: {
 
 // ─── Detail drawer ────────────────────────────────────────────────────────────
 
-function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onEdit, onDelete, onStatusChange }: {
+// Modal de perda: motivo é obrigatório — é ele que transforma o arquivo morto
+// em informação comercial ("por que não fechamos?").
+function LostReasonModal({ wedding, onCancel, onConfirm }: {
+  wedding: Wedding;
+  onCancel: () => void;
+  onConfirm: (reason: string) => Promise<void>;
+}) {
+  const [reason, setReason] = useState<string>('');
+  const [custom, setCustom] = useState('');
+  const [saving, setSaving] = useState(false);
+  const final = reason === '__outro__' ? custom.trim() : reason;
+
+  const submit = async () => {
+    if (!final) return;
+    setSaving(true);
+    try { await onConfirm(final); } finally { setSaving(false); }
+  };
+
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget && !saving) onCancel(); }}
+      style={{ position: 'fixed', inset: 0, zIndex: 140, background: 'rgba(0,0,0,.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ width: '100%', maxWidth: 440, background: T.card, borderRadius: 18, border: `1px solid ${T.border2}`, boxShadow: '0 32px 80px rgba(0,0,0,.7)', overflow: 'hidden' }}>
+        <div style={{ padding: '18px 22px', borderBottom: `1px solid ${T.border}` }}>
+          <div style={{ fontSize: 15, fontWeight: 900, color: T.text }}>Arquivar negociação</div>
+          <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>
+            {wedding.bride} & {wedding.groom} · {fmt(wedding.weddingDate)}
+          </div>
+        </div>
+
+        <div style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase', color: T.muted, marginBottom: 2 }}>
+            Por que não fechou?
+          </div>
+          {[...WEDDING_LOST_REASONS, '__outro__'].map(r => (
+            <label key={r} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '9px 12px', borderRadius: 10, border: `1px solid ${reason === r ? T.violetBorder : T.border}`, background: reason === r ? T.violetBg : T.glass, cursor: 'pointer', fontSize: 13, color: T.text }}>
+              <input type="radio" name="lost-reason" checked={reason === r} onChange={() => setReason(r)} />
+              {r === '__outro__' ? 'Outro motivo…' : r}
+            </label>
+          ))}
+          {reason === '__outro__' && (
+            <input autoFocus value={custom} onChange={e => setCustom(e.target.value)} placeholder="Descreva o motivo"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 10, border: `1px solid ${T.border2}`, background: T.glass, color: T.text, fontFamily: 'inherit', fontSize: 13, outline: 'none' }} />
+          )}
+          <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>
+            O casamento sai da lista ativa e o valor deixa de contar na receita — mas o
+            histórico e o motivo ficam guardados.
+          </div>
+        </div>
+
+        <div style={{ padding: '14px 22px', borderTop: `1px solid ${T.border}`, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onCancel} disabled={saving}
+            style={{ padding: '9px 14px', borderRadius: 10, border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, color: T.muted }}>
+            Cancelar
+          </button>
+          <button onClick={submit} disabled={!final || saving}
+            style={{ padding: '9px 18px', borderRadius: 10, border: `1px solid ${T.border2}`, background: final && !saving ? T.glass2 : T.glass, cursor: final && !saving ? 'pointer' : 'default', fontFamily: 'inherit', fontSize: 12, fontWeight: 800, color: final ? T.text : T.muted, display: 'flex', alignItems: 'center', gap: 6, opacity: saving ? .6 : 1 }}>
+            {saving && <Loader2 size={12} className="animate-spin" />} Arquivar como perdida
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onEdit, onDelete, onStatusChange, onMarkLost }: {
   wedding: Wedding | null; cabinsTotal: number; onClose: () => void; showFinancial: boolean;
   onEdit: (w: Wedding) => void; onDelete: (w: Wedding) => void;
   onStatusChange: (w: Wedding, status: WeddingStatus) => Promise<void>;
+  onMarkLost: (w: Wedding, reason: string) => Promise<void>;
 }) {
   const [tab, setTab] = useState<DrawerTab>("evento");
+  const [lostOpen, setLostOpen] = useState(false);
 
-  useEffect(() => { if (wedding) setTab("evento"); }, [wedding]);
+  useEffect(() => { if (wedding) { setTab("evento"); setLostOpen(false); } }, [wedding]);
 
   if (!wedding) return null;
 
@@ -496,6 +564,9 @@ function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onEdit, on
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <InfoBox icon={Heart} label="Data do casamento" value={fmt(wedding.weddingDate)} color={T.rose} bg={T.roseBg} border={T.roseBorder} />
                 <InfoBox icon={Clock} label="Dias restantes" value={wedding.status === "completed" ? "Realizado" : (days < 0 ? "Passou" : days === 0 ? "Hoje!" : `${days} dias`)} color={days <= 30 && wedding.status !== "completed" ? T.red : T.green} bg={T.greenBg} border={T.greenBorder} />
+                {wedding.status === "lost" && (
+                  <InfoBox icon={Archive} label="Motivo da perda" value={wedding.lostReason ?? "—"} color={T.muted} bg={T.glass2} border={T.border2} />
+                )}
                 <InfoBox icon={Calendar} label="Cerimônia" value={wedding.ceremonyDetails ?? "—"} color={T.violet} bg={T.violetBg} border={T.violetBorder} />
                 <InfoBox icon={Users} label="Convidados" value={`${wedding.guestCount} pessoas`} color={T.blue} bg={T.blueBg} border={T.blueBorder} />
               </div>
@@ -679,8 +750,15 @@ function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onEdit, on
 
         {/* Footer */}
         <div style={{ padding: "14px 24px", borderTop: `1px solid ${T.border}`, display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+          {/* Negociação que não frutificou sai da lista ativa com motivo registrado */}
+          {(wedding.status === "tentative" || wedding.status === "confirmed") && (
+            <button onClick={() => setLostOpen(true)}
+              style={{ flexBasis: "100%", padding: 10, borderRadius: 11, border: `1px solid ${T.border2}`, background: T.glass, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 700, color: T.muted, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+              <Archive size={14} /> Arquivar como negociação perdida
+            </button>
+          )}
           {/* Atalho direto: grava só o status, sem passar pelo formulário completo */}
-          {wedding.status !== "completed" && wedding.status !== "cancelled" && days < 0 && (
+          {wedding.status !== "completed" && wedding.status !== "cancelled" && wedding.status !== "lost" && days < 0 && (
             <button onClick={() => onStatusChange(wedding, "completed")}
               style={{ flexBasis: "100%", padding: 10, borderRadius: 11, border: `1px solid ${T.greenBorder}`, background: T.greenBg, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 800, color: T.green, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
               <CheckCircle2 size={14} /> Marcar como realizado
@@ -697,6 +775,14 @@ function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onEdit, on
           </button>
         </div>
       </div>
+
+      {lostOpen && (
+        <LostReasonModal
+          wedding={wedding}
+          onCancel={() => setLostOpen(false)}
+          onConfirm={async (reason) => { await onMarkLost(wedding, reason); setLostOpen(false); }}
+        />
+      )}
     </div>
   );
 }
@@ -927,6 +1013,25 @@ export default function CasamentosPage() {
     }
   }, [loadWeddings]);
 
+  const handleMarkLost = useCallback(async (w: Wedding, reason: string) => {
+    try {
+      const res = await fetch(`/api/admin/weddings/${w.id}/lost`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Erro ao arquivar a negociação');
+      }
+      await loadWeddings();
+      setSelected(null);
+      toast.success('Negociação arquivada como perdida.');
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao arquivar a negociação');
+    }
+  }, [loadWeddings]);
+
   const filtered = useMemo(() => weddings
     .filter(w => {
       if (filterStatus !== "all" && w.status !== filterStatus) return false;
@@ -942,7 +1047,8 @@ export default function CasamentosPage() {
     // distante; realizados e cancelados vão para o fim, do mais recente ao mais
     // antigo. Antes era só por data, então o histórico enterrava os confirmados.
     .sort((a, b) => {
-      const rank = (s: WeddingStatus) => (s === "completed" ? 1 : s === "cancelled" ? 2 : 0);
+      const rank = (s: WeddingStatus) =>
+        s === "completed" ? 1 : s === "cancelled" ? 2 : s === "lost" ? 3 : 0;
       const ra = rank(a.status), rb = rank(b.status);
       if (ra !== rb) return ra - rb;
       const da = new Date(a.weddingDate).getTime();
@@ -954,7 +1060,13 @@ export default function CasamentosPage() {
 
   const upcoming = weddings.filter(w => w.status === "confirmed" || w.status === "tentative");
   const exclusive = weddings.filter(w => w.exclusivity && (w.status === "confirmed" || w.status === "tentative"));
-  const totalRevenue = weddings.filter(w => w.status !== "cancelled").reduce((s, w) => s + w.contractTotal, 0);
+  // Receita não conta o que caiu nem o que nunca fechou.
+  const totalRevenue = weddings
+    .filter(w => w.status !== "cancelled" && w.status !== "lost")
+    .reduce((s, w) => s + w.contractTotal, 0);
+  const lostRevenue = weddings
+    .filter(w => w.status === "lost")
+    .reduce((s, w) => s + (w.contractTotal || 0), 0);
   const pendingVendors = weddings.flatMap(w => w.vendors ?? []).filter(v => !v.confirmed).length;
 
   const kpis = [
@@ -1013,6 +1125,7 @@ export default function CasamentosPage() {
             { id: "tentative", label: "Em neg."    },
             { id: "completed", label: "Realizado"  },
             { id: "cancelled", label: "Cancelado"  },
+            { id: "lost",      label: "Perdido"    },
           ] as { id: FilterStatus; label: string }[]).map(f => (
             <button key={f.id} onClick={() => setFilterStatus(f.id)} style={{ padding: "7px 12px", borderRadius: 9, border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700, background: filterStatus === f.id ? "rgba(155,109,255,0.15)" : T.glass, color: filterStatus === f.id ? T.g1 : T.muted, outline: filterStatus === f.id ? `1px solid rgba(155,109,255,.28)` : `1px solid ${T.border}`, transition: "all .15s" }}>{f.label}</button>
           ))}
@@ -1069,7 +1182,7 @@ export default function CasamentosPage() {
         )}
       </div>
 
-      <DetailDrawer wedding={selected} cabinsTotal={cabinsTotal} onClose={() => setSelected(null)} showFinancial={showFinancial} onEdit={handleEdit} onDelete={handleDelete} onStatusChange={handleStatusChange} />
+      <DetailDrawer wedding={selected} cabinsTotal={cabinsTotal} onClose={() => setSelected(null)} showFinancial={showFinancial} onEdit={handleEdit} onDelete={handleDelete} onStatusChange={handleStatusChange} onMarkLost={handleMarkLost} />
       <WeddingFormModal open={formOpen} initial={editTarget} propertyId={property.id} onClose={() => setFormOpen(false)} onSaved={loadWeddings} />
     </div>
   );

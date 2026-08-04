@@ -899,7 +899,7 @@ export interface AuditLog {
   | 'RATE_TABLE_DELETED' | 'RATE_SIT_IMPORTED'
   | 'RATE_QUOTE_LINKED' | 'CRON_DAILY_LODGING'
   | 'LODGING_PAUSED' | 'LODGING_RESUMED' | 'LODGING_NIGHT_OVERRIDDEN'
-  | 'WEDDING_AUTO_COMPLETED';
+  | 'WEDDING_AUTO_COMPLETED' | 'WEDDING_LOST';
   entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'STRUCTURE_REVIEW' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER' | 'CONTACT' | 'AUTOMATION' | 'BREAKFAST' | 'CRON' | 'SUPPLIER' | 'ASSET' | 'ASSET_INVENTORY' | 'PURCHASE' | 'INVENTORY' | 'RATE_TABLE' | 'WEDDING';
   entityId: string;
   oldData?: any;
@@ -1349,7 +1349,22 @@ export interface ImpersonatingState {
 // MÓDULO DE CASAMENTOS
 // ==========================================
 
-export type WeddingStatus = 'tentative' | 'confirmed' | 'completed' | 'cancelled';
+/**
+ * `cancelled` e `lost` são coisas diferentes, de propósito:
+ * cancelled = contrato fechado que caiu · lost = negociação que nunca fechou.
+ * Juntar os dois inviabiliza ler taxa de conversão e receita perdida.
+ */
+export type WeddingStatus = 'tentative' | 'confirmed' | 'completed' | 'cancelled' | 'lost';
+
+/** Motivos de perda oferecidos na tela (o campo aceita texto livre também). */
+export const WEDDING_LOST_REASONS = [
+  'Preço acima do orçamento',
+  'Data indisponível',
+  'Escolheu outro local',
+  'Adiou o casamento',
+  'Desistiu do evento',
+  'Sem retorno do casal',
+] as const;
 
 export interface WeddingVendor {
   id: string;
@@ -1395,6 +1410,9 @@ export interface Wedding {
   guestCount: number;
   coordinator?: string;
   status: WeddingStatus;
+  /** Por que a negociação foi perdida — só quando status = 'lost'. */
+  lostReason?: string | null;
+  lostAt?: Timestamp | null;
   // Stay
   checkin: string;
   checkout: string;

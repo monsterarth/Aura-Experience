@@ -89,6 +89,53 @@ export const WeddingService = {
     return { updated: rows.length, couples: rows.map((r) => `${r.bride} & ${r.groom}`) };
   },
 
+  /**
+   * Arquiva negociações vencidas: 'tentative' cuja data já passou vira 'lost'.
+   *
+   * Aqui a perda é fato consumado — a data do casamento passou e o contrato
+   * nunca foi fechado. Diferente de promover para 'completed', que seria
+   * inventar um casamento que não aconteceu.
+   */
+  async archiveLapsedNegotiations(propertyId?: string): Promise<{ updated: number; couples: string[] }> {
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+
+    let query = supabaseAdmin
+      .from("weddings")
+      .select("id, bride, groom, weddingDate")
+      .eq("status", "tentative")
+      .lt("weddingDate", today);
+    if (propertyId) query = query.eq("propertyId", propertyId);
+
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as { id: string; bride: string; groom: string }[];
+    if (rows.length === 0) return { updated: 0, couples: [] };
+
+    const now = new Date().toISOString();
+    const { error: upErr } = await supabaseAdmin
+      .from("weddings")
+      .update({
+        status: "lost",
+        lostReason: "Data passou sem confirmação",
+        lostAt: now,
+        updatedAt: now,
+      })
+      .in("id", rows.map((r) => r.id));
+    if (upErr) throw new Error(upErr.message);
+
+    return { updated: rows.length, couples: rows.map((r) => `${r.bride} & ${r.groom}`) };
+  },
+
+  /** Marca a negociação como perdida, com motivo. */
+  async markAsLost(id: string, reason: string): Promise<void> {
+    const now = new Date().toISOString();
+    const { error } = await supabaseAdmin
+      .from("weddings")
+      .update({ status: "lost", lostReason: reason.trim() || null, lostAt: now, updatedAt: now })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  },
+
   // ── Vendors ──────────────────────────────────────────────────────────────────
 
   async upsertVendor(vendor: Omit<WeddingVendor, "id" | "createdAt"> & { id?: string }): Promise<void> {
