@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { AuditService } from '@/services/audit-service';
 
 // Cargos que gerenciam Casamentos (mesma lista da nav em Sidebar.tsx).
 const WEDDING_ROLES = ['super_admin', 'admin', 'reception', 'manager'] as const;
@@ -47,5 +48,16 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await AuditService.log({
+    propertyId,
+    userId: auth.staff.id,
+    userName: auth.staff.fullName,
+    action: 'CREATE',
+    entity: 'WEDDING',
+    entityId: data.id,
+    details: `Casamento ${data.bride} & ${data.groom} (${data.weddingDate}) criado.`,
+  });
+
   return NextResponse.json(data, { status: 201 });
 }

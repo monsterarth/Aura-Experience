@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { useCloseGuard } from "@/lib/use-discard-guard";
 import { supabase } from "@/lib/supabase";
@@ -10,7 +10,7 @@ import {
   Heart, Shield, Clock, Sparkles, Search, Grid3X3, List,
   ChevronRight, X, Plus, Bed, Users, Globe,
   Camera, Music, Mic, Flower2, Coffee, Star, Truck, Sun,
-  Check, DollarSign, Calendar, Loader2, Trash2, Save,
+  Check, DollarSign, Calendar, Loader2, Trash2, Save, CheckCircle2,
 } from "lucide-react";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -243,11 +243,18 @@ function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }: {
   const [saving, setSaving] = useState(false);
   const { requestClose, guardProps } = useCloseGuard(onClose, { open });
 
+  // Carrega o formulário UMA vez por abertura. Antes o efeito dependia da
+  // identidade de `initial`: qualquer re-render que trocasse essa referência
+  // reexecutava o setForm e engolia a alteração recém-feita — era por isso que
+  // a primeira mudança no dropdown "não pegava" e só a segunda valia.
+  const loadedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (open) {
-      setForm(initial ? weddingToForm(initial) : EMPTY_FORM);
-      setTab('casal');
-    }
+    if (!open) { loadedFor.current = null; return; }
+    const key = initial?.id ?? '__new__';
+    if (loadedFor.current === key) return;
+    loadedFor.current = key;
+    setForm(initial ? weddingToForm(initial) : EMPTY_FORM);
+    setTab('casal');
   }, [open, initial]);
 
   const set = (key: keyof WeddingFormData) => (val: string | boolean) =>
@@ -399,9 +406,10 @@ function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }: {
 
 // ─── Detail drawer ────────────────────────────────────────────────────────────
 
-function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onEdit, onDelete }: {
+function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onEdit, onDelete, onStatusChange }: {
   wedding: Wedding | null; cabinsTotal: number; onClose: () => void; showFinancial: boolean;
   onEdit: (w: Wedding) => void; onDelete: (w: Wedding) => void;
+  onStatusChange: (w: Wedding, status: WeddingStatus) => Promise<void>;
 }) {
   const [tab, setTab] = useState<DrawerTab>("evento");
 
@@ -670,7 +678,14 @@ function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onEdit, on
         </div>
 
         {/* Footer */}
-        <div style={{ padding: "14px 24px", borderTop: `1px solid ${T.border}`, display: "flex", gap: 8, flexShrink: 0 }}>
+        <div style={{ padding: "14px 24px", borderTop: `1px solid ${T.border}`, display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+          {/* Atalho direto: grava só o status, sem passar pelo formulário completo */}
+          {wedding.status !== "completed" && wedding.status !== "cancelled" && days < 0 && (
+            <button onClick={() => onStatusChange(wedding, "completed")}
+              style={{ flexBasis: "100%", padding: 10, borderRadius: 11, border: `1px solid ${T.greenBorder}`, background: T.greenBg, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 800, color: T.green, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+              <CheckCircle2 size={14} /> Marcar como realizado
+            </button>
+          )}
           <button onClick={() => onDelete(wedding)} style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${T.redBorder}`, background: T.redBg, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <Trash2 size={14} color={T.red} />
           </button>
@@ -875,6 +890,27 @@ export default function CasamentosPage() {
     setFormOpen(true);
   }, []);
 
+  // Troca só o status, sem passar pelo formulário completo — e confere o
+  // resultado relendo do servidor, para não "dar certo" na tela e não no banco.
+  const handleStatusChange = useCallback(async (w: Wedding, status: WeddingStatus) => {
+    try {
+      const res = await fetch(`/api/admin/weddings/${w.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Erro ao atualizar o status');
+      }
+      await loadWeddings();
+      setSelected(prev => (prev && prev.id === w.id ? { ...prev, status } : prev));
+      toast.success(status === 'completed' ? 'Casamento marcado como realizado.' : 'Status atualizado.');
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao atualizar o status');
+    }
+  }, [loadWeddings]);
+
   const handleDelete = useCallback(async (w: Wedding) => {
     if (!confirm(`Excluir o casamento de ${w.bride} & ${w.groom}? Esta ação não pode ser desfeita.`)) return;
     setDeleting(true);
@@ -902,7 +938,17 @@ export default function CasamentosPage() {
       }
       return true;
     })
-    .sort((a, b) => new Date(a.weddingDate).getTime() - new Date(b.weddingDate).getTime()),
+    // Ativos primeiro (o que a operação precisa ver), do mais próximo ao mais
+    // distante; realizados e cancelados vão para o fim, do mais recente ao mais
+    // antigo. Antes era só por data, então o histórico enterrava os confirmados.
+    .sort((a, b) => {
+      const rank = (s: WeddingStatus) => (s === "completed" ? 1 : s === "cancelled" ? 2 : 0);
+      const ra = rank(a.status), rb = rank(b.status);
+      if (ra !== rb) return ra - rb;
+      const da = new Date(a.weddingDate).getTime();
+      const db = new Date(b.weddingDate).getTime();
+      return ra === 0 ? da - db : db - da;
+    }),
     [weddings, filterStatus, filterExcl, search]
   );
 
@@ -966,6 +1012,7 @@ export default function CasamentosPage() {
             { id: "confirmed", label: "Confirmado" },
             { id: "tentative", label: "Em neg."    },
             { id: "completed", label: "Realizado"  },
+            { id: "cancelled", label: "Cancelado"  },
           ] as { id: FilterStatus; label: string }[]).map(f => (
             <button key={f.id} onClick={() => setFilterStatus(f.id)} style={{ padding: "7px 12px", borderRadius: 9, border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700, background: filterStatus === f.id ? "rgba(155,109,255,0.15)" : T.glass, color: filterStatus === f.id ? T.g1 : T.muted, outline: filterStatus === f.id ? `1px solid rgba(155,109,255,.28)` : `1px solid ${T.border}`, transition: "all .15s" }}>{f.label}</button>
           ))}
@@ -1022,7 +1069,7 @@ export default function CasamentosPage() {
         )}
       </div>
 
-      <DetailDrawer wedding={selected} cabinsTotal={cabinsTotal} onClose={() => setSelected(null)} showFinancial={showFinancial} onEdit={handleEdit} onDelete={handleDelete} />
+      <DetailDrawer wedding={selected} cabinsTotal={cabinsTotal} onClose={() => setSelected(null)} showFinancial={showFinancial} onEdit={handleEdit} onDelete={handleDelete} onStatusChange={handleStatusChange} />
       <WeddingFormModal open={formOpen} initial={editTarget} propertyId={property.id} onClose={() => setFormOpen(false)} onSaved={loadWeddings} />
     </div>
   );

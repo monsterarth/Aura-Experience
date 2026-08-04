@@ -57,6 +57,38 @@ export const WeddingService = {
     if (error) throw new Error(error.message);
   },
 
+  /**
+   * Marca como 'completed' os casamentos CONFIRMADOS cuja data já passou.
+   *
+   * Só mexe em 'confirmed': um 'tentative' que passou é negociação perdida, não
+   * casamento realizado — vira receita fantasma no total se for promovido.
+   * 'cancelled' e 'completed' ficam como estão.
+   */
+  async completePastWeddings(propertyId?: string): Promise<{ updated: number; couples: string[] }> {
+    // Data local da pousada: às 21h em BRT o UTC já virou e anteciparia um dia.
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+
+    let query = supabaseAdmin
+      .from("weddings")
+      .select("id, bride, groom, weddingDate")
+      .eq("status", "confirmed")
+      .lt("weddingDate", today);
+    if (propertyId) query = query.eq("propertyId", propertyId);
+
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as { id: string; bride: string; groom: string; weddingDate: string }[];
+    if (rows.length === 0) return { updated: 0, couples: [] };
+
+    const { error: upErr } = await supabaseAdmin
+      .from("weddings")
+      .update({ status: "completed", updatedAt: new Date().toISOString() })
+      .in("id", rows.map((r) => r.id));
+    if (upErr) throw new Error(upErr.message);
+
+    return { updated: rows.length, couples: rows.map((r) => `${r.bride} & ${r.groom}`) };
+  },
+
   // ── Vendors ──────────────────────────────────────────────────────────────────
 
   async upsertVendor(vendor: Omit<WeddingVendor, "id" | "createdAt"> & { id?: string }): Promise<void> {
