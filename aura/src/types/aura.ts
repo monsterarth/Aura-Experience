@@ -852,8 +852,9 @@ export interface AuditLog {
   | 'ASSET_INVENTORY_OPENED' | 'ASSET_INVENTORY_CLOSED'
   | 'INVENTORY_OPENED' | 'INVENTORY_CLOSED'
   | 'CRON_STOCK_LOW' | 'CRON_STOCK_EXPIRY' | 'CRON_ASSET_DEPRECIATION'
-  | 'STRUCTURE_REVIEW_LOW';
-  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'STRUCTURE_REVIEW' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER' | 'CONTACT' | 'AUTOMATION' | 'BREAKFAST' | 'CRON' | 'SUPPLIER' | 'ASSET' | 'ASSET_INVENTORY' | 'PURCHASE' | 'INVENTORY';
+  | 'STRUCTURE_REVIEW_LOW'
+  | 'RATE_TABLE_DELETED' | 'RATE_SIT_IMPORTED';
+  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'STRUCTURE_REVIEW' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER' | 'CONTACT' | 'AUTOMATION' | 'BREAKFAST' | 'CRON' | 'SUPPLIER' | 'ASSET' | 'ASSET_INVENTORY' | 'PURCHASE' | 'INVENTORY' | 'RATE_TABLE';
   entityId: string;
   oldData?: any;
   newData?: any;
@@ -2159,3 +2160,134 @@ export interface AssetLabel {
   url: string;
   locationName?: string;
 }
+
+// ==========================================
+// MÓDULO TARIFÁRIO (port do SIT)
+// ==========================================
+
+/**
+ * Tabela de preços: diária por categoria de cabana × nº de pagantes (1..6).
+ * `prices` = { "<categoria>": { "1": 990, "2": 1090, ... } } — a chave externa
+ * é a MESMA string de `Cabin.category` (é assim que orçamento e disponibilidade
+ * se encontram).
+ */
+export interface RateTable {
+  id: string;
+  propertyId: string;
+  name: string;
+  prices: Record<string, Record<string, number>>;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+}
+
+/**
+ * Regra de calendário: no intervalo [startDate, endDate] (noites, inclusive)
+ * vale a tabela de dia de semana ou a de fim de semana (SEX/SÁB).
+ */
+export interface RatePeriod {
+  id: string;
+  propertyId: string;
+  name: string;
+  startDate: string;   // YYYY-MM-DD (primeira noite)
+  endDate: string;     // YYYY-MM-DD (última noite, inclusive)
+  minNights: number;
+  weekdayTableId?: string | null;
+  weekendTableId?: string | null;
+  createdAt?: Timestamp;
+}
+
+/** Ajuste de ocupação escolhido no orçamento (ex.: "Alta (+10%)"). */
+export interface RateFluctuation {
+  id: string;
+  name: string;
+  pct: number;         // positivo encarece
+}
+
+/** Desconto manual de checkbox (ex.: "Pix à vista -5%"). */
+export interface RateDiscount {
+  id: string;
+  name: string;
+  pct: number;
+}
+
+export type RatePromoDayType = 'all' | 'fds' | 'week';
+
+/** Promoção automática aplicada por diária dentro do intervalo. */
+export interface RatePromo {
+  id: string;
+  name: string;
+  pct: number;
+  startDate: string;   // YYYY-MM-DD
+  endDate: string;     // YYYY-MM-DD
+  minNights: number;
+  dayType: RatePromoDayType;  // fds = SEX/SÁB · week = DOM–QUI
+}
+
+/** Config comercial do tarifário — 1 linha por propriedade. */
+export interface RateSettings {
+  propertyId: string;
+  petFee: number;      // por pet, por diária
+  fluctuations: RateFluctuation[];
+  discounts: RateDiscount[];
+  promos: RatePromo[];
+  /** Link do site por categoria, usado no template de WhatsApp. */
+  categoryLinks: Record<string, string>;
+  msgTemplate?: string | null;
+  msgSingleTemplate?: string | null;
+  eventTemplate?: string | null;
+  updatedAt?: Timestamp;
+}
+
+/** Parâmetros de um orçamento (tela Orçamento do tarifário). */
+export interface RateQuoteInput {
+  checkIn: string;     // YYYY-MM-DD
+  checkOut: string;    // YYYY-MM-DD
+  adults: number;
+  children: number;    // pagantes
+  babies: number;      // isentos
+  pets: number;
+  fluctuationPct: number;
+  /** ids de RateDiscount marcados. */
+  discountIds: string[];
+  adhocValue: number;
+  adhocType: 'pct' | 'brl';
+}
+
+export type RateBreakdownKind = 'base' | 'fluct' | 'promo' | 'discount' | 'adhoc' | 'fee';
+
+export interface RateBreakdownItem {
+  label: string;
+  value: number;       // negativo = desconto
+  kind: RateBreakdownKind;
+}
+
+/** Resultado do orçamento para uma categoria de cabana. */
+export interface RateQuoteCategory {
+  category: string;
+  nights: number;
+  rawTotal: number;          // tabela pura + taxa pet (comparativo "de/por")
+  finalTotal: number;        // com todos os ajustes
+  avgNightly: number;
+  breakdown: RateBreakdownItem[];
+  /** nome da regra de calendário → nº de noites cobertas por ela. */
+  periodNights: Record<string, number>;
+  /** noites em que a tabela não tinha preço para esse pax (0 = ok). */
+  daysWithoutPrice: number;
+}
+
+export interface RateQuoteResult {
+  categories: RateQuoteCategory[];
+  /** noites do intervalo sem NENHUMA regra de calendário (orçamento bloqueado). */
+  uncoveredDates: string[];
+  /** maior mínimo de diárias entre as regras tocadas. */
+  minNightsRequired: number;
+  nights: number;
+}
+
+/** Disponibilidade real por categoria no intervalo consultado. */
+export interface RateAvailability {
+  total: number;
+  free: number;
+  freeCabins: string[];      // nomes das cabanas livres
+}
+

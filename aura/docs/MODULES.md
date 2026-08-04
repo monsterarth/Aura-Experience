@@ -21,6 +21,7 @@ are admin/manager (+ the relevant operational role).
 | `reception` | — (`/api/admin/reception`) | Front-desk dashboard (folios, breakfast) |
 | `eventos` | `event-service` | Events |
 | `casamentos` | `wedding-service` | Weddings (vendors, installments, cabins) |
+| `tarifario` | `rate-service` + `lib/rate-engine` | Tarifário: orçamentos (cascata do SIT), tabelas de preço, regras de calendário, config comercial + import do backup SIT |
 | `governance` (+`kanban`) | `housekeeping-service` | Housekeeping tasks + rules |
 | `maintenance` (+`kanban`) | `maintenance-service` | Maintenance tasks + rules |
 | `houseman` | — | Houseman/porter admin view |
