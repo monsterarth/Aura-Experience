@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { AuditService } from '@/services/audit-service';
+import { WeddingService } from '@/services/wedding-service';
 
 // Cargos que gerenciam Casamentos (mesma lista da nav em Sidebar.tsx).
 const WEDDING_ROLES = ['super_admin', 'admin', 'reception', 'manager'] as const;
@@ -39,6 +40,14 @@ export async function POST(request: NextRequest) {
   // Whitelist: cliente não reescreve campos de identidade/sistema.
   const rest = { ...body };
   delete rest.id; delete rest.propertyId; delete rest.createdAt; delete rest.updatedAt;
+
+  // Negociação nova nasce com prazo: sem isso o lead fica aberto até a data do
+  // evento, que pode estar a anos de distância.
+  if (rest.status === 'tentative' && !rest.expiresAt) {
+    const dates = await WeddingService.initialLeadDates(propertyId, rest.weddingDate);
+    rest.followUpAt = rest.followUpAt ?? dates.followUpAt;
+    rest.expiresAt = dates.expiresAt;
+  }
 
   const now = new Date().toISOString();
   const { data, error } = await supabaseAdmin!

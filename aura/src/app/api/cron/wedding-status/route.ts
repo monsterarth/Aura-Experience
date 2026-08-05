@@ -1,8 +1,11 @@
 // src/app/api/cron/wedding-status/route.ts
-// Diário, dois fechamentos automáticos de ciclo:
-//   confirmado + data passou → 'completed' (casamento aconteceu)
-//   negociação + data passou → 'lost'      (a data foi embora sem contrato)
-// São caminhos distintos de propósito: promover uma negociação a 'completed'
+// Diário, fecha os ciclos automáticos do módulo:
+//   confirmado + data passou      → 'completed' (casamento aconteceu)
+//   negociação + data passou      → 'lost'      (a data foi embora sem contrato)
+//   negociação + validade vencida → 'lost'      (lead parado, sem retorno)
+//
+// A validade é o que impede um lead de casamento em 2028 ficar dois anos na
+// lista ativa esperando a data chegar. Promover negociação a 'completed'
 // inventaria um casamento que nunca houve e inflaria a receita do módulo.
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
@@ -20,17 +23,23 @@ export async function GET(request: Request) {
 
   try {
     const done = await WeddingService.completePastWeddings();
-    const lost = await WeddingService.archiveLapsedNegotiations();
+    const lapsed = await WeddingService.archiveLapsedNegotiations();
+    const expired = await WeddingService.archiveExpiredLeads();
+    const lost = {
+      updated: lapsed.updated + expired.updated,
+      couples: [...lapsed.couples, ...expired.couples],
+    };
 
     if (done.updated > 0 || lost.updated > 0) {
       const parts: string[] = [];
       if (done.updated) parts.push(`${done.updated} realizado(s): ${done.couples.join(', ')}`);
-      if (lost.updated) parts.push(`${lost.updated} negociação(ões) perdida(s): ${lost.couples.join(', ')}`);
+      if (lapsed.updated) parts.push(`${lapsed.updated} com data vencida: ${lapsed.couples.join(', ')}`);
+      if (expired.updated) parts.push(`${expired.updated} com prazo de negociação vencido: ${expired.couples.join(', ')}`);
       await supabaseAdmin.from('audit_logs').insert({
         id: crypto.randomUUID(), propertyId: 'system', userId: 'cron', userName: 'Sistema (Cron)',
         action: 'WEDDING_AUTO_COMPLETED', entity: 'CRON', entityId: 'wedding-status',
         details: parts.join(' · '),
-        newData: { completed: done, lost, startedAt, finishedAt: new Date().toISOString() },
+        newData: { completed: done, lapsed, expired, startedAt, finishedAt: new Date().toISOString() },
         timestamp: new Date().toISOString(),
       }).then(() => {}, () => {});
     }

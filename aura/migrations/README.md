@@ -69,3 +69,4 @@ record**. There is **no migration runner** — each file was applied manually vi
 | 2026-08-04 | `financeiro_phase1_diarias.sql` | Financeiro fase 1: fólio vira extrato (`folio_items.type` debit/credit + `refDate` p/ diárias idempotentes) e estadia ganha `nightlyRate`/`lodgingTotal`/`rateQuoteId` |
 | 2026-08-04 | `financeiro_phase2_diaria_editavel.sql` | Financeiro fase 2: `stays."lodgingPaused"` (pausa o cron) e `stays."nightlyOverrides"` (valor por noite; 0 = noite não cobrada) |
 | 2026-08-04 | `weddings_status_lost.sql` | Casamentos: status `lost` (negociação perdida ≠ cancelado) — recria a CHECK constraint de `status` e adiciona `"lostReason"`/`"lostAt"` |
+| 2026-08-05 | `weddings_lead_validity.sql` | Casamentos: validade do lead — `"followUpAt"`/`"expiresAt"` + índices parciais; padrões por propriedade em `properties.settings.weddingLead` |

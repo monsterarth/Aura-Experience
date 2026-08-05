@@ -68,6 +68,11 @@ Runs at 08:30 UTC and closes both ends of the funnel, using the property-local d
 - `confirmed` + date passed → `completed` (`WeddingService.completePastWeddings`)
 - `tentative` + date passed → `lost`, reason "Data passou sem confirmação"
   (`WeddingService.archiveLapsedNegotiations`)
+- `tentative` + `expiresAt` passed → `lost`, reason "Prazo da negociação vencido sem retorno"
+  (`WeddingService.archiveExpiredLeads`) — this is what stops a 2028 wedding lead from sitting
+  in the active list for two years. Defaults per property live in
+  `properties.settings.weddingLead`; each negotiation carries its own dates and
+  "Registrar follow-up" renews them.
 
 The two paths are deliberately separate: promoting a lapsed negotiation to `completed` would
 invent a wedding that never happened and inflate the module's revenue.

@@ -38,7 +38,7 @@ const T = {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type FilterStatus = 'all' | WeddingStatus;
+type FilterStatus = 'all' | WeddingStatus | 'followup_due';
 type FilterExcl = 'all' | 'exclusive' | 'nonexclusive';
 type DrawerTab = 'evento' | 'hospedagem' | 'fornecedores' | 'financeiro';
 type ViewMode = 'grid' | 'list';
@@ -49,6 +49,11 @@ function fmt(dateStr: string): string {
   if (!dateStr) return "—";
   const [y, m, d] = dateStr.split("-");
   return `${d}/${m}/${y}`;
+}
+
+/** Hoje no fuso da pousada — comparar prazo com data em UTC erra à noite. */
+function todayIso(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
 }
 
 function daysUntil(dateStr: string): number {
@@ -161,6 +166,7 @@ type WeddingFormData = {
   checkin: string; checkout: string; exclusivity: boolean; cabinsOccupied: string;
   contractTotal: string; depositValue: string; depositPaid: boolean;
   secondInstallmentValue: string; secondInstallmentPaid: boolean;
+  followUpAt: string; expiresAt: string;
 };
 
 const EMPTY_FORM: WeddingFormData = {
@@ -170,6 +176,7 @@ const EMPTY_FORM: WeddingFormData = {
   checkin: '', checkout: '', exclusivity: false, cabinsOccupied: '',
   contractTotal: '', depositValue: '', depositPaid: false,
   secondInstallmentValue: '', secondInstallmentPaid: false,
+  followUpAt: '', expiresAt: '',
 };
 
 function weddingToForm(w: Wedding): WeddingFormData {
@@ -185,6 +192,7 @@ function weddingToForm(w: Wedding): WeddingFormData {
     depositPaid: w.depositPaid ?? false,
     secondInstallmentValue: w.secondInstallmentValue != null ? String(w.secondInstallmentValue) : '',
     secondInstallmentPaid: w.secondInstallmentPaid ?? false,
+    followUpAt: w.followUpAt ?? '', expiresAt: w.expiresAt ?? '',
   };
 }
 
@@ -287,6 +295,10 @@ function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }: {
         depositPaid: form.depositPaid,
         secondInstallmentValue: form.secondInstallmentValue ? parseFloat(form.secondInstallmentValue) : undefined,
         secondInstallmentPaid: form.secondInstallmentPaid,
+        // Prazos só fazem sentido em negociação; nos demais status vão nulos
+        // para não deixar data órfã sinalizando follow-up de contrato fechado.
+        followUpAt: form.status === 'tentative' ? (form.followUpAt || null) : null,
+        expiresAt: form.status === 'tentative' ? (form.expiresAt || null) : null,
       };
 
       const res = initial
@@ -350,6 +362,10 @@ function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }: {
               <FField label="Status"><FSelect value={form.status} onChange={set('status')} options={[{ value: 'tentative', label: 'Em negociação' }, { value: 'confirmed', label: 'Confirmado' }, { value: 'completed', label: 'Realizado' }, { value: 'cancelled', label: 'Cancelado' }]} /></FField></FRow>
             <FRow><FField label="Nº de convidados"><FInput value={form.guestCount} onChange={set('guestCount')} type="number" placeholder="150" /></FField>
               <FField label="Cerimonialista"><FInput value={form.coordinator} onChange={set('coordinator')} placeholder="Nome" /></FField></FRow>
+            {form.status === 'tentative' && (
+              <FRow><FField label="Próximo follow-up"><FInput value={form.followUpAt} onChange={set('followUpAt')} type="date" /></FField>
+                <FField label="Validade da negociação"><FInput value={form.expiresAt} onChange={set('expiresAt')} type="date" /></FField></FRow>
+            )}
             <FField label="Detalhes da cerimônia"><FInput value={form.ceremonyDetails} onChange={set('ceremonyDetails')} placeholder="18h00 · Jardim das Oliveiras" /></FField>
             <FField label="Detalhes da recepção"><FInput value={form.receptionDetails} onChange={set('receptionDetails')} placeholder="20h00 · Salão principal" /></FField>
             <FField label="Observações">
@@ -407,6 +423,100 @@ function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }: {
 }
 
 // ─── Detail drawer ────────────────────────────────────────────────────────────
+
+// Situação do lead: vencido / vence hoje / em dia. Usado no card e no drawer.
+function leadState(w: Wedding, today: string): { tone: 'overdue' | 'today' | 'ok' | 'none'; label: string } {
+  if (w.status !== 'tentative') return { tone: 'none', label: '' };
+  if (w.expiresAt && w.expiresAt < today) return { tone: 'overdue', label: 'Prazo vencido' };
+  if (w.followUpAt) {
+    if (w.followUpAt < today) return { tone: 'overdue', label: 'Follow-up atrasado' };
+    if (w.followUpAt === today) return { tone: 'today', label: 'Follow-up hoje' };
+    return { tone: 'ok', label: `Follow-up ${fmt(w.followUpAt)}` };
+  }
+  return { tone: 'none', label: '' };
+}
+
+// Prazos padrão das negociações — vivem na tela onde são usados, não no setup.
+function LeadSettingsModal({ propertyId, onClose }: { propertyId: string; onClose: () => void }) {
+  const [form, setForm] = useState({ followUpDays: '', expiryDays: '', renewDays: '' });
+  const [canEdit, setCanEdit] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch(`/api/admin/weddings/lead-settings?propertyId=${propertyId}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d) {
+          setForm({ followUpDays: String(d.followUpDays), expiryDays: String(d.expiryDays), renewDays: String(d.renewDays) });
+          setCanEdit(!!d.canEdit);
+        }
+      })
+      .finally(() => setLoading(false));
+  }, [propertyId]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch('/api/admin/weddings/lead-settings', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ propertyId, ...form }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success('Prazos atualizados. Valem para negociações novas.');
+      onClose();
+    } catch { toast.error('Erro ao salvar os prazos.'); }
+    finally { setSaving(false); }
+  };
+
+  const Row = ({ label, hint, k }: { label: string; hint: string; k: keyof typeof form }) => (
+    <div>
+      <FLabel>{label}</FLabel>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input type="number" min={1} max={3650} value={form[k]} disabled={!canEdit}
+          onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
+          style={{ width: 90, boxSizing: 'border-box', padding: '9px 12px', borderRadius: 10, border: `1px solid ${T.border2}`, background: T.glass, color: T.text, fontFamily: 'inherit', fontSize: 13, outline: 'none' }} />
+        <span style={{ fontSize: 12, color: T.muted }}>dias</span>
+      </div>
+      <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>{hint}</div>
+    </div>
+  );
+
+  return (
+    <div onClick={e => { if (e.target === e.currentTarget && !saving) onClose(); }}
+      style={{ position: 'fixed', inset: 0, zIndex: 140, background: 'rgba(0,0,0,.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ width: '100%', maxWidth: 420, background: T.card, borderRadius: 18, border: `1px solid ${T.border2}`, overflow: 'hidden' }}>
+        <div style={{ padding: '18px 22px', borderBottom: `1px solid ${T.border}` }}>
+          <div style={{ fontSize: 15, fontWeight: 900, color: T.text }}>Prazos das negociações</div>
+          <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>
+            Padrão da propriedade — cada negociação pode ter prazo próprio.
+          </div>
+        </div>
+        <div style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}><Loader2 size={18} className="animate-spin" color={T.muted} /></div>
+          ) : (
+            <>
+              <Row label="Follow-up a cada" k="followUpDays" hint="Quando cobrar retorno do casal. Só sinaliza na lista." />
+              <Row label="Validade da negociação" k="expiryDays" hint="Sem retorno nesse prazo, vira negociação perdida automaticamente." />
+              <Row label="Renovação por contato" k="renewDays" hint="Quanto o botão “Registrar follow-up” estica a validade." />
+              {!canEdit && <div style={{ fontSize: 11, color: T.amber }}>Só gerência pode alterar estes prazos.</div>}
+            </>
+          )}
+        </div>
+        <div style={{ padding: '14px 22px', borderTop: `1px solid ${T.border}`, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} disabled={saving} style={{ padding: '9px 14px', borderRadius: 10, border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, color: T.muted }}>Fechar</button>
+          {canEdit && (
+            <button onClick={save} disabled={saving || loading}
+              style={{ padding: '9px 18px', borderRadius: 10, border: 'none', background: T.grad, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: 6, opacity: saving ? .6 : 1 }}>
+              {saving && <Loader2 size={12} className="animate-spin" />} Salvar
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Modal de perda: motivo é obrigatório — é ele que transforma o arquivo morto
 // em informação comercial ("por que não fechamos?").
@@ -472,11 +582,12 @@ function LostReasonModal({ wedding, onCancel, onConfirm }: {
   );
 }
 
-function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onEdit, onDelete, onStatusChange, onMarkLost }: {
+function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onEdit, onDelete, onStatusChange, onMarkLost, onFollowUp }: {
   wedding: Wedding | null; cabinsTotal: number; onClose: () => void; showFinancial: boolean;
   onEdit: (w: Wedding) => void; onDelete: (w: Wedding) => void;
   onStatusChange: (w: Wedding, status: WeddingStatus) => Promise<void>;
   onMarkLost: (w: Wedding, reason: string) => Promise<void>;
+  onFollowUp: (w: Wedding) => Promise<void>;
 }) {
   const [tab, setTab] = useState<DrawerTab>("evento");
   const [lostOpen, setLostOpen] = useState(false);
@@ -566,6 +677,12 @@ function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onEdit, on
                 <InfoBox icon={Clock} label="Dias restantes" value={wedding.status === "completed" ? "Realizado" : (days < 0 ? "Passou" : days === 0 ? "Hoje!" : `${days} dias`)} color={days <= 30 && wedding.status !== "completed" ? T.red : T.green} bg={T.greenBg} border={T.greenBorder} />
                 {wedding.status === "lost" && (
                   <InfoBox icon={Archive} label="Motivo da perda" value={wedding.lostReason ?? "—"} color={T.muted} bg={T.glass2} border={T.border2} />
+                )}
+                {wedding.status === "tentative" && (
+                  <InfoBox icon={Clock} label="Follow-up / validade"
+                    value={`${wedding.followUpAt ? fmt(wedding.followUpAt) : "—"} · vence ${wedding.expiresAt ? fmt(wedding.expiresAt) : "—"}`}
+                    color={leadState(wedding, todayIso()).tone === "overdue" ? T.red : T.amber}
+                    bg={T.amberBg} border={T.amberBorder} />
                 )}
                 <InfoBox icon={Calendar} label="Cerimônia" value={wedding.ceremonyDetails ?? "—"} color={T.violet} bg={T.violetBg} border={T.violetBorder} />
                 <InfoBox icon={Users} label="Convidados" value={`${wedding.guestCount} pessoas`} color={T.blue} bg={T.blueBg} border={T.blueBorder} />
@@ -750,6 +867,13 @@ function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onEdit, on
 
         {/* Footer */}
         <div style={{ padding: "14px 24px", borderTop: `1px solid ${T.border}`, display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+          {/* Contato registrado renova a validade — impede o lead ativo de expirar */}
+          {wedding.status === "tentative" && (
+            <button onClick={() => onFollowUp(wedding)}
+              style={{ flexBasis: "100%", padding: 10, borderRadius: 11, border: `1px solid ${T.amberBorder}`, background: T.amberBg, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 800, color: T.amber, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+              <Clock size={14} /> Registrar follow-up
+            </button>
+          )}
           {/* Negociação que não frutificou sai da lista ativa com motivo registrado */}
           {(wedding.status === "tentative" || wedding.status === "confirmed") && (
             <button onClick={() => setLostOpen(true)}
@@ -867,6 +991,14 @@ function WeddingCard({ wedding, cabinsTotal, onOpen, view, showFinancial, highli
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
             <Pill label={sc.label} bg={sc.pillBg} color={sc.pillColor} border={sc.pillBorder} />
             {wedding.exclusivity && highlightExclusive && <Pill label="Exclusivo" bg={T.violetBg} color={T.violet} border={T.violetBorder} />}
+            {(() => {
+              const st = leadState(wedding, todayIso());
+              if (st.tone !== "overdue" && st.tone !== "today") return null;
+              return <Pill label={st.label}
+                bg={st.tone === "overdue" ? T.redBg : T.amberBg}
+                color={st.tone === "overdue" ? T.red : T.amber}
+                border={st.tone === "overdue" ? T.redBorder : T.amberBorder} />;
+            })()}
           </div>
         </div>
         <div>
@@ -945,6 +1077,7 @@ export default function CasamentosPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Wedding | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Wedding | null>(null);
+  const [leadSettingsOpen, setLeadSettingsOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const loadWeddings = useCallback(async () => {
@@ -1013,6 +1146,28 @@ export default function CasamentosPage() {
     }
   }, [loadWeddings]);
 
+  const handleFollowUp = useCallback(async (w: Wedding) => {
+    const note = window.prompt(`Follow-up com ${w.bride} & ${w.groom}\n\nO que ficou combinado? (opcional)`);
+    if (note === null) return; // cancelou
+    try {
+      const res = await fetch(`/api/admin/weddings/${w.id}/follow-up`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Erro ao registrar o follow-up');
+      }
+      const d = await res.json();
+      await loadWeddings();
+      setSelected(prev => prev && prev.id === w.id
+        ? { ...prev, followUpAt: d.followUpAt, expiresAt: d.expiresAt } : prev);
+      toast.success(`Follow-up registrado. Próximo em ${fmt(d.followUpAt)}, validade até ${fmt(d.expiresAt)}.`);
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao registrar o follow-up');
+    }
+  }, [loadWeddings]);
+
   const handleMarkLost = useCallback(async (w: Wedding, reason: string) => {
     try {
       const res = await fetch(`/api/admin/weddings/${w.id}/lost`, {
@@ -1034,7 +1189,11 @@ export default function CasamentosPage() {
 
   const filtered = useMemo(() => weddings
     .filter(w => {
-      if (filterStatus !== "all" && w.status !== filterStatus) return false;
+      if (filterStatus === "followup_due") {
+        if (w.status !== "tentative") return false;
+        const st = leadState(w, todayIso()).tone;
+        if (st !== "overdue" && st !== "today") return false;
+      } else if (filterStatus !== "all" && w.status !== filterStatus) return false;
       if (filterExcl === "exclusive" && !w.exclusivity) return false;
       if (filterExcl === "nonexclusive" && w.exclusivity) return false;
       if (search) {
@@ -1123,6 +1282,7 @@ export default function CasamentosPage() {
             { id: "all",       label: "Todos"      },
             { id: "confirmed", label: "Confirmado" },
             { id: "tentative", label: "Em neg."    },
+            { id: "followup_due", label: "Follow-up" },
             { id: "completed", label: "Realizado"  },
             { id: "cancelled", label: "Cancelado"  },
             { id: "lost",      label: "Perdido"    },
@@ -1146,6 +1306,10 @@ export default function CasamentosPage() {
             </button>
           ))}
         </div>
+        <button onClick={() => setLeadSettingsOpen(true)} title="Prazos das negociações"
+          style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 10, border: `1px solid ${T.border2}`, background: T.glass, cursor: "pointer", color: T.muted, fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>
+          <Clock size={13} /> Prazos
+        </button>
         <button onClick={() => { setEditTarget(null); setFormOpen(true); }} style={{ display: "flex", alignItems: "center", gap: 7, padding: "8px 16px", borderRadius: 10, border: "none", background: T.grad, cursor: "pointer", color: "#fff", fontSize: 13, fontWeight: 800, fontFamily: "inherit", boxShadow: "0 4px 14px rgba(155,109,255,.3)" }}>
           <Plus size={14} color="#fff" /> Novo Casamento
         </button>
@@ -1182,8 +1346,9 @@ export default function CasamentosPage() {
         )}
       </div>
 
-      <DetailDrawer wedding={selected} cabinsTotal={cabinsTotal} onClose={() => setSelected(null)} showFinancial={showFinancial} onEdit={handleEdit} onDelete={handleDelete} onStatusChange={handleStatusChange} onMarkLost={handleMarkLost} />
+      <DetailDrawer wedding={selected} cabinsTotal={cabinsTotal} onClose={() => setSelected(null)} showFinancial={showFinancial} onEdit={handleEdit} onDelete={handleDelete} onStatusChange={handleStatusChange} onMarkLost={handleMarkLost} onFollowUp={handleFollowUp} />
       <WeddingFormModal open={formOpen} initial={editTarget} propertyId={property.id} onClose={() => setFormOpen(false)} onSaved={loadWeddings} />
+      {leadSettingsOpen && <LeadSettingsModal propertyId={property.id} onClose={() => setLeadSettingsOpen(false)} />}
     </div>
   );
 }

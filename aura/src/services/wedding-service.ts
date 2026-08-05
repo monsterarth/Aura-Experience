@@ -1,5 +1,19 @@
 import { supabaseAdmin } from "@/lib/supabase";
-import { Wedding, WeddingVendor, WeddingCabinAssignment, WeddingStatus } from "@/types/aura";
+import {
+  Wedding, WeddingVendor, WeddingCabinAssignment, WeddingStatus,
+  WeddingLeadSettings, DEFAULT_WEDDING_LEAD,
+} from "@/types/aura";
+
+/** Data local da pousada — o servidor roda em UTC e viraria o dia às 21h. */
+function localToday(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+}
+
+function addDays(iso: string, days: number): string {
+  const d = new Date(`${iso}T12:00:00`);
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 export const WeddingService = {
 
@@ -117,6 +131,112 @@ export const WeddingService = {
       .update({
         status: "lost",
         lostReason: "Data passou sem confirmação",
+        lostAt: now,
+        updatedAt: now,
+      })
+      .in("id", rows.map((r) => r.id));
+    if (upErr) throw new Error(upErr.message);
+
+    return { updated: rows.length, couples: rows.map((r) => `${r.bride} & ${r.groom}`) };
+  },
+
+  // ── Validade do lead ────────────────────────────────────────────────────────
+
+  /** Prazos padrão da propriedade (com fallback nos defaults do sistema). */
+  async getLeadSettings(propertyId: string): Promise<WeddingLeadSettings> {
+    const { data } = await supabaseAdmin
+      .from("properties").select("settings").eq("id", propertyId).maybeSingle();
+    const saved = (data?.settings as { weddingLead?: Partial<WeddingLeadSettings> } | null)?.weddingLead;
+    return {
+      followUpDays: Number(saved?.followUpDays) > 0 ? Number(saved!.followUpDays) : DEFAULT_WEDDING_LEAD.followUpDays,
+      expiryDays:   Number(saved?.expiryDays)   > 0 ? Number(saved!.expiryDays)   : DEFAULT_WEDDING_LEAD.expiryDays,
+      renewDays:    Number(saved?.renewDays)    > 0 ? Number(saved!.renewDays)    : DEFAULT_WEDDING_LEAD.renewDays,
+    };
+  },
+
+  /** Grava os prazos padrão preservando o resto de properties.settings. */
+  async saveLeadSettings(propertyId: string, lead: WeddingLeadSettings): Promise<void> {
+    const { data } = await supabaseAdmin
+      .from("properties").select("settings").eq("id", propertyId).single();
+    const settings = { ...(data?.settings ?? {}), weddingLead: lead };
+    const { error } = await supabaseAdmin
+      .from("properties").update({ settings }).eq("id", propertyId);
+    if (error) throw new Error(error.message);
+  },
+
+  /**
+   * Prazos iniciais de uma negociação nova. A validade nunca passa da data do
+   * evento: um casamento em 10 dias não pode ter lead válido por 45.
+   */
+  async initialLeadDates(propertyId: string, weddingDate?: string): Promise<{ followUpAt: string; expiresAt: string }> {
+    const s = await this.getLeadSettings(propertyId);
+    const today = localToday();
+    let expiresAt = addDays(today, s.expiryDays);
+    if (weddingDate && weddingDate < expiresAt) expiresAt = weddingDate;
+    let followUpAt = addDays(today, s.followUpDays);
+    if (followUpAt > expiresAt) followUpAt = expiresAt;
+    return { followUpAt, expiresAt };
+  },
+
+  /**
+   * Registra que houve contato: empurra o próximo follow-up e renova a validade.
+   * É o que impede um lead ativo de expirar só porque o prazo original venceu.
+   */
+  async registerFollowUp(
+    propertyId: string,
+    id: string,
+    note?: string
+  ): Promise<{ followUpAt: string; expiresAt: string }> {
+    const s = await this.getLeadSettings(propertyId);
+    const { data } = await supabaseAdmin
+      .from("weddings").select("weddingDate, notes").eq("id", id).single();
+
+    const today = localToday();
+    let expiresAt = addDays(today, s.renewDays);
+    if (data?.weddingDate && data.weddingDate < expiresAt) expiresAt = data.weddingDate;
+    let followUpAt = addDays(today, s.followUpDays);
+    if (followUpAt > expiresAt) followUpAt = expiresAt;
+
+    const notes = note?.trim()
+      ? `${data?.notes ? `${data.notes}\n` : ""}[${today}] ${note.trim()}`
+      : data?.notes;
+
+    const { error } = await supabaseAdmin
+      .from("weddings")
+      .update({ followUpAt, expiresAt, notes, updatedAt: new Date().toISOString() })
+      .eq("id", id)
+      .eq("propertyId", propertyId);
+    if (error) throw new Error(error.message);
+
+    return { followUpAt, expiresAt };
+  },
+
+  /**
+   * Arquiva negociações VENCIDAS (passou a validade do lead, não a data do
+   * evento). É o que evita segurar por dois anos um lead de casamento em 2028.
+   */
+  async archiveExpiredLeads(propertyId?: string): Promise<{ updated: number; couples: string[] }> {
+    const today = localToday();
+
+    let query = supabaseAdmin
+      .from("weddings")
+      .select("id, bride, groom, expiresAt")
+      .eq("status", "tentative")
+      .not("expiresAt", "is", null)
+      .lt("expiresAt", today);
+    if (propertyId) query = query.eq("propertyId", propertyId);
+
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    const rows = (data ?? []) as { id: string; bride: string; groom: string }[];
+    if (rows.length === 0) return { updated: 0, couples: [] };
+
+    const now = new Date().toISOString();
+    const { error: upErr } = await supabaseAdmin
+      .from("weddings")
+      .update({
+        status: "lost",
+        lostReason: "Prazo da negociação vencido sem retorno",
         lostAt: now,
         updatedAt: now,
       })

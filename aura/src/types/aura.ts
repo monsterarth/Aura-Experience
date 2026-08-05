@@ -68,6 +68,7 @@ export interface Property {
     hasStock?: boolean;          // módulo Compras & Estoque (default: habilitado; off só se === false)
     checkInTime?: string;        // horário padrão de check-in (HH:MM) — política da propriedade, default ao criar estadias
     checkOutTime?: string;       // horário padrão de check-out (HH:MM)
+    weddingLead?: WeddingLeadSettings;  // prazos padrão das negociações de casamento
     whatsappEnabled: boolean;
     whatsappNumber?: string;
     whatsappConfig?: {
@@ -899,7 +900,7 @@ export interface AuditLog {
   | 'RATE_TABLE_DELETED' | 'RATE_SIT_IMPORTED'
   | 'RATE_QUOTE_LINKED' | 'CRON_DAILY_LODGING'
   | 'LODGING_PAUSED' | 'LODGING_RESUMED' | 'LODGING_NIGHT_OVERRIDDEN'
-  | 'WEDDING_AUTO_COMPLETED' | 'WEDDING_LOST';
+  | 'WEDDING_AUTO_COMPLETED' | 'WEDDING_LOST' | 'WEDDING_FOLLOW_UP';
   entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'STRUCTURE_REVIEW' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER' | 'CONTACT' | 'AUTOMATION' | 'BREAKFAST' | 'CRON' | 'SUPPLIER' | 'ASSET' | 'ASSET_INVENTORY' | 'PURCHASE' | 'INVENTORY' | 'RATE_TABLE' | 'WEDDING';
   entityId: string;
   oldData?: any;
@@ -1356,6 +1357,26 @@ export interface ImpersonatingState {
  */
 export type WeddingStatus = 'tentative' | 'confirmed' | 'completed' | 'cancelled' | 'lost';
 
+/**
+ * Prazos padrão de uma negociação de casamento, por propriedade.
+ * Servem só de ponto de partida: cada negociação carrega os próprios prazos e
+ * pode ser esticada individualmente.
+ */
+export interface WeddingLeadSettings {
+  /** Dias até o próximo contato com o casal. */
+  followUpDays: number;
+  /** Dias sem retorno até a negociação ser dada como perdida. */
+  expiryDays: number;
+  /** Quantos dias o "Registrar follow-up" empurra a validade. */
+  renewDays: number;
+}
+
+export const DEFAULT_WEDDING_LEAD: WeddingLeadSettings = {
+  followUpDays: 7,
+  expiryDays: 45,
+  renewDays: 45,
+};
+
 /** Motivos de perda oferecidos na tela (o campo aceita texto livre também). */
 export const WEDDING_LOST_REASONS = [
   'Preço acima do orçamento',
@@ -1413,6 +1434,10 @@ export interface Wedding {
   /** Por que a negociação foi perdida — só quando status = 'lost'. */
   lostReason?: string | null;
   lostAt?: Timestamp | null;
+  /** Próximo contato com o casal (YYYY-MM-DD). Só sinaliza; não arquiva nada. */
+  followUpAt?: string | null;
+  /** Validade da negociação (YYYY-MM-DD): vencida vira 'lost' automaticamente. */
+  expiresAt?: string | null;
   // Stay
   checkin: string;
   checkout: string;
