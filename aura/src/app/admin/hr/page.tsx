@@ -832,12 +832,12 @@ function HRDashboardContent() {
           {
             label: "Logs de Auditoria", icon: FileText,
             color: "rgba(238,240,248,0.42)", bg: "rgba(255,255,255,0.035)", border: "rgba(255,255,255,0.12)",
-            desc: "Histórico de ações", href: "/admin/audit",
+            desc: "Histórico de ações", href: "/admin/logs",
           },
           {
             label: "Configurações", icon: Settings,
             color: "#2dd4bf", bg: "rgba(45,212,191,0.08)", border: "rgba(45,212,191,0.22)",
-            desc: "Ajustes da propriedade", href: "/admin/settings",
+            desc: "Ajustes da propriedade", href: "/admin/configuracoes",
           },
         ].map((a, i) => {
           const Icon = a.icon;

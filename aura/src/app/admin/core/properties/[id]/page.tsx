@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { PropertyService } from "@/services/property-service";
 import { PropertySettingsClient } from "@/lib/property-settings-client";
 import { parseMultiLang } from "@/lib/multilang";
@@ -53,7 +53,13 @@ export default function PropertySettingsPage() {
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [activeTab, setActiveTab] = useState<TabType>('visual');
+    // O hub de configurações linka direto para a aba certa (?tab=operational etc.).
+    // Sem isso todo card cairia em "Branding & Visual" e o card mentiria sobre onde fica.
+    const tabParam = useSearchParams().get('tab') as TabType | null;
+    const VALID_TABS: TabType[] = ['visual', 'operational', 'f_b', 'policies', 'danger'];
+    const [activeTab, setActiveTab] = useState<TabType>(
+        tabParam && VALID_TABS.includes(tabParam) ? tabParam : 'visual'
+    );
 
     // Danger Zone States
     const [isDeleting, setIsDeleting] = useState(false);

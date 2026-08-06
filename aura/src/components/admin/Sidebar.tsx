@@ -155,7 +155,9 @@ const NAV_GROUPS: NavGroup[] = [
         href: "/admin/perfil", roles: ["super_admin","admin","manager","reception","governance","maintenance","kitchen","marketing","compras"],
       },
       {
-        id: "configuracoes", label: "Configurações", icon: Settings,
+        // "Preferências", não "Configurações": isto é tema/sidebar do usuário. A palavra
+        // apontava para três lugares diferentes no menu e era metade da confusão.
+        id: "configuracoes", label: "Preferências", icon: Settings,
         href: "/admin/perfil/configuracoes", roles: ["super_admin","admin","manager","reception","governance","maintenance","kitchen","marketing","compras"],
       },
     ],
@@ -251,7 +253,9 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "equipe",      label: "Equipe",            icon: Users,         href: "/admin/staff",                            roles: ["super_admin","admin","manager"] },
       { id: "nps",         label: "Pesquisas (NPS)",   icon: ClipboardList, href: "/admin/surveys",                          roles: ["super_admin","admin","manager"] },
       { id: "automacoes",  label: "Automações",        icon: Bot,           href: "/admin/comunicacao/automations/settings", roles: ["super_admin","admin"] },
-      { id: "config",      label: "Configurações",     icon: Settings,      href: "/admin/core/properties",                  roles: ["super_admin","admin"], requireProperty: true },
+      // Levava para a lista multi-tenant, não para a configuração da pousada — e a tela
+      // real de configuração não era alcançável pelo menu. Agora aponta para o hub.
+      { id: "config",      label: "Configurações",     icon: Settings,      href: "/admin/configuracoes",                    roles: ["super_admin","admin","manager","reception","kitchen","compras","governance"], requireProperty: true },
       { id: "props",       label: "Propriedades",      icon: Globe,         href: "/admin/core/properties",                  roles: ["super_admin"], exactMatch: true },
       { id: "changelog",   label: "Changelog",         icon: History,       href: "/admin/changelog",                        roles: ["super_admin"] },
     ],
@@ -591,7 +595,9 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
     if (!role) return false;
     if (item.requireProperty && !property) return false;
     if (role === "super_admin") return true;
-    return item.roles.includes(role);
+    // Cargo SECUNDÁRIO conta — o RoleGuard e o requireAuth já contavam. Sem isso, quem
+    // tem acesso adicional consegue abrir a página mas não vê o item no menu.
+    return item.roles.includes(role) || (userData?.secondaryRoles ?? []).some(r => item.roles.includes(r));
   }
 
   function isActive(item: NavItem) {
