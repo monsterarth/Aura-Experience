@@ -57,9 +57,12 @@ export const PurchaseService = {
   async upsertPurchase(propertyId: string, payload: Partial<Purchase>, items: Partial<PurchaseItem>[], actor: Actor): Promise<string> {
     const isNew = !payload.id;
     const id = payload.id ?? crypto.randomUUID();
+    // Total = itens + taxa de entrega − desconto. A taxa é da NOTA (não rateia no
+    // custo médio dos produtos), mesma regra do desconto.
     const subtotal = round2(items.reduce((s, i) => s + Number(i.quantity ?? 0) * Number(i.unitCost ?? 0), 0));
-    const discountValue = Math.min(round2(Math.max(0, Number(payload.discountValue ?? 0))), subtotal);
-    const totalValue = round2(subtotal - discountValue);
+    const freightValue = round2(Math.max(0, Number(payload.freightValue ?? 0)));
+    const discountValue = Math.min(round2(Math.max(0, Number(payload.discountValue ?? 0))), round2(subtotal + freightValue));
+    const totalValue = round2(subtotal + freightValue - discountValue);
 
     const row = {
       id, propertyId,
@@ -73,6 +76,7 @@ export const PurchaseService = {
       receivedDate: payload.receivedDate ?? null,
       totalValue,
       discountValue,
+      freightValue,
       notes: payload.notes ?? null,
       updatedAt: now(),
       ...(isNew && { createdAt: now() }),

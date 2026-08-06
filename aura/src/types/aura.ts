@@ -1853,8 +1853,9 @@ export interface Purchase {
   isEmergency: boolean;
   orderDate?: string | null;      // YYYY-MM-DD
   receivedDate?: string | null;
-  totalValue: number;             // líquido (soma dos itens − desconto)
+  totalValue: number;             // líquido (soma dos itens + frete − desconto)
   discountValue?: number;         // desconto da nota (R$)
+  freightValue?: number;          // taxa de entrega / frete da nota (R$)
   notes?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;

@@ -26,11 +26,12 @@ const emptyItem: ItemRow = { productId: "", quantity: "", unitCost: "", expiryDa
 interface RecvRow { itemId: string; name: string; unit: string; trackExpiry: boolean; quantity: number; expiryDate: string; batchCode: string; }
 interface PForm {
   id?: string; status: PurchaseStatus; supplierId: string; locationId: string;
-  invoiceNumber: string; invoiceUrl: string; orderDate: string; isEmergency: boolean; discountValue: string; notes: string; items: ItemRow[];
+  invoiceNumber: string; invoiceUrl: string; orderDate: string; isEmergency: boolean;
+  freightValue: string; discountValue: string; notes: string; items: ItemRow[];
 }
 const emptyForm: PForm = {
   status: "draft", supplierId: "", locationId: "", invoiceNumber: "", invoiceUrl: "", orderDate: "",
-  isEmergency: false, discountValue: "", notes: "", items: [{ ...emptyItem }],
+  isEmergency: false, freightValue: "", discountValue: "", notes: "", items: [{ ...emptyItem }],
 };
 
 export default function ComprasPage() {
@@ -78,6 +79,7 @@ export default function ComprasPage() {
   const openEdit = (p: Purchase) => setForm({
     id: p.id, status: p.status, supplierId: p.supplierId ?? "", locationId: p.locationId ?? "",
     invoiceNumber: p.invoiceNumber ?? "", invoiceUrl: p.invoiceUrl ?? "", orderDate: p.orderDate ?? "", isEmergency: p.isEmergency,
+    freightValue: Number(p.freightValue ?? 0) > 0 ? String(p.freightValue) : "",
     discountValue: Number(p.discountValue ?? 0) > 0 ? String(p.discountValue) : "", notes: p.notes ?? "",
     items: (p.items ?? []).map((i) => ({ productId: i.productId, quantity: String(i.quantity), unitCost: String(i.unitCost), expiryDate: i.expiryDate ?? "", batchCode: i.batchCode ?? "" })),
   });
@@ -89,8 +91,9 @@ export default function ComprasPage() {
     if (!form) return 0;
     return form.items.reduce((s, i) => s + Number(i.quantity || 0) * Number(i.unitCost || 0), 0);
   }, [form]);
-  const formDiscount = Math.min(Math.max(0, Number(form?.discountValue || 0)), subtotal);
-  const grandTotal = subtotal - formDiscount;
+  const formFreight = Math.max(0, Number(form?.freightValue || 0));
+  const formDiscount = Math.min(Math.max(0, Number(form?.discountValue || 0)), subtotal + formFreight);
+  const grandTotal = subtotal + formFreight - formDiscount;
 
   const setItem = (idx: number, patch: Partial<ItemRow>) =>
     setForm((f) => f ? { ...f, items: f.items.map((it, i) => i === idx ? { ...it, ...patch } : it) } : f);
@@ -122,7 +125,8 @@ export default function ComprasPage() {
         supplierId: form.supplierId || null, locationId: form.locationId || null,
         invoiceNumber: form.invoiceNumber || undefined, invoiceUrl: form.invoiceUrl || undefined,
         orderDate: form.orderDate || null, isEmergency: form.isEmergency,
-        discountValue: Number(form.discountValue || 0), notes: form.notes || undefined, items,
+        freightValue: Number(form.freightValue || 0), discountValue: Number(form.discountValue || 0),
+        notes: form.notes || undefined, items,
       });
       setForm(null); await load(); toast.success("Compra salva.");
     } catch (e) { toast.error((e as Error).message); } finally { setSaving(false); }
@@ -287,12 +291,16 @@ export default function ComprasPage() {
                   </button>
                   {/* scroll-mb: o rodape "Cancelar/Salvar" e sticky e cobriria o botao */}
                   <div ref={itemsEndRef} aria-hidden className="h-px scroll-mb-24" />
-                  <p className="text-[10px] text-muted-foreground pl-1">A validade dos itens perecíveis é informada no <b>recebimento</b>.</p>
+                  <p className="text-[10px] text-muted-foreground pl-1">A validade dos itens perecíveis é informada no <b>recebimento</b>. Frete/entrega não é item: use o campo <b>Taxa de entrega</b> abaixo.</p>
                 </div>
                 <div className="mt-3 space-y-1.5 border-t border-border pt-3">
                   <div className="flex justify-between items-center text-sm text-muted-foreground">
                     <span>Subtotal</span>
                     <span className="tabular-nums">R$ {subtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between items-center gap-2 text-sm text-muted-foreground">
+                    <span>Taxa de entrega (R$)</span>
+                    <input type="number" min="0" step="0.01" className="field-input w-28 py-1 text-right" placeholder="0,00" value={form.freightValue} onChange={(e) => setForm({ ...form, freightValue: e.target.value })} />
                   </div>
                   <div className="flex justify-between items-center gap-2 text-sm text-muted-foreground">
                     <span>Desconto (R$)</span>
@@ -409,16 +417,24 @@ export default function ComprasPage() {
               </table>
 
               <div className="border-t border-border pt-3 space-y-1">
-                {Number(nota.discountValue ?? 0) > 0 && (
+                {(Number(nota.discountValue ?? 0) > 0 || Number(nota.freightValue ?? 0) > 0) && (
                   <>
                     <div className="flex justify-between items-center text-sm text-muted-foreground">
                       <span>Subtotal</span>
-                      <span className="tabular-nums">R$ {(Number(nota.totalValue) + Number(nota.discountValue)).toFixed(2)}</span>
+                      <span className="tabular-nums">R$ {(Number(nota.totalValue) + Number(nota.discountValue ?? 0) - Number(nota.freightValue ?? 0)).toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between items-center text-sm text-emerald-500">
-                      <span>Desconto</span>
-                      <span className="tabular-nums">− R$ {Number(nota.discountValue).toFixed(2)}</span>
-                    </div>
+                    {Number(nota.freightValue ?? 0) > 0 && (
+                      <div className="flex justify-between items-center text-sm text-muted-foreground">
+                        <span>Taxa de entrega</span>
+                        <span className="tabular-nums">+ R$ {Number(nota.freightValue).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {Number(nota.discountValue ?? 0) > 0 && (
+                      <div className="flex justify-between items-center text-sm text-emerald-500">
+                        <span>Desconto</span>
+                        <span className="tabular-nums">− R$ {Number(nota.discountValue).toFixed(2)}</span>
+                      </div>
+                    )}
                   </>
                 )}
                 <div className="flex justify-between items-center">
