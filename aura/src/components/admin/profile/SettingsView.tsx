@@ -11,26 +11,17 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { Toggle } from "@/components/ui/Toggle";
 
 interface Props {
   userData: Staff;
   onRefresh: () => Promise<void>;
 }
 
-function ToggleSwitch({ active, loading }: { active: boolean; loading: boolean }) {
-  return (
-    <div
-      className="relative flex items-center w-11 h-6 rounded-full flex-shrink-0 transition-colors duration-200"
-      style={{ background: active ? "linear-gradient(135deg,#9b6dff,#4ec9d4)" : "var(--border)" }}
-    >
-      {loading ? (
-        <Loader2 size={14} className="absolute text-white animate-spin transition-all duration-200" style={{ left: active ? 22 : 3 }} />
-      ) : (
-        <div className="absolute w-[18px] h-[18px] rounded-full bg-white shadow transition-all duration-200" style={{ left: active ? 23 : 3 }} />
-      )}
-    </div>
-  );
-}
+/** O switch mora em components/ui/Toggle — este alias mantém o JSX abaixo intacto. */
+const ToggleSwitch = ({ active, loading }: { active: boolean; loading: boolean }) => (
+  <Toggle checked={active} loading={loading} />
+);
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (

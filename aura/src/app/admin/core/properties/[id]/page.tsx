@@ -5,6 +5,9 @@ import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PropertyService } from "@/services/property-service";
 import { PropertySettingsClient } from "@/lib/property-settings-client";
+import { parseMultiLang } from "@/lib/multilang";
+import { ColorInput } from "@/components/admin/settings/ColorInput";
+import { MultiLangField } from "@/components/admin/settings/MultiLangField";
 import { StructureService } from "@/services/structure-service";
 import { Property, PropertyTheme, Structure } from "@/types/aura";
 import {
@@ -41,18 +44,7 @@ function hexToHSL(hex: string): string {
 }
 
 type TabType = 'visual' | 'operational' | 'f_b' | 'policies' | 'danger';
-type MultiLangObj = { pt: string, en: string, es: string };
-
-// Helper para converter strings antigas do banco em objetos Multilíngues
-function parseMultiLang(val: any, fallbackObj: MultiLangObj): MultiLangObj {
-    if (!val) return fallbackObj;
-    if (typeof val === 'string') return { pt: val, en: "", es: "" };
-    return {
-        pt: val.pt || fallbackObj.pt,
-        en: val.en || fallbackObj.en,
-        es: val.es || fallbackObj.es
-    };
-}
+// MultiLangObj e parseMultiLang agora sao compartilhados (types/aura + lib/multilang).
 
 export default function PropertySettingsPage() {
     const { id } = useParams();
@@ -887,7 +879,7 @@ export default function PropertySettingsPage() {
                                 </div>
 
                                 <div className="space-y-4 pt-4 border-t border-border">
-                                    <MultiLangTextarea
+                                    <MultiLangField
                                         label="Aviso de Early Check-in (Chegada Antecipada)"
                                         desc="Exibido quando o hóspede insere um horário anterior ao Início do Check-in. Variáveis: [expectedArrivalTime], [checkintime]"
                                         value={settings.earlyCheckInMessage}
@@ -896,7 +888,7 @@ export default function PropertySettingsPage() {
 
                                     <div className="pt-2 border-t border-border"></div>
 
-                                    <MultiLangTextarea
+                                    <MultiLangField
                                         label="Aviso de Late Check-in (Recepção Fechada)"
                                         desc="Exibido quando o hóspede insere um horário após o Fechamento da Recepção. Variáveis: [expectedArrivalTime], [receptionendtime]"
                                         value={settings.lateCheckInMessage}
@@ -905,7 +897,7 @@ export default function PropertySettingsPage() {
 
                                     <div className="pt-2 border-t border-border"></div>
 
-                                    <MultiLangTextarea
+                                    <MultiLangField
                                         label="Aviso Resumido: Pet Friendly (Alert no Check-in)"
                                         desc="Um aviso curto para quando a pessoa marca a checkbox do Pet na ficha."
                                         rows={2}
@@ -1030,7 +1022,7 @@ export default function PropertySettingsPage() {
                                 Os textos aqui definidos exigirão o consentimento (&quot;Li e Concordo&quot;) obrigatório do hóspede antes de finalizar o check-in.
                             </p>
 
-                            <MultiLangTextarea
+                            <MultiLangField
                                 label="Política Geral da Propriedade"
                                 desc="Regras de silêncio, uso da piscina, horários, multas, etc."
                                 rows={6}
@@ -1040,7 +1032,7 @@ export default function PropertySettingsPage() {
 
                             <div className="pt-2 border-t border-border"></div>
 
-                            <MultiLangTextarea
+                            <MultiLangField
                                 label="Política de Privacidade (LGPD)"
                                 desc="Termo legal de como os dados são manipulados para a FNRH."
                                 rows={6}
@@ -1050,7 +1042,7 @@ export default function PropertySettingsPage() {
 
                             <div className="pt-2 border-t border-border"></div>
 
-                            <MultiLangTextarea
+                            <MultiLangField
                                 label="Política Pet Completa"
                                 desc="Termo completo com obrigações do dono, vacinação, circulação na pousada."
                                 rows={6}
@@ -1540,63 +1532,4 @@ export default function PropertySettingsPage() {
     );
 }
 
-// Componente simples de input de cor
-const ColorInput = ({ label, desc, value, onChange }: { label: string, desc: string, value?: string, onChange: (v: string) => void }) => (
-    <div className="space-y-2">
-        <div className="flex justify-between items-end">
-            <label className="text-sm font-bold text-foreground">{label}</label>
-            <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wider">{value}</span>
-        </div>
-        <div className="flex gap-4 items-center">
-            <div className="relative w-12 h-12 shrink-0 rounded-xl overflow-hidden border-2 border-border shadow-inner">
-                <input
-                    type="color"
-                    value={value || '#000000'}
-                    onChange={(e) => onChange(e.target.value)}
-                    className="absolute inset-0 w-[150%] h-[150%] -top-[25%] -left-[25%] cursor-pointer p-0 border-0"
-                />
-            </div>
-            <div className="flex-1">
-                <p className="text-xs text-muted-foreground leading-snug">{desc}</p>
-            </div>
-        </div>
-    </div>
-);
-
-// Novo Componente para Input de Texto Multi-idioma
-const MultiLangTextarea = ({ label, desc, value, onChange, rows = 3 }: { label: string, desc?: string, value: MultiLangObj, onChange: (v: MultiLangObj) => void, rows?: number }) => {
-    const [lang, setLang] = useState<'pt' | 'en' | 'es'>('pt');
-
-    return (
-        <div className="space-y-3">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
-                <div className="flex-1">
-                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest flex items-center gap-1.5"><Globe size={12} /> {label}</label>
-                    {desc && <p className="text-xs text-muted-foreground mt-1">{desc}</p>}
-                </div>
-                <div className="flex bg-background rounded-lg p-1 border border-border shadow-sm shrink-0">
-                    {(['pt', 'en', 'es'] as const).map(l => (
-                        <button
-                            key={l}
-                            type="button"
-                            onClick={() => setLang(l)}
-                            className={cn(
-                                "px-3 py-1.5 text-[10px] font-bold uppercase rounded-md transition-all",
-                                lang === l ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                            )}
-                        >
-                            {l}
-                        </button>
-                    ))}
-                </div>
-            </div>
-            <textarea
-                value={value?.[lang] || ""}
-                onChange={e => onChange({ ...value, [lang]: e.target.value })}
-                rows={rows}
-                placeholder={`Digite o texto em ${lang.toUpperCase()}...`}
-                className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground text-sm resize-none custom-scrollbar"
-            />
-        </div>
-    );
-};
+// ColorInput e MultiLangField vivem em components/admin/settings — reusados pelo hub.

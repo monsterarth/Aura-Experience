@@ -54,6 +54,17 @@ export interface PropertyTheme {
   };
 }
 
+/**
+ * Texto trilíngue guardado dentro de um jsonb (ex.: properties.settings.petPolicyText).
+ * Não confundir com o padrão de COLUNAS `name` / `name_en` / `name_es` das tabelas.
+ * Helpers em src/lib/multilang.ts.
+ */
+export interface MultiLangObj {
+  pt: string;
+  en: string;
+  es: string;
+}
+
 // --- ENTIDADE PROPRIEDADE ---
 export interface Property {
   id: string;
