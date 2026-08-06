@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { WhatsAppMessage } from "@/types/aura";
 import { parseEvolutionError } from "@/lib/evolution-error";
+import { PropertySecretsService } from "@/services/property-secrets-service";
 
 async function writeCronLog(action: string, entityId: string, details: string, newData: object) {
   try {
@@ -111,8 +112,11 @@ export async function GET(request: Request) {
         }
 
         const cfg = propertySettings.whatsappConfig ?? {};
+        // A chave vem de property_secrets (fora do alcance do navegador). O service
+        // cacheia por 60s — este laço resolve segredo mensagem a mensagem.
+        const secrets = await PropertySecretsService.get(msg.propertyId);
         const apiUrl: string = cfg.apiUrl || process.env.EVOLUTION_API_URL || "";
-        const apiKey: string = cfg.apiKey || process.env.EVOLUTION_API_KEY || "";
+        const apiKey: string = secrets.evolutionApiKey || process.env.EVOLUTION_API_KEY || "";
         const instanceName: string =
           cfg.instanceName ||
           cfg.instances?.[0]?.instanceName ||

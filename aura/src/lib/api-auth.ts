@@ -111,6 +111,40 @@ export async function requireAuth(allowedRoles?: UserRole[]): Promise<AuthResult
 }
 
 /**
+ * Valida autenticação, cargo E **posse da propriedade**.
+ *
+ * `requireAuth` sozinho checa só o cargo: ele devolve `staff.propertyId` mas nunca compara
+ * com o recurso sendo lido/escrito. Numa rota de CONFIGURAÇÃO isso significa que qualquer
+ * admin poderia mandar o propertyId de outra pousada no corpo do request.
+ *
+ * Quem atravessa tenant é explícito e, por padrão, **só super_admin** — mais apertado que a
+ * convenção `ADMIN_TIER` de /api/admin/weddings e /api/field/cabins de propósito: no produto,
+ * só o super_admin tem seletor de propriedade (PropertyContext prende os demais ao
+ * staff.propertyId), então um admin nunca manda propertyId alheio por caminho legítimo.
+ * Rotas operacionais que precisem da regra frouxa passam `crossTenantRoles` explicitamente.
+ */
+export async function requirePropertyAccess(
+    propertyId: string | null | undefined,
+    allowedRoles?: UserRole[],
+    crossTenantRoles: UserRole[] = ['super_admin'],
+): Promise<AuthResult | NextResponse> {
+    const auth = await requireAuth(allowedRoles);
+    if (isAuthError(auth)) return auth;
+
+    if (!propertyId) {
+        return NextResponse.json({ error: 'propertyId é obrigatório.' }, { status: 400 });
+    }
+    if (hasRole(auth.staff.role, auth.staff.secondaryRoles, crossTenantRoles)) return auth;
+    if (auth.staff.propertyId !== propertyId) {
+        return NextResponse.json(
+            { error: 'Acesso negado: esta propriedade não é a sua.' },
+            { status: 403 }
+        );
+    }
+    return auth;
+}
+
+/**
  * Type guard: verifica se o resultado é um NextResponse (erro) ou AuthResult (sucesso).
  */
 export function isAuthError(result: AuthResult | NextResponse): result is NextResponse {

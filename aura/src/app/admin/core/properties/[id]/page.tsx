@@ -70,6 +70,12 @@ export default function PropertySettingsPage() {
 
     const [property, setProperty] = useState<Property | null>(null);
     const [theme, setTheme] = useState<PropertyTheme | null>(null);
+    // Segredos de integração: a tela só sabe SE existem e os 4 últimos dígitos.
+    const [secretInfo, setSecretInfo] = useState<{
+        hasEvolutionApiKey: boolean; evolutionApiKeyMask: string | null;
+        hasChatwootApiToken: boolean; chatwootApiTokenMask: string | null;
+        secureEvolutionApiKey: boolean; secureChatwootApiToken: boolean;
+    } | null>(null);
     // Salão do café (estrutura marcada) — picker redundante c/ o toggle da estrutura.
     const [structures, setStructures] = useState<Structure[]>([]);
     const [cafeVenueId, setCafeVenueId] = useState("");
@@ -167,7 +173,16 @@ export default function PropertySettingsPage() {
 
     useEffect(() => {
         loadProperty();
+        loadSecretInfo();
     }, [id]);
+
+    /** GET mascarado: nunca traz o valor do segredo para o navegador. */
+    async function loadSecretInfo() {
+        try {
+            const r = await fetch(`/api/admin/properties/integrations?propertyId=${encodeURIComponent(String(id))}`);
+            if (r.ok) setSecretInfo(await r.json());
+        } catch { /* silencioso: a tela funciona sem a máscara */ }
+    }
 
     async function loadProperty() {
         try {
@@ -208,7 +223,9 @@ export default function PropertySettingsPage() {
                     privacyPolicyText: parseMultiLang(s.privacyPolicyText, prev.privacyPolicyText),
                     generalPolicyText: parseMultiLang(s.generalPolicyText, prev.generalPolicyText),
                     whatsappEnabled: s.whatsappEnabled ?? prev.whatsappEnabled,
-                    whatsappConfig: { ...prev.whatsappConfig, ...(s.whatsappConfig || {}) },
+                    // Segredos NUNCA voltam do banco para a tela: campo vazio = "manter o atual".
+                    // Eles vivem em property_secrets, fora do alcance da chave anon do navegador.
+                    whatsappConfig: { ...prev.whatsappConfig, ...(s.whatsappConfig || {}), apiKey: "", chatwootApiToken: "" },
                     acceptsPets: s.acceptsPets !== undefined ? s.acceptsPets : prev.acceptsPets,
                     petMinWeight: s.petMinWeight !== undefined ? s.petMinWeight : prev.petMinWeight,
                     petMaxWeight: s.petMaxWeight !== undefined ? s.petMaxWeight : prev.petMaxWeight,
@@ -271,6 +288,17 @@ export default function PropertySettingsPage() {
         if (!property || !theme) return;
         setSaving(true);
         try {
+            // Segredos saem do payload de settings: eles vão pela rota dedicada, que grava em
+            // property_secrets. `properties` é legível pela chave anon — segredo ali é segredo vazado.
+            const { apiKey, chatwootApiToken, ...publicWhatsappConfig } = settings.whatsappConfig as any;
+
+            // Mas só some de settings o que JÁ está no cofre. Antes da migration rodar, o valor
+            // antigo é preservado — senão um "Salvar" comum apagaria a chave sem ter cópia.
+            const storedWc = ((property.settings as any)?.whatsappConfig ?? {}) as any;
+            const carriedWhatsappConfig: any = { ...publicWhatsappConfig };
+            if (!secretInfo?.secureEvolutionApiKey && storedWc.apiKey && !apiKey) carriedWhatsappConfig.apiKey = storedWc.apiKey;
+            if (!secretInfo?.secureChatwootApiToken && storedWc.chatwootApiToken && !chatwootApiToken) carriedWhatsappConfig.chatwootApiToken = storedWc.chatwootApiToken;
+
             // Usa (as any) para aceitar os campos extras mesclados com o settings original
             const updatedPayload: any = {
                 name: basicInfo.name,
@@ -279,11 +307,31 @@ export default function PropertySettingsPage() {
                 settings: {
                     ...property.settings,
                     ...settings,
+                    whatsappConfig: carriedWhatsappConfig,
                     slogan: basicInfo.slogan
                 }
             };
 
             await PropertyService.updateProperty(property.id, updatedPayload);
+
+            // Campo em branco = manter o segredo atual (semântica write-only da rota).
+            if (apiKey || chatwootApiToken) {
+                const r = await fetch("/api/admin/properties/integrations", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        propertyId: property.id,
+                        secrets: {
+                            ...(apiKey ? { evolutionApiKey: apiKey } : {}),
+                            ...(chatwootApiToken ? { chatwootApiToken } : {}),
+                        },
+                    }),
+                });
+                if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Falha ao salvar os segredos.");
+                setSettings(prev => ({ ...prev, whatsappConfig: { ...prev.whatsappConfig, apiKey: "", chatwootApiToken: "" } }));
+                await loadSecretInfo();
+            }
+
             toast.success("Configurações atualizadas com sucesso!");
         } catch (error) {
             toast.error("Erro ao salvar alterações.");
@@ -722,9 +770,10 @@ export default function PropertySettingsPage() {
                                                 type="password"
                                                 value={settings.whatsappConfig.apiKey}
                                                 onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, apiKey: e.target.value } })}
-                                                placeholder="••••••••••••••••"
+                                                placeholder={secretInfo?.hasEvolutionApiKey ? `${secretInfo.evolutionApiKeyMask} (inalterado)` : "••••••••••••••••"}
                                                 className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
                                             />
+                                            <p className="text-xs text-muted-foreground">Guardada fora do alcance do navegador. Em branco, o valor atual é mantido — preencha só para substituir.</p>
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Nome da Instância Evolution</label>
@@ -779,24 +828,26 @@ export default function PropertySettingsPage() {
                                                 type="password"
                                                 value={(settings.whatsappConfig as any).chatwootApiToken || ""}
                                                 onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, chatwootApiToken: e.target.value } })}
-                                                placeholder="••••••••••••••••"
+                                                placeholder={secretInfo?.hasChatwootApiToken ? `${secretInfo.chatwootApiTokenMask} (inalterado)` : "••••••••••••••••"}
                                                 className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
                                             />
+                                            <p className="text-xs text-muted-foreground">Guardado fora do alcance do navegador. Em branco, o valor atual é mantido — preencha só para substituir.</p>
                                         </div>
                                     </div>
                                 </div>
 
-                                {settings.whatsappEnabled && settings.whatsappConfig.apiUrl && settings.whatsappConfig.apiKey && (settings.whatsappConfig as any).instanceName && (
+                                {/* O "tem chave?" vem do servidor (secretInfo), não do input — o campo fica vazio de propósito. */}
+                                {settings.whatsappEnabled && settings.whatsappConfig.apiUrl && secretInfo?.hasEvolutionApiKey && (settings.whatsappConfig as any).instanceName && (
                                     <div className="flex items-center gap-2 text-green-600 text-xs font-bold bg-green-500/10 p-3 rounded-xl">
                                         <CheckCircle2 size={14} /> Evolution configurada — automações de mensagem habilitadas.
                                     </div>
                                 )}
-                                {settings.whatsappEnabled && (!settings.whatsappConfig.apiUrl || !settings.whatsappConfig.apiKey || !(settings.whatsappConfig as any).instanceName) && (
+                                {settings.whatsappEnabled && (!settings.whatsappConfig.apiUrl || !secretInfo?.hasEvolutionApiKey || !(settings.whatsappConfig as any).instanceName) && (
                                     <div className="flex items-center gap-2 text-amber-600 text-xs font-bold bg-amber-500/10 p-3 rounded-xl">
                                         <AlertTriangle size={14} /> Preencha URL, API Key e Instância para ativar o envio de mensagens.
                                     </div>
                                 )}
-                                {(settings.whatsappConfig as any).chatwootUrl && (settings.whatsappConfig as any).chatwootAccountId && (settings.whatsappConfig as any).chatwootApiToken && (settings.whatsappConfig as any).chatwootInboxId && (
+                                {(settings.whatsappConfig as any).chatwootUrl && (settings.whatsappConfig as any).chatwootAccountId && secretInfo?.hasChatwootApiToken && (settings.whatsappConfig as any).chatwootInboxId && (
                                     <div className="flex items-center gap-2 text-green-600 text-xs font-bold bg-green-500/10 p-3 rounded-xl">
                                         <CheckCircle2 size={14} /> Chatwoot configurado — sincronização de contatos e inbox habilitados.
                                     </div>

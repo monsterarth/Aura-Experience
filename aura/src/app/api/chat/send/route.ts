@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { requireAuth, isAuthError } from "@/lib/api-auth";
 import { parseEvolutionError } from "@/lib/evolution-error";
+import { PropertySecretsService } from "@/services/property-secrets-service";
 
 export async function POST(req: Request) {
   const auth = await requireAuth();
@@ -30,8 +31,10 @@ export async function POST(req: Request) {
       .single();
 
     const cfg = property?.settings?.whatsappConfig;
+    // A chave vem de property_secrets (fora do alcance do navegador), não mais de settings.
+    const secrets = await PropertySecretsService.get(propertyId);
     const apiUrl = cfg?.apiUrl || process.env.EVOLUTION_API_URL;
-    const apiKey = cfg?.apiKey || process.env.EVOLUTION_API_KEY;
+    const apiKey = secrets.evolutionApiKey || process.env.EVOLUTION_API_KEY;
     const instanceName = cfg?.instanceName
       || cfg?.instances?.[0]?.instanceName
       || process.env.EVOLUTION_INSTANCE;
