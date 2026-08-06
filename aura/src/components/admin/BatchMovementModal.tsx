@@ -34,12 +34,14 @@ interface Props {
   cabins: StockCabinOption[];
   staff: StockStaffOption[];
   defaultResponsibleId: string;
+  /** "Estoque principal": origem já preenchida na transferência. */
+  defaultLocationId?: string;
   onClose: () => void;
   onSaved: () => void;
 }
 
 export default function BatchMovementModal({
-  propertyId, products, locations, cabins, staff, defaultResponsibleId, onClose, onSaved,
+  propertyId, products, locations, cabins, staff, defaultResponsibleId, defaultLocationId = "", onClose, onSaved,
 }: Props) {
   const [type, setType] = useState<StockMovementType>("exit");
   const [from, setFrom] = useState({ locationId: "", cabinId: "" });
@@ -60,6 +62,12 @@ export default function BatchMovementModal({
   const showFrom = type === "exit" || type === "loss" || type === "transfer";
   const showTo = type === "entry" || type === "transfer" || type === "adjustment";
   const showCost = type === "entry";
+
+  // Transferência já abre com o estoque principal na origem (trocável).
+  useEffect(() => {
+    if (!defaultLocationId || type !== "transfer") return;
+    setFrom((f) => (f.locationId || f.cabinId) ? f : { locationId: defaultLocationId, cabinId: "" });
+  }, [defaultLocationId, type, from.locationId, from.cabinId]);
 
   const locOf = (id: string) => locations.find((l) => l.id === id);
   const askFromStaff = showFrom && locOf(from.locationId)?.type === "staff";

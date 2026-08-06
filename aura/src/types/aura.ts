@@ -1803,6 +1803,7 @@ export interface StockSettings {
   expiryAlertLeadDays: number;    // antecedência do alerta de validade (default 30)
   autoLossOnExpiry: boolean;
   defaultSaleLocationId?: string | null;  // local de onde concierge/F&B dão baixa (Fase 3)
+  defaultLocationId?: string | null;      // "estoque principal": origem padrão das transferências
   assetTagPrefix?: string;                // prefixo do nº de patrimônio (default 'PAT')
   assetTagPadding?: number;               // dígitos do sufixo (default 4 → PAT-0042)
   updatedAt: Timestamp;

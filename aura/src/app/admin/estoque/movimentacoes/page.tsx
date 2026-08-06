@@ -59,15 +59,19 @@ export default function EstoqueMovimentacoesPage() {
   const [saving, setSaving] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
   const [productId, setProductId] = useState<string | null>(null);
+  // "Estoque principal" (Configurações → Parâmetros): origem padrão da transferência.
+  const [defaultLocationId, setDefaultLocationId] = useState("");
 
   const loadStatic = useCallback(async () => {
     if (!property?.id) return;
-    const [prods, locs, staff, cabins] = await Promise.all([
+    const [prods, locs, staff, cabins, settings] = await Promise.all([
       StockClient.products(property.id), StockClient.locations(property.id),
       StockClient.movementStaff(property.id), StockClient.cabinOptions(property.id),
+      StockClient.settings(property.id),
     ]);
     setProducts(prods.filter((p) => p.active)); setLocations(locs.filter((l) => l.active));
     setStaffOptions(staff); setCabinOptions(cabins);
+    setDefaultLocationId(settings.defaultLocationId ?? "");
   }, [property?.id]);
 
   const loadMovements = useCallback(async () => {
@@ -88,6 +92,17 @@ export default function EstoqueMovimentacoesPage() {
       toLocationId: to ?? f.toLocationId,
     }));
   }, []);
+
+  /**
+   * Transferência quase sempre sai do estoque principal, então a origem já vem
+   * preenchida. Roda também quando o parâmetro chega depois da tela e a cada
+   * lançamento novo (o submit limpa o formulário mantendo o tipo).
+   */
+  useEffect(() => {
+    if (!defaultLocationId) return;
+    setForm((f) => (f.type === "transfer" && !f.fromLocationId && !f.fromCabinId)
+      ? { ...f, fromLocationId: defaultLocationId } : f);
+  }, [defaultLocationId, form.type, form.fromLocationId, form.fromCabinId]);
 
   useEffect(() => {
     if (!property?.id) return;
@@ -225,6 +240,7 @@ export default function EstoqueMovimentacoesPage() {
         <BatchMovementModal
           propertyId={property.id} products={products} locations={locations}
           cabins={cabinOptions} staff={responsibleOptions} defaultResponsibleId={responsibleId}
+          defaultLocationId={defaultLocationId}
           onClose={() => setBatchOpen(false)} onSaved={loadMovements}
         />
       )}

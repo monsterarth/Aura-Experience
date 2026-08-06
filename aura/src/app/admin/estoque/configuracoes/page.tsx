@@ -416,6 +416,14 @@ export default function EstoqueConfigPage() {
       ) : settings ? (
         <section className="bg-card border border-border rounded-2xl p-5 space-y-4 max-w-lg">
           <div>
+            <label className="field-label">Estoque principal</label>
+            {/* sem cabanas: transferência sai do estoque de cadastro, não de uma cabana */}
+            <StockLocationSelect locations={flatLocations} value={settings.defaultLocationId ?? ""}
+              placeholder="— (sem padrão)"
+              onChange={(id) => setSettings({ ...settings, defaultLocationId: id || null })} />
+            <p className="text-[10px] text-muted-foreground mt-1 pl-1">Vem preenchido como origem ao lançar uma transferência. Continua trocável na hora.</p>
+          </div>
+          <div>
             <label className="field-label">Local de consumo padrão (baixa de Concierge/F&B)</label>
             {/* sem cabanas: rotearia todo o consumo de F&B pelo saldo de uma cabana */}
             <StockLocationSelect locations={flatLocations} value={settings.defaultSaleLocationId ?? ""}
