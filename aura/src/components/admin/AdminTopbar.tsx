@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
-import { ChevronRight, Search, X, Menu } from "lucide-react";
+import { ChevronRight, Search, X, Menu, Settings2 } from "lucide-react";
 import { NotificationCenter } from "@/components/admin/NotificationCenter";
+import { filterDomains } from "@/app/admin/configuracoes/_lib/catalog";
+import { UserRole } from "@/types/aura";
 
 // ─── Route label map ──────────────────────────────────────────────────────────
 const ROUTE_LABELS: Record<string, string> = {
@@ -114,47 +116,99 @@ function Breadcrumb() {
 }
 
 // ─── Search box ───────────────────────────────────────────────────────────────
-// Quick navigation search — matches route labels and navigates
-const SEARCH_ROUTES = [
-  { label: "Estadias",          href: "/admin/stays" },
-  { label: "Mapa de Reservas",  href: "/admin/reservation-map" },
-  { label: "Hóspedes",          href: "/admin/guests" },
-  { label: "Comunicação",       href: "/admin/comunicacao" },
-  { label: "Calendário",        href: "/admin/calendario" },
-  { label: "Agendamentos",      href: "/admin/core/structures/bookings" },
-  { label: "Eventos",           href: "/admin/eventos" },
-  { label: "Manutenção",        href: "/admin/maintenance" },
-  { label: "Kanban Manutenção", href: "/admin/maintenance/kanban" },
-  { label: "Governança",        href: "/admin/governance" },
-  { label: "Kanban Governança", href: "/admin/governance/kanban" },
-  { label: "Concierge",         href: "/admin/concierge" },
-  { label: "Apps Mobile",       href: "/admin/mobile-apps" },
-  { label: "Gastronomia",       href: "/admin/food-and-beverage/menu" },
-  { label: "Garçom / KDS",      href: "/admin/cafe-salao" },
-  { label: "Avaliações",        href: "/admin/surveys/responses" },
-  { label: "Equipe",            href: "/admin/staff" },
-  { label: "Escalas",           href: "/admin/escalas" },
-  { label: "Cabanas",           href: "/admin/cabins" },
-  { label: "Estruturas",        href: "/admin/core/structures" },
-  { label: "Catálogo Concierge",href: "/admin/core/concierge" },
-  { label: "Pesquisas (NPS)",   href: "/admin/surveys" },
-  { label: "Automações",        href: "/admin/comunicacao/automations/settings" },
-  { label: "Logs de Auditoria", href: "/admin/logs" },
-  { label: "Configurações",     href: "/admin/core/properties" },
-  { label: "Propriedades",      href: "/admin/core/properties" },
-  { label: "RH / Dashboard",    href: "/admin/hr" },
+//
+// A busca casava o texto digitado só contra o RÓTULO de 27 rotas fixas. Quem
+// procurava "prazo", "frete" ou "chave do WhatsApp" não achava nada — o rótulo
+// da página nunca contém a palavra que a pessoa tem na cabeça.
+//
+// Agora ela busca em duas fontes: as PÁGINAS (com sinônimos) e o CATÁLOGO DE
+// CONFIGURAÇÕES, que já carrega palavras-chave e o caminho até o controle. Assim
+// "prazo" cai em "Prazos de casamento · Casamentos › Prazos", e não em nada.
+interface SearchItem {
+  label: string;
+  href: string;
+  /** Sinônimos e o nome que a pessoa usaria falando, não o nome da tela. */
+  keywords?: string[];
+  /** Linha de baixo do resultado: onde aquilo mora. */
+  context?: string;
+}
+
+const SEARCH_ROUTES: SearchItem[] = [
+  { label: "Estadias",          href: "/admin/stays", keywords: ["reserva", "hospedagem", "estadia", "booking"] },
+  { label: "Mapa de Reservas",  href: "/admin/reservation-map", keywords: ["mapa", "reserva", "ocupação", "disponibilidade", "calendário"] },
+  { label: "Hóspedes",          href: "/admin/guests", keywords: ["hóspede", "cliente", "cpf", "ficha"] },
+  { label: "Comunicação",       href: "/admin/comunicacao", keywords: ["whatsapp", "conversa", "mensagem", "chat", "chatwoot"] },
+  { label: "Calendário",        href: "/admin/calendario", keywords: ["agenda", "calendário"] },
+  { label: "Agendamentos",      href: "/admin/core/structures/bookings", keywords: ["agendamento", "reserva de área", "estrutura", "sauna", "piscina"] },
+  { label: "Eventos",           href: "/admin/eventos", keywords: ["evento", "programação"] },
+  { label: "Casamentos",        href: "/admin/casamentos", keywords: ["casamento", "noivos", "lead"] },
+  { label: "Tarifário",         href: "/admin/tarifario", keywords: ["tarifa", "preço", "orçamento", "diária"] },
+  { label: "Manutenção",        href: "/admin/maintenance", keywords: ["manutenção", "conserto", "defeito", "os"] },
+  { label: "Kanban Manutenção", href: "/admin/maintenance/kanban", keywords: ["manutenção", "kanban", "ordem"] },
+  { label: "Governança",        href: "/admin/governance", keywords: ["governança", "faxina", "camareira", "limpeza"] },
+  { label: "Kanban Governança", href: "/admin/governance/kanban", keywords: ["governança", "faxina", "kanban"] },
+  { label: "Concierge",         href: "/admin/concierge", keywords: ["concierge", "pedido", "frigobar", "amenidade"] },
+  { label: "Estoque",           href: "/admin/estoque", keywords: ["estoque", "compras", "produto", "movimentação"] },
+  { label: "Compras",           href: "/admin/estoque/compras", keywords: ["compra", "nota fiscal", "nf", "fornecedor", "frete", "taxa de entrega", "desconto"] },
+  { label: "Movimentações",     href: "/admin/estoque/movimentacoes", keywords: ["movimentação", "transferência", "entrada", "saída", "perda", "ajuste", "baixa"] },
+  { label: "Inventário",        href: "/admin/estoque/inventario", keywords: ["inventário", "contagem", "acuracidade", "balanço"] },
+  { label: "Patrimônio",        href: "/admin/patrimonio", keywords: ["patrimônio", "ativo", "equipamento", "plaqueta"] },
+  { label: "Apps Mobile",       href: "/admin/mobile-apps", keywords: ["app", "celular", "camareira", "garçom"] },
+  { label: "Gastronomia",       href: "/admin/food-and-beverage/menu", keywords: ["cardápio", "menu", "café", "restaurante"] },
+  { label: "Garçom / KDS",      href: "/admin/cafe-salao", keywords: ["kds", "cozinha", "salão", "garçom", "café"] },
+  { label: "Avaliações",        href: "/admin/surveys/responses", keywords: ["avaliação", "nps", "nota", "feedback"] },
+  { label: "Equipe",            href: "/admin/staff", keywords: ["equipe", "funcionário", "cargo", "permissão"] },
+  { label: "Escalas",           href: "/admin/escalas", keywords: ["escala", "turno", "folga", "jornada"] },
+  { label: "Cabanas",           href: "/admin/cabins", keywords: ["cabana", "quarto", "acomodação", "wifi"] },
+  { label: "Estruturas",        href: "/admin/core/structures", keywords: ["estrutura", "área", "espaço"] },
+  { label: "Catálogo Concierge",href: "/admin/core/concierge", keywords: ["concierge", "catálogo", "item"] },
+  { label: "Pesquisas (NPS)",   href: "/admin/surveys", keywords: ["pesquisa", "nps", "questionário"] },
+  { label: "Logs de Auditoria", href: "/admin/logs", keywords: ["log", "auditoria", "histórico", "quem fez"] },
+  { label: "Configurações",     href: "/admin/configuracoes", keywords: ["configuração", "ajuste", "setup", "parâmetro"] },
+  { label: "Propriedades",      href: "/admin/core/properties", keywords: ["propriedade", "pousada", "workspace"] },
+  { label: "RH / Dashboard",    href: "/admin/hr", keywords: ["rh", "gerência", "pessoas"] },
 ];
+
+/** Todo termo digitado precisa aparecer em algum campo: "prazo casamento" acha, "prazo pizza" não. */
+function matchesQuery(item: SearchItem, query: string): boolean {
+  const haystack = [item.label, item.context ?? "", ...(item.keywords ?? [])].join(" ").toLowerCase();
+  return query.toLowerCase().split(/\s+/).filter(Boolean).every(t => haystack.includes(t));
+}
 
 function SearchBox() {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [cursor, setCursor] = useState(0);
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const { userData } = useAuth();
+  const { currentProperty } = useProperty();
 
-  const results = query.length > 0
-    ? SEARCH_ROUTES.filter(r => r.label.toLowerCase().includes(query.toLowerCase())).slice(0, 6)
-    : [];
+  // Configurações entram na busca com as mesmas palavras-chave do hub, já
+  // filtradas por cargo e por módulo ligado.
+  const settingsItems: SearchItem[] = useMemo(() => {
+    if (!userData) return [];
+    return filterDomains({
+      role: userData.role as UserRole,
+      secondaryRoles: (userData.secondaryRoles ?? []) as UserRole[],
+      property: currentProperty,
+    }).flatMap(d => d.entries.map(e => ({
+      label: e.title,
+      href: e.href(currentProperty?.id ?? ""),
+      keywords: [...e.keywords, d.label, e.description],
+      context: e.where ?? "Configurações",
+    })));
+  }, [userData, currentProperty]);
+
+  const results = useMemo(() => {
+    if (!query.trim()) return [];
+    const pages = SEARCH_ROUTES.filter(r => matchesQuery(r, query));
+    const settings = settingsItems.filter(r => matchesQuery(r, query));
+    return [...pages, ...settings].slice(0, 8);
+  }, [query, settingsItems]);
+
+  useEffect(() => { setCursor(0); }, [query]);
 
   // Close on outside click
   useEffect(() => {
@@ -167,19 +221,25 @@ function SearchBox() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Keyboard shortcut: Cmd/Ctrl+K
+  // Cmd/Ctrl+K abre; setas e Enter percorrem — sem isso o ⌘K obriga a pegar o mouse.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         inputRef.current?.focus();
         setOpen(true);
+        return;
       }
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") { setOpen(false); return; }
+      if (!open || results.length === 0) return;
+      if (e.key === "ArrowDown") { e.preventDefault(); setCursor(c => (c + 1) % results.length); }
+      if (e.key === "ArrowUp") { e.preventDefault(); setCursor(c => (c - 1 + results.length) % results.length); }
+      if (e.key === "Enter") { e.preventDefault(); navigate(results[cursor].href); }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, results, cursor]);
 
   const navigate = (href: string) => {
     router.push(href);
@@ -236,7 +296,7 @@ function SearchBox() {
             position: "absolute",
             top: "calc(100% + 6px)",
             right: 0,
-            width: 240,
+            width: 320,
             background: "var(--card)",
             border: "1px solid var(--border)",
             borderRadius: 12,
@@ -249,13 +309,14 @@ function SearchBox() {
             <button
               key={r.href + i}
               onClick={() => navigate(r.href)}
+              onMouseEnter={() => setCursor(i)}
               style={{
                 display: "flex",
-                alignItems: "center",
+                alignItems: "flex-start",
                 gap: 10,
                 width: "100%",
                 padding: "9px 14px",
-                background: "none",
+                background: i === cursor ? "var(--muted)" : "none",
                 border: "none",
                 cursor: "pointer",
                 textAlign: "left",
@@ -265,11 +326,20 @@ function SearchBox() {
                 fontWeight: 500,
                 transition: "background .12s",
               }}
-              onMouseEnter={e => (e.currentTarget.style.background = "var(--muted)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "none")}
             >
-              <ChevronRight size={12} style={{ color: "var(--muted-foreground)", flexShrink: 0 }} />
-              {r.label}
+              {r.context
+                ? <Settings2 size={12} style={{ color: "var(--muted-foreground)", flexShrink: 0, marginTop: 2 }} />
+                : <ChevronRight size={12} style={{ color: "var(--muted-foreground)", flexShrink: 0, marginTop: 2 }} />}
+              <span style={{ minWidth: 0 }}>
+                {r.label}
+                {/* Sem esta linha o resultado de configuração vira só um nome solto:
+                    o valor está em dizer ONDE aquilo mora. */}
+                {r.context && (
+                  <span style={{ display: "block", fontSize: 10, fontWeight: 400, color: "var(--muted-foreground)", marginTop: 1 }}>
+                    {r.context}
+                  </span>
+                )}
+              </span>
             </button>
           ))}
         </div>

@@ -12,6 +12,7 @@ import { MaintenanceTask, Cabin, Structure, Staff } from "@/types/aura";
 import { MaintenanceTaskManagerModal } from "@/components/admin/maintenance/MaintenanceTaskManagerModal";
 import { MaintenanceCompletionModal } from "@/components/admin/maintenance/MaintenanceCompletionModal";
 import { MaintenanceRulesModal } from "@/components/admin/maintenance/MaintenanceRulesModal";
+import { useConfigDeepLink } from "@/lib/settings-deeplink";
 import {
     Hammer, AlertCircle, CheckCircle2, PlayCircle, Plus, Edit3, Archive,
     Calendar as CalendarIcon, X, Moon, ChevronLeft, RefreshCw, CheckSquare,
@@ -37,6 +38,9 @@ export default function MaintenanceKanbanPage() {
     const [isArchiveOpen, setIsArchiveOpen] = useState(false);
     const [isRulesOpen, setIsRulesOpen] = useState(false);
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
+    // Link do hub abre o modal de regras direto.
+    useConfigDeepLink({ regras: () => setIsRulesOpen(true) });
     const [selectedTask, setSelectedTask] = useState<MaintenanceTask | null>(null);
     const [enlargedImage, setEnlargedImage] = useState<string | null>(null);
 

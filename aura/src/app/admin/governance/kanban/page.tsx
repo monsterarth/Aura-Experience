@@ -15,6 +15,7 @@ import { HousekeepingTaskManagerModal } from "@/components/admin/HousekeepingTas
 import { HousekeepingRulesModal } from "@/components/admin/HousekeepingRulesModal";
 import { ChecklistSettingsModal } from "@/components/admin/ChecklistSettingsModal";
 import { MinibarModal } from "@/components/admin/MinibarModal";
+import { useConfigDeepLink } from "@/lib/settings-deeplink";
 import {
   Sparkles, Clock, CheckCircle2, AlertCircle,
   Coffee, ArrowRight, ClipboardCheck, Plus, UserPlus, Settings2, Edit3, MessageSquare, Archive, Calendar as CalendarIcon, X, Moon, CheckSquare, Square, CheckCheck, Trash2, Loader2,
@@ -44,6 +45,13 @@ export default function GovernanceKanbanPage() {
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'pending' | 'in_progress' | 'conference'>('pending');
+
+  // Vindo do hub de configurações: o link abre o modal certo em vez de largar a
+  // pessoa no kanban para procurar o botão.
+  useConfigDeepLink({
+    regras: () => setIsRulesOpen(true),
+    checklists: () => setIsSettingsOpen(true),
+  });
 
   const allVisibleIds = (tasks: HousekeepingTask[]) => tasks.map(t => t.id);
   const toggleSelectAll = (taskList: HousekeepingTask[]) => {

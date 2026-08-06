@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { RoleGuard } from "@/components/auth/RoleGuard";
+import { useTabParam } from "@/lib/settings-deeplink";
 import { cn } from "@/lib/utils";
 import { Calculator, CalendarRange, Filter, Loader2, Percent, Table2 } from "lucide-react";
 import type { RateBundle } from "@/services/rate-service";
@@ -35,7 +36,8 @@ function TarifarioPage() {
   const [bundle, setBundle] = useState<RateBundle | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [tab, setTab] = useState<TabId>("orcamento");
+  // ?tab=comercial vem do hub de configurações.
+  const [tab, setTab] = useState<TabId>(useTabParam(TABS.map(t => t.id), "orcamento"));
   // Sinal para a aba Funil recarregar quando o Orçamento salva um lead novo.
   const [funnelSignal, setFunnelSignal] = useState(0);
 

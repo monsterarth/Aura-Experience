@@ -9,6 +9,7 @@ import { Loader2, Plus, Edit2, Trash2, CheckCircle2, XCircle, Search, Save, X, I
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ImageUpload } from "@/components/admin/ImageUpload";
+import { useConfigDeepLink } from "@/lib/settings-deeplink";
 
 export default function FBMenuPage() {
     const { currentProperty } = useProperty();
@@ -35,6 +36,8 @@ export default function FBMenuPage() {
     }>({ name: "", name_en: "", name_es: "", type: "both", selectionTarget: "individual", maxPerGuest: 1, imageUrl: "", order: 0, alaCarte: false });
 
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+    // Link do hub abre a engrenagem (mensagens do café no portal) direto.
+    useConfigDeepLink({ cafe: () => setIsSettingsModalOpen(true) });
     const [settingsForm, setSettingsForm] = useState({ 
         welcomeMessage: "", welcomeMessage_en: "", welcomeMessage_es: "", 
         instructions: "", instructions_en: "", instructions_es: "" 

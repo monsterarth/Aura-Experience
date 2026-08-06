@@ -5,6 +5,7 @@ import { useProperty } from "@/context/PropertyContext";
 import { useCloseGuard } from "@/lib/use-discard-guard";
 import { supabase } from "@/lib/supabase";
 import { Wedding, WeddingCabinAssignment, WeddingStatus, WEDDING_LOST_REASONS } from "@/types/aura";
+import { useConfigDeepLink } from "@/lib/settings-deeplink";
 import { toast } from "sonner";
 import {
   Heart, Shield, Clock, Sparkles, Search, Grid3X3, List,
@@ -1078,6 +1079,8 @@ export default function CasamentosPage() {
   const [editTarget, setEditTarget] = useState<Wedding | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Wedding | null>(null);
   const [leadSettingsOpen, setLeadSettingsOpen] = useState(false);
+  // Link do hub abre o modal de prazos direto.
+  useConfigDeepLink({ prazos: () => setLeadSettingsOpen(true) });
   const [deleting, setDeleting] = useState(false);
 
   const loadWeddings = useCallback(async () => {

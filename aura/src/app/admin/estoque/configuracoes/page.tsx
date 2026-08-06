@@ -7,6 +7,7 @@ import { StockClient } from "@/lib/stock-client";
 import { CabinLinkReport, StockCategory, StockLocation, StockSettings, StockCategoryScope, StockLocationType } from "@/types/aura";
 import StockLocationSelect from "@/components/admin/StockLocationSelect";
 import { splitLocations } from "@/lib/stock-locations";
+import { useTabParam } from "@/lib/settings-deeplink";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Plus, Trash2, Save, Loader2, Pencil, X, Sparkles, Tag, MapPin, SlidersHorizontal, Home, Link2, AlertTriangle } from "lucide-react";
@@ -43,7 +44,8 @@ const SEED_CATEGORIES: Partial<StockCategory>[] = [
 
 export default function EstoqueConfigPage() {
   const { currentProperty: property } = useProperty();
-  const [tab, setTab] = useState<Tab>("categorias");
+  // ?tab= vem do hub de configurações (ex.: ?tab=parametros).
+  const [tab, setTab] = useState<Tab>(useTabParam(["categorias", "locais", "cabanas", "parametros"] as const, "categorias"));
 
   const [categories, setCategories] = useState<StockCategory[]>([]);
   const [locations, setLocations] = useState<StockLocation[]>([]);
