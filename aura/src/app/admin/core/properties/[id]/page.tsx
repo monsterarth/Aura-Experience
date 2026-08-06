@@ -4,6 +4,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { PropertyService } from "@/services/property-service";
+import { PropertySettingsClient } from "@/lib/property-settings-client";
 import { StructureService } from "@/services/structure-service";
 import { Property, PropertyTheme, Structure } from "@/types/aura";
 import {
@@ -299,20 +300,27 @@ export default function PropertySettingsPage() {
             if (!secretInfo?.secureEvolutionApiKey && storedWc.apiKey && !apiKey) carriedWhatsappConfig.apiKey = storedWc.apiKey;
             if (!secretInfo?.secureChatwootApiToken && storedWc.chatwootApiToken && !chatwootApiToken) carriedWhatsappConfig.chatwootApiToken = storedWc.chatwootApiToken;
 
-            // Usa (as any) para aceitar os campos extras mesclados com o settings original
-            const updatedPayload: any = {
-                name: basicInfo.name,
-                logoUrl: basicInfo.logoUrl,
-                theme: theme,
-                settings: {
-                    ...property.settings,
-                    ...settings,
-                    whatsappConfig: carriedWhatsappConfig,
-                    slogan: basicInfo.slogan
-                }
-            };
+            // Manda só o que MUDOU. Antes o save reescrevia `settings` inteiro, o que
+            // (a) sobrescrevia o que outra tela gravou em paralelo e (b) faria a rota
+            // recusar o save de um admin por causa de chaves que só o super_admin altera
+            // e que ele nem tocou.
+            const diff = (next: Record<string, any>, prev: any) => Object.fromEntries(
+                Object.entries(next).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(prev?.[k]))
+            );
 
-            await PropertyService.updateProperty(property.id, updatedPayload);
+            const patch = diff(
+                { ...settings, whatsappConfig: carriedWhatsappConfig, slogan: basicInfo.slogan },
+                property.settings ?? {},
+            );
+            const columns = diff(
+                { name: basicInfo.name, logoUrl: basicInfo.logoUrl, theme },
+                property,
+            );
+
+            if (Object.keys(patch).length || Object.keys(columns).length) {
+                const updated = await PropertySettingsClient.patch(property.id, patch, columns);
+                setProperty(updated);
+            }
 
             // Campo em branco = manter o segredo atual (semântica write-only da rota).
             if (apiKey || chatwootApiToken) {

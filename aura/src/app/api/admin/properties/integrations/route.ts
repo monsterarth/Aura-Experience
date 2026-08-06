@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePropertyAccess, isAuthError } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { PropertySecretsService } from "@/services/property-secrets-service";
+import { mergePropertySettings } from "@/lib/property-settings";
 import { AuditService } from "@/services/audit-service";
 
 const ROLES = ["super_admin", "admin"] as const;
@@ -27,23 +28,20 @@ function db() {
 }
 
 /**
- * TRANSITÓRIO: read-modify-write de settings.whatsappConfig. Vira uma chamada ao
- * RPC merge_property_settings no incremento 1 (que resolve a corrida entre os
- * cinco escritores de properties.settings).
+ * O merge do RPC é RASO: mandar `whatsappConfig` substitui o objeto inteiro. Por isso
+ * a leitura do atual continua necessária — o que o merge resolve é a corrida no resto
+ * de `settings`, que antes era reescrito por completo a cada save.
  */
 async function patchWhatsappConfig(propertyId: string, patch: Partial<Record<PublicField, unknown>>) {
   const { data: prop, error: readErr } = await db()
     .from("properties").select("settings").eq("id", propertyId).maybeSingle();
   if (readErr) throw readErr;
 
-  const settings = (prop?.settings ?? {}) as Record<string, unknown>;
-  const current = (settings.whatsappConfig ?? {}) as Record<string, unknown>;
+  const current = (((prop?.settings ?? {}) as any).whatsappConfig ?? {}) as Record<string, unknown>;
   const next = { ...current };
   for (const f of PUBLIC_FIELDS) if (patch[f] !== undefined) next[f] = patch[f];
 
-  const { error } = await db().from("properties")
-    .update({ settings: { ...settings, whatsappConfig: next } }).eq("id", propertyId);
-  if (error) throw error;
+  await mergePropertySettings(propertyId, { whatsappConfig: next });
 }
 
 export async function GET(request: NextRequest) {

@@ -8,7 +8,7 @@ import {
     Plus, X, ExternalLink, Instagram,
 } from "lucide-react";
 import { StructureService } from "@/services/structure-service";
-import { PropertyService } from "@/services/property-service";
+import { PropertySettingsClient } from "@/lib/property-settings-client";
 import { CabinService } from "@/services/cabin-service";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
@@ -240,11 +240,9 @@ export default function ResortMapAdminPage() {
         if (!currentProperty || !userData) return;
         setSaving(true);
         try {
-            const mergedSettings = { ...currentProperty.settings, mapConfig };
-            await PropertyService.updateSettings(
-                currentProperty.id, { settings: mergedSettings },
-                userData.id, userData.fullName,
-            );
+            // Só o mapConfig vai no patch: o merge acontece no banco, então salvar aqui
+            // não sobrescreve mais o que outra tela de configuração gravou em paralelo.
+            await PropertySettingsClient.patch(currentProperty.id, { mapConfig });
 
             await Promise.all([
                 ...structures.map(s =>

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase";
+import { mergePropertySettings } from "@/lib/property-settings";
 import {
   Wedding, WeddingVendor, WeddingCabinAssignment, WeddingStatus,
   WeddingLeadSettings, DEFAULT_WEDDING_LEAD,
@@ -154,14 +155,9 @@ export const WeddingService = {
     };
   },
 
-  /** Grava os prazos padrão preservando o resto de properties.settings. */
+  /** Grava os prazos padrão. O merge acontece no banco — ver lib/property-settings. */
   async saveLeadSettings(propertyId: string, lead: WeddingLeadSettings): Promise<void> {
-    const { data } = await supabaseAdmin
-      .from("properties").select("settings").eq("id", propertyId).single();
-    const settings = { ...(data?.settings ?? {}), weddingLead: lead };
-    const { error } = await supabaseAdmin
-      .from("properties").update({ settings }).eq("id", propertyId);
-    if (error) throw new Error(error.message);
+    await mergePropertySettings(propertyId, { weddingLead: lead });
   },
 
   /**

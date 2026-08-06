@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isAuthError } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
+import { mergePropertySettings } from "@/lib/property-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -59,9 +60,13 @@ export async function PUT(req: NextRequest) {
     if (!propertyId) return NextResponse.json({ error: "No property" }, { status: 400 });
 
     const body = await req.json().catch(() => ({}));
+    // Merge raso: `areaReviews` é substituído inteiro, então o subobjeto atual é lido antes.
     const { data: prop } = await supabaseAdmin.from("properties").select("settings").eq("id", propertyId).maybeSingle();
-    const settings = { ...(prop?.settings || {}), areaReviews: { ...(prop?.settings?.areaReviews || {}), public: !!body.public } };
-    const { error } = await supabaseAdmin.from("properties").update({ settings }).eq("id", propertyId);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    const areaReviews = { ...(prop?.settings?.areaReviews || {}), public: !!body.public };
+    try {
+        await mergePropertySettings(propertyId, { areaReviews });
+    } catch (e) {
+        return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    }
     return NextResponse.json({ success: true });
 }

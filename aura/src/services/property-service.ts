@@ -67,32 +67,13 @@ export const PropertyService = {
     }
   },
 
-  async updateProperty(propertyId: string, updates: Partial<Property>) {
-    const { error } = await supabase
-      .from('properties')
-      .update(updates)
-      .eq('id', propertyId);
-
-    if (error) console.error("Error updating property:", error);
-  },
-
-  async updateSettings(propertyId: string, updates: Partial<Property>, actorId: string, actorName: string) {
-    const { error } = await supabase
-      .from('properties')
-      .update(updates)
-      .eq('id', propertyId);
-
-    if (error) throw error;
-
-    await AuditService.log({
-      propertyId: "SYSTEM",
-      userId: actorId,
-      userName: actorName,
-      action: "UPDATE",
-      entity: "PROPERTY" as any,
-      entityId: propertyId,
-      newData: updates,
-      details: `Configurações da propriedade ${propertyId} atualizadas.`
-    });
-  }
+  // updateProperty / updateSettings foram REMOVIDOS.
+  //
+  // Os dois escreviam `properties` direto pelo navegador reescrevendo o objeto
+  // `settings` inteiro — um save sobrescrevia o do outro — e o updateProperty ainda
+  // engolia o erro (`console.error` sem throw), o que produzia "salvo com sucesso"
+  // em cima de uma gravação que não aconteceu.
+  //
+  // Escrita agora é só por `PropertySettingsClient.patch` (cliente) ou
+  // `mergePropertySettings` (servidor), ambos em torno do RPC merge_property_settings.
 };

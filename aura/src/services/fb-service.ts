@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { PropertySettingsClient } from '@/lib/property-settings-client';
 import { FBCategory, FBMenuItem, FBOrder, FBSettings } from '@/types/aura';
 import { StockIntegration } from './stock-integration';
 
@@ -58,26 +59,13 @@ const mapOrder = (dbObj: any): FBOrder => ({
 
 export const fbService = {
     // --- SETTINGS ---
+    /**
+     * Escreve pela rota admin (merge no banco), não direto pelo navegador: cinco
+     * escritores reescrevendo `settings` inteiro se sobrescreviam em silêncio.
+     * Só é chamada por telas administrativas — o portal do hóspede apenas lê.
+     */
     async updateSettings(propertyId: string, fbSettings: FBSettings): Promise<void> {
-        const { data: currentProperty, error: fetchError } = await supabase
-            .from('properties')
-            .select('settings')
-            .eq('id', propertyId)
-            .single();
-
-        if (fetchError) throw fetchError;
-
-        const newSettings = {
-            ...currentProperty.settings,
-            fbSettings,
-        };
-
-        const { error } = await supabase
-            .from('properties')
-            .update({ settings: newSettings })
-            .eq('id', propertyId);
-
-        if (error) throw error;
+        await PropertySettingsClient.patch(propertyId, { fbSettings });
     },
 
     async setDailyBreakfastMode(propertyId: string, mode: 'delivery' | 'buffet'): Promise<void> {
