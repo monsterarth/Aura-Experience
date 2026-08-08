@@ -21,6 +21,20 @@ export interface IntegrationsView {
   secureChatwootApiToken: boolean;
 }
 
+/** Ver o comentário de cabeçalho de `api/admin/whatsapp/session/route.ts` para o porquê de cada estado. */
+export type WhatsAppSessionStatus =
+  | "travada" | "inacessivel" | "credencial" | "erro" | "desconectada" | "conectada";
+
+export interface WhatsAppSessionView {
+  instance?: string;
+  status: WhatsAppSessionStatus;
+  detail: string;
+  reportedState?: string;
+  disconnectionReasonCode?: number | null;
+  ownerNumber?: string | null;
+  elapsedMs: number;
+}
+
 export const PropertySettingsClient = {
   /**
    * Grava um pedaço de `settings` (merge raso no banco) e/ou colunas reais.
@@ -65,6 +79,28 @@ export const PropertySettingsClient = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ propertyId, target }),
+    }));
+  },
+
+  /**
+   * Diagnóstico da sessão de WhatsApp, observado de FORA da Evolution — é o único
+   * ponto de vista que enxerga o processo travado (ele não relata a própria trava).
+   */
+  async whatsappSession(propertyId: string): Promise<WhatsAppSessionView> {
+    return handle(await fetch(
+      `/api/admin/whatsapp/session?propertyId=${encodeURIComponent(propertyId)}`,
+      { cache: "no-store" },
+    ));
+  },
+
+  /** `logout` derruba a sessão de propósito (necessário quando ela está zumbi). */
+  async whatsappReconnect(propertyId: string, action: "reconnect" | "logout"): Promise<{
+    ok: boolean; message?: string; qr?: string | null; pairingCode?: string | null; needsLogout?: boolean;
+  }> {
+    return handle(await fetch("/api/admin/whatsapp/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ propertyId, action }),
     }));
   },
 };

@@ -211,10 +211,13 @@ export default function AutomationSettingsPage() {
           /* ABA 1: REGRAS E GATILHOS */
           <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4">
             {rules.map(rule => {
-              const details = TRIGGER_DETAILS[rule.id] || { label: rule.id, desc: 'Gatilho do sistema' };
+              // Chaveia por `triggerEvent`, NUNCA por `id`: o id é a chave da linha no
+              // banco (hoje "fazenda-do-rosa__pre_checkout", para a regra ser por
+              // propriedade) e não é texto de tela.
+              const details = TRIGGER_DETAILS[rule.triggerEvent] || { label: rule.triggerEvent, desc: 'Gatilho do sistema' };
 
               // Redirect card for structure booking rules
-              if (rule.id === 'structure_booking_confirmed') {
+              if (rule.triggerEvent === 'structure_booking_confirmed') {
                 return (
                   <div key={rule.id} className="bg-background border rounded-xl p-5 shadow-sm transition-all border-amber-500/30">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -226,7 +229,7 @@ export default function AutomationSettingsPage() {
                         <p className="text-sm text-muted-foreground">{details.desc}</p>
                         <p className="text-xs text-muted-foreground mt-2">As mensagens de agendamento (solicitação, confirmação e cancelamento) são configuradas individualmente em cada estrutura.</p>
                       </div>
-                      <Link href="/admin/core/structures" className="px-5 py-2.5 bg-primary text-primary-foreground font-bold rounded-xl text-xs uppercase tracking-wider hover:opacity-90 transition-all flex items-center gap-2 shrink-0">
+                      <Link href="/admin/estruturas" className="px-5 py-2.5 bg-primary text-primary-foreground font-bold rounded-xl text-xs uppercase tracking-wider hover:opacity-90 transition-all flex items-center gap-2 shrink-0">
                         <Settings className="w-4 h-4" /> Configurar nas Estruturas
                       </Link>
                     </div>

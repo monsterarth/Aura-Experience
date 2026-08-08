@@ -820,8 +820,16 @@ export type AutomationTriggerEvent =
 // --- REGRAS DE AUTOMAÇÃO (Ligadas/Desligadas pela Pousada) ---
 // Coleção: properties/{propertyId}/automation_rules
 export interface AutomationRule {
-  id: AutomationTriggerEvent;
+  /**
+   * Chave da LINHA, não o gatilho — hoje `${propertyId}__${triggerEvent}`.
+   * O tipo dizia `id: AutomationTriggerEvent`, e era essa mentira que sustentava
+   * a regra ser global: com o nome do gatilho como PK só cabiam 7 linhas no banco
+   * inteiro, e uma pousada sobrescrevia a outra.
+   */
+  id: string;
   propertyId: string;
+  /** O evento que dispara. É por aqui que se traduz rótulo e se compara regra. */
+  triggerEvent: AutomationTriggerEvent;
   active: boolean;
   templateId: string; // Qual texto enviar
   delayMinutes: number; // Ex: Enviar 120 minutos (2h) após o gatilho

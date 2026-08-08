@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { useProperty } from "@/context/PropertyContext";
 import { supabase, safeRemoveChannel } from "@/lib/supabase";
 import { WhatsAppMessage } from "@/types/aura";
 import { AutomationService } from "@/services/automation-service";
 import { Button } from "@/components/ui/button";
 import {
-  Bot, CheckCircle2, Clock, AlertCircle, RefreshCw, MessageSquareWarning, Loader2, CalendarClock, Edit2, XCircle, Trash2, Ban, CheckSquare, Square, SendHorizonal
+  Bot, Settings, CheckCircle2, Clock, AlertCircle, RefreshCw, MessageSquareWarning, Loader2, CalendarClock, Edit2, XCircle, Trash2, Ban, CheckSquare, Square, SendHorizonal
 } from "lucide-react";
 
 export default function AutomationsQueuePage() {
@@ -196,6 +197,14 @@ export default function AutomationsQueuePage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">Monitorize o envio automático de mensagens</p>
         </div>
+        {/* Quem olha a fila e vê que nada saiu precisa chegar aos gatilhos daqui —
+            antes o único caminho era o item na barra lateral. */}
+        <Link
+          href="/admin/comunicacao/automations/settings"
+          className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl bg-secondary text-foreground hover:bg-secondary/70 transition-colors shrink-0"
+        >
+          <Settings className="w-4 h-4" /> Gatilhos e textos
+        </Link>
       </header>
 
       <main className="flex-1 p-6 max-w-6xl mx-auto w-full">

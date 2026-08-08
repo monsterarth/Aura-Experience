@@ -11,6 +11,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { usePropertySection, changedOnly } from "../_lib/usePropertySection";
 import { SaveBar } from "../_components/SaveBar";
+import { WhatsAppSessionCard } from "../_components/WhatsAppSessionCard";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { SettingRow } from "@/components/ui/SettingRow";
 import { Toggle } from "@/components/ui/Toggle";
@@ -181,6 +182,8 @@ export default function IntegracoesPage() {
           &quot;open&quot; e ainda assim não entregar — só um envio real prova envio.
         </p>
       </SectionCard>
+
+      <WhatsAppSessionCard propertyId={property.id} configured={evolutionOk} />
 
       <SectionCard
         title="Chatwoot" icon={MessageSquare}

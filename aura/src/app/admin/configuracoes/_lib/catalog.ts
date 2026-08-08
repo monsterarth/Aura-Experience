@@ -222,7 +222,7 @@ export const SETTINGS_DOMAINS: SettingsDomain[] = [
         id: "estruturas", title: "Estruturas", kind: "external", roles: ADMIN_MANAGER, tag: "cadastro",
         description: "Áreas agendáveis e informativas, horários de funcionamento e regras de governança.",
         keywords: ["estrutura", "área", "area", "agendamento", "sauna", "piscina", "quiosque", "horário"],
-        icon: LayoutTemplate, href: () => "/admin/core/structures",
+        icon: LayoutTemplate, href: () => "/admin/estruturas",
       },
       {
         id: "cabanas", title: "Cabanas", kind: "external", roles: ["super_admin", "admin", "manager", "governance"], tag: "cadastro",

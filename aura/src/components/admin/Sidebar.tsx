@@ -178,7 +178,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Calendários",
     items: [
       { id: "calendario", label: "Calendário Geral", icon: CalendarDays, href: "/admin/calendario",              roles: ["super_admin","admin","reception","manager"] },
-      { id: "agenda",     label: "Agendamentos",      icon: ClipboardCheck, href: "/admin/core/structures/bookings", roles: ["super_admin","admin","reception","manager"] },
+      { id: "agenda",     label: "Agendamentos",      icon: ClipboardCheck, href: "/admin/estruturas/bookings", roles: ["super_admin","admin","reception","manager"] },
       { id: "eventos",     label: "Eventos",     icon: Flag,  href: "/admin/eventos",     roles: ["super_admin","admin","reception","manager"] },
       { id: "casamentos",  label: "Casamentos",  icon: Heart, href: "/admin/casamentos", roles: ["super_admin","admin","reception","manager"] },
     ],
@@ -234,7 +234,7 @@ const NAV_GROUPS: NavGroup[] = [
     collapsible: true,
     items: [
       { id: "cabanas",    label: "Cabanas",           icon: Building,         href: "/admin/cabins",          roles: ["super_admin","admin","governance","manager"] },
-      { id: "estruturas", label: "Estruturas",         icon: LayoutTemplate,   href: "/admin/core/structures", roles: ["super_admin","admin","manager"] },
+      { id: "estruturas", label: "Estruturas",         icon: LayoutTemplate,   href: "/admin/estruturas", roles: ["super_admin","admin","manager"] },
       { id: "resort_map", label: "Mapa do Resort",     icon: MapPinned,        href: "/admin/core/resort-map", roles: ["super_admin","admin","manager"] },
       { id: "escalas",    label: "Escalas",            icon: ClipboardCheck,   href: "/admin/escalas",         roles: ["super_admin","admin","manager"] },
       { id: "logs",       label: "Logs de Auditoria",  icon: FileText,         href: "/admin/logs",            roles: ["super_admin","admin","manager"] },

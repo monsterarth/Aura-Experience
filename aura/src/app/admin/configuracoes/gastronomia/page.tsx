@@ -222,7 +222,7 @@ export default function GastronomiaPage() {
                     </div>
                   </div>
                 )}
-                <Link href="/admin/core/structures" className="text-xs text-primary font-bold inline-flex items-center gap-1">
+                <Link href="/admin/estruturas" className="text-xs text-primary font-bold inline-flex items-center gap-1">
                   Gerenciar estruturas <ExternalLink size={11} />
                 </Link>
               </div>

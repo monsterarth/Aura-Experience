@@ -226,11 +226,11 @@ export function NotificationCenter() {
       id: 'notif-bookings',
       description,
       duration: 8000,
-      action: { label: 'Ver', onClick: () => router.push('/admin/core/structures/bookings') },
+      action: { label: 'Ver', onClick: () => router.push('/admin/estruturas/bookings') },
     });
 
     if (document.visibilityState !== 'visible') {
-      fireBrowserNotification(title, description, () => router.push('/admin/core/structures/bookings'));
+      fireBrowserNotification(title, description, () => router.push('/admin/estruturas/bookings'));
     }
   }, [playSound, router]);
 
@@ -646,7 +646,7 @@ export function NotificationCenter() {
                     icon={<Calendar size={14} className="text-purple-500" />}
                     label="Agendamentos"
                     count={bookings.length}
-                    onViewAll={() => goTo('/admin/core/structures/bookings')}
+                    onViewAll={() => goTo('/admin/estruturas/bookings')}
                   >
                     {bookings.map(b => (
                       <NotifRow
@@ -654,7 +654,7 @@ export function NotificationCenter() {
                         title={b.structureName}
                         subtitle={`${b.guestName ? b.guestName + ' · ' : ''}${b.startTime}–${b.endTime} · ${formatDate(b.date)}`}
                         time={timeAgo(b.createdAt)}
-                        onClick={() => goTo('/admin/core/structures/bookings')}
+                        onClick={() => goTo('/admin/estruturas/bookings')}
                       />
                     ))}
                   </NotifSection>

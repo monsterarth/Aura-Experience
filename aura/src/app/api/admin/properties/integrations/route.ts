@@ -16,6 +16,9 @@ import { AuditService } from "@/services/audit-service";
 
 const ROLES = ["super_admin", "admin"] as const;
 
+/** O teste é interativo: um operador está esperando a resposta na tela. */
+const TEST_TIMEOUT_MS = 8000;
+
 /** Campos não secretos que continuam em settings.whatsappConfig (o navegador lê alguns). */
 const PUBLIC_FIELDS = [
   "apiUrl", "instanceName", "chatwootUrl", "chatwootAccountId", "chatwootInboxId",
@@ -129,8 +132,11 @@ export async function POST(request: NextRequest) {
       if (!apiUrl || !instance || !secrets.evolutionApiKey) {
         return NextResponse.json({ ok: false, message: "Falta apiUrl, instância ou chave." });
       }
-      const r = await fetch(`${apiUrl}/instance/connectionState/${instance}`, {
+      // Timeout curto: sem ele, uma Evolution travada pendura este fetch até a Vercel
+      // matar a função — a trava viraria silêncio em vez de mensagem para o operador.
+      const r = await fetch(`${apiUrl}/instance/connectionState/${encodeURIComponent(instance)}`, {
         headers: { apikey: secrets.evolutionApiKey }, cache: "no-store",
+        signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
       });
       if (r.status === 401 || r.status === 403) {
         return NextResponse.json({ ok: false, message: "Chave recusada pela Evolution (401/403)." });
@@ -151,6 +157,7 @@ export async function POST(request: NextRequest) {
       }
       const r = await fetch(`${base}/api/v1/accounts/${wc.chatwootAccountId}/inboxes`, {
         headers: { api_access_token: secrets.chatwootApiToken }, cache: "no-store",
+        signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
       });
       if (r.status === 401 || r.status === 403) {
         return NextResponse.json({ ok: false, message: "Token recusado pelo Chatwoot (401/403)." });

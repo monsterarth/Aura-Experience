@@ -2,7 +2,7 @@
 // Agenda de estruturas server-side — bypasses browser navigator.locks entirely.
 // Uses supabaseAdmin (service role, no auth lock) to fetch structures + bookings + active stays.
 //
-// Motivo: a página /admin/core/structures/bookings buscava via browser client
+// Motivo: a página /admin/estruturas/bookings buscava via browser client
 // (StructureService/StayService), e toda query do browser client serializa no
 // navigator.locks. No F5 esse lock fica retido por até 10s → a tela congelava em
 // "Carregando horários...". Esta rota segue o mesmo padrão de /api/admin/stays.
