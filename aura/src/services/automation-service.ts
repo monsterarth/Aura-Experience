@@ -338,34 +338,64 @@ export class AutomationService {
     }
   }
 
+  /**
+   * Lista as regras, criando as que faltam.
+   *
+   * ATENÇÃO — este método já destruiu configuração em produção (06/08/2026, 19:53):
+   * as 7 regras da Fazenda do Rosa foram zeradas no mesmo milissegundo, sem deixar
+   * rastro na auditoria, e o check-in parou de enfileirar boas-vindas.
+   *
+   * Como acontecia: a leitura voltava VAZIA (o client do browser devolve lista vazia
+   * em vez de erro quando pega o lock frio — ver histórico `field-app-browser-write-hangs`),
+   * o método concluía "as 7 estão faltando" e fazia upsert com `onConflict: 'id'`.
+   * Como o id é o próprio nome do gatilho (`welcome_checkin`), o upsert SOBRESCREVIA
+   * as regras reais com `active: false` e `templateId: ""`.
+   *
+   * Duas travas agora:
+   *   1. `error` é checado — leitura que falhou não semeia nada.
+   *   2. `ignoreDuplicates` transforma o upsert em INSERT … ON CONFLICT DO NOTHING.
+   *      Mesmo que a leitura minta de novo, o pior caso é não escrever nada.
+   *
+   * Nunca trocar por upsert comum aqui: é um GETTER, e getter não sobrescreve dado.
+   */
   static async getRules(propertyId: string): Promise<AutomationRule[]> {
     try {
-      const { data } = await supabase.from('automation_rules').select('*').eq('propertyId', propertyId);
+      const { data, error } = await supabase
+        .from('automation_rules').select('*').eq('propertyId', propertyId);
+
+      if (error) {
+        console.error("getRules: leitura falhou, semeadura abortada.", error);
+        return [];
+      }
 
       const allTriggers: AutomationTriggerEvent[] = [
         'pre_checkin_48h', 'pre_checkin_24h', 'welcome_checkin',
         'pre_checkout', 'checkout_thanks', 'nps_survey', 'structure_booking_confirmed'
       ];
 
-      const existingIds = new Set((data || []).map((r: any) => r.id));
+      const existing = data ?? [];
+      const existingIds = new Set(existing.map((r: any) => r.id));
       const missingTriggers = allTriggers.filter((t: any) => !existingIds.has(t));
+      if (missingTriggers.length === 0) return existing as AutomationRule[];
 
-      if (missingTriggers.length > 0) {
-        const newRules = missingTriggers.map((trigger: any) => ({
-          id: trigger,
-          triggerEvent: trigger,
-          propertyId,
-          active: false,
-          templateId: "",
-          delayMinutes: 0,
-          updatedAt: new Date().toISOString()
-        }));
+      const newRules = missingTriggers.map((trigger: any) => ({
+        id: trigger,
+        triggerEvent: trigger,
+        propertyId,
+        active: false,
+        templateId: "",
+        delayMinutes: 0,
+        updatedAt: new Date().toISOString()
+      }));
 
-        await supabase.from('automation_rules').upsert(newRules, { onConflict: 'id' });
-        return [...(data || []), ...newRules] as unknown as AutomationRule[];
-      }
+      await supabase.from('automation_rules')
+        .upsert(newRules, { onConflict: 'id', ignoreDuplicates: true });
 
-      return data as AutomationRule[];
+      // Relê em vez de assumir o que foi gravado: com ON CONFLICT DO NOTHING, parte
+      // das linhas pode não ter entrado, e devolver o otimismo esconderia isso.
+      const { data: after } = await supabase
+        .from('automation_rules').select('*').eq('propertyId', propertyId);
+      return (after ?? existing) as AutomationRule[];
     } catch (error) {
       return [];
     }
