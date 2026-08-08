@@ -50,16 +50,19 @@ function AlarmRow({
         {alarm.note && <p className="text-xs text-muted-foreground truncate">{alarm.note}</p>}
       </button>
       <button disabled={busy} onClick={() => onDone(alarm)}
-        title="Concluir"
+        title={alarm.virtual ? "Marcar parcela como paga" : "Concluir"}
         className="inline-flex items-center gap-1 text-xs font-bold bg-emerald-500/15 text-emerald-600 rounded-lg px-2.5 py-1.5 hover:bg-emerald-500/25 transition-colors shrink-0 disabled:opacity-50">
         {busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-        <span className="hidden sm:inline">Concluir</span>
+        <span className="hidden sm:inline">{alarm.virtual ? "Recebida" : "Concluir"}</span>
       </button>
-      <button disabled={busy} onClick={() => onDelete(alarm)}
-        title="Excluir"
-        className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0 disabled:opacity-50">
-        <Trash2 size={13} />
-      </button>
+      {/* Parcela vencida (virtual) não se exclui pela fila — só na gestão do evento */}
+      {!alarm.virtual && (
+        <button disabled={busy} onClick={() => onDelete(alarm)}
+          title="Excluir"
+          className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0 disabled:opacity-50">
+          <Trash2 size={13} />
+        </button>
+      )}
     </div>
   );
 }

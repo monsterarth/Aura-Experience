@@ -2,19 +2,232 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Wedding, WeddingStatus } from "@/types/aura";
-import { Heart, Shield, Clock, X, Plus, Users, Globe, Star, Check, DollarSign, Calendar, Trash2, CheckCircle2, Archive } from "lucide-react";
-import { T, fmt, todayIso, daysUntil, nightsBetween, fmtMoney, STATUS_CFG, VENDOR_ICONS, Pill, CabinMap, leadState } from "./lib";
+import { toast } from "sonner";
+import { Wedding, WeddingInstallment, WeddingStatus } from "@/types/aura";
+import { Heart, Shield, Clock, X, Plus, Users, Globe, Star, Check, DollarSign, Calendar, Trash2, CheckCircle2, Archive, Loader2, Pencil } from "lucide-react";
+import { T, fmt, todayIso, daysUntil, nightsBetween, fmtMoney, STATUS_CFG, VENDOR_ICONS, Pill, CabinMap, leadState, installmentSummary } from "./lib";
 import { LostReasonModal } from "./LostReasonModal";
 
 type DrawerTab = 'evento' | 'hospedagem' | 'fornecedores' | 'financeiro';
 
-export function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onEdit, onDelete, onStatusChange, onMarkLost, onFollowUp }: {
+// ─── Parcelas (aba financeiro) ────────────────────────────────────────────────
+// Componente no topo do módulo de propósito: definido dentro do render o React
+// remontaria os inputs a cada tecla (pegadinha já vivida no LeadSettingsModal).
+
+type InstallmentForm = { id?: string; label: string; value: string; dueDate: string };
+
+function InstallmentsPanel({ wedding, onDataChanged }: {
+  wedding: Wedding;
+  /** Recarrega a lista da página (o % pago do card muda junto). */
+  onDataChanged?: () => void;
+}) {
+  // null = ainda espelha wedding.installments; após uma mutação a API devolve
+  // a lista fresca e ela passa a mandar (a página recarrega em paralelo).
+  const [rows, setRows] = useState<WeddingInstallment[] | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [form, setForm] = useState<InstallmentForm | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => { setRows(null); setForm(null); }, [wedding.id]);
+
+  const summary = installmentSummary(rows ? { ...wedding, installments: rows } : wedding);
+  const today = todayIso();
+
+  const mutate = async (init: RequestInit, qs = "") => {
+    const res = await fetch(`/api/admin/weddings/${wedding.id}/installments${qs}`, init);
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.error || "Erro na operação.");
+    setRows(data.installments || []);
+    onDataChanged?.();
+  };
+
+  const togglePaid = async (inst: WeddingInstallment) => {
+    setBusyId(inst.id);
+    try {
+      await mutate({
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ installmentId: inst.id, paid: !inst.paid }),
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao atualizar a parcela.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const remove = async (inst: WeddingInstallment) => {
+    if (!confirm(`Excluir a parcela "${inst.label}"?`)) return;
+    setBusyId(inst.id);
+    try {
+      await mutate({ method: "DELETE" }, `?installmentId=${inst.id}`);
+      toast.success("Parcela excluída.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao excluir a parcela.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const saveForm = async () => {
+    if (!form) return;
+    const value = parseFloat(form.value.replace(/\./g, "").replace(",", "."));
+    if (!form.label.trim() || !Number.isFinite(value) || value <= 0) {
+      toast.error("Preencha nome e valor da parcela.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await mutate({
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          installmentId: form.id, label: form.label.trim(), value,
+          dueDate: form.dueDate || null,
+        }),
+      });
+      setForm(null);
+      toast.success(form.id ? "Parcela atualizada." : "Parcela criada.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar a parcela.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%", boxSizing: "border-box", padding: "8px 10px", borderRadius: 9,
+    border: `1px solid ${T.border2}`, background: T.glass, color: T.text,
+    fontFamily: "inherit", fontSize: 12, outline: "none",
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Resumo */}
+      <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 14, padding: 18 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 10 }}>
+          <div>
+            <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>Total do contrato</div>
+            <div style={{ fontSize: 24, fontWeight: 900, color: T.text, letterSpacing: "-1px" }}>{fmtMoney(wedding.contractTotal)}</div>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>Recebido</div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: T.green }}>{summary.paidPct}%</div>
+          </div>
+        </div>
+        <div style={{ height: 8, borderRadius: 999, background: T.glass3, overflow: "hidden" }}>
+          <div style={{ height: "100%", borderRadius: 999, background: T.grad, width: `${Math.min(summary.paidPct, 100)}%`, transition: "width .8s" }} />
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+          <span style={{ fontSize: 11, color: T.green, fontWeight: 700 }}>{fmtMoney(summary.paidTotal)} recebido</span>
+          <span style={{ fontSize: 11, color: summary.paidPct >= 100 ? T.green : T.amber, fontWeight: 700 }}>
+            {summary.paidPct >= 100 ? "Quitado ✓" : `${fmtMoney(Math.max(wedding.contractTotal - summary.paidTotal, 0))} a receber`}
+          </span>
+        </div>
+      </div>
+
+      {/* Parcelas */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".05em", textTransform: "uppercase", color: T.muted }}>Parcelas</div>
+        {!summary.legacy || summary.rows.length === 0 ? (
+          <button onClick={() => setForm({ label: "", value: "", dueDate: "" })}
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 9, border: `1px dashed ${T.border2}`, background: "transparent", cursor: "pointer", fontFamily: "inherit", fontSize: 11, fontWeight: 700, color: T.muted }}>
+            <Plus size={12} /> Adicionar
+          </button>
+        ) : null}
+      </div>
+
+      {summary.legacy && summary.rows.length > 0 && (
+        <div style={{ fontSize: 11, color: T.muted, background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 10, padding: "8px 12px" }}>
+          Parcelas legadas (somente leitura) — rode a migration <b>weddings_installments.sql</b> para editar, dar vencimento e gerar cobranças.
+        </div>
+      )}
+
+      {summary.rows.length === 0 && !form && (
+        <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "14px 0" }}>
+          Nenhuma parcela — contrato sem valores ainda.
+        </div>
+      )}
+
+      {summary.rows.map((inst) => {
+        const isLegacy = inst.id.startsWith("legacy-");
+        const overdue = !inst.paid && !!inst.dueDate && inst.dueDate <= today;
+        const busy = busyId === inst.id;
+        return (
+          <div key={inst.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", background: inst.paid ? T.greenBg : overdue ? T.redBg : T.glass, border: `1px solid ${inst.paid ? T.greenBorder : overdue ? T.redBorder : T.border}`, borderRadius: 13 }}>
+            <div style={{ width: 32, height: 32, borderRadius: 9, flexShrink: 0, background: inst.paid ? T.greenBg : overdue ? T.redBg : T.amberBg, border: `1px solid ${inst.paid ? T.greenBorder : overdue ? T.redBorder : T.amberBorder}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {inst.paid ? <Check size={15} color={T.green} /> : <DollarSign size={15} color={overdue ? T.red : T.amber} />}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 800 }}>{inst.label}</div>
+              {inst.dueDate && (
+                <div style={{ fontSize: 10, fontWeight: 700, color: overdue ? T.red : T.muted, marginTop: 2 }}>
+                  {overdue ? "Venceu" : "Vence"} {fmt(inst.dueDate)}
+                </div>
+              )}
+            </div>
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 900, color: inst.paid ? T.green : T.text }}>{fmtMoney(Number(inst.value))}</div>
+              <Pill label={inst.paid ? "Pago" : overdue ? "Vencida" : "Pendente"} bg={inst.paid ? T.greenBg : overdue ? T.redBg : T.amberBg} color={inst.paid ? T.green : overdue ? T.red : T.amber} border={inst.paid ? T.greenBorder : overdue ? T.redBorder : T.amberBorder} style={{ marginTop: 3, fontSize: 8 }} />
+            </div>
+            {!isLegacy && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+                <button title={inst.paid ? "Voltar a pendente" : "Marcar como paga"} disabled={busy} onClick={() => togglePaid(inst)}
+                  style={{ width: 26, height: 26, borderRadius: 8, border: `1px solid ${inst.paid ? T.border2 : T.greenBorder}`, background: inst.paid ? T.glass : T.greenBg, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {busy ? <Loader2 size={12} color={T.muted} className="animate-spin" /> : <Check size={12} color={inst.paid ? T.muted : T.green} />}
+                </button>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <button title="Editar" disabled={busy}
+                    onClick={() => setForm({ id: inst.id, label: inst.label, value: String(inst.value), dueDate: inst.dueDate ?? "" })}
+                    style={{ width: 26, height: 26, borderRadius: 8, border: `1px solid ${T.border2}`, background: T.glass, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Pencil size={11} color={T.muted} />
+                  </button>
+                  <button title="Excluir" disabled={busy} onClick={() => remove(inst)}
+                    style={{ width: 26, height: 26, borderRadius: 8, border: `1px solid ${T.redBorder}`, background: T.redBg, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <Trash2 size={11} color={T.red} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {form && (
+        <div style={{ background: T.glass, border: `1px solid ${T.border2}`, borderRadius: 13, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".05em", color: T.muted }}>
+            {form.id ? "Editar parcela" : "Nova parcela"}
+          </div>
+          <input style={inputStyle} placeholder="Nome (ex.: 2ª parcela — Intermediária)"
+            value={form.label} onChange={(e) => setForm(f => f && { ...f, label: e.target.value })} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <input style={inputStyle} placeholder="Valor (R$)" inputMode="decimal"
+              value={form.value} onChange={(e) => setForm(f => f && { ...f, value: e.target.value })} />
+            <input style={inputStyle} type="date"
+              value={form.dueDate} onChange={(e) => setForm(f => f && { ...f, dueDate: e.target.value })} />
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setForm(null)}
+              style={{ flex: 1, padding: 8, borderRadius: 9, border: `1px solid ${T.border2}`, background: T.glass, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700, color: T.muted }}>
+              Cancelar
+            </button>
+            <button onClick={saveForm} disabled={saving}
+              style={{ flex: 2, padding: 8, borderRadius: 9, border: "none", background: T.grad, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: saving ? .7 : 1 }}>
+              {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+              {form.id ? "Salvar" : "Criar"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onEdit, onDelete, onStatusChange, onMarkLost, onFollowUp, onDataChanged }: {
   wedding: Wedding | null; cabinsTotal: number; onClose: () => void; showFinancial: boolean;
   onEdit: (w: Wedding) => void; onDelete: (w: Wedding) => void;
   onStatusChange: (w: Wedding, status: WeddingStatus) => Promise<void>;
   onMarkLost: (w: Wedding, reason: string) => Promise<void>;
   onFollowUp: (w: Wedding) => Promise<void>;
+  onDataChanged?: () => void;
 }) {
   const [tab, setTab] = useState<DrawerTab>("evento");
   const [lostOpen, setLostOpen] = useState(false);
@@ -29,13 +242,6 @@ export function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onE
   const vendors = wedding.vendors ?? [];
   const vendorConfirmed = vendors.filter(v => v.confirmed).length;
   const assignments = wedding.cabinAssignments ?? [];
-
-  const deposit = wedding.depositValue ?? 0;
-  const second  = wedding.secondInstallmentValue ?? 0;
-  const balance = wedding.contractTotal - deposit - second;
-  const paidTotal = (wedding.depositPaid ? deposit : 0) + (wedding.secondInstallmentPaid ? second : 0);
-  // Guarda de zero: contrato vazio virava NaN% na tela e width:NaN% na barra.
-  const paidPct = wedding.contractTotal > 0 ? Math.round((paidTotal / wedding.contractTotal) * 100) : 0;
 
   const tabs: { id: DrawerTab; label: string }[] = [
     { id: "evento",       label: "Evento" },
@@ -248,48 +454,7 @@ export function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onE
           )}
 
           {tab === "financeiro" && showFinancial && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 14, padding: 18 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 10 }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>Total do contrato</div>
-                    <div style={{ fontSize: 24, fontWeight: 900, color: T.text, letterSpacing: "-1px" }}>{fmtMoney(wedding.contractTotal)}</div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 11, color: T.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 4 }}>Recebido</div>
-                    <div style={{ fontSize: 18, fontWeight: 900, color: T.green }}>{paidPct}%</div>
-                  </div>
-                </div>
-                <div style={{ height: 8, borderRadius: 999, background: T.glass3, overflow: "hidden" }}>
-                  <div style={{ height: "100%", borderRadius: 999, background: T.grad, width: `${paidPct}%`, transition: "width .8s" }} />
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-                  <span style={{ fontSize: 11, color: T.green, fontWeight: 700 }}>{fmtMoney(paidTotal)} recebido</span>
-                  <span style={{ fontSize: 11, color: balance > 0 && !wedding.secondInstallmentPaid ? T.amber : T.green, fontWeight: 700 }}>
-                    {paidPct === 100 ? "Quitado ✓" : `${fmtMoney(wedding.contractTotal - paidTotal)} a receber`}
-                  </span>
-                </div>
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".05em", textTransform: "uppercase", color: T.muted, marginBottom: 4 }}>Parcelas</div>
-              {[
-                { label: "1ª Parcela — Sinal (30%)",         value: deposit, paid: wedding.depositPaid ?? false },
-                { label: "2ª Parcela — Intermediária (35%)", value: second,  paid: wedding.secondInstallmentPaid ?? false },
-                { label: "3ª Parcela — Saldo final (35%)",   value: balance, paid: paidPct === 100 },
-              ].map((inst, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: inst.paid ? T.greenBg : T.glass, border: `1px solid ${inst.paid ? T.greenBorder : T.border}`, borderRadius: 13 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 9, flexShrink: 0, background: inst.paid ? T.greenBg : T.amberBg, border: `1px solid ${inst.paid ? T.greenBorder : T.amberBorder}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    {inst.paid ? <Check size={15} color={T.green} /> : <DollarSign size={15} color={T.amber} />}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, fontWeight: 800 }}>{inst.label}</div>
-                  </div>
-                  <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 900, color: inst.paid ? T.green : T.text }}>{fmtMoney(inst.value)}</div>
-                    <Pill label={inst.paid ? "Pago" : "Pendente"} bg={inst.paid ? T.greenBg : T.amberBg} color={inst.paid ? T.green : T.amber} border={inst.paid ? T.greenBorder : T.amberBorder} style={{ marginTop: 3, fontSize: 8 }} />
-                  </div>
-                </div>
-              ))}
-            </div>
+            <InstallmentsPanel wedding={wedding} onDataChanged={onDataChanged} />
           )}
         </div>
 

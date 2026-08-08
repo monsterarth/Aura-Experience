@@ -5,7 +5,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isAuthError, assertPropertyAccess, AuthResult } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { CrmService } from "@/services/crm-service";
-import { CrmEntityType } from "@/types/aura";
+import { WeddingService } from "@/services/wedding-service";
+import { CrmAlarm, CrmEntityType } from "@/types/aura";
+
+/** Prefixo das linhas virtuais (parcela vencida) — não existem em crm_alarms. */
+const VIRTUAL_PREFIX = "inst_";
 
 export const dynamic = "force-dynamic";
 
@@ -32,11 +36,37 @@ export async function GET(req: NextRequest) {
   if (denied) return denied;
   if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
 
+  const entityType = parseFunnel(params.get("funnel") || params.get("entityType"));
+  const entityId = params.get("entityId") || undefined;
+
   try {
-    const alarms = await CrmService.listAlarms(propertyId, {
-      entityType: parseFunnel(params.get("funnel") || params.get("entityType")),
-      entityId: params.get("entityId") || undefined,
-    });
+    const alarms = await CrmService.listAlarms(propertyId, { entityType, entityId });
+
+    // Fila de casamentos mescla as parcelas VENCIDAS como cobranças virtuais —
+    // sem estado duplicado: a fonte é wedding_installments; "concluir" = pagar.
+    // A mescla fica na rota (e não no CrmService) para não criar ciclo de
+    // import: wedding-service já importa crm-service.
+    if (entityType === "wedding" && !entityId) {
+      const overdue = await WeddingService.listOverdueInstallments(propertyId);
+      const virtual: CrmAlarm[] = overdue.map((i) => ({
+        id: `${VIRTUAL_PREFIX}${i.id}`,
+        propertyId,
+        entityType: "wedding",
+        entityId: i.weddingId,
+        entityLabel: i.couple,
+        kind: "payment",
+        title: `Parcela vencida: ${i.label}`,
+        note: `R$ ${Number(i.value).toFixed(2)} — concluir marca como paga`,
+        dueAt: i.dueDate!,
+        dueTime: null,
+        done: false,
+        createdAt: i.createdAt ?? i.dueDate!,
+        virtual: true,
+      }));
+      alarms.push(...virtual);
+      alarms.sort((a, b) => (a.dueAt < b.dueAt ? -1 : a.dueAt > b.dueAt ? 1 : 0));
+    }
+
     return NextResponse.json({ alarms });
   } catch (e) {
     console.error("Erro ao listar alarmes:", e);
@@ -83,10 +113,20 @@ export async function PATCH(req: NextRequest) {
   if (denied) return denied;
   if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
   if (!body?.id) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
+  const id = String(body.id);
 
   try {
+    // Linha virtual: concluir a cobrança = marcar a parcela como paga.
+    if (id.startsWith(VIRTUAL_PREFIX)) {
+      await WeddingService.setInstallmentPaid(
+        propertyId, id.slice(VIRTUAL_PREFIX.length), body.done !== false,
+        { id: g.auth.staff.id, name: g.auth.staff.fullName }
+      );
+      return NextResponse.json({ ok: true });
+    }
+
     const alarm = await CrmService.setAlarmDone(
-      propertyId, String(body.id), body.done !== false,
+      propertyId, id, body.done !== false,
       { id: g.auth.staff.id, name: g.auth.staff.fullName }
     );
     return NextResponse.json({ alarm });
@@ -108,6 +148,12 @@ export async function DELETE(req: NextRequest) {
   if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
   const id = params.get("id");
   if (!id) return NextResponse.json({ error: "id ausente" }, { status: 400 });
+  if (id.startsWith(VIRTUAL_PREFIX)) {
+    return NextResponse.json(
+      { error: "Cobrança de parcela se gerencia na gestão do evento (aba financeiro)." },
+      { status: 400 }
+    );
+  }
 
   try {
     await CrmService.deleteAlarm(propertyId, id);

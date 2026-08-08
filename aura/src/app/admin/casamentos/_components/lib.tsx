@@ -1,7 +1,7 @@
 // Casamentos — tokens, helpers e primitivas compartilhadas entre a página e
 // os modais extraídos (movimento mecânico do page.tsx monolítico).
 import React from "react";
-import { Wedding, WeddingStatus, WeddingCabinAssignment } from "@/types/aura";
+import { Wedding, WeddingStatus, WeddingCabinAssignment, WeddingInstallment } from "@/types/aura";
 import { Shield, Camera, Music, Mic, Flower2, Coffee, Star, Truck, Sun } from "lucide-react";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -194,6 +194,41 @@ export const FToggle = ({ label, sub, checked, onChange }: {
     </div>
   </div>
 );
+
+// ─── Parcelas ─────────────────────────────────────────────────────────────────
+
+/**
+ * Resumo financeiro do contrato — REGRA ÚNICA para card e drawer.
+ * Fonte: wedding_installments; fallback na derivação legada (2 campos fixos +
+ * saldo) para dados de antes da migration. Linhas legadas têm id "legacy-*"
+ * e são só leitura (editar exige parcela real).
+ */
+export function installmentSummary(w: Wedding): {
+  rows: WeddingInstallment[]; paidTotal: number; paidPct: number; legacy: boolean;
+} {
+  const list = (w.installments ?? [])
+    .slice()
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
+
+  if (list.length > 0) {
+    const paidTotal = list.filter(i => i.paid).reduce((s, i) => s + Number(i.value), 0);
+    const paidPct = w.contractTotal > 0 ? Math.round((paidTotal / w.contractTotal) * 100) : 0;
+    return { rows: list, paidTotal, paidPct, legacy: false };
+  }
+
+  const deposit = w.depositValue ?? 0;
+  const second = w.secondInstallmentValue ?? 0;
+  const balance = Math.max(w.contractTotal - deposit - second, 0);
+  const rows: WeddingInstallment[] = [
+    ...(deposit > 0 ? [{ id: "legacy-1", weddingId: w.id, label: "1ª parcela — Sinal", value: deposit, paid: w.depositPaid ?? false }] : []),
+    ...(second > 0 ? [{ id: "legacy-2", weddingId: w.id, label: "2ª parcela — Intermediária", value: second, paid: w.secondInstallmentPaid ?? false }] : []),
+    ...(balance > 0 ? [{ id: "legacy-3", weddingId: w.id, label: "3ª parcela — Saldo final", value: balance, paid: false }] : []),
+  ];
+  const paidTotal = (w.depositPaid ? deposit : 0) + (w.secondInstallmentPaid ? second : 0);
+  // Guarda de zero: contrato vazio virava NaN% na tela e width:NaN% na barra.
+  const paidPct = w.contractTotal > 0 ? Math.round((paidTotal / w.contractTotal) * 100) : 0;
+  return { rows, paidTotal, paidPct, legacy: true };
+}
 
 // ─── Estado do lead (follow-up/validade) ─────────────────────────────────────
 

@@ -58,6 +58,15 @@ export async function POST(request: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // Contrato novo nasce com as 3 parcelas padrão (30/35/35), editáveis na
+  // aba financeiro. Best-effort: sem a migration das parcelas o casamento
+  // é criado do mesmo jeito.
+  if (Number(data.contractTotal) > 0) {
+    await WeddingService.seedDefaultInstallments(data.id, Number(data.contractTotal)).catch((e) => {
+      console.error('Seed de parcelas falhou (migration pendente?):', e);
+    });
+  }
+
   await AuditService.log({
     propertyId,
     userId: auth.staff.id,

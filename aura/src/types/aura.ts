@@ -1428,13 +1428,22 @@ export interface WeddingCabinAssignment {
   guestDescription: string;
 }
 
+/**
+ * Parcela real do contrato (tabela wedding_installments). Vencida e não paga
+ * vira cobrança na fila de alarmes do funil de casamentos (linha virtual —
+ * concluir lá = marcar paga aqui).
+ */
 export interface WeddingInstallment {
   id: string;
   weddingId: string;
   label: string;
   value: number;
   paid: boolean;
-  dueDate?: string;
+  paidAt?: Timestamp | null;
+  /** Vencimento (YYYY-MM-DD) — NULL até ser combinado; não se inventa data. */
+  dueDate?: string | null;
+  sortOrder?: number;
+  createdAt?: Timestamp;
 }
 
 export interface Wedding {
@@ -1473,9 +1482,13 @@ export interface Wedding {
   cabinsOccupied?: number;
   // Financial
   contractTotal: number;
+  /** @deprecated Parcelas viraram `wedding_installments` — campo congelado (só leitura de dados antigos). */
   depositValue?: number;
+  /** @deprecated Ver depositValue. */
   depositPaid?: boolean;
+  /** @deprecated Ver depositValue. */
   secondInstallmentValue?: number;
+  /** @deprecated Ver depositValue. */
   secondInstallmentPaid?: boolean;
   // Notes
   notes?: string;
@@ -1484,6 +1497,7 @@ export interface Wedding {
   // Joined / virtual
   vendors?: WeddingVendor[];
   cabinAssignments?: WeddingCabinAssignment[];
+  installments?: WeddingInstallment[];
 }
 
 // ==========================================
@@ -2514,6 +2528,11 @@ export interface CrmAlarm {
   createdBy?: string | null;
   createdByName?: string | null;
   createdAt: Timestamp;
+  /**
+   * true = linha derivada de parcela vencida (não existe em crm_alarms):
+   * concluir marca a parcela como paga; não dá para excluir pela fila.
+   */
+  virtual?: boolean;
 }
 
 /** Motivos de perda de ORÇAMENTO (casamentos têm a própria lista). */

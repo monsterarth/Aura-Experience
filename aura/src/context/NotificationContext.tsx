@@ -42,7 +42,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     // Alarme "devido" = vence hoje ou já venceu (fuso da operação).
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 
-    const [msgRes, concRes, bookRes, quoteAlarmRes, weddingAlarmRes] = await Promise.all([
+    const [msgRes, concRes, bookRes, quoteAlarmRes, weddingAlarmRes, overdueInstRes] = await Promise.all([
       supabase
         .from('messages')
         .select('id', { count: 'exact', head: true })
@@ -74,14 +74,23 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         .eq('done', false)
         .eq('entityType', 'wedding')
         .lte('dueAt', today),
+      // Parcela vencida = cobrança na fila de casamentos (linha virtual) —
+      // entra no badge também. Join !inner: a tabela não tem propertyId.
+      supabase
+        .from('wedding_installments')
+        .select('id, weddings!inner(propertyId)', { count: 'exact', head: true })
+        .eq('weddings.propertyId', propertyId)
+        .eq('paid', false)
+        .not('dueDate', 'is', null)
+        .lte('dueDate', today),
     ]);
 
     setMessages(msgRes.count ?? 0);
     setConcierge(concRes.count ?? 0);
     setBookings(bookRes.count ?? 0);
-    // Antes da migration crm_phase2_alarms a tabela não existe: count vem null → 0.
+    // Antes das migrations da fase B.5 as tabelas não existem: count null → 0.
     setCrmQuoteAlarms(quoteAlarmRes.count ?? 0);
-    setCrmWeddingAlarms(weddingAlarmRes.count ?? 0);
+    setCrmWeddingAlarms((weddingAlarmRes.count ?? 0) + (overdueInstRes.count ?? 0));
   }, [propertyId, supabase]);
 
   useEffect(() => {
@@ -113,11 +122,19 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_alarms', filter: `propertyId=eq.${propertyId}` }, fetchAll)
       .subscribe();
 
+    // Sem filtro por propertyId (a tabela não tem a coluna) — volume é baixo
+    // e o fetchAll refaz a conta certa de qualquer jeito.
+    const installmentsChannel = supabase
+      .channel(`notifctx_wedding_installments_${propertyId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'wedding_installments' }, fetchAll)
+      .subscribe();
+
     return () => {
       supabase.removeChannel(msgChannel);
       supabase.removeChannel(conciergeChannel);
       supabase.removeChannel(bookingsChannel);
       supabase.removeChannel(alarmsChannel);
+      supabase.removeChannel(installmentsChannel);
     };
   }, [propertyId, supabase, fetchAll]);
 

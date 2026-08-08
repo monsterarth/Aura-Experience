@@ -9,7 +9,7 @@ import { RoleGuard } from "@/components/auth/RoleGuard";
 import { useConfigDeepLink } from "@/lib/settings-deeplink";
 import { toast } from "sonner";
 import { Heart, Shield, Clock, Sparkles, Search, Grid3X3, List, ChevronRight, Plus, Bed, Users, Loader2 } from "lucide-react";
-import { T, fmt, todayIso, daysUntil, nightsBetween, fmtMoney, STATUS_CFG, Pill, leadState } from "./_components/lib";
+import { T, fmt, todayIso, daysUntil, nightsBetween, fmtMoney, STATUS_CFG, Pill, leadState, installmentSummary } from "./_components/lib";
 import { WeddingFormModal } from "./_components/WeddingFormModal";
 import { DetailDrawer } from "./_components/DetailDrawer";
 import { LeadSettingsModal } from "./_components/LeadSettingsModal";
@@ -31,10 +31,7 @@ function WeddingCard({ wedding, cabinsTotal, onOpen, view, showFinancial, highli
   const nights = nightsBetween(wedding.checkin, wedding.checkout);
   const vendors = wedding.vendors ?? [];
   const fin = wedding.contractTotal;
-  const deposit  = wedding.depositValue ?? 0;
-  const second   = wedding.secondInstallmentValue ?? 0;
-  const paidTotal = (wedding.depositPaid ? deposit : 0) + (wedding.secondInstallmentPaid ? second : 0);
-  const paidPct  = fin > 0 ? Math.round((paidTotal / fin) * 100) : 0;
+  const { paidPct } = installmentSummary(wedding);
   const vendorConfirmed = vendors.filter(v => v.confirmed).length;
 
   const accentColor = wedding.status === "completed" ? T.muted
@@ -467,7 +464,7 @@ function CasamentosPageInner() {
         )}
       </div>
 
-      <DetailDrawer wedding={selected} cabinsTotal={cabinsTotal} onClose={() => setSelected(null)} showFinancial={showFinancial} onEdit={handleEdit} onDelete={handleDelete} onStatusChange={handleStatusChange} onMarkLost={handleMarkLost} onFollowUp={handleFollowUp} />
+      <DetailDrawer wedding={selected} cabinsTotal={cabinsTotal} onClose={() => setSelected(null)} showFinancial={showFinancial} onEdit={handleEdit} onDelete={handleDelete} onStatusChange={handleStatusChange} onMarkLost={handleMarkLost} onFollowUp={handleFollowUp} onDataChanged={loadWeddings} />
       <WeddingFormModal open={formOpen} initial={editTarget} propertyId={property.id} onClose={() => setFormOpen(false)} onSaved={loadWeddings} />
       {leadSettingsOpen && <LeadSettingsModal propertyId={property.id} onClose={() => setLeadSettingsOpen(false)} />}
     </div>

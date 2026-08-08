@@ -5,8 +5,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { useCloseGuard } from "@/lib/use-discard-guard";
 import { toast } from "sonner";
 import { Wedding, WeddingStatus, CrmChannel } from "@/types/aura";
-import { X, Check, Loader2, Save } from "lucide-react";
-import { T, FLabel, FInput, FSelect, FRow, FField, FToggle } from "./lib";
+import { X, Loader2, Save } from "lucide-react";
+import { T, FInput, FSelect, FRow, FField, FToggle } from "./lib";
 
 // ─── Wedding form modal ───────────────────────────────────────────────────────
 
@@ -18,8 +18,7 @@ type WeddingFormData = {
   weddingDate: string; status: WeddingStatus; guestCount: string;
   coordinator: string; ceremonyDetails: string; receptionDetails: string; notes: string;
   checkin: string; checkout: string; exclusivity: boolean; cabinsOccupied: string;
-  contractTotal: string; depositValue: string; depositPaid: boolean;
-  secondInstallmentValue: string; secondInstallmentPaid: boolean;
+  contractTotal: string;
   followUpAt: string; expiresAt: string;
 };
 
@@ -29,8 +28,7 @@ const EMPTY_FORM: WeddingFormData = {
   weddingDate: '', status: 'tentative', guestCount: '',
   coordinator: '', ceremonyDetails: '', receptionDetails: '', notes: '',
   checkin: '', checkout: '', exclusivity: false, cabinsOccupied: '',
-  contractTotal: '', depositValue: '', depositPaid: false,
-  secondInstallmentValue: '', secondInstallmentPaid: false,
+  contractTotal: '',
   followUpAt: '', expiresAt: '',
 };
 
@@ -44,10 +42,6 @@ function weddingToForm(w: Wedding): WeddingFormData {
     notes: w.notes ?? '', checkin: w.checkin, checkout: w.checkout,
     exclusivity: w.exclusivity, cabinsOccupied: w.cabinsOccupied != null ? String(w.cabinsOccupied) : '',
     contractTotal: w.contractTotal ? String(w.contractTotal) : '',
-    depositValue: w.depositValue != null ? String(w.depositValue) : '',
-    depositPaid: w.depositPaid ?? false,
-    secondInstallmentValue: w.secondInstallmentValue != null ? String(w.secondInstallmentValue) : '',
-    secondInstallmentPaid: w.secondInstallmentPaid ?? false,
     followUpAt: w.followUpAt ?? '', expiresAt: w.expiresAt ?? '',
   };
 }
@@ -111,10 +105,6 @@ export function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }
         exclusivity: form.exclusivity,
         cabinsOccupied: form.exclusivity && form.cabinsOccupied ? parseInt(form.cabinsOccupied) : undefined,
         contractTotal: parseFloat(form.contractTotal) || 0,
-        depositValue: form.depositValue ? parseFloat(form.depositValue) : undefined,
-        depositPaid: form.depositPaid,
-        secondInstallmentValue: form.secondInstallmentValue ? parseFloat(form.secondInstallmentValue) : undefined,
-        secondInstallmentPaid: form.secondInstallmentPaid,
         // Prazos só fazem sentido em negociação; nos demais status vão nulos
         // para não deixar data órfã sinalizando follow-up de contrato fechado.
         followUpAt: form.status === 'tentative' ? (form.followUpAt || null) : null,
@@ -216,22 +206,13 @@ export function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }
 
           {tab === 'financeiro' && (<>
             <FField label="Total do contrato (R$)"><FInput value={form.contractTotal} onChange={set('contractTotal')} type="number" placeholder="0,00" /></FField>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase' as const, color: T.muted }}>Parcelas</div>
-            <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 14, padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ flex: 1 }}><FLabel>1ª parcela — Sinal (R$)</FLabel><FInput value={form.depositValue} onChange={set('depositValue')} type="number" placeholder="0,00" /></div>
-                <div onClick={() => set('depositPaid')(!form.depositPaid)} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 14px', borderRadius: 10, border: `1px solid ${form.depositPaid ? T.greenBorder : T.border}`, background: form.depositPaid ? T.greenBg : T.glass, cursor: 'pointer', marginTop: 15, flexShrink: 0 }}>
-                  <Check size={13} color={form.depositPaid ? T.green : T.muted} />
-                  <span style={{ fontSize: 12, fontWeight: 700, color: form.depositPaid ? T.green : T.muted }}>Pago</span>
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ flex: 1 }}><FLabel>2ª parcela — Intermediária (R$)</FLabel><FInput value={form.secondInstallmentValue} onChange={set('secondInstallmentValue')} type="number" placeholder="0,00" /></div>
-                <div onClick={() => set('secondInstallmentPaid')(!form.secondInstallmentPaid)} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '9px 14px', borderRadius: 10, border: `1px solid ${form.secondInstallmentPaid ? T.greenBorder : T.border}`, background: form.secondInstallmentPaid ? T.greenBg : T.glass, cursor: 'pointer', marginTop: 15, flexShrink: 0 }}>
-                  <Check size={13} color={form.secondInstallmentPaid ? T.green : T.muted} />
-                  <span style={{ fontSize: 12, fontWeight: 700, color: form.secondInstallmentPaid ? T.green : T.muted }}>Pago</span>
-                </div>
-              </div>
+            {/* Parcelas saíram do formulário: agora são linhas reais com
+                vencimento, no CRUD da aba financeiro do painel do casamento.
+                Contrato novo já nasce com as 3 padrão (30/35/35). */}
+            <div style={{ fontSize: 12, color: T.muted, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12, padding: '10px 14px', lineHeight: 1.5 }}>
+              {initial
+                ? 'As parcelas são gerenciadas na aba Financeiro do painel do casamento (com vencimento e cobrança automática).'
+                : 'Ao criar com contrato preenchido, nascem 3 parcelas padrão (30/35/35) — edite depois na aba Financeiro do painel.'}
             </div>
           </>)}
         </div>
