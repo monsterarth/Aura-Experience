@@ -621,16 +621,18 @@ export const RateService = {
   },
 
   /**
-   * Conversão (ganhou): garante o hóspede — usa o vinculado, encontra pelo
-   * documento ou cria a ficha a partir dos dados do lead — e marca o orçamento
-   * como 'won'. Devolve o necessário para abrir /admin/stays/new pré-preenchida.
+   * Garante a ficha de hóspede do lead SEM mexer no estágio ("Promover a
+   * hóspede" — o titular pode virar hóspede no meio da negociação). Ordem:
+   * guestId explícito (sugestão por telefone aceita) → já vinculado → achado
+   * pelo documento → criado a partir dos dados do lead. Vínculo NOVO vira
+   * 'guest_linked' na timeline.
    */
-  async convertQuote(
+  async ensureGuestForQuote(
     propertyId: string,
     id: string,
-    actorId: string,
-    actorName: string
-  ): Promise<{ guestId: string | null; checkIn: string; checkOut: string }> {
+    actor: { id: string; name: string },
+    opts?: { guestId?: string | null }
+  ): Promise<{ guestId: string | null }> {
     const admin = supabaseAdmin!;
     const { data } = await admin
       .from("rate_quotes")
@@ -643,7 +645,17 @@ export const RateService = {
 
     let guestId = quote.guestId || null;
 
-    if (!guestId && quote.clientDocument) {
+    if (opts?.guestId) {
+      // Vínculo explícito: valida que a ficha existe NESTA propriedade.
+      const { data: g } = await admin
+        .from("guests")
+        .select("id")
+        .eq("id", opts.guestId)
+        .eq("propertyId", propertyId)
+        .maybeSingle();
+      if (!g) throw new Error("Hóspede não encontrado.");
+      guestId = g.id as string;
+    } else if (!guestId && quote.clientDocument) {
       const normId = GuestService.normalizeDocument(quote.clientDocument);
       if (normId) {
         const { data: existing } = await admin
@@ -670,16 +682,54 @@ export const RateService = {
             allergies: [],
             preferredLanguage: "pt",
           };
-          guestId = await GuestService.upsertGuestDirect(propertyId, newGuest, actorId, actorName);
+          guestId = await GuestService.upsertGuestDirect(propertyId, newGuest, actor.id, actor.name);
         }
       }
     }
+
+    if (guestId && guestId !== (quote.guestId || null)) {
+      const { error } = await admin
+        .from("rate_quotes")
+        .update({ guestId, updatedAt: new Date().toISOString() })
+        .eq("id", id)
+        .eq("propertyId", propertyId);
+      if (error) throw new Error(error.message);
+
+      await CrmService.logInteraction(propertyId, "quote", id, "guest_linked", {
+        actorId: actor.id, actorName: actor.name, payload: { guestId },
+      });
+    }
+
+    return { guestId };
+  },
+
+  /**
+   * Conversão (ganhou): garante o hóspede (ensureGuestForQuote) e marca o
+   * orçamento como 'won'. Devolve o necessário para abrir /admin/stays/new
+   * pré-preenchida.
+   */
+  async convertQuote(
+    propertyId: string,
+    id: string,
+    actorId: string,
+    actorName: string
+  ): Promise<{ guestId: string | null; checkIn: string; checkOut: string }> {
+    const admin = supabaseAdmin!;
+    const { data } = await admin
+      .from("rate_quotes")
+      .select("checkIn, checkOut")
+      .eq("id", id)
+      .eq("propertyId", propertyId)
+      .maybeSingle();
+    if (!data) throw new Error("Orçamento não encontrado.");
+
+    const { guestId } = await this.ensureGuestForQuote(propertyId, id, { id: actorId, name: actorName });
 
     await this.updateQuote(propertyId, id, { status: "won", guestId }, { id: actorId, name: actorName });
     await CrmService.logInteraction(propertyId, "quote", id, "converted", {
       actorId, actorName, payload: { guestId },
     });
-    return { guestId, checkIn: quote.checkIn, checkOut: quote.checkOut };
+    return { guestId, checkIn: data.checkIn as string, checkOut: data.checkOut as string };
   },
 
   /**

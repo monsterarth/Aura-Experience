@@ -11,11 +11,13 @@ import {
   CrmLead,
   DEFAULT_CRM_CHANNELS,
   DEFAULT_QUOTE_LEAD,
+  Guest,
   RateQuoteRecord,
   Wedding,
   WeddingLeadSettings,
 } from "@/types/aura";
 import { resolveQuoteValue } from "@/lib/rate-engine";
+import { GuestService } from "./guest-service";
 
 function localToday(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
@@ -242,6 +244,73 @@ export const CrmService = {
     });
 
     return { followUpAt, expiresAt };
+  },
+
+  // ── Titular do lead (cliente) ──────────────────────────────────────────────
+
+  /**
+   * Cotações de um cliente — por vínculo (guestId) e/ou telefone. O telefone
+   * casa pelo sufixo (últimos 8 dígitos): DDI inconsistente entre épocas.
+   * A query em rate_quotes fica aqui (e não no RateService) de propósito:
+   * rate-service já importa crm-service e o inverso criaria ciclo.
+   */
+  async listQuotesByClient(
+    propertyId: string,
+    by: { guestId?: string | null; phone?: string | null }
+  ): Promise<RateQuoteRecord[]> {
+    const ors: string[] = [];
+    if (by.guestId) ors.push(`guestId.eq.${by.guestId}`);
+    const digits = (by.phone || "").replace(/\D/g, "");
+    if (digits.length >= 8) ors.push(`clientPhone.like.*${digits.slice(-8)}`);
+    if (ors.length === 0) return [];
+
+    const { data } = await supabaseAdmin
+      .from("rate_quotes")
+      .select("*")
+      .eq("propertyId", propertyId)
+      .or(ors.join(","))
+      .order("createdAt", { ascending: false })
+      .limit(50);
+    return (data || []) as RateQuoteRecord[];
+  },
+
+  /**
+   * Contexto do titular numa chamada só (painel do cliente no drawer):
+   * ficha vinculada, nº de estadias (recorrente vs novo), fichas com o mesmo
+   * telefone (sugestão de vínculo) e as cotações do cliente.
+   */
+  async getClientContext(
+    propertyId: string,
+    by: { guestId?: string | null; phone?: string | null }
+  ): Promise<{ guest: Guest | null; staysCount: number; phoneMatches: Guest[]; quotes: RateQuoteRecord[] }> {
+    const [guestRes, phoneMatches, quotes] = await Promise.all([
+      by.guestId
+        ? supabaseAdmin.from("guests").select("*")
+            .eq("id", by.guestId).eq("propertyId", propertyId).maybeSingle()
+        : Promise.resolve({ data: null }),
+      by.phone ? GuestService.findByPhone(propertyId, by.phone) : Promise.resolve([] as Guest[]),
+      this.listQuotesByClient(propertyId, by),
+    ]);
+
+    const guest = (guestRes.data as Guest | null) ?? null;
+
+    let staysCount = 0;
+    if (guest) {
+      const { count } = await supabaseAdmin
+        .from("stays")
+        .select("id", { count: "exact", head: true })
+        .eq("propertyId", propertyId)
+        .eq("guestId", guest.id);
+      staysCount = count ?? 0;
+    }
+
+    // A ficha já vinculada não é "sugestão" — sai da lista de matches.
+    return {
+      guest,
+      staysCount,
+      phoneMatches: phoneMatches.filter((g) => g.id !== guest?.id),
+      quotes,
+    };
   },
 
   /**

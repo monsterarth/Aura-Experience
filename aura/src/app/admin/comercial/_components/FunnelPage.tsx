@@ -141,6 +141,19 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
     toast.success("Lead atualizado.");
   });
 
+  // "Promover a hóspede": vincula/cria a ficha SEM mexer no estágio do lead.
+  const promoteGuest = (lead: CrmLead, guestId?: string) => withBusy(lead, async () => {
+    const res = await fetch("/api/admin/tarifario/quotes/promote-guest", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ propertyId: property!.id, id: lead.id, guestId }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.error);
+    await reload(lead.id);
+    if (data.guestId) toast.success("Cliente promovido a hóspede.");
+    else toast.info("Lead sem CPF — preencha o documento no Tarifário para criar a ficha.");
+  });
+
   const moveStage = (lead: CrmLead, stage: string) => withBusy(lead, async () => {
     if (lead.entityType === "quote") await patchQuote(lead.id, { status: stage });
     else await patchWedding(lead.id, { status: stage });
@@ -329,6 +342,7 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
           onWin={() => win(selected)}
           onOpenOrigin={() => openOrigin(selected)}
           onPatch={(patch) => patchLead(selected, patch)}
+          onPromoteGuest={(guestId) => promoteGuest(selected, guestId)}
         />
       )}
 

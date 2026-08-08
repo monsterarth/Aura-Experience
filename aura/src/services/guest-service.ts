@@ -24,6 +24,24 @@ export const GuestService = {
   },
 
   /**
+   * Hóspedes com este telefone — sugestão de vínculo no CRM. Casa pelo SUFIXO
+   * (últimos 8 dígitos): o banco guarda só dígitos, mas com/sem DDI conforme a
+   * época do cadastro (5531 9xxxx vs 31 9xxxx).
+   */
+  async findByPhone(propertyId: string, phone: string): Promise<Guest[]> {
+    const digits = (phone || '').replace(/\D/g, '');
+    if (digits.length < 8) return [];
+
+    const { data } = await db()
+      .from('guests')
+      .select('*')
+      .eq('propertyId', propertyId)
+      .like('phone', `%${digits.slice(-8)}`)
+      .limit(5);
+    return (data || []) as Guest[];
+  },
+
+  /**
    * Grava/atualiza a ficha do hóspede.
    *
    * No BROWSER delega para /api/admin/guests/upsert. Escrever direto pelo client do browser

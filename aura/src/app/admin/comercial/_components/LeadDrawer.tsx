@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CrmChannel, CrmLead } from "@/types/aura";
+import { ClientPanel } from "./ClientPanel";
 import { InteractionTimeline } from "./InteractionTimeline";
 import { QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, fmtBR, money } from "./shared";
 
@@ -109,6 +110,7 @@ function NegotiationSection({
 export function LeadDrawer({
   propertyId, lead, channels, busy,
   onClose, onFollowUp, onAddNote, onMoveStage, onMarkLost, onWin, onOpenOrigin, onPatch,
+  onPromoteGuest,
 }: {
   propertyId: string;
   lead: CrmLead;
@@ -122,6 +124,7 @@ export function LeadDrawer({
   onWin: () => void;
   onOpenOrigin: () => void;
   onPatch: (patch: Record<string, unknown>) => Promise<void>;
+  onPromoteGuest: (guestId?: string) => Promise<void>;
 }) {
   const [note, setNote] = useState("");
   const [noteMode, setNoteMode] = useState<"follow_up" | "note">("follow_up");
@@ -152,6 +155,11 @@ export function LeadDrawer({
   // Patch (valor/canal/prazos) muda o histórico → timeline recarrega junto.
   const patchAndRefresh = async (patch: Record<string, unknown>) => {
     await onPatch(patch);
+    setTimelineKey((k) => k + 1);
+  };
+
+  const promoteAndRefresh = async (guestId?: string) => {
+    await onPromoteGuest(guestId);
     setTimelineKey((k) => k + 1);
   };
 
@@ -218,6 +226,11 @@ export function LeadDrawer({
             </button>
           </div>
         </div>
+
+        {/* Titular — só orçamentos; recorrente/novo, vínculo e histórico do cliente */}
+        {isQuote && (
+          <ClientPanel propertyId={propertyId} lead={lead} busy={busy} onPromote={promoteAndRefresh} />
+        )}
 
         {/* Negociação — só orçamentos; casamentos têm o financeiro na gestão do evento */}
         {isQuote && active && (
