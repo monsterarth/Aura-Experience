@@ -130,18 +130,30 @@ export async function requirePropertyAccess(
 ): Promise<AuthResult | NextResponse> {
     const auth = await requireAuth(allowedRoles);
     if (isAuthError(auth)) return auth;
+    return assertPropertyAccess(auth, propertyId, crossTenantRoles) ?? auth;
+}
 
+/**
+ * Só a checagem de posse, para rotas que precisam resolver o propertyId DEPOIS de
+ * autenticar (o padrão `requested || auth.staff.propertyId`). Devolve o erro pronto,
+ * ou null quando o acesso é legítimo.
+ */
+export function assertPropertyAccess(
+    auth: AuthResult,
+    propertyId: string | null | undefined,
+    crossTenantRoles: UserRole[] = ['super_admin'],
+): NextResponse | null {
     if (!propertyId) {
         return NextResponse.json({ error: 'propertyId é obrigatório.' }, { status: 400 });
     }
-    if (hasRole(auth.staff.role, auth.staff.secondaryRoles, crossTenantRoles)) return auth;
+    if (hasRole(auth.staff.role, auth.staff.secondaryRoles, crossTenantRoles)) return null;
     if (auth.staff.propertyId !== propertyId) {
         return NextResponse.json(
             { error: 'Acesso negado: esta propriedade não é a sua.' },
             { status: 403 }
         );
     }
-    return auth;
+    return null;
 }
 
 /**

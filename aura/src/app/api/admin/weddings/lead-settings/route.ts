@@ -2,7 +2,7 @@
 // Guardados em properties.settings.weddingLead — mesma convenção dos demais
 // parâmetros de propriedade (checkInTime, hasStock…).
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { requireAuth, isAuthError, assertPropertyAccess } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { WeddingService } from '@/services/wedding-service';
 
@@ -20,7 +20,8 @@ export async function GET(request: NextRequest) {
   if (!supabaseAdmin) return NextResponse.json({ error: 'Server configuration error' }, { status: 500 });
 
   const propertyId = new URL(request.url).searchParams.get('propertyId') || auth.staff.propertyId;
-  if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
+  const denied = assertPropertyAccess(auth, propertyId);
+  if (denied || !propertyId) return denied ?? NextResponse.json({ error: 'propertyId required' }, { status: 400 });
 
   const settings = await WeddingService.getLeadSettings(propertyId);
   const canEdit = (WRITE_ROLES as readonly string[]).includes(auth.staff.role);
@@ -34,7 +35,8 @@ export async function PUT(request: NextRequest) {
 
   const body = await request.json().catch(() => ({}));
   const propertyId = body?.propertyId || auth.staff.propertyId;
-  if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
+  const denied = assertPropertyAccess(auth, propertyId);
+  if (denied || !propertyId) return denied ?? NextResponse.json({ error: 'propertyId required' }, { status: 400 });
 
   const current = await WeddingService.getLeadSettings(propertyId);
   const next = {

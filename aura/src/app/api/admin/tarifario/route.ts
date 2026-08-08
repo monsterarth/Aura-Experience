@@ -1,7 +1,7 @@
 // Tarifário — bundle inicial da página: tabelas, regras, config, categorias de
 // cabana e casamentos vinculáveis.
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, isAuthError } from "@/lib/api-auth";
+import { requireAuth, isAuthError, assertPropertyAccess } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { RateService } from "@/services/rate-service";
 
@@ -16,6 +16,8 @@ export async function GET(req: NextRequest) {
 
   const requested = new URL(req.url).searchParams.get("propertyId");
   const propertyId = requested || auth.staff.propertyId;
+    const denied = assertPropertyAccess(auth, propertyId);
+    if (denied) return denied;
   if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
 
   try {

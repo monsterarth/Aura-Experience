@@ -3,7 +3,7 @@
 // GET: lista por propriedade (+ nome da estrutura). PATCH: muda status.
 // PUT: liga/desliga a visibilidade pública (properties.settings.areaReviews.public).
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, isAuthError } from "@/lib/api-auth";
+import { requireAuth, isAuthError, assertPropertyAccess } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { mergePropertySettings } from "@/lib/property-settings";
 
@@ -18,6 +18,8 @@ export async function GET(req: NextRequest) {
 
     const requested = new URL(req.url).searchParams.get("propertyId");
     const propertyId = requested || auth.staff.propertyId;
+    const denied = assertPropertyAccess(auth, propertyId);
+    if (denied) return denied;
     if (!propertyId) return NextResponse.json({ reviews: [], public: false });
 
     const [reviewsRes, propRes, structRes] = await Promise.all([
@@ -57,6 +59,8 @@ export async function PUT(req: NextRequest) {
 
     const requested = new URL(req.url).searchParams.get("propertyId");
     const propertyId = requested || auth.staff.propertyId;
+    const denied = assertPropertyAccess(auth, propertyId);
+    if (denied) return denied;
     if (!propertyId) return NextResponse.json({ error: "No property" }, { status: 400 });
 
     const body = await req.json().catch(() => ({}));
