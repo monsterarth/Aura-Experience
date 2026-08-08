@@ -55,10 +55,21 @@ REVOKE ALL PRIVILEGES ON TABLE public.housekeeping_tasks  FROM anon;
 REVOKE ALL PRIVILEGES ON TABLE public.automation_rules    FROM anon;
 REVOKE ALL PRIVILEGES ON TABLE public.message_templates   FROM anon;
 
--- Verificação (esperado: nenhuma linha):
--- SELECT table_name, privilege_type FROM information_schema.role_table_grants
---  WHERE grantee = 'anon' AND table_schema = 'public'
---    AND table_name IN ('properties','stays','guests','cabins','folio_items',
---        'structures','structure_bookings','events','map_pois',
---        'breakfast_sessions','breakfast_tables','breakfast_attendance',
---        'housekeeping_tasks','automation_rules','message_templates');
+-- ── PROVA, no mesmo apertar de botão ─────────────────────────────────────────
+-- Este SELECT fecha o arquivo de propósito: o painel de resultado passa a ser a
+-- verificação. Na primeira tentativa o script não chegou a valer (os 15 grants
+-- continuaram intactos) e só descobrimos isso numa consulta separada — com o
+-- SELECT aqui, "rodou" e "funcionou" deixam de ser coisas diferentes.
+--
+-- ESPERADO: nenhuma linha ("no rows returned" / resultado vazio).
+-- Qualquer linha que aparecer é uma tabela que continua aberta para a chave anon.
+SELECT table_name,
+       string_agg(privilege_type, ', ' ORDER BY privilege_type) AS ainda_aberto_para_anon
+  FROM information_schema.role_table_grants
+ WHERE grantee = 'anon' AND table_schema = 'public'
+   AND table_name IN ('properties','stays','guests','cabins','folio_items',
+       'structures','structure_bookings','events','map_pois',
+       'breakfast_sessions','breakfast_tables','breakfast_attendance',
+       'housekeeping_tasks','automation_rules','message_templates')
+ GROUP BY table_name
+ ORDER BY table_name;
