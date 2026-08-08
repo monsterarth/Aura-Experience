@@ -50,17 +50,13 @@ export const SETTINGS_KEY_ROLES: Record<string, UserRole[]> = {
   fbSettings: ["super_admin", "admin", "manager", "kitchen"],
   weddingLead: ["super_admin", "admin", "manager"],
 
-  // Legado: escritos pela tela antiga, sem leitor. Saem na fase 7 — até lá
-  // precisam estar aqui, senão o "Salvar" da tela antiga quebra.
-  govStartTime: ["super_admin", "admin", "manager"],
-  govEndTime: ["super_admin", "admin", "manager"],
-  maintenanceStartTime: ["super_admin", "admin", "manager"],
-  maintenanceEndTime: ["super_admin", "admin", "manager"],
-  breakfastModality: ["super_admin", "admin", "manager"],
-  buffetStartTime: ["super_admin", "admin", "manager"],
-  buffetEndTime: ["super_admin", "admin", "manager"],
-  deliveryStartTime: ["super_admin", "admin", "manager"],
-  deliveryEndTime: ["super_admin", "admin", "manager"],
+  // Chaves LEGADAS saíram desta lista junto com a tela antiga que as escrevia:
+  //   govStartTime · govEndTime · maintenanceStartTime · maintenanceEndTime
+  //     → eram gravadas e nunca lidas por ninguém.
+  //   breakfastModality · buffetStartTime/EndTime · deliveryStartTime/EndTime
+  //     → substituídas por `fbSettings`, que é quem o portal lê de verdade.
+  // Os valores continuam no banco (inofensivos); o que acabou foi a escrita. Fora
+  // da allowlist, tentar gravá-las agora devolve 400 em vez de ressuscitar o legado.
 };
 
 export interface SettingsPatchRejection {
