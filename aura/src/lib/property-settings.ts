@@ -49,6 +49,8 @@ export const SETTINGS_KEY_ROLES: Record<string, UserRole[]> = {
   lateCheckInMessage: ["super_admin", "admin", "manager"],
   fbSettings: ["super_admin", "admin", "manager", "kitchen"],
   weddingLead: ["super_admin", "admin", "manager"],
+  crmChannels: ["super_admin", "admin", "manager"],
+  crmQuoteLead: ["super_admin", "admin", "manager"],
 
   // Chaves LEGADAS saíram desta lista junto com a tela antiga que as escrevia:
   //   govStartTime · govEndTime · maintenanceStartTime · maintenanceEndTime

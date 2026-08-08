@@ -70,3 +70,5 @@ record**. There is **no migration runner** — each file was applied manually vi
 | 2026-08-04 | `financeiro_phase2_diaria_editavel.sql` | Financeiro fase 2: `stays."lodgingPaused"` (pausa o cron) e `stays."nightlyOverrides"` (valor por noite; 0 = noite não cobrada) |
 | 2026-08-04 | `weddings_status_lost.sql` | Casamentos: status `lost` (negociação perdida ≠ cancelado) — recria a CHECK constraint de `status` e adiciona `"lostReason"`/`"lostAt"` |
 | 2026-08-05 | `weddings_lead_validity.sql` | Casamentos: validade do lead — `"followUpAt"`/`"expiresAt"` + índices parciais; padrões por propriedade em `properties.settings.weddingLead` |
+| 2026-08-08 | `crm_phase1_foundation.sql` | CRM fase 1: origem (`source`) + prazos (`followUpAt`/`expiresAt`/`sentAt`/`lostAt`) em `rate_quotes`, contato do casal em `weddings`, e histórico compartilhado `crm_interactions` |
+| 2026-08-08 | `crm_phase1_backfill.sql` | CRM fase 1 (backfill): snapshot antigo ganha `categoryId`, `selectedCategory` nome→id, prazos retroativos e `categoryLinks`→`siteUrl` — com sondas antes de cada UPDATE |

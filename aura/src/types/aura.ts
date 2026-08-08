@@ -80,6 +80,8 @@ export interface Property {
     checkInTime?: string;        // horário padrão de check-in (HH:MM) — política da propriedade, default ao criar estadias
     checkOutTime?: string;       // horário padrão de check-out (HH:MM)
     weddingLead?: WeddingLeadSettings;  // prazos padrão das negociações de casamento
+    crmChannels?: CrmChannel[];         // canais de origem de lead (padrão + editável)
+    crmQuoteLead?: WeddingLeadSettings; // prazos padrão dos orçamentos de reserva
     whatsappEnabled: boolean;
     whatsappNumber?: string;
     whatsappConfig?: {
@@ -1443,6 +1445,11 @@ export interface Wedding {
   groom: string;
   groomShort?: string;
   coupleWebsite?: string;
+  /** WhatsApp do casal, só dígitos — mesmo formato de `contacts.id`. */
+  couplePhone?: string | null;
+  coupleEmail?: string | null;
+  /** Canal de origem do lead — slug de `settings.crmChannels`. */
+  source?: string | null;
   // Event
   weddingDate: string;       // YYYY-MM-DD
   ceremonyDetails?: string;  // e.g. "18h00 · Jardim das Oliveiras"
@@ -2396,6 +2403,69 @@ export interface RateQuoteResult {
   nights: number;
 }
 
+// ==========================================
+// MÓDULO CRM (compartilhado: orçamentos + casamentos)
+// ==========================================
+
+/** Canal de origem de lead. `id` é slug estável (agrupa KPI); `label` é livre. */
+export interface CrmChannel {
+  id: string;
+  label: string;
+}
+
+/** Lista padrão — substituível por propriedade em `settings.crmChannels`. */
+export const DEFAULT_CRM_CHANNELS: CrmChannel[] = [
+  { id: 'whatsapp',  label: 'WhatsApp' },
+  { id: 'instagram', label: 'Instagram' },
+  { id: 'site',      label: 'Site' },
+  { id: 'telefone',  label: 'Telefone' },
+  { id: 'booking',   label: 'Booking' },
+  { id: 'airbnb',    label: 'Airbnb' },
+  { id: 'indicacao', label: 'Indicação' },
+  { id: 'balcao',    label: 'Balcão' },
+  { id: 'agencia',   label: 'Agência' },
+  { id: 'evento',    label: 'Evento/Casamento' },
+  { id: 'outro',     label: 'Outro' },
+];
+
+/** Prazos padrão dos orçamentos de reserva (escala menor que casamentos). */
+export const DEFAULT_QUOTE_LEAD: WeddingLeadSettings = {
+  followUpDays: 3,
+  expiryDays: 30,
+  renewDays: 30,
+};
+
+export type CrmEntityType = 'quote' | 'wedding';
+
+export type CrmInteractionKind =
+  | 'created' | 'note' | 'stage_change' | 'follow_up' | 'sent'
+  | 'converted' | 'stay_linked' | 'lost' | 'reopened';
+
+/** Uma linha do histórico comercial — contato, troca de etapa, envio, perda… */
+export interface CrmInteraction {
+  id: string;
+  propertyId: string;
+  entityType: CrmEntityType;
+  entityId: string;
+  kind: CrmInteractionKind;
+  note?: string | null;
+  /** {from,to} em stage_change · {stayId} · {reason} · {followUpAt,expiresAt} */
+  payload: Record<string, unknown>;
+  actorId?: string | null;
+  actorName?: string | null;
+  createdAt: Timestamp;
+}
+
+/** Motivos de perda de ORÇAMENTO (casamentos têm a própria lista). */
+export const CRM_LOST_REASONS_QUOTE = [
+  'Preço acima do orçamento',
+  'Sem disponibilidade nas datas',
+  'Mudou as datas',
+  'Reservou em outro lugar',
+  'Sem retorno do cliente',
+  'Desistiu da viagem',
+] as const;
+
 /** Disponibilidade real por categoria no intervalo consultado. */
 export interface RateAvailability {
   total: number;
@@ -2441,6 +2511,8 @@ export interface RateQuoteRecord {
   guestId?: string | null;
   stayId?: string | null;
   weddingId?: string | null;
+  /** Canal de origem do lead — slug de `settings.crmChannels`. */
+  source?: string | null;
   // Parâmetros da consulta
   checkIn: string;           // YYYY-MM-DD
   checkOut: string;          // YYYY-MM-DD
@@ -2459,6 +2531,13 @@ export interface RateQuoteRecord {
   // Funil
   status: RateQuoteStatus;
   lostReason?: string | null;
+  lostAt?: Timestamp | null;
+  /** 1ª vez que a cotação foi enviada ao cliente. */
+  sentAt?: Timestamp | null;
+  /** Próximo contato com o cliente (YYYY-MM-DD). Só sinaliza. */
+  followUpAt?: string | null;
+  /** Validade da negociação (YYYY-MM-DD): vencida vira 'lost' pelo cron. */
+  expiresAt?: string | null;
   notes?: string | null;
   createdBy?: string | null;
   createdByName?: string | null;
