@@ -339,6 +339,15 @@ export class AutomationService {
   }
 
   /**
+   * Chave da regra. O id NÃO pode ser o nome do gatilho: ele é a PK da tabela, e
+   * com "welcome_checkin" cru existiam 7 linhas no banco inteiro para 3 pousadas.
+   * Ver migrations/automation_rules_per_property.sql.
+   */
+  static _ruleKey(propertyId: string, trigger: string) {
+    return `${propertyId}__${trigger}`;
+  }
+
+  /**
    * Lista as regras, criando as que faltam.
    *
    * ATENÇÃO — este método já destruiu configuração em produção (06/08/2026, 19:53):
@@ -379,7 +388,7 @@ export class AutomationService {
       if (missingTriggers.length === 0) return existing as AutomationRule[];
 
       const newRules = missingTriggers.map((trigger: any) => ({
-        id: trigger,
+        id: AutomationService._ruleKey(propertyId, trigger),
         triggerEvent: trigger,
         propertyId,
         active: false,
@@ -388,8 +397,10 @@ export class AutomationService {
         updatedAt: new Date().toISOString()
       }));
 
+      // Conflito pelo PAR (propertyId, triggerEvent), não pelo id: é o que impede
+      // uma propriedade de escrever por cima da regra de outra.
       await supabase.from('automation_rules')
-        .upsert(newRules, { onConflict: 'id', ignoreDuplicates: true });
+        .upsert(newRules, { onConflict: 'propertyId,triggerEvent', ignoreDuplicates: true });
 
       // Relê em vez de assumir o que foi gravado: com ON CONFLICT DO NOTHING, parte
       // das linhas pode não ter entrado, e devolver o otimismo esconderia isso.
@@ -414,15 +425,19 @@ export class AutomationService {
         return false;
       }
 
-      // Se nenhuma linha foi afetada, tenta upsert
+      // Nenhuma linha afetada = a regra ainda não existe para ESTA propriedade.
+      // O conflito é pelo par (propertyId, triggerEvent): antes era por `id`, e como
+      // o id era o nome do gatilho, configurar a segunda pousada roubava a linha da
+      // primeira. `triggerEvent` sai do id namespaced, não do id cru.
       if (count === 0) {
+        const triggerEvent = ruleId.includes("__") ? ruleId.split("__").pop()! : ruleId;
         const { error: upsertError } = await supabase.from('automation_rules').upsert({
-          id: ruleId,
-          triggerEvent: ruleId,
+          id: AutomationService._ruleKey(propertyId, triggerEvent),
+          triggerEvent,
           propertyId,
           ...data,
           updatedAt: new Date().toISOString()
-        }, { onConflict: 'id' });
+        }, { onConflict: 'propertyId,triggerEvent' });
 
         if (upsertError) {
           console.error("updateRule upsert fallback error:", upsertError);
