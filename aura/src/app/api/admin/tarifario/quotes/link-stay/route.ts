@@ -11,6 +11,32 @@ export const dynamic = "force-dynamic";
 
 const WRITE_ROLES = ["super_admin", "admin", "manager", "reception"] as const;
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Lista estadias candidatas ao vínculo (janela ±7d do check-in orçado). */
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth([...WRITE_ROLES]);
+  if (isAuthError(auth)) return auth;
+  if (!supabaseAdmin) return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+
+  const url = new URL(req.url);
+  const propertyId = url.searchParams.get("propertyId") || auth.staff.propertyId;
+  const denied = assertPropertyAccess(auth, propertyId);
+  if (denied) return denied;
+  if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
+
+  const checkIn = url.searchParams.get("checkIn") || "";
+  if (!ISO_DATE.test(checkIn)) return NextResponse.json({ error: "Data inválida" }, { status: 400 });
+
+  try {
+    const stays = await RateService.listLinkableStays(propertyId, checkIn);
+    return NextResponse.json({ stays });
+  } catch (e) {
+    console.error("Erro ao listar estadias vinculáveis:", e);
+    return NextResponse.json({ error: "Falha ao buscar estadias." }, { status: 500 });
+  }
+}
+
 export async function POST(req: NextRequest) {
   const auth = await requireAuth([...WRITE_ROLES]);
   if (isAuthError(auth)) return auth;

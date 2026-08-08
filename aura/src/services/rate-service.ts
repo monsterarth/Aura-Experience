@@ -15,7 +15,7 @@ import {
   RateAvailability,
 } from "@/types/aura";
 import {
-  computeQuote, findOverlaps, nightsBetween, resolveFill, resolveOverwrite, resolveQuoteValue,
+  addDays, computeQuote, findOverlaps, nightsBetween, resolveFill, resolveOverwrite, resolveQuoteValue,
 } from "@/lib/rate-engine";
 import { AuditService } from "./audit-service";
 import { CrmService } from "./crm-service";
@@ -733,6 +733,52 @@ export const RateService = {
     });
 
     return { linked: true, nightlyRate, lodgingTotal };
+  },
+
+  /**
+   * Estadias candidatas ao vínculo manual com um orçamento: check-in numa
+   * janela de ±7 dias do check-in orçado, não canceladas/arquivadas.
+   */
+  async listLinkableStays(
+    propertyId: string,
+    checkIn: string
+  ): Promise<{ id: string; label: string; checkIn: string; checkOut: string }[]> {
+    const admin = supabaseAdmin!;
+    const { data } = await admin
+      .from("stays")
+      .select("id, guestId, cabinId, checkIn, checkOut, status")
+      .eq("propertyId", propertyId)
+      .in("status", ["pending", "pre_checkin_done", "active"])
+      .gte("checkIn", `${addDays(checkIn, -7)}T00:00:00`)
+      .lte("checkIn", `${addDays(checkIn, 7)}T23:59:59`)
+      .order("checkIn")
+      .limit(30);
+    const rows = (data || []) as {
+      id: string; guestId: string | null; cabinId: string | null; checkIn: string; checkOut: string;
+    }[];
+    if (rows.length === 0) return [];
+
+    const guestIds = Array.from(new Set(rows.map((r) => r.guestId).filter(Boolean))) as string[];
+    const cabinIds = Array.from(new Set(rows.map((r) => r.cabinId).filter(Boolean))) as string[];
+    const [guestsRes, cabinsRes] = await Promise.all([
+      guestIds.length
+        ? admin.from("guests").select("id, fullName").in("id", guestIds)
+        : Promise.resolve({ data: [] }),
+      cabinIds.length
+        ? admin.from("cabins").select("id, name").in("id", cabinIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+    const guestName = new Map(((guestsRes.data || []) as { id: string; fullName: string }[]).map((g) => [g.id, g.fullName]));
+    const cabinName = new Map(((cabinsRes.data || []) as { id: string; name: string }[]).map((c) => [c.id, c.name]));
+
+    const br = (iso: string) => iso.slice(0, 10).split("-").reverse().slice(0, 2).join("/");
+    return rows.map((r) => ({
+      id: r.id,
+      label: `${r.guestId ? guestName.get(r.guestId) ?? "Sem hóspede" : "Sem hóspede"} · ${
+        r.cabinId ? cabinName.get(r.cabinId) ?? "—" : "sem cabana"} · ${br(r.checkIn)}→${br(r.checkOut)}`,
+      checkIn: r.checkIn,
+      checkOut: r.checkOut,
+    }));
   },
 
   /**

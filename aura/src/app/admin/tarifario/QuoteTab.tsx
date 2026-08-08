@@ -10,7 +10,7 @@ import {
   AlertTriangle, Check, CheckSquare, Copy, Heart, Home, Loader2, PartyPopper,
   PawPrint, Save, Search, Square, X,
 } from "lucide-react";
-import { Guest, RateAvailability, RateQuoteCategory, RateQuoteInput } from "@/types/aura";
+import { Guest, RateAvailability, RateQuoteCategory, RateQuoteInput, RateQuoteRecord } from "@/types/aura";
 import { GuestService } from "@/services/guest-service";
 import type { RateBundle } from "@/services/rate-service";
 import {
@@ -24,12 +24,18 @@ interface Props {
   attendantName: string;
   /** Notifica a aba Funil que um orçamento novo foi salvo. */
   onQuoteSaved?: () => void;
+  /** Orçamento reaberto do funil — hidrata TODOS os parâmetros persistidos. */
+  initialQuote?: RateQuoteRecord | null;
+  /** Sai do modo edição (limpa o initialQuote no pai). */
+  onExitEdit?: () => void;
 }
 
 // Data LOCAL (não UTC): à noite no fuso do Brasil, toISOString já virou o dia seguinte.
 const todayIso = () => dateToIso(new Date());
 
-export default function QuoteTab({ propertyId, bundle, attendantName, onQuoteSaved }: Props) {
+export default function QuoteTab({
+  propertyId, bundle, attendantName, onQuoteSaved, initialQuote, onExitEdit,
+}: Props) {
   const { settings } = bundle;
 
   const [checkIn, setCheckIn] = useState(todayIso());
@@ -65,7 +71,44 @@ export default function QuoteTab({ propertyId, bundle, attendantName, onQuoteSav
   const [searchingGuest, setSearchingGuest] = useState(false);
   const [savingQuote, setSavingQuote] = useState(false);
   const [saved, setSaved] = useState<{ id: string; key: string } | null>(null);
+  const [source, setSource] = useState("");
+  // Reabertura: id do orçamento em edição (salvar recalcula o MESMO lead).
+  const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
   const guestDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Hidrata TODOS os parâmetros persistidos do orçamento reaberto — inclusive
+  // flutuação/descontos/extra, que antes eram gravados e nunca relidos.
+  useEffect(() => {
+    if (!initialQuote) return;
+    setCheckIn(initialQuote.checkIn);
+    setCheckOut(initialQuote.checkOut);
+    setAdultsRaw(String(initialQuote.adults ?? 2));
+    setChildrenRaw(String(initialQuote.children ?? 0));
+    setBabiesRaw(String(initialQuote.babies ?? 0));
+    setPetsRaw(String(initialQuote.pets ?? 0));
+    setFluctuationPct(Number(initialQuote.fluctuationPct) || 0);
+    setDiscountIds(Array.isArray(initialQuote.discountIds) ? initialQuote.discountIds : []);
+    setAdhocValue(initialQuote.adhocValue ? String(initialQuote.adhocValue) : "");
+    setAdhocType(initialQuote.adhocType === "brl" ? "brl" : "pct");
+    setWeddingId(initialQuote.weddingId || "");
+    setClientName(initialQuote.clientName || "");
+    setClientDocument(initialQuote.clientDocument || "");
+    setClientPhone(initialQuote.clientPhone || "");
+    setClientEmail(initialQuote.clientEmail || "");
+    setSource(initialQuote.source || "");
+    setLinkedGuest(initialQuote.guestId
+      ? { id: initialQuote.guestId, name: initialQuote.clientName || initialQuote.guestId }
+      : null);
+    setEditingQuoteId(initialQuote.id);
+    setSaved(null);
+    setDeselected(new Set());
+  }, [initialQuote]);
+
+  const exitEditMode = () => {
+    setEditingQuoteId(null);
+    setSaved(null);
+    onExitEdit?.();
+  };
 
   useEffect(() => {
     if (guestDebounce.current) clearTimeout(guestDebounce.current);
@@ -110,16 +153,14 @@ export default function QuoteTab({ propertyId, bundle, attendantName, onQuoteSav
     [input, bundle.tables, bundle.periods, settings, bundle.categories]
   );
 
-  /** Link do site: da categoria (fonte atual) com fallback no config legado. */
+  /** Link do site da categoria (o fallback legado por nome foi migrado). */
   const linkOf = (q: RateQuoteCategory) =>
-    bundle.categories.find((c) => c.id === q.categoryId)?.siteUrl ||
-    settings.categoryLinks?.[q.category] ||
-    undefined;
+    bundle.categories.find((c) => c.id === q.categoryId)?.siteUrl || undefined;
 
   // Identidade do orçamento atual: mudou parâmetro ou cliente = orçamento novo.
   const quoteKey = useMemo(
-    () => JSON.stringify([input, clientName, clientDocument, clientPhone, clientEmail, linkedGuest?.id ?? null, weddingId]),
-    [input, clientName, clientDocument, clientPhone, clientEmail, linkedGuest, weddingId]
+    () => JSON.stringify([input, clientName, clientDocument, clientPhone, clientEmail, linkedGuest?.id ?? null, weddingId, source, editingQuoteId]),
+    [input, clientName, clientDocument, clientPhone, clientEmail, linkedGuest, weddingId, source, editingQuoteId]
   );
   const isSavedCurrent = saved?.key === quoteKey;
 
@@ -140,16 +181,18 @@ export default function QuoteTab({ propertyId, bundle, attendantName, onQuoteSav
         body: JSON.stringify({
           propertyId,
           quote: {
+            id: editingQuoteId ?? undefined, // reabertura: recalcula o mesmo lead
             clientName, clientDocument, clientPhone, clientEmail,
             guestId: linkedGuest?.id ?? null,
             weddingId: weddingId || null,
+            source: source || null,
             checkIn, checkOut, adults, children, babies, pets,
             fluctuationPct,
             discountIds,
             adhocValue: parseFloat(adhocValue) || 0,
             adhocType,
-            snapshot: quote.categories,
             status,
+            // snapshot NÃO vai: o servidor recalcula com computeQuote
           },
         }),
       });
@@ -316,7 +359,7 @@ export default function QuoteTab({ propertyId, bundle, attendantName, onQuoteSav
             </label>
             <select className="field-input" value={weddingId} onChange={(e) => applyWedding(e.target.value)}>
               <option value="">Não (turista)</option>
-              {bundle.weddings.map((w) => (
+              {bundle.weddings.filter((w) => w.status !== "lost").map((w) => (
                 <option key={w.id} value={w.id}>
                   💍 {w.couple} · {formatDateBR(w.checkin.slice(0, 10))}
                 </option>
@@ -381,21 +424,34 @@ export default function QuoteTab({ propertyId, bundle, attendantName, onQuoteSav
               (opcional — alimenta o funil de vendas)
             </span>
           </h3>
-          {isSavedCurrent ? (
-            <span className="text-xs font-bold text-emerald-600">Salvo no funil ✓</span>
-          ) : (
-            <Button size="sm" variant="secondary"
-              disabled={savingQuote || !hasClient || quote.categories.length === 0}
-              onClick={async () => {
-                const id = await saveToFunnel("open");
-                if (id) toast.success("Orçamento salvo no funil.");
-              }}>
-              {savingQuote
-                ? <Loader2 size={13} className="mr-1 animate-spin" />
-                : <Save size={13} className="mr-1" />}
-              Salvar no funil
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {editingQuoteId && (
+              <span className="text-[11px] font-bold bg-amber-100 text-amber-700 rounded-full px-2.5 py-1 inline-flex items-center gap-1.5">
+                Editando orçamento do funil
+                <button className="hover:text-red-600" title="Sair da edição (voltar a criar novo)"
+                  onClick={exitEditMode}>
+                  <X size={11} />
+                </button>
+              </span>
+            )}
+            {isSavedCurrent ? (
+              <span className="text-xs font-bold text-emerald-600">Salvo no funil ✓</span>
+            ) : (
+              <Button size="sm" variant="secondary"
+                disabled={savingQuote || !hasClient || quote.categories.length === 0}
+                onClick={async () => {
+                  const id = await saveToFunnel("open");
+                  if (id) toast.success(editingQuoteId
+                    ? "Orçamento recalculado e atualizado no funil."
+                    : "Orçamento salvo no funil.");
+                }}>
+                {savingQuote
+                  ? <Loader2 size={13} className="mr-1 animate-spin" />
+                  : <Save size={13} className="mr-1" />}
+                {editingQuoteId ? "Atualizar no funil" : "Salvar no funil"}
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="relative max-w-md">
@@ -454,6 +510,15 @@ export default function QuoteTab({ propertyId, bundle, attendantName, onQuoteSav
             <label className="field-label">E-mail</label>
             <input className="field-input" type="email" value={clientEmail}
               onChange={(e) => setClientEmail(e.target.value)} placeholder="email@exemplo.com" />
+          </div>
+          <div>
+            <label className="field-label">Origem do lead</label>
+            <select className="field-input" value={source} onChange={(e) => setSource(e.target.value)}>
+              <option value="">—</option>
+              {bundle.channels.map((c) => (
+                <option key={c.id} value={c.id}>{c.label}</option>
+              ))}
+            </select>
           </div>
         </div>
         <p className="text-[11px] text-muted-foreground">

@@ -5,13 +5,15 @@
 // com resolução de conflitos e config comercial (templates de WhatsApp).
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { useTabParam } from "@/lib/settings-deeplink";
 import { cn } from "@/lib/utils";
 import { Calculator, CalendarRange, Filter, Loader2, Percent, Table2 } from "lucide-react";
+import { RateQuoteRecord } from "@/types/aura";
 import type { RateBundle } from "@/services/rate-service";
 import QuoteTab from "./QuoteTab";
 import FunnelTab from "./FunnelTab";
@@ -40,6 +42,26 @@ function TarifarioPage() {
   const [tab, setTab] = useState<TabId>(useTabParam(TABS.map(t => t.id), "orcamento"));
   // Sinal para a aba Funil recarregar quando o Orçamento salva um lead novo.
   const [funnelSignal, setFunnelSignal] = useState(0);
+  // Orçamento reaberto na calculadora (via funil ou ?quoteId= no link).
+  const [reopenQuote, setReopenQuote] = useState<RateQuoteRecord | null>(null);
+  const searchParams = useSearchParams();
+  const quoteIdHandled = useRef(false);
+
+  const handleReopenQuote = useCallback((q: RateQuoteRecord) => {
+    setReopenQuote(q);
+    setTab("orcamento");
+  }, []);
+
+  // Deep-link ?quoteId= (usado pelo hub Comercial e por links compartilhados).
+  useEffect(() => {
+    const quoteId = searchParams.get("quoteId");
+    if (!quoteId || !property?.id || quoteIdHandled.current) return;
+    quoteIdHandled.current = true;
+    fetch(`/api/admin/tarifario/quotes?propertyId=${property.id}&id=${quoteId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.quote) handleReopenQuote(d.quote); })
+      .catch(() => {});
+  }, [searchParams, property?.id, handleReopenQuote]);
 
   const load = useCallback(async () => {
     if (!property?.id) return;
@@ -120,6 +142,8 @@ function TarifarioPage() {
               bundle={bundle}
               attendantName={userData?.fullName || "Recepção"}
               onQuoteSaved={() => setFunnelSignal((n) => n + 1)}
+              initialQuote={reopenQuote}
+              onExitEdit={() => setReopenQuote(null)}
             />
           </div>
           <div style={{ display: tab === "funil" ? "block" : "none" }}>
@@ -128,6 +152,7 @@ function TarifarioPage() {
               bundle={bundle}
               active={tab === "funil"}
               refreshSignal={funnelSignal}
+              onReopenQuote={handleReopenQuote}
             />
           </div>
           <div style={{ display: tab === "tabelas" ? "block" : "none" }}>

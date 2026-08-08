@@ -8,13 +8,13 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
-  Baby, CalendarDays, Check, Heart, Loader2, PawPrint, Phone, RefreshCw,
-  Search, StickyNote, Trash2, Users, X,
+  AlertTriangle, Baby, CalendarClock, CalendarDays, Check, Heart, Link2, Loader2,
+  PawPrint, Pencil, Phone, RefreshCw, Search, StickyNote, Tag, Trash2, Users, X,
 } from "lucide-react";
-import { Guest, RateQuoteRecord, RateQuoteStatus } from "@/types/aura";
+import { CRM_LOST_REASONS_QUOTE, Guest, RateQuoteRecord, RateQuoteStatus } from "@/types/aura";
 import { GuestService } from "@/services/guest-service";
 import type { RateBundle } from "@/services/rate-service";
-import { formatBRL, formatDateBR, nightsBetween } from "@/lib/rate-engine";
+import { dateToIso, formatBRL, formatDateBR, nightsBetween, resolveQuoteValue } from "@/lib/rate-engine";
 
 interface Props {
   propertyId: string;
@@ -23,6 +23,8 @@ interface Props {
   active: boolean;
   /** Incrementado quando a aba Orçamento salva algo novo. */
   refreshSignal: number;
+  /** Reabre o orçamento na calculadora (aba Orçamento) com tudo hidratado. */
+  onReopenQuote: (q: RateQuoteRecord) => void;
 }
 
 const STAGES: { id: RateQuoteStatus; label: string; dot: string }[] = [
@@ -35,20 +37,28 @@ const STAGES: { id: RateQuoteStatus; label: string; dot: string }[] = [
 
 const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-/** Valor do orçamento: opção escolhida ou a mais barata do snapshot ("a partir de"). */
+/** Regra única de valor (rate-engine) — a mesma do vínculo com estadia e KPIs. */
 function quoteValue(q: RateQuoteRecord): { value: number; from: boolean } {
-  if (typeof q.finalValue === "number") return { value: q.finalValue, from: false };
-  const totals = (q.snapshot || []).map((c) => c.finalTotal).filter((v) => v > 0);
-  return { value: totals.length ? Math.min(...totals) : 0, from: totals.length > 1 };
+  const r = resolveQuoteValue(q);
+  return { value: r.value, from: r.approximate };
 }
 
-export default function FunnelTab({ propertyId, bundle, active, refreshSignal }: Props) {
+/** Chave estável de um item do snapshot (id novo; nome nos dados antigos). */
+const snapKey = (c: { categoryId?: string; category: string }) => c.categoryId || c.category;
+
+export default function FunnelTab({ propertyId, bundle, active, refreshSignal, onReopenQuote }: Props) {
   const router = useRouter();
   const [quotes, setQuotes] = useState<RateQuoteRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [selected, setSelected] = useState<RateQuoteRecord | null>(null);
+  // Motivo de perda curado (substitui o prompt() antigo)
+  const [losing, setLosing] = useState<RateQuoteRecord | null>(null);
+
+  const channelLabel = (slug?: string | null) =>
+    slug ? bundle.channels.find((c) => c.id === slug)?.label ?? slug : undefined;
+  const todayIso = dateToIso(new Date());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -116,11 +126,11 @@ export default function FunnelTab({ propertyId, bundle, active, refreshSignal }:
         }
         return;
       }
-      const patch: Partial<RateQuoteRecord> = { status };
       if (status === "lost") {
-        patch.lostReason = prompt("Motivo da perda (opcional):") || null;
+        setLosing(r); // modal com motivos curados — o PATCH sai de lá
+        return;
       }
-      await patchQuote(r.id, patch);
+      await patchQuote(r.id, { status });
       await load();
     } catch (e) {
       toast.error(e instanceof Error && e.message ? e.message : "Erro ao mover o orçamento.");
@@ -228,6 +238,22 @@ export default function FunnelTab({ propertyId, bundle, active, refreshSignal }:
                               <Check size={9} /> hóspede
                             </span>
                           )}
+                          {r.source && (
+                            <span className="text-[10px] bg-secondary rounded-full px-2 py-0.5 inline-flex items-center gap-0.5">
+                              <Tag size={9} /> {channelLabel(r.source)}
+                            </span>
+                          )}
+                          {r.status !== "won" && r.status !== "lost" &&
+                            ((r.expiresAt && r.expiresAt < todayIso) ||
+                             (r.followUpAt && r.followUpAt <= todayIso)) && (
+                            <span className={`text-[10px] rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 ${
+                              r.expiresAt && r.expiresAt < todayIso
+                                ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+                            }`}>
+                              <CalendarClock size={9} />
+                              {r.expiresAt && r.expiresAt < todayIso ? "prazo vencido" : "follow-up"}
+                            </span>
+                          )}
                           {r.notes && <StickyNote size={11} className="text-muted-foreground" />}
                           {r.pets > 0 && <PawPrint size={11} className="text-muted-foreground" />}
                           {r.babies > 0 && <Baby size={11} className="text-muted-foreground" />}
@@ -258,9 +284,77 @@ export default function FunnelTab({ propertyId, bundle, active, refreshSignal }:
           onMoveStage={(status) => { setSelected(null); moveStage(selected, status); }}
           onDelete={() => remove(selected)}
           onSaved={async () => { setSelected(null); await load(); }}
+          onReopen={() => { const q = selected; setSelected(null); onReopenQuote(q); }}
           patchQuote={patchQuote}
         />
       )}
+
+      {losing && (
+        <LostQuoteModal
+          quote={losing}
+          busy={busyId === losing.id}
+          onCancel={() => setLosing(null)}
+          onConfirm={async (reason) => {
+            setBusyId(losing.id);
+            try {
+              await patchQuote(losing.id, { status: "lost", lostReason: reason });
+              setLosing(null);
+              await load();
+            } catch {
+              toast.error("Erro ao arquivar o orçamento.");
+            } finally {
+              setBusyId(null);
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Modal de perda com motivos curados (vira dado de KPI, não texto solto) ──
+
+function LostQuoteModal({ quote, busy, onCancel, onConfirm }: {
+  quote: RateQuoteRecord;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (reason: string) => Promise<void>;
+}) {
+  const [reason, setReason] = useState("");
+  const [custom, setCustom] = useState("");
+  const final = reason === "__outro__" ? custom.trim() : reason;
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget && !busy) onCancel(); }}>
+      <div className="bg-background rounded-2xl w-full max-w-md p-5 space-y-3">
+        <h3 className="font-bold text-foreground">Arquivar orçamento perdido</h3>
+        <p className="text-xs text-muted-foreground">
+          {quote.clientName || "Sem nome"} · {formatDateBR(quote.checkIn)} → {formatDateBR(quote.checkOut)}
+        </p>
+        <div className="space-y-1.5">
+          {[...CRM_LOST_REASONS_QUOTE, "__outro__"].map((r) => (
+            <label key={r}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer transition-colors ${
+                reason === r ? "border-red-300 bg-red-50" : "border-border bg-card hover:border-foreground/30"
+              }`}>
+              <input type="radio" name="quote-lost" checked={reason === r} onChange={() => setReason(r)} />
+              {r === "__outro__" ? "Outro motivo…" : r}
+            </label>
+          ))}
+          {reason === "__outro__" && (
+            <input autoFocus className="field-input" placeholder="Descreva o motivo"
+              value={custom} onChange={(e) => setCustom(e.target.value)} />
+          )}
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="ghost" onClick={onCancel} disabled={busy}>Cancelar</Button>
+          <Button variant="outline" className="text-red-600" disabled={!final || busy}
+            onClick={() => onConfirm(final)}>
+            {busy && <Loader2 size={13} className="mr-1 animate-spin" />} Arquivar como perdido
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -268,7 +362,7 @@ export default function FunnelTab({ propertyId, bundle, active, refreshSignal }:
 // ── Modal de detalhes/edição ─────────────────────────────────────────────────
 
 function QuoteDetailModal({
-  propertyId, quote, weddingLabel, busy, onClose, onMoveStage, onDelete, onSaved, patchQuote,
+  propertyId, quote, weddingLabel, busy, onClose, onMoveStage, onDelete, onSaved, onReopen, patchQuote,
 }: {
   propertyId: string;
   quote: RateQuoteRecord;
@@ -278,6 +372,7 @@ function QuoteDetailModal({
   onMoveStage: (s: RateQuoteStatus) => void;
   onDelete: () => void;
   onSaved: () => Promise<void>;
+  onReopen: () => void;
   patchQuote: (id: string, patch: Partial<RateQuoteRecord>) => Promise<void>;
 }) {
   const [clientName, setClientName] = useState(quote.clientName || "");
@@ -291,6 +386,43 @@ function QuoteDetailModal({
   const [guestResults, setGuestResults] = useState<Guest[]>([]);
   const [saving, setSaving] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Vínculo manual com estadia (fecha o elo que antes só existia via "won")
+  const [linkOptions, setLinkOptions] = useState<{ id: string; label: string }[]>([]);
+  const [linkChoice, setLinkChoice] = useState("");
+  const [linking, setLinking] = useState(false);
+
+  useEffect(() => {
+    if (quote.stayId) return;
+    fetch(`/api/admin/tarifario/quotes/link-stay?propertyId=${propertyId}&checkIn=${quote.checkIn}`)
+      .then((r) => (r.ok ? r.json() : { stays: [] }))
+      .then((d) => setLinkOptions(d.stays || []))
+      .catch(() => {});
+  }, [propertyId, quote.stayId, quote.checkIn]);
+
+  const linkStay = async () => {
+    if (!linkChoice) return;
+    setLinking(true);
+    try {
+      const res = await fetch("/api/admin/tarifario/quotes/link-stay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ propertyId, quoteId: quote.id, stayId: linkChoice }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error);
+      toast.success(
+        data?.nightlyRate
+          ? `Estadia vinculada — diária de R$ ${Number(data.nightlyRate).toFixed(2)} programada.`
+          : "Estadia vinculada ao orçamento."
+      );
+      await onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : "Erro ao vincular a estadia.");
+    } finally {
+      setLinking(false);
+    }
+  };
 
   useEffect(() => {
     if (debounce.current) clearTimeout(debounce.current);
@@ -306,14 +438,17 @@ function QuoteDetailModal({
   const save = async () => {
     setSaving(true);
     try {
-      const chosen = (quote.snapshot || []).find((c) => c.category === selectedCategory);
+      // Compat: selectedCategory pode ser id (novo) ou nome (registros antigos).
+      const chosen = (quote.snapshot || []).find(
+        (c) => snapKey(c) === selectedCategory || c.category === selectedCategory
+      );
       await patchQuote(quote.id, {
         clientName: clientName || null,
         clientDocument: clientDocument || null,
         clientPhone: clientPhone || null,
         clientEmail: clientEmail || null,
         guestId: guestId || null,
-        selectedCategory: selectedCategory || null,
+        selectedCategory: chosen ? snapKey(chosen) : null,
         finalValue: chosen ? chosen.finalTotal : null,
         notes: notes || null,
       });
@@ -417,23 +552,57 @@ function QuoteDetailModal({
             )}
           </div>
 
+          {/* Estadia (elo com o financeiro: gera as diárias no fólio) */}
+          <div>
+            <label className="field-label">Estadia</label>
+            {quote.stayId ? (
+              <div className="flex items-center gap-2 text-sm bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-3 py-2">
+                <Link2 size={14} className="shrink-0" />
+                <span>Vinculada · <span className="font-mono text-xs">{quote.stayId.slice(0, 8)}</span></span>
+              </div>
+            ) : (
+              <>
+                <div className="flex gap-2">
+                  <select className="field-input flex-1" value={linkChoice}
+                    onChange={(e) => setLinkChoice(e.target.value)}>
+                    <option value="">Vincular a uma estadia existente…</option>
+                    {linkOptions.map((s) => (
+                      <option key={s.id} value={s.id}>{s.label}</option>
+                    ))}
+                  </select>
+                  <Button variant="outline" size="sm" disabled={!linkChoice || linking} onClick={linkStay}>
+                    {linking ? <Loader2 size={13} className="animate-spin" /> : <Link2 size={13} />}
+                  </Button>
+                </div>
+                {linkOptions.length === 0 && (
+                  <p className="text-[11px] text-muted-foreground mt-1 flex items-center gap-1">
+                    <AlertTriangle size={11} /> Nenhuma estadia com check-in perto de {formatDateBR(quote.checkIn)}.
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+
           {/* Opções congeladas no orçamento */}
           <div>
             <label className="field-label">Opções orçadas (preço congelado) — marque a escolhida</label>
             <div className="space-y-1.5">
-              {(quote.snapshot || []).map((c) => (
-                <label key={c.category}
-                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer transition-colors ${
-                    selectedCategory === c.category
-                      ? "border-emerald-400 bg-emerald-50"
-                      : "border-border bg-card hover:border-foreground/30"
-                  }`}>
-                  <input type="radio" name="cat" checked={selectedCategory === c.category}
-                    onChange={() => setSelectedCategory(c.category)} />
-                  <span className="flex-1">{c.category}</span>
-                  <b>R$ {formatBRL(c.finalTotal)}</b>
-                </label>
-              ))}
+              {(quote.snapshot || []).map((c) => {
+                const isChosen = selectedCategory === snapKey(c) || selectedCategory === c.category;
+                return (
+                  <label key={snapKey(c)}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer transition-colors ${
+                      isChosen
+                        ? "border-emerald-400 bg-emerald-50"
+                        : "border-border bg-card hover:border-foreground/30"
+                    }`}>
+                    <input type="radio" name="cat" checked={isChosen}
+                      onChange={() => setSelectedCategory(snapKey(c))} />
+                    <span className="flex-1">{c.category}</span>
+                    <b>R$ {formatBRL(c.finalTotal)}</b>
+                  </label>
+                );
+              })}
               {selectedCategory && (
                 <button className="text-xs text-muted-foreground underline"
                   onClick={() => setSelectedCategory("")}>
@@ -451,9 +620,12 @@ function QuoteDetailModal({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 p-5 border-t border-border">
+        <div className="flex items-center gap-2 p-5 border-t border-border flex-wrap">
           <Button variant="outline" size="sm" className="text-red-600" onClick={onDelete}>
             <Trash2 size={13} className="mr-1" /> Excluir
+          </Button>
+          <Button variant="outline" size="sm" onClick={onReopen}>
+            <Pencil size={13} className="mr-1" /> Reabrir na calculadora
           </Button>
           <div className="ml-auto flex gap-2">
             <Button variant="ghost" onClick={onClose}>Fechar</Button>
