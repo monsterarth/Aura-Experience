@@ -3,8 +3,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { StayService } from "@/services/stay-service";
-import { PropertyService } from "@/services/property-service";
+import { GuestApi } from "@/lib/guest-api";
 import { chatwootSyncOnPreCheckinComplete } from "@/app/actions/chatwoot-actions";
 import {
   Loader2, CheckCircle2, User, MapPin,
@@ -432,21 +431,21 @@ export default function UnifiedPreCheckin() {
           return;
         }
 
-        const targetPropertyId = await StayService.findPropertyIdByStayId(stayId as string);
-        if (!targetPropertyId) {
-          setStep('error');
-          return;
-        }
+        // Reserva, hóspede, cabana, grupo e propriedade numa chamada service-role.
+        // (As listas do FNRH são estáticas — não tocam o banco.)
+        const boot = await GuestApi.precheckin(stayId as string).catch(() => null);
+        if (!boot) { setStep('error'); return; }
 
-        const [data, propData, generos, racas, transportes, motivos, tiposDocumento] = await Promise.all([
-          StayService.getStayWithGuestAndCabin(targetPropertyId, stayId as string),
-          PropertyService.getPropertyById(targetPropertyId),
+        const targetPropertyId = boot.propertyId;
+        const [generos, racas, transportes, motivos, tiposDocumento] = await Promise.all([
           FnrhService.getGeneros(),
           FnrhService.getRacas(),
           FnrhService.getMeiosTransporte(),
           FnrhService.getMotivosViagem(),
           FnrhService.getTiposDocumento()
         ]);
+        const data = { stay: boot.stay, guest: boot.guest, cabin: boot.cabin };
+        const propData = boot.property;
 
         if (data && propData) {
           setPropertyData(propData);
@@ -474,7 +473,7 @@ export default function UnifiedPreCheckin() {
           setCabin(data.cabin);
 
           if (data.stay.groupId) {
-            const allStays = await StayService.getGroupStays(data.stay.accessCode);
+            const allStays = boot.groupStays;
             setGroupStays(allStays);
 
             const urlParams = new URLSearchParams(window.location.search);
@@ -653,7 +652,7 @@ export default function UnifiedPreCheckin() {
     setIsSavingDraft(true);
     try {
       const { stayData, guestData } = getDraftPayload(currentStep);
-      await StayService.savePreCheckinDraft(stay.propertyId, stayId as string, stayData, guestData);
+      await GuestApi.precheckinAction({ action: "draft", stayId: stayId as string, stayData, guestData });
       setWizardStep((currentStep + 1) as 2 | 3 | 4);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch {
@@ -686,9 +685,10 @@ export default function UnifiedPreCheckin() {
         }))
       };
 
-      const returnedCode = await StayService.completePreCheckin(stay.propertyId, stayId as string, fnrhStayPayload, fnrhGuestPayload);
+      const { accessCode: returnedCode } = await GuestApi.precheckinAction({ action: "complete", stayId: stayId as string, stayData: fnrhStayPayload as any, guestData: fnrhGuestPayload as any });
       chatwootSyncOnPreCheckinComplete(stayId as string).catch(() => {});
-      setNewAccessCode(returnedCode);
+      // A rota devolve o código final (a reserva de grupo ganha um novo, desmembrado).
+      setNewAccessCode(returnedCode ?? null);
       setStep('success');
     } catch (error: any) {
       alert(`Erro: ${error.message}`);

@@ -55,6 +55,36 @@ export const GuestApi = {
     return json as GuestSession;
   },
 
+  /** Bootstrap do formulário de pré-check-in (aberto por link, sem código em mãos). */
+  async precheckin(stayId: string) {
+    const res = await fetch(`/api/guest/precheckin?stayId=${encodeURIComponent(stayId)}`, { cache: "no-store" });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || `Falha ao carregar a reserva (${res.status}).`);
+    return json as {
+      propertyId: string; stay: Stay; guest: Guest | null; cabin: Cabin | null;
+      groupStays: Stay[]; property: GuestSession["property"];
+    };
+  },
+
+  /** Escritas do pré-check-in. Os campos gravados passam por allowlist no servidor. */
+  async precheckinAction(body: {
+    action: "draft" | "complete" | "accept-terms";
+    stayId: string;
+    stayData?: Record<string, unknown>;
+    guestData?: Record<string, unknown>;
+    accessCode?: string;
+    guestName?: string;
+  }): Promise<{ ok: boolean; accessCode?: string }> {
+    const res = await fetch("/api/guest/precheckin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || `Falha ao salvar (${res.status}).`);
+    return json;
+  },
+
   /** Catálogo + pedidos da estadia. */
   concierge(scope: GuestScope) {
     return getJson<{ items: ConciergeItem[]; requests: ConciergeRequest[] }>("concierge", scope);

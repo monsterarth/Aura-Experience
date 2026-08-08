@@ -3,7 +3,6 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { GuestApi } from "@/lib/guest-api";
-import { StayService } from "@/services/stay-service";
 import { Stay, Property } from "@/types/aura";
 import { Loader2, CheckCircle, FileText, AlertCircle, Phone, Star, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
@@ -353,7 +352,12 @@ function GuestHubContent() {
                 termsAccepted: true
             };
 
-            await StayService.acceptGuestTerms(stay.propertyId, stay.id, stay.guestId || 'system', "Hóspede", stay.automationFlags || {});
+            // Escrita por rota service-role. Aqui dá para exigir o código de acesso:
+            // quem aceita os termos está no portal e o tem — diferente do formulário,
+            // que é aberto por link direto e só conhece o stayId.
+            await GuestApi.precheckinAction({
+                action: "accept-terms", stayId: stay.id, accessCode: code as string,
+            });
 
             // Update local state to trigger the dashboard view
             setStay({ ...stay, automationFlags: newFlags });
