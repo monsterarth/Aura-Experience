@@ -161,7 +161,7 @@ const SEARCH_ROUTES: SearchItem[] = [
   { label: "Escalas",           href: "/admin/escalas", keywords: ["escala", "turno", "folga", "jornada"] },
   { label: "Cabanas",           href: "/admin/cabins", keywords: ["cabana", "quarto", "acomodação", "wifi"] },
   { label: "Estruturas",        href: "/admin/estruturas", keywords: ["estrutura", "área", "espaço"] },
-  { label: "Catálogo Concierge",href: "/admin/core/concierge", keywords: ["concierge", "catálogo", "item"] },
+  { label: "Catálogo Concierge",href: "/admin/concierge", keywords: ["concierge", "catálogo", "item"] },
   { label: "Pesquisas (NPS)",   href: "/admin/surveys", keywords: ["pesquisa", "nps", "questionário"] },
   { label: "Logs de Auditoria", href: "/admin/logs", keywords: ["log", "auditoria", "histórico", "quem fez"] },
   { label: "Configurações",     href: "/admin/configuracoes", keywords: ["configuração", "ajuste", "setup", "parâmetro"] },

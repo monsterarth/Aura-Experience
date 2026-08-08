@@ -216,7 +216,7 @@ export const SETTINGS_DOMAINS: SettingsDomain[] = [
         id: "resort-map", title: "Mapa do resort", kind: "external", roles: ADMIN_MANAGER,
         description: "Imagem ilustrada, calibração, pontos de interesse e posição de cabanas e estruturas.",
         keywords: ["mapa", "resort", "gps", "calibração", "poi", "ponto de interesse", "satélite", "pin"],
-        icon: MapPinned, href: () => "/admin/core/resort-map",
+        icon: MapPinned, href: () => "/admin/resort-map",
       },
       {
         id: "estruturas", title: "Estruturas", kind: "external", roles: ADMIN_MANAGER, tag: "cadastro",

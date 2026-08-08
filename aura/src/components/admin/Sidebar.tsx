@@ -235,7 +235,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: "cabanas",    label: "Cabanas",           icon: Building,         href: "/admin/cabins",          roles: ["super_admin","admin","governance","manager"] },
       { id: "estruturas", label: "Estruturas",         icon: LayoutTemplate,   href: "/admin/estruturas", roles: ["super_admin","admin","manager"] },
-      { id: "resort_map", label: "Mapa do Resort",     icon: MapPinned,        href: "/admin/core/resort-map", roles: ["super_admin","admin","manager"] },
+      { id: "resort_map", label: "Mapa do Resort",     icon: MapPinned,        href: "/admin/resort-map", roles: ["super_admin","admin","manager"] },
       { id: "escalas",    label: "Escalas",            icon: ClipboardCheck,   href: "/admin/escalas",         roles: ["super_admin","admin","manager"] },
       { id: "logs",       label: "Logs de Auditoria",  icon: FileText,         href: "/admin/logs",            roles: ["super_admin","admin","manager"] },
       { id: "avaliacoes", label: "Avaliações",         icon: Star,             href: "/admin/surveys/responses", roles: ["super_admin","admin","reception","marketing","manager"], exactMatch: true },
