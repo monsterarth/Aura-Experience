@@ -204,7 +204,7 @@ export const WeddingService = {
   ): Promise<{ followUpAt: string; expiresAt: string }> {
     const s = await this.getLeadSettings(propertyId);
     const { data } = await supabaseAdmin
-      .from("weddings").select("weddingDate, notes").eq("id", id).single();
+      .from("weddings").select("weddingDate").eq("id", id).single();
 
     const today = localToday();
     let expiresAt = addDays(today, s.renewDays);
@@ -212,19 +212,15 @@ export const WeddingService = {
     let followUpAt = addDays(today, s.followUpDays);
     if (followUpAt > expiresAt) followUpAt = expiresAt;
 
-    const notes = note?.trim()
-      ? `${data?.notes ? `${data.notes}\n` : ""}[${today}] ${note.trim()}`
-      : data?.notes;
-
     const { error } = await supabaseAdmin
       .from("weddings")
-      .update({ followUpAt, expiresAt, notes, updatedAt: new Date().toISOString() })
+      .update({ followUpAt, expiresAt, updatedAt: new Date().toISOString() })
       .eq("id", id)
       .eq("propertyId", propertyId);
     if (error) throw new Error(error.message);
 
-    // Dual-write proposital nesta fase: nota em `notes` (visível hoje) E linha
-    // no histórico compartilhado (visível na timeline do hub, Fase B).
+    // A nota vive SÓ no histórico agora: a timeline do hub Comercial é a casa
+    // dela (o dual-write com append em `notes` era ponte até o hub existir).
     await CrmService.logInteraction(propertyId, "wedding", id, "follow_up", {
       note: note?.trim() || null,
       payload: { followUpAt, expiresAt },

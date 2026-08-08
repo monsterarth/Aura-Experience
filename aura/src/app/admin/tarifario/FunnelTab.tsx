@@ -157,6 +157,13 @@ export default function FunnelTab({ propertyId, bundle, active, refreshSignal, o
 
   return (
     <div className="space-y-4">
+      <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm text-foreground flex items-center gap-2 flex-wrap">
+        <span>🤝 O funil completo — reservas + casamentos, fila de follow-ups e histórico — agora vive em</span>
+        <button className="font-bold text-primary underline underline-offset-4"
+          onClick={() => router.push("/admin/comercial")}>
+          Comercial →
+        </button>
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[220px] max-w-sm">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
