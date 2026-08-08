@@ -1,7 +1,7 @@
 // Tarifário — config comercial (taxa pet, flutuações, descontos, promoções,
 // links por categoria e templates de WhatsApp).
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, isAuthError } from "@/lib/api-auth";
+import { requireAuth, isAuthError, assertPropertyAccess } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { RateService } from "@/services/rate-service";
 
@@ -16,7 +16,10 @@ export async function PUT(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
   const propertyId: string | undefined = body?.propertyId || auth.staff.propertyId;
-  if (!propertyId || !body?.settings) {
+  const denied = assertPropertyAccess(auth, propertyId);
+  if (denied) return denied;
+  if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
+  if (!body?.settings) {
     return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
   }
 

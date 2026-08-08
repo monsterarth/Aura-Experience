@@ -1,7 +1,7 @@
 // Tarifário — regras de calendário, com resolução de conflito no padrão do
 // SIT: strict (detecta e devolve), overwrite (sobrepõe) e fill (preenche vazios).
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, isAuthError } from "@/lib/api-auth";
+import { requireAuth, isAuthError, assertPropertyAccess } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { RateService } from "@/services/rate-service";
 
@@ -19,11 +19,14 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
   const propertyId: string | undefined = body?.propertyId || auth.staff.propertyId;
+  const denied = assertPropertyAccess(auth, propertyId);
+  if (denied) return denied;
+  if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
   const p = body?.period;
   const mode: string = body?.mode || "strict";
 
   if (
-    !propertyId || !p?.name ||
+    !p?.name ||
     !ISO_DATE.test(p?.startDate || "") || !ISO_DATE.test(p?.endDate || "") ||
     p.startDate > p.endDate ||
     !["strict", "overwrite", "fill"].includes(mode)
@@ -60,7 +63,10 @@ export async function DELETE(req: NextRequest) {
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
   const propertyId = url.searchParams.get("propertyId") || auth.staff.propertyId;
-  if (!id || !propertyId) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
+  const denied = assertPropertyAccess(auth, propertyId);
+  if (denied) return denied;
+  if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
+  if (!id) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
 
   try {
     await RateService.deletePeriod(propertyId, id);

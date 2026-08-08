@@ -1,6 +1,6 @@
 // Tarifário — CRUD das tabelas de preço.
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, isAuthError } from "@/lib/api-auth";
+import { requireAuth, isAuthError, assertPropertyAccess } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { RateService } from "@/services/rate-service";
 
@@ -16,7 +16,10 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
   const propertyId: string | undefined = body?.propertyId || auth.staff.propertyId;
-  if (!propertyId || !body?.table?.name) {
+  const denied = assertPropertyAccess(auth, propertyId);
+  if (denied) return denied;
+  if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
+  if (!body?.table?.name) {
     return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
   }
 
@@ -41,7 +44,10 @@ export async function DELETE(req: NextRequest) {
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
   const propertyId = url.searchParams.get("propertyId") || auth.staff.propertyId;
-  if (!id || !propertyId) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
+  const denied = assertPropertyAccess(auth, propertyId);
+  if (denied) return denied;
+  if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
+  if (!id) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
 
   try {
     await RateService.deleteTable(propertyId, id, auth.staff.id, auth.staff.fullName);

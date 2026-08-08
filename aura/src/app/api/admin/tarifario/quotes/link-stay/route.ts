@@ -2,7 +2,7 @@
 // grava stayId no funil, leva o preço congelado para a estadia
 // (nightlyRate/lodgingTotal) e faz o catch-up de diárias já vencidas.
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, isAuthError } from "@/lib/api-auth";
+import { requireAuth, isAuthError, assertPropertyAccess } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { RateService } from "@/services/rate-service";
 import { FinanceService } from "@/services/finance-service";
@@ -18,7 +18,10 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
   const propertyId: string | undefined = body?.propertyId || auth.staff.propertyId;
-  if (!propertyId || !body?.quoteId || !body?.stayId) {
+  const denied = assertPropertyAccess(auth, propertyId);
+  if (denied) return denied;
+  if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
+  if (!body?.quoteId || !body?.stayId) {
     return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
   }
 

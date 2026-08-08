@@ -7,7 +7,7 @@
 // gerente digite e-mail e senha no modal (verificação server-side em
 // requireManagerApproval — nunca no browser, que trocaria a sessão).
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, isAuthError } from "@/lib/api-auth";
+import { requireAuth, isAuthError, assertPropertyAccess } from "@/lib/api-auth";
 import { requireManagerApproval, requestIp } from "@/lib/manager-override";
 import { supabaseAdmin } from "@/lib/supabase";
 import { FinanceService } from "@/services/finance-service";
@@ -26,7 +26,10 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const stayId = url.searchParams.get("stayId");
   const propertyId = url.searchParams.get("propertyId") || auth.staff.propertyId;
-  if (!stayId || !propertyId) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
+  const denied = assertPropertyAccess(auth, propertyId);
+  if (denied) return denied;
+  if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
+  if (!stayId) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
 
   try {
     const data = await FinanceService.getLodgingNights(propertyId, stayId);
@@ -48,9 +51,12 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
   const propertyId: string | undefined = body?.propertyId || auth.staff.propertyId;
+  const denied = assertPropertyAccess(auth, propertyId);
+  if (denied) return denied;
+  if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
   const stayId: string | undefined = body?.stayId;
   const action: string | undefined = body?.action;
-  if (!propertyId || !stayId || !action) {
+  if (!stayId || !action) {
     return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
   }
 

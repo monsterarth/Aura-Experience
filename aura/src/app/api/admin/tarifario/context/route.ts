@@ -1,7 +1,7 @@
 // Tarifário — contexto do orçamento para um intervalo de datas:
 // disponibilidade real por categoria (cabanas × estadias) + eventos publicados.
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, isAuthError } from "@/lib/api-auth";
+import { requireAuth, isAuthError, assertPropertyAccess } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { RateService } from "@/services/rate-service";
 
@@ -18,10 +18,13 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const propertyId = url.searchParams.get("propertyId") || auth.staff.propertyId;
+  const denied = assertPropertyAccess(auth, propertyId);
+  if (denied) return denied;
+  if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
   const checkIn = url.searchParams.get("in") || "";
   const checkOut = url.searchParams.get("out") || "";
 
-  if (!propertyId || !ISO_DATE.test(checkIn) || !ISO_DATE.test(checkOut) || checkIn >= checkOut) {
+  if (!ISO_DATE.test(checkIn) || !ISO_DATE.test(checkOut) || checkIn >= checkOut) {
     return NextResponse.json({ error: "Datas inválidas" }, { status: 400 });
   }
 

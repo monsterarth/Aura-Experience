@@ -1,7 +1,7 @@
 // Tarifário — importação do backup JSON do SIT (substitui tabelas e regras da
 // propriedade; casamentos e eventos do backup são ignorados de propósito).
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, isAuthError } from "@/lib/api-auth";
+import { requireAuth, isAuthError, assertPropertyAccess } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { RateService } from "@/services/rate-service";
 
@@ -16,9 +16,13 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
   const propertyId: string | undefined = body?.propertyId || auth.staff.propertyId;
+  // Rota destrutiva (apaga o tarifário antes de importar): posse é obrigatória.
+  const denied = assertPropertyAccess(auth, propertyId);
+  if (denied) return denied;
+  if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
   const backup = body?.backup;
 
-  if (!propertyId || !backup || typeof backup !== "object") {
+  if (!backup || typeof backup !== "object") {
     return NextResponse.json({ error: "Backup inválido" }, { status: 400 });
   }
   if (!Array.isArray(backup.tabelas) && !Array.isArray(backup.periodos)) {

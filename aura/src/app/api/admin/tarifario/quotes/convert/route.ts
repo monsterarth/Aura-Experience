@@ -2,7 +2,7 @@
 // (vinculado, achado pelo documento ou criado a partir do lead) e marca 'won'.
 // A página então abre /admin/stays/new pré-preenchida.
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, isAuthError } from "@/lib/api-auth";
+import { requireAuth, isAuthError, assertPropertyAccess } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { RateService } from "@/services/rate-service";
 
@@ -17,7 +17,10 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
   const propertyId: string | undefined = body?.propertyId || auth.staff.propertyId;
-  if (!propertyId || !body?.id) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
+  const denied = assertPropertyAccess(auth, propertyId);
+  if (denied) return denied;
+  if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
+  if (!body?.id) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
 
   try {
     const result = await RateService.convertQuote(

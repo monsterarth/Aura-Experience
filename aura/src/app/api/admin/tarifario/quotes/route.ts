@@ -1,6 +1,6 @@
 // Tarifário — orçamentos salvos / funil de vendas (CRM leve).
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, isAuthError } from "@/lib/api-auth";
+import { requireAuth, isAuthError, assertPropertyAccess } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { RateService } from "@/services/rate-service";
 
@@ -15,7 +15,9 @@ export async function GET(req: NextRequest) {
   if (!supabaseAdmin) return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
 
   const propertyId = new URL(req.url).searchParams.get("propertyId") || auth.staff.propertyId;
-  if (!propertyId) return NextResponse.json({ quotes: [] });
+  const denied = assertPropertyAccess(auth, propertyId);
+  if (denied) return denied;
+  if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
 
   try {
     const quotes = await RateService.listQuotes(propertyId);
@@ -33,7 +35,10 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
   const propertyId: string | undefined = body?.propertyId || auth.staff.propertyId;
-  if (!propertyId || !body?.quote) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
+  const denied = assertPropertyAccess(auth, propertyId);
+  if (denied) return denied;
+  if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
+  if (!body?.quote) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
 
   try {
     const id = await RateService.saveQuote(propertyId, body.quote, auth.staff.id, auth.staff.fullName);
@@ -52,7 +57,10 @@ export async function PATCH(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
   const propertyId: string | undefined = body?.propertyId || auth.staff.propertyId;
-  if (!propertyId || !body?.id || !body?.patch) {
+  const denied = assertPropertyAccess(auth, propertyId);
+  if (denied) return denied;
+  if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
+  if (!body?.id || !body?.patch) {
     return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
   }
 
@@ -73,7 +81,10 @@ export async function DELETE(req: NextRequest) {
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
   const propertyId = url.searchParams.get("propertyId") || auth.staff.propertyId;
-  if (!id || !propertyId) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
+  const denied = assertPropertyAccess(auth, propertyId);
+  if (denied) return denied;
+  if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
+  if (!id) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
 
   try {
     await RateService.deleteQuote(propertyId, id);
