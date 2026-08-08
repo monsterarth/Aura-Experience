@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { mergePropertySettings } from "@/lib/property-settings";
+import { CrmService } from "./crm-service";
 import {
   Wedding, WeddingVendor, WeddingCabinAssignment, WeddingStatus,
   WeddingLeadSettings, DEFAULT_WEDDING_LEAD,
@@ -85,7 +86,7 @@ export const WeddingService = {
 
     let query = supabaseAdmin
       .from("weddings")
-      .select("id, bride, groom, weddingDate")
+      .select("id, propertyId, bride, groom, weddingDate")
       .eq("status", "confirmed")
       .lt("weddingDate", today);
     if (propertyId) query = query.eq("propertyId", propertyId);
@@ -100,6 +101,15 @@ export const WeddingService = {
       .update({ status: "completed", updatedAt: new Date().toISOString() })
       .in("id", rows.map((r) => r.id));
     if (upErr) throw new Error(upErr.message);
+
+    for (const r of rows as (typeof rows[number] & { propertyId?: string })[]) {
+      if (r.propertyId) {
+        await CrmService.logInteraction(r.propertyId, "wedding", r.id, "stage_change", {
+          actorId: "cron", actorName: "Sistema (Cron)",
+          payload: { from: "confirmed", to: "completed" },
+        });
+      }
+    }
 
     return { updated: rows.length, couples: rows.map((r) => `${r.bride} & ${r.groom}`) };
   },
@@ -116,7 +126,7 @@ export const WeddingService = {
 
     let query = supabaseAdmin
       .from("weddings")
-      .select("id, bride, groom, weddingDate")
+      .select("id, propertyId, bride, groom, weddingDate")
       .eq("status", "tentative")
       .lt("weddingDate", today);
     if (propertyId) query = query.eq("propertyId", propertyId);
@@ -137,6 +147,15 @@ export const WeddingService = {
       })
       .in("id", rows.map((r) => r.id));
     if (upErr) throw new Error(upErr.message);
+
+    for (const r of rows as (typeof rows[number] & { propertyId?: string })[]) {
+      if (r.propertyId) {
+        await CrmService.logInteraction(r.propertyId, "wedding", r.id, "lost", {
+          actorId: "cron", actorName: "Sistema (Cron)",
+          payload: { reason: "Data passou sem confirmação" },
+        });
+      }
+    }
 
     return { updated: rows.length, couples: rows.map((r) => `${r.bride} & ${r.groom}`) };
   },
@@ -204,6 +223,13 @@ export const WeddingService = {
       .eq("propertyId", propertyId);
     if (error) throw new Error(error.message);
 
+    // Dual-write proposital nesta fase: nota em `notes` (visível hoje) E linha
+    // no histórico compartilhado (visível na timeline do hub, Fase B).
+    await CrmService.logInteraction(propertyId, "wedding", id, "follow_up", {
+      note: note?.trim() || null,
+      payload: { followUpAt, expiresAt },
+    });
+
     return { followUpAt, expiresAt };
   },
 
@@ -216,7 +242,7 @@ export const WeddingService = {
 
     let query = supabaseAdmin
       .from("weddings")
-      .select("id, bride, groom, expiresAt")
+      .select("id, propertyId, bride, groom, expiresAt")
       .eq("status", "tentative")
       .not("expiresAt", "is", null)
       .lt("expiresAt", today);
@@ -239,17 +265,36 @@ export const WeddingService = {
       .in("id", rows.map((r) => r.id));
     if (upErr) throw new Error(upErr.message);
 
+    for (const r of rows as (typeof rows[number] & { propertyId?: string })[]) {
+      if (r.propertyId) {
+        await CrmService.logInteraction(r.propertyId, "wedding", r.id, "lost", {
+          actorId: "cron", actorName: "Sistema (Cron)",
+          payload: { reason: "Prazo da negociação vencido sem retorno" },
+        });
+      }
+    }
+
     return { updated: rows.length, couples: rows.map((r) => `${r.bride} & ${r.groom}`) };
   },
 
   /** Marca a negociação como perdida, com motivo. */
-  async markAsLost(id: string, reason: string): Promise<void> {
+  async markAsLost(
+    propertyId: string,
+    id: string,
+    reason: string,
+    actor?: { id: string; name: string }
+  ): Promise<void> {
     const now = new Date().toISOString();
     const { error } = await supabaseAdmin
       .from("weddings")
       .update({ status: "lost", lostReason: reason.trim() || null, lostAt: now, updatedAt: now })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("propertyId", propertyId); // defesa em profundidade (a rota já valida posse)
     if (error) throw new Error(error.message);
+
+    await CrmService.logInteraction(propertyId, "wedding", id, "lost", {
+      actorId: actor?.id, actorName: actor?.name, payload: { reason: reason.trim() || null },
+    });
   },
 
   // ── Vendors ──────────────────────────────────────────────────────────────────

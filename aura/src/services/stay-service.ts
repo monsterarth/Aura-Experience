@@ -73,7 +73,7 @@ export const StayService = {
     while (!isUnique) {
       code = Array.from({ length: 8 }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
 
-      const { data } = await supabase
+      const { data } = await db()
         .from('stays')
         .select('id')
         .eq('propertyId', propertyId)
@@ -86,7 +86,7 @@ export const StayService = {
 
   async findPropertyIdByStayId(stayId: string): Promise<string | null> {
     try {
-      const { data } = await supabase
+      const { data } = await db()
         .from('stays')
         .select('propertyId')
         .eq('id', stayId)
@@ -229,7 +229,7 @@ export const StayService = {
     stayData: Record<string, any>,
     guestData: Record<string, any>
   ): Promise<void> {
-    const { data: stay } = await supabase
+    const { data: stay } = await db()
       .from('stays')
       .select('guestId')
       .eq('id', stayId)
@@ -237,15 +237,20 @@ export const StayService = {
 
     if (!stay) return;
 
+    // Rascunho passa pelas MESMAS allowlists do envio final: era o caminho mais
+    // fácil de gravar campo operacional, porque salva sozinho enquanto se digita.
+    const safeStay = this._pick(stayData, this.PRE_CHECKIN_GUEST_EDITABLE_FIELDS);
+    const safeGuest = this._pick(guestData, this.PRE_CHECKIN_GUEST_FIELDS);
+
     await Promise.all([
-      Object.keys(stayData).length > 0
-        ? supabase.from('stays')
-            .update({ ...stayData, updatedAt: new Date().toISOString() })
+      Object.keys(safeStay).length > 0
+        ? db().from('stays')
+            .update({ ...safeStay, updatedAt: new Date().toISOString() })
             .eq('id', stayId)
         : Promise.resolve(),
-      Object.keys(guestData).length > 0
-        ? supabase.from('guests')
-            .update({ ...guestData, updatedAt: new Date().toISOString() })
+      Object.keys(safeGuest).length > 0
+        ? db().from('guests')
+            .update({ ...safeGuest, updatedAt: new Date().toISOString() })
             .eq('id', stay.guestId)
         : Promise.resolve()
     ]);
@@ -259,18 +264,35 @@ export const StayService = {
   PRE_CHECKIN_GUEST_EDITABLE_FIELDS: [
     'expectedArrivalTime', 'vehiclePlate', 'travelReason', 'transportation',
     'lastCity', 'nextCity', 'hasPet', 'petDetails', 'additionalGuests',
+    'counts', 'areaConfigs',
   ] as const,
+
+  /**
+   * O mesmo cuidado para a tabela `guests`: o formulário mandava o objeto inteiro,
+   * então um request forjado podia gravar QUALQUER coluna do hóspede. Esta lista é
+   * exatamente o que o pré-check-in edita.
+   */
+  PRE_CHECKIN_GUEST_FIELDS: [
+    'fullName', 'document', 'birthDate', 'gender', 'raca', 'occupation',
+    'nationality', 'email', 'phone', 'address', 'preferredLanguage',
+  ] as const,
+
+  /** Filtra um payload pela lista de campos permitidos. */
+  _pick(payload: Record<string, any>, fields: readonly string[]): Record<string, any> {
+    const out: Record<string, any> = {};
+    for (const f of fields) if (f in payload) out[f] = payload[f];
+    return out;
+  },
 
   async completePreCheckin(propertyId: string, stayId: string, stayUpdate: Partial<Stay>, guestUpdate: Partial<Guest>): Promise<string> {
     // Busca id do guest e dados de grupo
-    const { data: stay } = await supabase.from('stays').select('guestId, groupId, accessCode, status').eq('id', stayId).single();
+    const { data: stay } = await db().from('stays').select('guestId, groupId, accessCode, status').eq('id', stayId).single();
     if (!stay) throw new Error("Stay not found");
 
     let finalAccessCode = stay.accessCode;
-    const sanitizedStayUpdate: Record<string, any> = {};
-    for (const field of this.PRE_CHECKIN_GUEST_EDITABLE_FIELDS) {
-      if (field in stayUpdate) sanitizedStayUpdate[field] = (stayUpdate as any)[field];
-    }
+    const sanitizedStayUpdate = this._pick(stayUpdate as Record<string, any>, this.PRE_CHECKIN_GUEST_EDITABLE_FIELDS);
+    // O payload do hóspede também passa por allowlist: antes ia inteiro para o banco.
+    const sanitizedGuestUpdate = this._pick(guestUpdate as Record<string, any>, this.PRE_CHECKIN_GUEST_FIELDS);
 
     // Se a reserva é de grupo, desmembra o código para dar um dashboard privado à cabana
     if (stay.groupId) {
@@ -297,8 +319,8 @@ export const StayService = {
 
     // Supabase JS doesnt have explicit transactions, we do parallel awaited calls
     const [stayRes, guestRes] = await Promise.all([
-      supabase.from('stays').update({ ...sanitizedStayUpdate, status: nextStatus, updatedAt: new Date().toISOString() }).eq('id', stayId),
-      supabase.from('guests').update({ ...guestUpdate, updatedAt: new Date().toISOString() }).eq('id', stay.guestId)
+      db().from('stays').update({ ...sanitizedStayUpdate, status: nextStatus, updatedAt: new Date().toISOString() }).eq('id', stayId),
+      db().from('guests').update({ ...sanitizedGuestUpdate, updatedAt: new Date().toISOString() }).eq('id', stay.guestId)
     ]);
 
     if (stayRes.error) throw new Error(`Falha ao atualizar a estadia: ${stayRes.error.message}`);
@@ -319,7 +341,7 @@ export const StayService = {
   },
 
   async acceptGuestTerms(propertyId: string, stayId: string, guestId: string, guestName: string, automationFlags: Record<string, unknown>): Promise<void> {
-    await supabase.from('stays').update({ automationFlags: { ...automationFlags, termsAccepted: true }, updatedAt: new Date().toISOString() }).eq('id', stayId);
+    await db().from('stays').update({ automationFlags: { ...automationFlags, termsAccepted: true }, updatedAt: new Date().toISOString() }).eq('id', stayId);
     await AuditService.log({
       propertyId,
       userId: guestId,
@@ -388,7 +410,7 @@ export const StayService = {
   },
 
   async getGroupStays(accessCode: string) {
-    const { data: stays, error } = await supabase
+    const { data: stays, error } = await db()
       .from('stays')
       .select('*')
       .eq('accessCode', accessCode.toUpperCase())

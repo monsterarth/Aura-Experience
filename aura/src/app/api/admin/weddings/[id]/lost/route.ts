@@ -36,7 +36,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   if (!reason) return NextResponse.json({ error: 'Informe o motivo da perda.' }, { status: 400 });
 
   try {
-    await WeddingService.markAsLost(params.id, reason);
+    await WeddingService.markAsLost(before.propertyId, params.id, reason, {
+      id: auth.staff.id, name: auth.staff.fullName,
+    });
 
     await AuditService.log({
       propertyId: before.propertyId,

@@ -4,16 +4,21 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import {
   CabinCategory,
+  CrmChannel,
   Guest,
   RatePeriod,
+  RateQuoteInput,
   RateQuoteRecord,
   RateQuoteStatus,
   RateSettings,
   RateTable,
   RateAvailability,
 } from "@/types/aura";
-import { findOverlaps, nightsBetween, resolveFill, resolveOverwrite } from "@/lib/rate-engine";
+import {
+  computeQuote, findOverlaps, nightsBetween, resolveFill, resolveOverwrite, resolveQuoteValue,
+} from "@/lib/rate-engine";
 import { AuditService } from "./audit-service";
+import { CrmService } from "./crm-service";
 import { GuestService } from "./guest-service";
 
 const QUOTE_STATUSES: RateQuoteStatus[] = ["open", "sent", "negotiating", "won", "lost"];
@@ -21,10 +26,15 @@ const QUOTE_STATUSES: RateQuoteStatus[] = ["open", "sent", "negotiating", "won",
 /** Campos de rate_quotes que o PATCH pode alterar (whitelist). */
 const QUOTE_PATCH_FIELDS = [
   "clientName", "clientDocument", "clientPhone", "clientEmail",
-  "guestId", "stayId", "weddingId",
+  "guestId", "stayId", "weddingId", "source",
   "selectedCategory", "finalValue",
   "status", "lostReason", "notes",
+  "followUpAt", "expiresAt",
 ] as const;
+
+const QUOTE_STAGE_LABEL: Record<RateQuoteStatus, string> = {
+  open: "Aberto", sent: "Enviado", negotiating: "Negociando", won: "Ganho", lost: "Perdido",
+};
 
 export const DEFAULT_RATE_SETTINGS = (propertyId: string): RateSettings => ({
   propertyId,
@@ -44,6 +54,8 @@ export interface RateBundle {
   settings: RateSettings;
   /** Categorias canônicas da propriedade — chaves das tabelas de preço. */
   categories: CabinCategory[];
+  /** Canais de origem de lead (padrão + editáveis por propriedade). */
+  channels: CrmChannel[];
   /** Casamentos não-cancelados com saída futura (vínculo no orçamento). */
   weddings: { id: string; couple: string; checkin: string; checkout: string; status: string }[];
 }
@@ -70,11 +82,12 @@ export const RateService = {
     const admin = supabaseAdmin!;
     const today = new Date().toISOString().slice(0, 10);
 
-    const [tablesRes, periodsRes, settingsRes, categoriesRes, weddingsRes] = await Promise.all([
+    const [tablesRes, periodsRes, settingsRes, categoriesRes, channels, weddingsRes] = await Promise.all([
       admin.from("rate_tables").select("*").eq("propertyId", propertyId).order("createdAt"),
       admin.from("rate_periods").select("*").eq("propertyId", propertyId).order("startDate"),
       admin.from("rate_settings").select("*").eq("propertyId", propertyId).maybeSingle(),
       admin.from("cabin_categories").select("*").eq("propertyId", propertyId).order("order"),
+      CrmService.getChannels(propertyId),
       admin
         .from("weddings")
         .select("id, bride, groom, checkin, checkout, status")
@@ -109,6 +122,7 @@ export const RateService = {
         categoryLinks: settings.categoryLinks || {},
       },
       categories,
+      channels,
       weddings,
     };
   },
@@ -331,6 +345,48 @@ export const RateService = {
     return (data || []) as RateQuoteRecord[];
   },
 
+  /** Dados de cálculo da propriedade (sem casamentos/canais — uso interno). */
+  async getRateData(propertyId: string): Promise<{
+    tables: RateTable[]; periods: RatePeriod[]; settings: RateSettings; categories: CabinCategory[];
+  }> {
+    const admin = supabaseAdmin!;
+    const [tablesRes, periodsRes, settingsRes, categoriesRes] = await Promise.all([
+      admin.from("rate_tables").select("*").eq("propertyId", propertyId).order("createdAt"),
+      admin.from("rate_periods").select("*").eq("propertyId", propertyId).order("startDate"),
+      admin.from("rate_settings").select("*").eq("propertyId", propertyId).maybeSingle(),
+      admin.from("cabin_categories").select("*").eq("propertyId", propertyId).order("order"),
+    ]);
+    const settings = (settingsRes.data as RateSettings) || DEFAULT_RATE_SETTINGS(propertyId);
+    return {
+      tables: (tablesRes.data || []) as RateTable[],
+      periods: (periodsRes.data || []) as RatePeriod[],
+      settings: {
+        ...DEFAULT_RATE_SETTINGS(propertyId),
+        ...settings,
+        fluctuations: settings.fluctuations || [],
+        discounts: settings.discounts || [],
+        promos: settings.promos || [],
+        categoryLinks: settings.categoryLinks || {},
+      },
+      categories: (categoriesRes.data || []) as CabinCategory[],
+    };
+  },
+
+  async getQuoteById(propertyId: string, id: string): Promise<RateQuoteRecord | null> {
+    const admin = supabaseAdmin!;
+    const { data } = await admin
+      .from("rate_quotes").select("*")
+      .eq("id", id).eq("propertyId", propertyId).maybeSingle();
+    return (data as RateQuoteRecord) ?? null;
+  },
+
+  /**
+   * Cria (ou, com payload.id, RECALCULA e atualiza) um orçamento.
+   *
+   * O snapshot NUNCA vem do cliente: o servidor roda o computeQuote com os
+   * dados frescos da propriedade — fecha a validação e garante que o preço
+   * congelado no funil saiu do motor, não de um payload adulterável.
+   */
   async saveQuote(
     propertyId: string,
     payload: Partial<RateQuoteRecord>,
@@ -345,42 +401,121 @@ export const RateService = {
     const status: RateQuoteStatus =
       payload.status && QUOTE_STATUSES.includes(payload.status) ? payload.status : "open";
 
-    const id = crypto.randomUUID();
-    const { error } = await admin.from("rate_quotes").insert({
-      id,
-      propertyId,
+    // Recálculo server-side (ignora snapshot/finalValue do payload).
+    const input: RateQuoteInput = {
+      checkIn: payload.checkIn!,
+      checkOut: payload.checkOut!,
+      adults: Math.max(1, Number(payload.adults) || 2),
+      children: Math.max(0, Number(payload.children) || 0),
+      babies: Math.max(0, Number(payload.babies) || 0),
+      pets: Math.max(0, Number(payload.pets) || 0),
+      fluctuationPct: Number(payload.fluctuationPct) || 0,
+      discountIds: Array.isArray(payload.discountIds) ? payload.discountIds.map(String) : [],
+      adhocValue: Math.max(0, Number(payload.adhocValue) || 0),
+      adhocType: payload.adhocType === "brl" ? "brl" : "pct",
+    };
+    const data = await this.getRateData(propertyId);
+    const result = computeQuote(input, data);
+    if (result.categories.length === 0) {
+      throw new Error(
+        result.uncoveredDates.length > 0
+          ? "Sem regra de tarifário para as datas — cadastre na aba Calendário."
+          : "Nenhuma categoria com preço para esses parâmetros."
+      );
+    }
+    const snapshot = result.categories;
+    const chosen = payload.selectedCategory
+      ? snapshot.find((c) => c.categoryId === payload.selectedCategory || c.category === payload.selectedCategory)
+      : undefined;
+
+    // Origem: aceita só slug conhecido da propriedade (ou null).
+    const channels = await CrmService.getChannels(propertyId);
+    const source = payload.source && channels.some((c) => c.id === payload.source)
+      ? payload.source : null;
+
+    const existing = payload.id ? await this.getQuoteById(propertyId, payload.id) : null;
+    const now = new Date().toISOString();
+
+    const common = {
       clientName: payload.clientName?.trim() || null,
       clientDocument: payload.clientDocument?.trim() || null,
       clientPhone: payload.clientPhone ? payload.clientPhone.replace(/\D/g, "") : null,
       clientEmail: payload.clientEmail?.trim() || null,
       guestId: payload.guestId || null,
       weddingId: payload.weddingId || null,
+      source,
       checkIn: payload.checkIn,
       checkOut: payload.checkOut,
-      adults: payload.adults ?? 2,
-      children: payload.children ?? 0,
-      babies: payload.babies ?? 0,
-      pets: payload.pets ?? 0,
-      fluctuationPct: payload.fluctuationPct ?? 0,
-      discountIds: Array.isArray(payload.discountIds) ? payload.discountIds : [],
-      adhocValue: payload.adhocValue ?? 0,
-      adhocType: payload.adhocType === "brl" ? "brl" : "pct",
-      snapshot: Array.isArray(payload.snapshot) ? payload.snapshot : [],
-      selectedCategory: payload.selectedCategory || null,
-      finalValue: typeof payload.finalValue === "number" ? payload.finalValue : null,
-      status,
+      adults: input.adults,
+      children: input.children,
+      babies: input.babies,
+      pets: input.pets,
+      fluctuationPct: input.fluctuationPct,
+      discountIds: input.discountIds,
+      adhocValue: input.adhocValue,
+      adhocType: input.adhocType,
+      snapshot,
+      selectedCategory: chosen ? chosen.categoryId || chosen.category : null,
+      finalValue: chosen ? chosen.finalTotal : null,
       notes: payload.notes?.trim() || null,
+    };
+
+    if (existing) {
+      // Reabertura: recalcula e atualiza o MESMO orçamento (não duplica lead).
+      const { error } = await admin
+        .from("rate_quotes")
+        .update({ ...common, updatedAt: now })
+        .eq("id", existing.id)
+        .eq("propertyId", propertyId);
+      if (error) throw new Error(error.message);
+
+      await CrmService.logInteraction(propertyId, "quote", existing.id, "reopened", {
+        actorId, actorName,
+        payload: { checkIn: payload.checkIn, checkOut: payload.checkOut },
+      });
+      await AuditService.log({
+        propertyId, userId: actorId, userName: actorName,
+        action: "UPDATE", entity: "RATE_QUOTE", entityId: existing.id,
+        details: `Orçamento de ${common.clientName || "sem nome"} recalculado (${payload.checkIn} → ${payload.checkOut}).`,
+      });
+      return existing.id;
+    }
+
+    const lead = await CrmService.initialQuoteLeadDates(propertyId, payload.checkIn);
+    const id = crypto.randomUUID();
+    const { error } = await admin.from("rate_quotes").insert({
+      id,
+      propertyId,
+      ...common,
+      followUpAt: lead.followUpAt,
+      expiresAt: lead.expiresAt,
+      sentAt: status === "sent" ? now : null,
+      status,
       createdBy: actorId,
       createdByName: actorName,
     });
     if (error) throw new Error(error.message);
+
+    await CrmService.logInteraction(propertyId, "quote", id, "created", {
+      actorId, actorName,
+      payload: { status, source, checkIn: payload.checkIn, checkOut: payload.checkOut },
+    });
+    if (status === "sent") {
+      await CrmService.logInteraction(propertyId, "quote", id, "sent", { actorId, actorName });
+    }
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName,
+      action: "CREATE", entity: "RATE_QUOTE", entityId: id,
+      details: `Orçamento criado: ${common.clientName || "sem nome"} · ${payload.checkIn} → ${payload.checkOut}${source ? ` · origem ${source}` : ""}.`,
+    });
     return id;
   },
 
   async updateQuote(
     propertyId: string,
     id: string,
-    patch: Partial<RateQuoteRecord>
+    patch: Partial<RateQuoteRecord>,
+    actor?: { id: string; name: string }
   ): Promise<void> {
     const admin = supabaseAdmin!;
     const clean: Record<string, unknown> = {};
@@ -397,22 +532,67 @@ export const RateService = {
     if ("finalValue" in clean && typeof clean.finalValue !== "number") clean.finalValue = null;
     if (Object.keys(clean).length === 0) return;
 
+    // Estado anterior: transições de estágio viram histórico e carimbos.
+    const before = await this.getQuoteById(propertyId, id);
+    if (!before) throw new Error("Orçamento não encontrado.");
+
+    const nextStatus = clean.status as RateQuoteStatus | undefined;
+    const changingStage = nextStatus && nextStatus !== before.status;
+    const now = new Date().toISOString();
+
+    if (changingStage) {
+      if (nextStatus === "sent" && !before.sentAt) clean.sentAt = now;
+      if (nextStatus === "lost") clean.lostAt = now;
+    }
+
     const { error } = await admin
       .from("rate_quotes")
-      .update({ ...clean, updatedAt: new Date().toISOString() })
+      .update({ ...clean, updatedAt: now })
       .eq("id", id)
       .eq("propertyId", propertyId);
     if (error) throw new Error(error.message);
+
+    if (changingStage) {
+      await CrmService.logInteraction(propertyId, "quote", id, "stage_change", {
+        actorId: actor?.id, actorName: actor?.name,
+        payload: { from: before.status, to: nextStatus },
+      });
+      if (nextStatus === "sent" && !before.sentAt) {
+        await CrmService.logInteraction(propertyId, "quote", id, "sent", {
+          actorId: actor?.id, actorName: actor?.name,
+        });
+      }
+      if (nextStatus === "lost") {
+        await CrmService.logInteraction(propertyId, "quote", id, "lost", {
+          actorId: actor?.id, actorName: actor?.name,
+          payload: { reason: (clean.lostReason as string) ?? before.lostReason ?? null },
+        });
+      }
+      if (actor) {
+        await AuditService.log({
+          propertyId, userId: actor.id, userName: actor.name,
+          action: "UPDATE", entity: "RATE_QUOTE", entityId: id,
+          details: `Orçamento de ${before.clientName || "sem nome"}: ${QUOTE_STAGE_LABEL[before.status]} → ${QUOTE_STAGE_LABEL[nextStatus!]}.`,
+        });
+      }
+    }
   },
 
-  async deleteQuote(propertyId: string, id: string): Promise<void> {
+  async deleteQuote(propertyId: string, id: string, actorId: string, actorName: string): Promise<void> {
     const admin = supabaseAdmin!;
+    const before = await this.getQuoteById(propertyId, id);
     const { error } = await admin
       .from("rate_quotes")
       .delete()
       .eq("id", id)
       .eq("propertyId", propertyId);
     if (error) throw new Error(error.message);
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName,
+      action: "DELETE", entity: "RATE_QUOTE", entityId: id,
+      details: `Orçamento de ${before?.clientName || "sem nome"} (${before?.checkIn ?? "?"} → ${before?.checkOut ?? "?"}) excluído.`,
+    });
   },
 
   /**
@@ -470,7 +650,10 @@ export const RateService = {
       }
     }
 
-    await this.updateQuote(propertyId, id, { status: "won", guestId });
+    await this.updateQuote(propertyId, id, { status: "won", guestId }, { id: actorId, name: actorName });
+    await CrmService.logInteraction(propertyId, "quote", id, "converted", {
+      actorId, actorName, payload: { guestId },
+    });
     return { guestId, checkIn: quote.checkIn, checkOut: quote.checkOut };
   },
 
@@ -506,21 +689,24 @@ export const RateService = {
         .from("cabins").select("categoryId").eq("id", stay.cabinId).maybeSingle();
       if (cabin?.categoryId) chosen = snapshot.find((c) => c.categoryId === cabin.categoryId);
     }
-    if (!chosen && quote.selectedCategory) {
-      chosen = snapshot.find(
-        (c) => c.category === quote.selectedCategory || c.categoryId === quote.selectedCategory
-      );
+    // Sem cabana casada: regra única de valor (aproximado "a partir de" não
+    // vira diária — melhor sem hospedagem que com valor errado).
+    let total: number | null = chosen ? chosen.finalTotal : null;
+    if (!chosen) {
+      const res = resolveQuoteValue(quote);
+      if (res.chosen) { chosen = res.chosen; total = res.value; }
+      else if (!res.approximate && res.value > 0) total = res.value;
     }
-    if (!chosen && snapshot.length === 1) chosen = snapshot[0];
-
-    const total = chosen ? chosen.finalTotal
-      : typeof quote.finalValue === "number" ? quote.finalValue : null;
 
     await this.updateQuote(propertyId, quoteId, {
       stayId,
       status: "won",
-      selectedCategory: chosen?.category ?? quote.selectedCategory ?? null,
+      selectedCategory: chosen ? (chosen.categoryId || chosen.category) : quote.selectedCategory ?? null,
       finalValue: total,
+    }, { id: actorId, name: actorName });
+
+    await CrmService.logInteraction(propertyId, "quote", quoteId, "stay_linked", {
+      actorId, actorName, payload: { stayId, nightlyRate: total ?? undefined },
     });
 
     if (total == null || total <= 0) return { linked: true };
@@ -547,6 +733,58 @@ export const RateService = {
     });
 
     return { linked: true, nightlyRate, lodgingTotal };
+  },
+
+  /**
+   * Cron (crm-status): arquiva orçamentos abertos vencidos — simetria com o
+   * arquivamento automático de casamentos.
+   * - checkIn já passou → 'Data da estadia passou' (o motivo mais forte, roda
+   *   primeiro; o segundo passo não repega porque o status já virou lost)
+   * - validade do lead venceu → 'Prazo vencido sem retorno'
+   */
+  async archiveExpiredQuotes(): Promise<{ expired: number; lapsed: number; names: string[] }> {
+    const admin = supabaseAdmin!;
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const now = new Date().toISOString();
+
+    const archive = async (
+      rows: { id: string; propertyId: string; clientName: string | null }[],
+      reason: string
+    ) => {
+      if (rows.length === 0) return;
+      const { error } = await admin
+        .from("rate_quotes")
+        .update({ status: "lost", lostReason: reason, lostAt: now, updatedAt: now })
+        .in("id", rows.map((r) => r.id));
+      if (error) throw new Error(error.message);
+      for (const r of rows) {
+        await CrmService.logInteraction(r.propertyId, "quote", r.id, "lost", {
+          actorId: "cron", actorName: "Sistema (Cron)", payload: { reason },
+        });
+      }
+    };
+
+    const { data: lapsed } = await admin
+      .from("rate_quotes")
+      .select("id, propertyId, clientName")
+      .in("status", ["open", "sent", "negotiating"])
+      .lt("checkIn", today);
+    await archive((lapsed || []) as { id: string; propertyId: string; clientName: string | null }[],
+      "Data da estadia passou");
+
+    const { data: expired } = await admin
+      .from("rate_quotes")
+      .select("id, propertyId, clientName")
+      .in("status", ["open", "sent", "negotiating"])
+      .not("expiresAt", "is", null)
+      .lt("expiresAt", today);
+    await archive((expired || []) as { id: string; propertyId: string; clientName: string | null }[],
+      "Prazo vencido sem retorno");
+
+    const names = [...(lapsed || []), ...(expired || [])].map(
+      (r) => (r as { clientName: string | null }).clientName || "sem nome"
+    );
+    return { lapsed: (lapsed || []).length, expired: (expired || []).length, names };
   },
 
   // ── Importação do backup do SIT ────────────────────────────────────────────

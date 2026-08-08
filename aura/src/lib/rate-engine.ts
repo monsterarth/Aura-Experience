@@ -11,6 +11,7 @@ import {
   RatePromo,
   RateQuoteCategory,
   RateQuoteInput,
+  RateQuoteRecord,
   RateQuoteResult,
   RateSettings,
   RateTable,
@@ -228,6 +229,36 @@ export function computeQuote(input: RateQuoteInput, data: RateData): RateQuoteRe
 
   results.sort((a, b) => a.finalTotal - b.finalTotal);
   return { categories: results, uncoveredDates: [], minNightsRequired, nights };
+}
+
+/**
+ * Valor de um orçamento salvo — REGRA ÚNICA para funil, KPIs e vínculo com
+ * estadia (antes havia duas implementações divergentes). Precedência:
+ * opção escolhida (por id, com fallback por nome p/ dados antigos) → opção
+ * única → finalValue → mínimo do snapshot ("a partir de", approximate=true).
+ */
+export function resolveQuoteValue(
+  quote: Pick<RateQuoteRecord, 'snapshot' | 'selectedCategory' | 'finalValue'>
+): { value: number; approximate: boolean; chosen?: RateQuoteCategory } {
+  const snapshot = quote.snapshot || [];
+
+  if (quote.selectedCategory) {
+    const chosen = snapshot.find(
+      (c) => c.categoryId === quote.selectedCategory || c.category === quote.selectedCategory
+    );
+    if (chosen) return { value: chosen.finalTotal, approximate: false, chosen };
+  }
+  if (snapshot.length === 1) {
+    return { value: snapshot[0].finalTotal, approximate: false, chosen: snapshot[0] };
+  }
+  if (typeof quote.finalValue === 'number' && quote.finalValue > 0) {
+    return { value: quote.finalValue, approximate: false };
+  }
+  const totals = snapshot.map((c) => c.finalTotal).filter((v) => v > 0);
+  return {
+    value: totals.length ? Math.min(...totals) : 0,
+    approximate: totals.length > 1,
+  };
 }
 
 // ── Templates de WhatsApp ────────────────────────────────────────────────────

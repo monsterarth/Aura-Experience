@@ -14,12 +14,20 @@ export async function GET(req: NextRequest) {
   if (isAuthError(auth)) return auth;
   if (!supabaseAdmin) return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
 
-  const propertyId = new URL(req.url).searchParams.get("propertyId") || auth.staff.propertyId;
+  const url = new URL(req.url);
+  const propertyId = url.searchParams.get("propertyId") || auth.staff.propertyId;
   const denied = assertPropertyAccess(auth, propertyId);
   if (denied) return denied;
   if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
 
   try {
+    // ?id= devolve um orçamento único (reabrir na calculadora).
+    const id = url.searchParams.get("id");
+    if (id) {
+      const quote = await RateService.getQuoteById(propertyId, id);
+      if (!quote) return NextResponse.json({ error: "Orçamento não encontrado." }, { status: 404 });
+      return NextResponse.json({ quote });
+    }
     const quotes = await RateService.listQuotes(propertyId);
     return NextResponse.json({ quotes });
   } catch (e) {
@@ -65,7 +73,9 @@ export async function PATCH(req: NextRequest) {
   }
 
   try {
-    await RateService.updateQuote(propertyId, String(body.id), body.patch);
+    await RateService.updateQuote(propertyId, String(body.id), body.patch, {
+      id: auth.staff.id, name: auth.staff.fullName,
+    });
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("Erro ao atualizar orçamento:", e);
@@ -87,7 +97,7 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
 
   try {
-    await RateService.deleteQuote(propertyId, id);
+    await RateService.deleteQuote(propertyId, id, auth.staff.id, auth.staff.fullName);
     return NextResponse.json({ success: true });
   } catch (e) {
     console.error("Erro ao excluir orçamento:", e);
