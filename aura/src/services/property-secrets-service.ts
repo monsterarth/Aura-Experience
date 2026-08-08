@@ -7,9 +7,10 @@
 // se este módulo cair no bundle do navegador, ele não vaza segredo (não tem como ler),
 // mas quebra em runtime. Use a rota /api/admin/properties/integrations no cliente.
 //
-// FALLBACK DE TRANSIÇÃO: enquanto a fase 7 não limpa `settings.whatsappConfig`, a leitura
-// tenta property_secrets primeiro e cai para settings. A ordem importa — invertida, uma
-// edição nova seria ignorada em favor do valor velho.
+// O cofre é a ÚNICA fonte. Existiu um fallback que lia `settings.whatsappConfig`
+// enquanto a cópia em texto puro sobrevivia lá; ela foi apagada em
+// migrations/property_secrets_cleanup.sql e o fallback saiu junto. Não reintroduzir:
+// ele mascararia um cofre vazio, transformando "segredo faltando" em "segredo velho".
 import { supabaseAdmin } from "@/lib/supabase";
 
 export interface PropertySecrets {
@@ -45,21 +46,10 @@ export const PropertySecretsService = {
       .from("property_secrets").select("secrets").eq("propertyId", propertyId).maybeSingle();
     const stored = (data?.secrets ?? {}) as Partial<PropertySecrets>;
 
-    let value: PropertySecrets = {
+    const value: PropertySecrets = {
       evolutionApiKey: stored.evolutionApiKey ?? null,
       chatwootApiToken: stored.chatwootApiToken ?? null,
     };
-
-    // Transição: só consulta properties se faltar algum segredo.
-    if (!value.evolutionApiKey || !value.chatwootApiToken) {
-      const { data: prop } = await db()
-        .from("properties").select("settings").eq("id", propertyId).maybeSingle();
-      const wc = ((prop?.settings ?? {}) as { whatsappConfig?: Record<string, string> }).whatsappConfig ?? {};
-      value = {
-        evolutionApiKey: value.evolutionApiKey ?? wc.apiKey ?? null,
-        chatwootApiToken: value.chatwootApiToken ?? wc.chatwootApiToken ?? null,
-      };
-    }
 
     cache.set(propertyId, { at: Date.now(), value });
     return value;
@@ -89,23 +79,17 @@ export const PropertySecretsService = {
   /**
    * Versão segura para a UI: diz SE existe e mostra os 4 últimos dígitos. Nunca o valor.
    *
-   * `has*` é o efetivo (property_secrets OU o fallback em settings) — é o que a tela usa para
-   * dizer "integração configurada". `secure*` é só property_secrets, e existe para uma decisão
-   * específica: só é seguro apagar o segredo de settings quando ele já está no cofre. Sem essa
-   * distinção, salvar a tela antes da migration apagaria a chave sem ter cópia.
+   * Havia aqui um par `secure*` que distinguia "está no cofre" de "está em settings" —
+   * a distinção existia só para decidir quando era seguro apagar o texto puro. Com o
+   * texto puro apagado e o fallback removido, as duas respostas viraram a mesma.
    */
   async describe(propertyId: string) {
-    const { data } = await db()
-      .from("property_secrets").select("secrets").eq("propertyId", propertyId).maybeSingle();
-    const stored = (data?.secrets ?? {}) as Partial<PropertySecrets>;
     const s = await this.get(propertyId);
     return {
       hasEvolutionApiKey: !!s.evolutionApiKey,
       evolutionApiKeyMask: maskOf(s.evolutionApiKey),
       hasChatwootApiToken: !!s.chatwootApiToken,
       chatwootApiTokenMask: maskOf(s.chatwootApiToken),
-      secureEvolutionApiKey: !!stored.evolutionApiKey,
-      secureChatwootApiToken: !!stored.chatwootApiToken,
     };
   },
 };

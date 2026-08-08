@@ -17,8 +17,6 @@ export interface IntegrationsView {
   evolutionApiKeyMask: string | null;
   hasChatwootApiToken: boolean;
   chatwootApiTokenMask: string | null;
-  secureEvolutionApiKey: boolean;
-  secureChatwootApiToken: boolean;
 }
 
 /** Ver o comentário de cabeçalho de `api/admin/whatsapp/session/route.ts` para o porquê de cada estado. */
