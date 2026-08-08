@@ -5,7 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { StayService } from "@/services/stay-service";
 import { PropertyService } from "@/services/property-service";
 import { BreakfastSalonService } from "@/services/breakfast-salon-service";
-import { fbService } from "@/services/fb-service";
+// O cardápio vem por rota service-role: pelo navegador (anon) a RLS de fb_categories
+// e fb_menu_items devolvia zero, e a tela não conseguia nomear os itens do pedido.
+import { GuestApi } from "@/lib/guest-api";
 import { Stay, Property, FBOrder, FBCategory, FBMenuItem } from "@/types/aura";
 import {
     Loader2, Coffee, ArrowLeft, ChevronRight, Clock, CheckCircle2,
@@ -250,15 +252,14 @@ function BreakfastStatusPage() {
                 const tomorrowDate = new Date(); tomorrowDate.setDate(tomorrowDate.getDate() + 1);
                 const tomorrowISO = tomorrowDate.toISOString().split('T')[0];
 
-                const [resToday, resTomorrow, cats, itms] = await Promise.all([
+                const [resToday, resTomorrow, menu] = await Promise.all([
                     fetch(`/api/guest/breakfast-orders?stayId=${s.id}&propertyId=${s.propertyId}&deliveryDate=${todayISO}&type=breakfast`),
                     fetch(`/api/guest/breakfast-orders?stayId=${s.id}&propertyId=${s.propertyId}&deliveryDate=${tomorrowISO}&type=breakfast`),
-                    fbService.getCategories(s.propertyId),
-                    fbService.getMenuItems(s.propertyId),
+                    GuestApi.breakfastMenu(s.propertyId),
                 ]);
 
-                setCategories(cats.filter(c => c.type === 'both' || c.type === 'breakfast').sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
-                setMenuItems(itms);
+                setCategories(menu.categories.filter(c => c.type === 'both' || c.type === 'breakfast').sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
+                setMenuItems(menu.menuItems);
 
                 let todayFound: FBOrder | null = null;
                 let tomorrowFound: FBOrder | null = null;
@@ -285,15 +286,14 @@ function BreakfastStatusPage() {
             } else {
                 // Buffet — check today's session status + any order the guest may have placed
                 const todayISO = new Date().toISOString().split('T')[0];
-                const [session, cats, itms, resToday] = await Promise.all([
+                const [session, menu, resToday] = await Promise.all([
                     BreakfastSalonService.getTodaySession(s.propertyId),
-                    fbService.getCategories(s.propertyId),
-                    fbService.getMenuItems(s.propertyId),
+                    GuestApi.breakfastMenu(s.propertyId),
                     fetch(`/api/guest/breakfast-orders?stayId=${s.id}&propertyId=${s.propertyId}&deliveryDate=${todayISO}&type=breakfast`),
                 ]);
                 setSalonOpen(session?.status === 'open');
-                setCategories(cats.filter(c => c.type === 'both' || c.type === 'breakfast').sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
-                setMenuItems(itms);
+                setCategories(menu.categories.filter(c => c.type === 'both' || c.type === 'breakfast').sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
+                setMenuItems(menu.menuItems);
                 if (resToday.ok) {
                     const j = await resToday.json();
                     if (j.order) { setOrder(j.order); setOrderIsToday(true); }

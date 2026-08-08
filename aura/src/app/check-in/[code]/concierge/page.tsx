@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { StayService } from "@/services/stay-service";
 import { PropertyService } from "@/services/property-service";
-import { ConciergeService } from "@/services/concierge-service";
+import { GuestApi } from "@/lib/guest-api";
 import { Stay, Property, ConciergeItem, ConciergeRequest } from "@/types/aura";
 import { submitConciergeRequest } from "@/app/actions/concierge-actions";
 import { toggleGuestDND } from "@/app/actions/dnd-actions";
@@ -189,12 +189,14 @@ export default function ConciergePage() {
         const stayData = stays[0] as Stay;
         setStay(stayData);
 
-        const [propData, itemsData, reqData, stayFull] = await Promise.all([
+        // Concierge por rota service-role: pelo navegador (anon) a RLS devolvia
+        // lista vazia e a tela dizia "nenhum item disponível".
+        const [propData, concierge, stayFull] = await Promise.all([
           PropertyService.getPropertyById(stayData.propertyId),
-          ConciergeService.getConciergeItemsForGuest(stayData.propertyId),
-          ConciergeService.getConciergeRequestsForStay(stayData.propertyId, stayData.id),
+          GuestApi.concierge({ propertyId: stayData.propertyId, stayId: stayData.id, accessCode: code }),
           StayService.getStayWithGuestAndCabin(stayData.propertyId, stayData.id),
         ]);
+        const { items: itemsData, requests: reqData } = concierge;
 
         setProperty(propData);
         setItems(itemsData);
@@ -247,7 +249,7 @@ export default function ConciergePage() {
 
       toast.success(t.requestSent);
       // Refresh requests
-      const updated = await ConciergeService.getConciergeRequestsForStay(stay.propertyId, stay.id);
+      const { requests: updated } = await GuestApi.concierge({ propertyId: stay.propertyId, stayId: stay.id, accessCode: code });
       setRequests(updated);
       // Reset quantity
       setQuantities(prev => ({ ...prev, [itemId]: 1 }));

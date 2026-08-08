@@ -99,7 +99,10 @@ export const ConciergeService = {
   },
 
   async getConciergeItemsForGuest(propertyId: string): Promise<ConciergeItem[]> {
-    const { data } = await supabase
+    // db(): service-role no servidor. Pelo navegador do hóspede (anon) a RLS de
+    // concierge_items devolve ZERO — o catálogo aparecia vazio para o hóspede.
+    // Por isso esta leitura passa por /api/guest/concierge.
+    const { data } = await db()
       .from('concierge_items')
       .select('*, group:concierge_groups(*)')
       .eq('propertyId', propertyId)
@@ -236,9 +239,9 @@ export const ConciergeService = {
     const cabinIds = Array.from(new Set(requests.map((r) => r.cabinId).filter(Boolean)));
 
     const [itemsRes, cabinsRes] = await Promise.all([
-      supabase.from('concierge_items').select('*').in('id', itemIds),
+      db().from('concierge_items').select('*').in('id', itemIds),
       cabinIds.length
-        ? supabase.from('cabins').select('id, name').in('id', cabinIds)
+        ? db().from('cabins').select('id, name').in('id', cabinIds)
         : Promise.resolve({ data: [] as any[] }),
     ]);
 
@@ -256,7 +259,7 @@ export const ConciergeService = {
     propertyId: string,
     stayId: string
   ): Promise<ConciergeRequest[]> {
-    const { data } = await supabase
+    const { data } = await db()
       .from('concierge_requests')
       .select('*')
       .eq('propertyId', propertyId)

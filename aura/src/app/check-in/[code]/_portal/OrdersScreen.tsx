@@ -5,7 +5,7 @@ import { Icon, Card, SectionTitle, PrimaryBtn, GhostBtn, Tag, QtyStepper, Chip }
 import { Sheet } from "./sheets";
 import { CafeBuilder } from "./CafeBuilder";
 import { usePortal, type Lang } from "./context";
-import { ConciergeService } from "@/services/concierge-service";
+import { GuestApi } from "@/lib/guest-api";
 import { submitConciergeRequest } from "@/app/actions/concierge-actions";
 import { toggleGuestDND } from "@/app/actions/dnd-actions";
 import type { ConciergeItem, ConciergeRequest, ConciergeGroup } from "@/types/aura";
@@ -215,21 +215,25 @@ export function OrdersScreen() {
         let alive = true;
         (async () => {
             try {
-                const [itemsData, reqData] = await Promise.all([
-                    ConciergeService.getConciergeItemsForGuest(stay.propertyId),
-                    ConciergeService.getConciergeRequestsForStay(stay.propertyId, stay.id),
-                ]);
+                // Rota service-role: pelo navegador (anon) a RLS devolvia lista vazia
+                // e o catch abaixo engolia — o catálogo sumia sem ninguém perceber.
+                const { items: itemsData, requests: reqData } = await GuestApi.concierge({
+                    propertyId: stay.propertyId, stayId: stay.id, accessCode: code,
+                });
                 if (!alive) return;
                 setItems(itemsData);
                 setRequests(reqData);
-            } catch { /* silently ignore */ }
+            } catch (e) { console.error("[concierge] falha ao carregar:", e); }
             finally { if (alive) setLoading(false); }
         })();
         return () => { alive = false; };
     }, [stay.propertyId, stay.id]);
 
     const refreshRequests = async () => {
-        try { setRequests(await ConciergeService.getConciergeRequestsForStay(stay.propertyId, stay.id)); } catch { /* noop */ }
+        try {
+            const { requests } = await GuestApi.concierge({ propertyId: stay.propertyId, stayId: stay.id, accessCode: code });
+            setRequests(requests);
+        } catch (e) { console.error("[concierge] falha ao atualizar pedidos:", e); }
     };
 
     const doRequest = async (item: ConciergeItem, qty: number, note: string, forceDelivery = false) => {
