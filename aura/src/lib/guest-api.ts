@@ -8,7 +8,7 @@
 // concierge. Toda leitura do portal deve passar por aqui.
 //
 // Toda rota valida posse pelo trio stayId + accessCode + propertyId.
-import { ConciergeItem, ConciergeRequest, FBCategory, FBMenuItem } from "@/types/aura";
+import { Cabin, ConciergeItem, ConciergeRequest, FBCategory, FBMenuItem, Guest, Property, Stay } from "@/types/aura";
 
 export interface GuestScope {
   propertyId: string;
@@ -29,7 +29,30 @@ async function getJson<T>(path: string, scope: GuestScope, extra?: Record<string
   return json as T;
 }
 
+export interface GuestSession {
+  stays: Stay[];
+  stay: Stay;
+  guest: Guest | null;
+  cabin: Cabin | null;
+  /** Propriedade com allowlist de chaves — não traz credenciais nem config interna. */
+  property: Pick<Property, "id" | "name" | "slug" | "logoUrl" | "theme" | "settings"> | null;
+  /** true = o hóspede já respondeu a pesquisa desta estadia. */
+  hasSurvey: boolean;
+}
+
 export const GuestApi = {
+  /**
+   * Bootstrap do portal: estadia (+ grupo), hóspede, cabana e propriedade.
+   * Substitui o trio que 8 telas repetiam lendo o banco pelo navegador.
+   */
+  async session(code: string, stayId?: string): Promise<GuestSession> {
+    const qs = new URLSearchParams({ code, ...(stayId ? { stayId } : {}) });
+    const res = await fetch(`/api/guest/session?${qs}`, { cache: "no-store" });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || `Falha ao carregar a estadia (${res.status}).`);
+    return json as GuestSession;
+  },
+
   /** Catálogo + pedidos da estadia. */
   concierge(scope: GuestScope) {
     return getJson<{ items: ConciergeItem[]; requests: ConciergeRequest[] }>("concierge", scope);

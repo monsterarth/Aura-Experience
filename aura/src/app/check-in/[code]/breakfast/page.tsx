@@ -2,8 +2,7 @@
 
 import React, { useState, useEffect, Suspense, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { StayService } from "@/services/stay-service";
-import { PropertyService } from "@/services/property-service";
+import { GuestApi } from "@/lib/guest-api";
 import { BreakfastSalonService } from "@/services/breakfast-salon-service";
 import { Stay, Property, FBCategory, FBMenuItem, FBOrder, BreakfastAttendance } from "@/types/aura";
 import { Loader2, ArrowLeft, Coffee, Plus, Minus, Info, CheckCircle2, ChevronRight, Utensils, AlertCircle, X, ArrowRight } from "lucide-react";
@@ -216,24 +215,22 @@ function BreakfastWizard() {
         async function init() {
             try {
                 if (!code) return;
-                const stays = await StayService.getStaysByAccessCode(code as string);
-                if (!stays || stays.length === 0) return;
-
-                const s = stays[0] as Stay;
+                // Estadia + titular + propriedade numa chamada (rota service-role).
+                const session = await GuestApi.session(code as string);
+                const s = session.stay as Stay;
                 setStay(s);
 
-                // Buscar titular e construir lista de nomes reais dos hóspedes
-                const stayData = await StayService.getStayWithGuestAndCabin(s.propertyId, s.id);
-                const primaryFirstName = stayData?.guest?.fullName?.split(' ')[0] || 'Hóspede 1';
+                // Nomes reais dos hóspedes, para o pedido do café
+                const primaryFirstName = session.guest?.fullName?.split(' ')[0] || 'Hóspede 1';
                 const additionalFirstNames = (s.additionalGuests || [])
                     .filter((g: any) => g.type !== 'free')
                     .map((g: any, i: number) => g.fullName?.split(' ')[0] || `Hóspede ${i + 2}`);
                 setGuestNames([primaryFirstName, ...additionalFirstNames]);
-                if (stayData?.guest?.preferredLanguage) {
-                    setLang(stayData.guest.preferredLanguage as 'pt' | 'en' | 'es');
+                if (session.guest?.preferredLanguage) {
+                    setLang(session.guest.preferredLanguage as 'pt' | 'en' | 'es');
                 }
 
-                const prop = await PropertyService.getPropertyById(s.propertyId);
+                const prop = session.property;
                 if (!prop) return;
                 setProperty(prop as Property);
 

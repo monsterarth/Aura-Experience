@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { StayService } from "@/services/stay-service";
-import { PropertyService } from "@/services/property-service";
 import { BreakfastSalonService } from "@/services/breakfast-salon-service";
 // O cardápio vem por rota service-role: pelo navegador (anon) a RLS de fb_categories
 // e fb_menu_items devolvia zero, e a tela não conseguia nomear os itens do pedido.
@@ -218,17 +216,13 @@ function BreakfastStatusPage() {
 
     async function load() {
         try {
-            const stays = await StayService.getStaysByAccessCode(code as string);
-            if (!stays || stays.length === 0) { router.replace(`/check-in/${code}`); return; }
-            const s = stays[0] as Stay;
+            // Estadia + hóspede + propriedade numa chamada (rota service-role).
+            const session = await GuestApi.session(code as string);
+            const s = session.stay as Stay;
             setStay(s);
+            const prop = session.property as Property | null;
 
-            const [stayData, prop] = await Promise.all([
-                StayService.getStayWithGuestAndCabin(s.propertyId, s.id),
-                PropertyService.getPropertyById(s.propertyId),
-            ]);
-
-            const guestLang = stayData?.guest?.preferredLanguage as 'pt' | 'en' | 'es' | undefined;
+            const guestLang = session.guest?.preferredLanguage as 'pt' | 'en' | 'es' | undefined;
             if (guestLang && ['pt', 'en', 'es'].includes(guestLang)) setLang(guestLang);
             setProperty(prop);
 

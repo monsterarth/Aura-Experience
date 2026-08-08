@@ -38,7 +38,10 @@ export class SurveyService {
 
   static async hasSurveyForStay(propertyId: string, stayId: string): Promise<boolean> {
     try {
-      const { count } = await supabase
+      // db(): pelo navegador do hóspede (anon) a RLS de survey_responses devolve
+      // contagem zero, o que fazia o portal concluir "ainda não respondeu" e
+      // continuar convidando quem já tinha respondido.
+      const { count } = await db()
         .from('survey_responses')
         .select('id', { count: 'exact', head: true })
         .eq('propertyId', propertyId)

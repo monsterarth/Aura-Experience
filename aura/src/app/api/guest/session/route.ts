@@ -1,0 +1,80 @@
+// src/app/api/guest/session/route.ts
+//
+// BOOTSTRAP DO PORTAL DO HÓSPEDE — a estadia, o hóspede, a cabana e a propriedade.
+//
+// Oito telas do portal repetiam o mesmo trio pelo navegador
+// (getStaysByAccessCode + getStayWithGuestAndCabin + getPropertyById), lendo
+// `stays`, `guests`, `cabins` e `properties` com a chave anon. Aqui isso vira uma
+// chamada só, com service-role, e a posse é o próprio código de acesso.
+//
+// REGRA INEGOCIÁVEL: a propriedade sai por ALLOWLIST literal de chaves. Um
+// `select('*')` aqui entregaria `settings.whatsappConfig` — que ainda guarda a
+// cópia da apiKey da Evolution — para qualquer pessoa com um código de estadia.
+// Mesma disciplina do asset-public-service.
+import { NextRequest, NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabase";
+import { StayService } from "@/services/stay-service";
+import { SurveyService } from "@/services/survey-service";
+
+export const dynamic = "force-dynamic";
+
+/** Chaves de settings que o portal realmente lê. Nada além disto sai. */
+const PUBLIC_SETTINGS_KEYS = [
+  "fbSettings",
+  "whatsappNumber",
+  "generalPolicyText", "privacyPolicyText", "petPolicyText", "petPolicyAlert",
+  "earlyCheckInMessage", "lateCheckInMessage",
+  "checkInTime", "checkOutTime", "receptionStartTime", "receptionEndTime",
+  "acceptsPets", "petMinWeight", "petMaxWeight",
+  "mapConfig",
+] as const;
+
+function publicProperty(p: Record<string, any> | null) {
+  if (!p) return null;
+  const settings = (p.settings ?? {}) as Record<string, unknown>;
+  const safeSettings: Record<string, unknown> = {};
+  for (const k of PUBLIC_SETTINGS_KEYS) if (settings[k] !== undefined) safeSettings[k] = settings[k];
+  return {
+    id: p.id,
+    name: p.name,
+    slug: p.slug,
+    logoUrl: p.logoUrl ?? null,
+    theme: p.theme ?? null,
+    settings: safeSettings,
+  };
+}
+
+export async function GET(req: NextRequest) {
+  if (!supabaseAdmin) return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+
+  const { searchParams } = new URL(req.url);
+  const code = searchParams.get("code");
+  const stayId = searchParams.get("stayId"); // opcional: qual estadia do grupo
+
+  if (!code) return NextResponse.json({ error: "Missing code" }, { status: 400 });
+
+  try {
+    const stays = await StayService.getStaysByAccessCode(code);
+    if (!stays.length) return NextResponse.json({ error: "Código não encontrado." }, { status: 404 });
+
+    // Estadia escolhida: a pedida (se pertence ao código) ou a primeira.
+    const chosen = (stayId && stays.find((s: any) => s.id === stayId)) || stays[0];
+
+    const [full, propRes, hasSurvey] = await Promise.all([
+      StayService.getStayWithGuestAndCabin(chosen.propertyId, chosen.id),
+      supabaseAdmin.from("properties").select("*").eq("id", chosen.propertyId).maybeSingle(),
+      SurveyService.hasSurveyForStay(chosen.propertyId, chosen.id),
+    ]);
+
+    return NextResponse.json({
+      stays,
+      stay: full?.stay ?? chosen,
+      guest: full?.guest ?? null,
+      cabin: full?.cabin ?? null,
+      property: publicProperty(propRes.data),
+      hasSurvey,
+    });
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
+}

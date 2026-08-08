@@ -4,8 +4,7 @@ import React, { useState, useEffect, Suspense } from "react";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
-import { StayService } from "@/services/stay-service";
-import { PropertyService } from "@/services/property-service";
+import { GuestApi } from "@/lib/guest-api";
 import { StructureService } from "@/services/structure-service";
 import { Stay, Property, Structure, TimeSlot, StructureBooking } from "@/types/aura";
 import { Loader2, ArrowLeft, Calendar, Info, CheckCircle2, ChevronRight, MapPin, Clock, X, Check } from "lucide-react";
@@ -244,24 +243,20 @@ function StructuresWizard() {
         async function init() {
             try {
                 if (!code) return;
-                const stays = await StayService.getStaysByAccessCode(code as string);
-                if (!stays || stays.length === 0) return;
-
-                const s = stays[0] as Stay;
+                // Estadia + hóspede + propriedade numa chamada (rota service-role).
+                const session = await GuestApi.session(code as string);
+                const s = session.stay as Stay;
                 setStay(s);
 
-                try {
-                    const stayData = await StayService.getStayWithGuestAndCabin(s.propertyId, s.id);
-                    if (stayData?.guest?.preferredLanguage) {
-                        setLang(stayData.guest.preferredLanguage as 'pt' | 'en' | 'es');
-                    } else {
-                        const bl = navigator.language.slice(0, 2);
-                        if (bl === 'es') setLang('es');
-                        else if (bl === 'en') setLang('en');
-                    }
-                } catch { /* silently ignore */ }
+                if (session.guest?.preferredLanguage) {
+                    setLang(session.guest.preferredLanguage as 'pt' | 'en' | 'es');
+                } else {
+                    const bl = navigator.language.slice(0, 2);
+                    if (bl === 'es') setLang('es');
+                    else if (bl === 'en') setLang('en');
+                }
 
-                const prop = await PropertyService.getPropertyById(s.propertyId);
+                const prop = session.property;
                 if (!prop) return;
                 setProperty(prop as Property);
 

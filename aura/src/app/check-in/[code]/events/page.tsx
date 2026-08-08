@@ -2,8 +2,7 @@
 
 import React, { useState, useEffect, useMemo, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { StayService } from "@/services/stay-service";
-import { PropertyService } from "@/services/property-service";
+import { GuestApi } from "@/lib/guest-api";
 import { EventService } from "@/services/event-service";
 import { Stay, Property, Event } from "@/types/aura";
 import {
@@ -169,32 +168,22 @@ function EventsContent() {
     async function init() {
       if (!code) return;
       try {
-        const stays = await StayService.getStaysByAccessCode(code as string);
-        if (!stays || stays.length === 0) { router.replace(`/check-in/login`); return; }
-
-        const firstStay = stays[0] as Stay;
+        // Estadia + hóspede + propriedade numa chamada (rota service-role).
+        const session = await GuestApi.session(code as string);
+        const firstStay = session.stay as Stay;
         setStay(firstStay);
+        setProperty(session.property as Property);
 
-        const [prop, eventsData] = await Promise.all([
-          PropertyService.getPropertyById(firstStay.propertyId),
-          EventService.getPublishedEvents(firstStay.propertyId, new Date().toISOString().split("T")[0]),
-        ]);
+        setEvents(await EventService.getPublishedEvents(firstStay.propertyId, new Date().toISOString().split("T")[0]));
 
-        setProperty(prop as Property);
-        setEvents(eventsData);
-
-        // Detect language
-        try {
-          const stayData = await StayService.getStayWithGuestAndCabin(firstStay.propertyId, firstStay.id);
-          const savedLang = stayData?.guest?.preferredLanguage;
-          if (savedLang && ["pt", "en", "es"].includes(savedLang)) {
-            setLang(savedLang as "pt" | "en" | "es");
-          } else {
-            const bl = navigator.language.slice(0, 2);
-            if (bl === "es") setLang("es");
-            else if (bl === "en") setLang("en");
-          }
-        } catch { /* silently ignore */ }
+        const savedLang = session.guest?.preferredLanguage;
+        if (savedLang && ["pt", "en", "es"].includes(savedLang)) {
+          setLang(savedLang as "pt" | "en" | "es");
+        } else {
+          const bl = navigator.language.slice(0, 2);
+          if (bl === "es") setLang("es");
+          else if (bl === "en") setLang("en");
+        }
 
       } catch (err) {
         console.error(err);

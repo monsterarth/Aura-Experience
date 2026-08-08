@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { StayService } from "@/services/stay-service";
-import { PropertyService } from "@/services/property-service";
 import { GuestApi } from "@/lib/guest-api";
 import { Stay, Property, ConciergeItem, ConciergeRequest } from "@/types/aura";
 import { submitConciergeRequest } from "@/app/actions/concierge-actions";
@@ -146,6 +144,11 @@ const translations = {
   },
 };
 
+// Mesmo esquema do admin e do OrdersScreen: o ícone é gravado como "emoji:🧴".
+const EMOJI_PREFIX = "emoji:";
+const isEmojiUrl = (u?: string) => !!u && u.startsWith(EMOJI_PREFIX);
+const emojiFromUrl = (u?: string) => (u ? u.slice(EMOJI_PREFIX.length) : "");
+
 function getItemName(item: ConciergeItem, lang: 'pt' | 'en' | 'es'): string {
   if (lang === 'en' && item.name_en) return item.name_en;
   if (lang === 'es' && item.name_es) return item.name_es;
@@ -184,21 +187,18 @@ export default function ConciergePage() {
   useEffect(() => {
     const init = async () => {
       try {
-        const stays = await StayService.getStaysByAccessCode(code);
-        if (!stays || stays.length === 0) { setLoading(false); return; }
-        const stayData = stays[0] as Stay;
+        // Estadia, hóspede, cabana e propriedade numa chamada (rota service-role);
+        // o concierge vem pela sua própria — pelo navegador a RLS devolvia lista
+        // vazia e a tela dizia "nenhum item disponível".
+        const session = await GuestApi.session(code);
+        const stayData = session.stay as Stay;
         setStay(stayData);
 
-        // Concierge por rota service-role: pelo navegador (anon) a RLS devolvia
-        // lista vazia e a tela dizia "nenhum item disponível".
-        const [propData, concierge, stayFull] = await Promise.all([
-          PropertyService.getPropertyById(stayData.propertyId),
-          GuestApi.concierge({ propertyId: stayData.propertyId, stayId: stayData.id, accessCode: code }),
-          StayService.getStayWithGuestAndCabin(stayData.propertyId, stayData.id),
-        ]);
-        const { items: itemsData, requests: reqData } = concierge;
+        const { items: itemsData, requests: reqData } =
+          await GuestApi.concierge({ propertyId: stayData.propertyId, stayId: stayData.id, accessCode: code });
+        const stayFull = { stay: session.stay, guest: session.guest, cabin: session.cabin };
 
-        setProperty(propData);
+        setProperty(session.property as Property);
         setItems(itemsData);
         setRequests(reqData);
 
@@ -306,10 +306,20 @@ export default function ConciergePage() {
 
     return (
       <div className={`bg-card border border-border rounded-2xl overflow-hidden ${soldOut ? 'opacity-60' : ''}`}>
+        {/* O ícone do item vem codificado no image_url como "emoji:🧴" (esquema do admin).
+            Hoje TODOS os itens usam esse formato — passar isso para o next/image derruba
+            a tela com "Invalid src prop". O crash ficou escondido enquanto a lista vinha
+            vazia; ao consertar o catálogo, ele apareceu. */}
         {item.image_url && (
-          <div className="relative w-full h-36">
-            <Image src={item.image_url} alt={getItemName(item, lang)} fill className="object-cover" />
-          </div>
+          isEmojiUrl(item.image_url) ? (
+            <div className="w-full h-36 flex items-center justify-center bg-secondary/40 text-5xl">
+              {emojiFromUrl(item.image_url)}
+            </div>
+          ) : (
+            <div className="relative w-full h-36">
+              <Image src={item.image_url} alt={getItemName(item, lang)} fill className="object-cover" />
+            </div>
+          )
         )}
         <div className="p-4 space-y-3">
           <div className="flex items-start justify-between gap-2">

@@ -331,8 +331,9 @@ export const StayService = {
     });
   },
 
+  /** db(): service-role no servidor — o portal chama por /api/guest/session. */
   async getStaysByAccessCode(accessCode: string) {
-    const { data: stays, error } = await supabase
+    const { data: stays, error } = await db()
       .from('stays')
       .select('*')
       .eq('accessCode', accessCode.toUpperCase());
@@ -343,7 +344,7 @@ export const StayService = {
     const cabinIds = Array.from(new Set(stays.map((s: any) => s.cabinId).filter(Boolean)));
     const cabinMap = new Map<string, { name: string; wifi: any }>();
     if (cabinIds.length > 0) {
-      const { data: cabins } = await supabase
+      const { data: cabins } = await db()
         .from('cabins')
         .select('id, name, wifi')
         .in('id', cabinIds);
@@ -410,14 +411,15 @@ export const StayService = {
     return enriched;
   },
 
+  /** db(): service-role no servidor — o portal chama por /api/guest/session. */
   async getStayWithGuestAndCabin(propertyId: string, stayId: string) {
-    const { data: stay } = await supabase.from('stays').select('*').eq('id', stayId).eq('propertyId', propertyId).single();
+    const { data: stay } = await db().from('stays').select('*').eq('id', stayId).eq('propertyId', propertyId).single();
     if (!stay) return null;
 
     const [gRes, cRes] = await Promise.all([
-      supabase.from('guests').select('*').eq('id', stay.guestId).maybeSingle(),
+      db().from('guests').select('*').eq('id', stay.guestId).maybeSingle(),
       stay.cabinId
-        ? supabase.from('cabins').select('*').eq('id', stay.cabinId).eq('propertyId', propertyId).maybeSingle()
+        ? db().from('cabins').select('*').eq('id', stay.cabinId).eq('propertyId', propertyId).maybeSingle()
         : Promise.resolve({ data: null })
     ]);
 

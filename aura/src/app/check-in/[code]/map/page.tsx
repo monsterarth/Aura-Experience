@@ -5,8 +5,7 @@ import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import { Loader2, ArrowLeft, Map as MapIcon, Image as ImageIcon, MapPinned, Layers } from "lucide-react";
 import { toast } from "sonner";
-import { StayService } from "@/services/stay-service";
-import { PropertyService } from "@/services/property-service";
+import { GuestApi } from "@/lib/guest-api";
 import { Stay, Property } from "@/types/aura";
 import { MapArea, MapCabin, MapLang, MapPoi } from "./types";
 import { AreaCard } from "./AreaCard";
@@ -107,23 +106,20 @@ function ResortMapView() {
         async function init() {
             try {
                 if (!code) return;
-                const stays = await StayService.getStaysByAccessCode(code as string);
-                if (!stays || stays.length === 0) { setLoading(false); return; }
-                const s = stays[0] as Stay;
+                // Estadia, hóspede, cabana e propriedade numa chamada só, por
+                // rota service-role (ver /api/guest/session).
+                const session = await GuestApi.session(code as string);
+                const s = session.stay as Stay;
                 setStay(s);
 
-                try {
-                    const sd = await StayService.getStayWithGuestAndCabin(s.propertyId, s.id);
-                    const pl = sd?.guest?.preferredLanguage;
-                    if (pl) setLang(pl as MapLang);
-                    else {
-                        const bl = navigator.language.slice(0, 2);
-                        if (bl === "es") setLang("es"); else if (bl === "en") setLang("en");
-                    }
-                } catch { /* ignore */ }
+                const pl = session.guest?.preferredLanguage;
+                if (pl) setLang(pl as MapLang);
+                else {
+                    const bl = navigator.language.slice(0, 2);
+                    if (bl === "es") setLang("es"); else if (bl === "en") setLang("en");
+                }
 
-                const prop = await PropertyService.getPropertyById(s.propertyId);
-                if (prop) setProperty(prop as Property);
+                if (session.property) setProperty(session.property as Property);
             } catch (e) {
                 console.error(e);
                 toast.error("Erro ao carregar o mapa.");
