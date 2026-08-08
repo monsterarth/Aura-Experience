@@ -73,3 +73,4 @@ record**. There is **no migration runner** — each file was applied manually vi
 | 2026-08-08 | `crm_phase1_foundation.sql` | CRM fase 1: origem (`source`) + prazos (`followUpAt`/`expiresAt`/`sentAt`/`lostAt`) em `rate_quotes`, contato do casal em `weddings`, e histórico compartilhado `crm_interactions` |
 | 2026-08-08 | `crm_phase1_backfill.sql` | CRM fase 1 (backfill): snapshot antigo ganha `categoryId`, `selectedCategory` nome→id, prazos retroativos e `categoryLinks`→`siteUrl` — com sondas antes de cada UPDATE |
 | 2026-08-08 | `crm_phase2_negotiated_value.sql` | CRM fase B.5 (1/4): `rate_quotes."negotiatedValue"` (valor fechado na conversa, vence a tabela) e CHECK de `crm_interactions.kind` recriado com `value_change`/`guest_linked`/`alarm_done` |
+| 2026-08-08 | `crm_phase2_alarms.sql` | CRM fase B.5 (2/4): `crm_alarms` (follow-up/cobrança/lembrete para leads E fechados, `entityLabel` snapshot, índice parcial de abertos, RLS + realtime p/ badge) |

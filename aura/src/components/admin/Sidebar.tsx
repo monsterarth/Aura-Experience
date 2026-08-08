@@ -617,6 +617,8 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
 
   const badgeFor: Record<string, number | undefined> = {
     comunic: notifCounts.messages,
+    comercial_reservas: notifCounts.crmQuoteAlarms,
+    comercial_casamentos: notifCounts.crmWeddingAlarms,
   };
 
   const toggleCollapse = () => {

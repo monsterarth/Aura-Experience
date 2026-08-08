@@ -4,6 +4,8 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { mergePropertySettings } from "@/lib/property-settings";
 import {
+  CrmAlarm,
+  CrmAlarmKind,
   CrmChannel,
   CrmEntityType,
   CrmInteraction,
@@ -311,6 +313,106 @@ export const CrmService = {
       phoneMatches: phoneMatches.filter((g) => g.id !== guest?.id),
       quotes,
     };
+  },
+
+  // ── Alarmes (follow-up, cobrança, lembrete) ────────────────────────────────
+
+  /**
+   * Alarmes abertos, mais urgente primeiro. `entityType` filtra a fila de um
+   * funil; `entityId` filtra o drawer de um lead. Concluídos não voltam aqui —
+   * viram 'alarm_done' na timeline do lead.
+   */
+  async listAlarms(
+    propertyId: string,
+    opts?: { entityType?: CrmEntityType; entityId?: string }
+  ): Promise<CrmAlarm[]> {
+    let q = supabaseAdmin
+      .from("crm_alarms")
+      .select("*")
+      .eq("propertyId", propertyId)
+      .eq("done", false)
+      .order("dueAt", { ascending: true })
+      .order("createdAt", { ascending: true })
+      .limit(300);
+    if (opts?.entityType) q = q.eq("entityType", opts.entityType);
+    if (opts?.entityId) q = q.eq("entityId", opts.entityId);
+
+    const { data, error } = await q;
+    if (error) throw new Error(error.message);
+    return (data || []) as CrmAlarm[];
+  },
+
+  /** Criação NÃO loga na timeline — seria ruído; só a conclusão vira registro. */
+  async createAlarm(
+    propertyId: string,
+    input: {
+      entityType: CrmEntityType; entityId: string; entityLabel: string;
+      kind: CrmAlarmKind; title: string; note?: string | null;
+      dueAt: string; dueTime?: string | null;
+    },
+    actor: { id: string; name: string }
+  ): Promise<CrmAlarm> {
+    const KINDS: CrmAlarmKind[] = ["follow_up", "payment", "reminder", "other"];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.dueAt || "")) throw new Error("Data do alarme inválida.");
+    if (!input.title?.trim()) throw new Error("Título do alarme obrigatório.");
+    if (input.entityType !== "quote" && input.entityType !== "wedding") throw new Error("Tipo inválido.");
+    if (!input.entityId) throw new Error("Lead do alarme ausente.");
+
+    const { data, error } = await supabaseAdmin
+      .from("crm_alarms")
+      .insert({
+        propertyId,
+        entityType: input.entityType,
+        entityId: input.entityId,
+        entityLabel: input.entityLabel?.trim() || "Lead",
+        kind: KINDS.includes(input.kind) ? input.kind : "reminder",
+        title: input.title.trim(),
+        note: input.note?.trim() || null,
+        dueAt: input.dueAt,
+        dueTime: input.dueTime && /^\d{2}:\d{2}$/.test(input.dueTime) ? input.dueTime : null,
+        createdBy: actor.id,
+        createdByName: actor.name,
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return data as CrmAlarm;
+  },
+
+  async setAlarmDone(
+    propertyId: string,
+    id: string,
+    done: boolean,
+    actor: { id: string; name: string }
+  ): Promise<CrmAlarm> {
+    const { data, error } = await supabaseAdmin
+      .from("crm_alarms")
+      .update(done
+        ? { done: true, doneAt: new Date().toISOString(), doneBy: actor.id, doneByName: actor.name }
+        : { done: false, doneAt: null, doneBy: null, doneByName: null })
+      .eq("id", id)
+      .eq("propertyId", propertyId)
+      .select("*")
+      .single();
+    if (error || !data) throw new Error(error?.message || "Alarme não encontrado.");
+
+    const alarm = data as CrmAlarm;
+    if (done) {
+      await this.logInteraction(propertyId, alarm.entityType, alarm.entityId, "alarm_done", {
+        actorId: actor.id, actorName: actor.name,
+        payload: { title: alarm.title, kind: alarm.kind, dueAt: alarm.dueAt },
+      });
+    }
+    return alarm;
+  },
+
+  async deleteAlarm(propertyId: string, id: string): Promise<void> {
+    const { error } = await supabaseAdmin
+      .from("crm_alarms")
+      .delete()
+      .eq("id", id)
+      .eq("propertyId", propertyId);
+    if (error) throw new Error(error.message);
   },
 
   /**

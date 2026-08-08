@@ -11,18 +11,19 @@ import { useProperty } from "@/context/PropertyContext";
 import { useTabParam } from "@/lib/settings-deeplink";
 import { cn } from "@/lib/utils";
 import {
-  CalendarClock, CalendarDays, ExternalLink, Heart, KanbanSquare, ListChecks,
-  Loader2, RefreshCw, Search, TrendingDown, TrendingUp,
+  BellRing, CalendarClock, CalendarDays, ExternalLink, Heart, KanbanSquare,
+  ListChecks, Loader2, RefreshCw, Search, TrendingDown, TrendingUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CrmChannel, CrmEntityType, CrmLead } from "@/types/aura";
+import { CrmAlarm, CrmChannel, CrmEntityType, CrmLead } from "@/types/aura";
 import { PipelineBoard } from "./PipelineBoard";
 import { FollowUpQueue } from "./FollowUpQueue";
+import { AlarmsQueue } from "./AlarmsQueue";
 import { LeadDrawer } from "./LeadDrawer";
 import { MarkLostModal } from "./MarkLostModal";
-import { QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, leadAlert, money } from "./shared";
+import { QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, leadAlert, money, todayIso } from "./shared";
 
-type TabId = "pipeline" | "followups";
+type TabId = "pipeline" | "followups" | "alarmes";
 
 const FUNNEL_CFG: Record<CrmEntityType, {
   title: string; subtitle: string; icon: React.ReactNode; boardTitle: string;
@@ -49,12 +50,21 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
 
   const [leads, setLeads] = useState<CrmLead[]>([]);
   const [channels, setChannels] = useState<CrmChannel[]>([]);
+  const [alarms, setAlarms] = useState<CrmAlarm[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<TabId>(useTabParam<TabId>(["pipeline", "followups"], "pipeline"));
+  const [tab, setTab] = useState<TabId>(useTabParam<TabId>(["pipeline", "followups", "alarmes"], "pipeline"));
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<CrmLead | null>(null);
   const [losing, setLosing] = useState<CrmLead | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  const loadAlarms = useCallback(async () => {
+    if (!property?.id) return;
+    const res = await fetch(`/api/admin/comercial/alarms?propertyId=${property.id}&funnel=${funnel}`).catch(() => null);
+    if (!res?.ok) return;
+    const data = await res.json();
+    setAlarms(data.alarms || []);
+  }, [property?.id, funnel]);
 
   const load = useCallback(async () => {
     if (!property?.id) return;
@@ -64,12 +74,13 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
       const data = await res.json();
       setLeads(data.leads || []);
       setChannels(data.channels || []);
+      loadAlarms();
     } catch {
       toast.error("Erro ao carregar o pipeline.");
     } finally {
       setLoading(false);
     }
-  }, [property?.id, funnel]);
+  }, [property?.id, funnel, loadAlarms]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -233,6 +244,59 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
       : `/admin/casamentos?weddingId=${lead.id}`);
   };
 
+  // ── Alarmes ────────────────────────────────────────────────────────────────
+
+  const [alarmBusyId, setAlarmBusyId] = useState<string | null>(null);
+
+  const alarmDone = async (a: CrmAlarm) => {
+    setAlarmBusyId(a.id);
+    try {
+      const res = await fetch("/api/admin/comercial/alarms", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ propertyId: property!.id, id: a.id, done: true }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error);
+      await loadAlarms();
+      toast.success("Alarme concluído.");
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : "Erro ao concluir o alarme.");
+    } finally {
+      setAlarmBusyId(null);
+    }
+  };
+
+  const alarmDelete = async (a: CrmAlarm) => {
+    if (!confirm(`Excluir o alarme "${a.title}"?`)) return;
+    setAlarmBusyId(a.id);
+    try {
+      const res = await fetch(
+        `/api/admin/comercial/alarms?propertyId=${property!.id}&id=${a.id}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) throw new Error();
+      await loadAlarms();
+      toast.success("Alarme excluído.");
+    } catch {
+      toast.error("Erro ao excluir o alarme.");
+    } finally {
+      setAlarmBusyId(null);
+    }
+  };
+
+  // Lead ainda no pipeline → drawer; fechado há mais de 60d → tela de origem.
+  const openAlarmLead = (a: CrmAlarm) => {
+    const lead = leads.find((l) => l.id === a.entityId);
+    if (lead) setSelected(lead);
+    else router.push(a.entityType === "quote"
+      ? `/admin/tarifario?quoteId=${a.entityId}`
+      : `/admin/casamentos?weddingId=${a.entityId}`);
+  };
+
+  const dueAlarmCount = useMemo(
+    () => alarms.filter((a) => a.dueAt <= todayIso()).length,
+    [alarms]
+  );
+
   if (!property) return null;
 
   return (
@@ -253,9 +317,10 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
           )}
           <div className="flex gap-1 bg-secondary rounded-xl p-1">
             {([
-              { id: "pipeline" as TabId, label: "Pipeline", icon: KanbanSquare },
-              { id: "followups" as TabId, label: "Follow-ups", icon: ListChecks },
-            ]).map(({ id, label, icon: Icon }) => (
+              { id: "pipeline" as TabId, label: "Pipeline", icon: KanbanSquare, badge: 0 },
+              { id: "followups" as TabId, label: "Follow-ups", icon: ListChecks, badge: kpis.overdueCount },
+              { id: "alarmes" as TabId, label: "Alarmes", icon: BellRing, badge: dueAlarmCount },
+            ]).map(({ id, label, icon: Icon, badge }) => (
               <button key={id} onClick={() => setTab(id)}
                 className={cn(
                   "flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
@@ -263,9 +328,9 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
                 )}>
                 <Icon size={15} />
                 <span className="hidden sm:inline">{label}</span>
-                {id === "followups" && kpis.overdueCount > 0 && (
+                {badge > 0 && (
                   <span className="text-[10px] font-black bg-red-500 text-white rounded-full px-1.5">
-                    {kpis.overdueCount}
+                    {badge}
                   </span>
                 )}
               </button>
@@ -323,9 +388,12 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
       ) : tab === "pipeline" ? (
         <PipelineBoard title={cfg.boardTitle} icon={cfg.icon}
           stages={stages} leads={filtered} channels={channels} onOpen={setSelected} />
-      ) : (
+      ) : tab === "followups" ? (
         <FollowUpQueue leads={filtered} busyId={busyId}
           onOpen={setSelected} onQuickContact={(l) => followUp(l, "")} />
+      ) : (
+        <AlarmsQueue alarms={alarms} busyId={alarmBusyId}
+          onDone={alarmDone} onDelete={alarmDelete} onOpen={openAlarmLead} />
       )}
 
       {selected && (
@@ -343,6 +411,7 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
           onOpenOrigin={() => openOrigin(selected)}
           onPatch={(patch) => patchLead(selected, patch)}
           onPromoteGuest={(guestId) => promoteGuest(selected, guestId)}
+          onAlarmsChanged={loadAlarms}
         />
       )}
 

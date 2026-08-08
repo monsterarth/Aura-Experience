@@ -2489,6 +2489,33 @@ export interface CrmLead {
   createdAt: Timestamp;
 }
 
+export type CrmAlarmKind = 'follow_up' | 'payment' | 'reminder' | 'other';
+
+/**
+ * Alarme comercial (follow-up, cobrança, lembrete) — vale para lead ATIVO ou
+ * FECHADO (cobrança é pós-fechamento). Fila no CRM + badge no menu; sem push.
+ */
+export interface CrmAlarm {
+  id: string;
+  propertyId: string;
+  entityType: CrmEntityType;
+  entityId: string;
+  /** Snapshot do nome do lead — a fila não depende do recorte de 60d do pipeline. */
+  entityLabel: string;
+  kind: CrmAlarmKind;
+  title: string;
+  note?: string | null;
+  dueAt: string;            // YYYY-MM-DD
+  dueTime?: string | null;  // HH:mm — só exibição
+  done: boolean;
+  doneAt?: Timestamp | null;
+  doneBy?: string | null;
+  doneByName?: string | null;
+  createdBy?: string | null;
+  createdByName?: string | null;
+  createdAt: Timestamp;
+}
+
 /** Motivos de perda de ORÇAMENTO (casamentos têm a própria lista). */
 export const CRM_LOST_REASONS_QUOTE = [
   'Preço acima do orçamento',

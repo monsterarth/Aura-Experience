@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { CrmChannel, CrmLead } from "@/types/aura";
 import { ClientPanel } from "./ClientPanel";
 import { InteractionTimeline } from "./InteractionTimeline";
+import { LeadAlarms } from "./LeadAlarms";
 import { QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, fmtBR, money } from "./shared";
 
 /**
@@ -110,7 +111,7 @@ function NegotiationSection({
 export function LeadDrawer({
   propertyId, lead, channels, busy,
   onClose, onFollowUp, onAddNote, onMoveStage, onMarkLost, onWin, onOpenOrigin, onPatch,
-  onPromoteGuest,
+  onPromoteGuest, onAlarmsChanged,
 }: {
   propertyId: string;
   lead: CrmLead;
@@ -125,6 +126,7 @@ export function LeadDrawer({
   onOpenOrigin: () => void;
   onPatch: (patch: Record<string, unknown>) => Promise<void>;
   onPromoteGuest: (guestId?: string) => Promise<void>;
+  onAlarmsChanged?: () => void;
 }) {
   const [note, setNote] = useState("");
   const [noteMode, setNoteMode] = useState<"follow_up" | "note">("follow_up");
@@ -236,6 +238,11 @@ export function LeadDrawer({
         {isQuote && active && (
           <NegotiationSection lead={lead} channels={channels} busy={busy} onPatch={patchAndRefresh} />
         )}
+
+        {/* Alarmes — também em lead FECHADO (cobrança é pós-fechamento) */}
+        <LeadAlarms propertyId={propertyId} lead={lead}
+          onChanged={() => { onAlarmsChanged?.(); setTimelineKey((k) => k + 1); }} />
+
 
         {/* Ações */}
         {active && (
