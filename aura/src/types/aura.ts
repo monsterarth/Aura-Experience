@@ -2457,6 +2457,35 @@ export interface CrmInteraction {
   createdAt: Timestamp;
 }
 
+/**
+ * Lead normalizado para o Hub Comercial: os dois funis (orçamentos e
+ * casamentos) viram esta forma única no pipeline — a normalização acontece no
+ * service (CrmService.getPipeline), nunca no client.
+ */
+export interface CrmLead {
+  entityType: CrmEntityType;
+  id: string;
+  /** Nome do cliente ou "Noiva & Noivo". */
+  title: string;
+  phone?: string | null;
+  email?: string | null;
+  source?: string | null;
+  /** Estágio bruto da entidade de origem (RateQuoteStatus ou WeddingStatus). */
+  stage: string;
+  value: number;
+  /** true = "a partir de" (mínimo do snapshot, sem opção fechada). */
+  valueApproximate: boolean;
+  /** Data de referência: check-in (orçamento) ou data do casamento. */
+  dateRef: string;
+  followUpAt?: string | null;
+  expiresAt?: string | null;
+  lostReason?: string | null;
+  guestId?: string | null;
+  stayId?: string | null;
+  weddingId?: string | null;
+  createdAt: Timestamp;
+}
+
 /** Motivos de perda de ORÇAMENTO (casamentos têm a própria lista). */
 export const CRM_LOST_REASONS_QUOTE = [
   'Preço acima do orçamento',

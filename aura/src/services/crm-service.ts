@@ -8,10 +8,14 @@ import {
   CrmEntityType,
   CrmInteraction,
   CrmInteractionKind,
+  CrmLead,
   DEFAULT_CRM_CHANNELS,
   DEFAULT_QUOTE_LEAD,
+  RateQuoteRecord,
+  Wedding,
   WeddingLeadSettings,
 } from "@/types/aura";
+import { resolveQuoteValue } from "@/lib/rate-engine";
 
 function localToday(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
@@ -122,6 +126,115 @@ export const CrmService = {
 
   async saveQuoteLeadSettings(propertyId: string, lead: WeddingLeadSettings): Promise<void> {
     await mergePropertySettings(propertyId, { crmQuoteLead: lead });
+  },
+
+  // ── Pipeline do Hub Comercial ──────────────────────────────────────────────
+
+  /**
+   * Os dois funis normalizados para CrmLead. Ativos sempre; fechados
+   * (won/lost/completed/cancelled) só dos últimos 60 dias — o hub é operação,
+   * não arquivo (histórico completo fica nas telas de origem e nos KPIs).
+   */
+  async getPipeline(propertyId: string): Promise<{ leads: CrmLead[]; channels: CrmChannel[] }> {
+    const cutoff = new Date(Date.now() - 60 * 86400000).toISOString();
+
+    const [quotesRes, weddingsRes, channels] = await Promise.all([
+      supabaseAdmin
+        .from("rate_quotes").select("*")
+        .eq("propertyId", propertyId)
+        .or(`status.in.(open,sent,negotiating),updatedAt.gte.${cutoff}`)
+        .order("createdAt", { ascending: false })
+        .limit(500),
+      supabaseAdmin
+        .from("weddings").select("*")
+        .eq("propertyId", propertyId)
+        .or(`status.in.(tentative,confirmed),updatedAt.gte.${cutoff}`)
+        .order("weddingDate", { ascending: true })
+        .limit(500),
+      this.getChannels(propertyId),
+    ]);
+
+    const quoteLeads: CrmLead[] = ((quotesRes.data || []) as RateQuoteRecord[]).map((q) => {
+      const v = resolveQuoteValue(q);
+      return {
+        entityType: "quote",
+        id: q.id,
+        title: q.clientName || "Sem nome",
+        phone: q.clientPhone,
+        email: q.clientEmail,
+        source: q.source,
+        stage: q.status,
+        value: v.value,
+        valueApproximate: v.approximate,
+        dateRef: q.checkIn,
+        followUpAt: q.followUpAt,
+        expiresAt: q.expiresAt,
+        lostReason: q.lostReason,
+        guestId: q.guestId,
+        stayId: q.stayId,
+        weddingId: q.weddingId,
+        createdAt: q.createdAt,
+      };
+    });
+
+    const weddingLeads: CrmLead[] = ((weddingsRes.data || []) as Wedding[]).map((w) => ({
+      entityType: "wedding",
+      id: w.id,
+      title: `${w.bride} & ${w.groom}`,
+      phone: w.couplePhone,
+      email: w.coupleEmail,
+      source: w.source,
+      stage: w.status,
+      value: Number(w.contractTotal) || 0,
+      valueApproximate: false,
+      dateRef: w.weddingDate,
+      followUpAt: w.followUpAt,
+      expiresAt: w.expiresAt,
+      lostReason: w.lostReason,
+      guestId: null,
+      stayId: null,
+      weddingId: w.id,
+      createdAt: w.createdAt,
+    }));
+
+    return { leads: [...quoteLeads, ...weddingLeads], channels };
+  },
+
+  /**
+   * Follow-up de ORÇAMENTO: renova prazos com crmQuoteLead (o de casamento
+   * vive em WeddingService.registerFollowUp). Teto: check-in.
+   */
+  async registerQuoteFollowUp(
+    propertyId: string,
+    id: string,
+    note: string | undefined,
+    actor: { id: string; name: string }
+  ): Promise<{ followUpAt: string; expiresAt: string }> {
+    const s = await this.getQuoteLeadSettings(propertyId);
+    const { data } = await supabaseAdmin
+      .from("rate_quotes").select("checkIn").eq("id", id).eq("propertyId", propertyId).maybeSingle();
+    if (!data) throw new Error("Orçamento não encontrado.");
+
+    const today = localToday();
+    let expiresAt = addDays(today, s.renewDays);
+    if (data.checkIn && data.checkIn < expiresAt) expiresAt = data.checkIn;
+    let followUpAt = addDays(today, s.followUpDays);
+    if (followUpAt > expiresAt) followUpAt = expiresAt;
+
+    const { error } = await supabaseAdmin
+      .from("rate_quotes")
+      .update({ followUpAt, expiresAt, updatedAt: new Date().toISOString() })
+      .eq("id", id)
+      .eq("propertyId", propertyId);
+    if (error) throw new Error(error.message);
+
+    await this.logInteraction(propertyId, "quote", id, "follow_up", {
+      note: note?.trim() || null,
+      actorId: actor.id, actorName: actor.name,
+      payload: { followUpAt, expiresAt },
+    });
+
+    return { followUpAt, expiresAt };
   },
 
   /**

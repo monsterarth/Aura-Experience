@@ -1,0 +1,29 @@
+// Hub Comercial — pipeline unificado: os dois funis (orçamentos + casamentos)
+// normalizados para CrmLead no service, nunca no client.
+import { NextRequest, NextResponse } from "next/server";
+import { requireAuth, isAuthError, assertPropertyAccess } from "@/lib/api-auth";
+import { supabaseAdmin } from "@/lib/supabase";
+import { CrmService } from "@/services/crm-service";
+
+export const dynamic = "force-dynamic";
+
+const READ_ROLES = ["super_admin", "admin", "manager", "reception"] as const;
+
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth([...READ_ROLES]);
+  if (isAuthError(auth)) return auth;
+  if (!supabaseAdmin) return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
+
+  const propertyId = new URL(req.url).searchParams.get("propertyId") || auth.staff.propertyId;
+  const denied = assertPropertyAccess(auth, propertyId);
+  if (denied) return denied;
+  if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
+
+  try {
+    const pipeline = await CrmService.getPipeline(propertyId);
+    return NextResponse.json(pipeline);
+  } catch (e) {
+    console.error("Erro ao carregar pipeline comercial:", e);
+    return NextResponse.json({ error: "Falha ao carregar o pipeline." }, { status: 500 });
+  }
+}
