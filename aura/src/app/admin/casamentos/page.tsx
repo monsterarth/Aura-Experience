@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { useProperty } from "@/context/PropertyContext";
 import { supabase } from "@/lib/supabase";
 import { Wedding, WeddingStatus } from "@/types/aura";
@@ -186,6 +187,16 @@ function CasamentosPageInner() {
   const [leadSettingsOpen, setLeadSettingsOpen] = useState(false);
   // Link do hub abre o modal de prazos direto.
   useConfigDeepLink({ prazos: () => setLeadSettingsOpen(true) });
+
+  // Deep-link ?weddingId= — o hub Comercial abre o drawer do casamento direto.
+  const searchParams = useSearchParams();
+  const weddingIdHandled = useRef(false);
+  useEffect(() => {
+    const wid = searchParams.get("weddingId");
+    if (!wid || weddingIdHandled.current || weddings.length === 0) return;
+    const found = weddings.find(w => w.id === wid);
+    if (found) { weddingIdHandled.current = true; setSelected(found); }
+  }, [searchParams, weddings]);
   const [deleting, setDeleting] = useState(false);
 
   const loadWeddings = useCallback(async () => {

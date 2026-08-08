@@ -22,7 +22,7 @@ import {
   UserCircle2, Smartphone, Heart, History,
   Package, ArrowLeftRight, SlidersHorizontal,
   ShoppingCart, Truck, Landmark, AlertOctagon, ListFilter,
-  CircleDollarSign,
+  CircleDollarSign, Handshake,
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import Image from "next/image";
@@ -167,6 +167,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Hospedagem",
     items: [
       { id: "stays",   label: "Estadias",     icon: Home,          href: "/admin/stays",           roles: ["super_admin","admin","reception","governance","manager"] },
+      { id: "comercial", label: "Comercial",  icon: Handshake, href: "/admin/comercial",    roles: ["super_admin","admin","reception","manager"] },
       { id: "tarifario", label: "Tarifário",  icon: CircleDollarSign, href: "/admin/tarifario",    roles: ["super_admin","admin","reception","manager"] },
       { id: "mapa",    label: "Mapa",          icon: Map,           href: "/admin/reservation-map", roles: ["super_admin","admin","reception","manager"] },
       { id: "hospedes",label: "Hóspedes",      icon: UserSearch,    href: "/admin/guests",          roles: ["super_admin","admin","reception","manager"] },
