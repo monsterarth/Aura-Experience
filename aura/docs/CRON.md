@@ -22,6 +22,7 @@ Schedules in `vercel.json` are **UTC**. The resort runs on BRT (UTC−3), so e.g
 | `asset-depreciation` | `0 5 1 * *` | Monthly asset depreciation entries |
 | `daily-lodging` | `15 8 * * *` | Posts due nightly lodging charges (diárias) to stay folios |
 | `wedding-status` | `30 8 * * *` | Past **confirmed** → `completed`; past **tentative** → `lost` |
+| `crm-status` | `45 8 * * *` | Archives stale reservation quotes (`rate_quotes`) as `lost` |
 
 ### `daily-automations`
 For each property: loads active `automation_rules` (those with a `templateId`) and
@@ -77,6 +78,17 @@ Runs at 08:30 UTC and closes both ends of the funnel, using the property-local d
 The two paths are deliberately separate: promoting a lapsed negotiation to `completed` would
 invent a wedding that never happened and inflate the module's revenue.
 **Writes to** `weddings.status` / `lostReason` / `lostAt`, `audit_logs`.
+
+### `crm-status`
+Runs at 08:45 UTC, right after `wedding-status` (kept separate on purpose — the wedding flow
+already runs in production). Archives open reservation quotes (`open`/`sent`/`negotiating`)
+via `RateService.archiveExpiredQuotes`:
+- `checkIn` already past → `lost`, reason "Data da estadia passou"
+- `expiresAt` past → `lost`, reason "Prazo vencido sem retorno"
+
+Each archived quote also gets a `lost` row in `crm_interactions` (actor `cron`). Quote lead
+defaults live in `properties.settings.crmQuoteLead` (3/30/30); "Registrar follow-up" renews.
+**Writes to** `rate_quotes.status/lostReason/lostAt`, `crm_interactions`, `audit_logs`.
 
 ### `daily-lodging`
 Runs at 08:15 UTC (05:15 BRT). For every stay with `nightlyRate` set (linked from a Tarifário
