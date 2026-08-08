@@ -1,1541 +1,301 @@
-// src/app/admin/core/properties/[id]/page.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
+// src/app/admin/core/properties/[id]/page.tsx
+//
+// PÁGINA DE PLATAFORMA — o que sobrou depois que a configuração da pousada saiu daqui.
+//
+// Esta tela tinha 1542 linhas e era a configuração de verdade da propriedade, morando
+// em /admin/core (área de super_admin) e lendo `params.id` em vez do PropertyContext.
+// Dava para editar a Fazenda do Rosa com o sistema apontando para outra pousada,
+// enquanto o breadcrumb exibia a outra. Marca, operação, políticas, gastronomia,
+// integrações e módulos foram para /admin/configuracoes, presos à propriedade ATIVA.
+//
+// Aqui ficou só o que é mesmo de plataforma: a identidade do workspace e a Danger Zone.
+// Destruição em massa continua a um clique de distância de ninguém que não seja
+// super_admin — de propósito, é o motivo de não ter ido para o hub.
+import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { PropertyService } from "@/services/property-service";
-import { PropertySettingsClient } from "@/lib/property-settings-client";
-import { parseMultiLang } from "@/lib/multilang";
-import { ColorInput } from "@/components/admin/settings/ColorInput";
-import { MultiLangField } from "@/components/admin/settings/MultiLangField";
-import { StructureService } from "@/services/structure-service";
-import { Property, PropertyTheme, Structure } from "@/types/aura";
-import {
-    Save, ArrowLeft, Smartphone, Palette,
-    Type, Layout, Loader2, Clock, MessageSquare,
-    Phone, ShieldCheck, Coffee, Sparkles, Wrench, FileText, Image as ImageIcon,
-    CheckCircle2, Globe, AlertTriangle, Trash2, RefreshCcw, Database, Settings2
-} from "lucide-react";
-import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { ImageUpload } from "@/components/admin/ImageUpload";
+import { useProperty } from "@/context/PropertyContext";
+import { PropertyService } from "@/services/property-service";
+import { Property } from "@/types/aura";
+import { toast } from "sonner";
+import {
+    Loader2, AlertTriangle, Database, RefreshCcw, Trash2, ArrowRight,
+    Settings, Building2, ArrowLeft,
+} from "lucide-react";
 
-// Função auxiliar para converter HEX -> HSL (Para o Preview)
-function hexToHSL(hex: string): string {
-    hex = hex.replace(/^#/, '');
-    let r = parseInt(hex.substring(0, 2), 16);
-    let g = parseInt(hex.substring(2, 4), 16);
-    let b = parseInt(hex.substring(4, 6), 16);
-    r /= 255; g /= 255; b /= 255;
-    let max = Math.max(r, g, b), min = Math.min(r, g, b);
-    let h = 0, s = 0, l = (max + min) / 2;
-    if (max !== min) {
-        let d = max - min;
-        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-        switch (max) {
-            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-            case g: h = (b - r) / d + 2; break;
-            case b: h = (r - g) / d + 4; break;
-        }
-        h /= 6;
-    }
-    return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
-}
+/** Links antigos (?tab=visual…) continuam funcionando: viram a seção equivalente do hub. */
+const TAB_TO_SECTION: Record<string, string> = {
+    visual: "marca",
+    operational: "operacao",
+    policies: "politicas",
+    f_b: "gastronomia",
+};
 
-type TabType = 'visual' | 'operational' | 'f_b' | 'policies' | 'danger';
-// MultiLangObj e parseMultiLang agora sao compartilhados (types/aura + lib/multilang).
+const PURGE_TARGETS = [
+    { id: "stays", label: "Estadias" },
+    { id: "guests", label: "Hóspedes" },
+    { id: "messages", label: "Histórico de mensagens" },
+    { id: "housekeeping_tasks", label: "Tarefas de faxina" },
+    { id: "maintenance_tasks", label: "Tickets de manutenção" },
+    { id: "survey_responses", label: "Avaliações respondidas" },
+    { id: "structure_bookings", label: "Agendamentos de estruturas" },
+    { id: "structures", label: "Estruturas cadastradas" },
+    { id: "cabins", label: "Cabanas cadastradas" },
+];
 
-export default function PropertySettingsPage() {
+export default function PropertyPlatformPage() {
     const { id } = useParams();
     const router = useRouter();
-    const { isSuperAdmin, userData } = useAuth();
+    const tabParam = useSearchParams().get("tab");
+    const { isSuperAdmin, userData, loading: authLoading } = useAuth();
+    const { currentProperty, setProperty } = useProperty();
 
+    const [target, setTarget] = useState<Property | null>(null);
     const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
-    // O hub de configurações linka direto para a aba certa (?tab=operational etc.).
-    // Sem isso todo card cairia em "Branding & Visual" e o card mentiria sobre onde fica.
-    const tabParam = useSearchParams().get('tab') as TabType | null;
-    const VALID_TABS: TabType[] = ['visual', 'operational', 'f_b', 'policies', 'danger'];
-    const [activeTab, setActiveTab] = useState<TabType>(
-        tabParam && VALID_TABS.includes(tabParam) ? tabParam : 'visual'
-    );
+    const [busy, setBusy] = useState(false);
+    const [purge, setPurge] = useState<string[]>([]);
+    const [showDelete, setShowDelete] = useState(false);
+    const [confirmName, setConfirmName] = useState("");
 
-    // Danger Zone States
-    const [isDeleting, setIsDeleting] = useState(false);
-    const [showDeleteModal, setShowDeleteModal] = useState(false);
-    const [deleteConfirmName, setDeleteConfirmName] = useState("");
-    const [purgeTargets, setPurgeTargets] = useState<string[]>([]);
-
-    const [property, setProperty] = useState<Property | null>(null);
-    const [theme, setTheme] = useState<PropertyTheme | null>(null);
-    // Segredos de integração: a tela só sabe SE existem e os 4 últimos dígitos.
-    const [secretInfo, setSecretInfo] = useState<{
-        hasEvolutionApiKey: boolean; evolutionApiKeyMask: string | null;
-        hasChatwootApiToken: boolean; chatwootApiTokenMask: string | null;
-        secureEvolutionApiKey: boolean; secureChatwootApiToken: boolean;
-    } | null>(null);
-    // Salão do café (estrutura marcada) — picker redundante c/ o toggle da estrutura.
-    const [structures, setStructures] = useState<Structure[]>([]);
-    const [cafeVenueId, setCafeVenueId] = useState("");
-    const [cafeOpen, setCafeOpen] = useState("08:00");
-    const [cafeClose, setCafeClose] = useState("10:30");
-
-    // Informações Básicas da Marca
-    const [basicInfo, setBasicInfo] = useState({
-        name: "",
-        slogan: "",
-        logoUrl: ""
-    });
-
-    // Configurações Operacionais & Políticas (Agora preparadas para Multi-idioma)
-    const [settings, setSettings] = useState({
-        whatsappNumber: "",
-        whatsappEnabled: false,
-        whatsappConfig: { apiUrl: "", apiKey: "", instanceName: "", chatwootUrl: "", chatwootAccountId: "", chatwootApiToken: "", chatwootInboxId: 0 },
-        customDomain: "",
-        logoFullUrl: "",  // logo com o nome escrito (etiqueta de patrimônio, impressos)
-        hasStock: true,   // módulo Compras & Estoque (SaaS)
-        checkInTime: "14:00",
-        checkOutTime: "12:00",
-        receptionStartTime: "08:00",
-        receptionEndTime: "20:00",
-        govStartTime: "08:00",
-        govEndTime: "16:00",
-        maintenanceStartTime: "08:00",
-        maintenanceEndTime: "17:00",
-        breakfastModality: "buffet",
-        buffetStartTime: "07:30",
-        buffetEndTime: "10:30",
-        deliveryStartTime: "07:00",
-        deliveryEndTime: "11:00",
-
-        // Mensagens Check-in (Multilíngue)
-        earlyCheckInMessage: {
-            pt: "Prezado(a) Hospede. Vimos que sua chegada está prevista para [expectedArrivalTime]. Por padrão nosso check in é sempre a partir das [checkintime], porém fazemos sempre o possível para liberar a sua acomodação antecipadamente. Para garantir um Early Check in entre em contato com a recepção.",
-            en: "Dear Guest. We noticed your arrival is scheduled for [expectedArrivalTime]. Standard check-in starts at [checkintime]. Please contact the reception to arrange an early check-in.",
-            es: "Estimado huésped. Vemos que su llegada está prevista para las [expectedArrivalTime]. El check-in estándar comienza a las [checkintime]. Contacte a la recepción para coordinar un early check-in."
-        },
-        lateCheckInMessage: {
-            pt: "Prezado(a) Hospede. Vimos que sua chegada está prevista para [expectedArrivalTime]. O horário de funcionamento da recepção encerra as [receptionendtime], mas não se preocupe.\nNossa guarita funciona 24 horas e um de nossos porteiros estará a disposição para recebê-los acompanhá-los até a sua acomodação. Avise a recepção caso necessite de arranjos especiais.",
-            en: "Dear Guest. Your arrival is scheduled for [expectedArrivalTime]. The reception closes at [receptionendtime], but our security gate is open 24/7. Let the reception know if you need special arrangements.",
-            es: "Estimado huésped. Su llegada está prevista para las [expectedArrivalTime]. La recepción cierra a las [receptionendtime], pero nuestra portería funciona 24h. Avise a la recepción si requiere arreglos especiales."
-        },
-        petPolicyAlert: {
-            pt: "A pousada é Pet Friendly e teremos o maior prazer em receber seu pet! Porém temos algumas regrinhas que devem ser respeitadas. Aceitamos pets de micro e pequeno porte até 15kg (um por cabana). Para aceitarmos é necessário ler e concordar com a nossa Política Pet.",
-            en: "We are Pet Friendly! However, we have rules. We accept small pets up to 15kg (one per cabin). You must read and agree to our Pet Policy.",
-            es: "¡Somos Pet Friendly! Sin embargo, tenemos reglas. Aceptamos mascotas pequeñas de hasta 15kg (una por cabaña). Es necesario leer y aceptar nuestra Política de Mascotas."
-        },
-
-        // Políticas Completas (Multilíngue)
-        petPolicyText: {
-            pt: "1. O tutor é inteiramente responsável pelo comportamento do animal.\n2. O animal não deve circular nas áreas de piscina e restaurante.\n3. É obrigatória a apresentação da carteira de vacinação atualizada no check-in.",
-            en: "1. The owner is fully responsible for the animal's behavior.\n2. The animal is not allowed in pool and restaurant areas.\n3. An updated vaccination card must be presented at check-in.",
-            es: "1. El tutor es enteramente responsable del comportamiento del animal.\n2. El animal no debe circular en zonas de piscina y restaurante.\n3. Es obligatorio presentar la cartilla de vacunación actualizada al hacer el check-in."
-        },
-        privacyPolicyText: {
-            pt: "Sua privacidade é importante para nós. Coletamos seus dados exclusivamente para o cumprimento da FNRH (Ficha Nacional de Registro de Hóspedes) exigida pelo Ministério do Turismo, e para melhorar sua experiência conosco.",
-            en: "Your privacy is important to us. We collect your data exclusively to comply with the National Guest Registration Form (FNRH) required by the Ministry of Tourism, and to improve your experience.",
-            es: "Su privacidad es importante para nosotros. Recopilamos sus datos exclusivamente para cumplir con la Ficha Nacional de Registro de Huéspedes (FNRH) exigida por el Ministerio de Turismo."
-        },
-        generalPolicyText: {
-            pt: "Bem-vindo à nossa propriedade. Solicitamos respeito aos horários de silêncio (22h às 08h) e cuidado com os itens da cabana. Danos ao patrimônio estarão sujeitos a cobranças e multas aplicáveis.",
-            en: "Welcome to our property. We kindly ask you to respect quiet hours (10 PM to 8 AM) and take care of cabin items. Damages are subject to charges.",
-            es: "Bienvenido a nuestra propiedad. Solicitamos respetar el horario de silencio (22h a 08h) y cuidar los artículos de la cabaña. Los daños estarán sujetos a cargos."
-        },
-
-        // Pet Settings
-        acceptsPets: true,
-        petMinWeight: 1,
-        petMaxWeight: 15,
-
-        // NOVO: F&B Settings Detalhado
-        fbSettings: {
-            restaurant: {
-                enabled: false,
-                name: "Restaurante Principal",
-                operatingHours: []
-            },
-            breakfast: {
-                enabled: false,
-                modality: "buffet" as 'delivery' | 'buffet' | 'both',
-                name: "Café da Manhã",
-                buffetHours: [],
-                delivery: {
-                    orderWindowStart: "18:00",
-                    orderWindowEnd: "22:00",
-                    deliveryTimes: ["08:30", "09:30", "10:30"]
-                }
-            }
-        }
-    });
+    const propertyId = String(id);
+    const sameProperty = currentProperty?.id === propertyId;
 
     useEffect(() => {
-        loadProperty();
-        loadSecretInfo();
-    }, [id]);
+        PropertyService.getPropertyById(propertyId)
+            .then((p) => setTarget(p))
+            .finally(() => setLoading(false));
+    }, [propertyId]);
 
-    /** GET mascarado: nunca traz o valor do segredo para o navegador. */
-    async function loadSecretInfo() {
+    // Quem não é super_admin não tem o que fazer aqui — e não deve alcançar a config de
+    // outro tenant por URL. A configuração dele é o hub, preso à própria propriedade.
+    useEffect(() => {
+        if (authLoading || !userData) return;
+        if (!isSuperAdmin) router.replace("/admin/configuracoes");
+    }, [authLoading, userData, isSuperAdmin, router]);
+
+    // Link antigo com ?tab= vai direto para a seção nova (só quando é a propriedade ativa).
+    useEffect(() => {
+        if (!tabParam || !sameProperty) return;
+        const section = TAB_TO_SECTION[tabParam];
+        if (section) router.replace(`/admin/configuracoes/${section}`);
+    }, [tabParam, sameProperty, router]);
+
+    async function manage(action: string, extra: Record<string, unknown> = {}) {
+        setBusy(true);
         try {
-            const r = await fetch(`/api/admin/properties/integrations?propertyId=${encodeURIComponent(String(id))}`);
-            if (r.ok) setSecretInfo(await r.json());
-        } catch { /* silencioso: a tela funciona sem a máscara */ }
+            const res = await fetch(`/api/admin/properties/${propertyId}/manage`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ actorId: userData?.id, actorName: userData?.fullName, action, ...extra }),
+            });
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error);
+            return json;
+        } finally {
+            setBusy(false);
+        }
     }
 
-    async function loadProperty() {
+    const doReset = async () => {
+        if (!window.confirm("Isso apaga automações, checklists e templates atuais desta propriedade e clona os padrões do sistema. Tem certeza?")) return;
+        try { await manage("reset_defaults"); toast.success("Padrões restaurados."); }
+        catch (e) { toast.error((e as Error).message || "Erro ao restaurar padrões."); }
+    };
+
+    const doPurge = async () => {
+        if (purge.length === 0) return;
+        const labels = PURGE_TARGETS.filter((t) => purge.includes(t.id)).map((t) => t.label).join(", ");
+        if (!window.confirm(`Apagar permanentemente: ${labels}?\n\nNão há como desfazer.`)) return;
+        try { await manage("purge", { targets: purge }); toast.success("Dados limpos."); setPurge([]); }
+        catch (e) { toast.error((e as Error).message || "Erro ao limpar dados."); }
+    };
+
+    const doDelete = async () => {
+        if (confirmName !== (target?.name ?? "")) { toast.error("O nome digitado não confere."); return; }
         try {
-            const data = await PropertyService.getPropertyById(id as string);
-            if (!data) throw new Error("Propriedade não encontrada");
-            setProperty(data);
-
-            // Uso de (data as any) para contornar TS strict em campos novos como slogan
-            const rawSlogan = (data as any).slogan || (data.settings as any)?.slogan || "";
-            setBasicInfo({
-                name: data.name || "",
-                slogan: rawSlogan,
-                logoUrl: data.logoUrl || ""
-            });
-
-            setTheme(data.theme || {
-                colors: {
-                    primary: "#000000", onPrimary: "#ffffff",
-                    secondary: "#f4f4f5", onSecondary: "#09090b",
-                    background: "#ffffff", surface: "#ffffff",
-                    textMain: "#09090b", textMuted: "#71717a",
-                    accent: "#f4f4f5", success: "#22c55e", error: "#ef4444"
-                },
-                shape: { radius: "0.5rem" },
-                typography: { fontFamilyHeading: "Inter", fontFamilyBody: "Inter", baseSize: 16 }
-            });
-
-            // Carrega settings garantindo backward compatibility com strings antigas
-            if (data.settings) {
-                const s = data.settings as any;
-                setSettings(prev => ({
-                    ...prev,
-                    ...s,
-                    earlyCheckInMessage: parseMultiLang(s.earlyCheckInMessage, prev.earlyCheckInMessage),
-                    lateCheckInMessage: parseMultiLang(s.lateCheckInMessage, prev.lateCheckInMessage),
-                    petPolicyAlert: parseMultiLang(s.petPolicyAlert, prev.petPolicyAlert),
-                    petPolicyText: parseMultiLang(s.petPolicyText, prev.petPolicyText),
-                    privacyPolicyText: parseMultiLang(s.privacyPolicyText, prev.privacyPolicyText),
-                    generalPolicyText: parseMultiLang(s.generalPolicyText, prev.generalPolicyText),
-                    whatsappEnabled: s.whatsappEnabled ?? prev.whatsappEnabled,
-                    // Segredos NUNCA voltam do banco para a tela: campo vazio = "manter o atual".
-                    // Eles vivem em property_secrets, fora do alcance da chave anon do navegador.
-                    whatsappConfig: { ...prev.whatsappConfig, ...(s.whatsappConfig || {}), apiKey: "", chatwootApiToken: "" },
-                    acceptsPets: s.acceptsPets !== undefined ? s.acceptsPets : prev.acceptsPets,
-                    petMinWeight: s.petMinWeight !== undefined ? s.petMinWeight : prev.petMinWeight,
-                    petMaxWeight: s.petMaxWeight !== undefined ? s.petMaxWeight : prev.petMaxWeight,
-                    fbSettings: s.fbSettings || prev.fbSettings
-                }));
-            }
-
-        } catch (error) {
-            toast.error("Erro ao carregar propriedade");
+            await manage("delete_property");
+            toast.success("Propriedade excluída.");
             router.push("/admin/core/properties");
-        } finally {
-            setLoading(false);
+        } catch (e) {
+            toast.error((e as Error).message || "Erro ao excluir.");
+            setShowDelete(false);
         }
+    };
+
+    if (loading || authLoading) {
+        return <div className="flex justify-center p-24"><Loader2 className="animate-spin text-primary" size={40} /></div>;
     }
-
-    // Carrega estruturas e o salão do café atual (picker redundante c/ o toggle).
-    useEffect(() => {
-        if (!id) return;
-        StructureService.getStructures(id as string).then(list => {
-            setStructures(list);
-            const venue = list.find(s => s.isBreakfastVenue);
-            if (venue) {
-                setCafeVenueId(venue.id);
-                setCafeOpen(venue.operatingHours?.openTime || "08:00");
-                setCafeClose(venue.operatingHours?.closeTime || "10:30");
-            }
-        }).catch(() => { /* silencioso */ });
-    }, [id]);
-
-    async function saveCafeVenue(structureId: string) {
-        if (!userData) return;
-        setCafeVenueId(structureId);
-        try {
-            await StructureService.setBreakfastVenue(id as string, structureId || null, userData.id, userData.fullName);
-            const list = await StructureService.getStructures(id as string);
-            setStructures(list);
-            const venue = list.find(s => s.id === structureId);
-            if (venue) { setCafeOpen(venue.operatingHours?.openTime || "08:00"); setCafeClose(venue.operatingHours?.closeTime || "10:30"); }
-            toast.success(structureId ? "Salão do café definido." : "Salão do café removido.");
-        } catch { toast.error("Erro ao definir o salão do café."); }
-    }
-
-    async function saveCafeHours() {
-        if (!userData || !cafeVenueId) return;
-        const venue = structures.find(s => s.id === cafeVenueId);
-        if (!venue) return;
-        if (venue.operatingHours?.openTime === cafeOpen && venue.operatingHours?.closeTime === cafeClose) return;
-        try {
-            await StructureService.updateStructure(
-                id as string, cafeVenueId,
-                { operatingHours: { ...(venue.operatingHours ?? { slotDurationMinutes: 60, slotIntervalMinutes: 15 }), openTime: cafeOpen, closeTime: cafeClose } },
-                userData.id, userData.fullName
-            );
-            setStructures(prev => prev.map(s => s.id === cafeVenueId ? { ...s, operatingHours: { ...(s.operatingHours ?? { slotDurationMinutes: 60, slotIntervalMinutes: 15 }), openTime: cafeOpen, closeTime: cafeClose } } : s));
-            toast.success("Horário do café atualizado.");
-        } catch { toast.error("Erro ao salvar o horário."); }
-    }
-
-    async function handleSave() {
-        if (!property || !theme) return;
-        setSaving(true);
-        try {
-            // Segredos saem do payload de settings: eles vão pela rota dedicada, que grava em
-            // property_secrets. `properties` é legível pela chave anon — segredo ali é segredo vazado.
-            const { apiKey, chatwootApiToken, ...publicWhatsappConfig } = settings.whatsappConfig as any;
-
-            // Mas só some de settings o que JÁ está no cofre. Antes da migration rodar, o valor
-            // antigo é preservado — senão um "Salvar" comum apagaria a chave sem ter cópia.
-            const storedWc = ((property.settings as any)?.whatsappConfig ?? {}) as any;
-            const carriedWhatsappConfig: any = { ...publicWhatsappConfig };
-            if (!secretInfo?.secureEvolutionApiKey && storedWc.apiKey && !apiKey) carriedWhatsappConfig.apiKey = storedWc.apiKey;
-            if (!secretInfo?.secureChatwootApiToken && storedWc.chatwootApiToken && !chatwootApiToken) carriedWhatsappConfig.chatwootApiToken = storedWc.chatwootApiToken;
-
-            // Manda só o que MUDOU. Antes o save reescrevia `settings` inteiro, o que
-            // (a) sobrescrevia o que outra tela gravou em paralelo e (b) faria a rota
-            // recusar o save de um admin por causa de chaves que só o super_admin altera
-            // e que ele nem tocou.
-            const diff = (next: Record<string, any>, prev: any) => Object.fromEntries(
-                Object.entries(next).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(prev?.[k]))
-            );
-
-            const patch = diff(
-                { ...settings, whatsappConfig: carriedWhatsappConfig, slogan: basicInfo.slogan },
-                property.settings ?? {},
-            );
-            const columns = diff(
-                { name: basicInfo.name, logoUrl: basicInfo.logoUrl, theme },
-                property,
-            );
-
-            if (Object.keys(patch).length || Object.keys(columns).length) {
-                const updated = await PropertySettingsClient.patch(property.id, patch, columns);
-                setProperty(updated);
-            }
-
-            // Campo em branco = manter o segredo atual (semântica write-only da rota).
-            if (apiKey || chatwootApiToken) {
-                const r = await fetch("/api/admin/properties/integrations", {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        propertyId: property.id,
-                        secrets: {
-                            ...(apiKey ? { evolutionApiKey: apiKey } : {}),
-                            ...(chatwootApiToken ? { chatwootApiToken } : {}),
-                        },
-                    }),
-                });
-                if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Falha ao salvar os segredos.");
-                setSettings(prev => ({ ...prev, whatsappConfig: { ...prev.whatsappConfig, apiKey: "", chatwootApiToken: "" } }));
-                await loadSecretInfo();
-            }
-
-            toast.success("Configurações atualizadas com sucesso!");
-        } catch (error) {
-            toast.error("Erro ao salvar alterações.");
-        } finally {
-            setSaving(false);
-        }
-    }
-
-    // --- DANGER ZONE ACTIONS ---
-    async function handlePurge() {
-        if (purgeTargets.length === 0) {
-            toast.error("Selecione pelo menos um tipo de dado para limpar.");
-            return;
-        }
-        const confirmMsg = `Tem certeza que deseja apagar os dados selecionados? Esta ação é irreversível.`;
-        if (!window.confirm(confirmMsg)) return;
-
-        setSaving(true);
-        try {
-            const res = await fetch(`/api/admin/properties/${id}/manage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    actorId: userData?.id,
-                    actorName: userData?.fullName,
-                    action: 'purge',
-                    targets: purgeTargets
-                })
-            });
-            const json = await res.json();
-            if (!res.ok) throw new Error(json.error);
-
-            toast.success("Dados limpos com sucesso!");
-            setPurgeTargets([]);
-        } catch (err: any) {
-            toast.error(err.message || "Erro ao limpar dados");
-        } finally {
-            setSaving(false);
-        }
-    }
-
-    async function handleResetDefaults() {
-        if (!window.confirm("Isso apagará todas as automações, checklists e templates atuais desta propriedade e irá clonar os dados da SYSTEM_DEFAULTS. Tem certeza?")) return;
-
-        setSaving(true);
-        try {
-            const res = await fetch(`/api/admin/properties/${id}/manage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    actorId: userData?.id,
-                    actorName: userData?.fullName,
-                    action: 'reset_defaults'
-                })
-            });
-            const json = await res.json();
-            if (!res.ok) throw new Error(json.error);
-
-            toast.success("Padrões Aura restaurados com sucesso!");
-        } catch (err: any) {
-            toast.error(err.message || "Erro ao restaurar padrões");
-        } finally {
-            setSaving(false);
-        }
-    }
-
-    async function handleDeleteProperty() {
-        if (deleteConfirmName !== basicInfo.name) {
-            toast.error("O nome digitado não confere.");
-            return;
-        }
-        setIsDeleting(true);
-        try {
-            const res = await fetch(`/api/admin/properties/${id}/manage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    actorId: userData?.id,
-                    actorName: userData?.fullName,
-                    action: 'delete_property'
-                })
-            });
-            const json = await res.json();
-            if (!res.ok) throw new Error(json.error);
-
-            toast.success("Propriedade apagada sumariamente.");
-            router.push('/admin/core/properties');
-        } catch (err: any) {
-            toast.error(err.message || "Erro ao apagar");
-            setIsDeleting(false);
-            setShowDeleteModal(false);
-        }
-    }
-
-    const togglePurgeTarget = (target: string) => {
-        setPurgeTargets(prev =>
-            prev.includes(target) ? prev.filter(t => t !== target) : [...prev, target]
+    if (!isSuperAdmin) return null;   // o efeito acima já redirecionou
+    if (!target) {
+        return (
+            <div className="p-8 max-w-lg mx-auto text-center space-y-3">
+                <AlertTriangle className="mx-auto text-amber-500" size={28} />
+                <p className="text-foreground font-bold">Propriedade não encontrada.</p>
+                <Link href="/admin/core/properties" className="text-sm text-primary font-bold">Voltar para a lista</Link>
+            </div>
         );
-    };
+    }
 
-    const updateColor = (key: keyof PropertyTheme['colors'], value: string) => {
-        if (!theme) return;
-        setTheme({
-            ...theme,
-            colors: { ...theme.colors, [key]: value }
-        });
-    };
-
-    const getPreviewStyles = () => {
-        if (!theme) return {};
-        const c = theme.colors;
-        return {
-            '--primary': hexToHSL(c.primary),
-            '--primary-foreground': hexToHSL(c.onPrimary),
-            '--secondary': hexToHSL(c.secondary),
-            '--secondary-foreground': hexToHSL(c.onSecondary),
-            '--background': hexToHSL(c.background),
-            '--card': hexToHSL(c.surface),
-            '--card-foreground': hexToHSL(c.textMain),
-            '--foreground': hexToHSL(c.textMain),
-            '--muted': hexToHSL(c.secondary),
-            '--muted-foreground': hexToHSL(c.textMuted),
-            '--accent': hexToHSL(c.accent),
-            '--border': hexToHSL(c.accent),
-            '--radius': theme.shape.radius
-        } as React.CSSProperties;
-    };
-
-    if (loading) return <div className="flex justify-center p-24"><Loader2 className="animate-spin text-primary" size={40} /></div>;
+    // Interstitial: em vez de editar às escondidas uma pousada diferente da ativa, a tela
+    // pergunta. Era exatamente esse descompasso silencioso que gerava o bug antigo.
+    if (!sameProperty) {
+        return (
+            <div className="p-8 max-w-lg mx-auto">
+                <div className="bg-card border border-border rounded-3xl p-6 space-y-4 text-center">
+                    <Building2 className="mx-auto text-primary" size={28} />
+                    <h1 className="text-lg font-bold text-foreground">Trocar de propriedade?</h1>
+                    <p className="text-sm text-muted-foreground">
+                        Você está operando em <b className="text-foreground">{currentProperty?.name ?? "nenhuma"}</b>,
+                        mas abriu <b className="text-foreground">{target.name}</b>.
+                        Todo o sistema segue a propriedade ativa — inclusive as configurações.
+                    </p>
+                    <div className="flex gap-2 justify-center pt-2 flex-wrap">
+                        <Link href="/admin/core/properties" className="px-4 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground">
+                            Cancelar
+                        </Link>
+                        <button
+                            onClick={() => { setProperty(target); router.push("/admin/configuracoes"); }}
+                            className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground"
+                        >
+                            Mudar para {target.name} <ArrowRight size={15} />
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
-        <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-4 md:space-y-8 min-h-screen">
-            {/* Header */}
-            <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                    <button onClick={() => router.back()} className="p-3 bg-secondary text-muted-foreground hover:text-foreground rounded-full transition-colors">
-                        <ArrowLeft size={20} />
-                    </button>
-                    <div>
-                        <h1 className="text-xl md:text-3xl font-black tracking-tight flex items-center gap-3">
-                            {basicInfo.name || property?.name}
-                        </h1>
-                        <p className="text-muted-foreground text-sm font-medium mt-1">Gerencie a identidade, regras e políticas globais.</p>
-                    </div>
-                </div>
-                <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="bg-primary text-primary-foreground px-8 py-4 rounded-2xl font-black flex items-center justify-center gap-2 hover:opacity-90 transition-all active:scale-95 shadow-lg shadow-primary/20 disabled:opacity-50"
-                >
-                    {saving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
-                    Salvar Alterações
-                </button>
+        <div className="p-6 max-w-3xl mx-auto space-y-4">
+            <header className="mb-2">
+                <Link href="/admin/core/properties" className="text-xs text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mb-2">
+                    <ArrowLeft size={12} /> Propriedades
+                </Link>
+                <h1 className="text-2xl font-bold text-foreground">{target.name}</h1>
+                <p className="text-sm text-muted-foreground">Administração de plataforma deste workspace.</p>
             </header>
 
-            {/* Navegação por Abas */}
-            <div className="flex border-b border-border gap-8 overflow-x-auto custom-scrollbar">
-                <button
-                    onClick={() => setActiveTab('visual')}
-                    className={cn("pb-4 font-bold uppercase tracking-widest text-xs flex items-center gap-2 transition-all border-b-2 whitespace-nowrap", activeTab === 'visual' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}
-                >
-                    <Palette size={16} /> Branding & Visual
-                </button>
-                <button
-                    onClick={() => setActiveTab('operational')}
-                    className={cn("pb-4 font-bold uppercase tracking-widest text-xs flex items-center gap-2 transition-all border-b-2 whitespace-nowrap", activeTab === 'operational' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}
-                >
-                    <Clock size={16} /> Operacional & Horários
-                </button>
-                <button
-                    onClick={() => setActiveTab('policies')}
-                    className={cn("pb-4 font-bold uppercase tracking-widest text-xs flex items-center gap-2 transition-all border-b-2 whitespace-nowrap", activeTab === 'policies' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}
-                >
-                    <ShieldCheck size={16} /> Políticas & Termos
-                </button>
-                <button
-                    onClick={() => setActiveTab('f_b')}
-                    className={cn("pb-4 font-bold uppercase tracking-widest text-xs flex items-center gap-2 transition-all border-b-2 whitespace-nowrap", activeTab === 'f_b' ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground")}
-                >
-                    <Coffee size={16} /> Gastronomia (F&B)
-                </button>
-                {isSuperAdmin && (
-                    <button
-                        onClick={() => setActiveTab('danger')}
-                        className={cn("pb-4 font-bold uppercase tracking-widest text-xs flex items-center gap-2 transition-all border-b-2 whitespace-nowrap", activeTab === 'danger' ? "border-red-500 text-red-500" : "border-transparent text-red-500/50 hover:text-red-500")}
-                    >
-                        <AlertTriangle size={16} /> Danger Zone
-                    </button>
-                )}
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-
-                {/* COLUNA ESQUERDA: EDITOR */}
-                <div className="lg:col-span-7 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-
-                    {activeTab === 'visual' && (
-                        <>
-                            <section className="bg-card border border-border p-8 rounded-[32px] space-y-6">
-                                <h3 className="font-bold text-lg flex items-center gap-2">
-                                    <ImageIcon className="text-primary" size={20} /> Identidade da Marca
-                                </h3>
-
-                                <div className="grid grid-cols-1 gap-6">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Nome da Propriedade</label>
-                                        <input
-                                            value={basicInfo.name}
-                                            onChange={e => setBasicInfo({ ...basicInfo, name: e.target.value })}
-                                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Slogan / Frase de Efeito</label>
-                                        <input
-                                            value={basicInfo.slogan}
-                                            onChange={e => setBasicInfo({ ...basicInfo, slogan: e.target.value })}
-                                            placeholder="Sua experiência em contato com a natureza..."
-                                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Logo simplificada</label>
-                                        <div className="flex gap-4 items-start">
-                                            {/* Caixa quadrada: a marca simplificada costuma ser quadrada. */}
-                                            <div className="h-28 w-28 shrink-0 rounded-xl overflow-hidden border border-border bg-background">
-                                                <ImageUpload
-                                                    value={basicInfo.logoUrl}
-                                                    onUploadSuccess={url => setBasicInfo({ ...basicInfo, logoUrl: url })}
-                                                    path="logos"
-                                                    fit="contain"
-                                                />
-                                            </div>
-                                            <div className="flex-1 min-w-0 space-y-2">
-                                                <p className="text-xs text-muted-foreground">
-                                                    Só a marca/símbolo. Usada no app, no portal do hóspede, no centro do QR e em espaços pequenos.
-                                                    PNG com fundo transparente é o ideal.
-                                                </p>
-                                                <input
-                                                    value={basicInfo.logoUrl}
-                                                    onChange={e => setBasicInfo({ ...basicInfo, logoUrl: e.target.value })}
-                                                    placeholder="ou cole uma URL…"
-                                                    className="w-full bg-background border border-border px-3 py-2 rounded-lg outline-none focus:border-primary/50 text-foreground font-mono text-xs"
-                                                />
-                                                {basicInfo.logoUrl && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setBasicInfo({ ...basicInfo, logoUrl: "" })}
-                                                        className="text-xs text-muted-foreground hover:text-destructive"
-                                                    >
-                                                        Remover logo
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Logo completa (marca + nome)</label>
-                                        <div className="flex gap-4 items-start">
-                                            {/* Caixa larga: a logo completa carrega o nome escrito ao lado da marca. */}
-                                            <div className="h-28 w-48 shrink-0 rounded-xl overflow-hidden border border-border bg-background">
-                                                <ImageUpload
-                                                    value={settings.logoFullUrl ?? ""}
-                                                    onUploadSuccess={url => setSettings({ ...settings, logoFullUrl: url })}
-                                                    path="logos"
-                                                    fit="contain"
-                                                />
-                                            </div>
-                                            <div className="flex-1 min-w-0 space-y-2">
-                                                <p className="text-xs text-muted-foreground">
-                                                    Versão com o nome da pousada escrito, para peças onde o símbolo sozinho não identifica —
-                                                    etiqueta de patrimônio grande, cabeçalho impresso. Deixe vazio para usar a simplificada.
-                                                </p>
-                                                <input
-                                                    value={settings.logoFullUrl ?? ""}
-                                                    onChange={e => setSettings({ ...settings, logoFullUrl: e.target.value })}
-                                                    placeholder="ou cole uma URL…"
-                                                    className="w-full bg-background border border-border px-3 py-2 rounded-lg outline-none focus:border-primary/50 text-foreground font-mono text-xs"
-                                                />
-                                                {settings.logoFullUrl && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setSettings({ ...settings, logoFullUrl: "" })}
-                                                        className="text-xs text-muted-foreground hover:text-destructive"
-                                                    >
-                                                        Remover logo
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </section>
-
-                            <section className="bg-card border border-border p-8 rounded-[32px] space-y-4">
-                                <h3 className="font-bold text-lg flex items-center gap-2">
-                                    <Settings2 className="text-primary" size={20} /> Módulos
-                                </h3>
-                                <label className="flex items-center justify-between gap-4 cursor-pointer">
-                                    <span>
-                                        <span className="block font-bold text-foreground">Compras &amp; Estoque</span>
-                                        <span className="block text-xs text-muted-foreground">Estoque, compras, patrimônio e baixa automática no consumo (Concierge/F&amp;B). Desligado: o resto do sistema funciona normalmente, sem estoque.</span>
-                                    </span>
-                                    <input type="checkbox" checked={settings.hasStock !== false}
-                                        onChange={e => setSettings({ ...settings, hasStock: e.target.checked })}
-                                        className="w-5 h-5 accent-primary shrink-0" />
-                                </label>
-                            </section>
-
-                            <section className="bg-card border border-border p-8 rounded-[32px] space-y-6">
-                                <h3 className="font-bold text-lg flex items-center gap-2">
-                                    <Palette className="text-primary" size={20} /> Cores do Sistema
-                                </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <ColorInput label="Cor Primária" desc="Botões principais, destaques e ícones." value={theme?.colors.primary} onChange={(v) => updateColor('primary', v)} />
-                                    <ColorInput label="Texto na Primária" desc="Cor do texto DENTRO do botão primário." value={theme?.colors.onPrimary} onChange={(v) => updateColor('onPrimary', v)} />
-                                    <ColorInput label="Cor Secundária" desc="Elementos de apoio, fundos alternativos." value={theme?.colors.secondary} onChange={(v) => updateColor('secondary', v)} />
-                                    <ColorInput label="Detalhes (Accent)" desc="Bordas sutis, linhas divisórias." value={theme?.colors.accent} onChange={(v) => updateColor('accent', v)} />
-                                </div>
-                            </section>
-
-                            <section className="bg-card border border-border p-8 rounded-[32px] space-y-6">
-                                <h3 className="font-bold text-lg flex items-center gap-2">
-                                    <Layout className="text-primary" size={20} /> Superfícies & Fundo
-                                </h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <ColorInput label="Background da Página" desc="A cor de fundo geral da aplicação." value={theme?.colors.background} onChange={(v) => updateColor('background', v)} />
-                                    <ColorInput label="Superfície (Cards)" desc="Fundo de cartões, modais e painéis." value={theme?.colors.surface} onChange={(v) => updateColor('surface', v)} />
-                                    <ColorInput label="Texto Principal" desc="Títulos e corpo de texto padrão." value={theme?.colors.textMain} onChange={(v) => updateColor('textMain', v)} />
-                                    <ColorInput label="Texto Secundário" desc="Legendas e textos menos importantes." value={theme?.colors.textMuted} onChange={(v) => updateColor('textMuted', v)} />
-                                </div>
-                            </section>
-
-                            <section className="bg-card border border-border p-8 rounded-[32px] space-y-6">
-                                <h3 className="font-bold text-lg flex items-center gap-2">
-                                    <Type className="text-primary" size={20} /> Forma & Estilo
-                                </h3>
-                                <div className="space-y-3">
-                                    <label className="text-sm font-bold uppercase text-muted-foreground tracking-widest">Arredondamento (Radius)</label>
-                                    <div className="flex gap-3">
-                                        {['0rem', '0.25rem', '0.5rem', '1rem', '9999px'].map((r) => (
-                                            <button
-                                                key={r} type="button"
-                                                onClick={() => setTheme(prev => prev ? ({ ...prev, shape: { ...prev.shape, radius: r as any } }) : null)}
-                                                className={cn(
-                                                    "w-12 h-12 border border-border bg-background flex items-center justify-center transition-all",
-                                                    theme?.shape.radius === r ? "ring-2 ring-primary ring-offset-2 ring-offset-card border-transparent bg-primary/10" : "hover:bg-accent"
-                                                )}
-                                                style={{ borderRadius: r }}
-                                            >
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </section>
-                        </>
-                    )}
-
-                    {activeTab === 'operational' && (
-                        <>
-                            {/* Contato Principal */}
-                            <section className="bg-card border border-border p-8 rounded-[32px] space-y-6">
-                                <h3 className="font-bold text-lg flex items-center gap-2 text-primary">
-                                    <Phone size={20} /> Contato Principal
-                                </h3>
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">WhatsApp da Recepção (DDI+DDD+Número)</label>
-                                    <input
-                                        value={settings.whatsappNumber}
-                                        onChange={e => setSettings({ ...settings, whatsappNumber: e.target.value })}
-                                        placeholder="5548999999999"
-                                        className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
-                                    />
-                                    <p className="text-xs text-muted-foreground">Usado para direcionar o hóspede após o check-in.</p>
-                                </div>
-                                <div className="space-y-2 pt-4 border-t border-border">
-                                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest flex items-center gap-1.5"><Globe size={12} /> Domínio Personalizado do Portal</label>
-                                    <input
-                                        value={settings.customDomain}
-                                        onChange={e => setSettings({ ...settings, customDomain: e.target.value })}
-                                        placeholder="aura.suapousada.com.br"
-                                        className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
-                                    />
-                                    <p className="text-xs text-muted-foreground">Deixe vazio para usar o domínio padrão <span className="font-mono">aaura.app.br</span>. Os links enviados aos hóspedes usarão este endereço.</p>
-                                    <div className="flex gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
-                                        <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-500" />
-                                        <p className="text-xs text-muted-foreground">
-                                            <b className="text-foreground">As plaquetas de patrimônio já gravadas apontam para este domínio.</b>{" "}
-                                            Trocá-lo faz todo QR Code já colado em equipamento parar de funcionar — o código do
-                                            ativo é imutável, mas o endereço não. Se precisar migrar, mantenha o domínio antigo
-                                            redirecionando para o novo.
-                                        </p>
-                                    </div>
-                                </div>
-                            </section>
-
-                            {/* Integração WhatsApp + Chatwoot */}
-                            <section className="bg-card border border-border p-8 rounded-[32px] space-y-6">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="font-bold text-lg flex items-center gap-2 text-primary">
-                                        <MessageSquare size={20} /> WhatsApp & Chatwoot
-                                    </h3>
-                                    <button
-                                        type="button"
-                                        onClick={() => setSettings({ ...settings, whatsappEnabled: !settings.whatsappEnabled })}
-                                        className={cn(
-                                            "relative w-14 h-7 rounded-full transition-colors duration-200",
-                                            settings.whatsappEnabled ? "bg-green-500" : "bg-secondary border border-border"
-                                        )}
-                                    >
-                                        <span className={cn(
-                                            "absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200",
-                                            settings.whatsappEnabled && "translate-x-7"
-                                        )} />
-                                    </button>
-                                </div>
-                                <p className="text-xs text-muted-foreground">Configuração por propriedade da Evolution API (automações WhatsApp) e do Chatwoot (inbox + sincronização de contatos).</p>
-
-                                <div className="space-y-6">
-                                    {/* Evolution API */}
-                                    <div className={cn("space-y-4 transition-opacity", !settings.whatsappEnabled && "opacity-40 pointer-events-none")}>
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Evolution API</p>
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">URL da Evolution API</label>
-                                            <input
-                                                value={settings.whatsappConfig.apiUrl}
-                                                onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, apiUrl: e.target.value } })}
-                                                placeholder="https://evolution.seudominio.com"
-                                                className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">API Key da Evolution</label>
-                                            <input
-                                                type="password"
-                                                value={settings.whatsappConfig.apiKey}
-                                                onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, apiKey: e.target.value } })}
-                                                placeholder={secretInfo?.hasEvolutionApiKey ? `${secretInfo.evolutionApiKeyMask} (inalterado)` : "••••••••••••••••"}
-                                                className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
-                                            />
-                                            <p className="text-xs text-muted-foreground">Guardada fora do alcance do navegador. Em branco, o valor atual é mantido — preencha só para substituir.</p>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Nome da Instância Evolution</label>
-                                            <input
-                                                value={(settings.whatsappConfig as any).instanceName || ""}
-                                                onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, instanceName: e.target.value } })}
-                                                placeholder="ex: fazenda-rosa"
-                                                className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="border-t border-border" />
-
-                                    {/* Chatwoot */}
-                                    <div className="space-y-4">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Chatwoot</p>
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">URL do Chatwoot</label>
-                                            <input
-                                                value={(settings.whatsappConfig as any).chatwootUrl || ""}
-                                                onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, chatwootUrl: e.target.value } })}
-                                                placeholder="https://chatwoot.seudominio.com"
-                                                className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
-                                            />
-                                            <p className="text-xs text-muted-foreground">Usada tanto no iframe da Central de Comunicação quanto nas chamadas de API de sincronização.</p>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Account ID</label>
-                                                <input
-                                                    value={(settings.whatsappConfig as any).chatwootAccountId || ""}
-                                                    onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, chatwootAccountId: e.target.value } })}
-                                                    placeholder="1"
-                                                    className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Inbox ID</label>
-                                                <input
-                                                    type="number"
-                                                    value={(settings.whatsappConfig as any).chatwootInboxId || ""}
-                                                    onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, chatwootInboxId: parseInt(e.target.value) || 0 } })}
-                                                    placeholder="3"
-                                                    className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">API Token do Chatwoot</label>
-                                            <input
-                                                type="password"
-                                                value={(settings.whatsappConfig as any).chatwootApiToken || ""}
-                                                onChange={e => setSettings({ ...settings, whatsappConfig: { ...settings.whatsappConfig, chatwootApiToken: e.target.value } })}
-                                                placeholder={secretInfo?.hasChatwootApiToken ? `${secretInfo.chatwootApiTokenMask} (inalterado)` : "••••••••••••••••"}
-                                                className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground font-mono text-sm"
-                                            />
-                                            <p className="text-xs text-muted-foreground">Guardado fora do alcance do navegador. Em branco, o valor atual é mantido — preencha só para substituir.</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* O "tem chave?" vem do servidor (secretInfo), não do input — o campo fica vazio de propósito. */}
-                                {settings.whatsappEnabled && settings.whatsappConfig.apiUrl && secretInfo?.hasEvolutionApiKey && (settings.whatsappConfig as any).instanceName && (
-                                    <div className="flex items-center gap-2 text-green-600 text-xs font-bold bg-green-500/10 p-3 rounded-xl">
-                                        <CheckCircle2 size={14} /> Evolution configurada — automações de mensagem habilitadas.
-                                    </div>
-                                )}
-                                {settings.whatsappEnabled && (!settings.whatsappConfig.apiUrl || !secretInfo?.hasEvolutionApiKey || !(settings.whatsappConfig as any).instanceName) && (
-                                    <div className="flex items-center gap-2 text-amber-600 text-xs font-bold bg-amber-500/10 p-3 rounded-xl">
-                                        <AlertTriangle size={14} /> Preencha URL, API Key e Instância para ativar o envio de mensagens.
-                                    </div>
-                                )}
-                                {(settings.whatsappConfig as any).chatwootUrl && (settings.whatsappConfig as any).chatwootAccountId && secretInfo?.hasChatwootApiToken && (settings.whatsappConfig as any).chatwootInboxId && (
-                                    <div className="flex items-center gap-2 text-green-600 text-xs font-bold bg-green-500/10 p-3 rounded-xl">
-                                        <CheckCircle2 size={14} /> Chatwoot configurado — sincronização de contatos e inbox habilitados.
-                                    </div>
-                                )}
-                            </section>
-
-                            {/* Horários: Hospedagem */}
-                            <section className="bg-card border border-border p-8 rounded-[32px] space-y-6">
-                                <h3 className="font-bold text-lg flex items-center gap-2 text-primary">
-                                    <Clock size={20} /> Recepção & Check-in
-                                </h3>
-                                <div className="grid grid-cols-2 gap-6">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Início do Check-in</label>
-                                        <input type="time" value={settings.checkInTime} onChange={e => setSettings({ ...settings, checkInTime: e.target.value })} className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground [color-scheme:light] dark:[color-scheme:dark]" />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Limite do Check-out</label>
-                                        <input type="time" value={settings.checkOutTime} onChange={e => setSettings({ ...settings, checkOutTime: e.target.value })} className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground [color-scheme:light] dark:[color-scheme:dark]" />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Abertura da Recepção</label>
-                                        <input type="time" value={settings.receptionStartTime} onChange={e => setSettings({ ...settings, receptionStartTime: e.target.value })} className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground [color-scheme:light] dark:[color-scheme:dark]" />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Fechamento da Recepção</label>
-                                        <input type="time" value={settings.receptionEndTime} onChange={e => setSettings({ ...settings, receptionEndTime: e.target.value })} className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground [color-scheme:light] dark:[color-scheme:dark]" />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-4 pt-4 border-t border-border">
-                                    <MultiLangField
-                                        label="Aviso de Early Check-in (Chegada Antecipada)"
-                                        desc="Exibido quando o hóspede insere um horário anterior ao Início do Check-in. Variáveis: [expectedArrivalTime], [checkintime]"
-                                        value={settings.earlyCheckInMessage}
-                                        onChange={(val: any) => setSettings({ ...settings, earlyCheckInMessage: val })}
-                                    />
-
-                                    <div className="pt-2 border-t border-border"></div>
-
-                                    <MultiLangField
-                                        label="Aviso de Late Check-in (Recepção Fechada)"
-                                        desc="Exibido quando o hóspede insere um horário após o Fechamento da Recepção. Variáveis: [expectedArrivalTime], [receptionendtime]"
-                                        value={settings.lateCheckInMessage}
-                                        onChange={(val: any) => setSettings({ ...settings, lateCheckInMessage: val })}
-                                    />
-
-                                    <div className="pt-2 border-t border-border"></div>
-
-                                    <MultiLangField
-                                        label="Aviso Resumido: Pet Friendly (Alert no Check-in)"
-                                        desc="Um aviso curto para quando a pessoa marca a checkbox do Pet na ficha."
-                                        rows={2}
-                                        value={settings.petPolicyAlert}
-                                        onChange={(val: any) => setSettings({ ...settings, petPolicyAlert: val })}
-                                    />
-
-                                    <div className="pt-2 border-t border-border"></div>
-
-                                    {/* Pet Settings */}
-                                    <div className="space-y-6">
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <p className="text-sm font-bold text-foreground">Aceita Pets?</p>
-                                                <p className="text-xs text-muted-foreground">Se desativado, a seção de pets não aparecerá no pré-check-in.</p>
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => setSettings({ ...settings, acceptsPets: !settings.acceptsPets })}
-                                                className={cn(
-                                                    "relative w-14 h-7 rounded-full transition-colors duration-200",
-                                                    settings.acceptsPets ? "bg-orange-500" : "bg-secondary border border-border"
-                                                )}
-                                            >
-                                                <span className={cn(
-                                                    "absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200",
-                                                    settings.acceptsPets && "translate-x-7"
-                                                )} />
-                                            </button>
-                                        </div>
-
-                                        {settings.acceptsPets && (
-                                            <div className="grid grid-cols-2 gap-4 animate-in fade-in duration-200">
-                                                <div className="space-y-2">
-                                                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Peso Mínimo (kg)</label>
-                                                    <input
-                                                        type="number"
-                                                        min={1}
-                                                        max={40}
-                                                        value={settings.petMinWeight}
-                                                        onChange={e => setSettings({ ...settings, petMinWeight: parseInt(e.target.value) || 1 })}
-                                                        className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
-                                                    />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Peso Máximo (kg)</label>
-                                                    <input
-                                                        type="number"
-                                                        min={1}
-                                                        max={40}
-                                                        value={settings.petMaxWeight}
-                                                        onChange={e => setSettings({ ...settings, petMaxWeight: parseInt(e.target.value) || 15 })}
-                                                        className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
-                                                    />
-                                                </div>
-                                                <p className="col-span-2 text-xs text-muted-foreground">Pets fora desta faixa de peso serão bloqueados no formulário de pré-check-in.</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </section>
-
-                            {/* Horários: Café da Manhã (Movido para F&B) */}
-                            <section className="bg-card border border-border p-8 rounded-[32px] space-y-6 opacity-50 relative overflow-hidden">
-                                <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-10 flex items-center justify-center">
-                                    <div className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-bold uppercase tracking-widest text-xs flex items-center gap-2">
-                                        <Coffee size={16} /> Movido para aba Gastronomia
-                                    </div>
-                                </div>
-                                <h3 className="font-bold text-lg flex items-center gap-2 text-primary">
-                                    <Coffee size={20} /> Café da Manhã
-                                </h3>
-                                <div className="space-y-4">
-                                    <p className="text-xs text-muted-foreground">O módulo de café da manhã agora é configurado na aba &quot;Gastronomia (F&amp;B)&quot;.</p>
-                                </div>
-                            </section>
-
-                            {/* Horários: Governança e Manutenção */}
-                            <section className="bg-card border border-border p-8 rounded-[32px] space-y-6">
-                                <div className="flex flex-col md:flex-row gap-8">
-                                    <div className="flex-1 space-y-4">
-                                        <h3 className="font-bold text-lg flex items-center gap-2 text-primary">
-                                            <Sparkles size={20} /> Governança
-                                        </h3>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Início do Turno</label>
-                                                <input type="time" value={settings.govStartTime} onChange={e => setSettings({ ...settings, govStartTime: e.target.value })} className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground [color-scheme:light] dark:[color-scheme:dark]" />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Fim do Turno</label>
-                                                <input type="time" value={settings.govEndTime} onChange={e => setSettings({ ...settings, govEndTime: e.target.value })} className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground [color-scheme:light] dark:[color-scheme:dark]" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex-1 space-y-4">
-                                        <h3 className="font-bold text-lg flex items-center gap-2 text-primary">
-                                            <Wrench size={20} /> Manutenção
-                                        </h3>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Início do Turno</label>
-                                                <input type="time" value={settings.maintenanceStartTime} onChange={e => setSettings({ ...settings, maintenanceStartTime: e.target.value })} className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground [color-scheme:light] dark:[color-scheme:dark]" />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Fim do Turno</label>
-                                                <input type="time" value={settings.maintenanceEndTime} onChange={e => setSettings({ ...settings, maintenanceEndTime: e.target.value })} className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground [color-scheme:light] dark:[color-scheme:dark]" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </section>
-                        </>
-                    )}
-
-                    {activeTab === 'policies' && (
-                        <section className="bg-card border border-border p-8 rounded-[32px] space-y-8 animate-in fade-in">
-                            <h3 className="font-bold text-lg flex items-center gap-2 text-primary">
-                                <FileText size={20} /> Documentos & Termos Completos
-                            </h3>
-                            <p className="text-sm text-muted-foreground mb-4">
-                                Os textos aqui definidos exigirão o consentimento (&quot;Li e Concordo&quot;) obrigatório do hóspede antes de finalizar o check-in.
-                            </p>
-
-                            <MultiLangField
-                                label="Política Geral da Propriedade"
-                                desc="Regras de silêncio, uso da piscina, horários, multas, etc."
-                                rows={6}
-                                value={settings.generalPolicyText}
-                                onChange={(val: any) => setSettings({ ...settings, generalPolicyText: val })}
-                            />
-
-                            <div className="pt-2 border-t border-border"></div>
-
-                            <MultiLangField
-                                label="Política de Privacidade (LGPD)"
-                                desc="Termo legal de como os dados são manipulados para a FNRH."
-                                rows={6}
-                                value={settings.privacyPolicyText}
-                                onChange={(val: any) => setSettings({ ...settings, privacyPolicyText: val })}
-                            />
-
-                            <div className="pt-2 border-t border-border"></div>
-
-                            <MultiLangField
-                                label="Política Pet Completa"
-                                desc="Termo completo com obrigações do dono, vacinação, circulação na pousada."
-                                rows={6}
-                                value={settings.petPolicyText}
-                                onChange={(val: any) => setSettings({ ...settings, petPolicyText: val })}
-                            />
-
-                        </section>
-                    )}
-
-                    {activeTab === 'f_b' && (
-                        <div className="space-y-8 animate-in fade-in">
-                            {/* RESTAURANTE */}
-                            <section className="bg-card border border-border p-8 rounded-[32px] space-y-6">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="font-bold text-lg flex items-center gap-2 text-primary">
-                                        Restaurante
-                                    </h3>
-                                    <button
-                                        type="button"
-                                        onClick={() => setSettings(prev => ({
-                                            ...prev,
-                                            fbSettings: { ...prev.fbSettings, restaurant: { ...prev.fbSettings.restaurant, enabled: !prev.fbSettings.restaurant.enabled } }
-                                        }))}
-                                        className={cn(
-                                            "relative w-14 h-7 rounded-full transition-colors duration-200",
-                                            settings.fbSettings.restaurant.enabled ? "bg-primary" : "bg-secondary border border-border"
-                                        )}
-                                    >
-                                        <span className={cn(
-                                            "absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200",
-                                            settings.fbSettings.restaurant.enabled && "translate-x-7"
-                                        )} />
-                                    </button>
-                                </div>
-
-                                {settings.fbSettings.restaurant.enabled && (
-                                    <div className="space-y-4 pt-4 border-t border-border animate-in fade-in">
-                                        <div className="space-y-2">
-                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Nome do Restaurante</label>
-                                            <input
-                                                value={settings.fbSettings.restaurant.name}
-                                                onChange={e => setSettings(prev => ({
-                                                    ...prev,
-                                                    fbSettings: { ...prev.fbSettings, restaurant: { ...prev.fbSettings.restaurant, name: e.target.value } }
-                                                }))}
-                                                className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
-                                            />
-                                        </div>
-                                        <p className="text-xs text-muted-foreground">O horário de funcionamento será gerenciado posteriormente dentro do Módulo F&B Menu.</p>
-                                    </div>
-                                )}
-                            </section>
-
-                            {/* CAFÉ DA MANHÃ */}
-                            <section className="bg-card border border-border p-8 rounded-[32px] space-y-6">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="font-bold text-lg flex items-center gap-2 text-primary">
-                                        <Coffee size={20} /> Café da Manhã
-                                    </h3>
-                                    <button
-                                        type="button"
-                                        onClick={() => setSettings(prev => ({
-                                            ...prev,
-                                            fbSettings: { ...prev.fbSettings, breakfast: { ...prev.fbSettings.breakfast, enabled: !prev.fbSettings.breakfast.enabled } }
-                                        }))}
-                                        className={cn(
-                                            "relative w-14 h-7 rounded-full transition-colors duration-200",
-                                            settings.fbSettings.breakfast.enabled ? "bg-primary" : "bg-secondary border border-border"
-                                        )}
-                                    >
-                                        <span className={cn(
-                                            "absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform duration-200",
-                                            settings.fbSettings.breakfast.enabled && "translate-x-7"
-                                        )} />
-                                    </button>
-                                </div>
-
-                                {settings.fbSettings.breakfast.enabled && (
-                                    <div className="space-y-6 pt-4 border-t border-border animate-in fade-in">
-
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Nome do Café</label>
-                                                <input
-                                                    value={settings.fbSettings.breakfast.name}
-                                                    onChange={e => setSettings(prev => ({
-                                                        ...prev,
-                                                        fbSettings: { ...prev.fbSettings, breakfast: { ...prev.fbSettings.breakfast, name: e.target.value } }
-                                                    }))}
-                                                    className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Modalidade</label>
-                                                <select
-                                                    value={settings.fbSettings.breakfast.modality}
-                                                    onChange={e => setSettings(prev => ({
-                                                        ...prev,
-                                                        fbSettings: { ...prev.fbSettings, breakfast: { ...prev.fbSettings.breakfast, modality: e.target.value as any } }
-                                                    }))}
-                                                    className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground appearance-none"
-                                                >
-                                                    <option value="buffet">Apenas Buffet Livre</option>
-                                                    <option value="delivery">Apenas Delivery (Na Cabana)</option>
-                                                    <option value="both">Buffet + Delivery</option>
-                                                </select>
-                                            </div>
-                                        </div>
-
-                                        {(settings.fbSettings.breakfast.modality === 'delivery' || settings.fbSettings.breakfast.modality === 'both') && (
-                                            <div className="bg-secondary p-6 rounded-2xl space-y-4">
-                                                <h4 className="font-bold text-sm">Configuração de Pedidos (Delivery)</h4>
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div className="space-y-2">
-                                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Início Pedidos (Dia Anterior)</label>
-                                                        <input
-                                                            type="time"
-                                                            value={settings.fbSettings.breakfast.delivery?.orderWindowStart || "18:00"}
-                                                            onChange={e => setSettings(prev => ({
-                                                                ...prev,
-                                                                fbSettings: { ...prev.fbSettings, breakfast: { ...prev.fbSettings.breakfast, delivery: { ...prev.fbSettings.breakfast.delivery!, orderWindowStart: e.target.value } } }
-                                                            }))}
-                                                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
-                                                        />
-                                                    </div>
-                                                    <div className="space-y-2">
-                                                        <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Limite Pedidos</label>
-                                                        <input
-                                                            type="time"
-                                                            value={settings.fbSettings.breakfast.delivery?.orderWindowEnd || "22:00"}
-                                                            onChange={e => setSettings(prev => ({
-                                                                ...prev,
-                                                                fbSettings: { ...prev.fbSettings, breakfast: { ...prev.fbSettings.breakfast, delivery: { ...prev.fbSettings.breakfast.delivery!, orderWindowEnd: e.target.value } } }
-                                                            }))}
-                                                            className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Horários de Entrega (Separados por vírgula)</label>
-                                                    <input
-                                                        type="text"
-                                                        placeholder="08:30, 09:30, 10:30"
-                                                        value={settings.fbSettings.breakfast.delivery?.deliveryTimes?.join(", ") || ""}
-                                                        onChange={e => {
-                                                            const arr = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
-                                                            setSettings(prev => ({
-                                                                ...prev,
-                                                                fbSettings: { ...prev.fbSettings, breakfast: { ...prev.fbSettings.breakfast, delivery: { ...prev.fbSettings.breakfast.delivery!, deliveryTimes: arr } } }
-                                                            }))
-                                                        }}
-                                                        className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground"
-                                                    />
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Salão do café (redundante com o toggle na estrutura — grava o mesmo dado) */}
-                                        {(settings.fbSettings.breakfast.modality === 'buffet' || settings.fbSettings.breakfast.modality === 'both') && (
-                                            <div className="bg-secondary p-6 rounded-2xl space-y-4">
-                                                <h4 className="font-bold text-sm">Salão do Café (Buffet)</h4>
-                                                <p className="text-xs text-muted-foreground -mt-2">Escolha qual estrutura é o salão do café. O horário abaixo é o mesmo Horário de Funcionamento da estrutura — editar aqui altera a estrutura, e a localização no mapa alimenta o botão Como chegar do portal.</p>
-                                                <div className="space-y-2">
-                                                    <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Estrutura do Café</label>
-                                                    <select
-                                                        value={cafeVenueId}
-                                                        onChange={e => saveCafeVenue(e.target.value)}
-                                                        className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground appearance-none"
-                                                    >
-                                                        <option value="">— Nenhuma —</option>
-                                                        {structures.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                                    </select>
-                                                </div>
-                                                {cafeVenueId && (
-                                                    <div className="grid grid-cols-2 gap-4">
-                                                        <div className="space-y-2">
-                                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Abertura</label>
-                                                            <input type="time" value={cafeOpen} onChange={e => setCafeOpen(e.target.value)} onBlur={saveCafeHours} className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground [color-scheme:light] dark:[color-scheme:dark]" />
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            <label className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Fechamento</label>
-                                                            <input type="time" value={cafeClose} onChange={e => setCafeClose(e.target.value)} onBlur={saveCafeHours} className="w-full bg-background border border-border p-4 rounded-xl outline-none focus:border-primary/50 text-foreground [color-scheme:light] dark:[color-scheme:dark]" />
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                    </div>
-                                )}
-                            </section>
-
-                        </div>
-                    )}
-
-                    {activeTab === 'danger' && isSuperAdmin && (
-                        <div className="space-y-8 animate-in fade-in">
-
-                            {/* RESTAURAR PADRÕES */}
-                            <section className="bg-orange-500/10 border border-orange-500/20 p-8 rounded-[32px] space-y-4">
-                                <div className="flex items-start gap-4">
-                                    <div className="p-3 bg-orange-500/20 rounded-xl text-orange-600 shrink-0">
-                                        <RefreshCcw size={24} />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-bold text-lg text-orange-600">Restaurar Padrões Aura Engine</h3>
-                                        <p className="text-sm text-orange-600/80 mt-1">
-                                            Esta ação apagará todas as <b>Automações</b>, <b>Templates de Mensagem</b> e <b>Checklists</b> atuais desta propriedade, substituindo-os pelos modelos originais pré-aprovados pela matriz do Aura Experience.
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="flex justify-end pt-4">
-                                    <button
-                                        onClick={handleResetDefaults}
-                                        disabled={saving}
-                                        className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold tracking-wider uppercase text-xs rounded-xl shadow-lg transition-all active:scale-95 flex items-center gap-2"
-                                    >
-                                        <RefreshCcw size={16} /> Sobrescrever e Restaurar Padrões
-                                    </button>
-                                </div>
-                            </section>
-
-                            {/* PURGE SELECTIVO */}
-                            <section className="bg-red-500/5 border border-red-500/10 p-8 rounded-[32px] space-y-6">
-                                <div className="flex items-start gap-4 mb-4">
-                                    <div className="p-3 bg-red-500/10 rounded-xl text-red-500 shrink-0">
-                                        <Database size={24} />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-bold text-lg text-red-500">Limpeza Parcial em Massa (Purge)</h3>
-                                        <p className="text-sm text-red-500/80 mt-1">
-                                            Selecione módulos operacionais para limpar. <b>Atenção:</b> Isso apagará permanentemente os registros da categoria selecionada (ex: se escolher Estadias, apagará todas do banco de dados).
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {[
-                                        { id: 'stays', label: 'Estadias' },
-                                        { id: 'guests', label: 'Hóspedes' },
-                                        { id: 'messages', label: 'Histórico de Mensagens' },
-                                        { id: 'housekeeping_tasks', label: 'Tarefas de Faxina' },
-                                        { id: 'maintenance_tasks', label: 'Tickets de Manutenção' },
-                                        { id: 'survey_responses', label: 'Avaliações Respondidas' },
-                                        { id: 'structure_bookings', label: 'Agendamentos de Estruturas' },
-                                        { id: 'structures', label: 'Estruturas Cadastradas' },
-                                        { id: 'cabins', label: 'Cabanas Cadastradas' }
-                                    ].map(item => (
-                                        <label key={item.id} className="flex items-center gap-3 p-4 bg-background border border-border rounded-xl cursor-pointer hover:border-red-500/30 transition-colors">
-                                            <input
-                                                type="checkbox"
-                                                checked={purgeTargets.includes(item.id)}
-                                                onChange={() => togglePurgeTarget(item.id)}
-                                                className="w-5 h-5 accent-red-500 cursor-pointer"
-                                            />
-                                            <span className="text-sm font-bold text-foreground">{item.label}</span>
-                                        </label>
-                                    ))}
-                                </div>
-
-                                <div className="flex justify-end pt-4 border-t border-red-500/10 mt-6">
-                                    <button
-                                        onClick={handlePurge}
-                                        disabled={saving || purgeTargets.length === 0}
-                                        className="px-6 py-3 bg-red-500/20 hover:bg-red-500 hover:text-white text-red-500 font-bold tracking-wider uppercase text-xs rounded-xl transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        <Trash2 size={16} /> Limpar Dados Selecionados (Purge)
-                                    </button>
-                                </div>
-                            </section>
-
-                            {/* DELETAR PROPRIEDADE */}
-                            <section className="bg-red-600/10 border-2 border-red-600/30 p-8 rounded-[32px] space-y-4">
-                                <div className="flex items-start gap-4">
-                                    <div className="p-3 bg-red-600 text-white rounded-xl shadow-lg shrink-0">
-                                        <AlertTriangle size={24} />
-                                    </div>
-                                    <div>
-                                        <h3 className="font-bold text-xl text-red-600">Excluir Workspace (Propriedade)</h3>
-                                        <p className="text-sm text-red-600/80 mt-1 font-medium">
-                                            Esta é uma ação destrutiva de nível máximo. Apagará o Workspace desta pousada inteira, deslogará toda a equipe vinculada a ela, e apagará tudo em cascata. Não poderá ser desfeito.
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="flex justify-end pt-4">
-                                    <button
-                                        onClick={() => setShowDeleteModal(true)}
-                                        className="px-8 py-3 bg-red-600 hover:bg-red-700 text-white font-black tracking-widest uppercase text-sm rounded-xl shadow-xl shadow-red-600/20 transition-all active:scale-95 flex items-center gap-2"
-                                    >
-                                        <Trash2 size={18} /> Excluir Propriedade Definitivamente
-                                    </button>
-                                </div>
-                            </section>
-
-                        </div>
-                    )}
-                </div>
-
-                {/* COLUNA DIREITA: PREVIEW INTERATIVO (Fixa) */}
-                <div className="lg:col-span-5 relative hidden lg:block">
-                    <div className="sticky top-8">
-                        <div className="flex items-center gap-2 mb-6 text-muted-foreground text-sm font-bold uppercase tracking-widest">
-                            <Smartphone size={16} /> {activeTab === 'visual' ? 'Live Preview (Visual)' : 'Visão do Hóspede (Simulação PT)'}
-                        </div>
-
-                        {/* O MOCKUP DO CELULAR */}
-                        <div
-                            className="mx-auto w-[340px] h-[700px] rounded-[3rem] border-[8px] border-[#1a1a1a] bg-background shadow-2xl overflow-hidden relative flex flex-col transition-all duration-500"
-                            style={getPreviewStyles()}
-                        >
-                            {/* Ilha dinâmica / Notch */}
-                            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-[#1a1a1a] rounded-b-2xl z-50"></div>
-
-                            <div className="pt-10 pb-4 px-6 flex justify-between items-center bg-background z-10 border-b border-border/50">
-                                {basicInfo.logoUrl ? (
-                                    <img src={basicInfo.logoUrl} alt="Logo" className="h-8 object-contain" />
-                                ) : (
-                                    <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-primary-foreground font-bold text-xs">
-                                        {basicInfo.name.charAt(0) || "A"}
-                                    </div>
-                                )}
-                                <div className="w-8 h-8 rounded-full bg-secondary"></div>
-                            </div>
-
-                            <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-background custom-scrollbar">
-
-                                {activeTab === 'visual' && (
-                                    <div className="animate-in fade-in">
-                                        <div className="space-y-2 mb-6">
-                                            <h2 className="text-3xl font-black text-foreground leading-tight">{basicInfo.name || 'Nome da Propriedade'}</h2>
-                                            <p className="text-muted-foreground text-sm">{basicInfo.slogan || 'Slogan ou frase de efeito.'}</p>
-                                        </div>
-
-                                        <div className="bg-card p-6 border border-border space-y-4 shadow-sm mb-6" style={{ borderRadius: theme?.shape.radius }}>
-                                            <div className="flex justify-between items-start">
-                                                <div className="space-y-1">
-                                                    <p className="text-[10px] font-bold text-primary uppercase tracking-wider">Sua Cabana</p>
-                                                    <h3 className="text-xl font-bold text-card-foreground">Bangalô 01</h3>
-                                                </div>
-                                                <div className="px-2 py-1 bg-secondary rounded text-[10px] font-bold text-secondary-foreground">ATIVO</div>
-                                            </div>
-                                            <div className="h-1 w-full bg-secondary rounded-full overflow-hidden">
-                                                <div className="h-full w-2/3 bg-primary"></div>
-                                            </div>
-                                            <button className="w-full py-3 bg-primary text-primary-foreground font-bold text-xs uppercase tracking-widest hover:opacity-90" style={{ borderRadius: `calc(${theme?.shape.radius} - 4px)` }}>
-                                                Ver Detalhes
-                                            </button>
-                                        </div>
-
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div className="bg-secondary p-4 flex flex-col items-center justify-center gap-2 text-center aspect-square" style={{ borderRadius: theme?.shape.radius }}>
-                                                <div className="w-8 h-8 rounded-full bg-background flex items-center justify-center text-primary shadow-sm"><CheckCircle2 size={16} /></div>
-                                                <span className="text-xs font-bold text-secondary-foreground">Check-in</span>
-                                            </div>
-                                            <div className="bg-secondary p-4 flex flex-col items-center justify-center gap-2 text-center aspect-square opacity-50" style={{ borderRadius: theme?.shape.radius }}>
-                                                <div className="w-8 h-8 rounded-full bg-background flex items-center justify-center text-muted-foreground shadow-sm"><Layout size={16} /></div>
-                                                <span className="text-xs font-bold text-muted-foreground">Serviços</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {activeTab === 'operational' && (
-                                    <div className="space-y-6 animate-in fade-in">
-                                        <div className="space-y-2">
-                                            <h2 className="text-xl font-black text-foreground">Regras Operacionais</h2>
-                                        </div>
-
-                                        <div className="bg-orange-500/10 border border-orange-500/20 p-4 space-y-3" style={{ borderRadius: theme?.shape.radius }}>
-                                            <div className="flex items-center gap-2 text-orange-600 font-bold text-sm">
-                                                <Clock size={16} /> Aviso de Horário
-                                            </div>
-                                            <p className="text-xs text-orange-600/90 leading-relaxed font-medium">
-                                                {settings.lateCheckInMessage?.pt?.replace(/\[expectedArrivalTime\]/g, '22:00').replace(/\[receptionendtime\]/g, settings.receptionEndTime) || "Preencha o campo à esquerda para visualizar."}
-                                            </p>
-                                        </div>
-
-                                        <div className="bg-card border border-border p-4 space-y-3 shadow-sm" style={{ borderRadius: theme?.shape.radius }}>
-                                            <div className="flex items-center gap-2 text-primary font-bold text-sm">
-                                                <Coffee size={16} /> Horário do Café
-                                            </div>
-                                            <p className="text-xs text-muted-foreground leading-relaxed font-medium">
-                                                {settings.breakfastModality === 'buffet'
-                                                    ? `O buffet é servido das ${settings.buffetStartTime} às ${settings.buffetEndTime}.`
-                                                    : `Os pedidos na cabana podem ser feitos das ${settings.deliveryStartTime} às ${settings.deliveryEndTime}.`
-                                                }
-                                            </p>
-                                        </div>
-
-                                        <div className="bg-secondary border border-border p-4 space-y-3" style={{ borderRadius: theme?.shape.radius }}>
-                                            <div className="flex items-center gap-2 text-primary font-bold text-sm">
-                                                <ImageIcon size={16} /> Pet Friendly (Alerta)
-                                            </div>
-                                            <p className="text-xs text-muted-foreground leading-relaxed font-medium">
-                                                {settings.petPolicyAlert?.pt || "Preencha o campo à esquerda."}
-                                            </p>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {activeTab === 'policies' && (
-                                    <div className="space-y-4 animate-in fade-in">
-                                        <h2 className="text-xl font-black text-foreground mb-4">Políticas (Aceite)</h2>
-
-                                        <div className="p-4 bg-card border border-border space-y-2" style={{ borderRadius: theme?.shape.radius }}>
-                                            <h4 className="text-xs font-bold uppercase text-primary flex items-center gap-2"><ShieldCheck size={14} /> Geral</h4>
-                                            <p className="text-[10px] text-muted-foreground line-clamp-3">{settings.generalPolicyText?.pt || "Pendente..."}</p>
-                                            <button className="text-[10px] text-primary font-bold uppercase mt-2">Ler Mais</button>
-                                        </div>
-
-                                        <div className="p-4 bg-card border border-border space-y-2" style={{ borderRadius: theme?.shape.radius }}>
-                                            <h4 className="text-xs font-bold uppercase text-primary flex items-center gap-2"><FileText size={14} /> Privacidade</h4>
-                                            <p className="text-[10px] text-muted-foreground line-clamp-3">{settings.privacyPolicyText?.pt || "Pendente..."}</p>
-                                            <button className="text-[10px] text-primary font-bold uppercase mt-2">Ler Mais</button>
-                                        </div>
-
-                                        <div className="p-4 bg-card border border-border space-y-2" style={{ borderRadius: theme?.shape.radius }}>
-                                            <h4 className="text-xs font-bold uppercase text-primary flex items-center gap-2"><ImageIcon size={14} /> Política Pet</h4>
-                                            <p className="text-[10px] text-muted-foreground line-clamp-3">{settings.petPolicyText?.pt || "Pendente..."}</p>
-                                            <button className="text-[10px] text-primary font-bold uppercase mt-2">Ler Mais</button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Bottom Nav Mockado */}
-                            <div className="p-4 bg-card border-t border-border flex justify-around items-center z-10">
-                                <div className="p-2 text-primary"><Layout size={20} /></div>
-                                <div className="p-2 text-muted-foreground"><Layout size={20} /></div>
-                                <div className="p-2 text-muted-foreground"><Layout size={20} /></div>
-                            </div>
-
-                        </div>
+            <Link
+                href="/admin/configuracoes"
+                className="flex items-center gap-3 p-4 rounded-2xl border border-border bg-card hover:border-primary/40 hover:bg-secondary/30 transition-colors"
+            >
+                <Settings size={18} className="text-primary shrink-0" />
+                <span className="flex-1">
+                    <span className="block text-sm font-bold text-foreground">Configurações da pousada</span>
+                    <span className="block text-xs text-muted-foreground">
+                        Marca, operação, políticas, gastronomia, integrações e módulos.
+                    </span>
+                </span>
+                <ArrowRight size={15} className="text-muted-foreground" />
+            </Link>
+
+            <section className="bg-orange-500/10 border border-orange-500/20 p-6 rounded-3xl space-y-4">
+                <div className="flex items-start gap-3">
+                    <RefreshCcw size={20} className="text-orange-600 shrink-0 mt-0.5" />
+                    <div>
+                        <h2 className="font-bold text-orange-600">Restaurar padrões</h2>
+                        <p className="text-sm text-orange-600/80 mt-1">
+                            Apaga <b>automações</b>, <b>templates de mensagem</b> e <b>checklists</b> desta
+                            propriedade e recria os modelos originais do sistema.
+                        </p>
                     </div>
                 </div>
+                <div className="flex justify-end">
+                    <button onClick={doReset} disabled={busy}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold uppercase text-xs tracking-wider rounded-xl disabled:opacity-50">
+                        <RefreshCcw size={15} /> Sobrescrever e restaurar
+                    </button>
+                </div>
+            </section>
 
-            </div>
+            <section className="bg-red-500/5 border border-red-500/20 p-6 rounded-3xl space-y-4">
+                <div className="flex items-start gap-3">
+                    <Database size={20} className="text-red-500 shrink-0 mt-0.5" />
+                    <div>
+                        <h2 className="font-bold text-red-500">Limpeza em massa</h2>
+                        <p className="text-sm text-red-500/80 mt-1">
+                            Apaga permanentemente todos os registros das categorias marcadas.
+                        </p>
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {PURGE_TARGETS.map((t) => (
+                        <label key={t.id} className="flex items-center gap-3 p-3 bg-background border border-border rounded-xl cursor-pointer hover:border-red-500/30">
+                            <input
+                                type="checkbox" className="w-4 h-4 accent-red-500 cursor-pointer"
+                                checked={purge.includes(t.id)}
+                                onChange={() => setPurge((p) => p.includes(t.id) ? p.filter((x) => x !== t.id) : [...p, t.id])}
+                            />
+                            <span className="text-sm font-bold text-foreground">{t.label}</span>
+                        </label>
+                    ))}
+                </div>
+                <div className="flex justify-end pt-2 border-t border-red-500/10">
+                    <button onClick={doPurge} disabled={busy || purge.length === 0}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-red-500/20 hover:bg-red-500 hover:text-white text-red-500 font-bold uppercase text-xs tracking-wider rounded-xl disabled:opacity-50 disabled:cursor-not-allowed">
+                        <Trash2 size={15} /> Limpar selecionados
+                    </button>
+                </div>
+            </section>
 
-            {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
-            {showDeleteModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in">
-                    <div className="bg-zinc-950 border border-red-500/30 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col scale-in-center">
-                        <div className="p-6 bg-red-500/10 border-b border-red-500/20 flex flex-col items-center justify-center text-center gap-3">
-                            <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center text-red-500 mb-2">
-                                <AlertTriangle size={32} />
-                            </div>
-                            <h2 className="text-xl font-black text-red-500 uppercase tracking-widest">Aviso Crítico</h2>
-                            <p className="text-sm text-red-400 font-medium">Você está prestes a excluir este Workspace por completo.</p>
+            <section className="bg-red-600/10 border-2 border-red-600/30 p-6 rounded-3xl space-y-4">
+                <div className="flex items-start gap-3">
+                    <AlertTriangle size={20} className="text-red-600 shrink-0 mt-0.5" />
+                    <div>
+                        <h2 className="font-bold text-red-600 text-lg">Excluir workspace</h2>
+                        <p className="text-sm text-red-600/80 mt-1 font-medium">
+                            Apaga a pousada inteira em cascata e desloga toda a equipe vinculada. Não há como desfazer.
+                        </p>
+                    </div>
+                </div>
+                <div className="flex justify-end">
+                    <button onClick={() => setShowDelete(true)}
+                        className="flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-black uppercase text-xs tracking-widest rounded-xl">
+                        <Trash2 size={16} /> Excluir definitivamente
+                    </button>
+                </div>
+            </section>
+
+            {showDelete && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+                    <div className="bg-card border border-red-500/30 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl">
+                        <div className="p-6 bg-red-500/10 border-b border-red-500/20 text-center space-y-2">
+                            <AlertTriangle size={28} className="mx-auto text-red-500" />
+                            <h3 className="text-lg font-black text-red-500 uppercase tracking-widest">Aviso crítico</h3>
                         </div>
-
-                        <div className="p-6 space-y-6">
+                        <div className="p-6 space-y-4">
                             <p className="text-sm text-muted-foreground text-center">
-                                Para confirmar a exclusão permanente de <b>{basicInfo.name}</b>, digite o nome exato da propriedade abaixo:
+                                Para confirmar, digite o nome exato da propriedade: <b className="text-foreground">{target.name}</b>
                             </p>
                             <input
-                                type="text"
-                                placeholder={basicInfo.name}
-                                value={deleteConfirmName}
-                                onChange={(e) => setDeleteConfirmName(e.target.value)}
-                                className="w-full bg-background border border-red-500/30 p-4 rounded-xl outline-none focus:border-red-500 text-center font-black text-foreground"
+                                value={confirmName}
+                                onChange={(e) => setConfirmName(e.target.value)}
+                                placeholder={target.name}
+                                className="field-input w-full text-center font-black"
                             />
-
-                            <div className="flex gap-3 pt-4">
+                            <div className="flex gap-2 pt-2">
                                 <button
-                                    onClick={() => { setShowDeleteModal(false); setDeleteConfirmName(""); }}
-                                    disabled={isDeleting}
-                                    className="flex-1 py-3 text-muted-foreground font-bold hover:bg-white/5 rounded-xl transition-colors"
+                                    onClick={() => { setShowDelete(false); setConfirmName(""); }}
+                                    disabled={busy}
+                                    className="flex-1 py-3 text-muted-foreground font-bold hover:text-foreground"
                                 >
                                     Cancelar
                                 </button>
                                 <button
-                                    onClick={handleDeleteProperty}
-                                    disabled={isDeleting || deleteConfirmName !== basicInfo.name}
-                                    className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white font-black uppercase text-xs tracking-wider rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                                    onClick={doDelete}
+                                    disabled={busy || confirmName !== target.name}
+                                    className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white font-black uppercase text-xs tracking-wider rounded-xl disabled:opacity-50 flex items-center justify-center gap-2"
                                 >
-                                    {isDeleting ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />}
-                                    Confirmar Exclusão
+                                    {busy ? <Loader2 className="animate-spin" size={15} /> : <Trash2 size={15} />} Confirmar
                                 </button>
                             </div>
                         </div>
                     </div>
                 </div>
             )}
-
         </div>
     );
 }
-
-// ColorInput e MultiLangField vivem em components/admin/settings — reusados pelo hub.

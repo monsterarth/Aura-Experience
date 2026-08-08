@@ -54,18 +54,16 @@ const ALL: UserRole[] = [
 ];
 
 const hasStock = (p: Property) => (p.settings as { hasStock?: boolean })?.hasStock !== false;
-/** Enquanto as seções do hub não existem, tudo aponta para a tela antiga. */
-const legacy = (tab: string) => (id: string) => `/admin/core/properties/${id}?tab=${tab}`;
 
 export const SETTINGS_DOMAINS: SettingsDomain[] = [
   {
     id: "marca", label: "Identidade & Marca", icon: Palette,
     entries: [
       {
-        id: "marca-visual", title: "Marca e cores", kind: "external", roles: ADMIN,
+        id: "marca-visual", title: "Marca e cores", kind: "hub", roles: ADMIN,
         description: "Nome, slogan, logos e a paleta que o hóspede vê no portal.",
         keywords: ["logo", "cor", "cores", "tema", "paleta", "identidade", "slogan", "marca", "visual", "fonte", "arredondamento"],
-        icon: Palette, href: legacy("visual"), where: "Configurações da propriedade › Branding & Visual",
+        icon: Palette, href: () => "/admin/configuracoes/marca",
       },
     ],
   },
@@ -73,22 +71,22 @@ export const SETTINGS_DOMAINS: SettingsDomain[] = [
     id: "operacao", label: "Operação & Hospedagem", icon: Clock,
     entries: [
       {
-        id: "horarios", title: "Horários e recepção", kind: "external", roles: ADMIN_MANAGER,
+        id: "horarios", title: "Horários e recepção", kind: "hub", roles: ADMIN_MANAGER,
         description: "Check-in, check-out, expediente da recepção e as mensagens de chegada fora do horário.",
         keywords: ["check-in", "checkin", "check-out", "checkout", "horário", "horario", "recepção", "recepcao", "expediente", "chegada", "antecipado"],
-        icon: Clock, href: legacy("operational"), where: "Configurações da propriedade › Operacional & Horários",
+        icon: Clock, href: () => "/admin/configuracoes/operacao",
       },
       {
-        id: "pets", title: "Política de pets", kind: "external", roles: ADMIN_MANAGER,
+        id: "pets", title: "Política de pets", kind: "hub", roles: ADMIN_MANAGER,
         description: "Aceita pets, peso mínimo e máximo, e o aviso mostrado no pré-check-in.",
         keywords: ["pet", "pets", "cachorro", "animal", "peso", "aviso"],
-        icon: ScrollText, href: legacy("operational"), where: "Configurações da propriedade › Operacional & Horários",
+        icon: ScrollText, href: () => "/admin/configuracoes/operacao",
       },
       {
-        id: "politicas", title: "Políticas e termos", kind: "external", roles: ADMIN,
+        id: "politicas", title: "Políticas e termos", kind: "hub", roles: ADMIN,
         description: "Política geral, privacidade (LGPD) e pet — nos três idiomas do portal.",
         keywords: ["política", "politica", "termo", "privacidade", "lgpd", "regulamento", "contrato"],
-        icon: ScrollText, href: legacy("policies"), where: "Configurações da propriedade › Políticas & Termos",
+        icon: ScrollText, href: () => "/admin/configuracoes/politicas",
       },
       {
         id: "gov-regras", title: "Regras de governança", kind: "external", roles: ADMIN_MANAGER,
@@ -131,10 +129,10 @@ export const SETTINGS_DOMAINS: SettingsDomain[] = [
     id: "gastronomia", label: "Gastronomia", icon: UtensilsCrossed,
     entries: [
       {
-        id: "fb-config", title: "Restaurante e café da manhã", kind: "external", roles: ["super_admin", "admin", "manager", "kitchen"],
+        id: "fb-config", title: "Restaurante e café da manhã", kind: "hub", roles: ["super_admin", "admin", "manager", "kitchen"],
         description: "Modalidade do café (buffet ou entrega), janela de pedidos, horários e salão.",
         keywords: ["café", "cafe", "restaurante", "buffet", "delivery", "entrega", "salão", "salao", "f&b", "gastronomia", "refeição"],
-        icon: UtensilsCrossed, href: legacy("f_b"), where: "Configurações da propriedade › Gastronomia (F&B)",
+        icon: UtensilsCrossed, href: () => "/admin/configuracoes/gastronomia",
       },
       {
         id: "fb-menu", title: "Cardápio e mensagens do café", kind: "external", roles: ["super_admin", "admin", "manager", "kitchen"], tag: "cadastro",
@@ -181,10 +179,10 @@ export const SETTINGS_DOMAINS: SettingsDomain[] = [
     id: "comunicacao", label: "Comunicação", icon: MessageSquare,
     entries: [
       {
-        id: "integracoes", title: "WhatsApp, Evolution e Chatwoot", kind: "external", roles: ADMIN,
+        id: "integracoes", title: "WhatsApp, Evolution e Chatwoot", kind: "hub", roles: ADMIN,
         description: "Número, credenciais das integrações e o domínio próprio da pousada.",
         keywords: ["whatsapp", "evolution", "chatwoot", "api", "chave", "token", "integração", "integracao", "domínio", "dominio", "inbox"],
-        icon: MessageSquare, href: legacy("operational"), where: "Configurações da propriedade › Operacional & Horários",
+        icon: MessageSquare, href: () => "/admin/configuracoes/integracoes",
       },
       {
         id: "automacoes", title: "Automações e templates", kind: "external", roles: ADMIN,
@@ -255,10 +253,10 @@ export const SETTINGS_DOMAINS: SettingsDomain[] = [
     id: "plataforma", label: "Plataforma", icon: Blocks,
     entries: [
       {
-        id: "modulos", title: "Módulos contratados", kind: "external", roles: SUPER,
+        id: "modulos", title: "Módulos contratados", kind: "hub", roles: SUPER,
         description: "Liga e desliga blocos do sistema, como Compras & Estoque.",
         keywords: ["módulo", "modulo", "estoque", "ligar", "desligar", "plano", "contratado"],
-        icon: Blocks, href: legacy("visual"), where: "Configurações da propriedade › Branding & Visual",
+        icon: Blocks, href: () => "/admin/configuracoes/modulos",
       },
       {
         id: "propriedades", title: "Propriedades", kind: "external", roles: SUPER,

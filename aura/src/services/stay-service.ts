@@ -251,17 +251,31 @@ export const StayService = {
     ]);
   },
 
+  // Campos que o formulário de pré-check-in do hóspede realmente edita. O objeto `stayUpdate`
+  // recebido aqui é um snapshot do estado local do navegador, carregado quando a página abriu —
+  // pode estar desatualizado (ex.: hóspede envia o form minutos depois da recepção já ter feito
+  // o check-in presencial). Por isso nunca aceitamos o objeto inteiro: campos operacionais como
+  // status/checkInActual/cabinId/financeiro ficam de fora e não podem ser sobrescritos por aqui.
+  PRE_CHECKIN_GUEST_EDITABLE_FIELDS: [
+    'expectedArrivalTime', 'vehiclePlate', 'travelReason', 'transportation',
+    'lastCity', 'nextCity', 'hasPet', 'petDetails', 'additionalGuests',
+  ] as const,
+
   async completePreCheckin(propertyId: string, stayId: string, stayUpdate: Partial<Stay>, guestUpdate: Partial<Guest>): Promise<string> {
     // Busca id do guest e dados de grupo
-    const { data: stay } = await supabase.from('stays').select('guestId, groupId, accessCode').eq('id', stayId).single();
+    const { data: stay } = await supabase.from('stays').select('guestId, groupId, accessCode, status').eq('id', stayId).single();
     if (!stay) throw new Error("Stay not found");
 
     let finalAccessCode = stay.accessCode;
+    const sanitizedStayUpdate: Record<string, any> = {};
+    for (const field of this.PRE_CHECKIN_GUEST_EDITABLE_FIELDS) {
+      if (field in stayUpdate) sanitizedStayUpdate[field] = (stayUpdate as any)[field];
+    }
 
     // Se a reserva é de grupo, desmembra o código para dar um dashboard privado à cabana
     if (stay.groupId) {
       finalAccessCode = await this.generateUniqueAccessCode(propertyId);
-      stayUpdate.accessCode = finalAccessCode;
+      sanitizedStayUpdate.accessCode = finalAccessCode;
 
       // Log audit
       await AuditService.log({
@@ -275,9 +289,15 @@ export const StayService = {
       });
     }
 
+    // Nunca regride uma estadia que já avançou (check-in feito, finalizada ou cancelada) — o
+    // envio deste form é sempre "informativo" quando isso acontece, não uma mudança de estado.
+    const nextStatus = ['active', 'finished', 'cancelled'].includes(stay.status)
+      ? stay.status
+      : 'pre_checkin_done';
+
     // Supabase JS doesnt have explicit transactions, we do parallel awaited calls
     const [stayRes, guestRes] = await Promise.all([
-      supabase.from('stays').update({ ...stayUpdate, status: 'pre_checkin_done', updatedAt: new Date().toISOString() }).eq('id', stayId),
+      supabase.from('stays').update({ ...sanitizedStayUpdate, status: nextStatus, updatedAt: new Date().toISOString() }).eq('id', stayId),
       supabase.from('guests').update({ ...guestUpdate, updatedAt: new Date().toISOString() }).eq('id', stay.guestId)
     ]);
 
@@ -292,7 +312,7 @@ export const StayService = {
       entity: "STAY",
       entityId: stayId,
       details: "Pré check-in concluído pelo hóspede via portal.",
-      newData: { status: 'pre_checkin_done', ...stayUpdate }
+      newData: { status: nextStatus, ...sanitizedStayUpdate }
     });
 
     return finalAccessCode;
@@ -586,9 +606,21 @@ export const StayService = {
   },
 
   async cancelStay(propertyId: string, stayId: string, actorId: string, actorName: string) {
+    const { data: stay } = await supabase.from('stays').select('cabinId').eq('id', stayId).single();
+
     await supabase.from('stays')
       .update({ status: 'cancelled', updatedAt: new Date().toISOString() })
       .eq('id', stayId);
+
+    // Libera a cabana se ela ainda apontava para esta reserva — sem isso, cancelar uma reserva
+    // que já tinha ocupado a cabana (ex.: check-in desfeito manualmente antes) deixa a cabana
+    // travada em 'occupied' apontando para uma estadia cancelada, sem nada de ativo nela.
+    if (stay?.cabinId) {
+      await supabase.from('cabins')
+        .update({ status: 'available', currentStayId: null })
+        .eq('id', stay.cabinId)
+        .eq('currentStayId', stayId);
+    }
 
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "DELETE", entity: "STAY", entityId: stayId,
