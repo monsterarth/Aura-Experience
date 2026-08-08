@@ -8,7 +8,7 @@
 // concierge. Toda leitura do portal deve passar por aqui.
 //
 // Toda rota valida posse pelo trio stayId + accessCode + propertyId.
-import { Cabin, ConciergeItem, ConciergeRequest, FBCategory, FBMenuItem, Guest, Property, Stay } from "@/types/aura";
+import { Cabin, ConciergeItem, ConciergeRequest, Event, FBCategory, FBMenuItem, Guest, Property, Stay, Structure } from "@/types/aura";
 
 export interface GuestScope {
   propertyId: string;
@@ -38,6 +38,8 @@ export interface GuestSession {
   property: Pick<Property, "id" | "name" | "slug" | "logoUrl" | "theme" | "settings"> | null;
   /** true = o hóspede já respondeu a pesquisa desta estadia. */
   hasSurvey: boolean;
+  /** Estrutura marcada como salão do café (horário + "como chegar"), se houver. */
+  breakfastVenue: Pick<Structure, "id" | "name" | "operatingHours" | "mapPin"> | null;
 }
 
 export const GuestApi = {
@@ -56,6 +58,34 @@ export const GuestApi = {
   /** Catálogo + pedidos da estadia. */
   concierge(scope: GuestScope) {
     return getJson<{ items: ConciergeItem[]; requests: ConciergeRequest[] }>("concierge", scope);
+  },
+
+  /**
+   * Salão do café: sessão de hoje (aberto/fechado) e, com o escopo da estadia,
+   * a presença do hóspede. Sem escopo, devolve só a sessão.
+   */
+  async breakfastSalon(propertyId: string, scope?: Pick<GuestScope, "stayId" | "accessCode">) {
+    const qs = new URLSearchParams({ propertyId, ...(scope ?? {}) });
+    const res = await fetch(`/api/guest/breakfast-salon?${qs}`, { cache: "no-store" });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || `Falha ao carregar o salão (${res.status}).`);
+    return json as { session: { status?: string } | null; attendance: Record<string, unknown> | null };
+  },
+
+  /** Programação publicada. Conteúdo público — só precisa do propertyId. */
+  async events(propertyId: string, from?: string): Promise<Event[]> {
+    const qs = new URLSearchParams({ propertyId, ...(from ? { from } : {}) });
+    const res = await fetch(`/api/guest/events?${qs}`, { cache: "no-store" });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || `Falha ao carregar a programação (${res.status}).`);
+    return json.events as Event[];
+  },
+
+  /** Áreas da pousada (rota que já existia; aqui só centraliza a chamada). */
+  async structures(propertyId: string): Promise<Structure[]> {
+    const res = await fetch(`/api/guest/structures?propertyId=${encodeURIComponent(propertyId)}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`Falha ao carregar as áreas (${res.status}).`);
+    return res.json();
   },
 
   /**

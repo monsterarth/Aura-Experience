@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useMemo, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { GuestApi } from "@/lib/guest-api";
-import { EventService } from "@/services/event-service";
 import { Stay, Property, Event } from "@/types/aura";
 import {
   Loader2, ArrowLeft, MapPin, Clock, ExternalLink, X,
@@ -174,7 +173,7 @@ function EventsContent() {
         setStay(firstStay);
         setProperty(session.property as Property);
 
-        setEvents(await EventService.getPublishedEvents(firstStay.propertyId, new Date().toISOString().split("T")[0]));
+        setEvents(await GuestApi.events(firstStay.propertyId, new Date().toISOString().split("T")[0]));
 
         const savedLang = session.guest?.preferredLanguage;
         if (savedLang && ["pt", "en", "es"].includes(savedLang)) {

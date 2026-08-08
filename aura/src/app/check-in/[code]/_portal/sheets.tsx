@@ -1,12 +1,12 @@
 "use client";
 
 import React from "react";
+import { GuestApi } from "@/lib/guest-api";
 import { QRCodeSVG } from "qrcode.react";
 import { Icon, Card, PrimaryBtn, GhostBtn, IconBtn, SectionTitle, Photo } from "./ui";
 import { usePortal, type SheetName, type Lang } from "./context";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import { reportCabinIssue, reportStructureIssue, reportAppBug } from "@/app/actions/issue-actions";
-import { StructureService } from "@/services/structure-service";
 import { useCloseGuard } from "@/lib/use-discard-guard";
 import type { Structure, Event } from "@/types/aura";
 import { formatEventDate, eventTitle, eventDesc, eventPrice } from "./eventHelpers";
@@ -217,7 +217,7 @@ function ReportSheet() {
 
     React.useEffect(() => {
         if (type === "area" && structures.length === 0) {
-            StructureService.getStructures(stay.propertyId)
+            GuestApi.structures(stay.propertyId)
                 .then((d) => setStructures(d as Structure[]))
                 .catch(() => { /* silently ignore */ });
         }

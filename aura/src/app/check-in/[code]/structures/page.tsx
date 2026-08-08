@@ -3,21 +3,13 @@
 import React, { useState, useEffect, Suspense } from "react";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
 import { GuestApi } from "@/lib/guest-api";
 import { StructureService } from "@/services/structure-service";
 import { Stay, Property, Structure, TimeSlot, StructureBooking } from "@/types/aura";
 import { Loader2, ArrowLeft, Calendar, Info, CheckCircle2, ChevronRight, MapPin, Clock, X, Check } from "lucide-react";
-
-// Supabase client dedicado ao portal do hóspede — sem sessão para não competir
-// pelo Web Lock do admin quando ambos estão abertos no mesmo browser.
-const guestRealtimeClient = (() => {
-    if (typeof window === 'undefined') return null;
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!url || !key) return null;
-    return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-})();
+// Aqui existia um createClient anon dedicado a esta tela, para o Realtime. Foi
+// removido: era a última leitura direta do banco no portal, e a que morreria
+// calada quando a chave anon fosse revogada. Ver o efeito de polling abaixo.
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -213,29 +205,30 @@ function StructuresWizard() {
         } catch { /* silently ignore */ }
     };
 
-    // Realtime: qualquer mudança em structure_bookings para esta property
-    // atualiza a grade de slots e a lista de reservas do hóspede em tempo real.
+    /**
+     * Mantém a grade de slots e as reservas do hóspede em dia.
+     *
+     * Era um Realtime do Supabase com um client anon PRÓPRIO desta tela. O payload
+     * nunca era usado — servia só de gatilho para refazer as duas buscas, que já
+     * passam por /api/guest/*. Como a fase 0E revoga a chave anon em
+     * structure_bookings, o canal pararia de disparar EM SILÊNCIO: a tela seguiria
+     * aberta mostrando horário livre que já foi tomado. Polling é menos elegante e
+     * não mente.
+     *
+     * Só roda com a aba visível: refazer busca com o celular no bolso é gasto puro.
+     */
     useEffect(() => {
-        if (!guestRealtimeClient || !property || !stay || !selectedDate) return;
+        if (!property || !stay || !selectedDate) return;
 
-        const channel = guestRealtimeClient
-            .channel(`guest-structures-${property.id}-s${step}`)
-            .on(
-                'postgres_changes' as any, // supabase-js typing workaround
-                {
-                    event: '*',
-                    schema: 'public',
-                    table: 'structure_bookings',
-                    filter: `propertyId=eq.${property.id}`,
-                },
-                () => {
-                    loadGuestTodayBookings(stay.id, property.id, selectedDate);
-                    if (step === 1) reloadSlots();
-                }
-            )
-            .subscribe();
+        const refresh = () => {
+            if (document.visibilityState !== "visible") return;
+            loadGuestTodayBookings(stay.id, property.id, selectedDate);
+            if (step === 1) reloadSlots();
+        };
 
-        return () => { guestRealtimeClient.removeChannel(channel); };
+        const id = setInterval(refresh, 20_000);
+        document.addEventListener("visibilitychange", refresh);
+        return () => { clearInterval(id); document.removeEventListener("visibilitychange", refresh); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [property?.id, stay?.id, selectedDate, step, selectedStructure?.id]);
 

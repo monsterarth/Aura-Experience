@@ -3,7 +3,6 @@
 import React, { useState, useEffect, Suspense, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { GuestApi } from "@/lib/guest-api";
-import { BreakfastSalonService } from "@/services/breakfast-salon-service";
 import { Stay, Property, FBCategory, FBMenuItem, FBOrder, BreakfastAttendance } from "@/types/aura";
 import { Loader2, ArrowLeft, Coffee, Plus, Minus, Info, CheckCircle2, ChevronRight, Utensils, AlertCircle, X, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
@@ -291,8 +290,8 @@ function BreakfastWizard() {
                 }
 
                 // Buffet: verificar se hóspede está alocado em mesa
-                const attendance = await BreakfastSalonService.getAttendanceByStay(s.propertyId, s.id);
-                setBuffetAttendance(attendance ?? null);
+                const { attendance } = await GuestApi.breakfastSalon(s.propertyId, { stayId: s.id, accessCode: code as string });
+                setBuffetAttendance((attendance as any) ?? null);
 
                 // Verificar se já fez pedido buffet hoje
                 const todayISO = new Date().toISOString().split('T')[0];

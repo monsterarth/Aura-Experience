@@ -1,12 +1,12 @@
 "use client";
 
 import React from "react";
+import { GuestApi } from "@/lib/guest-api";
 import dynamic from "next/dynamic";
 import { createPortal } from "react-dom";
 import { Loader2, ArrowLeft, Map as MapIcon, Image as ImageIcon } from "lucide-react";
 import { Icon, Chip, Tag } from "./ui";
 import { usePortal } from "./context";
-import { EventService } from "@/services/event-service";
 import type { Event } from "@/types/aura";
 import { formatEventDate, isToday, eventTitle, eventPrice } from "./eventHelpers";
 import { useResortMap } from "./useResortMap";
@@ -87,7 +87,7 @@ export function ExploreScreen() {
         (async () => {
             try {
                 const today = new Date().toISOString().split("T")[0];
-                const evs = await EventService.getPublishedEvents(stay.propertyId, today);
+                const evs = await GuestApi.events(stay.propertyId, today);
                 if (alive) setEvents(evs);
             } catch { /* silently ignore */ }
             finally { if (alive) setLoadingEvents(false); }

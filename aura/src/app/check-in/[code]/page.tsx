@@ -2,9 +2,8 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { GuestApi } from "@/lib/guest-api";
 import { StayService } from "@/services/stay-service";
-import { SurveyService } from "@/services/survey-service";
-import { PropertyService } from "@/services/property-service";
 import { Stay, Property } from "@/types/aura";
 import { Loader2, CheckCircle, FileText, AlertCircle, Phone, Star, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
@@ -267,8 +266,10 @@ function GuestHubContent() {
                     return;
                 }
 
-                const stays = await StayService.getStaysByAccessCode(code as string);
-                if (!stays || stays.length === 0) {
+                // Bootstrap por rota service-role — ver /api/guest/session.
+                const session = await GuestApi.session(code as string).catch(() => null);
+                const stays = session?.stays ?? [];
+                if (!session || stays.length === 0) {
                     setError("Nenhuma reserva encontrada com este código.");
                     setLoading(false);
                     return;
@@ -288,17 +289,13 @@ function GuestHubContent() {
 
                 const isFinished = stays.length === 1 && firstStay.status === 'finished';
 
-                // Property, idioma e survey (quando aplicável) não dependem entre si:
-                // busca em paralelo em vez de em cascata. As estruturas (usadas só no
-                // modal de "Reportar Problema") são carregadas sob demanda — ver useEffect.
-                const [prop, guestInfo, surveyed, breakfastVenue] = await Promise.all([
-                    PropertyService.getPropertyById(firstStay.propertyId),
-                    StayService.getGuestNameAndLang(firstStay.guestId).catch(() => null),
-                    isFinished
-                        ? SurveyService.hasSurveyForStay(firstStay.propertyId, firstStay.id).catch(() => false)
-                        : Promise.resolve(false),
-                    StructureService.getBreakfastVenue(firstStay.propertyId).catch(() => null),
-                ]);
+                // Tudo isto já veio junto no bootstrap: property, hóspede, salão do café
+                // e "já respondeu a pesquisa?". Antes eram quatro consultas ao banco pelo
+                // navegador, e a do survey voltava sempre falsa por causa da RLS.
+                const prop = session.property;
+                const guestInfo = session.guest;
+                const surveyed = isFinished ? session.hasSurvey : false;
+                const breakfastVenue = session.breakfastVenue;
 
                 setProperty(prop as Property);
 

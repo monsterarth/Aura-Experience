@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { BreakfastSalonService } from "@/services/breakfast-salon-service";
 // O cardápio vem por rota service-role: pelo navegador (anon) a RLS de fb_categories
 // e fb_menu_items devolvia zero, e a tela não conseguia nomear os itens do pedido.
 import { GuestApi } from "@/lib/guest-api";
@@ -280,12 +279,12 @@ function BreakfastStatusPage() {
             } else {
                 // Buffet — check today's session status + any order the guest may have placed
                 const todayISO = new Date().toISOString().split('T')[0];
-                const [session, menu, resToday] = await Promise.all([
-                    BreakfastSalonService.getTodaySession(s.propertyId),
+                const [salon, menu, resToday] = await Promise.all([
+                    GuestApi.breakfastSalon(s.propertyId),
                     GuestApi.breakfastMenu(s.propertyId),
                     fetch(`/api/guest/breakfast-orders?stayId=${s.id}&propertyId=${s.propertyId}&deliveryDate=${todayISO}&type=breakfast`),
                 ]);
-                setSalonOpen(session?.status === 'open');
+                setSalonOpen(salon.session?.status === 'open');
                 setCategories(menu.categories.filter(c => c.type === 'both' || c.type === 'breakfast').sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
                 setMenuItems(menu.menuItems);
                 if (resToday.ok) {

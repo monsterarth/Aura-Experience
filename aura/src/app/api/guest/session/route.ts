@@ -60,10 +60,15 @@ export async function GET(req: NextRequest) {
     // Estadia escolhida: a pedida (se pertence ao código) ou a primeira.
     const chosen = (stayId && stays.find((s: any) => s.id === stayId)) || stays[0];
 
-    const [full, propRes, hasSurvey] = await Promise.all([
+    const [full, propRes, hasSurvey, venueRes] = await Promise.all([
       StayService.getStayWithGuestAndCabin(chosen.propertyId, chosen.id),
       supabaseAdmin.from("properties").select("*").eq("id", chosen.propertyId).maybeSingle(),
       SurveyService.hasSurveyForStay(chosen.propertyId, chosen.id),
+      // Salão do café: alimenta o horário e o "como chegar" da home.
+      supabaseAdmin.from("structures")
+        .select("id, name, operatingHours, mapPin")
+        .eq("propertyId", chosen.propertyId).eq("isBreakfastVenue", true)
+        .limit(1).maybeSingle(),
     ]);
 
     return NextResponse.json({
@@ -73,6 +78,7 @@ export async function GET(req: NextRequest) {
       cabin: full?.cabin ?? null,
       property: publicProperty(propRes.data),
       hasSurvey,
+      breakfastVenue: venueRes.data ?? null,
     });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
