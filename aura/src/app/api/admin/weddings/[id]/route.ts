@@ -5,7 +5,7 @@ import { AuditService } from '@/services/audit-service';
 
 const STATUS_LABEL: Record<string, string> = {
   tentative: 'Em negociação', confirmed: 'Confirmado',
-  completed: 'Realizado', cancelled: 'Cancelado',
+  completed: 'Realizado', cancelled: 'Cancelado', lost: 'Perdido',
 };
 
 const WEDDING_ROLES = ['super_admin', 'admin', 'reception', 'manager'] as const;

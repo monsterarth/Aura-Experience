@@ -4,7 +4,8 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { useProperty } from "@/context/PropertyContext";
 import { useCloseGuard } from "@/lib/use-discard-guard";
 import { supabase } from "@/lib/supabase";
-import { Wedding, WeddingCabinAssignment, WeddingStatus, WEDDING_LOST_REASONS } from "@/types/aura";
+import { CrmChannel, Wedding, WeddingCabinAssignment, WeddingStatus, WEDDING_LOST_REASONS } from "@/types/aura";
+import { RoleGuard } from "@/components/auth/RoleGuard";
 import { useConfigDeepLink } from "@/lib/settings-deeplink";
 import { toast } from "sonner";
 import {
@@ -162,6 +163,7 @@ type FormTab = 'casal' | 'evento' | 'hospedagem' | 'financeiro';
 
 type WeddingFormData = {
   bride: string; brideShort: string; groom: string; groomShort: string; coupleWebsite: string;
+  couplePhone: string; coupleEmail: string; source: string;
   weddingDate: string; status: WeddingStatus; guestCount: string;
   coordinator: string; ceremonyDetails: string; receptionDetails: string; notes: string;
   checkin: string; checkout: string; exclusivity: boolean; cabinsOccupied: string;
@@ -172,6 +174,7 @@ type WeddingFormData = {
 
 const EMPTY_FORM: WeddingFormData = {
   bride: '', brideShort: '', groom: '', groomShort: '', coupleWebsite: '',
+  couplePhone: '', coupleEmail: '', source: '',
   weddingDate: '', status: 'tentative', guestCount: '',
   coordinator: '', ceremonyDetails: '', receptionDetails: '', notes: '',
   checkin: '', checkout: '', exclusivity: false, cabinsOccupied: '',
@@ -183,7 +186,8 @@ const EMPTY_FORM: WeddingFormData = {
 function weddingToForm(w: Wedding): WeddingFormData {
   return {
     bride: w.bride, brideShort: w.brideShort ?? '', groom: w.groom, groomShort: w.groomShort ?? '',
-    coupleWebsite: w.coupleWebsite ?? '', weddingDate: w.weddingDate, status: w.status,
+    coupleWebsite: w.coupleWebsite ?? '', couplePhone: w.couplePhone ?? '', coupleEmail: w.coupleEmail ?? '',
+    source: w.source ?? '', weddingDate: w.weddingDate, status: w.status,
     guestCount: String(w.guestCount ?? ''), coordinator: w.coordinator ?? '',
     ceremonyDetails: w.ceremonyDetails ?? '', receptionDetails: w.receptionDetails ?? '',
     notes: w.notes ?? '', checkin: w.checkin, checkout: w.checkout,
@@ -268,6 +272,16 @@ function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }: {
     setTab('casal');
   }, [open, initial]);
 
+  // Canais de origem (padrão + editáveis por propriedade)
+  const [channels, setChannels] = useState<CrmChannel[]>([]);
+  useEffect(() => {
+    if (!open) return;
+    fetch(`/api/admin/comercial/channels?propertyId=${propertyId}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d?.channels) setChannels(d.channels); })
+      .catch(() => {});
+  }, [open, propertyId]);
+
   const set = (key: keyof WeddingFormData) => (val: string | boolean) =>
     setForm(f => ({ ...f, [key]: val }));
 
@@ -282,6 +296,9 @@ function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }: {
         bride: form.bride.trim(), brideShort: form.brideShort.trim() || undefined,
         groom: form.groom.trim(), groomShort: form.groomShort.trim() || undefined,
         coupleWebsite: form.coupleWebsite.trim() || undefined,
+        couplePhone: form.couplePhone.replace(/\D/g, '') || null,
+        coupleEmail: form.coupleEmail.trim() || null,
+        source: form.source || null,
         weddingDate: form.weddingDate, status: form.status,
         guestCount: parseInt(form.guestCount) || 0,
         coordinator: form.coordinator.trim() || undefined,
@@ -355,12 +372,21 @@ function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }: {
               <FField label="Abreviação (iniciais)"><FInput value={form.brideShort} onChange={set('brideShort')} placeholder="AC" /></FField></FRow>
             <FRow><FField label="Nome do noivo *"><FInput value={form.groom} onChange={set('groom')} placeholder="Ex: João Pedro" /></FField>
               <FField label="Abreviação (iniciais)"><FInput value={form.groomShort} onChange={set('groomShort')} placeholder="JP" /></FField></FRow>
-            <FField label="Site dos noivos"><FInput value={form.coupleWebsite} onChange={set('coupleWebsite')} placeholder="https://anaejoo.casamento.com.br" /></FField>
+            <FRow><FField label="WhatsApp do casal"><FInput value={form.couplePhone} onChange={v => set('couplePhone')(v.replace(/\D/g, ''))} placeholder="5548999999999" /></FField>
+              <FField label="E-mail do casal"><FInput value={form.coupleEmail} onChange={set('coupleEmail')} type="email" placeholder="casal@email.com" /></FField></FRow>
+            <FRow><FField label="Origem do lead"><FSelect value={form.source} onChange={set('source')} options={[{ value: '', label: '—' }, ...channels.map(c => ({ value: c.id, label: c.label }))]} /></FField>
+              <FField label="Site dos noivos"><FInput value={form.coupleWebsite} onChange={set('coupleWebsite')} placeholder="https://anaejoo.casamento.com.br" /></FField></FRow>
           </>)}
 
           {tab === 'evento' && (<>
             <FRow><FField label="Data do casamento *"><FInput value={form.weddingDate} onChange={set('weddingDate')} type="date" /></FField>
-              <FField label="Status"><FSelect value={form.status} onChange={set('status')} options={[{ value: 'tentative', label: 'Em negociação' }, { value: 'confirmed', label: 'Confirmado' }, { value: 'completed', label: 'Realizado' }, { value: 'cancelled', label: 'Cancelado' }]} /></FField></FRow>
+              <FField label="Status"><FSelect value={form.status} onChange={set('status')} options={[
+                { value: 'tentative', label: 'Em negociação' }, { value: 'confirmed', label: 'Confirmado' },
+                { value: 'completed', label: 'Realizado' }, { value: 'cancelled', label: 'Cancelado' },
+                // Sem esta option, editar um casamento perdido renderizava o
+                // select vazio e QUALQUER salvamento reescrevia o status.
+                ...(form.status === 'lost' ? [{ value: 'lost', label: 'Perdido' }] : []),
+              ]} /></FField></FRow>
             <FRow><FField label="Nº de convidados"><FInput value={form.guestCount} onChange={set('guestCount')} type="number" placeholder="150" /></FField>
               <FField label="Cerimonialista"><FInput value={form.coordinator} onChange={set('coordinator')} placeholder="Nome" /></FField></FRow>
             {form.status === 'tentative' && (
@@ -438,6 +464,26 @@ function leadState(w: Wedding, today: string): { tone: 'overdue' | 'today' | 'ok
 }
 
 // Prazos padrão das negociações — vivem na tela onde são usados, não no setup.
+// Fora do LeadSettingsModal DE PROPÓSITO: definido dentro, cada setForm criava
+// um tipo novo de componente → React remontava o input → foco perdido a cada
+// tecla. É o mesmo bug do dropdown do formulário, em outra roupa.
+function LeadDaysRow({ label, hint, value, disabled, onChange }: {
+  label: string; hint: string; value: string; disabled: boolean; onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <FLabel>{label}</FLabel>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input type="number" min={1} max={3650} value={value} disabled={disabled}
+          onChange={e => onChange(e.target.value)}
+          style={{ width: 90, boxSizing: 'border-box', padding: '9px 12px', borderRadius: 10, border: `1px solid ${T.border2}`, background: T.glass, color: T.text, fontFamily: 'inherit', fontSize: 13, outline: 'none' }} />
+        <span style={{ fontSize: 12, color: T.muted }}>dias</span>
+      </div>
+      <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>{hint}</div>
+    </div>
+  );
+}
+
 function LeadSettingsModal({ propertyId, onClose }: { propertyId: string; onClose: () => void }) {
   const [form, setForm] = useState({ followUpDays: '', expiryDays: '', renewDays: '' });
   const [canEdit, setCanEdit] = useState(true);
@@ -470,19 +516,6 @@ function LeadSettingsModal({ propertyId, onClose }: { propertyId: string; onClos
     finally { setSaving(false); }
   };
 
-  const Row = ({ label, hint, k }: { label: string; hint: string; k: keyof typeof form }) => (
-    <div>
-      <FLabel>{label}</FLabel>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <input type="number" min={1} max={3650} value={form[k]} disabled={!canEdit}
-          onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
-          style={{ width: 90, boxSizing: 'border-box', padding: '9px 12px', borderRadius: 10, border: `1px solid ${T.border2}`, background: T.glass, color: T.text, fontFamily: 'inherit', fontSize: 13, outline: 'none' }} />
-        <span style={{ fontSize: 12, color: T.muted }}>dias</span>
-      </div>
-      <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>{hint}</div>
-    </div>
-  );
-
   return (
     <div onClick={e => { if (e.target === e.currentTarget && !saving) onClose(); }}
       style={{ position: 'fixed', inset: 0, zIndex: 140, background: 'rgba(0,0,0,.7)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
@@ -498,9 +531,15 @@ function LeadSettingsModal({ propertyId, onClose }: { propertyId: string; onClos
             <div style={{ display: 'flex', justifyContent: 'center', padding: 20 }}><Loader2 size={18} className="animate-spin" color={T.muted} /></div>
           ) : (
             <>
-              <Row label="Follow-up a cada" k="followUpDays" hint="Quando cobrar retorno do casal. Só sinaliza na lista." />
-              <Row label="Validade da negociação" k="expiryDays" hint="Sem retorno nesse prazo, vira negociação perdida automaticamente." />
-              <Row label="Renovação por contato" k="renewDays" hint="Quanto o botão “Registrar follow-up” estica a validade." />
+              <LeadDaysRow label="Follow-up a cada" hint="Quando cobrar retorno do casal. Só sinaliza na lista."
+                value={form.followUpDays} disabled={!canEdit}
+                onChange={v => setForm(f => ({ ...f, followUpDays: v }))} />
+              <LeadDaysRow label="Validade da negociação" hint="Sem retorno nesse prazo, vira negociação perdida automaticamente."
+                value={form.expiryDays} disabled={!canEdit}
+                onChange={v => setForm(f => ({ ...f, expiryDays: v }))} />
+              <LeadDaysRow label="Renovação por contato" hint="Quanto o botão “Registrar follow-up” estica a validade."
+                value={form.renewDays} disabled={!canEdit}
+                onChange={v => setForm(f => ({ ...f, renewDays: v }))} />
               {!canEdit && <div style={{ fontSize: 11, color: T.amber }}>Só gerência pode alterar estes prazos.</div>}
             </>
           )}
@@ -608,7 +647,8 @@ function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onEdit, on
   const second  = wedding.secondInstallmentValue ?? 0;
   const balance = wedding.contractTotal - deposit - second;
   const paidTotal = (wedding.depositPaid ? deposit : 0) + (wedding.secondInstallmentPaid ? second : 0);
-  const paidPct = Math.round((paidTotal / wedding.contractTotal) * 100);
+  // Guarda de zero: contrato vazio virava NaN% na tela e width:NaN% na barra.
+  const paidPct = wedding.contractTotal > 0 ? Math.round((paidTotal / wedding.contractTotal) * 100) : 0;
 
   const tabs: { id: DrawerTab; label: string }[] = [
     { id: "evento",       label: "Evento" },
@@ -895,9 +935,13 @@ function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onEdit, on
           <button onClick={() => onEdit(wedding)} style={{ flex: 1, padding: 10, borderRadius: 11, border: `1px solid ${T.border2}`, background: T.glass, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 700, color: T.muted }}>
             Editar
           </button>
-          <button style={{ flex: 2, padding: 10, borderRadius: 11, border: "none", background: T.grad, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 800, color: "#fff", boxShadow: "0 4px 14px rgba(155,109,255,.3)" }}>
-            Comunicado ao casal
-          </button>
+          {/* Só aparece com WhatsApp do casal cadastrado (antes era um botão morto) */}
+          {wedding.couplePhone && (
+            <a href={`https://wa.me/${wedding.couplePhone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer"
+              style={{ flex: 2, padding: 10, borderRadius: 11, border: "none", background: T.grad, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 800, color: "#fff", boxShadow: "0 4px 14px rgba(155,109,255,.3)", display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>
+              Falar com o casal
+            </a>
+          )}
         </div>
       </div>
 
@@ -927,7 +971,7 @@ function WeddingCard({ wedding, cabinsTotal, onOpen, view, showFinancial, highli
   const deposit  = wedding.depositValue ?? 0;
   const second   = wedding.secondInstallmentValue ?? 0;
   const paidTotal = (wedding.depositPaid ? deposit : 0) + (wedding.secondInstallmentPaid ? second : 0);
-  const paidPct  = Math.round((paidTotal / fin) * 100);
+  const paidPct  = fin > 0 ? Math.round((paidTotal / fin) * 100) : 0;
   const vendorConfirmed = vendors.filter(v => v.confirmed).length;
 
   const accentColor = wedding.status === "completed" ? T.muted
@@ -1062,7 +1106,7 @@ function WeddingCard({ wedding, cabinsTotal, onOpen, view, showFinancial, highli
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export default function CasamentosPage() {
+function CasamentosPageInner() {
   const { currentProperty: property, loading: propLoading } = useProperty();
 
   const [weddings, setWeddings] = useState<Wedding[]>([]);
@@ -1077,7 +1121,6 @@ export default function CasamentosPage() {
   const [cabinsTotal, setCabinsTotal] = useState(0);
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Wedding | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Wedding | null>(null);
   const [leadSettingsOpen, setLeadSettingsOpen] = useState(false);
   // Link do hub abre o modal de prazos direto.
   useConfigDeepLink({ prazos: () => setLeadSettingsOpen(true) });
@@ -1235,7 +1278,9 @@ export default function CasamentosPage() {
     { label: "Próximos eventos",       value: upcoming.length,       sub: "confirmados ou em neg.", color: T.rose,   bg: T.roseBg,   border: T.roseBorder,   icon: Heart    },
     { label: "Com exclusividade",      value: exclusive.length,      sub: "pousada reservada",      color: T.violet, bg: T.violetBg, border: T.violetBorder, icon: Shield   },
     { label: "Fornecedores pendentes", value: pendingVendors,        sub: "aguardando confirmação", color: T.amber,  bg: T.amberBg,  border: T.amberBorder,  icon: Clock    },
-    { label: "Receita total",          value: fmtMoney(totalRevenue),sub: "todos os contratos",     color: T.g1,     bg: T.gradSoft, border: "rgba(155,109,255,0.22)", icon: Sparkles },
+    { label: "Receita total",          value: fmtMoney(totalRevenue),
+      sub: lostRevenue > 0 ? `${fmtMoney(lostRevenue)} em negociações perdidas` : "todos os contratos",
+      color: T.g1,     bg: T.gradSoft, border: "rgba(155,109,255,0.22)", icon: Sparkles },
   ];
 
   if (propLoading) return (
@@ -1353,5 +1398,13 @@ export default function CasamentosPage() {
       <WeddingFormModal open={formOpen} initial={editTarget} propertyId={property.id} onClose={() => setFormOpen(false)} onSaved={loadWeddings} />
       {leadSettingsOpen && <LeadSettingsModal propertyId={property.id} onClose={() => setLeadSettingsOpen(false)} />}
     </div>
+  );
+}
+
+export default function CasamentosPage() {
+  return (
+    <RoleGuard allowedRoles={["super_admin", "admin", "reception", "manager"]}>
+      <CasamentosPageInner />
+    </RoleGuard>
   );
 }
