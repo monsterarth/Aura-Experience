@@ -179,6 +179,7 @@ export const CrmService = {
         guestId: q.guestId,
         stayId: q.stayId,
         weddingId: q.weddingId,
+        negotiatedValue: q.negotiatedValue ?? null,
         createdAt: q.createdAt,
       };
     });

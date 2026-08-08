@@ -5,16 +5,110 @@
 import { useState } from "react";
 import {
   CalendarClock, CalendarDays, ExternalLink, Heart, Loader2, Mail,
-  MessageSquare, Phone, Send, Tag, X, XCircle,
+  MessageSquare, Pencil, Phone, Send, Tag, X, XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CrmChannel, CrmLead } from "@/types/aura";
 import { InteractionTimeline } from "./InteractionTimeline";
 import { QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, fmtBR, money } from "./shared";
 
+/**
+ * Seção "Negociação" (só orçamentos): valor negociado editável inline —
+ * recepção pode mexer SEM aval de gerente, o registro fica na timeline
+ * (value_change) e na auditoria — mais canal e prazos.
+ * Componente no topo do módulo de propósito: definido dentro do render
+ * perderia o foco a cada tecla (pegadinha já vivida no form de casamentos).
+ */
+function NegotiationSection({
+  lead, channels, busy, onPatch,
+}: {
+  lead: CrmLead;
+  channels: CrmChannel[];
+  busy: boolean;
+  onPatch: (patch: Record<string, unknown>) => Promise<void>;
+}) {
+  const [editingValue, setEditingValue] = useState(false);
+  const [valueStr, setValueStr] = useState("");
+
+  const startEdit = () => {
+    setValueStr(lead.negotiatedValue ? String(lead.negotiatedValue) : lead.value > 0 ? String(lead.value) : "");
+    setEditingValue(true);
+  };
+
+  const commitValue = async () => {
+    const v = parseFloat(valueStr.replace(/\./g, "").replace(",", "."));
+    await onPatch({ negotiatedValue: Number.isFinite(v) && v > 0 ? v : null });
+    setEditingValue(false);
+  };
+
+  return (
+    <div className="p-5 border-b border-border space-y-3">
+      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Negociação</p>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="field-label">Valor</label>
+          {editingValue ? (
+            <div className="flex gap-1.5">
+              <input autoFocus className="field-input flex-1" inputMode="decimal"
+                placeholder="Ex.: 3450,00"
+                value={valueStr} onChange={(e) => setValueStr(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitValue();
+                  if (e.key === "Escape") setEditingValue(false);
+                }} />
+              <Button size="sm" onClick={commitValue} disabled={busy}>
+                {busy ? <Loader2 size={13} className="animate-spin" /> : "OK"}
+              </Button>
+            </div>
+          ) : (
+            <button onClick={startEdit} disabled={busy}
+              className="field-input w-full text-left flex items-center gap-2 hover:border-primary/50 transition-colors">
+              <span className="font-bold truncate">
+                {lead.value > 0
+                  ? `${lead.valueApproximate ? "a partir de " : ""}R$ ${money(lead.value)}`
+                  : "Definir valor"}
+              </span>
+              {lead.negotiatedValue != null && (
+                <span className="text-[9px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-600 rounded-full px-1.5 py-0.5 shrink-0">
+                  negociado
+                </span>
+              )}
+              <Pencil size={11} className="ml-auto shrink-0 text-muted-foreground" />
+            </button>
+          )}
+          {lead.negotiatedValue != null && !editingValue && (
+            <button onClick={() => onPatch({ negotiatedValue: null })} disabled={busy}
+              className="text-[10px] text-muted-foreground underline underline-offset-2 mt-1 hover:text-foreground">
+              voltar ao valor de tabela
+            </button>
+          )}
+        </div>
+        <div>
+          <label className="field-label">Canal de origem</label>
+          <select className="field-input" value={lead.source ?? ""} disabled={busy}
+            onChange={(e) => onPatch({ source: e.target.value || null })}>
+            <option value="">—</option>
+            {channels.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="field-label">Próximo follow-up</label>
+          <input type="date" className="field-input" value={lead.followUpAt ?? ""} disabled={busy}
+            onChange={(e) => onPatch({ followUpAt: e.target.value || null })} />
+        </div>
+        <div>
+          <label className="field-label">Validade do lead</label>
+          <input type="date" className="field-input" value={lead.expiresAt ?? ""} disabled={busy}
+            onChange={(e) => onPatch({ expiresAt: e.target.value || null })} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function LeadDrawer({
   propertyId, lead, channels, busy,
-  onClose, onFollowUp, onAddNote, onMoveStage, onMarkLost, onWin, onOpenOrigin,
+  onClose, onFollowUp, onAddNote, onMoveStage, onMarkLost, onWin, onOpenOrigin, onPatch,
 }: {
   propertyId: string;
   lead: CrmLead;
@@ -27,6 +121,7 @@ export function LeadDrawer({
   onMarkLost: () => void;
   onWin: () => void;
   onOpenOrigin: () => void;
+  onPatch: (patch: Record<string, unknown>) => Promise<void>;
 }) {
   const [note, setNote] = useState("");
   const [noteMode, setNoteMode] = useState<"follow_up" | "note">("follow_up");
@@ -52,6 +147,12 @@ export function LeadDrawer({
     } finally {
       setSending(false);
     }
+  };
+
+  // Patch (valor/canal/prazos) muda o histórico → timeline recarrega junto.
+  const patchAndRefresh = async (patch: Record<string, unknown>) => {
+    await onPatch(patch);
+    setTimelineKey((k) => k + 1);
   };
 
   // Etapas intermediárias (won/lost têm fluxos próprios: onWin / onMarkLost)
@@ -117,6 +218,11 @@ export function LeadDrawer({
             </button>
           </div>
         </div>
+
+        {/* Negociação — só orçamentos; casamentos têm o financeiro na gestão do evento */}
+        {isQuote && active && (
+          <NegotiationSection lead={lead} channels={channels} busy={busy} onPatch={patchAndRefresh} />
+        )}
 
         {/* Ações */}
         {active && (

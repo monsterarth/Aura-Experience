@@ -234,13 +234,23 @@ export function computeQuote(input: RateQuoteInput, data: RateData): RateQuoteRe
 /**
  * Valor de um orçamento salvo — REGRA ÚNICA para funil, KPIs e vínculo com
  * estadia (antes havia duas implementações divergentes). Precedência:
- * opção escolhida (por id, com fallback por nome p/ dados antigos) → opção
- * única → finalValue → mínimo do snapshot ("a partir de", approximate=true).
+ * valor negociado (fechado na conversa) → opção escolhida (por id, com
+ * fallback por nome p/ dados antigos) → opção única → finalValue → mínimo do
+ * snapshot ("a partir de", approximate=true).
  */
 export function resolveQuoteValue(
-  quote: Pick<RateQuoteRecord, 'snapshot' | 'selectedCategory' | 'finalValue'>
+  quote: Pick<RateQuoteRecord, 'snapshot' | 'selectedCategory' | 'finalValue' | 'negotiatedValue'>
 ): { value: number; approximate: boolean; chosen?: RateQuoteCategory } {
   const snapshot = quote.snapshot || [];
+
+  if (typeof quote.negotiatedValue === 'number' && quote.negotiatedValue > 0) {
+    const chosen = quote.selectedCategory
+      ? snapshot.find(
+          (c) => c.categoryId === quote.selectedCategory || c.category === quote.selectedCategory
+        )
+      : snapshot.length === 1 ? snapshot[0] : undefined;
+    return { value: quote.negotiatedValue, approximate: false, chosen };
+  }
 
   if (quote.selectedCategory) {
     const chosen = snapshot.find(

@@ -27,7 +27,7 @@ const QUOTE_STATUSES: RateQuoteStatus[] = ["open", "sent", "negotiating", "won",
 const QUOTE_PATCH_FIELDS = [
   "clientName", "clientDocument", "clientPhone", "clientEmail",
   "guestId", "stayId", "weddingId", "source",
-  "selectedCategory", "finalValue",
+  "selectedCategory", "finalValue", "negotiatedValue",
   "status", "lostReason", "notes",
   "followUpAt", "expiresAt",
 ] as const;
@@ -530,14 +530,21 @@ export const RateService = {
       clean.clientPhone = clean.clientPhone.replace(/\D/g, "") || null;
     }
     if ("finalValue" in clean && typeof clean.finalValue !== "number") clean.finalValue = null;
+    if ("negotiatedValue" in clean &&
+        (typeof clean.negotiatedValue !== "number" || clean.negotiatedValue <= 0)) {
+      clean.negotiatedValue = null;   // limpar = volta ao valor de tabela
+    }
     if (Object.keys(clean).length === 0) return;
 
-    // Estado anterior: transições de estágio viram histórico e carimbos.
+    // Estado anterior: transições de estágio e de valor viram histórico e carimbos.
     const before = await this.getQuoteById(propertyId, id);
     if (!before) throw new Error("Orçamento não encontrado.");
 
     const nextStatus = clean.status as RateQuoteStatus | undefined;
     const changingStage = nextStatus && nextStatus !== before.status;
+    const nextNegotiated = clean.negotiatedValue as number | null | undefined;
+    const changingValue = "negotiatedValue" in clean &&
+      (nextNegotiated ?? null) !== (before.negotiatedValue ?? null);
     const now = new Date().toISOString();
 
     if (changingStage) {
@@ -573,6 +580,24 @@ export const RateService = {
           propertyId, userId: actor.id, userName: actor.name,
           action: "UPDATE", entity: "RATE_QUOTE", entityId: id,
           details: `Orçamento de ${before.clientName || "sem nome"}: ${QUOTE_STAGE_LABEL[before.status]} → ${QUOTE_STAGE_LABEL[nextStatus!]}.`,
+        });
+      }
+    }
+
+    // Valor negociado: recepção pode mexer sem aval de gerente, mas TUDO fica
+    // registrado — timeline (value_change) + trilha de auditoria.
+    if (changingValue) {
+      const fromValue = resolveQuoteValue(before).value;
+      const toValue = resolveQuoteValue({ ...before, negotiatedValue: nextNegotiated ?? null }).value;
+      await CrmService.logInteraction(propertyId, "quote", id, "value_change", {
+        actorId: actor?.id, actorName: actor?.name,
+        payload: { from: fromValue, to: toValue, negotiated: nextNegotiated ?? null },
+      });
+      if (actor) {
+        await AuditService.log({
+          propertyId, userId: actor.id, userName: actor.name,
+          action: "UPDATE", entity: "RATE_QUOTE", entityId: id,
+          details: `Valor negociado de ${before.clientName || "sem nome"}: R$ ${fromValue.toFixed(2)} → R$ ${toValue.toFixed(2)}${nextNegotiated == null ? " (voltou à tabela)" : ""}.`,
         });
       }
     }
@@ -689,10 +714,14 @@ export const RateService = {
         .from("cabins").select("categoryId").eq("id", stay.cabinId).maybeSingle();
       if (cabin?.categoryId) chosen = snapshot.find((c) => c.categoryId === cabin.categoryId);
     }
-    // Sem cabana casada: regra única de valor (aproximado "a partir de" não
-    // vira diária — melhor sem hospedagem que com valor errado).
-    let total: number | null = chosen ? chosen.finalTotal : null;
-    if (!chosen) {
+    // Valor negociado vence até a categoria da cabana: é o preço fechado com
+    // o cliente. Sem negociado nem cabana casada: regra única de valor
+    // (aproximado "a partir de" não vira diária — melhor sem hospedagem que
+    // com valor errado).
+    const negotiated = typeof quote.negotiatedValue === "number" && quote.negotiatedValue > 0
+      ? quote.negotiatedValue : null;
+    let total: number | null = negotiated ?? (chosen ? chosen.finalTotal : null);
+    if (total == null) {
       const res = resolveQuoteValue(quote);
       if (res.chosen) { chosen = res.chosen; total = res.value; }
       else if (!res.approximate && res.value > 0) total = res.value;

@@ -4,11 +4,11 @@
 
 import { useEffect, useState } from "react";
 import {
-  ArrowRight, BadgeCheck, CalendarClock, FilePlus2, Loader2, MessageSquare,
-  Pencil, Send, XCircle, Link2,
+  ArrowRight, BadgeCheck, BellRing, CalendarClock, CircleDollarSign, FilePlus2,
+  Loader2, MessageSquare, Pencil, Send, UserCheck, XCircle, Link2,
 } from "lucide-react";
 import { CrmInteraction, CrmLead } from "@/types/aura";
-import { fmtBR } from "./shared";
+import { fmtBR, money } from "./shared";
 
 const KIND_CFG: Record<string, { icon: React.ElementType; label: (i: CrmInteraction) => string }> = {
   created:      { icon: FilePlus2,     label: () => "Lead criado" },
@@ -20,6 +20,9 @@ const KIND_CFG: Record<string, { icon: React.ElementType; label: (i: CrmInteract
   stay_linked:  { icon: Link2,         label: () => "Estadia vinculada" },
   lost:         { icon: XCircle,       label: (i) => `Perdido${i.payload?.reason ? ` — ${i.payload.reason}` : ""}` },
   reopened:     { icon: Pencil,        label: () => "Reaberto na calculadora" },
+  value_change: { icon: CircleDollarSign, label: (i) => `Valor: R$ ${money(Number(i.payload?.from ?? 0))} → R$ ${money(Number(i.payload?.to ?? 0))}` },
+  guest_linked: { icon: UserCheck,     label: () => "Vinculado à ficha de hóspede" },
+  alarm_done:   { icon: BellRing,      label: (i) => `Alarme concluído${i.payload?.title ? ` — ${i.payload.title}` : ""}` },
 };
 
 export function InteractionTimeline({ propertyId, lead }: { propertyId: string; lead: CrmLead }) {

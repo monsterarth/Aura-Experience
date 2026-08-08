@@ -132,6 +132,15 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
     if (!res.ok) throw new Error((await res.json().catch(() => null))?.error);
   };
 
+  // Patch genérico do drawer (valor negociado, canal, prazos) — recepção pode,
+  // o rastro fica na timeline + auditoria (regra da fase B.5).
+  const patchLead = (lead: CrmLead, patch: Record<string, unknown>) => withBusy(lead, async () => {
+    if (lead.entityType === "quote") await patchQuote(lead.id, patch);
+    else await patchWedding(lead.id, patch);
+    await reload(lead.id);
+    toast.success("Lead atualizado.");
+  });
+
   const moveStage = (lead: CrmLead, stage: string) => withBusy(lead, async () => {
     if (lead.entityType === "quote") await patchQuote(lead.id, { status: stage });
     else await patchWedding(lead.id, { status: stage });
@@ -319,6 +328,7 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
           onMarkLost={() => setLosing(selected)}
           onWin={() => win(selected)}
           onOpenOrigin={() => openOrigin(selected)}
+          onPatch={(patch) => patchLead(selected, patch)}
         />
       )}
 

@@ -2440,7 +2440,8 @@ export type CrmEntityType = 'quote' | 'wedding';
 
 export type CrmInteractionKind =
   | 'created' | 'note' | 'stage_change' | 'follow_up' | 'sent'
-  | 'converted' | 'stay_linked' | 'lost' | 'reopened';
+  | 'converted' | 'stay_linked' | 'lost' | 'reopened'
+  | 'value_change' | 'guest_linked' | 'alarm_done';
 
 /** Uma linha do histórico comercial — contato, troca de etapa, envio, perda… */
 export interface CrmInteraction {
@@ -2483,6 +2484,8 @@ export interface CrmLead {
   guestId?: string | null;
   stayId?: string | null;
   weddingId?: string | null;
+  /** Valor negociado manualmente (orçamentos) — quando presente, é o `value`. */
+  negotiatedValue?: number | null;
   createdAt: Timestamp;
 }
 
@@ -2558,6 +2561,11 @@ export interface RateQuoteRecord {
   snapshot: RateQuoteCategory[];
   selectedCategory?: string | null;
   finalValue?: number | null;
+  /**
+   * Valor fechado na conversa (desconto, condição especial) — vence a tabela
+   * em resolveQuoteValue. Editável pela recepção COM auditoria (value_change).
+   */
+  negotiatedValue?: number | null;
   // Funil
   status: RateQuoteStatus;
   lostReason?: string | null;
