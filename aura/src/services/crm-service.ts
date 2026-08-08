@@ -131,21 +131,27 @@ export const CrmService = {
   // ── Pipeline do Hub Comercial ──────────────────────────────────────────────
 
   /**
-   * Os dois funis normalizados para CrmLead. Ativos sempre; fechados
+   * Funis normalizados para CrmLead. Ativos sempre; fechados
    * (won/lost/completed/cancelled) só dos últimos 60 dias — o hub é operação,
    * não arquivo (histórico completo fica nas telas de origem e nos KPIs).
+   * `funnel` limita a UM funil (as páginas agora são separadas) e pula a
+   * query do outro.
    */
-  async getPipeline(propertyId: string): Promise<{ leads: CrmLead[]; channels: CrmChannel[] }> {
+  async getPipeline(
+    propertyId: string,
+    funnel?: CrmEntityType,
+  ): Promise<{ leads: CrmLead[]; channels: CrmChannel[] }> {
     const cutoff = new Date(Date.now() - 60 * 86400000).toISOString();
+    const empty = Promise.resolve({ data: [] as unknown[] });
 
     const [quotesRes, weddingsRes, channels] = await Promise.all([
-      supabaseAdmin
+      funnel === "wedding" ? empty : supabaseAdmin
         .from("rate_quotes").select("*")
         .eq("propertyId", propertyId)
         .or(`status.in.(open,sent,negotiating),updatedAt.gte.${cutoff}`)
         .order("createdAt", { ascending: false })
         .limit(500),
-      supabaseAdmin
+      funnel === "quote" ? empty : supabaseAdmin
         .from("weddings").select("*")
         .eq("propertyId", propertyId)
         .or(`status.in.(tentative,confirmed),updatedAt.gte.${cutoff}`)

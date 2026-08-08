@@ -158,10 +158,10 @@ export default function FunnelTab({ propertyId, bundle, active, refreshSignal, o
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm text-foreground flex items-center gap-2 flex-wrap">
-        <span>🤝 O funil completo — reservas + casamentos, fila de follow-ups e histórico — agora vive em</span>
+        <span>🤝 O funil completo — pipeline, fila de follow-ups e histórico — agora vive em</span>
         <button className="font-bold text-primary underline underline-offset-4"
-          onClick={() => router.push("/admin/comercial")}>
-          Comercial →
+          onClick={() => router.push("/admin/comercial/reservas")}>
+          Comercial · Reservas →
         </button>
       </div>
       <div className="flex flex-wrap items-center gap-2">

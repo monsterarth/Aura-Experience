@@ -14,13 +14,17 @@ export async function GET(req: NextRequest) {
   if (isAuthError(auth)) return auth;
   if (!supabaseAdmin) return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
 
-  const propertyId = new URL(req.url).searchParams.get("propertyId") || auth.staff.propertyId;
+  const params = new URL(req.url).searchParams;
+  const propertyId = params.get("propertyId") || auth.staff.propertyId;
   const denied = assertPropertyAccess(auth, propertyId);
   if (denied) return denied;
   if (!propertyId) return NextResponse.json({ error: "propertyId ausente" }, { status: 400 });
 
+  const funnelParam = params.get("funnel");
+  const funnel = funnelParam === "quote" || funnelParam === "wedding" ? funnelParam : undefined;
+
   try {
-    const pipeline = await CrmService.getPipeline(propertyId);
+    const pipeline = await CrmService.getPipeline(propertyId, funnel);
     return NextResponse.json(pipeline);
   } catch (e) {
     console.error("Erro ao carregar pipeline comercial:", e);

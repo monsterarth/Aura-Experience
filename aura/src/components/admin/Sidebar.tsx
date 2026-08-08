@@ -167,11 +167,20 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Hospedagem",
     items: [
       { id: "stays",   label: "Estadias",     icon: Home,          href: "/admin/stays",           roles: ["super_admin","admin","reception","governance","manager"] },
-      { id: "comercial", label: "Comercial",  icon: Handshake, href: "/admin/comercial",    roles: ["super_admin","admin","reception","manager"] },
       { id: "tarifario", label: "Tarifário",  icon: CircleDollarSign, href: "/admin/tarifario",    roles: ["super_admin","admin","reception","manager"] },
       { id: "mapa",    label: "Mapa",          icon: Map,           href: "/admin/reservation-map", roles: ["super_admin","admin","reception","manager"] },
       { id: "hospedes",label: "Hóspedes",      icon: UserSearch,    href: "/admin/guests",          roles: ["super_admin","admin","reception","manager"] },
       { id: "comunic", label: "Comunicação",   icon: MessageSquare, href: "/admin/comunicacao",     roles: ["super_admin","admin","reception","manager"] },
+    ],
+  },
+  {
+    // Vendedores de reservas e de casamentos são pessoas diferentes — cada
+    // funil tem página própria (a gestão do evento segue em Calendários > Casamentos).
+    id: "comercial",
+    label: "Comercial",
+    items: [
+      { id: "comercial_reservas",   label: "Reservas",         icon: Handshake, href: "/admin/comercial/reservas",   roles: ["super_admin","admin","reception","manager"] },
+      { id: "comercial_casamentos", label: "Casamentos (CRM)", icon: Heart,     href: "/admin/comercial/casamentos", roles: ["super_admin","admin","reception","manager"] },
     ],
   },
   {
