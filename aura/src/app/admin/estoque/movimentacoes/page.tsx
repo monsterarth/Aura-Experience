@@ -1,7 +1,7 @@
 // src/app/admin/estoque/movimentacoes/page.tsx
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -61,6 +61,8 @@ export default function EstoqueMovimentacoesPage() {
   const [productId, setProductId] = useState<string | null>(null);
   // "Estoque principal" (Configurações → Parâmetros): origem padrão da transferência.
   const [defaultLocationId, setDefaultLocationId] = useState("");
+  // true assim que o usuário mexe na Origem — trava o autofill do local padrão (ver efeito abaixo).
+  const originTouchedRef = useRef(false);
 
   const loadStatic = useCallback(async () => {
     if (!property?.id) return;
@@ -97,12 +99,18 @@ export default function EstoqueMovimentacoesPage() {
    * Transferência quase sempre sai do estoque principal, então a origem já vem
    * preenchida. Roda também quando o parâmetro chega depois da tela e a cada
    * lançamento novo (o submit limpa o formulário mantendo o tipo).
+   *
+   * `originTouchedRef` evita que este preenchimento automático compita com o
+   * usuário: o StockLocationPicker zera fromLocationId/fromCabinId por um
+   * instante ao entrar no "modo cabana" (passo 2 do seletor) — sem a trava,
+   * esse vazio momentâneo era interpretado como "origem em branco" e o efeito
+   * recolocava o local padrão, fechando o seletor de cabana antes da escolha.
    */
   useEffect(() => {
-    if (!defaultLocationId) return;
+    if (!defaultLocationId || originTouchedRef.current) return;
     setForm((f) => (f.type === "transfer" && !f.fromLocationId && !f.fromCabinId)
       ? { ...f, fromLocationId: defaultLocationId } : f);
-  }, [defaultLocationId, form.type, form.fromLocationId, form.fromCabinId]);
+  }, [defaultLocationId, form.type]);
 
   useEffect(() => {
     if (!property?.id) return;
@@ -167,6 +175,7 @@ export default function EstoqueMovimentacoesPage() {
       await StockClient.registerMovement({ ...payload, allowNegative });
       toast.success(allowNegative ? "Registrada — estoque ficou negativo." : "Movimentação registrada.");
       // Mantém tipo e responsável: quem lança em nome de outro costuma lançar vários seguidos.
+      originTouchedRef.current = false;
       setForm({ ...emptyMov, type: form.type, responsibleId: form.responsibleId });
     };
 
@@ -306,7 +315,10 @@ export default function EstoqueMovimentacoesPage() {
                 <label className="field-label">Origem</label>
                 <StockLocationPicker locations={locations} cabins={cabinOptions} cabinLabel="Cabana de origem"
                   value={{ locationId: form.fromLocationId, cabinId: form.fromCabinId }}
-                  onChange={(p) => setForm({ ...form, fromLocationId: p.locationId, fromCabinId: p.cabinId, fromStaffId: "" })} />
+                  onChange={(p) => {
+                    originTouchedRef.current = true;
+                    setForm({ ...form, fromLocationId: p.locationId, fromCabinId: p.cabinId, fromStaffId: "" });
+                  }} />
               </div>
             )}
             {askFromStaff && (
