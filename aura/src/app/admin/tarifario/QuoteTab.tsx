@@ -22,10 +22,18 @@ interface Props {
   propertyId: string;
   bundle: RateBundle;
   attendantName: string;
-  /** Notifica a aba Funil que um orçamento novo foi salvo. */
-  onQuoteSaved?: () => void;
+  /** Notifica o pai que um orçamento foi salvo (id p/ conversão da espera). */
+  onQuoteSaved?: (id: string) => void;
   /** Orçamento reaberto do funil — hidrata TODOS os parâmetros persistidos. */
   initialQuote?: RateQuoteRecord | null;
+  /**
+   * Lead vindo da lista de espera (?waitlistId=): pré-preenche cliente e
+   * período SEM entrar em modo edição — salvar cria um orçamento NOVO.
+   */
+  initialLead?: {
+    name?: string; phone?: string; email?: string;
+    checkIn?: string; checkOut?: string; guests?: number; source?: string | null;
+  } | null;
   /** Sai do modo edição (limpa o initialQuote no pai). */
   onExitEdit?: () => void;
 }
@@ -34,7 +42,7 @@ interface Props {
 const todayIso = () => dateToIso(new Date());
 
 export default function QuoteTab({
-  propertyId, bundle, attendantName, onQuoteSaved, initialQuote, onExitEdit,
+  propertyId, bundle, attendantName, onQuoteSaved, initialQuote, initialLead, onExitEdit,
 }: Props) {
   const { settings } = bundle;
 
@@ -109,6 +117,21 @@ export default function QuoteTab({
     setSaved(null);
     onExitEdit?.();
   };
+
+  // Lead da lista de espera: pré-preenche cliente + período. NÃO seta
+  // editingQuoteId — salvar cria um orçamento novo (a espera vira 'converted'
+  // no pai, só quando o save acontece).
+  useEffect(() => {
+    if (!initialLead) return;
+    if (initialLead.checkIn) setCheckIn(initialLead.checkIn);
+    if (initialLead.checkOut) setCheckOut(initialLead.checkOut);
+    if (initialLead.guests && initialLead.guests > 0) setAdultsRaw(String(initialLead.guests));
+    setClientName(initialLead.name || "");
+    setClientPhone(initialLead.phone || "");
+    setClientEmail(initialLead.email || "");
+    if (initialLead.source) setSource(initialLead.source);
+    setSaved(null);
+  }, [initialLead]);
 
   useEffect(() => {
     if (guestDebounce.current) clearTimeout(guestDebounce.current);
@@ -199,7 +222,7 @@ export default function QuoteTab({
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.error);
       setSaved({ id: data.id, key: quoteKey });
-      onQuoteSaved?.();
+      onQuoteSaved?.(data.id as string);
       return data.id as string;
     } catch (e) {
       toast.error(e instanceof Error && e.message ? e.message : "Erro ao salvar o orçamento.");
@@ -215,7 +238,7 @@ export default function QuoteTab({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ propertyId, id, patch: { status: "sent" } }),
     })
-      .then(() => onQuoteSaved?.())
+      .then(() => onQuoteSaved?.(id))
       .catch(() => {});
   };
 

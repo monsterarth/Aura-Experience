@@ -15,6 +15,8 @@ import {
   DEFAULT_QUOTE_LEAD,
   Guest,
   RateQuoteRecord,
+  WaitlistEntry,
+  WaitlistStatus,
   Wedding,
   WeddingLeadSettings,
 } from "@/types/aura";
@@ -409,6 +411,104 @@ export const CrmService = {
   async deleteAlarm(propertyId: string, id: string): Promise<void> {
     const { error } = await supabaseAdmin
       .from("crm_alarms")
+      .delete()
+      .eq("id", id)
+      .eq("propertyId", propertyId);
+    if (error) throw new Error(error.message);
+  },
+
+  // ── Lista de espera ────────────────────────────────────────────────────────
+
+  async listWaitlist(propertyId: string): Promise<WaitlistEntry[]> {
+    const { data, error } = await supabaseAdmin
+      .from("waitlist_entries")
+      .select("*")
+      .eq("propertyId", propertyId)
+      .order("periodStart", { ascending: true })
+      .order("createdAt", { ascending: true })
+      .limit(300);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as WaitlistEntry[];
+  },
+
+  async getWaitlistEntry(propertyId: string, id: string): Promise<WaitlistEntry | null> {
+    const { data } = await supabaseAdmin
+      .from("waitlist_entries")
+      .select("*")
+      .eq("id", id)
+      .eq("propertyId", propertyId)
+      .maybeSingle();
+    return (data as WaitlistEntry | null) ?? null;
+  },
+
+  async createWaitlistEntry(
+    propertyId: string,
+    input: {
+      name: string; phone?: string | null; email?: string | null;
+      periodStart: string; periodEnd: string; guests?: number | null;
+      notes?: string | null; source?: string | null;
+    },
+    actor: { id: string; name: string }
+  ): Promise<WaitlistEntry> {
+    const ISO = /^\d{4}-\d{2}-\d{2}$/;
+    if (!input.name?.trim()) throw new Error("Nome obrigatório.");
+    if (!ISO.test(input.periodStart || "") || !ISO.test(input.periodEnd || "")) {
+      throw new Error("Período inválido.");
+    }
+    if (input.periodEnd < input.periodStart) throw new Error("Fim do período antes do início.");
+
+    const { data, error } = await supabaseAdmin
+      .from("waitlist_entries")
+      .insert({
+        propertyId,
+        name: input.name.trim(),
+        phone: input.phone ? input.phone.replace(/\D/g, "") || null : null,
+        email: input.email?.trim() || null,
+        periodStart: input.periodStart,
+        periodEnd: input.periodEnd,
+        guests: Number(input.guests) > 0 ? Number(input.guests) : null,
+        notes: input.notes?.trim() || null,
+        source: input.source || null,
+        createdBy: actor.id,
+        createdByName: actor.name,
+      })
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+    return data as WaitlistEntry;
+  },
+
+  /** Transições carimbam contactedAt/convertedAt; quoteId fica de rastro. */
+  async setWaitlistStatus(
+    propertyId: string,
+    id: string,
+    status: WaitlistStatus,
+    opts?: { quoteId?: string | null }
+  ): Promise<WaitlistEntry> {
+    const VALID: WaitlistStatus[] = ["waiting", "contacted", "converted", "archived"];
+    if (!VALID.includes(status)) throw new Error("Status inválido.");
+
+    const patch: Record<string, unknown> = { status };
+    if (status === "contacted") patch.contactedAt = new Date().toISOString();
+    if (status === "converted") {
+      patch.convertedAt = new Date().toISOString();
+      if (opts?.quoteId) patch.quoteId = opts.quoteId;
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("waitlist_entries")
+      .update(patch)
+      .eq("id", id)
+      .eq("propertyId", propertyId)
+      .select("*")
+      .single();
+    if (error || !data) throw new Error(error?.message || "Entrada não encontrada.");
+    return data as WaitlistEntry;
+  },
+
+  async deleteWaitlistEntry(propertyId: string, id: string): Promise<void> {
+    const { error } = await supabaseAdmin
+      .from("waitlist_entries")
       .delete()
       .eq("id", id)
       .eq("propertyId", propertyId);

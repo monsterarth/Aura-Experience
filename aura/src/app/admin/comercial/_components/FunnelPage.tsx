@@ -11,19 +11,20 @@ import { useProperty } from "@/context/PropertyContext";
 import { useTabParam } from "@/lib/settings-deeplink";
 import { cn } from "@/lib/utils";
 import {
-  BellRing, CalendarClock, CalendarDays, ExternalLink, Heart, KanbanSquare,
-  ListChecks, Loader2, RefreshCw, Search, TrendingDown, TrendingUp,
+  BellRing, CalendarClock, CalendarDays, ExternalLink, Heart, Hourglass,
+  KanbanSquare, ListChecks, Loader2, RefreshCw, Search, TrendingDown, TrendingUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CrmAlarm, CrmChannel, CrmEntityType, CrmLead } from "@/types/aura";
+import { CrmAlarm, CrmChannel, CrmEntityType, CrmLead, WaitlistEntry } from "@/types/aura";
 import { PipelineBoard } from "./PipelineBoard";
 import { FollowUpQueue } from "./FollowUpQueue";
 import { AlarmsQueue } from "./AlarmsQueue";
+import { WaitlistTab } from "./WaitlistTab";
 import { LeadDrawer } from "./LeadDrawer";
 import { MarkLostModal } from "./MarkLostModal";
 import { QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, leadAlert, money, todayIso } from "./shared";
 
-type TabId = "pipeline" | "followups" | "alarmes";
+type TabId = "pipeline" | "followups" | "alarmes" | "espera";
 
 const FUNNEL_CFG: Record<CrmEntityType, {
   title: string; subtitle: string; icon: React.ReactNode; boardTitle: string;
@@ -51,8 +52,12 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
   const [leads, setLeads] = useState<CrmLead[]>([]);
   const [channels, setChannels] = useState<CrmChannel[]>([]);
   const [alarms, setAlarms] = useState<CrmAlarm[]>([]);
+  const [waitlist, setWaitlist] = useState<WaitlistEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<TabId>(useTabParam<TabId>(["pipeline", "followups", "alarmes"], "pipeline"));
+  const [tab, setTab] = useState<TabId>(useTabParam<TabId>(
+    funnel === "quote" ? ["pipeline", "followups", "alarmes", "espera"] : ["pipeline", "followups", "alarmes"],
+    "pipeline"
+  ));
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<CrmLead | null>(null);
   const [losing, setLosing] = useState<CrmLead | null>(null);
@@ -66,6 +71,15 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
     setAlarms(data.alarms || []);
   }, [property?.id, funnel]);
 
+  // Lista de espera é conceito de RESERVAS (períodos concorridos).
+  const loadWaitlist = useCallback(async () => {
+    if (!property?.id || funnel !== "quote") return;
+    const res = await fetch(`/api/admin/comercial/waitlist?propertyId=${property.id}`).catch(() => null);
+    if (!res?.ok) return;
+    const data = await res.json();
+    setWaitlist(data.entries || []);
+  }, [property?.id, funnel]);
+
   const load = useCallback(async () => {
     if (!property?.id) return;
     try {
@@ -75,12 +89,13 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
       setLeads(data.leads || []);
       setChannels(data.channels || []);
       loadAlarms();
+      loadWaitlist();
     } catch {
       toast.error("Erro ao carregar o pipeline.");
     } finally {
       setLoading(false);
     }
-  }, [property?.id, funnel, loadAlarms]);
+  }, [property?.id, funnel, loadAlarms, loadWaitlist]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -297,6 +312,11 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
     [alarms]
   );
 
+  const waitingCount = useMemo(
+    () => waitlist.filter((e) => e.status === "waiting" || e.status === "contacted").length,
+    [waitlist]
+  );
+
   if (!property) return null;
 
   return (
@@ -317,10 +337,14 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
           )}
           <div className="flex gap-1 bg-secondary rounded-xl p-1">
             {([
-              { id: "pipeline" as TabId, label: "Pipeline", icon: KanbanSquare, badge: 0 },
-              { id: "followups" as TabId, label: "Follow-ups", icon: ListChecks, badge: kpis.overdueCount },
-              { id: "alarmes" as TabId, label: "Alarmes", icon: BellRing, badge: dueAlarmCount },
-            ]).map(({ id, label, icon: Icon, badge }) => (
+              { id: "pipeline" as TabId, label: "Pipeline", icon: KanbanSquare, badge: 0, count: 0 },
+              { id: "followups" as TabId, label: "Follow-ups", icon: ListChecks, badge: kpis.overdueCount, count: 0 },
+              { id: "alarmes" as TabId, label: "Alarmes", icon: BellRing, badge: dueAlarmCount, count: 0 },
+              // Espera é conceito de reservas; contador neutro (não é urgência)
+              ...(funnel === "quote"
+                ? [{ id: "espera" as TabId, label: "Espera", icon: Hourglass, badge: 0, count: waitingCount }]
+                : []),
+            ]).map(({ id, label, icon: Icon, badge, count }) => (
               <button key={id} onClick={() => setTab(id)}
                 className={cn(
                   "flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
@@ -332,6 +356,9 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
                   <span className="text-[10px] font-black bg-red-500 text-white rounded-full px-1.5">
                     {badge}
                   </span>
+                )}
+                {count > 0 && (
+                  <span className="text-[10px] font-bold text-muted-foreground">({count})</span>
                 )}
               </button>
             ))}
@@ -391,9 +418,11 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
       ) : tab === "followups" ? (
         <FollowUpQueue leads={filtered} busyId={busyId}
           onOpen={setSelected} onQuickContact={(l) => followUp(l, "")} />
-      ) : (
+      ) : tab === "alarmes" ? (
         <AlarmsQueue alarms={alarms} busyId={alarmBusyId}
           onDone={alarmDone} onDelete={alarmDelete} onOpen={openAlarmLead} />
+      ) : (
+        <WaitlistTab propertyId={property.id} entries={waitlist} onChanged={loadWaitlist} />
       )}
 
       {selected && (

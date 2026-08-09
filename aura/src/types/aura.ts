@@ -2535,6 +2535,36 @@ export interface CrmAlarm {
   virtual?: boolean;
 }
 
+export type WaitlistStatus = 'waiting' | 'contacted' | 'converted' | 'archived';
+
+/**
+ * Lista de espera para períodos concorridos (feriados, pousada exclusiva).
+ * Simples de propósito: nome + contato + período. Conversão abre a
+ * calculadora pré-preenchida e só marca 'converted' quando o orçamento salva.
+ */
+export interface WaitlistEntry {
+  id: string;
+  propertyId: string;
+  name: string;
+  /** Só dígitos — padrão guests.phone / contacts.id. */
+  phone?: string | null;
+  email?: string | null;
+  periodStart: string;   // YYYY-MM-DD
+  periodEnd: string;     // YYYY-MM-DD
+  guests?: number | null;
+  notes?: string | null;
+  /** Canal de origem — slug de settings.crmChannels. */
+  source?: string | null;
+  status: WaitlistStatus;
+  /** Orçamento gerado na conversão — rastro, sem FK dura. */
+  quoteId?: string | null;
+  contactedAt?: Timestamp | null;
+  convertedAt?: Timestamp | null;
+  createdBy?: string | null;
+  createdByName?: string | null;
+  createdAt: Timestamp;
+}
+
 /** Motivos de perda de ORÇAMENTO (casamentos têm a própria lista). */
 export const CRM_LOST_REASONS_QUOTE = [
   'Preço acima do orçamento',

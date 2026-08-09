@@ -44,8 +44,16 @@ function TarifarioPage() {
   const [funnelSignal, setFunnelSignal] = useState(0);
   // Orçamento reaberto na calculadora (via funil ou ?quoteId= no link).
   const [reopenQuote, setReopenQuote] = useState<RateQuoteRecord | null>(null);
+  // Lead da lista de espera (?waitlistId=) — pré-preenche a calculadora.
+  const [waitlistLead, setWaitlistLead] = useState<{
+    name?: string; phone?: string; email?: string;
+    checkIn?: string; checkOut?: string; guests?: number; source?: string | null;
+  } | null>(null);
   const searchParams = useSearchParams();
   const quoteIdHandled = useRef(false);
+  const waitlistIdHandled = useRef(false);
+  // Entrada pendente: só vira 'converted' quando o orçamento é DE FATO salvo.
+  const waitlistPending = useRef<string | null>(null);
 
   const handleReopenQuote = useCallback((q: RateQuoteRecord) => {
     setReopenQuote(q);
@@ -62,6 +70,42 @@ function TarifarioPage() {
       .then((d) => { if (d?.quote) handleReopenQuote(d.quote); })
       .catch(() => {});
   }, [searchParams, property?.id, handleReopenQuote]);
+
+  // Deep-link ?waitlistId= (botão "Converter" da lista de espera).
+  useEffect(() => {
+    const waitlistId = searchParams.get("waitlistId");
+    if (!waitlistId || !property?.id || waitlistIdHandled.current) return;
+    waitlistIdHandled.current = true;
+    fetch(`/api/admin/comercial/waitlist?propertyId=${property.id}&id=${waitlistId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const e = d?.entry;
+        if (!e) return;
+        waitlistPending.current = e.id;
+        setWaitlistLead({
+          name: e.name, phone: e.phone || "", email: e.email || "",
+          checkIn: e.periodStart, checkOut: e.periodEnd,
+          guests: e.guests || undefined, source: e.source || null,
+        });
+        setTab("orcamento");
+      })
+      .catch(() => {});
+  }, [searchParams, property?.id]);
+
+  const handleQuoteSaved = useCallback((quoteId: string) => {
+    setFunnelSignal((n) => n + 1);
+    // Fecha a conversão da lista de espera (rastro: quoteId na entrada).
+    if (waitlistPending.current && property?.id) {
+      fetch("/api/admin/comercial/waitlist", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          propertyId: property.id, id: waitlistPending.current,
+          status: "converted", quoteId,
+        }),
+      }).catch(() => {});
+      waitlistPending.current = null;
+    }
+  }, [property?.id]);
 
   const load = useCallback(async () => {
     if (!property?.id) return;
@@ -141,8 +185,9 @@ function TarifarioPage() {
               propertyId={property.id}
               bundle={bundle}
               attendantName={userData?.fullName || "Recepção"}
-              onQuoteSaved={() => setFunnelSignal((n) => n + 1)}
+              onQuoteSaved={handleQuoteSaved}
               initialQuote={reopenQuote}
+              initialLead={waitlistLead}
               onExitEdit={() => setReopenQuote(null)}
             />
           </div>
