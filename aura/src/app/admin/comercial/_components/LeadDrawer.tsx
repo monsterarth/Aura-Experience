@@ -1,5 +1,6 @@
 // Painel de detalhe do lead no hub: contato, prazos, ações comerciais e a
-// timeline do histórico. As ações reusam os endpoints existentes de cada funil.
+// timeline do histórico. As ações reusam os endpoints existentes de cada
+// funil. Visual: identidade do admin (dark glass — ver src/app/admin/CLAUDE.md).
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -7,13 +8,30 @@ import {
   CalendarClock, CalendarDays, ExternalLink, Heart, Loader2, Mail,
   MessageSquare, Pencil, Phone, Send, Tag, X, XCircle,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { T } from "@/lib/admin-tokens";
 import { parseMoneyBR, moneyToInput } from "@/lib/parse-money";
 import { CrmChannel, CrmLead, WeddingInstallment } from "@/types/aura";
 import { ClientPanel } from "./ClientPanel";
 import { InteractionTimeline } from "./InteractionTimeline";
 import { LeadAlarms } from "./LeadAlarms";
-import { QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, fmtBR, money, todayIso } from "./shared";
+import { S, QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, fmtBR, money, pillS, todayIso } from "./shared";
+
+const drawerLabel: React.CSSProperties = {
+  fontSize: 9, fontWeight: 900, letterSpacing: ".15em", textTransform: "uppercase",
+  color: T.muted, margin: 0,
+};
+
+const fieldLabel: React.CSSProperties = {
+  fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase",
+  color: T.muted, marginBottom: 5, display: "block",
+};
+
+const contactBtn: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 800,
+  background: T.glass2, border: `1px solid ${T.border2}`, color: T.text,
+  borderRadius: 10, padding: "7px 11px", cursor: "pointer", fontFamily: "inherit",
+  textDecoration: "none",
+};
 
 /**
  * "Cobranças do contrato" (só casamentos): as parcelas reais, read-only —
@@ -37,28 +55,36 @@ function ContractCharges({ lead }: { lead: CrmLead }) {
 
   const t = todayIso();
   const statusOf = (i: WeddingInstallment) =>
-    i.paid ? { label: "paga", cls: "bg-teal-500/15 text-teal-500" }
-      : i.dueDate && i.dueDate < t ? { label: "vencida", cls: "bg-red-500/15 text-red-500" }
-      : i.dueDate ? { label: "pendente", cls: "bg-amber-500/15 text-amber-600" }
-      : { label: "aguarda", cls: "bg-secondary text-muted-foreground" };
+    i.paid ? { label: "paga", bg: "rgba(45,212,191,0.15)", fg: T.green }
+      : i.dueDate && i.dueDate < t ? { label: "vencida", bg: "rgba(248,113,113,0.15)", fg: T.red }
+      : i.dueDate ? { label: "pendente", bg: "rgba(245,158,11,0.15)", fg: T.amber }
+      : { label: "aguarda", bg: T.glass3, fg: "rgba(238,240,248,0.5)" };
 
   return (
-    <div className="p-5 border-b border-border space-y-2">
-      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-        Cobranças do contrato
-      </p>
+    <div style={{ padding: 20, borderBottom: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 8 }}>
+      <p style={drawerLabel}>Cobranças do contrato</p>
       {items.map((i) => {
         const st = statusOf(i);
         return (
-          <div key={i.id} className="flex items-center gap-2.5 bg-secondary/60 border border-border rounded-xl px-3 py-2">
-            <div className="flex-1 min-w-0">
-              <p className="text-[12.5px] font-semibold text-foreground truncate">{i.label}</p>
-              <p className="text-[11px] text-muted-foreground">
+          <div key={i.id} style={{
+            display: "flex", alignItems: "center", gap: 10,
+            background: T.glass, border: `1px solid ${T.border}`, borderRadius: 11, padding: "9px 12px",
+          }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: 12.5, fontWeight: 700, color: T.text, margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {i.label}
+              </p>
+              <p style={{ fontSize: 11, color: T.muted, margin: 0 }}>
                 {i.dueDate ? `Vencimento ${fmtBR(i.dueDate)}` : "Sem vencimento combinado"}
               </p>
             </div>
-            <span className="text-[13px] font-black text-foreground shrink-0">R$ {money(Number(i.value))}</span>
-            <span className={`text-[9.5px] font-bold uppercase tracking-wider rounded-full px-2 py-0.5 shrink-0 ${st.cls}`}>
+            <span style={{ fontSize: 13, fontWeight: 900, color: T.text, flexShrink: 0 }}>
+              R$ {money(Number(i.value))}
+            </span>
+            <span style={{
+              fontSize: 9.5, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".05em",
+              borderRadius: 999, padding: "3px 9px", background: st.bg, color: st.fg, flexShrink: 0,
+            }}>
               {st.label}
             </span>
           </div>
@@ -94,7 +120,7 @@ function DatePatchField({ value, busy, onCommit }: {
   };
 
   return (
-    <input type="date" className="field-input" value={draft} disabled={busy}
+    <input type="date" style={S.input} value={draft} disabled={busy}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => e.key === "Enter" && commit()} />
@@ -135,62 +161,70 @@ function NegotiationSection({
   };
 
   return (
-    <div className="p-5 border-b border-border space-y-3">
-      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Negociação</p>
-      <div className="grid grid-cols-2 gap-3">
+    <div style={{ padding: 20, borderBottom: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 12 }}>
+      <p style={drawerLabel}>Negociação</p>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <div>
-          <label className="field-label">Valor</label>
+          <label style={fieldLabel}>Valor</label>
           {editingValue ? (
-            <div className="flex gap-1.5">
-              <input autoFocus className="field-input flex-1" inputMode="decimal"
+            <div style={{ display: "flex", gap: 6 }}>
+              <input autoFocus style={{ ...S.input, flex: 1 }} inputMode="decimal"
                 placeholder="Ex.: 3450,00"
                 value={valueStr} onChange={(e) => setValueStr(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") commitValue();
                   if (e.key === "Escape") setEditingValue(false);
                 }} />
-              <Button size="sm" onClick={commitValue} disabled={busy}>
+              <button onClick={commitValue} disabled={busy}
+                style={{ ...S.gradBtn, padding: "8px 12px", opacity: busy ? 0.6 : 1 }}>
                 {busy ? <Loader2 size={13} className="animate-spin" /> : "OK"}
-              </Button>
+              </button>
             </div>
           ) : (
             <button onClick={startEdit} disabled={busy}
-              className="field-input w-full text-left flex items-center gap-2 hover:border-primary/50 transition-colors">
-              <span className="font-bold truncate">
+              style={{
+                ...S.input, display: "flex", alignItems: "center", gap: 8,
+                textAlign: "left", cursor: "pointer",
+              }}>
+              <span style={{ fontWeight: 800, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {lead.value > 0
                   ? `${lead.valueApproximate ? "a partir de " : ""}R$ ${money(lead.value)}`
                   : "Definir valor"}
               </span>
               {lead.negotiatedValue != null && (
-                <span className="text-[9px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-600 rounded-full px-1.5 py-0.5 shrink-0">
+                <span style={{ ...pillS("rgba(245,158,11,0.15)", T.amber, "rgba(245,158,11,0.3)"), flexShrink: 0, fontSize: 9 }}>
                   negociado
                 </span>
               )}
-              <Pencil size={11} className="ml-auto shrink-0 text-muted-foreground" />
+              <Pencil size={11} style={{ marginLeft: "auto", flexShrink: 0, color: T.muted }} />
             </button>
           )}
           {lead.negotiatedValue != null && !editingValue && (
             <button onClick={() => onPatch({ negotiatedValue: null })} disabled={busy}
-              className="text-[10px] text-muted-foreground underline underline-offset-2 mt-1 hover:text-foreground">
+              style={{
+                background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
+                fontSize: 10, color: T.muted, textDecoration: "underline", textUnderlineOffset: 2,
+                marginTop: 4, padding: 0,
+              }}>
               voltar ao valor de tabela
             </button>
           )}
         </div>
         <div>
-          <label className="field-label">Canal de origem</label>
-          <select className="field-input" value={lead.source ?? ""} disabled={busy}
+          <label style={fieldLabel}>Canal de origem</label>
+          <select style={{ ...S.input, background: T.card }} value={lead.source ?? ""} disabled={busy}
             onChange={(e) => onPatch({ source: e.target.value || null })}>
             <option value="">—</option>
             {channels.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
           </select>
         </div>
         <div>
-          <label className="field-label">Próximo follow-up</label>
+          <label style={fieldLabel}>Próximo follow-up</label>
           <DatePatchField value={lead.followUpAt} busy={busy}
             onCommit={(v) => onPatch({ followUpAt: v })} />
         </div>
         <div>
-          <label className="field-label">Validade do lead</label>
+          <label style={fieldLabel}>Validade do lead</label>
           <DatePatchField value={lead.expiresAt} busy={busy}
             onCommit={(v) => onPatch({ expiresAt: v })} />
         </div>
@@ -261,138 +295,187 @@ export function LeadDrawer({
     s.id !== lead.stage && !["won", "lost", "completed", "cancelled"].includes(s.id)
   );
 
+  const segBtn = (activeSeg: boolean): React.CSSProperties => ({
+    textAlign: "center", padding: "7px 0", borderRadius: 9, border: "none",
+    fontSize: 9, fontWeight: 900, letterSpacing: ".12em", textTransform: "uppercase",
+    cursor: "pointer", fontFamily: "inherit",
+    background: activeSeg ? T.bg : "transparent",
+    color: activeSeg ? "#fff" : T.muted,
+  });
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex justify-end backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-background w-full max-w-lg h-full flex flex-col border-l border-border">
+    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: "fixed", inset: 0, zIndex: 50, background: "rgba(0,0,0,0.6)",
+        backdropFilter: "blur(4px)", display: "flex", justifyContent: "flex-end",
+      }}>
+      <div style={{
+        background: T.drawer, width: "100%", maxWidth: 480, height: "100%",
+        display: "flex", flexDirection: "column", borderLeft: `1px solid ${T.border2}`,
+      }}>
         {/* Header */}
-        <div className="p-5 border-b border-border space-y-2">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1">
+        <div style={{ padding: 20, borderBottom: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 10, flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ ...drawerLabel, display: "flex", alignItems: "center", gap: 5 }}>
                 {isQuote ? <><CalendarDays size={11} /> Orçamento de reserva</> : <><Heart size={11} /> Casamento</>}
               </p>
-              <h2 className="text-xl font-black text-foreground truncate">{lead.title}</h2>
+              <h2 style={{
+                fontSize: 19, fontWeight: 900, color: T.text, margin: "3px 0 0",
+                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              }}>
+                {lead.title}
+              </h2>
             </div>
-            <button onClick={onClose} className="p-2 rounded-xl hover:bg-secondary text-muted-foreground shrink-0">
-              <X size={16} />
+            <button onClick={onClose}
+              style={{
+                padding: 8, borderRadius: 11, background: "none", border: "none",
+                cursor: "pointer", color: T.muted, display: "flex", flexShrink: 0,
+              }}>
+              <X size={15} />
             </button>
           </div>
-          <div className="flex items-center gap-2 flex-wrap text-xs">
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 12 }}>
             {stageDef && (
-              <span className="inline-flex items-center gap-1.5 font-bold text-foreground bg-secondary rounded-full px-2.5 py-1">
-                <span className={`w-2 h-2 rounded-full ${stageDef.dot}`} /> {stageDef.label}
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 800,
+                color: T.text, background: T.glass2, borderRadius: 999, padding: "4px 10px",
+              }}>
+                <span style={{ width: 8, height: 8, borderRadius: 999, background: stageDef.dot }} /> {stageDef.label}
               </span>
             )}
             {lead.value > 0 && (
-              <span className="font-black text-foreground">
+              <span style={{ fontWeight: 900, color: T.text }}>
                 {lead.valueApproximate ? "a partir de " : ""}R$ {money(lead.value)}
               </span>
             )}
             {channelLabel && (
-              <span className="inline-flex items-center gap-1 text-muted-foreground">
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: T.muted }}>
                 <Tag size={11} /> {channelLabel}
               </span>
             )}
           </div>
-          <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
-            <span><CalendarDays size={11} className="inline mr-1" />{isQuote ? "Check-in" : "Casamento"}: <b className="text-foreground">{fmtBR(lead.dateRef)}</b></span>
-            {active && lead.followUpAt && <span><CalendarClock size={11} className="inline mr-1" />Follow-up: {fmtBR(lead.followUpAt)}</span>}
+          <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", fontSize: 12, color: T.muted }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <CalendarDays size={11} />{isQuote ? "Check-in" : "Casamento"}:{" "}
+              <b style={{ color: T.text }}>{fmtBR(lead.dateRef)}</b>
+            </span>
+            {active && lead.followUpAt && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <CalendarClock size={11} />Follow-up: {fmtBR(lead.followUpAt)}
+              </span>
+            )}
             {active && lead.expiresAt && <span>Validade: {fmtBR(lead.expiresAt)}</span>}
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             {lead.phone && (
               <a href={`https://wa.me/${lead.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-1.5 text-xs font-bold bg-emerald-100 text-emerald-700 rounded-lg px-2.5 py-1.5 hover:bg-emerald-200 transition-colors">
+                style={{
+                  ...contactBtn, background: T.emeraldBg,
+                  border: `1px solid ${T.emeraldBorder}`, color: T.emerald,
+                }}>
                 <Phone size={12} /> WhatsApp
               </a>
             )}
             {lead.email && (
-              <a href={`mailto:${lead.email}`}
-                className="inline-flex items-center gap-1.5 text-xs font-bold bg-secondary text-foreground rounded-lg px-2.5 py-1.5 hover:bg-accent transition-colors">
+              <a href={`mailto:${lead.email}`} style={contactBtn}>
                 <Mail size={12} /> {lead.email}
               </a>
             )}
-            <button onClick={onOpenOrigin}
-              className="inline-flex items-center gap-1.5 text-xs font-bold bg-secondary text-foreground rounded-lg px-2.5 py-1.5 hover:bg-accent transition-colors">
+            <button onClick={onOpenOrigin} style={contactBtn}>
               <ExternalLink size={12} /> {isQuote ? "Abrir no Tarifário" : "Abrir em Casamentos"}
             </button>
           </div>
         </div>
 
-        {/* Titular — só orçamentos; recorrente/novo, vínculo e histórico do cliente */}
-        {isQuote && (
-          <ClientPanel propertyId={propertyId} lead={lead} busy={busy} onPromote={promoteAndRefresh} />
-        )}
+        <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
+          {/* Titular — só orçamentos; recorrente/novo, vínculo e histórico do cliente */}
+          {isQuote && (
+            <ClientPanel propertyId={propertyId} lead={lead} busy={busy} onPromote={promoteAndRefresh} />
+          )}
 
-        {/* Negociação — só orçamentos; casamentos têm o financeiro na gestão do evento */}
-        {isQuote && active && (
-          <NegotiationSection lead={lead} channels={channels} busy={busy} onPatch={patchAndRefresh} />
-        )}
+          {/* Negociação — só orçamentos; casamentos têm o financeiro na gestão do evento */}
+          {isQuote && active && (
+            <NegotiationSection lead={lead} channels={channels} busy={busy} onPatch={patchAndRefresh} />
+          )}
 
-        {/* Cobranças do contrato — só casamentos (parcelas reais, read-only) */}
-        {!isQuote && <ContractCharges lead={lead} />}
+          {/* Cobranças do contrato — só casamentos (parcelas reais, read-only) */}
+          {!isQuote && <ContractCharges lead={lead} />}
 
-        {/* Alarmes — também em lead FECHADO (cobrança é pós-fechamento) */}
-        <LeadAlarms propertyId={propertyId} lead={lead}
-          onChanged={() => { onAlarmsChanged?.(); setTimelineKey((k) => k + 1); }} />
+          {/* Alarmes — também em lead FECHADO (cobrança é pós-fechamento) */}
+          <LeadAlarms propertyId={propertyId} lead={lead}
+            onChanged={() => { onAlarmsChanged?.(); setTimelineKey((k) => k + 1); }} />
 
-
-        {/* Ações */}
-        {active && (
-          <div className="p-5 border-b border-border space-y-3">
-            <div className="flex gap-1.5 flex-wrap">
-              {moveTargets.map((s) => (
-                <button key={s.id} disabled={busy} onClick={() => onMoveStage(s.id)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold border border-border bg-card text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50">
-                  → {s.label}
+          {/* Ações */}
+          {active && (
+            <div style={{ padding: 20, borderBottom: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {moveTargets.map((s) => (
+                  <button key={s.id} disabled={busy} onClick={() => onMoveStage(s.id)}
+                    style={{
+                      padding: "6px 11px", borderRadius: 10, fontSize: 11, fontWeight: 800,
+                      border: `1px solid ${T.border2}`, background: T.card,
+                      color: "rgba(238,240,248,0.6)", cursor: "pointer", fontFamily: "inherit",
+                      opacity: busy ? 0.5 : 1,
+                    }}>
+                    → {s.label}
+                  </button>
+                ))}
+                <button disabled={busy} onClick={onWin}
+                  style={{
+                    padding: "6px 11px", borderRadius: 10, fontSize: 11, fontWeight: 800,
+                    border: "none", background: "rgba(52,211,153,0.15)", color: T.emerald,
+                    cursor: "pointer", fontFamily: "inherit", opacity: busy ? 0.5 : 1,
+                  }}>
+                  ✓ {isQuote ? "Ganhou" : "Confirmou"}
                 </button>
-              ))}
-              <button disabled={busy} onClick={onWin}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25 transition-colors disabled:opacity-50">
-                ✓ {isQuote ? "Ganhou" : "Confirmou"}
-              </button>
-              <button disabled={busy} onClick={onMarkLost}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors disabled:opacity-50 inline-flex items-center gap-1">
-                <XCircle size={12} /> Perdeu
-              </button>
-            </div>
-
-            {/* Registrar contato / nota */}
-            <div className="space-y-1.5">
-              <div className="grid grid-cols-2 gap-1 p-1 bg-secondary rounded-xl">
-                <button onClick={() => setNoteMode("follow_up")}
-                  className={`py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-                    noteMode === "follow_up" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
-                  }`}>
-                  Contato (renova prazos)
-                </button>
-                <button onClick={() => setNoteMode("note")}
-                  className={`py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-                    noteMode === "note" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"
-                  }`}>
-                  Só nota
+                <button disabled={busy} onClick={onMarkLost}
+                  style={{
+                    padding: "6px 11px", borderRadius: 10, fontSize: 11, fontWeight: 800,
+                    border: "none", background: "rgba(248,113,113,0.1)", color: T.red,
+                    cursor: "pointer", fontFamily: "inherit",
+                    display: "inline-flex", alignItems: "center", gap: 4, opacity: busy ? 0.5 : 1,
+                  }}>
+                  <XCircle size={12} /> Perdeu
                 </button>
               </div>
-              <div className="flex gap-2">
-                <input className="field-input flex-1"
-                  placeholder={noteMode === "follow_up" ? "O que ficou combinado? (opcional)" : "Anotação interna"}
-                  value={note} onChange={(e) => setNote(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && submitNote()} />
-                <Button size="sm" onClick={submitNote}
-                  disabled={sending || (noteMode === "note" && !note.trim())}>
-                  {sending ? <Loader2 size={13} className="animate-spin" /> :
-                    noteMode === "follow_up" ? <Send size={13} /> : <MessageSquare size={13} />}
-                </Button>
+
+              {/* Registrar contato / nota */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, padding: 4, background: T.glass, borderRadius: 12 }}>
+                  <button onClick={() => setNoteMode("follow_up")} style={segBtn(noteMode === "follow_up")}>
+                    Contato (renova prazos)
+                  </button>
+                  <button onClick={() => setNoteMode("note")} style={segBtn(noteMode === "note")}>
+                    Só nota
+                  </button>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input style={{ ...S.input, flex: 1 }}
+                    placeholder={noteMode === "follow_up" ? "O que ficou combinado? (opcional)" : "Anotação interna"}
+                    value={note} onChange={(e) => setNote(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && submitNote()} />
+                  <button onClick={submitNote}
+                    disabled={sending || (noteMode === "note" && !note.trim())}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      width: 38, borderRadius: 11, border: "none", background: T.grad,
+                      color: "#fff", cursor: "pointer",
+                      opacity: sending || (noteMode === "note" && !note.trim()) ? 0.6 : 1,
+                    }}>
+                    {sending ? <Loader2 size={13} className="animate-spin" /> :
+                      noteMode === "follow_up" ? <Send size={14} /> : <MessageSquare size={14} />}
+                  </button>
+                </div>
               </div>
             </div>
+          )}
+
+          {/* Timeline */}
+          <div style={{ padding: 20 }}>
+            <p style={{ ...drawerLabel, marginBottom: 14 }}>Histórico</p>
+            <InteractionTimeline key={timelineKey} propertyId={propertyId} lead={lead} />
           </div>
-        )}
-
-        {/* Timeline */}
-        <div className="flex-1 overflow-y-auto p-5">
-          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-3">Histórico</p>
-          <InteractionTimeline key={timelineKey} propertyId={propertyId} lead={lead} />
         </div>
       </div>
     </div>

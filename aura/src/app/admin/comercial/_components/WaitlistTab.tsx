@@ -1,5 +1,6 @@
 // Lista de espera para períodos — aba da página Comercial · Reservas.
-// Simples de propósito: nome + contato + período. "Converter" abre a
+// Agrupada por PERÍODO (UI do projeto de design): cada data concorrida vira
+// um card com a fila numerada por ordem de chegada. "Converter" abre a
 // calculadora pré-preenchida (?waitlistId=) e a entrada só vira 'converted'
 // quando o orçamento é salvo lá.
 "use client";
@@ -11,16 +12,15 @@ import {
   Archive, CalendarDays, Calculator, Check, Loader2, Phone, PhoneCall, Plus,
   Trash2, Users,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { T } from "@/lib/admin-tokens";
 import { WaitlistEntry, WaitlistStatus } from "@/types/aura";
-import { fmtBR } from "./shared";
+import { S, fmtBR, pillS } from "./shared";
 
-const STATUS_CFG: Record<WaitlistStatus, { label: string; cls: string }> = {
-  waiting:   { label: "Aguardando", cls: "bg-amber-500/15 text-amber-600" },
-  contacted: { label: "Contatado",  cls: "bg-sky-500/15 text-sky-600" },
-  converted: { label: "Convertido", cls: "bg-emerald-500/15 text-emerald-600" },
-  archived:  { label: "Arquivado",  cls: "bg-secondary text-muted-foreground" },
+const STATUS_CFG: Record<WaitlistStatus, { label: string; bg: string; fg: string; bd: string }> = {
+  waiting:   { label: "Aguardando", bg: "rgba(245,158,11,0.12)",  fg: T.amber,   bd: "rgba(245,158,11,0.3)" },
+  contacted: { label: "Contatado",  bg: "rgba(96,165,250,0.12)",  fg: T.blue,    bd: "rgba(96,165,250,0.3)" },
+  converted: { label: "Convertido", bg: T.emeraldBg,              fg: T.emerald, bd: T.emeraldBorder },
+  archived:  { label: "Arquivado",  bg: T.glass2,                 fg: T.muted,   bd: T.border2 },
 };
 
 const EMPTY_FORM = { name: "", phone: "", email: "", periodStart: "", periodEnd: "", guests: "" };
@@ -102,137 +102,172 @@ export function WaitlistTab({
     }
   };
 
+  const smallActionBtn = (fg: string, bg: string): React.CSSProperties => ({
+    display: "inline-flex", alignItems: "center", gap: 5, padding: "7px 12px",
+    borderRadius: 10, border: "none", background: bg, color: fg,
+    fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: "inherit", flexShrink: 0,
+  });
+
+  const fieldLabel: React.CSSProperties = {
+    fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase",
+    color: T.muted, marginBottom: 5, display: "block",
+  };
+
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <Button size="sm" variant={showForm ? "outline" : "default"} onClick={() => setShowForm((v) => !v)}>
-          <Plus size={14} className="mr-1" /> {showForm ? "Fechar" : "Adicionar à espera"}
-        </Button>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={() => setShowForm((v) => !v)}
+          style={showForm ? S.ghostBtn : S.gradBtn}>
+          <Plus size={14} /> {showForm ? "Fechar" : "Adicionar à espera"}
+        </button>
         {closedCount > 0 && (
           <button onClick={() => setShowClosed((v) => !v)}
-            className="text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground">
+            style={{
+              background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
+              fontSize: 11, color: T.muted, textDecoration: "underline", textUnderlineOffset: 3,
+            }}>
             {showClosed ? "ocultar" : "mostrar"} convertidas/arquivadas ({closedCount})
           </button>
         )}
       </div>
 
       {showForm && (
-        <div className="bg-card border border-border rounded-2xl p-4 grid grid-cols-2 md:grid-cols-6 gap-2">
-          <div className="col-span-2">
-            <label className="field-label">Nome *</label>
-            <input className="field-input" value={form.name}
+        <div style={{
+          ...S.card, padding: 16, display: "grid", gap: 10,
+          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+        }}>
+          <div style={{ gridColumn: "span 2" }}>
+            <label style={fieldLabel}>Nome *</label>
+            <input style={S.input} value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
           </div>
           <div>
-            <label className="field-label">Telefone</label>
-            <input className="field-input" inputMode="tel" placeholder="Só dígitos" value={form.phone}
+            <label style={fieldLabel}>Telefone</label>
+            <input style={S.input} inputMode="tel" placeholder="Só dígitos" value={form.phone}
               onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value.replace(/\D/g, "") }))} />
           </div>
           <div>
-            <label className="field-label">E-mail</label>
-            <input className="field-input" type="email" value={form.email}
+            <label style={fieldLabel}>E-mail</label>
+            <input style={S.input} type="email" value={form.email}
               onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
           </div>
           <div>
-            <label className="field-label">De *</label>
-            <input className="field-input" type="date" value={form.periodStart}
+            <label style={fieldLabel}>De *</label>
+            <input style={S.input} type="date" value={form.periodStart}
               onChange={(e) => setForm((f) => ({ ...f, periodStart: e.target.value }))} />
           </div>
           <div>
-            <label className="field-label">Até *</label>
-            <input className="field-input" type="date" value={form.periodEnd}
+            <label style={fieldLabel}>Até *</label>
+            <input style={S.input} type="date" value={form.periodEnd}
               onChange={(e) => setForm((f) => ({ ...f, periodEnd: e.target.value }))} />
           </div>
           <div>
-            <label className="field-label">Pessoas</label>
-            <input className="field-input" type="number" min={1} value={form.guests}
+            <label style={fieldLabel}>Pessoas</label>
+            <input style={S.input} type="number" min={1} value={form.guests}
               onChange={(e) => setForm((f) => ({ ...f, guests: e.target.value }))} />
           </div>
-          <div className="col-span-2 md:col-span-5 flex items-end justify-end">
-            <Button size="sm" onClick={create} disabled={saving}>
-              {saving ? <Loader2 size={13} className="mr-1 animate-spin" /> : <Check size={13} className="mr-1" />}
+          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-end" }}>
+            <button onClick={create} disabled={saving} style={{ ...S.gradBtn, opacity: saving ? 0.7 : 1 }}>
+              {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
               Registrar
-            </Button>
+            </button>
           </div>
         </div>
       )}
 
       {visible.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
-          <CalendarDays size={28} className="opacity-40" />
-          <p className="text-sm">Ninguém aguardando período — registre interessados aqui.</p>
+        <div style={{
+          display: "flex", flexDirection: "column", alignItems: "center",
+          justifyContent: "center", padding: "64px 0", gap: 8, color: T.muted,
+        }}>
+          <CalendarDays size={28} style={{ opacity: 0.4 }} />
+          <p style={{ fontSize: 13, margin: 0 }}>Ninguém aguardando período — registre interessados aqui.</p>
         </div>
       ) : (
-        // Agrupada por PERÍODO (UI do projeto de design): cada data concorrida
-        // vira um card com a fila numerada por ordem de chegada.
         groupByPeriod(visible).map((g) => (
-          <div key={g.key} className="bg-card border border-border rounded-2xl p-4 space-y-2.5">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="text-[15px] font-black text-foreground">
+          <div key={g.key} style={{ ...S.card, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 15, fontWeight: 900, color: T.text }}>
                 {fmtBR(g.periodStart)} → {fmtBR(g.periodEnd)}
               </span>
-              <span className="ml-auto text-[11px] text-muted-foreground/70">
+              <span style={{ marginLeft: "auto", fontSize: 11, color: T.muted2 }}>
                 {g.rows.length} interessado{g.rows.length !== 1 ? "s" : ""} na fila
               </span>
             </div>
-            {g.rows.map((e: WaitlistEntry, idx: number) => {
-              const cfg = STATUS_CFG[e.status];
-              const active = e.status === "waiting" || e.status === "contacted";
-              const busy = busyId === e.id;
-              return (
-                <div key={e.id} className="flex items-center gap-3 bg-secondary/60 border border-border rounded-xl px-3.5 py-2.5 flex-wrap">
-                  <span className="w-6 h-6 rounded-lg bg-primary/10 border border-primary/25 text-primary text-[11px] font-black flex items-center justify-center shrink-0">
-                    {idx + 1}
-                  </span>
-                  <div className="flex-1 min-w-[160px]">
-                    <p className="font-semibold text-sm text-foreground truncate">{e.name}</p>
-                    <p className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
-                      {e.guests ? <span><Users size={11} className="inline mr-0.5" />{e.guests}</span> : null}
-                      {e.phone && <span>{e.phone}</span>}
-                      <span>desde {fmtBR(String(e.createdAt).slice(0, 10))}</span>
-                    </p>
-                  </div>
-                  <span className={cn("text-[9px] font-black uppercase tracking-wider rounded-full px-2 py-0.5 shrink-0", cfg.cls)}>
-                    {cfg.label}
-                  </span>
-                  {e.phone && (
-                    <a href={`https://wa.me/${e.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer"
-                      title="Avisar via WhatsApp"
-                      className="p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-500 hover:bg-emerald-500/20 transition-colors shrink-0">
-                      <Phone size={13} />
-                    </a>
-                  )}
-                  {active && (
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {e.status === "waiting" && (
-                        <button disabled={busy} onClick={() => setStatus(e, "contacted")}
-                          title="Marcar como contatado"
-                          className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-600 bg-sky-500/15 rounded-lg px-2 py-1.5 hover:bg-sky-500/25 transition-colors disabled:opacity-50">
-                          <PhoneCall size={12} /> Contatado
-                        </button>
-                      )}
-                      <button disabled={busy} onClick={() => router.push(`/admin/tarifario?waitlistId=${e.id}`)}
-                        title="Abrir a calculadora pré-preenchida"
-                        className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-500/15 rounded-lg px-2 py-1.5 hover:bg-emerald-500/25 transition-colors disabled:opacity-50">
-                        <Calculator size={12} /> Converter
-                      </button>
-                      <button disabled={busy} onClick={() => setStatus(e, "archived")}
-                        title="Arquivar"
-                        className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary transition-colors disabled:opacity-50">
-                        {busy ? <Loader2 size={13} className="animate-spin" /> : <Archive size={13} />}
-                      </button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {g.rows.map((e: WaitlistEntry, idx: number) => {
+                const cfg = STATUS_CFG[e.status];
+                const active = e.status === "waiting" || e.status === "contacted";
+                const busy = busyId === e.id;
+                return (
+                  <div key={e.id} style={{ ...S.row, display: "flex", alignItems: "center", gap: 12, padding: "9px 14px", flexWrap: "wrap" }}>
+                    <span style={{
+                      width: 24, height: 24, borderRadius: 8, background: T.gradSoft,
+                      border: `1px solid ${T.g1Border}`, color: T.g1, fontSize: 11, fontWeight: 900,
+                      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                    }}>
+                      {idx + 1}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 160 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {e.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: T.muted, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        {e.guests ? <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}><Users size={11} />{e.guests}</span> : null}
+                        {e.phone && <span>{e.phone}</span>}
+                        <span>desde {fmtBR(String(e.createdAt).slice(0, 10))}</span>
+                      </div>
                     </div>
-                  )}
-                  {!active && (
-                    <button disabled={busy} onClick={() => remove(e)}
-                      title="Excluir"
-                      className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0 disabled:opacity-50">
-                      <Trash2 size={13} />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+                    <span style={pillS(cfg.bg, cfg.fg, cfg.bd)}>{cfg.label}</span>
+                    {e.phone && (
+                      <a href={`https://wa.me/${e.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer"
+                        title="Avisar via WhatsApp"
+                        style={{
+                          padding: 7, borderRadius: 10, background: T.emeraldBg,
+                          border: `1px solid ${T.emeraldBorder}`, color: T.emerald,
+                          display: "flex", flexShrink: 0,
+                        }}>
+                        <Phone size={13} />
+                      </a>
+                    )}
+                    {active && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                        {e.status === "waiting" && (
+                          <button disabled={busy} onClick={() => setStatus(e, "contacted")}
+                            title="Marcar como contatado"
+                            style={{ ...smallActionBtn(T.blue, "rgba(96,165,250,0.12)"), opacity: busy ? 0.5 : 1 }}>
+                            <PhoneCall size={12} /> Contatado
+                          </button>
+                        )}
+                        <button disabled={busy} onClick={() => router.push(`/admin/tarifario?waitlistId=${e.id}`)}
+                          title="Abrir a calculadora pré-preenchida"
+                          style={{ ...smallActionBtn(T.emerald, T.emeraldBg), opacity: busy ? 0.5 : 1 }}>
+                          <Calculator size={12} /> Converter
+                        </button>
+                        <button disabled={busy} onClick={() => setStatus(e, "archived")}
+                          title="Arquivar"
+                          style={{
+                            padding: 6, borderRadius: 8, background: "none", border: "none",
+                            color: T.muted, cursor: "pointer", flexShrink: 0, opacity: busy ? 0.5 : 1,
+                          }}>
+                          {busy ? <Loader2 size={13} className="animate-spin" /> : <Archive size={13} />}
+                        </button>
+                      </div>
+                    )}
+                    {!active && (
+                      <button disabled={busy} onClick={() => remove(e)}
+                        title="Excluir"
+                        style={{
+                          padding: 6, borderRadius: 8, background: "none", border: "none",
+                          color: T.muted, cursor: "pointer", flexShrink: 0, opacity: busy ? 0.5 : 1,
+                        }}>
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         ))
       )}

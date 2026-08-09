@@ -5,27 +5,10 @@ import { Wedding, WeddingStatus, WeddingCabinAssignment, WeddingInstallment } fr
 import { Shield, Camera, Music, Mic, Flower2, Coffee, Star, Truck, Sun } from "lucide-react";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
-export const T = {
-  card:        "#1c1c1c",
-  glass:       "rgba(255,255,255,0.035)",
-  glass2:      "rgba(255,255,255,0.055)",
-  glass3:      "rgba(255,255,255,0.08)",
-  border:      "rgba(255,255,255,0.07)",
-  border2:     "rgba(255,255,255,0.12)",
-  text:        "#eef0f8",
-  muted:       "rgba(238,240,248,0.42)",
-  muted2:      "rgba(238,240,248,0.22)",
-  g1:          "#9b6dff",
-  g2:          "#4ec9d4",
-  grad:        "linear-gradient(135deg,#9b6dff 0%,#4ec9d4 100%)",
-  gradSoft:    "linear-gradient(135deg,rgba(155,109,255,0.15) 0%,rgba(78,201,212,0.15) 100%)",
-  green:       "#2dd4bf", greenBg:   "rgba(45,212,191,0.08)",   greenBorder:  "rgba(45,212,191,0.22)",
-  amber:       "#f59e0b", amberBg:   "rgba(245,158,11,0.08)",   amberBorder:  "rgba(245,158,11,0.22)",
-  blue:        "#60a5fa", blueBg:    "rgba(96,165,250,0.08)",   blueBorder:   "rgba(96,165,250,0.22)",
-  red:         "#f87171", redBg:     "rgba(248,113,113,0.08)",  redBorder:    "rgba(248,113,113,0.22)",
-  violet:      "#c084fc", violetBg:  "rgba(192,132,252,0.08)",  violetBorder: "rgba(192,132,252,0.22)",
-  rose:        "#fb7185", roseBg:    "rgba(251,113,133,0.08)",  roseBorder:   "rgba(251,113,133,0.22)",
-};
+// Promovidos a módulo compartilhado (identidade oficial do admin) — o objeto
+// continua exportado daqui para não quebrar os imports do módulo.
+import { T } from "@/lib/admin-tokens";
+export { T };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

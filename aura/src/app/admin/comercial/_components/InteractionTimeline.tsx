@@ -7,6 +7,7 @@ import {
   ArrowRight, BadgeCheck, BellRing, CalendarClock, CircleDollarSign, FilePlus2,
   Loader2, MessageSquare, Pencil, Send, UserCheck, XCircle, Link2,
 } from "lucide-react";
+import { T } from "@/lib/admin-tokens";
 import { CrmInteraction, CrmLead } from "@/types/aura";
 import { fmtBR, money } from "./shared";
 
@@ -38,33 +39,41 @@ export function InteractionTimeline({ propertyId, lead }: { propertyId: string; 
 
   if (items === null) {
     return (
-      <div className="flex items-center justify-center py-6 text-muted-foreground text-xs">
-        <Loader2 size={14} className="animate-spin mr-2" /> Carregando histórico…
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 0", color: T.muted, fontSize: 12 }}>
+        <Loader2 size={14} className="animate-spin" style={{ marginRight: 8 }} /> Carregando histórico…
       </div>
     );
   }
   if (items.length === 0) {
     return (
-      <p className="text-xs text-muted-foreground py-4 text-center">
+      <p style={{ fontSize: 12, color: T.muted, padding: "16px 0", textAlign: "center", margin: 0 }}>
         Sem histórico ainda — interações passam a ser registradas a partir da fundação do CRM.
       </p>
     );
   }
 
   return (
-    <div className="space-y-2">
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {items.map((i) => {
         const cfg = KIND_CFG[i.kind] ?? { icon: MessageSquare, label: () => i.kind };
         const Icon = cfg.icon;
         return (
-          <div key={i.id} className="flex gap-2.5 text-sm">
-            <div className="w-7 h-7 rounded-lg bg-secondary flex items-center justify-center shrink-0 mt-0.5">
-              <Icon size={13} className="text-muted-foreground" />
+          <div key={i.id} style={{ display: "flex", gap: 12 }}>
+            <div style={{
+              width: 30, height: 30, borderRadius: 10, background: T.glass2,
+              border: `1px solid ${T.border}`, display: "flex", alignItems: "center",
+              justifyContent: "center", flexShrink: 0, color: "rgba(238,240,248,0.6)", marginTop: 2,
+            }}>
+              <Icon size={13} />
             </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-medium text-foreground text-[13px]">{cfg.label(i)}</p>
-              {i.note && <p className="text-xs text-muted-foreground whitespace-pre-wrap">{i.note}</p>}
-              <p className="text-[10px] text-muted-foreground mt-0.5">
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <p style={{ fontSize: 12.5, fontWeight: 700, color: T.text, margin: 0 }}>{cfg.label(i)}</p>
+              {i.note && (
+                <p style={{ fontSize: 11.5, color: "rgba(238,240,248,0.5)", whiteSpace: "pre-wrap", margin: "1px 0 0" }}>
+                  {i.note}
+                </p>
+              )}
+              <p style={{ fontSize: 10, color: T.muted2, margin: "2px 0 0" }}>
                 {fmtBR((i.createdAt || "").slice(0, 10))}
                 {i.createdAt ? ` ${String(i.createdAt).slice(11, 16)}` : ""}
                 {i.actorName ? ` · ${i.actorName}` : ""}

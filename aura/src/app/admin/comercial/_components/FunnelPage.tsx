@@ -9,13 +9,12 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { useProperty } from "@/context/PropertyContext";
 import { useTabParam } from "@/lib/settings-deeplink";
-import { cn } from "@/lib/utils";
 import {
   BellRing, CalendarClock, CalendarDays, ExternalLink, Eye, EyeOff, Handshake,
   Heart, Hourglass, KanbanSquare, LayoutList, Loader2, RefreshCw, Search,
   TrendingDown, TrendingUp,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { T } from "@/lib/admin-tokens";
 import { CrmAlarm, CrmChannel, CrmEntityType, CrmLead, WaitlistEntry } from "@/types/aura";
 import { PipelineBoard } from "./PipelineBoard";
 import { LeadListView } from "./LeadListView";
@@ -24,7 +23,7 @@ import { AlarmsQueue } from "./AlarmsQueue";
 import { WaitlistTab } from "./WaitlistTab";
 import { LeadDrawer } from "./LeadDrawer";
 import { MarkLostModal } from "./MarkLostModal";
-import { QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, leadAlert, money, todayIso } from "./shared";
+import { S, QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, leadAlert, money, todayIso } from "./shared";
 
 type TabId = "pipeline" | "alarmes" | "espera";
 
@@ -34,12 +33,12 @@ const FUNNEL_CFG: Record<CrmEntityType, {
   quote: {
     title: "Pipeline Estadias",
     subtitle: "Orçamentos de reserva — do primeiro contato ao pagamento.",
-    icon: <CalendarDays className="text-primary" size={24} />,
+    icon: <CalendarDays size={22} color="#9b6dff" />,
   },
   wedding: {
     title: "Pipeline Casamentos",
     subtitle: "Leads de casamento — da visita ao contrato assinado.",
-    icon: <Heart className="text-pink-500" size={24} />,
+    icon: <Heart size={22} color="#fb7185" />,
   },
 };
 
@@ -332,23 +331,53 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
 
   if (!property) return null;
 
+  const kpiCards = [
+    {
+      icon: Handshake, label: "Em negociação",
+      value: `R$ ${money(kpis.activeValue)}`, color: T.text,
+      sub: `${kpis.activeCount} lead${kpis.activeCount !== 1 ? "s" : ""} ativo${kpis.activeCount !== 1 ? "s" : ""}`,
+    },
+    {
+      icon: CalendarClock, label: "Follow-ups vencidos",
+      value: String(kpis.overdueCount), color: kpis.overdueCount > 0 ? T.red : T.emerald,
+      sub: kpis.overdueCount > 0 ? "precisam de contato" : "fila em dia",
+    },
+    {
+      icon: TrendingUp, label: "Fechados (60d)",
+      value: `R$ ${money(kpis.wonValue)}`, color: T.emerald,
+      sub: funnel === "wedding" ? "contratos confirmados" : "reservas ganhas",
+    },
+    {
+      icon: TrendingDown, label: "Perdidos (60d)",
+      value: `R$ ${money(kpis.lostValue)}`, color: T.red,
+      sub: "arquivados com motivo",
+    },
+  ];
+
+  const segTab = (activeSeg: boolean): React.CSSProperties => ({
+    display: "flex", alignItems: "center", gap: 6, padding: "8px 12px",
+    borderRadius: 9, border: "none", cursor: "pointer", fontFamily: "inherit",
+    fontSize: 12.5, fontWeight: 700, transition: "all .15s",
+    background: activeSeg ? T.card : "transparent",
+    color: activeSeg ? T.text : T.muted,
+  });
+
   return (
-    <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div style={{ padding: 24, maxWidth: 1400, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 900, letterSpacing: "-.02em", color: T.text, display: "flex", alignItems: "center", gap: 10 }}>
             {cfg.icon} {cfg.title}
           </h1>
-          <p className="text-sm text-muted-foreground">{cfg.subtitle}</p>
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: T.muted }}>{cfg.subtitle}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {funnel === "wedding" && (
-            <Link href="/admin/casamentos"
-              className="inline-flex items-center gap-1.5 text-xs font-bold bg-secondary text-foreground rounded-xl px-3 py-2 hover:bg-accent transition-colors">
+            <Link href="/admin/casamentos" style={{ ...S.ghostBtn, textDecoration: "none" }}>
               <ExternalLink size={13} /> Gestão do evento
             </Link>
           )}
-          <div className="flex gap-1 bg-secondary rounded-xl p-1">
+          <div style={{ display: "flex", gap: 4, background: T.glass, borderRadius: 12, padding: 4, border: `1px solid ${T.border}` }}>
             {([
               // Follow-ups não é mais aba: virou a "Fila de hoje" fixa no
               // topo do pipeline (UI do projeto de design).
@@ -359,20 +388,20 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
                 ? [{ id: "espera" as TabId, label: "Espera", icon: Hourglass, badge: 0, count: waitingCount }]
                 : []),
             ]).map(({ id, label, icon: Icon, badge, count }) => (
-              <button key={id} onClick={() => setTab(id)}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                  tab === id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                )}>
+              <button key={id} onClick={() => setTab(id)} style={segTab(tab === id)}>
                 <Icon size={15} />
-                <span className="hidden sm:inline">{label}</span>
+                <span>{label}</span>
                 {badge > 0 && (
-                  <span className="text-[10px] font-black bg-red-500 text-white rounded-full px-1.5">
+                  <span style={{
+                    minWidth: 16, height: 16, borderRadius: 999, padding: "0 4px",
+                    background: T.grad, color: "#fff", fontSize: 9, fontWeight: 900,
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  }}>
                     {badge}
                   </span>
                 )}
                 {count > 0 && (
-                  <span className="text-[10px] font-bold text-muted-foreground">({count})</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: T.muted }}>({count})</span>
                 )}
               </button>
             ))}
@@ -381,40 +410,29 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
       </div>
 
       {/* KPIs do funil */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-card border border-border rounded-2xl p-4">
-          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1">
-            <Handshake size={11} /> Em negociação
-          </p>
-          <p className="text-xl font-black text-foreground mt-1">R$ {money(kpis.activeValue)}</p>
-          <p className="text-xs text-muted-foreground">{kpis.activeCount} lead{kpis.activeCount !== 1 ? "s" : ""} ativo{kpis.activeCount !== 1 ? "s" : ""}</p>
-        </div>
-        <div className="bg-card border border-border rounded-2xl p-4">
-          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1">
-            <CalendarClock size={11} /> Follow-ups vencidos
-          </p>
-          <p className={cn("text-xl font-black mt-1", kpis.overdueCount > 0 ? "text-red-500" : "text-emerald-500")}>
-            {kpis.overdueCount}
-          </p>
-          <p className="text-xs text-muted-foreground">{kpis.overdueCount > 0 ? "precisam de contato" : "fila em dia"}</p>
-        </div>
-        <div className="bg-card border border-border rounded-2xl p-4">
-          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1">
-            <TrendingUp size={11} /> Fechados (60d)
-          </p>
-          <p className="text-xl font-black text-emerald-600 mt-1">R$ {money(kpis.wonValue)}</p>
-        </div>
-        <div className="bg-card border border-border rounded-2xl p-4">
-          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1">
-            <TrendingDown size={11} /> Perdidos (60d)
-          </p>
-          <p className="text-xl font-black text-red-500 mt-1">R$ {money(kpis.lostValue)}</p>
-        </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+        {kpiCards.map((k) => {
+          const Icon = k.icon;
+          return (
+            <div key={k.label} style={{ ...S.card, padding: "14px 18px", position: "relative", overflow: "hidden" }}>
+              <div style={{
+                position: "absolute", top: -20, right: -20, width: 70, height: 70, borderRadius: "50%",
+                background: `radial-gradient(circle,${k.color === T.text ? T.g1 : k.color}18 0%,transparent 70%)`,
+                pointerEvents: "none",
+              }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: T.muted }}>
+                <Icon size={11} /> {k.label}
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 900, marginTop: 6, color: k.color, letterSpacing: "-.5px" }}>{k.value}</div>
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{k.sub}</div>
+            </div>
+          );
+        })}
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-24 text-muted-foreground">
-          <Loader2 className="animate-spin mr-2" size={20} /> Carregando pipeline…
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "96px 0", gap: 10, color: T.muted }}>
+          <Loader2 className="animate-spin" size={20} color={T.g1} /> Carregando pipeline…
         </div>
       ) : tab === "pipeline" ? (
         <>
@@ -424,41 +442,54 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
             onOpenLead={setSelected} onOpenAlarm={openAlarmLead}
             onContact={(l) => followUp(l, "")} onAlarmDone={alarmDone} />
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-[220px] max-w-sm">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input className="field-input !pl-9" placeholder="Buscar por nome, telefone, e-mail…"
-                value={search} onChange={(e) => setSearch(e.target.value)} />
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8, background: T.glass,
+              border: `1px solid ${T.border2}`, borderRadius: 10, padding: "7px 12px",
+              flex: 1, minWidth: 220, maxWidth: 300,
+            }}>
+              <Search size={13} color={T.muted} />
+              <input value={search} onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar por nome, telefone, e-mail…"
+                style={{ background: "none", border: "none", outline: "none", color: T.text, fontFamily: "inherit", fontSize: 13, flex: 1 }} />
             </div>
-            <span className="text-[11px] text-muted-foreground/70">
+            <span style={{ fontSize: 11, color: T.muted2 }}>
               {visibleLeads.length} lead{visibleLeads.length !== 1 ? "s" : ""} no funil
             </span>
-            <div className="ml-auto flex items-center gap-2">
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
               <button onClick={() => setShowLost((v) => !v)}
                 title={showLost ? "Ocultar perdidos" : "Mostrar perdidos"}
-                className={cn(
-                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-colors",
-                  showLost ? "bg-secondary border-border text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
-                )}>
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "7px 11px",
+                  borderRadius: 9, cursor: "pointer", fontFamily: "inherit",
+                  fontSize: 11, fontWeight: 800,
+                  background: showLost ? T.glass2 : "transparent",
+                  border: `1px solid ${showLost ? T.border2 : "transparent"}`,
+                  color: showLost ? T.text : T.muted,
+                }}>
                 {showLost ? <Eye size={12} /> : <EyeOff size={12} />} perdidos
               </button>
-              <div className="flex gap-1 bg-secondary rounded-lg p-0.5">
+              <div style={{ display: "flex", gap: 2, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 9, padding: 3 }}>
                 {([
                   { id: "kanban" as const, label: "Kanban", icon: KanbanSquare },
                   { id: "lista" as const, label: "Lista", icon: LayoutList },
                 ]).map(({ id, label, icon: Icon }) => (
                   <button key={id} onClick={() => setView(id)}
-                    className={cn(
-                      "flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-bold transition-colors",
-                      view === id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                    )}>
+                    style={{
+                      display: "flex", alignItems: "center", gap: 5, padding: "6px 10px",
+                      borderRadius: 7, border: "none", cursor: "pointer", fontFamily: "inherit",
+                      fontSize: 11, fontWeight: 800, transition: "all .15s",
+                      background: view === id ? T.card : "transparent",
+                      color: view === id ? T.text : T.muted,
+                    }}>
                     <Icon size={12} /> {label}
                   </button>
                 ))}
               </div>
-              <Button variant="outline" size="sm" onClick={() => { setLoading(true); load(); }} disabled={loading}>
-                <RefreshCw size={14} className="mr-1" /> Atualizar
-              </Button>
+              <button onClick={() => { setLoading(true); load(); }} disabled={loading}
+                style={{ ...S.ghostBtn, opacity: loading ? 0.5 : 1 }}>
+                <RefreshCw size={13} /> Atualizar
+              </button>
             </div>
           </div>
 

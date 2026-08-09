@@ -7,10 +7,10 @@
 import {
   CalendarClock, CalendarDays, Check, CheckCircle2, Heart, Loader2, Phone,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { T } from "@/lib/admin-tokens";
 import { CrmAlarm, CrmLead } from "@/types/aura";
 import { ALARM_KIND_CFG } from "./AlarmsQueue";
-import { fmtBR, leadAlert, money, todayIso } from "./shared";
+import { S, fmtBR, leadAlert, money, todayIso } from "./shared";
 
 type Row = {
   key: string;
@@ -28,10 +28,10 @@ type Row = {
   onOpen: () => void;
 };
 
-const TILE_CLS: Record<Row["tile"], string> = {
-  red:    "bg-red-500/10 text-red-500",
-  amber:  "bg-amber-500/10 text-amber-500",
-  orange: "bg-orange-500/10 text-orange-500",
+const TILE: Record<Row["tile"], { bg: string; fg: string }> = {
+  red:    { bg: "rgba(248,113,113,0.12)", fg: T.red },
+  amber:  { bg: "rgba(245,158,11,0.12)",  fg: T.amber },
+  orange: { bg: "rgba(251,146,60,0.12)",  fg: T.orange },
 };
 
 export function TodayQueue({
@@ -105,48 +105,74 @@ export function TodayQueue({
   rows.sort((a, b) => a.ord.localeCompare(b.ord));
 
   return (
-    <div className="bg-card border border-border rounded-2xl p-4 space-y-2.5">
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-          Fila de hoje — quem contactar
-        </span>
+    <div style={{ ...S.card, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={S.label}>Fila de hoje — quem contactar</span>
         {rows.length > 0 && (
-          <span className="min-w-[18px] h-[18px] rounded-full bg-red-500/15 border border-red-500/30 text-red-500 text-[10px] font-black inline-flex items-center justify-center px-1.5">
+          <span style={{
+            minWidth: 18, height: 18, borderRadius: 999, padding: "0 6px",
+            background: "rgba(248,113,113,0.15)", border: "1px solid rgba(248,113,113,0.3)",
+            color: T.red, fontSize: 10, fontWeight: 900,
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+          }}>
             {rows.length}
           </span>
         )}
-        <span className="ml-auto text-[11px] text-muted-foreground/60">follow-ups e cobranças pendentes</span>
+        <span style={{ marginLeft: "auto", fontSize: 11, color: T.muted2 }}>
+          follow-ups e cobranças pendentes
+        </span>
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
-          <CheckCircle2 size={24} className="text-emerald-500" />
+        <div style={{
+          border: `1px dashed ${T.border2}`, borderRadius: 12, padding: 24,
+          textAlign: "center", color: T.muted, fontSize: 13,
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+        }}>
+          <CheckCircle2 size={26} color={T.emerald} />
           Nenhum follow-up pendente — fila em dia.
         </div>
       ) : (
-        <div className="space-y-2">
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {rows.map((r) => {
             const Icon = r.icon;
             const ActionIcon = r.actionIcon;
+            const tile = TILE[r.tile];
             return (
-              <div key={r.key}
-                className="flex items-center gap-3 bg-secondary/60 border border-border rounded-xl px-3.5 py-2.5">
-                <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0", TILE_CLS[r.tile])}>
+              <div key={r.key} style={{ ...S.row, display: "flex", alignItems: "center", gap: 12, padding: "10px 14px" }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 11, background: tile.bg, color: tile.fg,
+                  display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                }}>
                   <Icon size={15} />
                 </div>
-                <button className="flex-1 min-w-0 text-left" onClick={r.onOpen}>
-                  <p className="font-semibold text-sm text-foreground truncate">{r.title}</p>
-                  <p className="text-xs text-muted-foreground truncate">{r.sub}</p>
+                <button onClick={r.onOpen}
+                  style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", padding: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {r.title}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: T.muted, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {r.sub}
+                  </div>
                 </button>
                 {r.phone && (
                   <a href={`https://wa.me/${r.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer"
                     title="Abrir WhatsApp"
-                    className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-500 hover:bg-emerald-500/20 transition-colors shrink-0">
+                    style={{
+                      padding: 8, borderRadius: 10, background: T.emeraldBg,
+                      border: `1px solid ${T.emeraldBorder}`, color: T.emerald,
+                      display: "flex", flexShrink: 0,
+                    }}>
                     <Phone size={14} />
                   </a>
                 )}
                 <button disabled={r.busy} onClick={r.onAction}
-                  className="px-3 py-2 rounded-lg text-[11px] font-bold bg-secondary border border-border text-foreground hover:bg-accent transition-colors shrink-0 inline-flex items-center gap-1.5 disabled:opacity-50">
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6, padding: "8px 12px",
+                    borderRadius: 10, background: T.glass2, border: `1px solid ${T.border2}`,
+                    fontSize: 11, fontWeight: 800, color: T.text, cursor: "pointer",
+                    fontFamily: "inherit", flexShrink: 0, opacity: r.busy ? 0.5 : 1,
+                  }}>
                   {r.busy ? <Loader2 size={13} className="animate-spin" /> : <ActionIcon size={13} />}
                   {r.actionLabel}
                 </button>

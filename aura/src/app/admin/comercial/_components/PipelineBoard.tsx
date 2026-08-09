@@ -1,11 +1,12 @@
 // Um board do pipeline (Reservas OU Casamentos): colunas por estágio com
-// contagem e soma. Cards no visual do projeto de design: WhatsApp clicável e
-// tag de cobrança quando há alarme de pagamento devido para o lead.
+// contagem e soma, cards na identidade visual do admin (dark glass) — visual
+// do projeto de design "Aura CRM Comercial Interface".
 "use client";
 
 import { CalendarDays, CircleDollarSign, Heart, Phone, Tag, CalendarClock, StickyNote } from "lucide-react";
+import { T } from "@/lib/admin-tokens";
 import { CrmAlarm, CrmChannel, CrmLead } from "@/types/aura";
-import { StageDef, fmtBR, leadAlert, money, todayIso } from "./shared";
+import { StageDef, fmtBR, leadAlert, money, pillS, todayIso } from "./shared";
 
 export function PipelineBoard({ stages, leads, channels, alarms, onOpen }: {
   stages: StageDef[];
@@ -21,23 +22,26 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen }: {
     alarms.find((a) => a.entityId === l.id && a.kind === "payment" && a.dueAt <= t);
 
   return (
-    <div className="flex gap-3 overflow-x-auto pb-2 items-start">
+    <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
       {stages.map((stage) => {
         const rows = leads.filter((l) => l.stage === stage.id);
         const total = rows.reduce((s, l) => s + l.value, 0);
         return (
-          <div key={stage.id} className="w-[240px] shrink-0">
-            <div className="flex items-center gap-2 px-1 mb-2">
-              <span className={`w-2 h-2 rounded-full ${stage.dot}`} />
-              <span className="text-sm font-bold text-foreground">{stage.label}</span>
-              <span className="text-xs text-muted-foreground">({rows.length})</span>
+          <div key={stage.id} style={{ width: 248, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 4px", marginBottom: 8 }}>
+              <span style={{ width: 8, height: 8, borderRadius: 999, background: stage.dot, flexShrink: 0 }} />
+              <span style={{ fontSize: 13, fontWeight: 800, color: T.text }}>{stage.label}</span>
+              <span style={{ fontSize: 11, color: T.muted }}>({rows.length})</span>
               {total > 0 && (
-                <span className="ml-auto text-[11px] font-semibold text-muted-foreground">
+                <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: T.muted }}>
                   R$ {money(total)}
                 </span>
               )}
             </div>
-            <div className="space-y-2 min-h-[90px] bg-secondary/30 rounded-xl p-2">
+            <div style={{
+              display: "flex", flexDirection: "column", gap: 8, minHeight: 90,
+              background: "rgba(255,255,255,0.03)", borderRadius: 14, padding: 8,
+            }}>
               {rows.map((l) => {
                 const alert = leadAlert(l);
                 const src = channelLabel(l.source);
@@ -48,44 +52,65 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen }: {
                   <div key={l.id} role="button" tabIndex={0}
                     onClick={() => onOpen(l)}
                     onKeyDown={(e) => e.key === "Enter" && onOpen(l)}
-                    className="w-full text-left bg-card border border-border rounded-xl p-3 space-y-1 hover:border-foreground/30 transition-colors cursor-pointer">
-                    <p className="font-semibold text-sm text-foreground truncate">{l.title}</p>
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    style={{
+                      background: T.card, border: `1px solid ${T.border}`, borderRadius: 12,
+                      padding: 12, cursor: "pointer", display: "flex", flexDirection: "column",
+                      gap: 6, transition: "border-color .15s",
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.3)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = T.border; }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {l.title}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: T.muted }}>
                       {l.entityType === "wedding" ? <Heart size={11} /> : <CalendarDays size={11} />}
                       {fmtBR(l.dateRef)}
-                    </p>
-                    <div className="flex items-center gap-1.5 flex-wrap">
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                       {l.value > 0 && (
-                        <span className="text-xs font-bold text-foreground">
+                        <span style={{ fontSize: 12, fontWeight: 800, color: T.text }}>
                           {l.valueApproximate ? "a partir de " : ""}R$ {money(l.value)}
                         </span>
                       )}
                       {src && (
-                        <span className="text-[10px] bg-secondary rounded-full px-2 py-0.5 inline-flex items-center gap-0.5">
+                        <span style={{
+                          fontSize: 10, background: T.glass2, border: `1px solid ${T.border}`,
+                          borderRadius: 999, padding: "2px 8px", color: "rgba(238,240,248,0.6)",
+                          display: "inline-flex", alignItems: "center", gap: 4,
+                        }}>
                           <Tag size={9} /> {src}
                         </span>
                       )}
                       {alert && (
-                        <span className={`text-[10px] rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 ${
-                          alert === "expired" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
-                        }`}>
+                        <span style={pillS(
+                          alert === "expired" ? "rgba(248,113,113,0.12)" : "rgba(245,158,11,0.12)",
+                          alert === "expired" ? T.red : T.amber,
+                          alert === "expired" ? "rgba(248,113,113,0.3)" : "rgba(245,158,11,0.3)"
+                        )}>
                           <CalendarClock size={9} /> {alert === "expired" ? "prazo vencido" : "follow-up"}
                         </span>
                       )}
                       {cobranca && (
-                        <span className="text-[10px] font-bold rounded-full px-2 py-0.5 inline-flex items-center gap-0.5 bg-orange-500/10 border border-orange-500/25 text-orange-500">
+                        <span style={pillS(T.orangeBg, T.orange, T.orangeBorder)}>
                           <CircleDollarSign size={9} /> {cobranca.dueAt < t ? "cobrança vencida" : "cobrança hoje"}
                         </span>
                       )}
                       {l.lostReason && l.stage === "lost" && (
-                        <span className="text-[10px] text-muted-foreground inline-flex items-center gap-0.5 truncate max-w-full">
-                          <StickyNote size={9} className="shrink-0" /> {l.lostReason}
+                        <span style={{
+                          fontSize: 10, color: "rgba(238,240,248,0.35)",
+                          display: "inline-flex", alignItems: "center", gap: 4,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%",
+                        }}>
+                          <StickyNote size={9} style={{ flexShrink: 0 }} /> {l.lostReason}
                         </span>
                       )}
                       {l.phone && (
                         <a href={`https://wa.me/${l.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer"
                           onClick={(e) => e.stopPropagation()} title="Abrir WhatsApp"
-                          className="ml-auto p-1 rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-colors inline-flex">
+                          style={{
+                            marginLeft: "auto", padding: 4, borderRadius: 8,
+                            background: T.emeraldBg, color: T.emerald, display: "inline-flex",
+                          }}>
                           <Phone size={11} />
                         </a>
                       )}
@@ -94,7 +119,7 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen }: {
                 );
               })}
               {rows.length === 0 && (
-                <p className="text-center text-[11px] text-muted-foreground py-4">vazio</p>
+                <p style={{ textAlign: "center", fontSize: 11, color: T.muted2, padding: "16px 0", margin: 0 }}>vazio</p>
               )}
             </div>
           </div>
