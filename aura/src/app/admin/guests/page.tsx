@@ -9,7 +9,8 @@ import { ContactService } from "@/services/contact-service";
 import { chatwootSyncOnStayCreated } from "@/app/actions/chatwoot-actions";
 import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import { RoleGuard } from "@/components/auth/RoleGuard";
-import { Guest } from "@/types/aura";
+import { Guest, RateQuoteRecord } from "@/types/aura";
+import { resolveQuoteValue } from "@/lib/rate-engine";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -19,7 +20,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   UserSearch, Search, MapPin, Phone, Mail, FileText,
   Edit2, Save, X, Plus, Loader2, ChevronLeft,
-  Users, Merge, Calendar, Home, AlertTriangle, Globe, Cake, User, UserPlus
+  Users, Merge, Calendar, Home, AlertTriangle, Globe, Cake, User, UserPlus,
+  Calculator
 } from "lucide-react";
 
 // ==========================================
@@ -50,6 +52,17 @@ const STATUS_COLORS: Record<string, string> = {
   archived: "bg-foreground/10 text-foreground/30",
 };
 
+const QUOTE_STATUS_LABELS: Record<string, string> = {
+  open: "Aberto", sent: "Enviado", negotiating: "Negociando", won: "Ganho", lost: "Perdido",
+};
+const QUOTE_STATUS_COLORS: Record<string, string> = {
+  open: "bg-blue-500/10 text-blue-500",
+  sent: "bg-cyan-500/10 text-cyan-400",
+  negotiating: "bg-yellow-500/10 text-yellow-500",
+  won: "bg-green-500/10 text-green-500",
+  lost: "bg-red-500/10 text-red-400",
+};
+
 function getInitials(name: string) {
   const parts = name.trim().split(" ");
   if (parts.length === 1) return parts[0][0]?.toUpperCase() ?? "?";
@@ -68,7 +81,14 @@ interface StayRow {
   cabinName: string;
 }
 
-type PanelTab = "dados" | "estadias";
+type PanelTab = "dados" | "estadias" | "orcamentos";
+
+// Labels num Record: o ternário anterior quebraria na 3ª aba.
+const PANEL_TAB_LABELS: Record<PanelTab, string> = {
+  dados: "Dados Pessoais",
+  estadias: "Histórico de Estadias",
+  orcamentos: "Orçamentos",
+};
 
 // ==========================================
 // COMPONENTES INTERNOS
@@ -296,6 +316,8 @@ function GuestDetailPanel({
   const [formData, setFormData] = useState<Guest>(guest);
   const [stays, setStays] = useState<StayRow[]>([]);
   const [loadingStays, setLoadingStays] = useState(false);
+  const [quotes, setQuotes] = useState<RateQuoteRecord[]>([]);
+  const [loadingQuotes, setLoadingQuotes] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [fnrhDomains, setFnrhDomains] = useState<{
     tiposDocumento: FnrhDomain[];
@@ -331,6 +353,20 @@ function GuestDetailPanel({
         .finally(() => setLoadingStays(false));
     }
   }, [tab, guest.id, propertyId]);
+
+  // Cotações do cliente — por vínculo (guestId) E por telefone (leads que
+  // ainda não viraram ficha entram pelo cruzamento de telefone).
+  useEffect(() => {
+    if (tab !== "orcamentos") return;
+    setLoadingQuotes(true);
+    const qs = new URLSearchParams({ propertyId, guestId: guest.id });
+    if (guest.phone) qs.set("phone", guest.phone);
+    fetch(`/api/admin/tarifario/quotes?${qs}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => setQuotes(d?.quotes || []))
+      .catch(() => setQuotes([]))
+      .finally(() => setLoadingQuotes(false));
+  }, [tab, guest.id, guest.phone, propertyId]);
 
   const set = (field: keyof Guest, value: any) =>
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -464,7 +500,7 @@ function GuestDetailPanel({
 
       {/* Tabs */}
       <div className="flex border-b border-white/5 px-6">
-        {(["dados", "estadias"] as PanelTab[]).map(t => (
+        {(["dados", "estadias", "orcamentos"] as PanelTab[]).map(t => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -473,7 +509,7 @@ function GuestDetailPanel({
               tab === t ? "border-primary text-primary" : "border-transparent text-foreground/30 hover:text-foreground/60"
             )}
           >
-            {t === "dados" ? "Dados Pessoais" : "Histórico de Estadias"}
+            {PANEL_TAB_LABELS[t]}
           </button>
         ))}
       </div>
@@ -725,6 +761,70 @@ function GuestDetailPanel({
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* === ABA ORÇAMENTOS === */}
+        {tab === "orcamentos" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-foreground/40">{quotes.length} orçamento(s) encontrado(s)</p>
+              <button
+                onClick={() => router.push(`/admin/tarifario`)}
+                className="flex items-center gap-1.5 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
+              >
+                <Plus size={12} /> Novo Orçamento
+              </button>
+            </div>
+
+            {loadingQuotes ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="animate-spin text-foreground/30" size={24} />
+              </div>
+            ) : quotes.length === 0 ? (
+              <div className="text-center py-12 text-foreground/20">
+                <Calculator size={36} className="mx-auto mb-3 opacity-30" />
+                <p className="text-sm font-bold">Nenhum orçamento para este cliente</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {quotes.map(q => {
+                  const v = resolveQuoteValue(q);
+                  return (
+                    <div
+                      key={q.id}
+                      className="flex items-center gap-4 p-4 bg-secondary border border-white/5 rounded-2xl hover:border-white/10 transition-all"
+                    >
+                      <div className="w-9 h-9 bg-white/5 rounded-xl flex items-center justify-center shrink-0">
+                        <Calculator size={15} className="text-foreground/30" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-black text-sm text-foreground">
+                          {format(new Date(`${q.checkIn}T12:00:00`), "dd/MM/yy", { locale: ptBR })} →{" "}
+                          {format(new Date(`${q.checkOut}T12:00:00`), "dd/MM/yy", { locale: ptBR })}
+                        </p>
+                        <p className="text-[11px] text-foreground/40">
+                          {v.value > 0
+                            ? `${v.approximate ? "a partir de " : ""}R$ ${v.value.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+                            : "sem valor calculado"}
+                          {q.negotiatedValue != null ? " · negociado" : ""}
+                        </p>
+                      </div>
+                      <span className={cn("text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider", QUOTE_STATUS_COLORS[q.status])}>
+                        {QUOTE_STATUS_LABELS[q.status] ?? q.status}
+                      </span>
+                      <button
+                        onClick={() => router.push(`/admin/tarifario?quoteId=${q.id}`)}
+                        className="p-2 hover:bg-white/10 text-foreground/30 hover:text-foreground rounded-xl transition-all"
+                        title="Reabrir na calculadora"
+                      >
+                        <FileText size={13} />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

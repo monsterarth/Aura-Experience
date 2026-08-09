@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isAuthError, assertPropertyAccess } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { RateService } from "@/services/rate-service";
+import { CrmService } from "@/services/crm-service";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,14 @@ export async function GET(req: NextRequest) {
       const quote = await RateService.getQuoteById(propertyId, id);
       if (!quote) return NextResponse.json({ error: "Orçamento não encontrado." }, { status: 404 });
       return NextResponse.json({ quote });
+    }
+    // ?guestId=/?phone= → cotações do CLIENTE (aba Orçamentos da ficha do
+    // hóspede). Vive no CrmService: rate-service já importa crm-service.
+    const guestId = url.searchParams.get("guestId");
+    const phone = url.searchParams.get("phone");
+    if (guestId || phone) {
+      const quotes = await CrmService.listQuotesByClient(propertyId, { guestId, phone });
+      return NextResponse.json({ quotes });
     }
     const quotes = await RateService.listQuotes(propertyId);
     return NextResponse.json({ quotes });
