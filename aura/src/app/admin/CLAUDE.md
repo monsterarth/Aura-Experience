@@ -36,10 +36,10 @@ The language, in short:
   animations; hover via border-color/glass shifts.
 - Implemented with inline styles + a token object (the exemplar pattern).
 
-The exported design system lives on claude.ai/design ("aura-design-system",
-mirrors `T`). Restyling OLD pages to this identity is a gradual effort — no
-rush, done page by page when touched; new pages start compliant. Pending
-first: the `/admin/comercial/*` pages (built functionally per the design
-mockup but still on generic theme classes).
+The token object lives in `src/lib/admin-tokens.ts` (`T` — casamentos' lib
+re-exports it; the claude.ai/design "aura-design-system" mirrors it). The
+`/admin/comercial/*` pages are fully on this identity and are good copy
+sources alongside the exemplars. Restyling remaining OLD pages is a gradual
+effort — no rush, done page by page when touched; new pages start compliant.
 
 Full module catalog: `../../../docs/MODULES.md`. Add-a-module recipe: root `CLAUDE.md`.
