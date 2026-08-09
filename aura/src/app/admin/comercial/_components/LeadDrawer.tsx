@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
 import { parseMoneyBR, moneyToInput } from "@/lib/parse-money";
-import { CrmChannel, CrmLead, WeddingInstallment } from "@/types/aura";
+import { CrmChannel, CrmLead, RateQuoteCategory, RateQuoteRecord, WeddingInstallment } from "@/types/aura";
 import { ClientPanel } from "./ClientPanel";
 import { InteractionTimeline } from "./InteractionTimeline";
 import { LeadAlarms } from "./LeadAlarms";
@@ -32,6 +32,105 @@ const contactBtn: React.CSSProperties = {
   borderRadius: 10, padding: "7px 11px", cursor: "pointer", fontFamily: "inherit",
   textDecoration: "none",
 };
+
+/**
+ * "Orçamento" (só orçamentos): o snapshot congelado com TODAS as cabanas
+ * oferecidas ao cliente — sem precisar pular para o Tarifário. Clicar numa
+ * categoria marca a ESCOLHIDA (PATCH selectedCategory, já na whitelist) e o
+ * valor do lead recalcula sozinho via resolveQuoteValue no reload.
+ */
+function QuoteSnapshot({ propertyId, lead, busy, active, onPatch }: {
+  propertyId: string;
+  lead: CrmLead;
+  busy: boolean;
+  active: boolean;
+  onPatch: (patch: Record<string, unknown>) => Promise<void>;
+}) {
+  const [quote, setQuote] = useState<RateQuoteRecord | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setQuote(null);
+    fetch(`/api/admin/tarifario/quotes?propertyId=${propertyId}&id=${lead.id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive) setQuote(d?.quote ?? null); })
+      .catch(() => { if (alive) setQuote(null); });
+    return () => { alive = false; };
+  }, [propertyId, lead.id]);
+
+  const snapshot = quote?.snapshot ?? [];
+  if (!quote || snapshot.length === 0) return null;
+
+  const isChosen = (c: RateQuoteCategory) =>
+    !!quote.selectedCategory &&
+    (c.categoryId === quote.selectedCategory || c.category === quote.selectedCategory);
+
+  const choose = async (c: RateQuoteCategory) => {
+    if (busy || !active || isChosen(c)) return;
+    const key = c.categoryId || c.category;
+    await onPatch({ selectedCategory: key });
+    setQuote((q) => (q ? { ...q, selectedCategory: key } : q));
+  };
+
+  const nights = snapshot[0]?.nights ?? 0;
+  const payers = (quote.adults ?? 0) + (quote.children ?? 0);
+
+  return (
+    <div style={{ padding: 20, borderBottom: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 8 }}>
+      <p style={drawerLabel}>Orçamento — cabanas oferecidas</p>
+      <p style={{ fontSize: 11.5, color: T.muted, margin: 0 }}>
+        {fmtBR(quote.checkIn)} → {fmtBR(quote.checkOut)} · {nights} noite{nights !== 1 ? "s" : ""} ·{" "}
+        {payers} pagante{payers !== 1 ? "s" : ""}
+        {(quote.babies ?? 0) > 0 ? ` + ${quote.babies} isento${quote.babies! > 1 ? "s" : ""}` : ""}
+        {(quote.pets ?? 0) > 0 ? ` + ${quote.pets} pet${quote.pets! > 1 ? "s" : ""}` : ""}
+      </p>
+      {snapshot.map((c) => {
+        const chosen = isChosen(c);
+        const discounted = Math.abs(c.finalTotal - c.rawTotal) > 5;
+        return (
+          <button key={c.categoryId || c.category} onClick={() => choose(c)}
+            disabled={busy || !active || chosen}
+            title={active && !chosen ? "Marcar como escolhida" : undefined}
+            style={{
+              display: "flex", alignItems: "center", gap: 10, textAlign: "left",
+              background: chosen ? T.gradSoft : T.glass,
+              border: `1px solid ${chosen ? T.g1Border : T.border}`,
+              borderRadius: 11, padding: "9px 12px", fontFamily: "inherit",
+              cursor: active && !chosen ? "pointer" : "default",
+              opacity: busy ? 0.6 : 1,
+            }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {c.category}
+              </div>
+              <div style={{ fontSize: 10.5, color: T.muted }}>
+                média R$ {money(c.avgNightly)}/noite
+              </div>
+            </div>
+            {discounted && (
+              <span style={{ fontSize: 11, color: T.muted2, textDecoration: "line-through", flexShrink: 0 }}>
+                R$ {money(c.rawTotal)}
+              </span>
+            )}
+            <span style={{ fontSize: 13, fontWeight: 900, color: chosen ? T.g1 : T.text, flexShrink: 0 }}>
+              R$ {money(c.finalTotal)}
+            </span>
+            {chosen && (
+              <span style={{ ...pillS(T.gradSoft, T.g1, T.g1Border), flexShrink: 0, fontSize: 9 }}>
+                escolhida
+              </span>
+            )}
+          </button>
+        );
+      })}
+      {lead.negotiatedValue != null && (
+        <p style={{ fontSize: 10.5, color: T.muted, margin: 0 }}>
+          Valor negociado vence a tabela — a escolha define a cabana, não o valor do lead.
+        </p>
+      )}
+    </div>
+  );
+}
 
 /**
  * "Cobranças do contrato" (só casamentos): as parcelas reais, read-only —
@@ -392,6 +491,12 @@ export function LeadDrawer({
           {/* Titular — só orçamentos; recorrente/novo, vínculo e histórico do cliente */}
           {isQuote && (
             <ClientPanel propertyId={propertyId} lead={lead} busy={busy} onPromote={promoteAndRefresh} />
+          )}
+
+          {/* Orçamento — todas as cabanas oferecidas (snapshot congelado) */}
+          {isQuote && (
+            <QuoteSnapshot propertyId={propertyId} lead={lead} busy={busy}
+              active={active} onPatch={patchAndRefresh} />
           )}
 
           {/* Negociação — só orçamentos; casamentos têm o financeiro na gestão do evento */}
