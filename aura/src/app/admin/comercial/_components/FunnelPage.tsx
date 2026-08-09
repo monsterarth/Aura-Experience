@@ -32,13 +32,13 @@ const FUNNEL_CFG: Record<CrmEntityType, {
   title: string; subtitle: string; icon: React.ReactNode;
 }> = {
   quote: {
-    title: "Comercial · Reservas",
-    subtitle: "Funil de orçamentos de hospedagem — do primeiro contato à estadia.",
+    title: "Pipeline Estadias",
+    subtitle: "Orçamentos de reserva — do primeiro contato ao pagamento.",
     icon: <CalendarDays className="text-primary" size={24} />,
   },
   wedding: {
-    title: "Comercial · Casamentos",
-    subtitle: "Funil de negociações de casamento — do lead ao contrato.",
+    title: "Pipeline Casamentos",
+    subtitle: "Leads de casamento — da visita ao contrato assinado.",
     icon: <Heart className="text-pink-500" size={24} />,
   },
 };

@@ -22,7 +22,7 @@ import {
   UserCircle2, Smartphone, Heart, History,
   Package, ArrowLeftRight, SlidersHorizontal,
   ShoppingCart, Truck, Landmark, AlertOctagon, ListFilter,
-  CircleDollarSign, Handshake,
+  CircleDollarSign, Handshake, Hourglass, Megaphone,
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import Image from "next/image";
@@ -167,7 +167,6 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Hospedagem",
     items: [
       { id: "stays",   label: "Estadias",     icon: Home,          href: "/admin/stays",           roles: ["super_admin","admin","reception","governance","manager"] },
-      { id: "tarifario", label: "Tarifário",  icon: CircleDollarSign, href: "/admin/tarifario",    roles: ["super_admin","admin","reception","manager"] },
       { id: "mapa",    label: "Mapa",          icon: Map,           href: "/admin/reservation-map", roles: ["super_admin","admin","reception","manager"] },
       { id: "hospedes",label: "Hóspedes",      icon: UserSearch,    href: "/admin/guests",          roles: ["super_admin","admin","reception","manager"] },
       { id: "comunic", label: "Comunicação",   icon: MessageSquare, href: "/admin/comunicacao",     roles: ["super_admin","admin","reception","manager"] },
@@ -175,12 +174,18 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     // Vendedores de reservas e de casamentos são pessoas diferentes — cada
-    // funil tem página própria (a gestão do evento segue em Calendários > Casamentos).
+    // funil tem página própria (a gestão do evento segue em Calendários >
+    // Casamentos). Ordem e rótulos vêm do projeto de design do CRM.
     id: "comercial",
     label: "Comercial",
     items: [
-      { id: "comercial_reservas",   label: "Reservas",         icon: Handshake, href: "/admin/comercial/reservas",   roles: ["super_admin","admin","reception","manager"] },
-      { id: "comercial_casamentos", label: "Casamentos (CRM)", icon: Heart,     href: "/admin/comercial/casamentos", roles: ["super_admin","admin","reception","manager"] },
+      { id: "tarifario",            label: "Tarifário",           icon: CircleDollarSign, href: "/admin/tarifario",            roles: ["super_admin","admin","reception","manager"] },
+      { id: "comercial_reservas",   label: "Pipeline Estadias",   icon: Handshake,        href: "/admin/comercial/reservas",   roles: ["super_admin","admin","reception","manager"] },
+      { id: "comercial_casamentos", label: "Pipeline Casamentos", icon: Heart,            href: "/admin/comercial/casamentos", roles: ["super_admin","admin","reception","manager"] },
+      // exactMatch: o href tem query string e pathname nunca tem — o item
+      // nunca "acende" (o ativo fica em Pipeline Estadias, trade-off aceito).
+      { id: "comercial_espera",     label: "Lista de espera",     icon: Hourglass,        href: "/admin/comercial/reservas?tab=espera", roles: ["super_admin","admin","reception","manager"], exactMatch: true },
+      { id: "comercial_marketing",  label: "Marketing",           icon: Megaphone,        href: "/admin/comercial/marketing",  roles: ["super_admin","admin","manager","marketing"] },
     ],
   },
   {

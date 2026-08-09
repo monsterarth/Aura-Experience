@@ -9,11 +9,64 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { parseMoneyBR, moneyToInput } from "@/lib/parse-money";
-import { CrmChannel, CrmLead } from "@/types/aura";
+import { CrmChannel, CrmLead, WeddingInstallment } from "@/types/aura";
 import { ClientPanel } from "./ClientPanel";
 import { InteractionTimeline } from "./InteractionTimeline";
 import { LeadAlarms } from "./LeadAlarms";
-import { QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, fmtBR, money } from "./shared";
+import { QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, fmtBR, money, todayIso } from "./shared";
+
+/**
+ * "Cobranças do contrato" (só casamentos): as parcelas reais, read-only —
+ * a gestão (editar/pagar) vive na aba financeiro do painel do casamento.
+ * Falha do fetch (ex.: migration pendente) = seção não aparece.
+ */
+function ContractCharges({ lead }: { lead: CrmLead }) {
+  const [items, setItems] = useState<WeddingInstallment[] | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setItems(null);
+    fetch(`/api/admin/weddings/${lead.id}/installments`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive) setItems(d?.installments ?? null); })
+      .catch(() => { if (alive) setItems(null); });
+    return () => { alive = false; };
+  }, [lead.id]);
+
+  if (!items || items.length === 0) return null;
+
+  const t = todayIso();
+  const statusOf = (i: WeddingInstallment) =>
+    i.paid ? { label: "paga", cls: "bg-teal-500/15 text-teal-500" }
+      : i.dueDate && i.dueDate < t ? { label: "vencida", cls: "bg-red-500/15 text-red-500" }
+      : i.dueDate ? { label: "pendente", cls: "bg-amber-500/15 text-amber-600" }
+      : { label: "aguarda", cls: "bg-secondary text-muted-foreground" };
+
+  return (
+    <div className="p-5 border-b border-border space-y-2">
+      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+        Cobranças do contrato
+      </p>
+      {items.map((i) => {
+        const st = statusOf(i);
+        return (
+          <div key={i.id} className="flex items-center gap-2.5 bg-secondary/60 border border-border rounded-xl px-3 py-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-[12.5px] font-semibold text-foreground truncate">{i.label}</p>
+              <p className="text-[11px] text-muted-foreground">
+                {i.dueDate ? `Vencimento ${fmtBR(i.dueDate)}` : "Sem vencimento combinado"}
+              </p>
+            </div>
+            <span className="text-[13px] font-black text-foreground shrink-0">R$ {money(Number(i.value))}</span>
+            <span className={`text-[9.5px] font-bold uppercase tracking-wider rounded-full px-2 py-0.5 shrink-0 ${st.cls}`}>
+              {st.label}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 /**
  * Input de data que só grava no blur/Enter: patch a cada change disparava no
@@ -276,6 +329,9 @@ export function LeadDrawer({
         {isQuote && active && (
           <NegotiationSection lead={lead} channels={channels} busy={busy} onPatch={patchAndRefresh} />
         )}
+
+        {/* Cobranças do contrato — só casamentos (parcelas reais, read-only) */}
+        {!isQuote && <ContractCharges lead={lead} />}
 
         {/* Alarmes — também em lead FECHADO (cobrança é pós-fechamento) */}
         <LeadAlarms propertyId={propertyId} lead={lead}

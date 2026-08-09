@@ -163,55 +163,97 @@ export function WaitlistTab({
           <p className="text-sm">Ninguém aguardando período — registre interessados aqui.</p>
         </div>
       ) : (
-        visible.map((e) => {
-          const cfg = STATUS_CFG[e.status];
-          const active = e.status === "waiting" || e.status === "contacted";
-          const busy = busyId === e.id;
-          return (
-            <div key={e.id} className="flex items-center gap-3 bg-card border border-border rounded-2xl px-4 py-3 flex-wrap">
-              <div className="flex-1 min-w-[180px]">
-                <p className="font-semibold text-sm text-foreground truncate">{e.name}</p>
-                <p className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
-                  <span><CalendarDays size={11} className="inline mr-0.5" />{fmtBR(e.periodStart)} → {fmtBR(e.periodEnd)}</span>
-                  {e.guests ? <span><Users size={11} className="inline mr-0.5" />{e.guests}</span> : null}
-                  {e.phone && <span><Phone size={11} className="inline mr-0.5" />{e.phone}</span>}
-                </p>
-              </div>
-              <span className={cn("text-[9px] font-black uppercase tracking-wider rounded-full px-2 py-0.5 shrink-0", cfg.cls)}>
-                {cfg.label}
+        // Agrupada por PERÍODO (UI do projeto de design): cada data concorrida
+        // vira um card com a fila numerada por ordem de chegada.
+        groupByPeriod(visible).map((g) => (
+          <div key={g.key} className="bg-card border border-border rounded-2xl p-4 space-y-2.5">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="text-[15px] font-black text-foreground">
+                {fmtBR(g.periodStart)} → {fmtBR(g.periodEnd)}
               </span>
-              {active && (
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {e.status === "waiting" && (
-                    <button disabled={busy} onClick={() => setStatus(e, "contacted")}
-                      title="Marcar como contatado"
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-600 bg-sky-500/15 rounded-lg px-2 py-1.5 hover:bg-sky-500/25 transition-colors disabled:opacity-50">
-                      <PhoneCall size={12} /> Contatado
+              <span className="ml-auto text-[11px] text-muted-foreground/70">
+                {g.rows.length} interessado{g.rows.length !== 1 ? "s" : ""} na fila
+              </span>
+            </div>
+            {g.rows.map((e: WaitlistEntry, idx: number) => {
+              const cfg = STATUS_CFG[e.status];
+              const active = e.status === "waiting" || e.status === "contacted";
+              const busy = busyId === e.id;
+              return (
+                <div key={e.id} className="flex items-center gap-3 bg-secondary/60 border border-border rounded-xl px-3.5 py-2.5 flex-wrap">
+                  <span className="w-6 h-6 rounded-lg bg-primary/10 border border-primary/25 text-primary text-[11px] font-black flex items-center justify-center shrink-0">
+                    {idx + 1}
+                  </span>
+                  <div className="flex-1 min-w-[160px]">
+                    <p className="font-semibold text-sm text-foreground truncate">{e.name}</p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
+                      {e.guests ? <span><Users size={11} className="inline mr-0.5" />{e.guests}</span> : null}
+                      {e.phone && <span>{e.phone}</span>}
+                      <span>desde {fmtBR(String(e.createdAt).slice(0, 10))}</span>
+                    </p>
+                  </div>
+                  <span className={cn("text-[9px] font-black uppercase tracking-wider rounded-full px-2 py-0.5 shrink-0", cfg.cls)}>
+                    {cfg.label}
+                  </span>
+                  {e.phone && (
+                    <a href={`https://wa.me/${e.phone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer"
+                      title="Avisar via WhatsApp"
+                      className="p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/25 text-emerald-500 hover:bg-emerald-500/20 transition-colors shrink-0">
+                      <Phone size={13} />
+                    </a>
+                  )}
+                  {active && (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {e.status === "waiting" && (
+                        <button disabled={busy} onClick={() => setStatus(e, "contacted")}
+                          title="Marcar como contatado"
+                          className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-600 bg-sky-500/15 rounded-lg px-2 py-1.5 hover:bg-sky-500/25 transition-colors disabled:opacity-50">
+                          <PhoneCall size={12} /> Contatado
+                        </button>
+                      )}
+                      <button disabled={busy} onClick={() => router.push(`/admin/tarifario?waitlistId=${e.id}`)}
+                        title="Abrir a calculadora pré-preenchida"
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-500/15 rounded-lg px-2 py-1.5 hover:bg-emerald-500/25 transition-colors disabled:opacity-50">
+                        <Calculator size={12} /> Converter
+                      </button>
+                      <button disabled={busy} onClick={() => setStatus(e, "archived")}
+                        title="Arquivar"
+                        className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary transition-colors disabled:opacity-50">
+                        {busy ? <Loader2 size={13} className="animate-spin" /> : <Archive size={13} />}
+                      </button>
+                    </div>
+                  )}
+                  {!active && (
+                    <button disabled={busy} onClick={() => remove(e)}
+                      title="Excluir"
+                      className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0 disabled:opacity-50">
+                      <Trash2 size={13} />
                     </button>
                   )}
-                  <button disabled={busy} onClick={() => router.push(`/admin/tarifario?waitlistId=${e.id}`)}
-                    title="Abrir a calculadora pré-preenchida"
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-500/15 rounded-lg px-2 py-1.5 hover:bg-emerald-500/25 transition-colors disabled:opacity-50">
-                    <Calculator size={12} /> Converter
-                  </button>
-                  <button disabled={busy} onClick={() => setStatus(e, "archived")}
-                    title="Arquivar"
-                    className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary transition-colors disabled:opacity-50">
-                    {busy ? <Loader2 size={13} className="animate-spin" /> : <Archive size={13} />}
-                  </button>
                 </div>
-              )}
-              {!active && (
-                <button disabled={busy} onClick={() => remove(e)}
-                  title="Excluir"
-                  className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors shrink-0 disabled:opacity-50">
-                  <Trash2 size={13} />
-                </button>
-              )}
-            </div>
-          );
-        })
+              );
+            })}
+          </div>
+        ))
       )}
     </div>
   );
+}
+
+type PeriodGroup = { key: string; periodStart: string; periodEnd: string; rows: WaitlistEntry[] };
+
+/** Agrupa por período (start+end), períodos mais próximos primeiro; dentro do
+ *  grupo a ordem é de chegada (createdAt) — é a posição na fila. */
+function groupByPeriod(entries: WaitlistEntry[]): PeriodGroup[] {
+  const map = new Map<string, PeriodGroup>();
+  for (const e of entries) {
+    const key = `${e.periodStart}|${e.periodEnd}`;
+    if (!map.has(key)) map.set(key, { key, periodStart: e.periodStart, periodEnd: e.periodEnd, rows: [] });
+    map.get(key)!.rows.push(e);
+  }
+  // Array.from, não spread: o target do tsconfig não itera MapIterator.
+  const groups = Array.from(map.values());
+  for (const g of groups) g.rows.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  groups.sort((a, b) => a.periodStart.localeCompare(b.periodStart));
+  return groups;
 }
