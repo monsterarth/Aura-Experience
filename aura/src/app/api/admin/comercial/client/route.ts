@@ -22,10 +22,13 @@ export async function GET(req: NextRequest) {
 
   const guestId = params.get("guestId");
   const phone = params.get("phone");
-  if (!guestId && !phone) return NextResponse.json({ error: "guestId ou phone obrigatório" }, { status: 400 });
+  const q = params.get("q");
+  if (!guestId && !phone && !q) {
+    return NextResponse.json({ error: "guestId, phone ou q obrigatório" }, { status: 400 });
+  }
 
   try {
-    const context = await CrmService.getClientContext(propertyId, { guestId, phone });
+    const context = await CrmService.getClientContext(propertyId, { guestId, phone, q });
     return NextResponse.json(context);
   } catch (e) {
     console.error("Erro ao carregar contexto do cliente:", e);

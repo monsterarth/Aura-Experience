@@ -19,7 +19,7 @@ function ageDays(createdAt: string, today: string): number {
   ));
 }
 
-export function PipelineBoard({ stages, leads, channels, alarms, onOpen, onDropLead, dragDisabled }: {
+export function PipelineBoard({ stages, leads, channels, alarms, onOpen, onDropLead, dragDisabled, onAddNew }: {
   stages: StageDef[];
   leads: CrmLead[];
   channels: CrmChannel[];
@@ -28,6 +28,8 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen, onDropL
   /** Card solto numa coluna — o pai mapeia para mover/ganhar/perder. */
   onDropLead: (leadId: string, stageId: string) => void;
   dragDisabled?: boolean;
+  /** "+ Nova cotação" no primeiro nível do funil (coluna inicial). */
+  onAddNew?: () => void;
 }) {
   const t = todayIso();
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -174,8 +176,20 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen, onDropL
                   </div>
                 );
               })}
-              {rows.length === 0 && (
+              {rows.length === 0 && !(onAddNew && stage.id === stages[0]?.id) && (
                 <p style={{ textAlign: "center", fontSize: 11, color: T.muted2, padding: "16px 0", margin: 0 }}>vazio</p>
+              )}
+              {onAddNew && stage.id === stages[0]?.id && (
+                <button onClick={onAddNew}
+                  style={{
+                    width: "100%", padding: 10, borderRadius: 12,
+                    border: `1px dashed ${T.border2}`, background: "transparent",
+                    cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700,
+                    color: T.muted, display: "flex", alignItems: "center",
+                    justifyContent: "center", gap: 6,
+                  }}>
+                  + Nova cotação
+                </button>
               )}
             </div>
           </div>

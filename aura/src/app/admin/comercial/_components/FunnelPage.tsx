@@ -3,18 +3,20 @@
 // carrega o miolo comum: pipeline, fila de follow-ups, drawer e ações.
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
+import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { useTabParam } from "@/lib/settings-deeplink";
 import {
   BellRing, CalendarClock, CalendarDays, ExternalLink, Eye, EyeOff, Handshake,
-  Heart, Hourglass, KanbanSquare, LayoutList, Loader2, RefreshCw, Search,
+  Heart, Hourglass, KanbanSquare, LayoutList, Loader2, Plus, RefreshCw, Search,
   TrendingDown, TrendingUp,
 } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
+import type { RateBundle } from "@/services/rate-service";
 import { CrmAlarm, CrmChannel, CrmEntityType, CrmLead, WaitlistEntry } from "@/types/aura";
 import { PipelineBoard } from "./PipelineBoard";
 import { LeadListView } from "./LeadListView";
@@ -23,6 +25,7 @@ import { AlarmsQueue } from "./AlarmsQueue";
 import { WaitlistTab } from "./WaitlistTab";
 import { LeadDrawer } from "./LeadDrawer";
 import { MarkLostModal } from "./MarkLostModal";
+import { NewQuoteWizard } from "./NewQuoteWizard";
 import { S, QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, leadAlert, money, todayIso } from "./shared";
 
 type TabId = "pipeline" | "alarmes" | "espera";
@@ -44,9 +47,14 @@ const FUNNEL_CFG: Record<CrmEntityType, {
 
 export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
   const { currentProperty: property } = useProperty();
+  const { userData } = useAuth();
   const router = useRouter();
   const cfg = FUNNEL_CFG[funnel];
   const stages = funnel === "quote" ? QUOTE_STAGES : WEDDING_STAGES;
+
+  // Wizard "Nova cotação" (só reservas) — o RateBundle é cacheado entre aberturas.
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const bundleCache = useRef<RateBundle | null>(null);
 
   const [leads, setLeads] = useState<CrmLead[]>([]);
   const [channels, setChannels] = useState<CrmChannel[]>([]);
@@ -271,6 +279,14 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
       : `/admin/casamentos?weddingId=${lead.id}`);
   };
 
+  // Anti-duplicidade do wizard: abrir o lead existente em vez de criar outro.
+  const openExistingQuote = (quoteId: string) => {
+    setWizardOpen(false);
+    const lead = leads.find((l) => l.id === quoteId);
+    if (lead) setSelected(lead);
+    else router.push(`/admin/tarifario?quoteId=${quoteId}`);
+  };
+
   // Drop do kanban: coluna decide a ação — ganhar/perder têm fluxos próprios.
   const handleDropLead = (leadId: string, stageId: string) => {
     if (busyId) return;
@@ -382,6 +398,11 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
           <p style={{ margin: "4px 0 0", fontSize: 13, color: T.muted }}>{cfg.subtitle}</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {funnel === "quote" && (
+            <button onClick={() => setWizardOpen(true)} style={S.gradBtn}>
+              <Plus size={14} /> Nova cotação
+            </button>
+          )}
           {funnel === "wedding" && (
             <Link href="/admin/casamentos" style={{ ...S.ghostBtn, textDecoration: "none" }}>
               <ExternalLink size={13} /> Gestão do evento
@@ -506,7 +527,8 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
           {view === "kanban" ? (
             <PipelineBoard stages={visibleStages} leads={visibleLeads}
               channels={channels} alarms={alarms} onOpen={setSelected}
-              onDropLead={handleDropLead} dragDisabled={busyId !== null} />
+              onDropLead={handleDropLead} dragDisabled={busyId !== null}
+              onAddNew={funnel === "quote" ? () => setWizardOpen(true) : undefined} />
           ) : (
             <LeadListView stages={visibleStages} leads={visibleLeads}
               channels={channels} onOpen={setSelected} />
@@ -542,6 +564,19 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
         <MarkLostModal lead={losing} busy={busyId === losing.id}
           onCancel={() => setLosing(null)}
           onConfirm={(reason) => markLost(losing, reason)} />
+      )}
+
+      {wizardOpen && funnel === "quote" && (
+        <NewQuoteWizard
+          propertyId={property.id}
+          channels={channels}
+          attendantName={userData?.fullName || "Recepção"}
+          initialBundle={bundleCache.current}
+          onBundleLoaded={(b) => { bundleCache.current = b; }}
+          onClose={() => setWizardOpen(false)}
+          onSaved={() => reload()}
+          onOpenExisting={openExistingQuote}
+        />
       )}
     </div>
   );

@@ -279,20 +279,42 @@ export const CrmService = {
   },
 
   /**
-   * Contexto do titular numa chamada só (painel do cliente no drawer):
-   * ficha vinculada, nº de estadias (recorrente vs novo), fichas com o mesmo
-   * telefone (sugestão de vínculo) e as cotações do cliente.
+   * Contexto do titular numa chamada só (painel do cliente no drawer e passo
+   * "é essa pessoa?" do wizard): ficha vinculada, nº de estadias (recorrente
+   * vs novo), fichas com o mesmo telefone, fichas por nome/documento (`q`) e
+   * as cotações do cliente.
    */
   async getClientContext(
     propertyId: string,
-    by: { guestId?: string | null; phone?: string | null }
-  ): Promise<{ guest: Guest | null; staysCount: number; phoneMatches: Guest[]; quotes: RateQuoteRecord[] }> {
-    const [guestRes, phoneMatches, quotes] = await Promise.all([
+    by: { guestId?: string | null; phone?: string | null; q?: string | null }
+  ): Promise<{
+    guest: Guest | null; staysCount: number;
+    phoneMatches: Guest[]; nameMatches: Guest[]; quotes: RateQuoteRecord[];
+  }> {
+    // Busca por nome/documento fica AQUI (server-side): a rota /api/admin/guests
+    // não inclui manager nos roles — o contexto inclui.
+    const q = (by.q || "").trim();
+    const nameSearch = async (): Promise<Guest[]> => {
+      if (q.length < 2) return [];
+      const safe = q.replace(/[%,()]/g, "");
+      const doc = q.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const ors = [`fullName.ilike.%${safe}%`];
+      if (doc.length >= 5) ors.push(`id.eq.${doc}`);
+      const { data } = await supabaseAdmin
+        .from("guests").select("*")
+        .eq("propertyId", propertyId)
+        .or(ors.join(","))
+        .limit(5);
+      return (data ?? []) as Guest[];
+    };
+
+    const [guestRes, phoneMatches, nameMatches, quotes] = await Promise.all([
       by.guestId
         ? supabaseAdmin.from("guests").select("*")
             .eq("id", by.guestId).eq("propertyId", propertyId).maybeSingle()
         : Promise.resolve({ data: null }),
       by.phone ? GuestService.findByPhone(propertyId, by.phone) : Promise.resolve([] as Guest[]),
+      nameSearch(),
       this.listQuotesByClient(propertyId, by),
     ]);
 
@@ -308,11 +330,14 @@ export const CrmService = {
       staysCount = count ?? 0;
     }
 
-    // A ficha já vinculada não é "sugestão" — sai da lista de matches.
+    // A ficha já vinculada não é "sugestão" — sai das listas de matches;
+    // quem apareceu por telefone não repete na lista por nome.
+    const phoneIds = new Set(phoneMatches.map((g) => g.id));
     return {
       guest,
       staysCount,
       phoneMatches: phoneMatches.filter((g) => g.id !== guest?.id),
+      nameMatches: nameMatches.filter((g) => g.id !== guest?.id && !phoneIds.has(g.id)),
       quotes,
     };
   },
