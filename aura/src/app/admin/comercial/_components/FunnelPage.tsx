@@ -11,35 +11,35 @@ import { useProperty } from "@/context/PropertyContext";
 import { useTabParam } from "@/lib/settings-deeplink";
 import { cn } from "@/lib/utils";
 import {
-  BellRing, CalendarClock, CalendarDays, ExternalLink, Heart, Hourglass,
-  KanbanSquare, ListChecks, Loader2, RefreshCw, Search, TrendingDown, TrendingUp,
+  BellRing, CalendarClock, CalendarDays, ExternalLink, Eye, EyeOff, Handshake,
+  Heart, Hourglass, KanbanSquare, LayoutList, Loader2, RefreshCw, Search,
+  TrendingDown, TrendingUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CrmAlarm, CrmChannel, CrmEntityType, CrmLead, WaitlistEntry } from "@/types/aura";
 import { PipelineBoard } from "./PipelineBoard";
-import { FollowUpQueue } from "./FollowUpQueue";
+import { LeadListView } from "./LeadListView";
+import { TodayQueue } from "./TodayQueue";
 import { AlarmsQueue } from "./AlarmsQueue";
 import { WaitlistTab } from "./WaitlistTab";
 import { LeadDrawer } from "./LeadDrawer";
 import { MarkLostModal } from "./MarkLostModal";
 import { QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, leadAlert, money, todayIso } from "./shared";
 
-type TabId = "pipeline" | "followups" | "alarmes" | "espera";
+type TabId = "pipeline" | "alarmes" | "espera";
 
 const FUNNEL_CFG: Record<CrmEntityType, {
-  title: string; subtitle: string; icon: React.ReactNode; boardTitle: string;
+  title: string; subtitle: string; icon: React.ReactNode;
 }> = {
   quote: {
     title: "Comercial · Reservas",
     subtitle: "Funil de orçamentos de hospedagem — do primeiro contato à estadia.",
     icon: <CalendarDays className="text-primary" size={24} />,
-    boardTitle: "Orçamentos",
   },
   wedding: {
     title: "Comercial · Casamentos",
     subtitle: "Funil de negociações de casamento — do lead ao contrato.",
     icon: <Heart className="text-pink-500" size={24} />,
-    boardTitle: "Negociações",
   },
 };
 
@@ -55,9 +55,12 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
   const [waitlist, setWaitlist] = useState<WaitlistEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<TabId>(useTabParam<TabId>(
-    funnel === "quote" ? ["pipeline", "followups", "alarmes", "espera"] : ["pipeline", "followups", "alarmes"],
+    funnel === "quote" ? ["pipeline", "alarmes", "espera"] : ["pipeline", "alarmes"],
     "pipeline"
   ));
+  // Kanban ↔ Lista (toggle do projeto de design) + perdidos ocultos por padrão
+  const [view, setView] = useState<"kanban" | "lista">("kanban");
+  const [showLost, setShowLost] = useState(false);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<CrmLead | null>(null);
   const [losing, setLosing] = useState<CrmLead | null>(null);
@@ -118,6 +121,16 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
     const q = norm(search);
     return leads.filter((l) => norm(`${l.title} ${l.phone || ""} ${l.email || ""}`).includes(q));
   }, [leads, search]);
+
+  // Perdidos ficam ocultos por padr\u00e3o (mostrarPerdidos do projeto de design)
+  const visibleStages = useMemo(
+    () => stages.filter((s) => showLost || s.id !== "lost"),
+    [stages, showLost]
+  );
+  const visibleLeads = useMemo(
+    () => filtered.filter((l) => showLost || l.stage !== "lost"),
+    [filtered, showLost]
+  );
 
   const kpis = useMemo(() => {
     const active = leads.filter((l) => ACTIVE_STAGES.has(l.stage));
@@ -337,8 +350,9 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
           )}
           <div className="flex gap-1 bg-secondary rounded-xl p-1">
             {([
+              // Follow-ups não é mais aba: virou a "Fila de hoje" fixa no
+              // topo do pipeline (UI do projeto de design).
               { id: "pipeline" as TabId, label: "Pipeline", icon: KanbanSquare, badge: 0, count: 0 },
-              { id: "followups" as TabId, label: "Follow-ups", icon: ListChecks, badge: kpis.overdueCount, count: 0 },
               { id: "alarmes" as TabId, label: "Alarmes", icon: BellRing, badge: dueAlarmCount, count: 0 },
               // Espera é conceito de reservas; contador neutro (não é urgência)
               ...(funnel === "quote"
@@ -369,7 +383,9 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
       {/* KPIs do funil */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-card border border-border rounded-2xl p-4">
-          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Em negociação</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground flex items-center gap-1">
+            <Handshake size={11} /> Em negociação
+          </p>
           <p className="text-xl font-black text-foreground mt-1">R$ {money(kpis.activeValue)}</p>
           <p className="text-xs text-muted-foreground">{kpis.activeCount} lead{kpis.activeCount !== 1 ? "s" : ""} ativo{kpis.activeCount !== 1 ? "s" : ""}</p>
         </div>
@@ -396,28 +412,64 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[220px] max-w-sm">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input className="field-input !pl-9" placeholder="Buscar por nome, telefone, e-mail…"
-            value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-        <Button variant="outline" size="sm" onClick={() => { setLoading(true); load(); }} disabled={loading}>
-          {loading ? <Loader2 size={14} className="mr-1 animate-spin" /> : <RefreshCw size={14} className="mr-1" />}
-          Atualizar
-        </Button>
-      </div>
-
       {loading ? (
         <div className="flex items-center justify-center py-24 text-muted-foreground">
           <Loader2 className="animate-spin mr-2" size={20} /> Carregando pipeline…
         </div>
       ) : tab === "pipeline" ? (
-        <PipelineBoard title={cfg.boardTitle} icon={cfg.icon}
-          stages={stages} leads={filtered} channels={channels} onOpen={setSelected} />
-      ) : tab === "followups" ? (
-        <FollowUpQueue leads={filtered} busyId={busyId}
-          onOpen={setSelected} onQuickContact={(l) => followUp(l, "")} />
+        <>
+          {/* Fila de hoje — follow-ups + cobranças, sempre visível (design) */}
+          <TodayQueue leads={leads} alarms={alarms}
+            busyId={busyId} alarmBusyId={alarmBusyId}
+            onOpenLead={setSelected} onOpenAlarm={openAlarmLead}
+            onContact={(l) => followUp(l, "")} onAlarmDone={alarmDone} />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[220px] max-w-sm">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input className="field-input !pl-9" placeholder="Buscar por nome, telefone, e-mail…"
+                value={search} onChange={(e) => setSearch(e.target.value)} />
+            </div>
+            <span className="text-[11px] text-muted-foreground/70">
+              {visibleLeads.length} lead{visibleLeads.length !== 1 ? "s" : ""} no funil
+            </span>
+            <div className="ml-auto flex items-center gap-2">
+              <button onClick={() => setShowLost((v) => !v)}
+                title={showLost ? "Ocultar perdidos" : "Mostrar perdidos"}
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-colors",
+                  showLost ? "bg-secondary border-border text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
+                )}>
+                {showLost ? <Eye size={12} /> : <EyeOff size={12} />} perdidos
+              </button>
+              <div className="flex gap-1 bg-secondary rounded-lg p-0.5">
+                {([
+                  { id: "kanban" as const, label: "Kanban", icon: KanbanSquare },
+                  { id: "lista" as const, label: "Lista", icon: LayoutList },
+                ]).map(({ id, label, icon: Icon }) => (
+                  <button key={id} onClick={() => setView(id)}
+                    className={cn(
+                      "flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-bold transition-colors",
+                      view === id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    )}>
+                    <Icon size={12} /> {label}
+                  </button>
+                ))}
+              </div>
+              <Button variant="outline" size="sm" onClick={() => { setLoading(true); load(); }} disabled={loading}>
+                <RefreshCw size={14} className="mr-1" /> Atualizar
+              </Button>
+            </div>
+          </div>
+
+          {view === "kanban" ? (
+            <PipelineBoard stages={visibleStages} leads={visibleLeads}
+              channels={channels} alarms={alarms} onOpen={setSelected} />
+          ) : (
+            <LeadListView stages={visibleStages} leads={visibleLeads}
+              channels={channels} onOpen={setSelected} />
+          )}
+        </>
       ) : tab === "alarmes" ? (
         <AlarmsQueue alarms={alarms} busyId={alarmBusyId}
           onDone={alarmDone} onDelete={alarmDelete} onOpen={openAlarmLead} />
