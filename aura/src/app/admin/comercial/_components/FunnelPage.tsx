@@ -271,6 +271,16 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
       : `/admin/casamentos?weddingId=${lead.id}`);
   };
 
+  // Drop do kanban: coluna decide a ação — ganhar/perder têm fluxos próprios.
+  const handleDropLead = (leadId: string, stageId: string) => {
+    if (busyId) return;
+    const lead = leads.find((l) => l.id === leadId);
+    if (!lead || lead.stage === stageId) return;
+    if (stageId === "won" || stageId === "confirmed") { win(lead); return; }
+    if (stageId === "lost") { setLosing(lead); return; }
+    moveStage(lead, stageId);
+  };
+
   // ── Alarmes ────────────────────────────────────────────────────────────────
 
   const [alarmBusyId, setAlarmBusyId] = useState<string | null>(null);
@@ -495,7 +505,8 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
 
           {view === "kanban" ? (
             <PipelineBoard stages={visibleStages} leads={visibleLeads}
-              channels={channels} alarms={alarms} onOpen={setSelected} />
+              channels={channels} alarms={alarms} onOpen={setSelected}
+              onDropLead={handleDropLead} dragDisabled={busyId !== null} />
           ) : (
             <LeadListView stages={visibleStages} leads={visibleLeads}
               channels={channels} onOpen={setSelected} />

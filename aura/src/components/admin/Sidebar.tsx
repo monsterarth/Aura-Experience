@@ -537,6 +537,11 @@ function PainelNavItem({
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
+// Páginas "largas" (kanban dos pipelines) nascem com o sidebar RECOLHIDO,
+// ignorando a preferência do usuário — que volta a valer ao navegar para fora.
+// O toggle dentro delas mexe só num override local (nada é persistido).
+const FORCE_COLLAPSED_PATHS = [/^\/admin\/comercial\/(reservas|casamentos)/];
+
 export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v: boolean) => void }) => {
   const { userData, isSuperAdmin, loading: authLoading, userDataReady, impersonating } = useAuth();
   const { currentProperty: property, setProperty } = useProperty();
@@ -549,6 +554,12 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
     if (typeof window === "undefined") return false;
     return localStorage.getItem("sidebar_collapsed") === "true";
   });
+  // Override das páginas largas (FORCE_COLLAPSED_PATHS) — zera ao trocar de rota.
+  const forceCollapsed = FORCE_COLLAPSED_PATHS.some((re) => re.test(pathname));
+  const [wideOverride, setWideOverride] = useState<boolean | null>(null);
+  useEffect(() => { setWideOverride(null); }, [pathname]);
+  /** O que o render usa: forçado nas páginas largas, preferência no resto. */
+  const collapsed = forceCollapsed ? (wideOverride ?? true) : isCollapsed;
   const [collapsibleOpen, setCollapsibleOpen] = useState<Record<string, boolean>>({ setup: true, gerencia: true });
   const [showImpersonateModal, setShowImpersonateModal] = useState(false);
   const savePreferenceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -627,6 +638,12 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
   };
 
   const toggleCollapse = () => {
+    if (forceCollapsed) {
+      // Página larga: o toggle vale só enquanto se está nela — a preferência
+      // do usuário fica intacta e volta sozinha na próxima navegação.
+      setWideOverride(!collapsed);
+      return;
+    }
     const next = !isCollapsed;
     setIsCollapsed(next);
     localStorage.setItem("sidebar_collapsed", String(next));
@@ -655,8 +672,8 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
         style={{
-          width: isCollapsed ? TT.collapsedW : TT.sidebarW,
-          minWidth: isCollapsed ? TT.collapsedW : TT.sidebarW,
+          width: collapsed ? TT.collapsedW : TT.sidebarW,
+          minWidth: collapsed ? TT.collapsedW : TT.sidebarW,
           background: sidebarBg,
           borderRight: `1px solid ${TT.border}`,
           display: "flex",
@@ -669,13 +686,13 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
       >
         {/* Logo */}
         <div style={{
-          padding: isCollapsed ? "18px 0" : "18px 20px",
+          padding: collapsed ? "18px 0" : "18px 20px",
           borderBottom: `1px solid ${TT.border}`,
           display: "flex", alignItems: "center",
-          justifyContent: isCollapsed ? "center" : "space-between",
+          justifyContent: collapsed ? "center" : "space-between",
           flexShrink: 0, gap: 8,
         }}>
-          {!isCollapsed ? (
+          {!collapsed ? (
             <>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 {property?.logoUrl ? (
@@ -709,13 +726,13 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
 
         {/* User info */}
         <div style={{
-          padding: isCollapsed ? "12px 0" : "14px 16px",
+          padding: collapsed ? "12px 0" : "14px 16px",
           borderBottom: `1px solid ${TT.border}`,
           flexShrink: 0,
           display: "flex",
-          justifyContent: isCollapsed ? "center" : "flex-start",
+          justifyContent: collapsed ? "center" : "flex-start",
         }}>
-          {!isCollapsed ? (
+          {!collapsed ? (
             <div style={{ display: "flex", alignItems: "center", gap: 10, width: "100%" }}>
               <Link href="/admin/perfil" style={S.avatar(roleMeta.color, 36)} title="Meu Perfil">
                 {userData?.profilePictureUrl ? (
@@ -752,7 +769,7 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
         </div>
 
         {/* Super admin property switcher */}
-        {isSuperAdmin && !isCollapsed && (
+        {isSuperAdmin && !collapsed && (
           <div style={{ padding: "10px 16px", borderBottom: `1px solid ${TT.border}`, flexShrink: 0 }}>
             <label style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".2em", color: TT.muted2 }}>
               Propriedade
@@ -785,7 +802,7 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
         {/* Nav */}
         <div style={{
           flex: 1, overflowY: "auto", overflowX: "hidden",
-          padding: isCollapsed ? "10px 0" : "10px 10px",
+          padding: collapsed ? "10px 0" : "10px 10px",
           scrollbarWidth: "thin" as const,
           scrollbarColor: `${TT.border} transparent`,
         }}>
@@ -799,7 +816,7 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
 
             return (
               <div key={group.id} style={{ marginBottom: 4 }}>
-                {group.label && !isCollapsed && (
+                {group.label && !collapsed && (
                   <div
                     style={{
                       display: "flex", alignItems: "center",
@@ -821,7 +838,7 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
                     )}
                   </div>
                 )}
-                {isCollapsed && group.label && (
+                {collapsed && group.label && (
                   <div style={{ width: "100%", height: 1, background: TT.border, margin: "8px 0" }} />
                 )}
 
@@ -835,7 +852,7 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
                             item={item}
                             role={role}
                             pathname={pathname}
-                            collapsed={isCollapsed}
+                            collapsed={collapsed}
                             badgeCount={badgeFor[item.id]}
                             onClick={() => setIsOpen(false)}
                             TT={TT}
@@ -847,7 +864,7 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
                           key={item.id}
                           item={item}
                           isActive={isActive(item)}
-                          collapsed={isCollapsed}
+                          collapsed={collapsed}
                           badgeCount={badgeFor[item.id] ?? item.badge}
                           onClick={() => setIsOpen(false)}
                           TT={TT}
@@ -865,14 +882,14 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
         {/* Footer */}
         <div style={{
           borderTop: `1px solid ${TT.border}`,
-          padding: isCollapsed ? "10px 0" : "10px",
+          padding: collapsed ? "10px 0" : "10px",
           flexShrink: 0,
           display: "flex",
           flexDirection: "column",
           gap: 6,
         }}>
           {/* Impersonar — apenas para admin/hr/super_admin (oculto durante impersonação ativa) */}
-          {isAdmin && !impersonating && !isCollapsed && (
+          {isAdmin && !impersonating && !collapsed && (
             <button
               onClick={() => setShowImpersonateModal(true)}
               style={{
@@ -888,7 +905,7 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
               Impersonar funcionário
             </button>
           )}
-          {isAdmin && !impersonating && isCollapsed && (
+          {isAdmin && !impersonating && collapsed && (
             <div style={{ display: "flex", justifyContent: "center" }}>
               <button
                 onClick={() => setShowImpersonateModal(true)}
@@ -911,7 +928,7 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
           />
 
           {/* Logout + version */}
-          {!isCollapsed ? (
+          {!collapsed ? (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
               <span style={{ fontSize: 11, color: TT.muted2, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {appVersion} · {shortHash}

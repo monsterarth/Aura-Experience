@@ -1,21 +1,38 @@
 // Um board do pipeline (Reservas OU Casamentos): colunas por estágio com
 // contagem e soma, cards na identidade visual do admin (dark glass) — visual
 // do projeto de design "Aura CRM Comercial Interface".
+// Cards arrastáveis (DnD nativo HTML5 — sem lib): soltar numa coluna chama
+// onDropLead e o FunnelPage decide (mover / ganhar / abrir modal de perda).
 "use client";
 
+import { useState } from "react";
 import { CalendarDays, CircleDollarSign, Heart, Phone, Tag, CalendarClock, StickyNote } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
 import { CrmAlarm, CrmChannel, CrmLead } from "@/types/aura";
-import { StageDef, fmtBR, leadAlert, money, pillS, todayIso } from "./shared";
+import { ACTIVE_STAGES, StageDef, fmtBR, leadAlert, money, pillS, todayIso } from "./shared";
 
-export function PipelineBoard({ stages, leads, channels, alarms, onOpen }: {
+/** Idade do lead em dias — envelhecimento é métrica clássica de pipeline. */
+function ageDays(createdAt: string, today: string): number {
+  const created = String(createdAt).slice(0, 10);
+  return Math.max(0, Math.round(
+    (new Date(`${today}T12:00`).getTime() - new Date(`${created}T12:00`).getTime()) / 86400000
+  ));
+}
+
+export function PipelineBoard({ stages, leads, channels, alarms, onOpen, onDropLead, dragDisabled }: {
   stages: StageDef[];
   leads: CrmLead[];
   channels: CrmChannel[];
   alarms: CrmAlarm[];
   onOpen: (l: CrmLead) => void;
+  /** Card solto numa coluna — o pai mapeia para mover/ganhar/perder. */
+  onDropLead: (leadId: string, stageId: string) => void;
+  dragDisabled?: boolean;
 }) {
   const t = todayIso();
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [overStage, setOverStage] = useState<string | null>(null);
+
   const channelLabel = (slug?: string | null) =>
     slug ? channels.find((c) => c.id === slug)?.label ?? slug : null;
   const paymentDue = (l: CrmLead) =>
@@ -24,8 +41,12 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen }: {
   return (
     <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
       {stages.map((stage) => {
-        const rows = leads.filter((l) => l.stage === stage.id);
+        // Mais urgente em cima: follow-up mais próximo primeiro, sem prazo por último.
+        const rows = leads
+          .filter((l) => l.stage === stage.id)
+          .sort((a, b) => (a.followUpAt ?? "9999").localeCompare(b.followUpAt ?? "9999"));
         const total = rows.reduce((s, l) => s + l.value, 0);
+        const isOver = overStage === stage.id;
         return (
           <div key={stage.id} style={{ width: 248, flexShrink: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 4px", marginBottom: 8 }}>
@@ -38,10 +59,22 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen }: {
                 </span>
               )}
             </div>
-            <div style={{
-              display: "flex", flexDirection: "column", gap: 8, minHeight: 90,
-              background: "rgba(255,255,255,0.03)", borderRadius: 14, padding: 8,
-            }}>
+            <div
+              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (overStage !== stage.id) setOverStage(stage.id); }}
+              onDragLeave={(e) => { if (e.currentTarget === e.target) setOverStage(null); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const id = e.dataTransfer.getData("text/plain");
+                setOverStage(null);
+                setDraggingId(null);
+                if (id) onDropLead(id, stage.id);
+              }}
+              style={{
+                display: "flex", flexDirection: "column", gap: 8, minHeight: 90,
+                background: isOver ? T.glass2 : "rgba(255,255,255,0.03)",
+                border: `1px dashed ${isOver ? T.g1Border : "transparent"}`,
+                borderRadius: 14, padding: 8, transition: "background .15s, border-color .15s",
+              }}>
               {rows.map((l) => {
                 const alert = leadAlert(l);
                 const src = channelLabel(l.source);
@@ -50,12 +83,21 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen }: {
                   // div role=button (não <button>): o mini-WhatsApp é um <a>
                   // aninhado e anchor dentro de button é HTML inválido.
                   <div key={l.id} role="button" tabIndex={0}
+                    draggable={!dragDisabled}
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("text/plain", l.id);
+                      e.dataTransfer.effectAllowed = "move";
+                      setDraggingId(l.id);
+                    }}
+                    onDragEnd={() => { setDraggingId(null); setOverStage(null); }}
                     onClick={() => onOpen(l)}
                     onKeyDown={(e) => e.key === "Enter" && onOpen(l)}
                     style={{
                       background: T.card, border: `1px solid ${T.border}`, borderRadius: 12,
-                      padding: 12, cursor: "pointer", display: "flex", flexDirection: "column",
-                      gap: 6, transition: "border-color .15s",
+                      padding: 12, cursor: dragDisabled ? "pointer" : "grab",
+                      display: "flex", flexDirection: "column", gap: 6,
+                      transition: "border-color .15s, opacity .15s",
+                      opacity: draggingId === l.id ? 0.4 : 1,
                     }}
                     onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.3)"; }}
                     onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = T.border; }}>
@@ -65,6 +107,20 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen }: {
                     <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: T.muted }}>
                       {l.entityType === "wedding" ? <Heart size={11} /> : <CalendarDays size={11} />}
                       {fmtBR(l.dateRef)}
+                      {ACTIVE_STAGES.has(l.stage) && ageDays(String(l.createdAt), t) > 0 && (() => {
+                        const age = ageDays(String(l.createdAt), t);
+                        return (
+                          <span title={`Lead criado há ${age} dia${age > 1 ? "s" : ""}`}
+                            style={{
+                              marginLeft: "auto", fontSize: 9, fontWeight: 800,
+                              borderRadius: 999, padding: "1px 6px",
+                              background: age > 14 ? "rgba(248,113,113,0.12)" : age > 7 ? "rgba(245,158,11,0.12)" : T.glass2,
+                              color: age > 14 ? T.red : age > 7 ? T.amber : T.muted,
+                            }}>
+                            {age}d
+                          </span>
+                        );
+                      })()}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                       {l.value > 0 && (
