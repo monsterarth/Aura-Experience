@@ -39,7 +39,8 @@ export function LeadAlarms({
   useEffect(() => { load(); }, [load]);
 
   const create = async () => {
-    if (!title.trim() || !dueAt) return;
+    // Guard de reentrada: Enter repetido durante o POST criava alarme em dobro.
+    if (saving || !title.trim() || !dueAt) return;
     setSaving(true);
     try {
       const res = await fetch("/api/admin/comercial/alarms", {

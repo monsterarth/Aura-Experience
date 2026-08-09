@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { RoleGuard } from "@/components/auth/RoleGuard";
@@ -52,8 +53,11 @@ function TarifarioPage() {
   const searchParams = useSearchParams();
   const quoteIdHandled = useRef(false);
   const waitlistIdHandled = useRef(false);
-  // Entrada pendente: só vira 'converted' quando o orçamento é DE FATO salvo.
-  const waitlistPending = useRef<string | null>(null);
+  // Entrada pendente: só vira 'converted' quando o orçamento salvo É do lead
+  // da espera (conferido por telefone/nome — a recepção pode ser interrompida
+  // e fazer o orçamento de OUTRO cliente no meio; sem a conferência, a
+  // entrada errada era fechada com quoteId alheio).
+  const waitlistPending = useRef<{ id: string; phone: string; name: string } | null>(null);
 
   const handleReopenQuote = useCallback((q: RateQuoteRecord) => {
     setReopenQuote(q);
@@ -81,7 +85,7 @@ function TarifarioPage() {
       .then((d) => {
         const e = d?.entry;
         if (!e) return;
-        waitlistPending.current = e.id;
+        waitlistPending.current = { id: e.id, phone: e.phone || "", name: e.name || "" };
         setWaitlistLead({
           name: e.name, phone: e.phone || "", email: e.email || "",
           checkIn: e.periodStart, checkOut: e.periodEnd,
@@ -92,19 +96,39 @@ function TarifarioPage() {
       .catch(() => {});
   }, [searchParams, property?.id]);
 
-  const handleQuoteSaved = useCallback((quoteId: string) => {
+  const handleQuoteSaved = useCallback(async (quoteId: string) => {
     setFunnelSignal((n) => n + 1);
-    // Fecha a conversão da lista de espera (rastro: quoteId na entrada).
-    if (waitlistPending.current && property?.id) {
-      fetch("/api/admin/comercial/waitlist", {
+    const pending = waitlistPending.current;
+    if (!pending || !property?.id) return;
+
+    // Confere se o orçamento salvo é MESMO do lead da espera antes de fechar
+    // a conversão. Mismatch mantém a entrada armada (o orçamento certo pode
+    // vir depois).
+    try {
+      const res = await fetch(`/api/admin/tarifario/quotes?propertyId=${property.id}&id=${quoteId}`);
+      if (!res.ok) return;
+      const quote = (await res.json())?.quote;
+      if (!quote) return;
+
+      const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      const tail = (p: string) => p.replace(/\D/g, "").slice(-8);
+      const phoneMatches = pending.phone && quote.clientPhone
+        && tail(pending.phone) === tail(String(quote.clientPhone));
+      const nameMatches = pending.name && quote.clientName
+        && norm(pending.name) === norm(String(quote.clientName));
+      if (!phoneMatches && !nameMatches) return;
+
+      const patch = await fetch("/api/admin/comercial/waitlist", {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          propertyId: property.id, id: waitlistPending.current,
-          status: "converted", quoteId,
+          propertyId: property.id, id: pending.id, status: "converted", quoteId,
         }),
-      }).catch(() => {});
-      waitlistPending.current = null;
-    }
+      });
+      if (patch.ok) {
+        waitlistPending.current = null;
+        toast.success("Lista de espera: entrada convertida em orçamento.");
+      }
+    } catch { /* melhor manter armado do que fechar a entrada errada */ }
   }, [property?.id]);
 
   const load = useCallback(async () => {

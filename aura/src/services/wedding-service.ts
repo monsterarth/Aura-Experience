@@ -401,6 +401,8 @@ export const WeddingService = {
   /**
    * Cobranças pendentes: parcelas vencidas e não pagas da propriedade.
    * Alimentam a fila de alarmes do funil de casamentos como linhas virtuais.
+   * Casamento cancelado/perdido sai da conta — contrato que caiu não se
+   * cobra (senão a parcela vira cobrança perpétua na fila e no badge).
    */
   async listOverdueInstallments(
     propertyId: string
@@ -408,8 +410,9 @@ export const WeddingService = {
     const today = localToday();
     const { data, error } = await supabaseAdmin
       .from("wedding_installments")
-      .select("*, wedding:weddings!inner(propertyId, bride, groom)")
+      .select("*, wedding:weddings!inner(propertyId, bride, groom, status)")
       .eq("wedding.propertyId", propertyId)
+      .not("wedding.status", "in", "(cancelled,lost)")
       .eq("paid", false)
       .not("dueDate", "is", null)
       .lte("dueDate", today)

@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { parseMoneyBR, moneyToInput } from "@/lib/parse-money";
 import { Wedding, WeddingInstallment, WeddingStatus } from "@/types/aura";
 import { Heart, Shield, Clock, X, Plus, Users, Globe, Star, Check, DollarSign, Calendar, Trash2, CheckCircle2, Archive, Loader2, Pencil } from "lucide-react";
 import { T, fmt, todayIso, daysUntil, nightsBetween, fmtMoney, STATUS_CFG, VENDOR_ICONS, Pill, CabinMap, leadState, installmentSummary } from "./lib";
@@ -69,8 +70,8 @@ function InstallmentsPanel({ wedding, onDataChanged }: {
   };
 
   const saveForm = async () => {
-    if (!form) return;
-    const value = parseFloat(form.value.replace(/\./g, "").replace(",", "."));
+    if (!form || saving) return;
+    const value = parseMoneyBR(form.value);
     if (!form.label.trim() || !Number.isFinite(value) || value <= 0) {
       toast.error("Preencha nome e valor da parcela.");
       return;
@@ -176,7 +177,7 @@ function InstallmentsPanel({ wedding, onDataChanged }: {
                 </button>
                 <div style={{ display: "flex", gap: 4 }}>
                   <button title="Editar" disabled={busy}
-                    onClick={() => setForm({ id: inst.id, label: inst.label, value: String(inst.value), dueDate: inst.dueDate ?? "" })}
+                    onClick={() => setForm({ id: inst.id, label: inst.label, value: moneyToInput(Number(inst.value)), dueDate: inst.dueDate ?? "" })}
                     style={{ width: 26, height: 26, borderRadius: 8, border: `1px solid ${T.border2}`, background: T.glass, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <Pencil size={11} color={T.muted} />
                   </button>

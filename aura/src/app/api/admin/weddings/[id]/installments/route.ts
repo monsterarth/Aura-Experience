@@ -8,10 +8,10 @@ import { AuditService } from '@/services/audit-service';
 import { WeddingService } from '@/services/wedding-service';
 
 const WEDDING_ROLES = ['super_admin', 'admin', 'reception', 'manager'] as const;
-const ADMIN_TIER = ['super_admin', 'admin', 'manager'];
 
 // service-role ignora RLS → validamos posse (propertyId) manualmente antes de
-// mutar (mesmo padrão da rota-mãe /api/admin/weddings/[id]).
+// mutar. Rota NOVA de dado financeiro segue a convenção estrita da fase B.5
+// (cross-tenant só super_admin), não o ADMIN_TIER frouxo da rota-mãe legada.
 async function assertOwnership(
   id: string,
   staff: { role: string; propertyId: string | null }
@@ -19,7 +19,7 @@ async function assertOwnership(
   const { data: existing } = await supabaseAdmin!
     .from('weddings').select('propertyId, bride, groom').eq('id', id).single();
   if (!existing) return NextResponse.json({ error: 'Casamento não encontrado.' }, { status: 404 });
-  if (!ADMIN_TIER.includes(staff.role) && existing.propertyId !== staff.propertyId) {
+  if (staff.role !== 'super_admin' && existing.propertyId !== staff.propertyId) {
     return NextResponse.json({ error: 'Acesso negado.' }, { status: 403 });
   }
   return { propertyId: existing.propertyId, couple: `${existing.bride} & ${existing.groom}` };

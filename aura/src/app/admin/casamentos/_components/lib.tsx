@@ -200,17 +200,18 @@ export const FToggle = ({ label, sub, checked, onChange }: {
 /**
  * Resumo financeiro do contrato — REGRA ÚNICA para card e drawer.
  * Fonte: wedding_installments; fallback na derivação legada (2 campos fixos +
- * saldo) para dados de antes da migration. Linhas legadas têm id "legacy-*"
- * e são só leitura (editar exige parcela real).
+ * saldo) SÓ quando `installments` nem veio na query (pré-migration). Array
+ * vazio é resposta real — casamento sem parcelas, sem ressuscitar fantasmas
+ * legados (excluir todas criava beco sem saída: fantasmas + botão sumido).
+ * Linhas legadas têm id "legacy-*" e são só leitura.
  */
 export function installmentSummary(w: Wedding): {
   rows: WeddingInstallment[]; paidTotal: number; paidPct: number; legacy: boolean;
 } {
-  const list = (w.installments ?? [])
-    .slice()
-    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
-
-  if (list.length > 0) {
+  if (w.installments != null) {
+    const list = w.installments
+      .slice()
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
     const paidTotal = list.filter(i => i.paid).reduce((s, i) => s + Number(i.value), 0);
     const paidPct = w.contractTotal > 0 ? Math.round((paidTotal / w.contractTotal) * 100) : 0;
     return { rows: list, paidTotal, paidPct, legacy: false };

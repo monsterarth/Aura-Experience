@@ -13,8 +13,10 @@
 -- versionadas — o tipo da PK não é garantido (uuid vs text). O FK das
 -- parcelas é criado com o tipo REAL lido de pg_attribute.
 --
--- Idempotente — pode rodar de novo sem efeito colateral (o backfill só pega
--- casamentos SEM nenhuma parcela).
+-- Idempotente — pode rodar de novo sem efeito colateral IMEDIATO (o backfill
+-- só pega casamentos SEM nenhuma parcela). ATENÇÃO: rodar de novo MESES
+-- depois recriaria parcelas de casamentos que ficaram deliberadamente sem
+-- nenhuma — rode uma vez só.
 -- Aplicar no SQL Editor do Supabase.
 -- ═══════════════════════════════════════════════════════════════════════════
 
@@ -54,12 +56,17 @@ CREATE INDEX IF NOT EXISTS idx_wedding_installments_wedding
 CREATE INDEX IF NOT EXISTS idx_wedding_installments_overdue
   ON public.wedding_installments("dueDate") WHERE paid = false;
 
--- RLS: padrão permissivo dos módulos novos (badge conta pelo browser).
+-- RLS: o browser só LÊ (badge conta parcelas vencidas + realtime); escrita é
+-- exclusiva das rotas (service role, com posse validada + auditoria). Policy
+-- FOR ALL deixaria qualquer staff logado marcar parcela alheia como paga
+-- direto no PostgREST, sem auditoria — achado da revisão da fase B.5.
 DO $$
 BEGIN
   EXECUTE 'ALTER TABLE public.wedding_installments ENABLE ROW LEVEL SECURITY;';
   EXECUTE 'DROP POLICY IF EXISTS wedding_installments_auth_all ON public.wedding_installments;';
-  EXECUTE 'CREATE POLICY wedding_installments_auth_all ON public.wedding_installments FOR ALL TO authenticated USING (true) WITH CHECK (true);';
+  EXECUTE 'DROP POLICY IF EXISTS wedding_installments_auth_read ON public.wedding_installments;';
+  EXECUTE 'CREATE POLICY wedding_installments_auth_read ON public.wedding_installments FOR SELECT TO authenticated USING (true);';
+  EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.wedding_installments FROM anon, authenticated;';
 END $$;
 
 DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.wedding_installments; EXCEPTION WHEN duplicate_object THEN NULL; END $$;

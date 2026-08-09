@@ -76,10 +76,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         .lte('dueAt', today),
       // Parcela vencida = cobrança na fila de casamentos (linha virtual) —
       // entra no badge também. Join !inner: a tabela não tem propertyId.
+      // Cancelado/perdido fora, espelhando listOverdueInstallments.
       supabase
         .from('wedding_installments')
-        .select('id, weddings!inner(propertyId)', { count: 'exact', head: true })
+        .select('id, weddings!inner(propertyId, status)', { count: 'exact', head: true })
         .eq('weddings.propertyId', propertyId)
+        .not('weddings.status', 'in', '(cancelled,lost)')
         .eq('paid', false)
         .not('dueDate', 'is', null)
         .lte('dueDate', today),

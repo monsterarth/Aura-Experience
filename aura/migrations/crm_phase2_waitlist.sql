@@ -39,12 +39,16 @@ CREATE INDEX IF NOT EXISTS idx_waitlist_active
   ON public.waitlist_entries("propertyId", "periodStart")
   WHERE status IN ('waiting','contacted');
 
--- RLS: padrão permissivo dos módulos novos (service role + filtro na aplicação).
+-- RLS: NENHUMA policy — nenhum código de browser toca esta tabela (a aba
+-- Espera usa só /api/admin/comercial/waitlist, service role, que ignora RLS).
+-- É PII de lead (nome, telefone, e-mail, período de viagem): RLS ligada sem
+-- policy nega tudo para anon/authenticated, e o REVOKE fecha a outra metade
+-- (mesmo racional do property_secrets; achado da revisão da fase B.5).
 DO $$
 BEGIN
   EXECUTE 'ALTER TABLE public.waitlist_entries ENABLE ROW LEVEL SECURITY;';
   EXECUTE 'DROP POLICY IF EXISTS waitlist_entries_auth_all ON public.waitlist_entries;';
-  EXECUTE 'CREATE POLICY waitlist_entries_auth_all ON public.waitlist_entries FOR ALL TO authenticated USING (true) WITH CHECK (true);';
+  EXECUTE 'REVOKE ALL PRIVILEGES ON public.waitlist_entries FROM anon, authenticated;';
 END $$;
 
 -- ── Conferência ─────────────────────────────────────────────────────────────

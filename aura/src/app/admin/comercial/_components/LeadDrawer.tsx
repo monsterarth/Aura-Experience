@@ -2,17 +2,51 @@
 // timeline do histórico. As ações reusam os endpoints existentes de cada funil.
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CalendarClock, CalendarDays, ExternalLink, Heart, Loader2, Mail,
   MessageSquare, Pencil, Phone, Send, Tag, X, XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { parseMoneyBR, moneyToInput } from "@/lib/parse-money";
 import { CrmChannel, CrmLead } from "@/types/aura";
 import { ClientPanel } from "./ClientPanel";
 import { InteractionTimeline } from "./InteractionTimeline";
 import { LeadAlarms } from "./LeadAlarms";
 import { QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, fmtBR, money } from "./shared";
+
+/**
+ * Input de data que só grava no blur/Enter: patch a cada change disparava no
+ * meio da digitação do ano (Chrome emite change assim que a data fica
+ * "completa" — ex.: ano 0002), desabilitava o campo (busy) e persistia data
+ * lixo. Datas antes de 2000 são descartadas como digitação incompleta.
+ */
+function DatePatchField({ value, busy, onCommit }: {
+  value: string | null | undefined;
+  busy: boolean;
+  onCommit: (v: string | null) => void;
+}) {
+  const [draft, setDraft] = useState(value ?? "");
+  const syncedTo = useRef(value ?? "");
+  useEffect(() => {
+    if (syncedTo.current !== (value ?? "")) {
+      syncedTo.current = value ?? "";
+      setDraft(value ?? "");
+    }
+  }, [value]);
+
+  const commit = () => {
+    if (draft && draft < "2000-01-01") { setDraft(value ?? ""); return; }
+    if ((draft || null) !== (value || null)) onCommit(draft || null);
+  };
+
+  return (
+    <input type="date" className="field-input" value={draft} disabled={busy}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => e.key === "Enter" && commit()} />
+  );
+}
 
 /**
  * Seção "Negociação" (só orçamentos): valor negociado editável inline —
@@ -33,12 +67,16 @@ function NegotiationSection({
   const [valueStr, setValueStr] = useState("");
 
   const startEdit = () => {
-    setValueStr(lead.negotiatedValue ? String(lead.negotiatedValue) : lead.value > 0 ? String(lead.value) : "");
+    // Prefill em formato BR (vírgula) — prefill com ponto + parser BR era o
+    // bug de 10x/100x pego na revisão.
+    setValueStr(lead.negotiatedValue ? moneyToInput(lead.negotiatedValue)
+      : lead.value > 0 ? moneyToInput(lead.value) : "");
     setEditingValue(true);
   };
 
   const commitValue = async () => {
-    const v = parseFloat(valueStr.replace(/\./g, "").replace(",", "."));
+    if (busy) return;
+    const v = parseMoneyBR(valueStr);
     await onPatch({ negotiatedValue: Number.isFinite(v) && v > 0 ? v : null });
     setEditingValue(false);
   };
@@ -95,13 +133,13 @@ function NegotiationSection({
         </div>
         <div>
           <label className="field-label">Próximo follow-up</label>
-          <input type="date" className="field-input" value={lead.followUpAt ?? ""} disabled={busy}
-            onChange={(e) => onPatch({ followUpAt: e.target.value || null })} />
+          <DatePatchField value={lead.followUpAt} busy={busy}
+            onCommit={(v) => onPatch({ followUpAt: v })} />
         </div>
         <div>
           <label className="field-label">Validade do lead</label>
-          <input type="date" className="field-input" value={lead.expiresAt ?? ""} disabled={busy}
-            onChange={(e) => onPatch({ expiresAt: e.target.value || null })} />
+          <DatePatchField value={lead.expiresAt} busy={busy}
+            onCommit={(v) => onPatch({ expiresAt: v })} />
         </div>
       </div>
     </div>

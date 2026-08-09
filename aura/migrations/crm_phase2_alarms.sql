@@ -41,13 +41,19 @@ CREATE INDEX IF NOT EXISTS idx_crm_alarms_open
 CREATE INDEX IF NOT EXISTS idx_crm_alarms_entity
   ON public.crm_alarms("propertyId", "entityType", "entityId", "createdAt" DESC);
 
--- RLS: padrão permissivo dos módulos novos (service role + filtro na aplicação;
--- o badge conta pelo browser autenticado).
+-- RLS: o browser só LÊ (badge do NotificationContext = count + realtime);
+-- toda escrita passa pela rota (service role, com auth + auditoria).
+-- Policy FOR ALL aqui daria INSERT/UPDATE/DELETE cross-tenant a qualquer
+-- staff logado direto no PostgREST — achado da revisão da fase B.5.
+-- REVOKE de cinto e suspensório (padrão property_secrets): mesmo que uma
+-- policy permissiva reapareça, o GRANT de escrita não existe mais.
 DO $$
 BEGIN
   EXECUTE 'ALTER TABLE public.crm_alarms ENABLE ROW LEVEL SECURITY;';
   EXECUTE 'DROP POLICY IF EXISTS crm_alarms_auth_all ON public.crm_alarms;';
-  EXECUTE 'CREATE POLICY crm_alarms_auth_all ON public.crm_alarms FOR ALL TO authenticated USING (true) WITH CHECK (true);';
+  EXECUTE 'DROP POLICY IF EXISTS crm_alarms_auth_read ON public.crm_alarms;';
+  EXECUTE 'CREATE POLICY crm_alarms_auth_read ON public.crm_alarms FOR SELECT TO authenticated USING (true);';
+  EXECUTE 'REVOKE INSERT, UPDATE, DELETE ON public.crm_alarms FROM anon, authenticated;';
 END $$;
 
 -- Realtime para o badge do sidebar (padrão enable-realtime.sql).

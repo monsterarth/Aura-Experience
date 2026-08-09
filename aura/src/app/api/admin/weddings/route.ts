@@ -18,14 +18,25 @@ export async function GET(request: NextRequest) {
   const propertyId = isAdminTier && requested ? requested : auth.staff.propertyId;
   if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
 
+  // installments embutido: é o que alimenta o % pago do card e o CRUD da aba
+  // financeiro. Antes da migration weddings_installments a relação não existe
+  // e o embed falharia — refaz sem ele (a UI cai no fallback legado).
   const { data, error } = await supabaseAdmin!
+    .from('weddings')
+    .select('*, vendors:wedding_vendors(*), cabinAssignments:wedding_cabin_assignments(*), installments:wedding_installments(*)')
+    .eq('propertyId', propertyId)
+    .order('weddingDate', { ascending: true });
+
+  if (!error) return NextResponse.json(data ?? []);
+
+  const fallback = await supabaseAdmin!
     .from('weddings')
     .select('*, vendors:wedding_vendors(*), cabinAssignments:wedding_cabin_assignments(*)')
     .eq('propertyId', propertyId)
     .order('weddingDate', { ascending: true });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data ?? []);
+  if (fallback.error) return NextResponse.json({ error: fallback.error.message }, { status: 500 });
+  return NextResponse.json(fallback.data ?? []);
 }
 
 export async function POST(request: NextRequest) {
