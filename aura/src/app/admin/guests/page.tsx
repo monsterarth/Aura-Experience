@@ -1113,22 +1113,35 @@ function GuestsPageInner() {
     if (!contextProperty?.id) return;
     setLoading(true);
     try {
-      const data = await GuestService.listGuests(contextProperty.id, term);
-      setGuests(data);
-      if (preSelectId) {
-        const found = data.find((g: any) => g.id === preSelectId);
-        if (found) { setSelected(found); setShowPanel(true); }
-      }
+      setGuests(await GuestService.listGuests(contextProperty.id, term));
     } finally {
       setLoading(false);
     }
-  }, [contextProperty?.id, preSelectId]);
+  }, [contextProperty?.id]);
 
   // Debounced search
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => loadGuests(search || undefined), 300);
   }, [search, loadGuests]);
+
+  // Deep-link ?id= (vem do CRM): busca a ficha DIRETO. Procurar dentro da
+  // lista não servia — ela vem limitada a 100 nomes e a ficha pedida
+  // simplesmente não estava no recorte (link "abrir ficha" não abria nada).
+  const preSelectHandled = useRef(false);
+  useEffect(() => {
+    if (!preSelectId || !contextProperty?.id || preSelectHandled.current) return;
+    preSelectHandled.current = true;
+    fetch(`/api/admin/guests/lookup?propertyId=${contextProperty.id}&doc=${encodeURIComponent(preSelectId)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d?.guest) { toast.error("Hóspede não encontrado nesta propriedade."); return; }
+        setSelected(d.guest);
+        setShowPanel(true);
+        setSearch(d.guest.fullName);   // a lista mostra a ficha aberta
+      })
+      .catch(() => {});
+  }, [preSelectId, contextProperty?.id]);
 
   const handleSelect = (g: Guest) => {
     setCreatingNew(false);

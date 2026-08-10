@@ -13,6 +13,7 @@ import {
   RateQuoteInput,
   RateQuoteRecord,
   RateQuoteResult,
+  RateQuoteRoom,
   RateSettings,
   RateTable,
 } from '@/types/aura';
@@ -231,17 +232,42 @@ export function computeQuote(input: RateQuoteInput, data: RateData): RateQuoteRe
   return { categories: results, uncoveredDates: [], minNightsRequired, nights };
 }
 
+/** Total de UMA acomodação: a escolhida, ou o mínimo das opções ("a partir de"). */
+export function resolveRoomValue(
+  room: Pick<RateQuoteRoom, 'options' | 'selectedCategory'>
+): { value: number; approximate: boolean; chosen?: RateQuoteCategory } {
+  const options = room.options || [];
+  if (room.selectedCategory) {
+    const chosen = options.find(
+      (c) => c.categoryId === room.selectedCategory || c.category === room.selectedCategory
+    );
+    if (chosen) return { value: chosen.finalTotal, approximate: false, chosen };
+  }
+  if (options.length === 1) {
+    return { value: options[0].finalTotal, approximate: false, chosen: options[0] };
+  }
+  const totals = options.map((c) => c.finalTotal).filter((v) => v > 0);
+  return { value: totals.length ? Math.min(...totals) : 0, approximate: totals.length > 1 };
+}
+
 /**
  * Valor de um orçamento salvo — REGRA ÚNICA para funil, KPIs e vínculo com
  * estadia (antes havia duas implementações divergentes). Precedência:
- * valor negociado (fechado na conversa) → opção escolhida (por id, com
- * fallback por nome p/ dados antigos) → opção única → finalValue → mínimo do
- * snapshot ("a partir de", approximate=true).
+ * valor negociado (fechado na conversa) → SOMA das acomodações (`rooms`) →
+ * opção escolhida (por id, com fallback por nome p/ dados antigos) → opção
+ * única → finalValue → mínimo do snapshot ("a partir de", approximate=true).
+ *
+ * `rooms` e `snapshot` respondem perguntas diferentes: rooms são as
+ * acomodações PEDIDAS (somam); snapshot são as cabanas OFERECIDAS para uma
+ * acomodação (o cliente escolhe uma). Orçamentos anteriores à fase 3 não têm
+ * rooms e caem direto no caminho antigo.
  */
 export function resolveQuoteValue(
-  quote: Pick<RateQuoteRecord, 'snapshot' | 'selectedCategory' | 'finalValue' | 'negotiatedValue'>
+  quote: Pick<RateQuoteRecord, 'snapshot' | 'selectedCategory' | 'finalValue' | 'negotiatedValue'> &
+    { rooms?: RateQuoteRoom[] | null }
 ): { value: number; approximate: boolean; chosen?: RateQuoteCategory } {
   const snapshot = quote.snapshot || [];
+  const rooms = quote.rooms && quote.rooms.length > 0 ? quote.rooms : null;
 
   if (typeof quote.negotiatedValue === 'number' && quote.negotiatedValue > 0) {
     const chosen = quote.selectedCategory
@@ -250,6 +276,20 @@ export function resolveQuoteValue(
         )
       : snapshot.length === 1 ? snapshot[0] : undefined;
     return { value: quote.negotiatedValue, approximate: false, chosen };
+  }
+
+  if (rooms) {
+    let value = 0;
+    let approximate = false;
+    for (const room of rooms) {
+      const r = resolveRoomValue(room);
+      value += r.value;
+      if (r.approximate) approximate = true;
+    }
+    // `chosen` só faz sentido com uma acomodação (quem usa isso é o vínculo
+    // com a estadia, que é 1 cabana).
+    const single = rooms.length === 1 ? resolveRoomValue(rooms[0]).chosen : undefined;
+    return { value, approximate, chosen: single };
   }
 
   if (quote.selectedCategory) {

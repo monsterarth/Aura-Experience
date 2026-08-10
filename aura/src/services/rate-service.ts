@@ -9,13 +9,15 @@ import {
   RatePeriod,
   RateQuoteInput,
   RateQuoteRecord,
+  RateQuoteRoom,
   RateQuoteStatus,
   RateSettings,
   RateTable,
   RateAvailability,
 } from "@/types/aura";
 import {
-  addDays, computeQuote, findOverlaps, nightsBetween, resolveFill, resolveOverwrite, resolveQuoteValue,
+  addDays, computeQuote, findOverlaps, nightsBetween, resolveFill, resolveOverwrite,
+  resolveQuoteValue, resolveRoomValue,
 } from "@/lib/rate-engine";
 import { AuditService } from "./audit-service";
 import { CrmService } from "./crm-service";
@@ -401,31 +403,65 @@ export const RateService = {
     const status: RateQuoteStatus =
       payload.status && QUOTE_STATUSES.includes(payload.status) ? payload.status : "open";
 
-    // Recálculo server-side (ignora snapshot/finalValue do payload).
-    const input: RateQuoteInput = {
-      checkIn: payload.checkIn!,
-      checkOut: payload.checkOut!,
-      adults: Math.max(1, Number(payload.adults) || 2),
-      children: Math.max(0, Number(payload.children) || 0),
-      babies: Math.max(0, Number(payload.babies) || 0),
-      pets: Math.max(0, Number(payload.pets) || 0),
+    // Recálculo server-side (ignora options/snapshot/finalValue do payload —
+    // do cliente vem só a COMPOSIÇÃO pedida: quantas acomodações e o pax de
+    // cada uma). Os controles comerciais (flutuação, descontos, extra) são do
+    // orçamento inteiro e entram no cálculo de todas as acomodações.
+    const commercial = {
       fluctuationPct: Number(payload.fluctuationPct) || 0,
       discountIds: Array.isArray(payload.discountIds) ? payload.discountIds.map(String) : [],
       adhocValue: Math.max(0, Number(payload.adhocValue) || 0),
-      adhocType: payload.adhocType === "brl" ? "brl" : "pct",
+      adhocType: (payload.adhocType === "brl" ? "brl" : "pct") as "pct" | "brl",
     };
+    const inputFor = (pax: { adults?: number; children?: number; babies?: number; pets?: number }): RateQuoteInput => ({
+      checkIn: payload.checkIn!,
+      checkOut: payload.checkOut!,
+      adults: Math.max(1, Number(pax.adults) || 2),
+      children: Math.max(0, Number(pax.children) || 0),
+      babies: Math.max(0, Number(pax.babies) || 0),
+      pets: Math.max(0, Number(pax.pets) || 0),
+      ...commercial,
+    });
+
+    // Sem `rooms` no payload (chamador antigo) → uma acomodação com o pax raiz.
+    const requested = Array.isArray(payload.rooms) && payload.rooms.length > 0
+      ? payload.rooms
+      : [{ id: "", label: null, adults: payload.adults, children: payload.children,
+           babies: payload.babies, pets: payload.pets,
+           selectedCategory: payload.selectedCategory } as Partial<RateQuoteRoom>];
+
     const data = await this.getRateData(propertyId);
-    const result = computeQuote(input, data);
-    if (result.categories.length === 0) {
-      throw new Error(
-        result.uncoveredDates.length > 0
-          ? "Sem regra de tarifário para as datas — cadastre na aba Calendário."
-          : "Nenhuma categoria com preço para esses parâmetros."
-      );
-    }
-    const snapshot = result.categories;
-    const chosen = payload.selectedCategory
-      ? snapshot.find((c) => c.categoryId === payload.selectedCategory || c.category === payload.selectedCategory)
+    const rooms: RateQuoteRoom[] = requested.map((r, i) => {
+      const input = inputFor(r);
+      const result = computeQuote(input, data);
+      if (result.categories.length === 0) {
+        throw new Error(
+          result.uncoveredDates.length > 0
+            ? "Sem regra de tarifário para as datas — cadastre na aba Calendário."
+            : `Nenhuma categoria com preço para a acomodação ${i + 1}.`
+        );
+      }
+      // A escolha só vale se a categoria existir nas opções recalculadas.
+      const pick = r.selectedCategory
+        ? result.categories.find((c) => c.categoryId === r.selectedCategory || c.category === r.selectedCategory)
+        : undefined;
+      return {
+        id: r.id || crypto.randomUUID(),
+        label: r.label?.trim() || null,
+        adults: input.adults, children: input.children,
+        babies: input.babies, pets: input.pets,
+        options: result.categories,
+        selectedCategory: pick ? pick.categoryId || pick.category : null,
+      };
+    });
+
+    // Espelho da acomodação 1 nas colunas raiz — é o que mantém as telas
+    // legadas (funil do tarifário, vínculo com estadia) funcionando.
+    const first = rooms[0];
+    const input = inputFor(first);
+    const snapshot = first.options;
+    const chosen = first.selectedCategory
+      ? snapshot.find((c) => c.categoryId === first.selectedCategory || c.category === first.selectedCategory)
       : undefined;
 
     // Origem: aceita só slug conhecido da propriedade (ou null).
@@ -454,9 +490,14 @@ export const RateService = {
       discountIds: input.discountIds,
       adhocValue: input.adhocValue,
       adhocType: input.adhocType,
+      rooms,
       snapshot,
       selectedCategory: chosen ? chosen.categoryId || chosen.category : null,
-      finalValue: chosen ? chosen.finalTotal : null,
+      // finalValue = soma das acomodações quando TODAS têm escolha; senão
+      // fica null e o valor sai "a partir de" via resolveQuoteValue.
+      finalValue: rooms.every((r) => r.selectedCategory)
+        ? rooms.reduce((s, r) => s + resolveRoomValue(r).value, 0)
+        : null,
       notes: payload.notes?.trim() || null,
     };
 
@@ -601,6 +642,79 @@ export const RateService = {
         });
       }
     }
+  },
+
+  /**
+   * Escolhe (ou desmarca, com categoryId=null) a cabana de UMA acomodação.
+   * Endpoint próprio em vez de PATCH livre: o preço vem SEMPRE das `options`
+   * já calculadas no servidor — o cliente só diz qual das opções quer.
+   * Devolve o orçamento atualizado.
+   */
+  async selectRoomCategory(
+    propertyId: string,
+    quoteId: string,
+    roomId: string,
+    categoryId: string | null,
+    actor?: { id: string; name: string }
+  ): Promise<RateQuoteRecord> {
+    const admin = supabaseAdmin!;
+    const quote = await this.getQuoteById(propertyId, quoteId);
+    if (!quote) throw new Error("Orçamento não encontrado.");
+
+    const rooms = quote.rooms && quote.rooms.length > 0
+      ? quote.rooms
+      // Orçamento anterior à fase 3: promove o snapshot a acomodação única.
+      : [{
+          id: "legacy", label: null,
+          adults: quote.adults, children: quote.children,
+          babies: quote.babies, pets: quote.pets,
+          options: quote.snapshot || [],
+          selectedCategory: quote.selectedCategory ?? null,
+        } as RateQuoteRoom];
+
+    const target = rooms.find((r) => r.id === roomId) ?? (rooms.length === 1 ? rooms[0] : null);
+    if (!target) throw new Error("Acomodação não encontrada.");
+
+    let picked: string | null = null;
+    if (categoryId) {
+      const option = target.options.find((c) => c.categoryId === categoryId || c.category === categoryId);
+      if (!option) throw new Error("Essa cabana não está entre as opções desta acomodação.");
+      picked = option.categoryId || option.category;
+    }
+
+    const next = rooms.map((r) => (r.id === target.id ? { ...r, selectedCategory: picked } : r));
+    const first = next[0];
+    const allChosen = next.every((r) => r.selectedCategory);
+
+    const { data, error } = await admin
+      .from("rate_quotes")
+      .update({
+        rooms: next,
+        // Espelho da acomodação 1 + total quando o pedido está fechado.
+        selectedCategory: first.selectedCategory ?? null,
+        finalValue: allChosen ? next.reduce((s, r) => s + resolveRoomValue(r).value, 0) : null,
+        updatedAt: new Date().toISOString(),
+      })
+      .eq("id", quoteId)
+      .eq("propertyId", propertyId)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+
+    if (actor) {
+      const label = target.label || `Acomodação ${next.indexOf(target) + 1}`;
+      const catName = picked
+        ? target.options.find((c) => (c.categoryId || c.category) === picked)?.category ?? picked
+        : null;
+      await AuditService.log({
+        propertyId, userId: actor.id, userName: actor.name,
+        action: "UPDATE", entity: "RATE_QUOTE", entityId: quoteId,
+        details: catName
+          ? `${label}: cabana escolhida — ${catName}.`
+          : `${label}: escolha de cabana desfeita.`,
+      });
+    }
+    return data as RateQuoteRecord;
   },
 
   async deleteQuote(propertyId: string, id: string, actorId: string, actorName: string): Promise<void> {
@@ -762,13 +876,24 @@ export const RateService = {
     if (stay.cabinId) {
       const { data: cabin } = await admin
         .from("cabins").select("categoryId").eq("id", stay.cabinId).maybeSingle();
-      if (cabin?.categoryId) chosen = snapshot.find((c) => c.categoryId === cabin.categoryId);
+      if (cabin?.categoryId) {
+        // Orçamento com várias acomodações: a diária desta estadia é o total
+        // DA ACOMODAÇÃO que casa com a cabana — não o total do grupo todo.
+        for (const room of quote.rooms ?? []) {
+          const hit = room.options.find((c) => c.categoryId === cabin.categoryId);
+          if (hit) { chosen = hit; break; }
+        }
+        if (!chosen) chosen = snapshot.find((c) => c.categoryId === cabin.categoryId);
+      }
     }
     // Valor negociado vence até a categoria da cabana: é o preço fechado com
-    // o cliente. Sem negociado nem cabana casada: regra única de valor
-    // (aproximado "a partir de" não vira diária — melhor sem hospedagem que
-    // com valor errado).
-    const negotiated = typeof quote.negotiatedValue === "number" && quote.negotiatedValue > 0
+    // o cliente. EXCEÇÃO: com várias acomodações o negociado é do pedido
+    // inteiro — jogá-lo numa cabana só cobraria o grupo todo dela; nesse caso
+    // vale o total da acomodação casada. Sem negociado nem cabana casada:
+    // regra única de valor (aproximado "a partir de" não vira diária — melhor
+    // sem hospedagem que com valor errado).
+    const multiRoom = (quote.rooms?.length ?? 0) > 1;
+    const negotiated = !multiRoom && typeof quote.negotiatedValue === "number" && quote.negotiatedValue > 0
       ? quote.negotiatedValue : null;
     let total: number | null = negotiated ?? (chosen ? chosen.finalTotal : null);
     if (total == null) {

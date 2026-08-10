@@ -2418,6 +2418,28 @@ export interface RateQuoteResult {
   nights: number;
 }
 
+/**
+ * Uma ACOMODAÇÃO pedida dentro do orçamento — o hóspede pode querer 2 cabanas
+ * de casal, ou 1 casal + 1 família, na MESMA negociação (um card só no funil).
+ * Não confundir com `options`: essas são as cabanas OFERECIDAS para esta
+ * acomodação, das quais o cliente escolhe UMA. O valor do orçamento é a soma
+ * das acomodações.
+ */
+export interface RateQuoteRoom {
+  /** id estável (uuid) — chave da escolha e da UI. */
+  id: string;
+  /** Rótulo livre ("Casal 1", "Família"); vazio = numeração automática. */
+  label?: string | null;
+  adults: number;
+  children: number;
+  babies: number;
+  pets: number;
+  /** Opções calculadas NO SERVIDOR para o pax desta acomodação. */
+  options: RateQuoteCategory[];
+  /** Categoria escolhida para esta acomodação (categoryId). */
+  selectedCategory?: string | null;
+}
+
 // ==========================================
 // MÓDULO CRM (compartilhado: orçamentos + casamentos)
 // ==========================================
@@ -2455,7 +2477,9 @@ export type CrmEntityType = 'quote' | 'wedding';
 export type CrmInteractionKind =
   | 'created' | 'note' | 'stage_change' | 'follow_up' | 'sent'
   | 'converted' | 'stay_linked' | 'lost' | 'reopened'
-  | 'value_change' | 'guest_linked' | 'alarm_done';
+  | 'value_change' | 'guest_linked' | 'alarm_done'
+  /** O cliente aceitou a proposta na página pública. */
+  | 'client_accepted';
 
 /** Uma linha do histórico comercial — contato, troca de etapa, envio, perda… */
 export interface CrmInteraction {
@@ -2633,7 +2657,15 @@ export interface RateQuoteRecord {
   discountIds: string[];
   adhocValue: number;
   adhocType: 'pct' | 'brl';
-  // Resultado congelado
+  /**
+   * Acomodações pedidas (1..N). Presente nos orçamentos criados a partir da
+   * fase 3; nos antigos é undefined e vale o par snapshot/selectedCategory.
+   * As colunas raiz (adults/children/…, snapshot, selectedCategory,
+   * finalValue) espelham a acomodação 1 — é o que mantém as telas legadas
+   * funcionando.
+   */
+  rooms?: RateQuoteRoom[] | null;
+  // Resultado congelado (espelho da acomodação 1 quando há `rooms`)
   snapshot: RateQuoteCategory[];
   selectedCategory?: string | null;
   finalValue?: number | null;
@@ -2642,6 +2674,8 @@ export interface RateQuoteRecord {
    * em resolveQuoteValue. Editável pela recepção COM auditoria (value_change).
    */
   negotiatedValue?: number | null;
+  /** Quando o cliente aceitou a proposta na página pública /cotacao/[id]. */
+  acceptedAt?: Timestamp | null;
   // Funil
   status: RateQuoteStatus;
   lostReason?: string | null;
