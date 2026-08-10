@@ -605,6 +605,7 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
           propertyId={property.id}
           channels={channels}
           attendantName={userData?.fullName || "Recepção"}
+          proposalBase={proposalBase}
           initialBundle={bundleCache.current}
           onBundleLoaded={(b) => { bundleCache.current = b; }}
           onClose={() => { setWizardOpen(false); setWizardSeed(null); }}

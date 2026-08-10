@@ -47,6 +47,8 @@ export type PublicQuoteRoom = {
   pets: number;
   options: PublicQuoteOption[];
   selectedCategory: string | null;
+  /** Valor fechado com o cliente para esta acomodação (vence a tabela). */
+  negotiatedValue: number | null;
 };
 
 export type PublicQuoteView = {
@@ -67,6 +69,8 @@ export type PublicQuoteView = {
   approximate: boolean;
   acceptedAt: string | null;
   expiresAt: string | null;
+  /** Regras da pousada (settings.generalPolicyText) — aceite obrigatório. */
+  policyText: string | null;
   property: {
     id: string;
     name: string;
@@ -152,7 +156,9 @@ export const RateQuotePublicService = {
     const periodKey = (r: RateQuoteRoom) => `${r.checkIn || q.checkIn}|${r.checkOut || q.checkOut}`;
     const mixedPeriods = new Set(rooms.map(periodKey)).size > 1;
 
-    const settings = (property?.settings ?? {}) as { whatsappNumber?: string; contactPhone?: string };
+    const settings = (property?.settings ?? {}) as {
+      whatsappNumber?: string; contactPhone?: string; generalPolicyText?: string;
+    };
 
     return {
       id: q.id,
@@ -172,11 +178,13 @@ export const RateQuotePublicService = {
         babies: room.babies, pets: room.pets,
         options: room.options.map((c) => publicOption(c, siteUrlOf(c.categoryId))),
         selectedCategory: room.selectedCategory ?? null,
+        negotiatedValue: room.negotiatedValue ?? null,
       })),
       total,
       approximate,
       acceptedAt: q.acceptedAt ?? null,
       expiresAt: q.expiresAt ?? null,
+      policyText: settings.generalPolicyText?.trim() || null,
       property: {
         id: property?.id ?? q.propertyId,
         name: property?.name ?? "",
@@ -199,6 +207,8 @@ export const RateQuotePublicService = {
   async acceptQuote(input: {
     id: string;
     selections: { roomId: string; categoryId: string }[];
+    /** Aceite explícito das regras da pousada (quando há texto). */
+    policyAccepted?: boolean;
     elapsedMs?: number;
     website?: string;           // honeypot
     ip?: string;
@@ -218,6 +228,15 @@ export const RateQuotePublicService = {
     // Robô: engole em silêncio (o cliente honesto nunca cai aqui).
     if (input.website || (input.elapsedMs != null && input.elapsedMs < MIN_ELAPSED_MS)) {
       return { ok: true };
+    }
+
+    // Regras da pousada: quando existem, o aceite é condição do aceite.
+    const { data: propRow } = await supabaseAdmin
+      .from("properties").select("settings").eq("id", q.propertyId).maybeSingle();
+    const policyText = ((propRow?.settings ?? {}) as { generalPolicyText?: string })
+      .generalPolicyText?.trim() || null;
+    if (policyText && !input.policyAccepted) {
+      return { ok: false, error: "É preciso aceitar as regras da pousada." };
     }
 
     const rooms = roomsOf(q);
@@ -260,6 +279,10 @@ export const RateQuotePublicService = {
         rooms: next.map((r) => ({ roomId: r.id, categoryId: r.selectedCategory })),
         ip: input.ip ?? null,
         userAgent: input.userAgent ?? null,
+        // Prova do aceite das regras: o tamanho do texto vigente identifica a
+        // versão sem inchar o histórico com o texto inteiro.
+        policyAccepted: policyText ? true : null,
+        policyLength: policyText ? policyText.length : null,
       },
     });
 

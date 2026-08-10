@@ -2445,6 +2445,13 @@ export interface RateQuoteRoom {
   options: RateQuoteCategory[];
   /** Categoria escolhida para esta acomodação (categoryId). */
   selectedCategory?: string | null;
+  /**
+   * Valor fechado PARA ESTA acomodação (desconto, condição especial). Vence a
+   * tabela no cálculo dela — e o total do orçamento é a soma das acomodações.
+   * É aqui que a negociação acontece; `RateQuoteRecord.negotiatedValue` (o
+   * valor global) só vale para orçamentos anteriores às acomodações.
+   */
+  negotiatedValue?: number | null;
 }
 
 // ==========================================

@@ -232,11 +232,22 @@ export function computeQuote(input: RateQuoteInput, data: RateData): RateQuoteRe
   return { categories: results, uncoveredDates: [], minNightsRequired, nights };
 }
 
-/** Total de UMA acomodação: a escolhida, ou o mínimo das opções ("a partir de"). */
+/**
+ * Total de UMA acomodação. Precedência: valor negociado desta acomodação →
+ * a cabana escolhida → opção única → mínimo das opções ("a partir de").
+ */
 export function resolveRoomValue(
-  room: Pick<RateQuoteRoom, 'options' | 'selectedCategory'>
+  room: Pick<RateQuoteRoom, 'options' | 'selectedCategory' | 'negotiatedValue'>
 ): { value: number; approximate: boolean; chosen?: RateQuoteCategory } {
   const options = room.options || [];
+
+  if (typeof room.negotiatedValue === 'number' && room.negotiatedValue > 0) {
+    const chosen = room.selectedCategory
+      ? options.find((c) => c.categoryId === room.selectedCategory || c.category === room.selectedCategory)
+      : options.length === 1 ? options[0] : undefined;
+    return { value: room.negotiatedValue, approximate: false, chosen };
+  }
+
   if (room.selectedCategory) {
     const chosen = options.find(
       (c) => c.categoryId === room.selectedCategory || c.category === room.selectedCategory
@@ -327,6 +338,8 @@ Total: *{QTD_PESSOAS} pessoas*
 
 {RESUMO_CABANAS}
 {AVISO_EVENTO}
+✅ Escolha a sua cabana e confirme por aqui: {QUOTE_LINK}
+
 Fico no aguardo para seguirmos com a sua reserva!
 Qualquer dúvida, estou à disposição.`;
 
@@ -341,6 +354,8 @@ export interface QuoteMessageContext {
   attendantName: string;
   input: RateQuoteInput;
   isWedding: boolean;
+  /** Link público da proposta (/cotacao/<id>) — placeholder {QUOTE_LINK}. */
+  quoteLink?: string | null;
 }
 
 export function processTemplate(tpl: string, ctx: QuoteMessageContext, resumo = '', avisos = ''): string {
@@ -348,6 +363,11 @@ export function processTemplate(tpl: string, ctx: QuoteMessageContext, resumo = 
   const pagantes = (input.adults || 0) + (input.children || 0);
   const totalHumanos = pagantes + (input.babies || 0);
   return (tpl || '')
+    // Aceita {QUOTE_LINK} e {quotelink} (o segundo é como se pediu na mão).
+    // Sem link, a linha inteira que o contém sai fora — melhor perder a frase
+    // que mandar "veja em:" seguido de nada.
+    .replace(/^.*\{quote_?link\}.*$\n?/gim, (line) =>
+      ctx.quoteLink ? line.replace(/\{quote_?link\}/gi, ctx.quoteLink) : '')
     .replace(/{ATENDENTE}/g, ctx.attendantName)
     .replace(/{DATA_IN}/g, formatDateBR(input.checkIn))
     .replace(/{DATA_OUT}/g, formatDateBR(input.checkOut))

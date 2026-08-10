@@ -12,6 +12,7 @@ export async function acceptQuoteProposal(
   id: string,
   input: {
     selections: { roomId: string; categoryId: string }[];
+    policyAccepted?: boolean;
     elapsedMs?: number;
     website?: string;
   },
@@ -26,6 +27,7 @@ export async function acceptQuoteProposal(
     return await RateQuotePublicService.acceptQuote({
       id,
       selections: input.selections,
+      policyAccepted: input.policyAccepted,
       elapsedMs: input.elapsedMs,
       website: input.website,
       ip,

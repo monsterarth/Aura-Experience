@@ -41,7 +41,7 @@ const contactBtn: React.CSSProperties = {
  * definia a escolha sem volta. A gravação passa por `select-room`, que valida
  * a opção no servidor — preço nunca vem do cliente.
  */
-function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDuplicate }: {
+function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDuplicate, onLoaded }: {
   propertyId: string;
   lead: CrmLead;
   busy: boolean;
@@ -50,10 +50,15 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
   onChanged: () => void;
   onEdit: (quote: RateQuoteRecord) => void;
   onDuplicate: (quote: RateQuoteRecord) => void;
+  /** Avisa o drawer se o orçamento tem acomodações (o valor global some). */
+  onLoaded?: (hasRooms: boolean) => void;
 }) {
   const [quote, setQuote] = useState<RateQuoteRecord | null>(null);
   const [confirming, setConfirming] = useState<{ roomId: string; categoryId: string } | null>(null);
   const [saving, setSaving] = useState(false);
+  /** Acomodação com o valor em edição (id) + rascunho do campo. */
+  const [editingValue, setEditingValue] = useState<string | null>(null);
+  const [valueDraft, setValueDraft] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -61,9 +66,14 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
     setConfirming(null);
     fetch(`/api/admin/tarifario/quotes?propertyId=${propertyId}&id=${lead.id}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (alive) setQuote(d?.quote ?? null); })
+      .then((d) => {
+        if (!alive) return;
+        setQuote(d?.quote ?? null);
+        onLoaded?.(!!d?.quote?.rooms?.length);
+      })
       .catch(() => { if (alive) setQuote(null); });
     return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propertyId, lead.id]);
 
   if (!quote) return null;
@@ -78,24 +88,40 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
       }] : []);
   if (rooms.length === 0) return null;
 
-  const commit = async (roomId: string, categoryId: string | null) => {
+  /** Grava a mudança da acomodação (escolha e/ou valor combinado). */
+  const patchRoom = async (
+    roomId: string,
+    patch: { categoryId?: string | null; negotiatedValue?: number | null },
+    okMsg: string,
+  ) => {
     setSaving(true);
     try {
       const res = await fetch("/api/admin/tarifario/quotes/select-room", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ propertyId, id: quote.id, roomId, categoryId }),
+        body: JSON.stringify({ propertyId, id: quote.id, roomId, ...patch }),
       });
       const d = await res.json().catch(() => null);
       if (!res.ok) throw new Error(d?.error);
       setQuote(d.quote);
       setConfirming(null);
+      setEditingValue(null);
       onChanged();
-      toast.success(categoryId ? "Cabana escolhida." : "Escolha desfeita.");
+      toast.success(okMsg);
     } catch (e) {
-      toast.error(e instanceof Error && e.message ? e.message : "Erro ao registrar a escolha.");
+      toast.error(e instanceof Error && e.message ? e.message : "Erro ao gravar.");
     } finally {
       setSaving(false);
     }
+  };
+
+  const commit = (roomId: string, categoryId: string | null) =>
+    patchRoom(roomId, { categoryId }, categoryId ? "Cabana escolhida." : "Escolha desfeita.");
+
+  const commitValue = (room: RateQuoteRoom) => {
+    const v = parseMoneyBR(valueDraft);
+    const value = Number.isFinite(v) && v > 0 ? v : null;
+    patchRoom(room.id, { negotiatedValue: value },
+      value ? "Valor combinado atualizado." : "Valor voltou à tabela.");
   };
 
   const nights = rooms[0]?.options[0]?.nights ?? 0;
@@ -148,6 +174,54 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
                 <span style={{ ...pillS(T.gradSoft, T.g1, T.g1Border), fontSize: 9 }}>
                   {fmtBR(room.checkIn || quote.checkIn)} → {fmtBR(room.checkOut || quote.checkOut)}
                   {roomNights > 0 ? ` · ${roomNights}n` : ""}
+                </span>
+              )}
+
+              {/* Valor combinado DESTA acomodação — o total do orçamento é a
+                  soma; é aqui que a negociação acontece. */}
+              {active && (
+                <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5 }}>
+                  {editingValue === room.id ? (<>
+                    <input autoFocus style={{ ...S.input, width: 110, padding: "4px 8px", fontSize: 11 }}
+                      inputMode="decimal" placeholder="Ex.: 3450,00"
+                      value={valueDraft} onChange={(e) => setValueDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") commitValue(room);
+                        if (e.key === "Escape") setEditingValue(null);
+                      }} />
+                    <button onClick={() => commitValue(room)} disabled={busyAll}
+                      style={{ ...S.gradBtn, padding: "4px 10px", fontSize: 10.5, boxShadow: "none" }}>
+                      {saving ? <Loader2 size={11} className="animate-spin" /> : "OK"}
+                    </button>
+                    <button onClick={() => setEditingValue(null)}
+                      style={{ ...S.ghostBtn, padding: "4px 8px", fontSize: 10.5 }}>
+                      Cancelar
+                    </button>
+                  </>) : room.negotiatedValue ? (<>
+                    <span style={{ ...pillS("rgba(245,158,11,0.15)", T.amber, "rgba(245,158,11,0.3)"), fontSize: 9 }}>
+                      combinado R$ {money(room.negotiatedValue)}
+                    </span>
+                    <button onClick={() => { setValueDraft(moneyToInput(room.negotiatedValue!)); setEditingValue(room.id); }}
+                      title="Alterar o valor combinado" disabled={busyAll}
+                      style={{ padding: 4, borderRadius: 7, background: "none", border: "none", color: T.muted, cursor: "pointer", display: "flex" }}>
+                      <Pencil size={11} />
+                    </button>
+                    <button onClick={() => patchRoom(room.id, { negotiatedValue: null }, "Valor voltou à tabela.")}
+                      title="Voltar ao valor de tabela" disabled={busyAll}
+                      style={{ padding: 4, borderRadius: 7, background: "none", border: "none", color: T.muted, cursor: "pointer", display: "flex" }}>
+                      <X size={11} />
+                    </button>
+                  </>) : (
+                    <button onClick={() => { setValueDraft(""); setEditingValue(room.id); }}
+                      title="Fechar um valor para esta acomodação" disabled={busyAll}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 9px",
+                        borderRadius: 8, border: `1px solid ${T.border2}`, background: "transparent",
+                        color: T.muted, fontSize: 10, fontWeight: 800, cursor: "pointer", fontFamily: "inherit",
+                      }}>
+                      <Pencil size={10} /> valor combinado
+                    </button>
+                  )}
                 </span>
               )}
             </div>
@@ -331,11 +405,13 @@ function DatePatchField({ value, busy, onCommit }: {
  * perderia o foco a cada tecla (pegadinha já vivida no form de casamentos).
  */
 function NegotiationSection({
-  lead, channels, busy, onPatch,
+  lead, channels, busy, hideValue, onPatch,
 }: {
   lead: CrmLead;
   channels: CrmChannel[];
   busy: boolean;
+  /** Orçamento com acomodações: o valor é fechado POR acomodação, acima. */
+  hideValue?: boolean;
   onPatch: (patch: Record<string, unknown>) => Promise<void>;
 }) {
   const [editingValue, setEditingValue] = useState(false);
@@ -360,7 +436,7 @@ function NegotiationSection({
     <div style={{ padding: 20, borderBottom: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 12 }}>
       <p style={drawerLabel}>Negociação</p>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <div>
+        <div style={{ display: hideValue ? "none" : undefined }}>
           <label style={fieldLabel}>Valor</label>
           {editingValue ? (
             <div style={{ display: "flex", gap: 6 }}>
@@ -463,6 +539,8 @@ export function LeadDrawer({
   const [sending, setSending] = useState(false);
   // Timeline recarrega quando uma ação nossa muda o histórico
   const [timelineKey, setTimelineKey] = useState(0);
+  // Com acomodações, o valor é fechado por acomodação (some o campo global).
+  const [quoteHasRooms, setQuoteHasRooms] = useState(false);
 
   const isQuote = lead.entityType === "quote";
   const stages = isQuote ? QUOTE_STAGES : WEDDING_STAGES;
@@ -632,12 +710,14 @@ export function LeadDrawer({
               <QuoteSnapshot propertyId={propertyId} lead={lead} busy={busy} active={active}
                 onChanged={() => { onQuoteChanged?.(); setTimelineKey((k) => k + 1); }}
                 onEdit={(q) => onEditQuote?.(q)}
-                onDuplicate={(q) => onDuplicateQuote?.(q)} />
+                onDuplicate={(q) => onDuplicateQuote?.(q)}
+                onLoaded={setQuoteHasRooms} />
             )}
 
             {/* Negociação — só orçamentos; casamentos têm o financeiro na gestão do evento */}
             {isQuote && active && (
-              <NegotiationSection lead={lead} channels={channels} busy={busy} onPatch={patchAndRefresh} />
+              <NegotiationSection lead={lead} channels={channels} busy={busy}
+                hideValue={quoteHasRooms} onPatch={patchAndRefresh} />
             )}
 
             {/* Cobranças do contrato — só casamentos (parcelas reais, read-only) */}

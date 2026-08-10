@@ -15,6 +15,7 @@ import {
   Trash2, X,
 } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
+import { parseMoneyBR, moneyToInput } from "@/lib/parse-money";
 import {
   computeQuote, processTemplate, buildCategoryBlock, buildEventNotices,
   DEFAULT_MSG_TEMPLATE, DEFAULT_MSG_SINGLE_TEMPLATE,
@@ -48,6 +49,8 @@ type DraftRoom = {
   checkIn: string; checkOut: string;
   adults: string; children: string; babies: string; pets: string;
   selectedCategory: string | null;
+  /** Valor fechado para ESTA acomodação (vazio = vale a tabela). */
+  negotiatedValue: string;
 };
 
 let draftSeq = 0;
@@ -55,7 +58,7 @@ const newDraftRoom = (over?: Partial<DraftRoom>): DraftRoom => ({
   id: `r${++draftSeq}`, label: "",
   checkIn: "", checkOut: "",
   adults: "2", children: "0", babies: "0", pets: "0",
-  selectedCategory: null,
+  selectedCategory: null, negotiatedValue: "",
   ...over,
 });
 
@@ -109,6 +112,7 @@ function seedRooms(seed?: QuoteSeed | null): DraftRoom[] {
       adults: String(r.adults), children: String(r.children),
       babies: String(r.babies), pets: String(r.pets),
       selectedCategory: r.selectedCategory ?? null,
+      negotiatedValue: r.negotiatedValue ? moneyToInput(r.negotiatedValue) : "",
     }));
   }
   if (seed) {
@@ -122,11 +126,13 @@ function seedRooms(seed?: QuoteSeed | null): DraftRoom[] {
 
 export function NewQuoteWizard({
   propertyId, channels, attendantName, initialBundle, onBundleLoaded,
-  onClose, onSaved, onOpenExisting, seed,
+  onClose, onSaved, onOpenExisting, seed, proposalBase,
 }: {
   propertyId: string;
   channels: CrmChannel[];
   attendantName: string;
+  /** Host público da proposta — vira {QUOTE_LINK} na mensagem. */
+  proposalBase: string;
   /** Cache do RateBundle mantido pela página (evita refetch a cada abertura). */
   initialBundle: RateBundle | null;
   onBundleLoaded: (b: RateBundle) => void;
@@ -315,11 +321,23 @@ export function NewQuoteWizard({
 
   const blocked = roomQuotes?.some((rq) => rq.result.categories.length === 0) ?? true;
 
-  /** Total do orçamento: escolhida quando houver, senão o mínimo ("a partir de"). */
+  /** Valor combinado da acomodação (vazio/zero = vale a tabela). */
+  const negotiatedOf = (room: DraftRoom): number | null => {
+    const v = parseMoneyBR(room.negotiatedValue);
+    return Number.isFinite(v) && v > 0 ? v : null;
+  };
+
+  /**
+   * Total do orçamento = soma das acomodações. Por acomodação: valor
+   * combinado → cabana escolhida → mínimo das opções ("a partir de").
+   * Mesma precedência do resolveRoomValue no servidor.
+   */
   const totals = useMemo(() => {
     if (!roomQuotes) return { value: 0, approximate: false };
     let value = 0, approximate = false;
     for (const rq of roomQuotes) {
+      const negotiated = negotiatedOf(rq.room);
+      if (negotiated) { value += negotiated; continue; }
       const options = rq.result.categories;
       const chosen = rq.room.selectedCategory
         ? options.find((c) => c.categoryId === rq.room.selectedCategory)
@@ -364,6 +382,7 @@ export function NewQuoteWizard({
               id: r.id, label: r.label.trim() || null,
               ...periodOf(r), ...paxOf(r),
               selectedCategory: r.selectedCategory,
+              negotiatedValue: negotiatedOf(r),
             })),
             ...commercial,
             status,
@@ -402,6 +421,15 @@ export function NewQuoteWizard({
 
   const copyQuote = async () => {
     if (!bundle || !roomQuotes) return;
+
+    // Salva ANTES de montar a mensagem: o {QUOTE_LINK} precisa do id, e o
+    // orçamento copiado tem que existir no funil de qualquer forma.
+    let quoteId = savedId;
+    if (!isSavedCurrent) {
+      quoteId = await save("open");
+      if (!quoteId) return;
+    }
+
     const settings = bundle.settings;
     const linkOf = (categoryId: string) =>
       bundle.categories.find((c) => c.id === categoryId)?.siteUrl || undefined;
@@ -434,20 +462,18 @@ export function NewQuoteWizard({
       (ev, i) => allEvents.findIndex((o) => o.title === ev.title && o.date === ev.date) === i
     );
     const avisos = buildEventNotices(uniqueEvents, settings.eventTemplate);
-    const msgCtx = { attendantName, input: totalInput, isWedding: false };
+    const msgCtx = {
+      attendantName, input: totalInput, isWedding: false,
+      quoteLink: quoteId ? `${proposalBase}/cotacao/${quoteId}` : null,
+    };
     const msg = processTemplate(settings.msgTemplate || DEFAULT_MSG_TEMPLATE, msgCtx, resumo, avisos);
 
     try {
       await navigator.clipboard.writeText(msg);
-      toast.success("Cotação copiada!");
+      toast.success("Cotação copiada — com o link da proposta.");
     } catch {
       toast.error("Não foi possível copiar. Copie manualmente.");
       return;
-    }
-    // Garante o lead salvo (como Aberto) antes de perguntar sobre o envio.
-    if (!isSavedCurrent) {
-      const id = await save("open");
-      if (!id) return;
     }
     setAskSent(true);
   };
@@ -895,6 +921,35 @@ export function NewQuoteWizard({
                           </button>
                         )}
                       </span>
+                    </div>
+
+                    {/* Valor combinado DESTA acomodação — vence a tabela e
+                        entra no total (que é a soma das acomodações). */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <label style={{ fontSize: 10.5, color: T.muted }}>Valor combinado</label>
+                      <input style={{
+                          ...S.input, width: 130, padding: "5px 9px", fontSize: 11.5,
+                          borderColor: rq.room.negotiatedValue ? "rgba(245,158,11,0.4)" : T.border2,
+                          color: rq.room.negotiatedValue ? T.amber : T.text,
+                        }}
+                        inputMode="decimal" placeholder="valor de tabela"
+                        value={rq.room.negotiatedValue}
+                        onChange={(e) => patchRoom(rq.room.id, { negotiatedValue: e.target.value })} />
+                      {rq.room.negotiatedValue && (
+                        <button onClick={() => patchRoom(rq.room.id, { negotiatedValue: "" })}
+                          title="Voltar ao valor de tabela"
+                          style={{
+                            padding: 4, borderRadius: 7, background: "none", border: "none",
+                            color: T.muted, cursor: "pointer", display: "flex",
+                          }}>
+                          <X size={12} />
+                        </button>
+                      )}
+                      {rq.room.negotiatedValue && (
+                        <span style={{ fontSize: 10.5, color: T.muted }}>
+                          substitui o preço da cabana escolhida
+                        </span>
+                      )}
                     </div>
                     {rq.result.uncoveredDates.length > 0 && (
                       <p style={{ fontSize: 11.5, color: T.red, margin: 0 }}>

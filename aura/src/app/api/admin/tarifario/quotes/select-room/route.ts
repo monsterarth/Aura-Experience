@@ -1,6 +1,7 @@
-// Escolha da cabana de UMA acomodação do orçamento (categoryId=null desmarca).
-// Endpoint próprio em vez de PATCH livre: o preço vem sempre das `options` já
-// calculadas no servidor — o cliente só aponta qual das opções quer.
+// Altera UMA acomodação do orçamento: a cabana escolhida (categoryId=null
+// desmarca) e/ou o valor combinado dela (negotiatedValue=null volta à tabela).
+// Endpoint próprio em vez de PATCH livre: o preço de tabela vem sempre das
+// `options` calculadas no servidor, e o valor combinado é decisão explícita.
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isAuthError, assertPropertyAccess } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -23,11 +24,18 @@ export async function POST(req: NextRequest) {
   if (!body?.id || !body?.roomId) return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
 
   try {
-    const quote = await RateService.selectRoomCategory(
-      propertyId,
-      String(body.id),
-      String(body.roomId),
-      body.categoryId ? String(body.categoryId) : null,
+    // Só entra no patch o que veio no body — omitir é diferente de limpar.
+    const patch: { selectedCategory?: string | null; negotiatedValue?: number | null } = {};
+    if ("categoryId" in body) patch.selectedCategory = body.categoryId ? String(body.categoryId) : null;
+    if ("negotiatedValue" in body) {
+      patch.negotiatedValue = body.negotiatedValue == null ? null : Number(body.negotiatedValue);
+    }
+    if (Object.keys(patch).length === 0) {
+      return NextResponse.json({ error: "Nada para alterar" }, { status: 400 });
+    }
+
+    const quote = await RateService.patchQuoteRoom(
+      propertyId, String(body.id), String(body.roomId), patch,
       { id: auth.staff.id, name: auth.staff.fullName }
     );
     return NextResponse.json({ quote });

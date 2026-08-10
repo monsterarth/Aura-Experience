@@ -21,12 +21,16 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
   const [accepted, setAccepted] = useState(!!quote.acceptedAt);
   const [error, setError] = useState<string | null>(null);
   const [honeypot, setHoneypot] = useState("");
+  const [policyOpen, setPolicyOpen] = useState(false);
+  const [policyOk, setPolicyOk] = useState(false);
   const openedAt = useRef(Date.now());
 
   const total = useMemo(() => {
     let sum = 0;
     let partial = false;
     for (const room of quote.rooms) {
+      // Valor combinado com o cliente vence a tabela.
+      if (room.negotiatedValue) { sum += room.negotiatedValue; continue; }
       const chosen = room.options.find((o) => o.categoryId === picks[room.id]);
       if (chosen) { sum += chosen.total; continue; }
       const mins = room.options.map((o) => o.total).filter((v) => v > 0);
@@ -36,13 +40,25 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
   }, [picks, quote.rooms]);
 
   const allPicked = quote.rooms.every((r) => picks[r.id]);
+  const policyPending = !!quote.policyText && !policyOk;
+  const canAccept = allPicked && !policyPending;
+
+  /** Validade só faz sentido com folga: "válida até hoje" não informa nada. */
+  const showValidity = (() => {
+    if (!quote.expiresAt) return false;
+    const days = Math.round(
+      (new Date(`${quote.checkIn}T12:00`).getTime() - new Date().setHours(12, 0, 0, 0)) / 86400000
+    );
+    return days > 1;
+  })();
 
   const accept = async () => {
-    if (!allPicked || sending) return;
+    if (!canAccept || sending) return;
     setSending(true);
     setError(null);
     const res = await acceptQuoteProposal(quote.id, {
       selections: quote.rooms.map((r) => ({ roomId: r.id, categoryId: picks[r.id] })),
+      policyAccepted: policyOk,
       elapsedMs: Date.now() - openedAt.current,
       website: honeypot,
     });
@@ -83,9 +99,9 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
             ? `Chegadas em datas diferentes · entre ${fmtBR(quote.checkIn)} e ${fmtBR(quote.checkOut)}`
             : `${fmtBR(quote.checkIn)} a ${fmtBR(quote.checkOut)} · ${quote.nights} noite${quote.nights !== 1 ? "s" : ""}`}
         </p>
-        {quote.expiresAt && !accepted && (
+        {showValidity && !accepted && (
           <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>
-            Válida até {fmtBR(quote.expiresAt)}
+            Válida até {fmtBR(quote.expiresAt!)} mediante disponibilidade
           </p>
         )}
       </header>
@@ -141,6 +157,16 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
                 </span>
               )}
             </div>
+
+            {room.negotiatedValue && (
+              <p style={{
+                fontSize: 12.5, color: "var(--brand-deep)", background: "var(--brand-soft)",
+                borderRadius: 12, padding: "9px 13px", margin: "0 0 10px", lineHeight: 1.5,
+              }}>
+                Valor combinado com você para esta acomodação:{" "}
+                <b>R$ {money(room.negotiatedValue)}</b> — vale para a cabana que escolher abaixo.
+              </p>
+            )}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {room.options.map((o) => {
@@ -200,6 +226,48 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
           </section>
         ))}
 
+        {/* Regras da pousada — aceite obrigatório antes de enviar a escolha. */}
+        {quote.policyText && (
+          <section style={{
+            background: "var(--surface)", border: "1px solid var(--line)",
+            borderRadius: 16, padding: "14px 16px", marginBottom: 18,
+          }}>
+            <button onClick={() => setPolicyOpen((v) => !v)}
+              style={{
+                display: "flex", alignItems: "center", gap: 8, width: "100%",
+                background: "none", border: "none", padding: 0, cursor: "pointer",
+                fontFamily: "inherit", textAlign: "left",
+              }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>
+                Regras da pousada
+              </span>
+              <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--brand)", fontWeight: 700 }}>
+                {policyOpen ? "ocultar" : "ler"}
+              </span>
+            </button>
+
+            {policyOpen && (
+              <div style={{
+                fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.6,
+                whiteSpace: "pre-wrap", marginTop: 10, maxHeight: 260, overflowY: "auto",
+                borderTop: "1px solid var(--line-soft)", paddingTop: 10,
+              }}>
+                {quote.policyText}
+              </div>
+            )}
+
+            <label style={{
+              display: "flex", alignItems: "flex-start", gap: 10, marginTop: 12,
+              fontSize: 13, color: "var(--ink)", cursor: "pointer", lineHeight: 1.5,
+            }}>
+              <input type="checkbox" checked={policyOk}
+                onChange={(e) => setPolicyOk(e.target.checked)}
+                style={{ marginTop: 2, width: 18, height: 18, accentColor: "var(--brand)", flexShrink: 0 }} />
+              Li e aceito as regras da pousada.
+            </label>
+          </section>
+        )}
+
         {/* Honeypot — invisível para gente. */}
         <input type="text" name="website" value={honeypot} tabIndex={-1} autoComplete="off"
           onChange={(e) => setHoneypot(e.target.value)}
@@ -230,18 +298,19 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
             </p>
           )}
 
-          <button onClick={accept} disabled={!allPicked || sending}
+          <button onClick={accept} disabled={!canAccept || sending}
             style={{
               width: "100%", padding: "16px 20px", borderRadius: 999, border: "none",
-              background: allPicked ? "var(--brand)" : "var(--line)",
-              color: allPicked ? "#fff" : "var(--muted)",
+              background: canAccept ? "var(--brand)" : "var(--line)",
+              color: canAccept ? "#fff" : "var(--muted)",
               fontSize: 15, fontWeight: 700, fontFamily: "inherit",
-              cursor: allPicked && !sending ? "pointer" : "default",
+              cursor: canAccept && !sending ? "pointer" : "default",
               opacity: sending ? 0.7 : 1,
             }}>
             {sending ? "Registrando…"
-              : allPicked ? "Aceitar proposta"
-              : quote.rooms.length > 1 ? "Escolha uma cabana para cada acomodação" : "Escolha uma cabana"}
+              : !allPicked ? (quote.rooms.length > 1 ? "Escolha uma cabana para cada acomodação" : "Escolha uma cabana")
+              : policyPending ? "Aceite as regras da pousada"
+              : "Aceitar proposta"}
           </button>
 
           <p style={{ fontSize: 11.5, color: "var(--muted)", textAlign: "center", margin: "10px 0 0", lineHeight: 1.5 }}>

@@ -244,7 +244,9 @@ export default function CommercialTab({ propertyId, bundle, onRefresh }: Props) 
                 value={draft.msgTemplate || ""}
                 onChange={(e) => patch({ msgTemplate: e.target.value || null })} />
               <p className="text-[10px] text-muted-foreground mt-1">
-                Vars: {"{ATENDENTE} {DATA_IN} {DATA_OUT} {QTD_PESSOAS} {PAGANTES} {FREE} {PETS} {RESUMO_CABANAS} {AVISO_EVENTO} {CASAMENTO_HEADER}"}
+                Vars: {"{ATENDENTE} {DATA_IN} {DATA_OUT} {QTD_PESSOAS} {PAGANTES} {FREE} {PETS} {RESUMO_CABANAS} {AVISO_EVENTO} {CASAMENTO_HEADER} {QUOTE_LINK}"}
+                {" — "}<b>{"{QUOTE_LINK}"}</b> é a página onde o cliente escolhe a cabana e aceita;
+                a linha inteira some quando o orçamento ainda não foi salvo.
               </p>
             </div>
             <div>
