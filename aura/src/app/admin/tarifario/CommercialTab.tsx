@@ -10,7 +10,8 @@ import { Link2, Loader2, PawPrint, Plus, Trash2 } from "lucide-react";
 import { RateDiscount, RateFluctuation, RatePromo, RateSettings } from "@/types/aura";
 import type { RateBundle } from "@/services/rate-service";
 import {
-  DEFAULT_EVENT_TEMPLATE, DEFAULT_MSG_SINGLE_TEMPLATE, DEFAULT_MSG_TEMPLATE,
+  DEFAULT_EVENT_TEMPLATE, DEFAULT_INCLUSIONS_TEXT, DEFAULT_MSG_SINGLE_TEMPLATE,
+  DEFAULT_MSG_TEMPLATE,
 } from "@/lib/rate-engine";
 
 interface Props {
@@ -269,6 +270,21 @@ export default function CommercialTab({ propertyId, bundle, onRefresh }: Props) 
                 Vars: {"{NOME_EVENTO} {DATA_EVENTO}"} · em branco = template padrão
               </p>
             </div>
+          </div>
+
+          <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
+            <h3 className="font-semibold text-foreground">✅ O que está incluso</h3>
+            <p className="text-xs text-muted-foreground">
+              Aparece na página da proposta que o cliente abre, logo acima das regras
+              da pousada. <b>Uma linha por item</b> — vira uma lista na tela.
+            </p>
+            <textarea className="field-input !h-40 text-xs"
+              placeholder={DEFAULT_INCLUSIONS_TEXT}
+              value={draft.inclusionsText || ""}
+              onChange={(e) => patch({ inclusionsText: e.target.value || null })} />
+            <p className="text-[10px] text-muted-foreground">
+              Em branco = a seção não aparece na proposta.
+            </p>
           </div>
         </div>
       </div>

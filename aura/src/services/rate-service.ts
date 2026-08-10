@@ -48,6 +48,7 @@ export const DEFAULT_RATE_SETTINGS = (propertyId: string): RateSettings => ({
   msgTemplate: null,
   msgSingleTemplate: null,
   eventTemplate: null,
+  inclusionsText: null,
 });
 
 export interface RateBundle {
@@ -267,7 +268,7 @@ export const RateService = {
     if (settings.categoryLinks && typeof settings.categoryLinks === "object" && !Array.isArray(settings.categoryLinks)) {
       clean.categoryLinks = settings.categoryLinks;
     }
-    for (const key of ["msgTemplate", "msgSingleTemplate", "eventTemplate"] as const) {
+    for (const key of ["msgTemplate", "msgSingleTemplate", "eventTemplate", "inclusionsText"] as const) {
       if (typeof settings[key] === "string" || settings[key] === null) clean[key] = settings[key];
     }
     const { error } = await admin.from("rate_settings").upsert(

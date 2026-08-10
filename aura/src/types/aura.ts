@@ -2367,6 +2367,11 @@ export interface RateSettings {
   msgTemplate?: string | null;
   msgSingleTemplate?: string | null;
   eventTemplate?: string | null;
+  /**
+   * "O que está incluso" — texto que o cliente lê na proposta pública, acima
+   * das regras da pousada. Uma linha por item (vira lista na tela).
+   */
+  inclusionsText?: string | null;
   updatedAt?: Timestamp;
 }
 

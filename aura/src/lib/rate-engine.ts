@@ -347,6 +347,13 @@ export const DEFAULT_MSG_SINGLE_TEMPLATE = `🏡 *{CABANA_NOME}*
 💰 Valor: *R$ {CABANA_VALOR}*
 🔗 {CABANA_LINK}`;
 
+/** Sugestão de "O que está incluso" — uma linha por item (vira lista). */
+export const DEFAULT_INCLUSIONS_TEXT = `Café da manhã da fazenda servido no salão
+Estacionamento gratuito na propriedade
+Wi-Fi em toda a área comum
+Acesso à piscina e às áreas de lazer
+Enxoval completo e roupa de cama`;
+
 export const DEFAULT_EVENT_TEMPLATE =
   '🍹 Durante sua estadia teremos um evento especial: *{NOME_EVENTO}* em {DATA_EVENTO}. Aproveite!';
 

@@ -226,6 +226,31 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
           </section>
         ))}
 
+        {/* O que está incluso — vem do Tarifário → Comercial. */}
+        {quote.inclusions.length > 0 && (
+          <section style={{
+            background: "var(--surface)", border: "1px solid var(--line)",
+            borderRadius: 16, padding: "16px 18px", marginBottom: 14,
+          }}>
+            <h2 style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", margin: "0 0 10px" }}>
+              O que está incluso
+            </h2>
+            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
+              {quote.inclusions.map((item, i) => (
+                <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: 9, fontSize: 13.5, color: "var(--ink-soft)", lineHeight: 1.5 }}>
+                  <span aria-hidden="true" style={{
+                    width: 18, height: 18, borderRadius: 999, flexShrink: 0, marginTop: 1,
+                    background: "var(--green-soft)", color: "var(--green)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 11, fontWeight: 900,
+                  }}>✓</span>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         {/* Regras da pousada — aceite obrigatório antes de enviar a escolha. */}
         {quote.policyText && (
           <section style={{

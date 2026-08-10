@@ -70,6 +70,8 @@ export type PublicQuoteView = {
   approximate: boolean;
   acceptedAt: string | null;
   expiresAt: string | null;
+  /** "O que está incluso" (rate_settings.inclusionsText) — uma linha por item. */
+  inclusions: string[];
   /** Regras da pousada (settings.generalPolicyText) — aceite obrigatório. */
   policyText: string | null;
   property: {
@@ -150,6 +152,19 @@ export const RateQuotePublicService = {
     const siteUrlOf = (categoryId: string) =>
       (cats ?? []).find((c) => c.id === categoryId)?.siteUrl || undefined;
 
+    // "O que está incluso" — texto comercial do tarifário, uma linha por item.
+    // Coluna nova: propriedade sem a migration aplicada devolve erro e a
+    // seção some, em vez de derrubar a proposta.
+    const { data: rateSettings } = await supabaseAdmin
+      .from("rate_settings")
+      .select("inclusionsText")
+      .eq("propertyId", q.propertyId)
+      .maybeSingle();
+    const inclusions = String((rateSettings as { inclusionsText?: string } | null)?.inclusionsText ?? "")
+      .split("\n")
+      .map((l) => l.replace(/^\s*[-•*]\s*/, "").trim())
+      .filter(Boolean);
+
     const { data: property } = await supabaseAdmin
       .from("properties")
       .select("id, name, logoUrl, theme, settings")
@@ -198,6 +213,7 @@ export const RateQuotePublicService = {
       approximate,
       acceptedAt: q.acceptedAt ?? null,
       expiresAt: q.expiresAt ?? null,
+      inclusions,
       policyText: policyTextOf(property?.settings),
       property: {
         id: property?.id ?? q.propertyId,
