@@ -23,7 +23,7 @@ import { toast } from "sonner";
 
 export default function ReceptionDashboard() {
     const { userData } = useAuth();
-    const { currentProperty: property, loading: propLoading } = useProperty();
+    const { currentProperty: property, setProperty, loading: propLoading } = useProperty();
     const router = useRouter();
 
     const [currentTime, setCurrentTime] = useState(new Date());
@@ -104,11 +104,17 @@ export default function ReceptionDashboard() {
     // ==========================================
 
     async function handleBreakfastModeToggle(mode: 'delivery' | 'buffet') {
+        const previous = breakfastMode;
         setBreakfastMode(mode);
         try {
-            await fbService.setDailyBreakfastMode(property!.id, mode);
-        } catch {
-            toast.error('Erro ao salvar modalidade do café.');
+            // A Property fresca volta da rota: sem alimentar o contexto, o efeito de
+            // sincronização reverteria o switch para o valor velho no próximo render.
+            const fresh = await fbService.setDailyBreakfastMode(property!.id, mode);
+            if (fresh) setProperty(fresh);
+            toast.success(mode === 'delivery' ? 'Café de hoje: Cesta Delivery.' : 'Café de hoje: Buffet Salão.');
+        } catch (e) {
+            setBreakfastMode(previous);
+            toast.error((e as Error).message || 'Erro ao salvar modalidade do café.');
         }
     }
 

@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { PropertySettingsClient } from '@/lib/property-settings-client';
-import { FBCategory, FBMenuItem, FBOrder, FBSettings } from '@/types/aura';
+import { FBCategory, FBMenuItem, FBOrder, FBSettings, Property } from '@/types/aura';
 import { StockIntegration } from './stock-integration';
 
 const mapCategory = (dbObj: any): FBCategory => ({
@@ -68,21 +68,20 @@ export const fbService = {
         await PropertySettingsClient.patch(propertyId, { fbSettings });
     },
 
-    async setDailyBreakfastMode(propertyId: string, mode: 'delivery' | 'buffet'): Promise<void> {
-        const { data: prop, error: fetchError } = await supabase
-            .from('properties')
-            .select('settings')
-            .eq('id', propertyId)
-            .single();
-
-        if (fetchError) throw fetchError;
-
-        const current = (prop?.settings?.fbSettings || {}) as FBSettings;
-        const updated: FBSettings = {
-            ...current,
-            breakfast: { ...current.breakfast, dailyMode: mode } as FBSettings['breakfast'],
-        };
-        await this.updateSettings(propertyId, updated);
+    /**
+     * Modalidade do café DO DIA. Rota própria (não a de settings) porque quem decide isso
+     * é a recepção — o cargo não pode escrever `fbSettings` inteiro. O servidor lê, faz o
+     * merge e devolve a Property fresca para alimentar o PropertyContext.
+     */
+    async setDailyBreakfastMode(propertyId: string, mode: 'delivery' | 'buffet'): Promise<Property> {
+        const res = await fetch('/api/admin/fb/breakfast-mode', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ propertyId, mode }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error || `Falha ao salvar modalidade (${res.status}).`);
+        return json.property as Property;
     },
 
     // --- CATEGORIES ---
