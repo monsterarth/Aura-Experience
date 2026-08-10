@@ -77,3 +77,4 @@ record**. There is **no migration runner** — each file was applied manually vi
 | 2026-08-08 | `weddings_installments.sql` | CRM fase B.5 (3/4): `wedding_installments` (parcelas reais com vencimento; FK via `DO` dinâmico pois a PK de weddings não é versionada) + backfill das 2 legadas e 3ª derivada num único INSERT idempotente |
 | 2026-08-08 | `crm_phase2_waitlist.sql` | CRM fase B.5 (4/4): `waitlist_entries` (lista de espera para períodos — nome/telefone/período, status waiting→contacted→converted/archived, `quoteId` de rastro) |
 | 2026-08-09 | `crm_phase3_quote_rooms.sql` | CRM fase 3: `rate_quotes."rooms"` (acomodações pedidas na MESMA negociação, com as opções de cada uma) + `"acceptedAt"` (aceite na proposta pública) + kind `client_accepted` |
+| 2026-08-10 | `tarifario_inclusions.sql` | `rate_settings."inclusionsText"` — "O que está incluso" (uma linha por item) exibido na proposta pública acima das regras; editável em Tarifário → Comercial |
