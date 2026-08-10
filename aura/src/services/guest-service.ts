@@ -1,4 +1,4 @@
-import { supabase, db } from "@/lib/supabase";
+import { db } from "@/lib/supabase";
 import { Guest } from "@/types/aura";
 import { postFieldAction } from "@/lib/field-api";
 import { AuditService } from "./audit-service";
@@ -110,30 +110,72 @@ export const GuestService = {
     if (search?.trim()) params.set('search', search.trim());
     try {
       const res = await fetch(`/api/admin/guests?${params}`);
-      if (!res.ok) return [];
+      // Lista vazia e "sem permissão" davam a MESMA tela ("nenhum hóspede cadastrado"):
+      // um 403 por cargo faltando na rota ficou invisível. Ao menos deixa rastro.
+      if (!res.ok) {
+        console.error(`[listGuests] ${res.status} ao buscar hóspedes`, await res.text().catch(() => ''));
+        return [];
+      }
       return res.json();
-    } catch {
+    } catch (e) {
+      console.error('[listGuests] falha de rede', e);
       return [];
     }
   },
 
+  /**
+   * Histórico de estadias da ficha. No BROWSER vai pela rota (service-role): pelo client
+   * a leitura depende da RLS de `stays`/`cabins` e voltava vazia — o histórico parecia
+   * inexistente em vez de bloqueado.
+   */
   async getGuestStays(propertyId: string, guestId: string): Promise<any[]> {
-    const { data } = await supabase
+    if (typeof window === 'undefined') {
+      return this.getGuestStaysDirect(propertyId, guestId);
+    }
+
+    const qs = new URLSearchParams({ propertyId, guestId });
+    try {
+      const res = await fetch(`/api/admin/guests/stays?${qs}`);
+      if (!res.ok) {
+        console.error(`[getGuestStays] ${res.status}`, await res.text().catch(() => ''));
+        return [];
+      }
+      const json = await res.json();
+      return json?.stays ?? [];
+    } catch (e) {
+      console.error('[getGuestStays] falha de rede', e);
+      return [];
+    }
+  },
+
+  /** Implementação real — só server-side (chamada pela rota). */
+  async getGuestStaysDirect(propertyId: string, guestId: string): Promise<any[]> {
+    const { data, error } = await db()
       .from('stays')
       .select('id, checkIn, checkOut, status, cabinId')
       .eq('propertyId', propertyId)
       .eq('guestId', guestId)
       .order('checkIn', { ascending: false });
 
+    if (error) throw error;
     if (!data?.length) return [];
 
-    return Promise.all(data.map(async (stay: any) => {
-      const { data: cabin } = await supabase
-        .from('cabins').select('name').eq('id', stay.cabinId).maybeSingle();
-      return { ...stay, cabinName: cabin?.name ?? 'N/A' };
-    }));
+    // Uma query para todas as cabanas (antes era um SELECT por estadia).
+    const cabinIds = Array.from(new Set(data.map((s: any) => s.cabinId).filter(Boolean)));
+    const names = new Map<string, string>();
+    if (cabinIds.length) {
+      const { data: cabins } = await db().from('cabins').select('id, name').in('id', cabinIds);
+      for (const c of cabins ?? []) names.set(c.id as string, c.name as string);
+    }
+
+    return data.map((stay: any) => ({ ...stay, cabinName: names.get(stay.cabinId) ?? 'N/A' }));
   },
 
+  /**
+   * Unifica dois cadastros. Operação destrutiva (apaga a ficha secundária) e escrita
+   * cruzando duas tabelas — no browser vai pela rota, que roda com service-role e
+   * carimba a autoria pela sessão.
+   */
   async mergeGuests(
     propertyId: string,
     primaryId: string,
@@ -141,27 +183,59 @@ export const GuestService = {
     actorId: string,
     actorName: string
   ): Promise<number> {
-    const { data: stays } = await supabase
+    if (typeof window === 'undefined') {
+      return this.mergeGuestsDirect(propertyId, primaryId, secondaryId, actorId, actorName);
+    }
+
+    const res = await postFieldAction('/api/admin/guests/merge', { propertyId, primaryId, secondaryId });
+    if (!res.ok) throw new Error(res.error || 'Falha ao unificar os cadastros.');
+    return (res.data?.stayCount as number) ?? 0;
+  },
+
+  /** Implementação real — só server-side (chamada pela rota). */
+  async mergeGuestsDirect(
+    propertyId: string,
+    primaryId: string,
+    secondaryId: string,
+    actorId: string,
+    actorName: string
+  ): Promise<number> {
+    if (!primaryId || !secondaryId || primaryId === secondaryId) {
+      throw new Error('Cadastros inválidos para unificação.');
+    }
+
+    // A ficha que fica precisa existir NESTA propriedade: sem isso, um id errado
+    // transferiria as estadias para o vazio e ainda assim apagaria a secundária.
+    const { data: primary } = await db()
+      .from('guests').select('id').eq('id', primaryId).eq('propertyId', propertyId).maybeSingle();
+    if (!primary) throw new Error('Cadastro principal não encontrado nesta propriedade.');
+
+    const { data: stays, error: staysErr } = await db()
       .from('stays')
       .select('id')
       .eq('propertyId', propertyId)
       .eq('guestId', secondaryId);
+    if (staysErr) throw staysErr;
 
     const stayCount = stays?.length ?? 0;
 
     if (stayCount > 0) {
-      await supabase
+      const { error } = await db()
         .from('stays')
         .update({ guestId: primaryId })
         .eq('propertyId', propertyId)
         .eq('guestId', secondaryId);
+      // Falha aqui NÃO pode seguir para o delete: apagaria a ficha deixando as
+      // estadias órfãs apontando para um hóspede inexistente.
+      if (error) throw error;
     }
 
-    await supabase
+    const { error: delErr } = await db()
       .from('guests')
       .delete()
       .eq('id', secondaryId)
       .eq('propertyId', propertyId);
+    if (delErr) throw delErr;
 
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName,

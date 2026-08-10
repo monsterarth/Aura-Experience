@@ -174,8 +174,10 @@ function MergeModal({
       const count = await GuestService.mergeGuests(propertyId, primary.id, secondary.id, actorId, actorName);
       toast.success(`Cadastros unificados. ${count} estadia(s) transferida(s).`);
       onSuccess();
-    } catch {
-      toast.error("Erro ao unificar cadastros.");
+    } catch (e) {
+      // A rota devolve o motivo (cargo, propriedade errada, ficha inexistente) — mostrar
+      // isso vale mais que o "erro ao unificar" genérico de antes.
+      toast.error(e instanceof Error ? e.message : "Erro ao unificar cadastros.");
     } finally {
       setMerging(false);
     }
@@ -299,6 +301,7 @@ function GuestDetailPanel({
   propertyId,
   onBack,
   onUpdated,
+  onMerged,
   actorId,
   actorName,
 }: {
@@ -306,6 +309,7 @@ function GuestDetailPanel({
   propertyId: string;
   onBack: () => void;
   onUpdated: (updated: Guest) => void;
+  onMerged: () => void;
   actorId: string;
   actorName: string;
 }) {
@@ -839,7 +843,9 @@ function GuestDetailPanel({
           actorId={actorId}
           actorName={actorName}
           onClose={() => setMergeOpen(false)}
-          onSuccess={() => { setMergeOpen(false); onUpdated(guest); }}
+          // A ficha secundária deixou de existir: recarregar a lista, não só reescrever
+          // a selecionada (antes o duplicado apagado continuava clicável na lista).
+          onSuccess={() => { setMergeOpen(false); onMerged(); }}
         />
       )}
     </div>
@@ -1289,6 +1295,7 @@ function GuestsPageInner() {
               propertyId={contextProperty.id}
               onBack={() => setShowPanel(false)}
               onUpdated={handleUpdated}
+              onMerged={handleMergeSuccess}
               actorId={userData?.id ?? "ADMIN"}
               actorName={userData?.fullName ?? "Recepção"}
             />

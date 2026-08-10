@@ -4,7 +4,9 @@ import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
-    const auth = await requireAuth(['super_admin', 'admin', 'reception', 'governance']);
+    // 'manager' entra aqui como nas irmãs (lookup/names/upsert) e como no RoleGuard da
+    // página: sem ele a listagem devolvia 403 e a tela mostrava "nenhum hóspede".
+    const auth = await requireAuth(['super_admin', 'admin', 'manager', 'reception', 'governance']);
     if (isAuthError(auth)) return auth;
     if (!supabaseAdmin) return NextResponse.json([], { status: 500 });
 
