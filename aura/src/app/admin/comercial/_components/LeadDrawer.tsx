@@ -4,13 +4,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
-  CalendarClock, CalendarDays, ExternalLink, Heart, Loader2, Mail,
-  MessageSquare, Pencil, Phone, Send, Tag, X, XCircle,
+  CalendarClock, CalendarDays, CopyPlus, ExternalLink, Heart, Link2, Loader2,
+  Mail, MessageSquare, Pencil, Phone, Send, Tag, X, XCircle,
 } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
 import { parseMoneyBR, moneyToInput } from "@/lib/parse-money";
-import { CrmChannel, CrmLead, RateQuoteCategory, RateQuoteRecord, WeddingInstallment } from "@/types/aura";
+import { CrmChannel, CrmLead, RateQuoteRecord, RateQuoteRoom, WeddingInstallment } from "@/types/aura";
 import { ClientPanel } from "./ClientPanel";
 import { InteractionTimeline } from "./InteractionTimeline";
 import { LeadAlarms } from "./LeadAlarms";
@@ -34,23 +35,30 @@ const contactBtn: React.CSSProperties = {
 };
 
 /**
- * "Orçamento" (só orçamentos): o snapshot congelado com TODAS as cabanas
- * oferecidas ao cliente — sem precisar pular para o Tarifário. Clicar numa
- * categoria marca a ESCOLHIDA (PATCH selectedCategory, já na whitelist) e o
- * valor do lead recalcula sozinho via resolveQuoteValue no reload.
+ * "Orçamento" (só orçamentos): as ACOMODAÇÕES pedidas e, dentro de cada uma,
+ * as cabanas oferecidas — sem precisar pular para o Tarifário. Escolher pede
+ * confirmação e dá para desfazer (o × ao lado da escolhida): antes um clique
+ * definia a escolha sem volta. A gravação passa por `select-room`, que valida
+ * a opção no servidor — preço nunca vem do cliente.
  */
-function QuoteSnapshot({ propertyId, lead, busy, active, onPatch }: {
+function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDuplicate }: {
   propertyId: string;
   lead: CrmLead;
   busy: boolean;
   active: boolean;
-  onPatch: (patch: Record<string, unknown>) => Promise<void>;
+  /** Escolha gravada — a página recarrega o pipeline (valor do card muda). */
+  onChanged: () => void;
+  onEdit: (quote: RateQuoteRecord) => void;
+  onDuplicate: (quote: RateQuoteRecord) => void;
 }) {
   const [quote, setQuote] = useState<RateQuoteRecord | null>(null);
+  const [confirming, setConfirming] = useState<{ roomId: string; categoryId: string } | null>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let alive = true;
     setQuote(null);
+    setConfirming(null);
     fetch(`/api/admin/tarifario/quotes?propertyId=${propertyId}&id=${lead.id}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (alive) setQuote(d?.quote ?? null); })
@@ -58,71 +66,145 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onPatch }: {
     return () => { alive = false; };
   }, [propertyId, lead.id]);
 
-  const snapshot = quote?.snapshot ?? [];
-  if (!quote || snapshot.length === 0) return null;
+  if (!quote) return null;
 
-  const isChosen = (c: RateQuoteCategory) =>
-    !!quote.selectedCategory &&
-    (c.categoryId === quote.selectedCategory || c.category === quote.selectedCategory);
+  // Orçamento anterior à fase 3: o snapshot vira uma acomodação única.
+  const rooms: RateQuoteRoom[] = quote.rooms && quote.rooms.length > 0
+    ? quote.rooms
+    : (quote.snapshot?.length ? [{
+        id: "legacy", label: null,
+        adults: quote.adults, children: quote.children, babies: quote.babies, pets: quote.pets,
+        options: quote.snapshot, selectedCategory: quote.selectedCategory ?? null,
+      }] : []);
+  if (rooms.length === 0) return null;
 
-  const choose = async (c: RateQuoteCategory) => {
-    if (busy || !active || isChosen(c)) return;
-    const key = c.categoryId || c.category;
-    await onPatch({ selectedCategory: key });
-    setQuote((q) => (q ? { ...q, selectedCategory: key } : q));
+  const commit = async (roomId: string, categoryId: string | null) => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/tarifario/quotes/select-room", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ propertyId, id: quote.id, roomId, categoryId }),
+      });
+      const d = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(d?.error);
+      setQuote(d.quote);
+      setConfirming(null);
+      onChanged();
+      toast.success(categoryId ? "Cabana escolhida." : "Escolha desfeita.");
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : "Erro ao registrar a escolha.");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const nights = snapshot[0]?.nights ?? 0;
-  const payers = (quote.adults ?? 0) + (quote.children ?? 0);
+  const nights = rooms[0]?.options[0]?.nights ?? 0;
+  const totalPax = rooms.reduce((s, r) => s + r.adults + r.children, 0);
+  const busyAll = busy || saving;
 
   return (
-    <div style={{ padding: 20, borderBottom: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 8 }}>
-      <p style={drawerLabel}>Orçamento — cabanas oferecidas</p>
+    <div style={{ padding: 20, borderBottom: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <p style={drawerLabel}>Orçamento</p>
+        <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          <button onClick={() => onEdit(quote)} disabled={busyAll}
+            title="Recalcular este orçamento (datas, pessoas, descontos)"
+            style={{ ...S.ghostBtn, padding: "5px 10px", fontSize: 11 }}>
+            <Pencil size={11} /> Editar
+          </button>
+          <button onClick={() => onDuplicate(quote)} disabled={busyAll}
+            title="Criar OUTRO orçamento para o mesmo cliente (este fica intacto)"
+            style={{ ...S.ghostBtn, padding: "5px 10px", fontSize: 11 }}>
+            <CopyPlus size={11} /> Nova cotação
+          </button>
+        </span>
+      </div>
       <p style={{ fontSize: 11.5, color: T.muted, margin: 0 }}>
         {fmtBR(quote.checkIn)} → {fmtBR(quote.checkOut)} · {nights} noite{nights !== 1 ? "s" : ""} ·{" "}
-        {payers} pagante{payers !== 1 ? "s" : ""}
-        {(quote.babies ?? 0) > 0 ? ` + ${quote.babies} isento${quote.babies! > 1 ? "s" : ""}` : ""}
-        {(quote.pets ?? 0) > 0 ? ` + ${quote.pets} pet${quote.pets! > 1 ? "s" : ""}` : ""}
+        {rooms.length} acomodaç{rooms.length > 1 ? "ões" : "ão"} · {totalPax} pagante{totalPax !== 1 ? "s" : ""}
       </p>
-      {snapshot.map((c) => {
-        const chosen = isChosen(c);
-        const discounted = Math.abs(c.finalTotal - c.rawTotal) > 5;
+
+      {rooms.map((room, i) => {
+        const label = room.label?.trim() || (rooms.length > 1 ? `Acomodação ${i + 1}` : "Cabanas oferecidas");
         return (
-          <button key={c.categoryId || c.category} onClick={() => choose(c)}
-            disabled={busy || !active || chosen}
-            title={active && !chosen ? "Marcar como escolhida" : undefined}
-            style={{
-              display: "flex", alignItems: "center", gap: 10, textAlign: "left",
-              background: chosen ? T.gradSoft : T.glass,
-              border: `1px solid ${chosen ? T.g1Border : T.border}`,
-              borderRadius: 11, padding: "9px 12px", fontFamily: "inherit",
-              cursor: active && !chosen ? "pointer" : "default",
-              opacity: busy ? 0.6 : 1,
-            }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {c.category}
-              </div>
-              <div style={{ fontSize: 10.5, color: T.muted }}>
-                média R$ {money(c.avgNightly)}/noite
-              </div>
+          <div key={room.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 11.5, fontWeight: 800, color: T.text }}>{label}</span>
+              <span style={{ fontSize: 10.5, color: T.muted }}>
+                {room.adults + room.children} pagante{room.adults + room.children !== 1 ? "s" : ""}
+                {room.babies > 0 ? ` · ${room.babies} isento${room.babies > 1 ? "s" : ""}` : ""}
+                {room.pets > 0 ? ` · ${room.pets} pet${room.pets > 1 ? "s" : ""}` : ""}
+              </span>
             </div>
-            {discounted && (
-              <span style={{ fontSize: 11, color: T.muted2, textDecoration: "line-through", flexShrink: 0 }}>
-                R$ {money(c.rawTotal)}
-              </span>
-            )}
-            <span style={{ fontSize: 13, fontWeight: 900, color: chosen ? T.g1 : T.text, flexShrink: 0 }}>
-              R$ {money(c.finalTotal)}
-            </span>
-            {chosen && (
-              <span style={{ ...pillS(T.gradSoft, T.g1, T.g1Border), flexShrink: 0, fontSize: 9 }}>
-                escolhida
-              </span>
-            )}
-          </button>
+            {room.options.map((c) => {
+              const key = c.categoryId || c.category;
+              const chosen = room.selectedCategory === c.categoryId || room.selectedCategory === c.category;
+              const asking = confirming?.roomId === room.id && confirming.categoryId === key;
+              const discounted = Math.abs(c.finalTotal - c.rawTotal) > 5;
+              return (
+                <div key={key}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    background: chosen ? T.gradSoft : T.glass,
+                    border: `1px solid ${chosen ? T.g1Border : T.border}`,
+                    borderRadius: 11, padding: "9px 12px", opacity: busyAll ? 0.6 : 1,
+                  }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {c.category}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: T.muted }}>média R$ {money(c.avgNightly)}/noite</div>
+                  </div>
+                  {discounted && !asking && (
+                    <span style={{ fontSize: 11, color: T.muted2, textDecoration: "line-through", flexShrink: 0 }}>
+                      R$ {money(c.rawTotal)}
+                    </span>
+                  )}
+                  <span style={{ fontSize: 13, fontWeight: 900, color: chosen ? T.g1 : T.text, flexShrink: 0 }}>
+                    R$ {money(c.finalTotal)}
+                  </span>
+
+                  {asking ? (
+                    <span style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+                      <span style={{ fontSize: 10.5, color: T.muted }}>Confirmar?</span>
+                      <button onClick={() => commit(room.id, key)} disabled={busyAll}
+                        style={{ ...S.gradBtn, padding: "4px 10px", fontSize: 10.5, boxShadow: "none" }}>
+                        {saving ? <Loader2 size={11} className="animate-spin" /> : "Sim"}
+                      </button>
+                      <button onClick={() => setConfirming(null)} disabled={busyAll}
+                        style={{ ...S.ghostBtn, padding: "4px 8px", fontSize: 10.5 }}>
+                        Não
+                      </button>
+                    </span>
+                  ) : chosen ? (
+                    <span style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                      <span style={{ ...pillS(T.gradSoft, T.g1, T.g1Border), fontSize: 9 }}>escolhida</span>
+                      {active && (
+                        <button onClick={() => commit(room.id, null)} disabled={busyAll}
+                          title="Desfazer a escolha"
+                          style={{ padding: 4, borderRadius: 7, background: "none", border: "none", color: T.muted, cursor: "pointer", display: "flex" }}>
+                          <X size={12} />
+                        </button>
+                      )}
+                    </span>
+                  ) : active ? (
+                    <button onClick={() => setConfirming({ roomId: room.id, categoryId: key })}
+                      disabled={busyAll}
+                      style={{
+                        padding: "5px 9px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
+                        fontSize: 10, fontWeight: 800, flexShrink: 0,
+                        border: `1px solid ${T.border2}`, background: "transparent", color: T.muted,
+                      }}>
+                      escolher
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
         );
       })}
+
       {lead.negotiatedValue != null && (
         <p style={{ fontSize: 10.5, color: T.muted, margin: 0 }}>
           Valor negociado vence a tabela — a escolha define a cabana, não o valor do lead.
@@ -335,7 +417,8 @@ function NegotiationSection({
 export function LeadDrawer({
   propertyId, lead, channels, busy,
   onClose, onFollowUp, onAddNote, onMoveStage, onMarkLost, onWin, onOpenOrigin, onPatch,
-  onPromoteGuest, onAlarmsChanged,
+  onPromoteGuest, onAlarmsChanged, onEditQuote, onDuplicateQuote, onQuoteChanged,
+  proposalUrl,
 }: {
   propertyId: string;
   lead: CrmLead;
@@ -351,6 +434,14 @@ export function LeadDrawer({
   onPatch: (patch: Record<string, unknown>) => Promise<void>;
   onPromoteGuest: (guestId?: string) => Promise<void>;
   onAlarmsChanged?: () => void;
+  /** Reabre o wizard recalculando ESTE orçamento. */
+  onEditQuote?: (quote: RateQuoteRecord) => void;
+  /** Abre o wizard com o cliente preenchido, criando um lead NOVO. */
+  onDuplicateQuote?: (quote: RateQuoteRecord) => void;
+  /** Escolha de cabana gravada — a página recarrega o pipeline. */
+  onQuoteChanged?: () => void;
+  /** Link público da proposta (/cotacao/<id>), quando disponível. */
+  proposalUrl?: string | null;
 }) {
   const [note, setNote] = useState("");
   const [noteMode, setNoteMode] = useState<"follow_up" | "note">("follow_up");
@@ -408,8 +499,20 @@ export function LeadDrawer({
         position: "fixed", inset: 0, zIndex: 50, background: "rgba(0,0,0,0.6)",
         backdropFilter: "blur(4px)", display: "flex", justifyContent: "flex-end",
       }}>
+      {/* Duas colunas em tela larga: editar o orçamento pede espaço, e
+          histórico/alarmes não precisam disputar scroll com o cliente. */}
+      <style>{`
+        .crm-drawer-body { display:flex; flex-direction:column; flex:1; overflow-y:auto; }
+        .crm-drawer-col-right { border-top: 1px solid ${T.border}; }
+        @media (min-width: 1000px) {
+          .crm-drawer-body { display:grid; grid-template-columns: 1fr 1fr; overflow:hidden; }
+          .crm-drawer-col { overflow-y:auto; height:100%; }
+          .crm-drawer-col-right { border-top:none; border-left: 1px solid ${T.border}; }
+        }
+      `}</style>
       <div style={{
-        background: T.drawer, width: "100%", maxWidth: 480, height: "100%",
+        background: T.drawer, width: "100%", maxWidth: "min(66vw, 1040px)",
+        minWidth: "min(100vw, 460px)", height: "100%",
         display: "flex", flexDirection: "column", borderLeft: `1px solid ${T.border2}`,
       }}>
         {/* Header */}
@@ -484,29 +587,49 @@ export function LeadDrawer({
             <button onClick={onOpenOrigin} style={contactBtn}>
               <ExternalLink size={12} /> {isQuote ? "Abrir no Tarifário" : "Abrir em Casamentos"}
             </button>
+            {isQuote && proposalUrl && (
+              <button style={contactBtn}
+                title="Link da proposta para o cliente escolher e aceitar"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(proposalUrl);
+                    toast.success("Link da proposta copiado!");
+                  } catch {
+                    toast.error("Não foi possível copiar o link.");
+                  }
+                }}>
+                <Link2 size={12} /> Copiar link da proposta
+              </button>
+            )}
           </div>
         </div>
 
-        <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-          {/* Titular — só orçamentos; recorrente/novo, vínculo e histórico do cliente */}
-          {isQuote && (
-            <ClientPanel propertyId={propertyId} lead={lead} busy={busy} onPromote={promoteAndRefresh} />
-          )}
+        <div className="crm-drawer-body">
+          <div className="crm-drawer-col">
+            {/* Titular — só orçamentos; recorrente/novo, vínculo e histórico do cliente */}
+            {isQuote && (
+              <ClientPanel propertyId={propertyId} lead={lead} busy={busy}
+                editable={active} onPromote={promoteAndRefresh} onPatch={patchAndRefresh} />
+            )}
 
-          {/* Orçamento — todas as cabanas oferecidas (snapshot congelado) */}
-          {isQuote && (
-            <QuoteSnapshot propertyId={propertyId} lead={lead} busy={busy}
-              active={active} onPatch={patchAndRefresh} />
-          )}
+            {/* Orçamento — acomodações pedidas e as cabanas oferecidas em cada */}
+            {isQuote && (
+              <QuoteSnapshot propertyId={propertyId} lead={lead} busy={busy} active={active}
+                onChanged={() => { onQuoteChanged?.(); setTimelineKey((k) => k + 1); }}
+                onEdit={(q) => onEditQuote?.(q)}
+                onDuplicate={(q) => onDuplicateQuote?.(q)} />
+            )}
 
-          {/* Negociação — só orçamentos; casamentos têm o financeiro na gestão do evento */}
-          {isQuote && active && (
-            <NegotiationSection lead={lead} channels={channels} busy={busy} onPatch={patchAndRefresh} />
-          )}
+            {/* Negociação — só orçamentos; casamentos têm o financeiro na gestão do evento */}
+            {isQuote && active && (
+              <NegotiationSection lead={lead} channels={channels} busy={busy} onPatch={patchAndRefresh} />
+            )}
 
-          {/* Cobranças do contrato — só casamentos (parcelas reais, read-only) */}
-          {!isQuote && <ContractCharges lead={lead} />}
+            {/* Cobranças do contrato — só casamentos (parcelas reais, read-only) */}
+            {!isQuote && <ContractCharges lead={lead} />}
+          </div>
 
+          <div className="crm-drawer-col crm-drawer-col-right">
           {/* Alarmes — também em lead FECHADO (cobrança é pós-fechamento) */}
           <LeadAlarms propertyId={propertyId} lead={lead}
             onChanged={() => { onAlarmsChanged?.(); setTimelineKey((k) => k + 1); }} />
@@ -580,6 +703,7 @@ export function LeadDrawer({
           <div style={{ padding: 20 }}>
             <p style={{ ...drawerLabel, marginBottom: 14 }}>Histórico</p>
             <InteractionTimeline key={timelineKey} propertyId={propertyId} lead={lead} />
+          </div>
           </div>
         </div>
       </div>

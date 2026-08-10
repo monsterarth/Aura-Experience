@@ -3,13 +3,13 @@
 // mini-histórico de cotações do cliente.
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { BadgeCheck, Link2, Loader2, UserPlus } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
 import { CrmLead, Guest, RateQuoteRecord } from "@/types/aura";
 import { resolveQuoteValue } from "@/lib/rate-engine";
-import { QUOTE_STAGES, fmtBR, money, pillS } from "./shared";
+import { S, QUOTE_STAGES, fmtBR, money, pillS } from "./shared";
 
 type ClientContext = {
   guest: Guest | null;
@@ -23,14 +23,53 @@ const drawerLabel: React.CSSProperties = {
   color: T.muted, margin: 0,
 };
 
+/** Campo do lead com commit no blur (só quando muda) — nada de patch por tecla. */
+function LeadField({ label, value, placeholder, busy, digitsOnly, onCommit }: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  busy: boolean;
+  digitsOnly?: boolean;
+  onCommit: (v: string | null) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const syncedTo = useRef(value);
+  useEffect(() => {
+    if (syncedTo.current !== value) { syncedTo.current = value; setDraft(value); }
+  }, [value]);
+
+  const commit = () => {
+    const clean = digitsOnly ? draft.replace(/\D/g, "") : draft.trim();
+    if (clean !== (value ?? "")) onCommit(clean || null);
+  };
+
+  return (
+    <div>
+      <label style={{
+        fontSize: 9, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase",
+        color: T.muted, marginBottom: 4, display: "block",
+      }}>{label}</label>
+      <input style={{ ...S.input, padding: "7px 10px", fontSize: 12 }}
+        value={draft} placeholder={placeholder} disabled={busy}
+        onChange={(e) => setDraft(digitsOnly ? e.target.value.replace(/\D/g, "") : e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+    </div>
+  );
+}
+
 export function ClientPanel({
-  propertyId, lead, busy, onPromote,
+  propertyId, lead, busy, editable, onPromote, onPatch,
 }: {
   propertyId: string;
   lead: CrmLead;
   busy: boolean;
+  /** Lead ativo — dados do cliente ficam editáveis. */
+  editable?: boolean;
   /** Vincula/cria a ficha do hóspede — com guestId usa a ficha sugerida. */
   onPromote: (guestId?: string) => Promise<void>;
+  /** Grava nome/telefone/e-mail/CPF direto no orçamento. */
+  onPatch?: (patch: Record<string, unknown>) => Promise<void>;
 }) {
   const [ctx, setCtx] = useState<ClientContext | null>(null);
   const [loading, setLoading] = useState(false);
@@ -114,6 +153,27 @@ export function ClientPanel({
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Dados do lead — editáveis enquanto não há ficha vinculada (depois a
+          fonte da verdade é a ficha do hóspede). */}
+      {!guest && editable && onPatch && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <LeadField label="Nome" value={lead.title === "Sem nome" ? "" : lead.title} busy={busy}
+              placeholder="Nome do cliente"
+              onCommit={(v) => onPatch({ clientName: v })} />
+          </div>
+          <LeadField label="Telefone" value={lead.phone ?? ""} busy={busy} digitsOnly
+            placeholder="Só dígitos" onCommit={(v) => onPatch({ clientPhone: v })} />
+          <LeadField label="E-mail" value={lead.email ?? ""} busy={busy}
+            placeholder="cliente@email.com" onCommit={(v) => onPatch({ clientEmail: v })} />
+          <div style={{ gridColumn: "1 / -1" }}>
+            <LeadField label="CPF (habilita criar a ficha)" value={lead.document ?? ""}
+              busy={busy} placeholder="Só números"
+              onCommit={(v) => onPatch({ clientDocument: v })} />
+          </div>
         </div>
       )}
 

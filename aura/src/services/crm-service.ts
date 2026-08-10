@@ -174,6 +174,7 @@ export const CrmService = {
         title: q.clientName || "Sem nome",
         phone: q.clientPhone,
         email: q.clientEmail,
+        document: q.clientDocument,
         source: q.source,
         stage: q.status,
         value: v.value,

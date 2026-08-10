@@ -2508,6 +2508,8 @@ export interface CrmLead {
   title: string;
   phone?: string | null;
   email?: string | null;
+  /** CPF/doc do lead (orçamentos) — habilita criar a ficha de hóspede. */
+  document?: string | null;
   source?: string | null;
   /** Estágio bruto da entidade de origem (RateQuoteStatus ou WeddingStatus). */
   stage: string;

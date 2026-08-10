@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
 import type { RateBundle } from "@/services/rate-service";
-import { CrmAlarm, CrmChannel, CrmEntityType, CrmLead, WaitlistEntry } from "@/types/aura";
+import { CrmAlarm, CrmChannel, CrmEntityType, CrmLead, RateQuoteRecord, WaitlistEntry } from "@/types/aura";
 import { PipelineBoard } from "./PipelineBoard";
 import { LeadListView } from "./LeadListView";
 import { TodayQueue } from "./TodayQueue";
@@ -25,7 +25,7 @@ import { AlarmsQueue } from "./AlarmsQueue";
 import { WaitlistTab } from "./WaitlistTab";
 import { LeadDrawer } from "./LeadDrawer";
 import { MarkLostModal } from "./MarkLostModal";
-import { NewQuoteWizard } from "./NewQuoteWizard";
+import { NewQuoteWizard, type QuoteSeed } from "./NewQuoteWizard";
 import { S, QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, leadAlert, money, todayIso } from "./shared";
 
 type TabId = "pipeline" | "alarmes" | "espera";
@@ -54,7 +54,34 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
 
   // Wizard "Nova cotação" (só reservas) — o RateBundle é cacheado entre aberturas.
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardSeed, setWizardSeed] = useState<QuoteSeed | null>(null);
   const bundleCache = useRef<RateBundle | null>(null);
+
+  const openWizard = (seed: QuoteSeed | null = null) => {
+    setWizardSeed(seed);
+    setWizardOpen(true);
+  };
+
+  /** Semente a partir de um orçamento: editar o MESMO (keepId) ou clonar só
+   *  o cliente para um lead NOVO (o anterior fica intacto). */
+  const seedFromQuote = (q: RateQuoteRecord, keepId: boolean): QuoteSeed => ({
+    quoteId: keepId ? q.id : null,
+    clientName: q.clientName, clientPhone: q.clientPhone,
+    clientEmail: q.clientEmail, clientDocument: q.clientDocument,
+    guestId: q.guestId, source: q.source,
+    checkIn: keepId ? q.checkIn : null, checkOut: keepId ? q.checkOut : null,
+    rooms: keepId ? q.rooms ?? null : null,
+    adults: q.adults, children: q.children, babies: q.babies, pets: q.pets,
+    fluctuationPct: keepId ? q.fluctuationPct : null,
+    discountIds: keepId ? q.discountIds : null,
+    adhocValue: keepId ? q.adhocValue : null,
+    adhocType: keepId ? q.adhocType : null,
+  });
+
+  // Host público da proposta (mesma regra do resto: domínio próprio → fallback).
+  const proposalBase = (property?.settings as { customDomain?: string } | undefined)?.customDomain
+    ? `https://${(property!.settings as { customDomain?: string }).customDomain}`
+    : "https://aaura.app.br";
 
   const [leads, setLeads] = useState<CrmLead[]>([]);
   const [channels, setChannels] = useState<CrmChannel[]>([]);
@@ -399,7 +426,7 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {funnel === "quote" && (
-            <button onClick={() => setWizardOpen(true)} style={S.gradBtn}>
+            <button onClick={() => openWizard()} style={S.gradBtn}>
               <Plus size={14} /> Nova cotação
             </button>
           )}
@@ -528,7 +555,7 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
             <PipelineBoard stages={visibleStages} leads={visibleLeads}
               channels={channels} alarms={alarms} onOpen={setSelected}
               onDropLead={handleDropLead} dragDisabled={busyId !== null}
-              onAddNew={funnel === "quote" ? () => setWizardOpen(true) : undefined} />
+              onAddNew={funnel === "quote" ? () => openWizard() : undefined} />
           ) : (
             <LeadListView stages={visibleStages} leads={visibleLeads}
               channels={channels} onOpen={setSelected} />
@@ -557,6 +584,10 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
           onPatch={(patch) => patchLead(selected, patch)}
           onPromoteGuest={(guestId) => promoteGuest(selected, guestId)}
           onAlarmsChanged={loadAlarms}
+          onQuoteChanged={() => reload(selected.id)}
+          onEditQuote={(q) => openWizard(seedFromQuote(q, true))}
+          onDuplicateQuote={(q) => openWizard(seedFromQuote(q, false))}
+          proposalUrl={selected.entityType === "quote" ? `${proposalBase}/cotacao/${selected.id}` : null}
         />
       )}
 
@@ -568,14 +599,18 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
 
       {wizardOpen && funnel === "quote" && (
         <NewQuoteWizard
+          // A semente entra na key: trocar de "editar" para "nova" precisa
+          // remontar o wizard (o estado inicial vem toda da seed).
+          key={wizardSeed?.quoteId ?? (wizardSeed ? "dup" : "new")}
           propertyId={property.id}
           channels={channels}
           attendantName={userData?.fullName || "Recepção"}
           initialBundle={bundleCache.current}
           onBundleLoaded={(b) => { bundleCache.current = b; }}
-          onClose={() => setWizardOpen(false)}
-          onSaved={() => reload()}
+          onClose={() => { setWizardOpen(false); setWizardSeed(null); }}
+          onSaved={() => reload(selected?.id)}
           onOpenExisting={openExistingQuote}
+          seed={wizardSeed}
         />
       )}
     </div>
