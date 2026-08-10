@@ -16,6 +16,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { AuditService } from "./audit-service";
 import { CrmService } from "./crm-service";
 import { resolveRoomValue } from "@/lib/rate-engine";
+import { parseMultiLang } from "@/lib/multilang";
 import { RateQuoteCategory, RateQuoteRecord, RateQuoteRoom } from "@/types/aura";
 
 /** Status em que a proposta ainda pode ser vista/aceita pelo cliente. */
@@ -91,6 +92,19 @@ function roomsOf(q: RateQuoteRecord): RateQuoteRoom[] {
   }];
 }
 
+/**
+ * Regras da pousada como texto. As políticas são MULTILÍNGUES no banco
+ * (`{pt,en,es}` — ver lib/multilang), não string: tratar como string quebrava
+ * a página inteira em propriedades que já tinham a política preenchida.
+ * A proposta é em PT; cai para outro idioma só se o PT estiver vazio.
+ */
+function policyTextOf(settings: unknown): string | null {
+  const raw = (settings as { generalPolicyText?: unknown } | null)?.generalPolicyText;
+  if (!raw) return null;
+  const ml = parseMultiLang(raw);
+  return (ml.pt || ml.en || ml.es || "").trim() || null;
+}
+
 function publicOption(c: RateQuoteCategory, siteUrl?: string): PublicQuoteOption {
   return {
     categoryId: c.categoryId || c.category,
@@ -157,7 +171,7 @@ export const RateQuotePublicService = {
     const mixedPeriods = new Set(rooms.map(periodKey)).size > 1;
 
     const settings = (property?.settings ?? {}) as {
-      whatsappNumber?: string; contactPhone?: string; generalPolicyText?: string;
+      whatsappNumber?: string; contactPhone?: string;
     };
 
     return {
@@ -184,7 +198,7 @@ export const RateQuotePublicService = {
       approximate,
       acceptedAt: q.acceptedAt ?? null,
       expiresAt: q.expiresAt ?? null,
-      policyText: settings.generalPolicyText?.trim() || null,
+      policyText: policyTextOf(property?.settings),
       property: {
         id: property?.id ?? q.propertyId,
         name: property?.name ?? "",
@@ -230,11 +244,10 @@ export const RateQuotePublicService = {
       return { ok: true };
     }
 
-    // Regras da pousada: quando existem, o aceite é condição do aceite.
+    // Regras da pousada: quando existem, aceitá-las é condição do aceite.
     const { data: propRow } = await supabaseAdmin
       .from("properties").select("settings").eq("id", q.propertyId).maybeSingle();
-    const policyText = ((propRow?.settings ?? {}) as { generalPolicyText?: string })
-      .generalPolicyText?.trim() || null;
+    const policyText = policyTextOf(propRow?.settings);
     if (policyText && !input.policyAccepted) {
       return { ok: false, error: "É preciso aceitar as regras da pousada." };
     }
