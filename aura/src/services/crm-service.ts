@@ -23,6 +23,15 @@ import {
 import { resolveQuoteValue } from "@/lib/rate-engine";
 import { GuestService } from "./guest-service";
 
+/** Estadia do titular como o painel do cliente mostra (leve, sem a ficha toda). */
+export type ClientStayRow = {
+  id: string;
+  checkIn: string;
+  checkOut: string;
+  status: string;
+  cabinName: string | null;
+};
+
 function localToday(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
 }
@@ -282,15 +291,16 @@ export const CrmService = {
 
   /**
    * Contexto do titular numa chamada só (painel do cliente no drawer e passo
-   * "é essa pessoa?" do wizard): ficha vinculada, nº de estadias (recorrente
-   * vs novo), fichas com o mesmo telefone, fichas por nome/documento (`q`) e
-   * as cotações do cliente.
+   * "é essa pessoa?" do wizard): ficha vinculada, estadias (recorrente vs
+   * novo), fichas com o mesmo telefone, fichas por nome/documento (`q`) e as
+   * cotações do cliente. Com ficha vinculada vêm também as ESTADIAS em si —
+   * promovido a hóspede, o vendedor vê o histórico sem sair do drawer.
    */
   async getClientContext(
     propertyId: string,
     by: { guestId?: string | null; phone?: string | null; q?: string | null }
   ): Promise<{
-    guest: Guest | null; staysCount: number;
+    guest: Guest | null; staysCount: number; stays: ClientStayRow[];
     phoneMatches: Guest[]; nameMatches: Guest[]; quotes: RateQuoteRecord[];
   }> {
     // Busca por nome/documento fica AQUI (server-side): a rota /api/admin/guests
@@ -322,14 +332,18 @@ export const CrmService = {
 
     const guest = (guestRes.data as Guest | null) ?? null;
 
-    let staysCount = 0;
+    // As estadias em si (com o nome da cabana) — não só a contagem: é o
+    // histórico de hospedagens que o drawer mostra depois da promoção.
+    let stays: ClientStayRow[] = [];
     if (guest) {
-      const { count } = await supabaseAdmin
-        .from("stays")
-        .select("id", { count: "exact", head: true })
-        .eq("propertyId", propertyId)
-        .eq("guestId", guest.id);
-      staysCount = count ?? 0;
+      const rows = await GuestService.getGuestStaysDirect(propertyId, guest.id);
+      stays = rows.map((s) => ({
+        id: String(s.id),
+        checkIn: String(s.checkIn),
+        checkOut: String(s.checkOut),
+        status: String(s.status),
+        cabinName: s.cabinName ? String(s.cabinName) : null,
+      }));
     }
 
     // A ficha já vinculada não é "sugestão" — sai das listas de matches;
@@ -337,7 +351,8 @@ export const CrmService = {
     const phoneIds = new Set(phoneMatches.map((g) => g.id));
     return {
       guest,
-      staysCount,
+      staysCount: stays.length,
+      stays,
       phoneMatches: phoneMatches.filter((g) => g.id !== guest?.id),
       nameMatches: nameMatches.filter((g) => g.id !== guest?.id && !phoneIds.has(g.id)),
       quotes,

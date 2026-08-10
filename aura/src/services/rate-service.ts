@@ -614,6 +614,13 @@ export const RateService = {
 
     const nextStatus = clean.status as RateQuoteStatus | undefined;
     const changingStage = nextStatus && nextStatus !== before.status;
+
+    // Ganho SEM ficha de hóspede não existe: é o ponto em que o lead vira
+    // pessoa de verdade (estadia, fólio, histórico). Vale para todo caminho —
+    // botão "Ganhou", arrastar no kanban ou PATCH direto.
+    if (nextStatus === "won" && !((clean.guestId as string | null) ?? before.guestId ?? null)) {
+      throw new Error("Promova o cliente a hóspede antes de marcar o orçamento como ganho.");
+    }
     const nextNegotiated = clean.negotiatedValue as number | null | undefined;
     const changingValue = "negotiatedValue" in clean &&
       (nextNegotiated ?? null) !== (before.negotiatedValue ?? null);
@@ -832,16 +839,24 @@ export const RateService = {
 
   /**
    * Garante a ficha de hóspede do lead SEM mexer no estágio ("Promover a
-   * hóspede" — o titular pode virar hóspede no meio da negociação). Ordem:
-   * guestId explícito (sugestão por telefone aceita) → já vinculado → achado
-   * pelo documento → criado a partir dos dados do lead. Vínculo NOVO vira
-   * 'guest_linked' na timeline.
+   * hóspede" — o titular pode virar hóspede no meio da negociação). A decisão
+   * é do vendedor, na modal: `guestId` vincula uma ficha EXISTENTE (sugestão
+   * por telefone/nome aceita) e `create` abre ficha NOVA com os dados
+   * conferidos. Sem nenhum dos dois cai no automático de antes (já vinculado
+   * → achado pelo documento do lead). Vínculo novo vira 'guest_linked' na
+   * timeline.
+   *
+   * `create` com um CPF que já tem ficha na propriedade VINCULA a existente em
+   * vez de duplicar — a modal mostra os matches, mas o CPF é a última palavra.
    */
   async ensureGuestForQuote(
     propertyId: string,
     id: string,
     actor: { id: string; name: string },
-    opts?: { guestId?: string | null }
+    opts?: {
+      guestId?: string | null;
+      create?: { document: string; fullName: string; phone?: string | null; email?: string | null } | null;
+    }
   ): Promise<{ guestId: string | null }> {
     const admin = supabaseAdmin!;
     const { data } = await admin
@@ -854,6 +869,8 @@ export const RateService = {
     const quote = data as RateQuoteRecord;
 
     let guestId = quote.guestId || null;
+    /** Dados conferidos na modal — o lead passa a espelhar a ficha criada. */
+    const clientPatch: Record<string, unknown> = {};
 
     if (opts?.guestId) {
       // Vínculo explícito: valida que a ficha existe NESTA propriedade.
@@ -865,6 +882,50 @@ export const RateService = {
         .maybeSingle();
       if (!g) throw new Error("Hóspede não encontrado.");
       guestId = g.id as string;
+    } else if (opts?.create) {
+      const fullName = (opts.create.fullName || "").trim();
+      const normId = GuestService.normalizeDocument(opts.create.document || "");
+      if (!fullName) throw new Error("Informe o nome completo do hóspede.");
+      if (!normId) throw new Error("Informe um CPF válido para abrir a ficha.");
+
+      const phone = (opts.create.phone ?? quote.clientPhone ?? "").replace(/\D/g, "");
+      const email = (opts.create.email ?? quote.clientEmail ?? "").trim();
+
+      const { data: existing } = await admin
+        .from("guests")
+        .select("id")
+        .eq("id", normId)
+        .eq("propertyId", propertyId)
+        .maybeSingle();
+
+      if (existing) {
+        // CPF já cadastrado: vincula em vez de duplicar a ficha.
+        guestId = existing.id as string;
+      } else {
+        const newGuest: Omit<Guest, "updatedAt"> = {
+          id: normId,
+          propertyId,
+          fullName,
+          email,
+          phone,
+          nationality: "Brasileira",
+          birthDate: "",
+          gender: "NAO_INFORMADO",
+          occupation: "",
+          document: { type: "CPF", number: normId },
+          address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", country: "Brasil" },
+          allergies: [],
+          preferredLanguage: "pt",
+        };
+        guestId = await GuestService.upsertGuestDirect(propertyId, newGuest, actor.id, actor.name);
+      }
+
+      // O lead segue a ficha: nome/CPF conferidos valem mais que o digitado às
+      // pressas na cotação.
+      if (fullName !== (quote.clientName || "")) clientPatch.clientName = fullName;
+      if (normId !== (quote.clientDocument || "")) clientPatch.clientDocument = normId;
+      if (phone && phone !== (quote.clientPhone || "")) clientPatch.clientPhone = phone;
+      if (email && email !== (quote.clientEmail || "")) clientPatch.clientEmail = email;
     } else if (!guestId && quote.clientDocument) {
       const normId = GuestService.normalizeDocument(quote.clientDocument);
       if (normId) {
@@ -897,16 +958,31 @@ export const RateService = {
       }
     }
 
-    if (guestId && guestId !== (quote.guestId || null)) {
+    const linking = !!guestId && guestId !== (quote.guestId || null);
+    if (linking || Object.keys(clientPatch).length > 0) {
       const { error } = await admin
         .from("rate_quotes")
-        .update({ guestId, updatedAt: new Date().toISOString() })
+        .update({
+          ...clientPatch,
+          ...(linking ? { guestId } : {}),
+          updatedAt: new Date().toISOString(),
+        })
         .eq("id", id)
         .eq("propertyId", propertyId);
       if (error) throw new Error(error.message);
+    }
 
+    if (linking) {
       await CrmService.logInteraction(propertyId, "quote", id, "guest_linked", {
-        actorId: actor.id, actorName: actor.name, payload: { guestId },
+        actorId: actor.id, actorName: actor.name,
+        payload: { guestId, created: !!opts?.create },
+      });
+      await AuditService.log({
+        propertyId, userId: actor.id, userName: actor.name,
+        action: "UPDATE", entity: "RATE_QUOTE", entityId: id,
+        details: `Orçamento de ${quote.clientName || "sem nome"} promovido a hóspede (${
+          opts?.create ? "ficha nova" : "ficha existente"
+        } ${guestId}).`,
       });
     }
 
@@ -914,16 +990,17 @@ export const RateService = {
   },
 
   /**
-   * Conversão (ganhou): garante o hóspede (ensureGuestForQuote) e marca o
-   * orçamento como 'won'. Devolve o necessário para abrir /admin/stays/new
-   * pré-preenchida.
+   * Conversão (ganhou): exige a ficha de hóspede. Ainda tenta o automático
+   * (lead com CPF que já casa com uma ficha), mas se nem assim houver titular
+   * o ganho não acontece — a promoção é uma decisão consciente (ficha
+   * existente ou nova), feita na modal do drawer.
    */
   async convertQuote(
     propertyId: string,
     id: string,
     actorId: string,
     actorName: string
-  ): Promise<{ guestId: string | null; checkIn: string; checkOut: string }> {
+  ): Promise<{ guestId: string; checkIn: string; checkOut: string }> {
     const admin = supabaseAdmin!;
     const { data } = await admin
       .from("rate_quotes")
@@ -934,6 +1011,9 @@ export const RateService = {
     if (!data) throw new Error("Orçamento não encontrado.");
 
     const { guestId } = await this.ensureGuestForQuote(propertyId, id, { id: actorId, name: actorName });
+    if (!guestId) {
+      throw new Error("Promova o cliente a hóspede antes de marcar o orçamento como ganho.");
+    }
 
     await this.updateQuote(propertyId, id, { status: "won", guestId }, { id: actorId, name: actorName });
     await CrmService.logInteraction(propertyId, "quote", id, "converted", {
@@ -960,11 +1040,14 @@ export const RateService = {
 
     const [{ data: quoteRow }, { data: stayRow }] = await Promise.all([
       admin.from("rate_quotes").select("*").eq("id", quoteId).eq("propertyId", propertyId).maybeSingle(),
-      admin.from("stays").select("id, cabinId, checkIn, checkOut").eq("id", stayId).eq("propertyId", propertyId).maybeSingle(),
+      admin.from("stays").select("id, cabinId, guestId, checkIn, checkOut").eq("id", stayId).eq("propertyId", propertyId).maybeSingle(),
     ]);
     if (!quoteRow || !stayRow) throw new Error("Orçamento ou estadia não encontrados.");
     const quote = quoteRow as RateQuoteRecord;
-    const stay = stayRow as { id: string; cabinId: string | null; checkIn: string; checkOut: string };
+    const stay = stayRow as {
+      id: string; cabinId: string | null; guestId: string | null;
+      checkIn: string; checkOut: string;
+    };
 
     const snapshot = quote.snapshot || [];
     let chosen = undefined as (typeof snapshot)[number] | undefined;
@@ -1003,6 +1086,9 @@ export const RateService = {
     await this.updateQuote(propertyId, quoteId, {
       stayId,
       status: "won",
+      // O titular da estadia é o hóspede do orçamento: sem isso o ganho bate
+      // na regra "promova antes" justamente quando a ficha já existe.
+      guestId: quote.guestId ?? stay.guestId ?? null,
       selectedCategory: chosen ? (chosen.categoryId || chosen.category) : quote.selectedCategory ?? null,
       finalValue: total,
     }, { id: actorId, name: actorName });

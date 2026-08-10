@@ -1,21 +1,34 @@
 // Painel do titular do lead (só orçamentos): recorrente vs novo, sugestão de
-// vínculo por telefone, "Promover a hóspede" (sem mexer no estágio) e o
-// mini-histórico de cotações do cliente.
+// vínculo por telefone, "Promover a hóspede" (modal — ficha existente ou nova,
+// sem mexer no estágio) e, depois da promoção, o histórico do cliente:
+// hospedagens e outros orçamentos, sem sair do drawer.
 "use client";
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { BadgeCheck, Link2, Loader2, UserPlus } from "lucide-react";
+import { BadgeCheck, Home, Link2, Loader2, UserPlus } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
 import { CrmLead, Guest, RateQuoteRecord } from "@/types/aura";
 import { resolveQuoteValue } from "@/lib/rate-engine";
+import { PromoteGuestModal, PromotePayload } from "./PromoteGuestModal";
 import { S, QUOTE_STAGES, fmtBR, money, pillS } from "./shared";
+
+type ClientStayRow = {
+  id: string; checkIn: string; checkOut: string;
+  status: string; cabinName: string | null;
+};
 
 type ClientContext = {
   guest: Guest | null;
   staysCount: number;
+  stays: ClientStayRow[];
   phoneMatches: Guest[];
   quotes: RateQuoteRecord[];
+};
+
+const STAY_LABEL: Record<string, string> = {
+  reserved: "reservada", confirmed: "confirmada", checked_in: "hospedado",
+  checked_out: "finalizada", cancelled: "cancelada", no_show: "no-show",
 };
 
 const drawerLabel: React.CSSProperties = {
@@ -66,13 +79,14 @@ export function ClientPanel({
   busy: boolean;
   /** Lead ativo — dados do cliente ficam editáveis. */
   editable?: boolean;
-  /** Vincula/cria a ficha do hóspede — com guestId usa a ficha sugerida. */
-  onPromote: (guestId?: string) => Promise<void>;
+  /** Vincula a ficha escolhida na modal (existente) ou cria uma nova. */
+  onPromote: (payload: PromotePayload) => Promise<void>;
   /** Grava nome/telefone/e-mail/CPF direto no orçamento. */
   onPatch?: (patch: Record<string, unknown>) => Promise<void>;
 }) {
   const [ctx, setCtx] = useState<ClientContext | null>(null);
   const [loading, setLoading] = useState(false);
+  const [promoting, setPromoting] = useState(false);
 
   useEffect(() => {
     if (!lead.guestId && !lead.phone) { setCtx(null); return; }
@@ -91,10 +105,24 @@ export function ClientPanel({
 
   const guest = ctx?.guest ?? null;
   const otherQuotes = (ctx?.quotes || []).filter((q) => q.id !== lead.id).slice(0, 5);
+  const stays = ctx?.stays ?? [];
+
+  /** Só fecha quando promoveu — o erro já virou toast lá em cima. */
+  const confirmPromotion = async (payload: PromotePayload) => {
+    try {
+      await onPromote(payload);
+      setPromoting(false);
+    } catch { /* formulário continua na tela para corrigir */ }
+  };
 
   return (
     <div style={{ padding: 20, borderBottom: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 10 }}>
       <p style={drawerLabel}>Cliente</p>
+
+      {promoting && (
+        <PromoteGuestModal propertyId={propertyId} lead={lead} busy={busy}
+          onClose={() => setPromoting(false)} onConfirm={confirmPromotion} />
+      )}
 
       {loading && !ctx ? (
         <p style={{ fontSize: 12, color: T.muted, display: "flex", alignItems: "center", gap: 6, margin: 0 }}>
@@ -123,7 +151,7 @@ export function ClientPanel({
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={pillS(T.glass2, T.muted, T.border2)}>Novo cliente (lead)</span>
-            <button disabled={busy} onClick={() => onPromote()}
+            <button disabled={busy} onClick={() => setPromoting(true)}
               style={{
                 display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 11px",
                 borderRadius: 10, border: `1px solid ${T.g1Border}`, background: T.gradSoft,
@@ -142,7 +170,7 @@ export function ClientPanel({
               <p style={{ fontSize: 12, color: T.text, minWidth: 0, margin: 0 }}>
                 Telefone bate com <b>{g.fullName}</b>
               </p>
-              <button disabled={busy} onClick={() => onPromote(g.id)}
+              <button disabled={busy} onClick={() => confirmPromotion({ guestId: g.id })}
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 9px",
                   borderRadius: 9, border: "none", background: "rgba(245,158,11,0.18)",
@@ -177,9 +205,50 @@ export function ClientPanel({
         </div>
       )}
 
+      {/* Histórico de hospedagens — só existe depois da promoção (é o que a
+          ficha do hóspede amarra). Vale para o vendedor reconhecer recorrente
+          e para o "quando ele esteve aqui?" sem trocar de tela. */}
+      {stays.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <p style={{ fontSize: 10, color: T.muted, fontWeight: 800, margin: 0 }}>
+            Hospedagens deste cliente ({stays.length})
+          </p>
+          {stays.slice(0, 5).map((s) => (
+            <Link key={s.id} href={`/admin/stays/${s.id}`}
+              style={{
+                display: "flex", alignItems: "center", gap: 8, fontSize: 12,
+                background: T.glass, border: `1px solid ${T.border}`, borderRadius: 10,
+                padding: "7px 11px", color: T.text, textDecoration: "none",
+              }}>
+              <Home size={12} style={{ color: T.muted, flexShrink: 0 }} />
+              <span style={{ fontWeight: 600 }}>{fmtBR(s.checkIn)} → {fmtBR(s.checkOut)}</span>
+              {s.cabinName && (
+                <span style={{
+                  fontSize: 11, color: T.muted, minWidth: 0,
+                  whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                }}>
+                  {s.cabinName}
+                </span>
+              )}
+              <span style={{ marginLeft: "auto", fontSize: 10, color: T.muted, flexShrink: 0 }}>
+                {STAY_LABEL[s.status] ?? s.status}
+              </span>
+            </Link>
+          ))}
+          {stays.length > 5 && (
+            <Link href={`/admin/guests?id=${guest?.id ?? ""}`}
+              style={{ fontSize: 10.5, color: T.muted, textDecoration: "underline", textUnderlineOffset: 2 }}>
+              ver todas na ficha
+            </Link>
+          )}
+        </div>
+      )}
+
       {otherQuotes.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-          <p style={{ fontSize: 10, color: T.muted, fontWeight: 800, margin: 0 }}>Outras cotações deste cliente</p>
+          <p style={{ fontSize: 10, color: T.muted, fontWeight: 800, margin: 0 }}>
+            Outros orçamentos deste cliente ({(ctx?.quotes.length ?? 1) - 1})
+          </p>
           {otherQuotes.map((q) => {
             const stage = QUOTE_STAGES.find((s) => s.id === q.status);
             const v = resolveQuoteValue(q);

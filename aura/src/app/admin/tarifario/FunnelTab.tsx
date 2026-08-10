@@ -114,7 +114,7 @@ export default function FunnelTab({ propertyId, bundle, active, refreshSignal, o
         const data = await res.json().catch(() => null);
         if (!res.ok) throw new Error(data?.error);
         await load();
-        toast.success(data.guestId ? "Ganhou! Hóspede vinculado." : "Ganhou! (sem CPF para criar o hóspede)");
+        toast.success("Ganhou! Hóspede vinculado.");
         if (confirm("Criar a estadia agora, já pré-preenchida?")) {
           const params = new URLSearchParams({
             checkIn: data.checkIn,

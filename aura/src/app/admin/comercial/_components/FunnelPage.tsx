@@ -26,6 +26,7 @@ import { WaitlistTab } from "./WaitlistTab";
 import { LeadDrawer } from "./LeadDrawer";
 import { MarkLostModal } from "./MarkLostModal";
 import { NewQuoteWizard, type QuoteSeed } from "./NewQuoteWizard";
+import type { PromotePayload } from "./PromoteGuestModal";
 import { S, QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, leadAlert, money, todayIso } from "./shared";
 
 type TabId = "pipeline" | "alarmes" | "espera";
@@ -214,18 +215,29 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
     toast.success("Lead atualizado.");
   });
 
-  // "Promover a hóspede": vincula/cria a ficha SEM mexer no estágio do lead.
-  const promoteGuest = (lead: CrmLead, guestId?: string) => withBusy(lead, async () => {
-    const res = await fetch("/api/admin/tarifario/quotes/promote-guest", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ propertyId: property!.id, id: lead.id, guestId }),
-    });
-    const data = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(data?.error);
-    await reload(lead.id);
-    if (data.guestId) toast.success("Cliente promovido a hóspede.");
-    else toast.info("Lead sem CPF — preencha o documento no Tarifário para criar a ficha.");
-  });
+  // "Promover a hóspede": vincula a ficha escolhida (existente) ou cria a nova
+  // com os dados conferidos na modal — SEM mexer no estágio do lead.
+  // Rejeita de volta (em vez do withBusy, que engole): a modal só fecha quando
+  // a promoção deu certo — CPF recusado tem de manter o formulário na tela.
+  const promoteGuest = async (lead: CrmLead, payload: PromotePayload) => {
+    setBusyId(lead.id);
+    try {
+      const res = await fetch("/api/admin/tarifario/quotes/promote-guest", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ propertyId: property!.id, id: lead.id, ...payload }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error);
+      if (!data?.guestId) throw new Error("Não foi possível criar a ficha — confira os dados.");
+      await reload(lead.id);
+      toast.success("Cliente promovido a hóspede.");
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : "Erro ao promover a hóspede.");
+      throw e;
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const moveStage = (lead: CrmLead, stage: string) => withBusy(lead, async () => {
     if (lead.entityType === "quote") await patchQuote(lead.id, { status: stage });
@@ -249,7 +261,7 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
     if (!res.ok) throw new Error(data?.error);
     await reload();
     setSelected(null);
-    toast.success(data.guestId ? "Ganhou! Hóspede garantido." : "Ganhou! (sem CPF para criar o hóspede)");
+    toast.success("Ganhou! Hóspede garantido.");
     if (confirm("Criar a estadia agora, já pré-preenchida?")) {
       const params = new URLSearchParams({
         checkIn: data.checkIn, checkOut: data.checkOut, quoteId: lead.id,
@@ -582,7 +594,7 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
           onWin={() => win(selected)}
           onOpenOrigin={() => openOrigin(selected)}
           onPatch={(patch) => patchLead(selected, patch)}
-          onPromoteGuest={(guestId) => promoteGuest(selected, guestId)}
+          onPromoteGuest={(payload) => promoteGuest(selected, payload)}
           onAlarmsChanged={loadAlarms}
           onQuoteChanged={() => reload(selected.id)}
           onEditQuote={(q) => openWizard(seedFromQuote(q, true))}

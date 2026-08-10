@@ -14,6 +14,7 @@ import { offeredTotal, resolveRoomValue } from "@/lib/rate-engine";
 import { parseMoneyBR, moneyToInput } from "@/lib/parse-money";
 import { CrmChannel, CrmLead, RateQuoteRecord, RateQuoteRoom, WeddingInstallment } from "@/types/aura";
 import { ClientPanel } from "./ClientPanel";
+import type { PromotePayload } from "./PromoteGuestModal";
 import { InteractionTimeline } from "./InteractionTimeline";
 import { LeadAlarms } from "./LeadAlarms";
 import { S, QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, fmtBR, money, pillS, todayIso } from "./shared";
@@ -544,7 +545,7 @@ export function LeadDrawer({
   onWin: () => void;
   onOpenOrigin: () => void;
   onPatch: (patch: Record<string, unknown>) => Promise<void>;
-  onPromoteGuest: (guestId?: string) => Promise<void>;
+  onPromoteGuest: (payload: PromotePayload) => Promise<void>;
   onAlarmsChanged?: () => void;
   /** Reabre o wizard recalculando ESTE orçamento. */
   onEditQuote?: (quote: RateQuoteRecord) => void;
@@ -589,10 +590,14 @@ export function LeadDrawer({
     setTimelineKey((k) => k + 1);
   };
 
-  const promoteAndRefresh = async (guestId?: string) => {
-    await onPromoteGuest(guestId);
+  const promoteAndRefresh = async (payload: PromotePayload) => {
+    await onPromoteGuest(payload);
     setTimelineKey((k) => k + 1);
   };
+
+  // Ganho exige ficha de hóspede (o servidor recusa de todo jeito) — melhor
+  // dizer aqui do que deixar o clique virar erro.
+  const needsGuest = isQuote && !lead.guestId;
 
   // Etapas intermediárias (won/lost têm fluxos próprios: onWin / onMarkLost)
   const moveTargets = stages.filter((s) =>
@@ -765,11 +770,13 @@ export function LeadDrawer({
                     → {s.label}
                   </button>
                 ))}
-                <button disabled={busy} onClick={onWin}
+                <button disabled={busy || needsGuest} onClick={onWin}
+                  title={needsGuest ? "Promova o cliente a hóspede antes de fechar" : undefined}
                   style={{
                     padding: "6px 11px", borderRadius: 10, fontSize: 11, fontWeight: 800,
                     border: "none", background: "rgba(52,211,153,0.15)", color: T.emerald,
-                    cursor: "pointer", fontFamily: "inherit", opacity: busy ? 0.5 : 1,
+                    cursor: needsGuest ? "not-allowed" : "pointer", fontFamily: "inherit",
+                    opacity: busy || needsGuest ? 0.5 : 1,
                   }}>
                   ✓ {isQuote ? "Ganhou" : "Confirmou"}
                 </button>
@@ -783,6 +790,12 @@ export function LeadDrawer({
                   <XCircle size={12} /> Perdeu
                 </button>
               </div>
+              {needsGuest && (
+                <p style={{ fontSize: 11, color: T.muted, margin: "-4px 0 0", lineHeight: 1.5 }}>
+                  Para fechar, promova o cliente a hóspede acima — é a ficha que sustenta
+                  estadia, fólio e histórico.
+                </p>
+              )}
 
               {/* Registrar contato / nota */}
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
