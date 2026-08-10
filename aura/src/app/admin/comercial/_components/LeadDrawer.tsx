@@ -102,6 +102,12 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
   const totalPax = rooms.reduce((s, r) => s + r.adults + r.children, 0);
   const busyAll = busy || saving;
 
+  // Períodos mistos (chegada escalonada): a data sai do resumo e passa a
+  // aparecer em TODAS as acomodações — inclusive a que casa com o span.
+  const periodKey = (r: RateQuoteRoom) =>
+    `${r.checkIn || quote.checkIn}|${r.checkOut || quote.checkOut}`;
+  const mixedPeriods = new Set(rooms.map(periodKey)).size > 1;
+
   return (
     <div style={{ padding: 20, borderBottom: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -120,15 +126,15 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
         </span>
       </div>
       <p style={{ fontSize: 11.5, color: T.muted, margin: 0 }}>
-        {fmtBR(quote.checkIn)} → {fmtBR(quote.checkOut)} · {nights} noite{nights !== 1 ? "s" : ""} ·{" "}
-        {rooms.length} acomodaç{rooms.length > 1 ? "ões" : "ão"} · {totalPax} pagante{totalPax !== 1 ? "s" : ""}
+        {mixedPeriods
+          ? `Datas por acomodação · entre ${fmtBR(quote.checkIn)} e ${fmtBR(quote.checkOut)}`
+          : `${fmtBR(quote.checkIn)} → ${fmtBR(quote.checkOut)} · ${nights} noite${nights !== 1 ? "s" : ""}`}
+        {" · "}{rooms.length} acomodaç{rooms.length > 1 ? "ões" : "ão"} · {totalPax} pagante{totalPax !== 1 ? "s" : ""}
       </p>
 
       {rooms.map((room, i) => {
         const label = room.label?.trim() || (rooms.length > 1 ? `Acomodação ${i + 1}` : "Cabanas oferecidas");
-        // Período próprio (chegada escalonada) — só aparece quando difere.
-        const ownPeriod = (room.checkIn && room.checkIn !== quote.checkIn)
-          || (room.checkOut && room.checkOut !== quote.checkOut);
+        const roomNights = room.options[0]?.nights ?? 0;
         return (
           <div key={room.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -138,9 +144,10 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
                 {room.babies > 0 ? ` · ${room.babies} isento${room.babies > 1 ? "s" : ""}` : ""}
                 {room.pets > 0 ? ` · ${room.pets} pet${room.pets > 1 ? "s" : ""}` : ""}
               </span>
-              {ownPeriod && (
+              {mixedPeriods && (
                 <span style={{ ...pillS(T.gradSoft, T.g1, T.g1Border), fontSize: 9 }}>
-                  {fmtBR(room.checkIn!)} → {fmtBR(room.checkOut!)}
+                  {fmtBR(room.checkIn || quote.checkIn)} → {fmtBR(room.checkOut || quote.checkOut)}
+                  {roomNights > 0 ? ` · ${roomNights}n` : ""}
                 </span>
               )}
             </div>

@@ -41,8 +41,6 @@ export type PublicQuoteRoom = {
   checkIn: string;
   checkOut: string;
   nights: number;
-  /** true quando o período difere do intervalo geral — a tela destaca. */
-  ownPeriod: boolean;
   adults: number;
   children: number;
   babies: number;
@@ -57,6 +55,12 @@ export type PublicQuoteView = {
   checkIn: string;
   checkOut: string;
   nights: number;
+  /**
+   * Acomodações com períodos DIFERENTES entre si. Regra de exibição: quando
+   * false, o período aparece só no cabeçalho; quando true, some do cabeçalho
+   * e aparece em TODAS as acomodações (inclusive a que coincide com o span).
+   */
+  mixedPeriods: boolean;
   rooms: PublicQuoteRoom[];
   /** Total com as escolhas atuais; approximate = ainda falta escolher. */
   total: number;
@@ -142,6 +146,12 @@ export const RateQuotePublicService = {
       if (r.approximate) approximate = true;
     }
 
+    // Períodos mistos = comparação entre as acomodações (não contra o span):
+    // com chegada escalonada, a que casa com o span também precisa mostrar a
+    // própria data, senão o cliente lê a dela como se fosse a do grupo.
+    const periodKey = (r: RateQuoteRoom) => `${r.checkIn || q.checkIn}|${r.checkOut || q.checkOut}`;
+    const mixedPeriods = new Set(rooms.map(periodKey)).size > 1;
+
     const settings = (property?.settings ?? {}) as { whatsappNumber?: string; contactPhone?: string };
 
     return {
@@ -151,21 +161,18 @@ export const RateQuotePublicService = {
       checkIn: q.checkIn,
       checkOut: q.checkOut,
       nights: rooms[0]?.options[0]?.nights ?? 0,
-      rooms: rooms.map((room, i) => {
-        const ci = room.checkIn || q.checkIn;
-        const co = room.checkOut || q.checkOut;
-        return {
-          id: room.id,
-          label: room.label?.trim() || (rooms.length > 1 ? `Acomodação ${i + 1}` : "Sua cabana"),
-          checkIn: ci, checkOut: co,
-          nights: room.options[0]?.nights ?? 0,
-          ownPeriod: ci !== q.checkIn || co !== q.checkOut,
-          adults: room.adults, children: room.children,
-          babies: room.babies, pets: room.pets,
-          options: room.options.map((c) => publicOption(c, siteUrlOf(c.categoryId))),
-          selectedCategory: room.selectedCategory ?? null,
-        };
-      }),
+      mixedPeriods,
+      rooms: rooms.map((room, i) => ({
+        id: room.id,
+        label: room.label?.trim() || (rooms.length > 1 ? `Acomodação ${i + 1}` : "Sua cabana"),
+        checkIn: room.checkIn || q.checkIn,
+        checkOut: room.checkOut || q.checkOut,
+        nights: room.options[0]?.nights ?? 0,
+        adults: room.adults, children: room.children,
+        babies: room.babies, pets: room.pets,
+        options: room.options.map((c) => publicOption(c, siteUrlOf(c.categoryId))),
+        selectedCategory: room.selectedCategory ?? null,
+      })),
       total,
       approximate,
       acceptedAt: q.acceptedAt ?? null,

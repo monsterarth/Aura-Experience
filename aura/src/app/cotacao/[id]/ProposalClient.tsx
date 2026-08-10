@@ -76,8 +76,12 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
         }}>
           {quote.clientFirstName ? `Olá, ${quote.clientFirstName}!` : "Que bom te receber!"}
         </h1>
+        {/* Períodos mistos: a data vive em cada acomodação, não aqui — senão
+            o cliente lê o span do grupo como se fosse a estadia dele. */}
         <p style={{ fontSize: 14, color: "var(--ink-soft)", margin: 0 }}>
-          {fmtBR(quote.checkIn)} a {fmtBR(quote.checkOut)} · {quote.nights} noite{quote.nights !== 1 ? "s" : ""}
+          {quote.mixedPeriods
+            ? `Chegadas em datas diferentes · entre ${fmtBR(quote.checkIn)} e ${fmtBR(quote.checkOut)}`
+            : `${fmtBR(quote.checkIn)} a ${fmtBR(quote.checkOut)} · ${quote.nights} noite${quote.nights !== 1 ? "s" : ""}`}
         </p>
         {quote.expiresAt && !accepted && (
           <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>
@@ -128,7 +132,7 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
                 {room.babies > 0 ? ` · ${room.babies} bebê${room.babies > 1 ? "s" : ""}` : ""}
                 {room.pets > 0 ? ` · ${room.pets} pet${room.pets > 1 ? "s" : ""}` : ""}
               </span>
-              {room.ownPeriod && (
+              {quote.mixedPeriods && (
                 <span style={{
                   fontSize: 11, fontWeight: 700, color: "var(--brand)",
                   background: "var(--brand-soft)", borderRadius: 999, padding: "2px 9px",
