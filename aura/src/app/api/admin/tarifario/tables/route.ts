@@ -1,4 +1,6 @@
-// Tarifário — CRUD das tabelas de preço.
+// Tarifário — CRUD das tabelas de preço. Escrita é de gestão (recepção só
+// consulta — regra do refactor fase 4); toda alteração real gera versão no
+// arquivo (rate_table_versions) via saveTable.
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isAuthError, assertPropertyAccess } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -6,7 +8,7 @@ import { RateService } from "@/services/rate-service";
 
 export const dynamic = "force-dynamic";
 
-const WRITE_ROLES = ["super_admin", "admin", "manager", "reception"] as const;
+const WRITE_ROLES = ["super_admin", "admin", "manager"] as const;
 const DELETE_ROLES = ["super_admin", "admin", "manager"] as const;
 
 export async function POST(req: NextRequest) {
@@ -24,11 +26,17 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const id = await RateService.saveTable(propertyId, {
-      id: body.table.id,
-      name: String(body.table.name),
-      prices: body.table.prices || {},
-    });
+    const id = await RateService.saveTable(
+      propertyId,
+      {
+        id: body.table.id,
+        name: String(body.table.name),
+        prices: body.table.prices || {},
+        // Import de tarifários antigos direto para o arquivo.
+        archived: body.table.archived === true,
+      },
+      { id: auth.staff.id, name: auth.staff.fullName }
+    );
     return NextResponse.json({ id });
   } catch (e) {
     console.error("Erro ao salvar tabela de preços:", e);

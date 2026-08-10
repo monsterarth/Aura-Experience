@@ -6,6 +6,7 @@ import {
   CabinCategory,
   CrmChannel,
   Guest,
+  RateFluctuationRule,
   RatePeriod,
   RateQuoteInput,
   RateQuoteRecord,
@@ -13,6 +14,7 @@ import {
   RateQuoteStatus,
   RateSettings,
   RateTable,
+  RateTableVersion,
   RateAvailability,
 } from "@/types/aura";
 import {
@@ -61,6 +63,12 @@ export interface RateBundle {
   channels: CrmChannel[];
   /** Casamentos não-cancelados com saída futura (vínculo no orçamento). */
   weddings: { id: string; couple: string; checkin: string; checkout: string; status: string }[];
+  /**
+   * Regras de flutuação por período. `null` = migration tarifario_phase4
+   * ausente — é O sinal de degradação: a UI esconde a aba/opção Automática
+   * e nada tenta escrever nas colunas novas.
+   */
+  fluctuations: RateFluctuationRule[] | null;
 }
 
 export interface SavePeriodResult {
@@ -85,7 +93,7 @@ export const RateService = {
     const admin = supabaseAdmin!;
     const today = new Date().toISOString().slice(0, 10);
 
-    const [tablesRes, periodsRes, settingsRes, categoriesRes, channels, weddingsRes] = await Promise.all([
+    const [tablesRes, periodsRes, settingsRes, categoriesRes, channels, weddingsRes, fluctRes] = await Promise.all([
       admin.from("rate_tables").select("*").eq("propertyId", propertyId).order("createdAt"),
       admin.from("rate_periods").select("*").eq("propertyId", propertyId).order("startDate"),
       admin.from("rate_settings").select("*").eq("propertyId", propertyId).maybeSingle(),
@@ -98,6 +106,7 @@ export const RateService = {
         .neq("status", "cancelled")
         .gte("checkout", today)
         .order("checkin"),
+      admin.from("rate_fluctuations").select("*").eq("propertyId", propertyId).order("startDate"),
     ]);
 
     const settings = (settingsRes.data as RateSettings) || DEFAULT_RATE_SETTINGS(propertyId);
@@ -127,45 +136,100 @@ export const RateService = {
       categories,
       channels,
       weddings,
+      // error = tabela inexistente (migration pendente) → null, não [].
+      fluctuations: fluctRes.error ? null : ((fluctRes.data || []) as RateFluctuationRule[]),
     };
   },
 
   // ── Tabelas de preço ───────────────────────────────────────────────────────
 
+  /**
+   * Snapshot best-effort da tabela em rate_table_versions — o histórico de
+   * preços. try/catch de propósito: pré-migration a tabela de versões não
+   * existe e salvar preço não pode quebrar por causa do histórico.
+   */
+  async snapshotTable(
+    row: Pick<RateTable, "id" | "propertyId" | "name" | "prices">,
+    actor?: { id: string; name: string }
+  ): Promise<void> {
+    try {
+      const { error } = await supabaseAdmin!.from("rate_table_versions").insert({
+        tableId: row.id,
+        propertyId: row.propertyId,
+        name: row.name,
+        prices: row.prices || {},
+        replacedBy: actor?.id ?? null,
+        replacedByName: actor?.name ?? null,
+      });
+      if (error) console.warn("[rate] snapshot de versão falhou (migration phase4 aplicada?):", error.message);
+    } catch (e) {
+      console.warn("[rate] snapshot de versão falhou:", e);
+    }
+  },
+
   async saveTable(
     propertyId: string,
-    table: { id?: string; name: string; prices: RateTable["prices"] }
+    table: { id?: string; name: string; prices: RateTable["prices"]; archived?: boolean },
+    actor?: { id: string; name: string }
   ): Promise<string> {
     const admin = supabaseAdmin!;
     // Upsert por id: garante que um id existente pertence a ESTA propriedade
     // (senão o payload poderia sequestrar a linha de outra).
+    let existing: RateTable | null = null;
     if (table.id) {
-      const { data: existing } = await admin
+      const { data } = await admin
         .from("rate_tables")
-        .select("propertyId")
+        .select("*")
         .eq("id", table.id)
         .maybeSingle();
+      existing = (data as RateTable) ?? null;
       if (existing && existing.propertyId !== propertyId) {
         throw new Error("Tabela pertence a outra propriedade.");
       }
     }
+
+    // No-op: nada mudou → não escreve nem gera versão (mata o ruído de
+    // histórico de quem abre o editor e clica salvar sem mexer).
+    if (
+      existing &&
+      existing.name === table.name &&
+      JSON.stringify(existing.prices || {}) === JSON.stringify(table.prices || {})
+    ) {
+      return existing.id;
+    }
+
+    // Mudança real numa tabela existente: a versão ANTIGA vai pro arquivo.
+    if (existing) await this.snapshotTable(existing, actor);
+
     const id = table.id || crypto.randomUUID();
-    const { error } = await admin.from("rate_tables").upsert(
-      {
-        id,
-        propertyId,
-        name: table.name,
-        prices: table.prices || {},
-        updatedAt: new Date().toISOString(),
-      },
-      { onConflict: "id" }
-    );
+    const row: Record<string, unknown> = {
+      id,
+      propertyId,
+      name: table.name,
+      prices: table.prices || {},
+      updatedAt: new Date().toISOString(),
+    };
+    // Import direto para o arquivo (tarifários de anos passados) — a coluna
+    // só entra quando pedida, então pré-migration nada tenta escrevê-la.
+    if (table.archived) {
+      row.archivedAt = new Date().toISOString();
+      row.archivedBy = actor?.id ?? null;
+    }
+    const { error } = await admin.from("rate_tables").upsert(row, { onConflict: "id" });
     if (error) throw new Error(error.message);
     return id;
   },
 
   async deleteTable(propertyId: string, id: string, actorId: string, actorName: string): Promise<void> {
     const admin = supabaseAdmin!;
+    // Último estado sobrevive no arquivo mesmo depois da exclusão.
+    const { data: row } = await admin
+      .from("rate_tables").select("*")
+      .eq("id", id).eq("propertyId", propertyId).maybeSingle();
+    if (row) {
+      await this.snapshotTable(row as RateTable, { id: actorId, name: actorName });
+    }
+
     const { error } = await admin
       .from("rate_tables")
       .delete()
@@ -180,8 +244,77 @@ export const RateService = {
       action: "RATE_TABLE_DELETED",
       entity: "RATE_TABLE",
       entityId: id,
-      details: "Tabela de preços excluída.",
+      details: `Tabela de preços "${(row as RateTable | null)?.name ?? id}" excluída (último estado no arquivo).`,
     });
+  },
+
+  /**
+   * Arquiva/restaura uma tabela. Arquivada some das listas ativas e dos
+   * selects de período, mas o MOTOR segue resolvendo regras antigas que
+   * apontam para ela — por isso devolvemos `referencedBy` (regras vigentes)
+   * para a UI avisar, sem bloquear.
+   */
+  async archiveTable(
+    propertyId: string,
+    id: string,
+    archived: boolean,
+    actor: { id: string; name: string }
+  ): Promise<{ referencedBy: { id: string; name: string }[] }> {
+    const admin = supabaseAdmin!;
+    const today = new Date().toISOString().slice(0, 10);
+
+    const { data: row } = await admin
+      .from("rate_tables").select("id, name")
+      .eq("id", id).eq("propertyId", propertyId).maybeSingle();
+    if (!row) throw new Error("Tabela não encontrada.");
+
+    const { error } = await admin
+      .from("rate_tables")
+      .update({
+        archivedAt: archived ? new Date().toISOString() : null,
+        archivedBy: archived ? actor.id : null,
+        updatedAt: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("propertyId", propertyId);
+    if (error) {
+      throw new Error(/archived/i.test(error.message)
+        ? "Arquivo indisponível — aplique a migration tarifario_phase4 no Supabase."
+        : error.message);
+    }
+
+    const { data: refs } = await admin
+      .from("rate_periods")
+      .select("id, name, endDate")
+      .eq("propertyId", propertyId)
+      .gte("endDate", today)
+      .or(`weekdayTableId.eq.${id},weekendTableId.eq.${id}`);
+
+    await AuditService.log({
+      propertyId, userId: actor.id, userName: actor.name,
+      action: archived ? "RATE_TABLE_ARCHIVED" : "RATE_TABLE_RESTORED",
+      entity: "RATE_TABLE", entityId: id,
+      details: `Tabela "${row.name}" ${archived ? "arquivada" : "restaurada do arquivo"}.`,
+    });
+
+    return {
+      referencedBy: ((refs || []) as { id: string; name: string }[]).map((r) => ({
+        id: r.id, name: r.name,
+      })),
+    };
+  },
+
+  /** Linha do tempo de versões de uma tabela (mais recente primeiro). */
+  async listTableVersions(propertyId: string, tableId: string): Promise<RateTableVersion[]> {
+    const { data, error } = await supabaseAdmin!
+      .from("rate_table_versions")
+      .select("*")
+      .eq("propertyId", propertyId)
+      .eq("tableId", tableId)
+      .order("replacedAt", { ascending: false })
+      .limit(100);
+    if (error) return [];   // migration pendente = sem histórico, não erro
+    return (data || []) as RateTableVersion[];
   },
 
   // ── Regras de calendário ───────────────────────────────────────────────────
@@ -250,6 +383,122 @@ export const RateService = {
       .eq("id", id)
       .eq("propertyId", propertyId);
     if (error) throw new Error(error.message);
+  },
+
+  // ── Flutuações por período ─────────────────────────────────────────────────
+
+  /**
+   * Atribui um PRESET de flutuação (settings.fluctuations) a um intervalo de
+   * datas. O % e o nome do preset são CONGELADOS na regra — editar o preset
+   * depois não reprecifica períodos já atribuídos. Mesmos modos de conflito
+   * das regras de calendário. TODA escrita é auditada: é o rastro que
+   * permite a recepção mexer aqui sem aval de gerente.
+   */
+  async saveFluctuation(
+    propertyId: string,
+    rule: { id?: string; presetId: string; startDate: string; endDate: string },
+    mode: "strict" | "overwrite" | "fill",
+    actor: { id: string; name: string }
+  ): Promise<SavePeriodResult> {
+    const admin = supabaseAdmin!;
+    const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+    if (!ISO_DATE.test(rule.startDate) || !ISO_DATE.test(rule.endDate) || rule.startDate > rule.endDate) {
+      throw new Error("Período inválido.");
+    }
+
+    const { settings } = await this.getRateData(propertyId);
+    const preset = (settings.fluctuations || []).find((f) => f.id === rule.presetId);
+    if (!preset) throw new Error("Flutuação não cadastrada — configure em Configurações → Comercial.");
+
+    const { data, error: listError } = await admin
+      .from("rate_fluctuations").select("*").eq("propertyId", propertyId);
+    if (listError) {
+      throw new Error("Flutuações por período indisponíveis — aplique a migration tarifario_phase4 no Supabase.");
+    }
+    const existing = (data || []) as RateFluctuationRule[];
+    const ownId = rule.id && existing.some((f) => f.id === rule.id) ? rule.id : undefined;
+    const next: Omit<RateFluctuationRule, "id"> & { id?: string } = {
+      id: ownId,
+      propertyId,
+      presetId: preset.id,
+      name: preset.name,
+      pct: preset.pct,
+      startDate: rule.startDate,
+      endDate: rule.endDate,
+      createdBy: actor.id,
+      createdByName: actor.name,
+    };
+
+    const label = `${preset.name} (${preset.pct > 0 ? "+" : ""}${preset.pct}%) · ${rule.startDate} → ${rule.endDate}`;
+    const audit = (details: string) => AuditService.log({
+      propertyId, userId: actor.id, userName: actor.name,
+      action: "RATE_FLUCTUATION_SAVED", entity: "RATE_FLUCTUATION",
+      entityId: ownId ?? "nova", details,
+    });
+
+    if (mode === "strict") {
+      const overlaps = findOverlaps(existing, next);
+      if (overlaps.length > 0) {
+        return {
+          conflict: overlaps.map((f) => ({
+            id: f.id, name: f.name || `${f.pct > 0 ? "+" : ""}${f.pct}%`,
+            startDate: f.startDate, endDate: f.endDate,
+          })),
+          created: 0,
+        };
+      }
+      const { error } = await admin.from("rate_fluctuations").upsert(
+        { ...next, id: next.id || crypto.randomUUID() },
+        { onConflict: "id" }
+      );
+      if (error) throw new Error(error.message);
+      await audit(`Flutuação atribuída: ${label}.`);
+      return { created: 1 };
+    }
+
+    const resolution =
+      mode === "overwrite" ? resolveOverwrite(existing, next) : resolveFill(existing, next);
+    if (resolution.insert.length === 0) return { created: 0 };
+
+    if (resolution.removeIds.length > 0) {
+      const { error } = await admin
+        .from("rate_fluctuations")
+        .delete()
+        .in("id", resolution.removeIds)
+        .eq("propertyId", propertyId);
+      if (error) throw new Error(error.message);
+    }
+    const rows = resolution.insert.map((f) => ({ ...f, id: crypto.randomUUID(), propertyId }));
+    const { error } = await admin.from("rate_fluctuations").insert(rows);
+    if (error) throw new Error(error.message);
+    await audit(`Flutuação atribuída (${mode === "overwrite" ? "sobrepondo" : "preenchendo vazios"}): ${label}.`);
+    return { created: rows.length };
+  },
+
+  async deleteFluctuation(
+    propertyId: string,
+    id: string,
+    actor: { id: string; name: string }
+  ): Promise<void> {
+    const admin = supabaseAdmin!;
+    const { data: row } = await admin
+      .from("rate_fluctuations").select("*")
+      .eq("id", id).eq("propertyId", propertyId).maybeSingle();
+    if (!row) return;
+
+    const { error } = await admin
+      .from("rate_fluctuations")
+      .delete()
+      .eq("id", id)
+      .eq("propertyId", propertyId);
+    if (error) throw new Error(error.message);
+
+    const f = row as RateFluctuationRule;
+    await AuditService.log({
+      propertyId, userId: actor.id, userName: actor.name,
+      action: "RATE_FLUCTUATION_DELETED", entity: "RATE_FLUCTUATION", entityId: id,
+      details: `Flutuação removida: ${f.name || "sem nome"} (${f.pct > 0 ? "+" : ""}${f.pct}%) · ${f.startDate} → ${f.endDate}.`,
+    });
   },
 
   // ── Config comercial ───────────────────────────────────────────────────────
@@ -350,14 +599,16 @@ export const RateService = {
 
   /** Dados de cálculo da propriedade (sem casamentos/canais — uso interno). */
   async getRateData(propertyId: string): Promise<{
-    tables: RateTable[]; periods: RatePeriod[]; settings: RateSettings; categories: CabinCategory[];
+    tables: RateTable[]; periods: RatePeriod[]; settings: RateSettings;
+    categories: CabinCategory[]; fluctuations: RateFluctuationRule[] | null;
   }> {
     const admin = supabaseAdmin!;
-    const [tablesRes, periodsRes, settingsRes, categoriesRes] = await Promise.all([
+    const [tablesRes, periodsRes, settingsRes, categoriesRes, fluctRes] = await Promise.all([
       admin.from("rate_tables").select("*").eq("propertyId", propertyId).order("createdAt"),
       admin.from("rate_periods").select("*").eq("propertyId", propertyId).order("startDate"),
       admin.from("rate_settings").select("*").eq("propertyId", propertyId).maybeSingle(),
       admin.from("cabin_categories").select("*").eq("propertyId", propertyId).order("order"),
+      admin.from("rate_fluctuations").select("*").eq("propertyId", propertyId).order("startDate"),
     ]);
     const settings = (settingsRes.data as RateSettings) || DEFAULT_RATE_SETTINGS(propertyId);
     return {
@@ -372,6 +623,8 @@ export const RateService = {
         categoryLinks: settings.categoryLinks || {},
       },
       categories: (categoriesRes.data || []) as CabinCategory[],
+      // null = migration phase4 pendente (o sinal único de degradação).
+      fluctuations: fluctRes.error ? null : ((fluctRes.data || []) as RateFluctuationRule[]),
     };
   },
 
@@ -408,8 +661,13 @@ export const RateService = {
     // do cliente vem só a COMPOSIÇÃO pedida: quantas acomodações e o pax de
     // cada uma). Os controles comerciais (flutuação, descontos, extra) são do
     // orçamento inteiro e entram no cálculo de todas as acomodações.
+    const data = await this.getRateData(propertyId);
+    // Modo Automática só vale com a migration aplicada; quando ativo, o pct
+    // manual é zerado (um valor velho não pode vazar por baixo do auto).
+    const fluctuationAuto = payload.fluctuationAuto === true && data.fluctuations !== null;
     const commercial = {
-      fluctuationPct: Number(payload.fluctuationPct) || 0,
+      fluctuationPct: fluctuationAuto ? 0 : Number(payload.fluctuationPct) || 0,
+      fluctuationAuto,
       discountIds: Array.isArray(payload.discountIds) ? payload.discountIds.map(String) : [],
       adhocValue: Math.max(0, Number(payload.adhocValue) || 0),
       adhocType: (payload.adhocType === "brl" ? "brl" : "pct") as "pct" | "brl",
@@ -438,10 +696,11 @@ export const RateService = {
            babies: payload.babies, pets: payload.pets,
            selectedCategory: payload.selectedCategory } as Partial<RateQuoteRoom>];
 
-    const data = await this.getRateData(propertyId);
+    let firstAvgPct = 0;
     const rooms: RateQuoteRoom[] = requested.map((r, i) => {
       const input = inputFor(r);
-      const result = computeQuote(input, data);
+      const result = computeQuote(input, { ...data, fluctuations: data.fluctuations ?? undefined });
+      if (i === 0) firstAvgPct = result.fluctuationAvgPct ?? 0;
       if (result.categories.length === 0) {
         throw new Error(
           result.uncoveredDates.length > 0
@@ -516,7 +775,12 @@ export const RateService = {
       children: input.children,
       babies: input.babies,
       pets: input.pets,
-      fluctuationPct: input.fluctuationPct,
+      // Em modo auto o pct persistido é a MÉDIA efetiva da acomodação 1
+      // (exibição/histórico); o cálculo real foi noite a noite.
+      fluctuationPct: fluctuationAuto ? firstAvgPct : input.fluctuationPct,
+      // A coluna só entra com a migration aplicada — e gravar `false` também
+      // importa (re-salvar um auto como manual precisa desligar a flag).
+      ...(data.fluctuations !== null ? { fluctuationAuto } : {}),
       discountIds: input.discountIds,
       adhocValue: input.adhocValue,
       adhocType: input.adhocType,
@@ -1306,6 +1570,13 @@ export const RateService = {
     }
 
     // Só agora limpa o tarifário atual (períodos primeiro por causa das FKs).
+    // Antes de apagar, cada tabela vai pro arquivo — o import do SIT era o
+    // único caminho que destruía o histórico de preços sem rastro.
+    const { data: doomed } = await admin
+      .from("rate_tables").select("*").eq("propertyId", propertyId);
+    for (const t of (doomed || []) as RateTable[]) {
+      await this.snapshotTable(t, { id: actorId, name: actorName });
+    }
     await admin.from("rate_periods").delete().eq("propertyId", propertyId);
     await admin.from("rate_tables").delete().eq("propertyId", propertyId);
 
