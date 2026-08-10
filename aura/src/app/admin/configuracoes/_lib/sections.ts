@@ -6,7 +6,7 @@
 // vazia o layout não desenha sub-nav — igual food-and-beverage/layout.tsx, que
 // esconde as abas quando só uma é visível.
 import { UserRole, type Property } from "@/types/aura";
-import { Palette, Clock, ScrollText, UtensilsCrossed, MessageSquare, Blocks, type LucideIcon } from "lucide-react";
+import { Palette, Clock, ScrollText, UtensilsCrossed, MessageSquare, Blocks, CircleDollarSign, type LucideIcon } from "lucide-react";
 
 export interface HubSection {
   id: string;
@@ -20,6 +20,7 @@ export interface HubSection {
 export const HUB_SECTIONS: HubSection[] = [
   { id: "marca", label: "Marca", href: "/admin/configuracoes/marca", icon: Palette, roles: ["super_admin", "admin"] },
   { id: "operacao", label: "Operação", href: "/admin/configuracoes/operacao", icon: Clock, roles: ["super_admin", "admin", "manager"] },
+  { id: "comercial", label: "Comercial", href: "/admin/configuracoes/comercial", icon: CircleDollarSign, roles: ["super_admin", "admin", "manager", "reception"] },
   { id: "politicas", label: "Políticas", href: "/admin/configuracoes/politicas", icon: ScrollText, roles: ["super_admin", "admin"] },
   { id: "gastronomia", label: "Gastronomia", href: "/admin/configuracoes/gastronomia", icon: UtensilsCrossed, roles: ["super_admin", "admin", "manager", "kitchen"] },
   { id: "integracoes", label: "Integrações", href: "/admin/configuracoes/integracoes", icon: MessageSquare, roles: ["super_admin", "admin"] },

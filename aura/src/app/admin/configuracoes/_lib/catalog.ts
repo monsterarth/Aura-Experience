@@ -112,10 +112,10 @@ export const SETTINGS_DOMAINS: SettingsDomain[] = [
     id: "comercial", label: "Comercial", icon: CircleDollarSign,
     entries: [
       {
-        id: "tarifario", title: "Taxas, descontos e promoções", kind: "external", roles: ["super_admin", "admin", "manager", "reception"],
-        description: "Taxa de pet, flutuações, descontos, promoções e os textos do orçamento no WhatsApp.",
-        keywords: ["tarifa", "tarifário", "tarifario", "preço", "preco", "desconto", "promoção", "promocao", "taxa", "orçamento", "orcamento", "flutuação"],
-        icon: CircleDollarSign, href: () => "/admin/tarifario?tab=comercial", where: "Tarifário › aba Comercial",
+        id: "tarifario", title: "Comercial do tarifário", kind: "hub", roles: ["super_admin", "admin", "manager", "reception"],
+        description: "Taxa de pet, flutuações de ocupação e os textos do orçamento (WhatsApp + proposta pública). Descontos e promoções vivem em Comercial › Marketing.",
+        keywords: ["tarifa", "tarifário", "tarifario", "preço", "preco", "taxa", "pet", "template", "mensagem", "whatsapp", "orçamento", "orcamento", "flutuação", "flutuacao", "incluso"],
+        icon: CircleDollarSign, href: () => "/admin/configuracoes/comercial",
       },
       {
         id: "casamentos-prazos", title: "Prazos de casamento", kind: "external", roles: ADMIN_MANAGER,
