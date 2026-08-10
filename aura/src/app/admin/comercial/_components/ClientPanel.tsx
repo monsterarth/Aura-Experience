@@ -253,7 +253,7 @@ export function ClientPanel({
             const stage = QUOTE_STAGES.find((s) => s.id === q.status);
             const v = resolveQuoteValue(q);
             return (
-              <Link key={q.id} href={`/admin/tarifario?quoteId=${q.id}`}
+              <Link key={q.id} href={`/admin/comercial/reservas?quoteId=${q.id}`}
                 style={{
                   display: "flex", alignItems: "center", gap: 8, fontSize: 12,
                   background: T.glass, border: `1px solid ${T.border}`, borderRadius: 10,

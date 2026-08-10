@@ -4,7 +4,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
 import type { RateBundle } from "@/services/rate-service";
-import { CrmAlarm, CrmChannel, CrmEntityType, CrmLead, RateQuoteRecord, WaitlistEntry } from "@/types/aura";
+import { CrmAlarm, CrmChannel, CrmEntityType, CrmLead, Guest, RateQuoteRecord, WaitlistEntry } from "@/types/aura";
 import { PipelineBoard } from "./PipelineBoard";
 import { LeadListView } from "./LeadListView";
 import { TodayQueue } from "./TodayQueue";
@@ -74,6 +74,7 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
     rooms: keepId ? q.rooms ?? null : null,
     adults: q.adults, children: q.children, babies: q.babies, pets: q.pets,
     fluctuationPct: keepId ? q.fluctuationPct : null,
+    fluctuationAuto: keepId ? q.fluctuationAuto ?? false : null,
     discountIds: keepId ? q.discountIds : null,
     adhocValue: keepId ? q.adhocValue : null,
     adhocType: keepId ? q.adhocType : null,
@@ -148,6 +149,106 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
     setChannels(data.channels || []);
     if (keepOpenId) setSelected(fresh.find((l) => l.id === keepOpenId) ?? null);
   }, [property?.id, funnel]);
+
+  /** Lead por id SEM o recorte de 60d (deep-link, alarme antigo, anti-dup). */
+  const fetchLeadById = useCallback(async (id: string): Promise<CrmLead | null> => {
+    if (!property?.id) return null;
+    const res = await fetch(
+      `/api/admin/comercial?propertyId=${property.id}&funnel=${funnel}&id=${id}`
+    ).catch(() => null);
+    if (!res?.ok) return null;
+    return (await res.json())?.lead ?? null;
+  }, [property?.id, funnel]);
+
+  // Deep-links (só reservas): ?quoteId= abre o drawer — inclusive de lead
+  // fechado fora do recorte de 60d — e ?new=1 abre o wizard, com &guestId=
+  // semeando o cliente pela ficha. A ref guarda o VALOR tratado: o mesmo
+  // link clicado de novo (ex.: ClientPanel dentro do drawer) re-dispara.
+  const searchParams = useSearchParams();
+  const handledDeepLink = useRef<string | null>(null);
+  useEffect(() => {
+    if (!property?.id || funnel !== "quote") return;
+    const quoteId = searchParams.get("quoteId");
+    const isNew = searchParams.get("new");
+    const guestId = searchParams.get("guestId");
+    if (!quoteId && !isNew) return;
+    const key = `${quoteId ?? ""}|${isNew ?? ""}|${guestId ?? ""}`;
+    if (handledDeepLink.current === key) return;
+    handledDeepLink.current = key;
+
+    if (quoteId) {
+      fetchLeadById(quoteId).then((l) => {
+        if (l) setSelected(l);
+        else toast.error("Orçamento não encontrado.");
+      });
+      return;
+    }
+    if (guestId) {
+      fetch(`/api/admin/guests/lookup?propertyId=${property.id}&doc=${encodeURIComponent(guestId)}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          const g = d?.guest as Guest | null;
+          if (g) {
+            openWizard({
+              clientName: g.fullName, clientPhone: g.phone || null,
+              clientEmail: g.email || null, clientDocument: g.id, guestId: g.id,
+            });
+          } else {
+            toast.info("Hóspede não encontrado — cotação em branco.");
+            openWizard();
+          }
+        })
+        .catch(() => openWizard());
+    } else {
+      openWizard();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, property?.id, funnel, fetchLeadById]);
+
+  // Conversão da lista de espera: o wizard abre semeado AQUI e a entrada só
+  // vira 'converted' quando o orçamento salvo É do lead (match por telefone/
+  // nome — a recepção pode ser interrompida e cotar OUTRO cliente no meio;
+  // mismatch mantém a entrada armada para o orçamento certo vir depois).
+  const waitlistPending = useRef<{ id: string; phone: string; name: string } | null>(null);
+
+  const convertWaitlistEntry = (e: WaitlistEntry) => {
+    waitlistPending.current = { id: e.id, phone: e.phone || "", name: e.name || "" };
+    openWizard({
+      clientName: e.name, clientPhone: e.phone || null, clientEmail: e.email || null,
+      checkIn: e.periodStart, checkOut: e.periodEnd,
+      adults: e.guests || undefined, source: e.source || null,
+    });
+  };
+
+  const resolveWaitlistPending = useCallback(async (quoteId: string) => {
+    const pending = waitlistPending.current;
+    if (!pending || !property?.id) return;
+    try {
+      const res = await fetch(`/api/admin/tarifario/quotes?propertyId=${property.id}&id=${quoteId}`);
+      if (!res.ok) return;
+      const quote = (await res.json())?.quote;
+      if (!quote) return;
+      const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      const tail = (p: string) => p.replace(/\D/g, "").slice(-8);
+      const phoneMatches = pending.phone && quote.clientPhone
+        && tail(pending.phone) === tail(String(quote.clientPhone));
+      const nameMatches = pending.name && quote.clientName
+        && norm(pending.name) === norm(String(quote.clientName));
+      if (!phoneMatches && !nameMatches) return;
+
+      const patch = await fetch("/api/admin/comercial/waitlist", {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          propertyId: property.id, id: pending.id, status: "converted", quoteId,
+        }),
+      });
+      if (patch.ok) {
+        waitlistPending.current = null;
+        toast.success("Lista de espera: entrada convertida em orçamento.");
+        loadWaitlist();
+      }
+    } catch { /* melhor manter armado do que fechar a entrada errada */ }
+  }, [property?.id, loadWaitlist]);
 
   const norm = (s: string) =>
     s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -312,18 +413,21 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
     toast.success("Nota registrada.");
   });
 
+  // Só casamentos têm tela de origem própria — orçamento vive AQUI (o drawer
+  // é a ficha, o wizard é a edição; o Tarifário virou tabelas/calendário).
   const openOrigin = (lead: CrmLead) => {
-    router.push(lead.entityType === "quote"
-      ? `/admin/tarifario?quoteId=${lead.id}`
-      : `/admin/casamentos?weddingId=${lead.id}`);
+    if (lead.entityType === "wedding") router.push(`/admin/casamentos?weddingId=${lead.id}`);
   };
 
   // Anti-duplicidade do wizard: abrir o lead existente em vez de criar outro.
   const openExistingQuote = (quoteId: string) => {
     setWizardOpen(false);
     const lead = leads.find((l) => l.id === quoteId);
-    if (lead) setSelected(lead);
-    else router.push(`/admin/tarifario?quoteId=${quoteId}`);
+    if (lead) { setSelected(lead); return; }
+    fetchLeadById(quoteId).then((l) => {
+      if (l) setSelected(l);
+      else toast.error("Orçamento não encontrado.");
+    });
   };
 
   // Drop do kanban: coluna decide a ação — ganhar/perder têm fluxos próprios.
@@ -375,13 +479,19 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
     }
   };
 
-  // Lead ainda no pipeline → drawer; fechado há mais de 60d → tela de origem.
+  // Lead ainda no pipeline → drawer direto; fora do recorte de 60d → busca
+  // por id e abre o MESMO drawer (casamento antigo vai para a tela própria).
   const openAlarmLead = (a: CrmAlarm) => {
     const lead = leads.find((l) => l.id === a.entityId);
-    if (lead) setSelected(lead);
-    else router.push(a.entityType === "quote"
-      ? `/admin/tarifario?quoteId=${a.entityId}`
-      : `/admin/casamentos?weddingId=${a.entityId}`);
+    if (lead) { setSelected(lead); return; }
+    if (a.entityType === "wedding") {
+      router.push(`/admin/casamentos?weddingId=${a.entityId}`);
+      return;
+    }
+    fetchLeadById(a.entityId).then((l) => {
+      if (l) setSelected(l);
+      else toast.error("Lead do alarme não encontrado.");
+    });
   };
 
   const dueAlarmCount = useMemo(
@@ -578,7 +688,8 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
         <AlarmsQueue alarms={alarms} busyId={alarmBusyId}
           onDone={alarmDone} onDelete={alarmDelete} onOpen={openAlarmLead} />
       ) : (
-        <WaitlistTab propertyId={property.id} entries={waitlist} onChanged={loadWaitlist} />
+        <WaitlistTab propertyId={property.id} entries={waitlist} onChanged={loadWaitlist}
+          onConvert={convertWaitlistEntry} />
       )}
 
       {selected && (
@@ -598,6 +709,7 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
           onPromoteGuest={(payload) => promoteGuest(selected, payload)}
           onAlarmsChanged={loadAlarms}
           onQuoteChanged={() => reload(selected.id)}
+          onDeleted={() => { setSelected(null); reload(); }}
           onEditQuote={(q) => openWizard(seedFromQuote(q, true))}
           onDuplicateQuote={(q) => openWizard(seedFromQuote(q, false))}
           proposalUrl={selected.entityType === "quote" ? `${proposalBase}/cotacao/${selected.id}` : null}
@@ -622,7 +734,7 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
           initialBundle={bundleCache.current}
           onBundleLoaded={(b) => { bundleCache.current = b; }}
           onClose={() => { setWizardOpen(false); setWizardSeed(null); }}
-          onSaved={() => reload(selected?.id)}
+          onSaved={(id) => { reload(selected?.id); resolveWaitlistPending(id); }}
           onOpenExisting={openExistingQuote}
           seed={wizardSeed}
         />

@@ -776,7 +776,8 @@ function GuestDetailPanel({
             <div className="flex items-center justify-between">
               <p className="text-xs text-foreground/40">{quotes.length} orçamento(s) encontrado(s)</p>
               <button
-                onClick={() => router.push(`/admin/tarifario`)}
+                // Wizard do pipeline já semeado com este hóspede (?new=1&guestId=).
+                onClick={() => router.push(`/admin/comercial/reservas?new=1&guestId=${guest.id}`)}
                 className="flex items-center gap-1.5 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary text-[10px] font-black uppercase tracking-widest rounded-xl transition-all"
               >
                 <Plus size={12} /> Novo Orçamento
@@ -820,9 +821,9 @@ function GuestDetailPanel({
                         {QUOTE_STATUS_LABELS[q.status] ?? q.status}
                       </span>
                       <button
-                        onClick={() => router.push(`/admin/tarifario?quoteId=${q.id}`)}
+                        onClick={() => router.push(`/admin/comercial/reservas?quoteId=${q.id}`)}
                         className="p-2 hover:bg-white/10 text-foreground/30 hover:text-foreground rounded-xl transition-all"
-                        title="Reabrir na calculadora"
+                        title="Abrir no pipeline"
                       >
                         <FileText size={13} />
                       </button>

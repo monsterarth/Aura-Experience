@@ -1,12 +1,11 @@
 // Lista de espera para períodos — aba da página Comercial · Reservas.
 // Agrupada por PERÍODO (UI do projeto de design): cada data concorrida vira
-// um card com a fila numerada por ordem de chegada. "Converter" abre a
-// calculadora pré-preenchida (?waitlistId=) e a entrada só vira 'converted'
-// quando o orçamento é salvo lá.
+// um card com a fila numerada por ordem de chegada. "Converter" abre o
+// wizard de cotação AQUI MESMO (onConvert), pré-preenchido; a entrada só
+// vira 'converted' quando o orçamento salvo bate com o lead (FunnelPage).
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   Archive, CalendarDays, Calculator, Check, Loader2, Phone, PhoneCall, Plus,
@@ -26,13 +25,14 @@ const STATUS_CFG: Record<WaitlistStatus, { label: string; bg: string; fg: string
 const EMPTY_FORM = { name: "", phone: "", email: "", periodStart: "", periodEnd: "", guests: "" };
 
 export function WaitlistTab({
-  propertyId, entries, onChanged,
+  propertyId, entries, onChanged, onConvert,
 }: {
   propertyId: string;
   entries: WaitlistEntry[];
   onChanged: () => Promise<void> | void;
+  /** Abre o wizard de cotação semeado com a entrada (o pai arma a conversão). */
+  onConvert: (entry: WaitlistEntry) => void;
 }) {
-  const router = useRouter();
   const [form, setForm] = useState(EMPTY_FORM);
   const [showForm, setShowForm] = useState(false);
   const [showClosed, setShowClosed] = useState(false);
@@ -239,8 +239,8 @@ export function WaitlistTab({
                             <PhoneCall size={12} /> Contatado
                           </button>
                         )}
-                        <button disabled={busy} onClick={() => router.push(`/admin/tarifario?waitlistId=${e.id}`)}
-                          title="Abrir a calculadora pré-preenchida"
+                        <button disabled={busy} onClick={() => onConvert(e)}
+                          title="Abrir a cotação pré-preenchida"
                           style={{ ...smallActionBtn(T.emerald, T.emeraldBg), opacity: busy ? 0.5 : 1 }}>
                           <Calculator size={12} /> Converter
                         </button>

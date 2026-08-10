@@ -97,6 +97,8 @@ export type QuoteSeed = {
   babies?: number | null;
   pets?: number | null;
   fluctuationPct?: number | null;
+  /** Orçamento salvo em modo Automática — reabre com o modo ligado. */
+  fluctuationAuto?: boolean | null;
   discountIds?: string[] | null;
   adhocValue?: number | null;
   adhocType?: "pct" | "brl" | null;
@@ -238,6 +240,12 @@ export function NewQuoteWizard({
   // ── Passo 3: calculadora (uma por acomodação) ──────────────────────────────
   const [bundle, setBundle] = useState<RateBundle | null>(initialBundle);
   const [fluctuationPct, setFluctuationPct] = useState(seed?.fluctuationPct ?? 0);
+  // Automática = o % de cada noite vem das regras por período do Tarifário
+  // (média exibida). Default em cotação NOVA (inclusive duplicada/semeada);
+  // só a EDIÇÃO de um orçamento existente respeita o modo salvo.
+  const [fluctuationAuto, setFluctuationAuto] = useState(
+    seed?.quoteId ? seed.fluctuationAuto === true : true
+  );
   const [discountIds, setDiscountIds] = useState<string[]>(seed?.discountIds ?? []);
   const [adhocValue, setAdhocValue] = useState(seed?.adhocValue ? String(seed.adhocValue) : "");
   const [adhocType, setAdhocType] = useState<"pct" | "brl">(seed?.adhocType === "brl" ? "brl" : "pct");
@@ -295,10 +303,17 @@ export function NewQuoteWizard({
     return () => { cancelled = true; };
   }, [step, propertyId, periodKeys]);
 
+  // Automática só vale com a migration aplicada (bundle.fluctuations != null);
+  // sem ela, cai no manual silenciosamente — mesma regra do servidor.
+  const autoAvailable = bundle?.fluctuations != null;
+  const effectiveAuto = fluctuationAuto && autoAvailable;
+
   const commercial = useMemo(() => ({
-    fluctuationPct, discountIds,
+    fluctuationPct: effectiveAuto ? 0 : fluctuationPct,
+    fluctuationAuto: effectiveAuto,
+    discountIds,
     adhocValue: parseFloat(adhocValue) || 0, adhocType,
-  }), [fluctuationPct, discountIds, adhocValue, adhocType]);
+  }), [effectiveAuto, fluctuationPct, discountIds, adhocValue, adhocType]);
 
   /** Período efetivo da acomodação: o próprio, ou o do orçamento. */
   const periodOf = (room: DraftRoom) => {
@@ -313,6 +328,7 @@ export function NewQuoteWizard({
     const data = {
       tables: bundle.tables, periods: bundle.periods,
       settings: bundle.settings, categories: bundle.categories,
+      fluctuations: bundle.fluctuations ?? undefined,
     };
     return rooms.map((room) => {
       const input: RateQuoteInput = { ...periodOf(room), ...paxOf(room), ...commercial };
@@ -889,13 +905,48 @@ export function NewQuoteWizard({
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>
                   <label style={fieldLabel}>Flutuação de ocupação</label>
-                  <select style={{ ...S.input, background: T.card }} value={fluctuationPct}
-                    onChange={(e) => setFluctuationPct(Number(e.target.value))}>
-                    <option value={0}>Padrão (0%)</option>
+                  <select style={{ ...S.input, background: T.card }}
+                    value={effectiveAuto ? "auto" : String(fluctuationPct)}
+                    onChange={(e) => {
+                      if (e.target.value === "auto") { setFluctuationAuto(true); return; }
+                      setFluctuationAuto(false);
+                      setFluctuationPct(Number(e.target.value));
+                    }}>
+                    {autoAvailable && <option value="auto">Automática (regras por período)</option>}
+                    <option value="0">Padrão (0%)</option>
                     {bundle.settings.fluctuations.map((f) => (
-                      <option key={f.id} value={f.pct}>{f.name} ({f.pct > 0 ? "+" : ""}{f.pct}%)</option>
+                      <option key={f.id} value={String(f.pct)}>{f.name} ({f.pct > 0 ? "+" : ""}{f.pct}%)</option>
                     ))}
+                    {/* pct órfão (preset removido / média de um auto antigo re-salvo
+                        como manual): sem esta opção o select renderiza vazio. */}
+                    {!effectiveAuto && fluctuationPct !== 0 &&
+                      !bundle.settings.fluctuations.some((f) => f.pct === fluctuationPct) && (
+                      <option value={String(fluctuationPct)}>
+                        Personalizada ({fluctuationPct > 0 ? "+" : ""}{fluctuationPct}%)
+                      </option>
+                    )}
                   </select>
+                  {effectiveAuto && (
+                    <p style={{ fontSize: 10.5, color: T.muted, margin: "4px 0 0" }}>
+                      {(() => {
+                        const avg = roomQuotes[0]?.result.fluctuationAvgPct ?? 0;
+                        const stored = seed?.fluctuationAuto ? (seed?.fluctuationPct ?? null) : null;
+                        const drifted = stored !== null && Math.abs(stored - avg) > 0.01;
+                        return (
+                          <>
+                            média no período: <b style={{ color: avg !== 0 ? T.amber : T.muted }}>
+                              {avg > 0 ? "+" : ""}{avg}%
+                            </b>
+                            {drifted && (
+                              <span style={{ color: T.amber }}>
+                                {" "}· era {stored! > 0 ? "+" : ""}{stored}% quando salvo
+                              </span>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label style={fieldLabel}>Extra / cupom</label>

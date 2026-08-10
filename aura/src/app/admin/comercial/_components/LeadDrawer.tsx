@@ -6,9 +6,10 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  CalendarClock, CalendarDays, CopyPlus, ExternalLink, Heart, Link2, Loader2,
-  Mail, MessageSquare, Pencil, Phone, Send, Tag, X, XCircle,
+  BedDouble, CalendarClock, CalendarDays, CopyPlus, ExternalLink, Heart, Link2,
+  Loader2, Mail, MessageSquare, Pencil, Phone, Send, Tag, Trash2, X, XCircle,
 } from "lucide-react";
+import { useAuth } from "@/context/AuthContext";
 import { T } from "@/lib/admin-tokens";
 import { offeredTotal, resolveRoomValue } from "@/lib/rate-engine";
 import { parseMoneyBR, moneyToInput } from "@/lib/parse-money";
@@ -527,11 +528,149 @@ function NegotiationSection({
   );
 }
 
+/**
+ * Vínculo manual do orçamento com uma estadia já criada — paridade com o
+ * funil antigo do Tarifário (o elo automático continua sendo o fluxo
+ * "Ganhou" → nova estadia). Lista estadias do mesmo check-in via link-stay.
+ */
+function StayLinkSection({ propertyId, lead, onLinked }: {
+  propertyId: string;
+  lead: CrmLead;
+  onLinked: () => void;
+}) {
+  const [options, setOptions] = useState<{ id: string; label: string }[]>([]);
+  const [choice, setChoice] = useState("");
+  const [linking, setLinking] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    setOptions([]);
+    setChoice("");
+    fetch(`/api/admin/tarifario/quotes/link-stay?propertyId=${propertyId}&checkIn=${lead.dateRef}`)
+      .then((r) => (r.ok ? r.json() : { stays: [] }))
+      .then((d) => { if (alive) setOptions(d.stays || []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [propertyId, lead.id, lead.dateRef]);
+
+  if (options.length === 0) return null;
+
+  const link = async () => {
+    if (!choice) return;
+    setLinking(true);
+    try {
+      const res = await fetch("/api/admin/tarifario/quotes/link-stay", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ propertyId, quoteId: lead.id, stayId: choice }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error);
+      toast.success(data?.nightlyRate
+        ? `Estadia vinculada — diária de R$ ${Number(data.nightlyRate).toFixed(2)} programada.`
+        : "Estadia vinculada ao orçamento.");
+      onLinked();
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : "Erro ao vincular a estadia.");
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  return (
+    <div style={{ padding: 20, borderBottom: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 8 }}>
+      <p style={drawerLabel}>Vincular estadia existente</p>
+      <p style={{ fontSize: 11, color: T.muted, margin: 0, lineHeight: 1.5 }}>
+        A reserva já foi criada por fora? Vincular marca o orçamento como ganho e
+        programa a diária congelada na estadia.
+      </p>
+      <div style={{ display: "flex", gap: 6 }}>
+        <select style={{ ...S.input, flex: 1, background: T.card }} value={choice}
+          onChange={(e) => setChoice(e.target.value)} disabled={linking}>
+          <option value="">Estadias com esse check-in…</option>
+          {options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+        </select>
+        <button onClick={link} disabled={!choice || linking}
+          style={{ ...S.gradBtn, padding: "8px 13px", fontSize: 12, opacity: !choice || linking ? 0.5 : 1 }}>
+          {linking ? <Loader2 size={13} className="animate-spin" /> : <BedDouble size={13} />}
+          Vincular
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Excluir orçamento — confirm inline em 2 passos; a rota restringe a gestão. */
+function DeleteQuoteSection({ propertyId, lead, busy, onDeleted }: {
+  propertyId: string;
+  lead: CrmLead;
+  busy: boolean;
+  onDeleted: () => void;
+}) {
+  const [asking, setAsking] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const doDelete = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(
+        `/api/admin/tarifario/quotes?propertyId=${propertyId}&id=${lead.id}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error);
+      toast.success("Orçamento excluído.");
+      onDeleted();
+    } catch (e) {
+      toast.error(e instanceof Error && e.message ? e.message : "Erro ao excluir.");
+      setDeleting(false);
+      setAsking(false);
+    }
+  };
+
+  return (
+    <div style={{ padding: "14px 20px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      {asking ? (<>
+        <span style={{ fontSize: 11.5, color: T.red, fontWeight: 700 }}>
+          Excluir o orçamento de {lead.title}? Sem volta.
+        </span>
+        <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+          <button onClick={doDelete} disabled={deleting}
+            style={{
+              padding: "5px 11px", borderRadius: 9, border: "none", cursor: "pointer",
+              background: "rgba(248,113,113,0.18)", color: T.red, fontSize: 11, fontWeight: 800,
+              fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 5,
+            }}>
+            {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+            Excluir
+          </button>
+          <button onClick={() => setAsking(false)} disabled={deleting}
+            style={{ ...S.ghostBtn, padding: "5px 9px", fontSize: 11 }}>
+            Cancelar
+          </button>
+        </span>
+      </>) : (<>
+        <button onClick={() => setAsking(true)} disabled={busy}
+          style={{
+            background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
+            fontSize: 10.5, color: T.muted, textDecoration: "underline", textUnderlineOffset: 2,
+            padding: 0, display: "inline-flex", alignItems: "center", gap: 5,
+          }}>
+          <Trash2 size={11} /> Excluir orçamento
+        </button>
+        {lead.stayId && (
+          <span style={{ fontSize: 10, color: T.muted2 }}>
+            a estadia vinculada continua existindo
+          </span>
+        )}
+      </>)}
+    </div>
+  );
+}
+
 export function LeadDrawer({
   propertyId, lead, channels, busy,
   onClose, onFollowUp, onAddNote, onMoveStage, onMarkLost, onWin, onOpenOrigin, onPatch,
   onPromoteGuest, onAlarmsChanged, onEditQuote, onDuplicateQuote, onQuoteChanged,
-  proposalUrl,
+  onDeleted, proposalUrl,
 }: {
   propertyId: string;
   lead: CrmLead;
@@ -553,9 +692,13 @@ export function LeadDrawer({
   onDuplicateQuote?: (quote: RateQuoteRecord) => void;
   /** Escolha de cabana gravada — a página recarrega o pipeline. */
   onQuoteChanged?: () => void;
+  /** Orçamento excluído — a página fecha o drawer e recarrega. */
+  onDeleted?: () => void;
   /** Link público da proposta (/cotacao/<id>), quando disponível. */
   proposalUrl?: string | null;
 }) {
+  const { userData, isAdmin, isSuperAdmin } = useAuth();
+  const canDelete = isSuperAdmin || isAdmin || userData?.role === "manager";
   const [note, setNote] = useState("");
   const [noteMode, setNoteMode] = useState<"follow_up" | "note">("follow_up");
   const [sending, setSending] = useState(false);
@@ -703,9 +846,12 @@ export function LeadDrawer({
                 <Mail size={12} /> {lead.email}
               </a>
             )}
-            <button onClick={onOpenOrigin} style={contactBtn}>
-              <ExternalLink size={12} /> {isQuote ? "Abrir no Tarifário" : "Abrir em Casamentos"}
-            </button>
+            {/* Orçamento vive AQUI (editar = wizard); só casamento tem tela própria. */}
+            {!isQuote && (
+              <button onClick={onOpenOrigin} style={contactBtn}>
+                <ExternalLink size={12} /> Abrir em Casamentos
+              </button>
+            )}
             {isQuote && proposalUrl && (
               <button style={contactBtn}
                 title="Link da proposta para o cliente escolher e aceitar"
@@ -744,6 +890,19 @@ export function LeadDrawer({
             {isQuote && active && (
               <NegotiationSection lead={lead} channels={channels} busy={busy}
                 hideValue={quoteHasRooms} onPatch={patchAndRefresh} />
+            )}
+
+            {/* Vincular estadia — paridade com o funil antigo do Tarifário:
+                fecha o elo manualmente quando a reserva foi criada por fora. */}
+            {isQuote && !lead.stayId && (
+              <StayLinkSection propertyId={propertyId} lead={lead}
+                onLinked={() => { onQuoteChanged?.(); setTimelineKey((k) => k + 1); }} />
+            )}
+
+            {/* Excluir — só gestão vê (a rota barra de todo jeito). */}
+            {isQuote && canDelete && (
+              <DeleteQuoteSection propertyId={propertyId} lead={lead} busy={busy}
+                onDeleted={() => { onDeleted?.(); onClose(); }} />
             )}
 
             {/* Cobranças do contrato — só casamentos (parcelas reais, read-only) */}

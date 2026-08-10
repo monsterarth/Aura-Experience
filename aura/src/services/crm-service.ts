@@ -32,6 +32,57 @@ export type ClientStayRow = {
   cabinName: string | null;
 };
 
+// Mappers entidade → CrmLead: o pipeline e o getLeadById usam OS MESMOS —
+// um lead aberto por deep-link não pode divergir do que o kanban mostra.
+
+function quoteToLead(q: RateQuoteRecord): CrmLead {
+  const v = resolveQuoteValue(q);
+  return {
+    entityType: "quote",
+    id: q.id,
+    title: q.clientName || "Sem nome",
+    phone: q.clientPhone,
+    email: q.clientEmail,
+    document: q.clientDocument,
+    source: q.source,
+    stage: q.status,
+    value: v.value,
+    valueApproximate: v.approximate,
+    dateRef: q.checkIn,
+    followUpAt: q.followUpAt,
+    expiresAt: q.expiresAt,
+    lostReason: q.lostReason,
+    guestId: q.guestId,
+    stayId: q.stayId,
+    weddingId: q.weddingId,
+    negotiatedValue: q.negotiatedValue ?? null,
+    acceptedAt: q.acceptedAt ?? null,
+    createdAt: q.createdAt,
+  };
+}
+
+function weddingToLead(w: Wedding): CrmLead {
+  return {
+    entityType: "wedding",
+    id: w.id,
+    title: `${w.bride} & ${w.groom}`,
+    phone: w.couplePhone,
+    email: w.coupleEmail,
+    source: w.source,
+    stage: w.status,
+    value: Number(w.contractTotal) || 0,
+    valueApproximate: false,
+    dateRef: w.weddingDate,
+    followUpAt: w.followUpAt,
+    expiresAt: w.expiresAt,
+    lostReason: w.lostReason,
+    guestId: null,
+    stayId: null,
+    weddingId: w.id,
+    createdAt: w.createdAt,
+  };
+}
+
 function localToday(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
 }
@@ -175,53 +226,32 @@ export const CrmService = {
       this.getChannels(propertyId),
     ]);
 
-    const quoteLeads: CrmLead[] = ((quotesRes.data || []) as RateQuoteRecord[]).map((q) => {
-      const v = resolveQuoteValue(q);
-      return {
-        entityType: "quote",
-        id: q.id,
-        title: q.clientName || "Sem nome",
-        phone: q.clientPhone,
-        email: q.clientEmail,
-        document: q.clientDocument,
-        source: q.source,
-        stage: q.status,
-        value: v.value,
-        valueApproximate: v.approximate,
-        dateRef: q.checkIn,
-        followUpAt: q.followUpAt,
-        expiresAt: q.expiresAt,
-        lostReason: q.lostReason,
-        guestId: q.guestId,
-        stayId: q.stayId,
-        weddingId: q.weddingId,
-        negotiatedValue: q.negotiatedValue ?? null,
-        acceptedAt: q.acceptedAt ?? null,
-        createdAt: q.createdAt,
-      };
-    });
-
-    const weddingLeads: CrmLead[] = ((weddingsRes.data || []) as Wedding[]).map((w) => ({
-      entityType: "wedding",
-      id: w.id,
-      title: `${w.bride} & ${w.groom}`,
-      phone: w.couplePhone,
-      email: w.coupleEmail,
-      source: w.source,
-      stage: w.status,
-      value: Number(w.contractTotal) || 0,
-      valueApproximate: false,
-      dateRef: w.weddingDate,
-      followUpAt: w.followUpAt,
-      expiresAt: w.expiresAt,
-      lostReason: w.lostReason,
-      guestId: null,
-      stayId: null,
-      weddingId: w.id,
-      createdAt: w.createdAt,
-    }));
+    const quoteLeads: CrmLead[] = ((quotesRes.data || []) as RateQuoteRecord[]).map(quoteToLead);
+    const weddingLeads: CrmLead[] = ((weddingsRes.data || []) as Wedding[]).map(weddingToLead);
 
     return { leads: [...quoteLeads, ...weddingLeads], channels };
+  },
+
+  /**
+   * UM lead por id, SEM o recorte de 60 dias do pipeline — para deep-links
+   * (?quoteId=) e para a Fila de alarmes abrir leads fechados há mais tempo.
+   * Mesmo mapper do getPipeline: o drawer não sabe a diferença.
+   */
+  async getLeadById(
+    propertyId: string,
+    funnel: CrmEntityType,
+    id: string
+  ): Promise<CrmLead | null> {
+    if (funnel === "quote") {
+      const { data } = await supabaseAdmin
+        .from("rate_quotes").select("*")
+        .eq("id", id).eq("propertyId", propertyId).maybeSingle();
+      return data ? quoteToLead(data as RateQuoteRecord) : null;
+    }
+    const { data } = await supabaseAdmin
+      .from("weddings").select("*")
+      .eq("id", id).eq("propertyId", propertyId).maybeSingle();
+    return data ? weddingToLead(data as Wedding) : null;
   },
 
   /**

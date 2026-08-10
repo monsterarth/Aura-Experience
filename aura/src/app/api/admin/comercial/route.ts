@@ -22,8 +22,15 @@ export async function GET(req: NextRequest) {
 
   const funnelParam = params.get("funnel");
   const funnel = funnelParam === "quote" || funnelParam === "wedding" ? funnelParam : undefined;
+  const id = params.get("id");
 
   try {
+    // ?id= devolve UM lead sem o recorte de 60d — deep-links e alarmes antigos.
+    if (id) {
+      const lead = await CrmService.getLeadById(propertyId, funnel ?? "quote", id);
+      if (!lead) return NextResponse.json({ error: "Lead não encontrado" }, { status: 404 });
+      return NextResponse.json({ lead });
+    }
     const pipeline = await CrmService.getPipeline(propertyId, funnel);
     return NextResponse.json(pipeline);
   } catch (e) {
