@@ -24,6 +24,7 @@ const KIND_CFG: Record<string, { icon: React.ElementType; label: (i: CrmInteract
   value_change: { icon: CircleDollarSign, label: (i) => `Valor: R$ ${money(Number(i.payload?.from ?? 0))} → R$ ${money(Number(i.payload?.to ?? 0))}` },
   guest_linked: { icon: UserCheck,     label: () => "Vinculado à ficha de hóspede" },
   alarm_done:   { icon: BellRing,      label: (i) => `Alarme concluído${i.payload?.title ? ` — ${i.payload.title}` : ""}` },
+  client_accepted: { icon: BadgeCheck, label: (i) => `Cliente ACEITOU a proposta${i.payload?.total ? ` — R$ ${money(Number(i.payload.total))}` : ""}` },
 };
 
 export function InteractionTimeline({ propertyId, lead }: { propertyId: string; lead: CrmLead }) {

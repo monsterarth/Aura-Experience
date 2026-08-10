@@ -2526,6 +2526,8 @@ export interface CrmLead {
   weddingId?: string | null;
   /** Valor negociado manualmente (orçamentos) — quando presente, é o `value`. */
   negotiatedValue?: number | null;
+  /** Cliente aceitou a proposta na página pública — a recepção precisa agir. */
+  acceptedAt?: Timestamp | null;
   createdAt: Timestamp;
 }
 

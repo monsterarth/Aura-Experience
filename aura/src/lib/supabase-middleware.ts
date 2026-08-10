@@ -21,6 +21,14 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.next({ request });
     }
 
+    // ── Proposta comercial: link público que o vendedor manda ao cliente ───────
+    // Mesma razão do /p/: o id (uuid) já identifica a propriedade, não há sessão
+    // e o cliente costuma abrir no celular, fora de casa — sem este retorno seco
+    // cada abertura pagaria um round-trip ao Auth do Supabase.
+    if (pathname.startsWith('/cotacao/')) {
+        return NextResponse.next({ request });
+    }
+
     // ── Rotas públicas do hóspede: não exigem sessão ───────────────────────────
     // /check-in e /feedback são acessadas por hóspedes não autenticados. Pular o
     // supabase.auth.getUser() (round-trip ao servidor de Auth do Supabase) reduz a

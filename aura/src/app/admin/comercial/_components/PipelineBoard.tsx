@@ -6,7 +6,7 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarDays, CircleDollarSign, Heart, Phone, Tag, CalendarClock, StickyNote } from "lucide-react";
+import { BadgeCheck, CalendarDays, CircleDollarSign, Heart, Phone, Tag, CalendarClock, StickyNote } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
 import { CrmAlarm, CrmChannel, CrmLead } from "@/types/aura";
 import { ACTIVE_STAGES, StageDef, fmtBR, leadAlert, money, pillS, todayIso } from "./shared";
@@ -151,6 +151,12 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen, onDropL
                       {cobranca && (
                         <span style={pillS(T.orangeBg, T.orange, T.orangeBorder)}>
                           <CircleDollarSign size={9} /> {cobranca.dueAt < t ? "cobrança vencida" : "cobrança hoje"}
+                        </span>
+                      )}
+                      {l.acceptedAt && (
+                        <span title="O cliente aceitou a proposta na página pública"
+                          style={pillS(T.emeraldBg, T.emerald, T.emeraldBorder)}>
+                          <BadgeCheck size={9} /> aceita
                         </span>
                       )}
                       {l.lostReason && l.stage === "lost" && (
