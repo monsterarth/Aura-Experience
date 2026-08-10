@@ -1,14 +1,18 @@
 // Wizard "Nova cotação" — a cotação nasce NO funil, sem pular pro Tarifário:
-// 1) dados do lead (nome + origem + um contato obrigatórios)
+// 1) dados do lead (nome + origem + um contato) e a COMPOSIÇÃO do pedido —
+//    quantas acomodações e o pax de cada uma (2 cabanas de casal, 1 casal +
+//    1 família…). Tudo isso é UMA negociação, UM card no funil.
 // 2) "é essa pessoa?" — cruza com a base (telefone/nome/CPF) + anti-duplicidade
-// 3) a calculadora SIT embutida (computeQuote puro no cliente, mesmo motor do
-//    Tarifário; o save recalcula no servidor) → salvar / copiar → "enviado?"
+// 3) a calculadora SIT embutida, POR acomodação (computeQuote puro no cliente,
+//    mesmo motor do Tarifário; o save recalcula no servidor) → salvar /
+//    copiar → "enviado?"
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  ArrowLeft, ArrowRight, BadgeCheck, Copy, Loader2, Phone, Save, X,
+  ArrowLeft, ArrowRight, BadgeCheck, Copy, Loader2, Phone, Plus, Save,
+  Trash2, X,
 } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
 import {
@@ -18,7 +22,8 @@ import {
 } from "@/lib/rate-engine";
 import type { RateBundle } from "@/services/rate-service";
 import {
-  CrmChannel, Guest, RateAvailability, RateQuoteInput, RateQuoteRecord,
+  CrmChannel, Guest, RateAvailability, RateQuoteCategory, RateQuoteInput,
+  RateQuoteRecord, RateQuoteResult, RateQuoteRoom,
 } from "@/types/aura";
 import { S, fmtBR, pillS } from "./shared";
 
@@ -35,9 +40,82 @@ type MatchContext = {
   quotes: RateQuoteRecord[];
 };
 
+/** Acomodação em edição — pax como string para o campo poder ficar vazio. */
+type DraftRoom = {
+  id: string;
+  label: string;
+  adults: string; children: string; babies: string; pets: string;
+  selectedCategory: string | null;
+};
+
+let draftSeq = 0;
+const newDraftRoom = (over?: Partial<DraftRoom>): DraftRoom => ({
+  id: `r${++draftSeq}`, label: "",
+  adults: "2", children: "0", babies: "0", pets: "0",
+  selectedCategory: null,
+  ...over,
+});
+
+const roomLabel = (r: DraftRoom, i: number) => r.label.trim() || `Acomodação ${i + 1}`;
+const paxOf = (r: DraftRoom) => ({
+  adults: Math.max(1, parseInt(r.adults) || 1),
+  children: Math.max(0, parseInt(r.children) || 0),
+  babies: Math.max(0, parseInt(r.babies) || 0),
+  pets: Math.max(0, parseInt(r.pets) || 0),
+});
+const paxLabel = (r: DraftRoom) => {
+  const p = paxOf(r);
+  const parts = [`${p.adults + p.children} pagante${p.adults + p.children !== 1 ? "s" : ""}`];
+  if (p.babies > 0) parts.push(`${p.babies} isento${p.babies > 1 ? "s" : ""}`);
+  if (p.pets > 0) parts.push(`${p.pets} pet${p.pets > 1 ? "s" : ""}`);
+  return parts.join(" · ");
+};
+
+/** Semente do wizard: reabrir para EDITAR ou clonar o cliente numa cotação nova. */
+export type QuoteSeed = {
+  /** Presente = edita o MESMO orçamento; ausente = cria um lead novo. */
+  quoteId?: string | null;
+  clientName?: string | null;
+  clientPhone?: string | null;
+  clientEmail?: string | null;
+  clientDocument?: string | null;
+  guestId?: string | null;
+  source?: string | null;
+  checkIn?: string | null;
+  checkOut?: string | null;
+  /** Acomodações do orçamento existente (com a escolha de cada uma). */
+  rooms?: RateQuoteRoom[] | null;
+  adults?: number | null;
+  children?: number | null;
+  babies?: number | null;
+  pets?: number | null;
+  fluctuationPct?: number | null;
+  discountIds?: string[] | null;
+  adhocValue?: number | null;
+  adhocType?: "pct" | "brl" | null;
+};
+
+function seedRooms(seed?: QuoteSeed | null): DraftRoom[] {
+  if (seed?.rooms && seed.rooms.length > 0) {
+    return seed.rooms.map((r) => newDraftRoom({
+      id: r.id, label: r.label ?? "",
+      adults: String(r.adults), children: String(r.children),
+      babies: String(r.babies), pets: String(r.pets),
+      selectedCategory: r.selectedCategory ?? null,
+    }));
+  }
+  if (seed) {
+    return [newDraftRoom({
+      adults: String(seed.adults ?? 2), children: String(seed.children ?? 0),
+      babies: String(seed.babies ?? 0), pets: String(seed.pets ?? 0),
+    })];
+  }
+  return [newDraftRoom()];
+}
+
 export function NewQuoteWizard({
   propertyId, channels, attendantName, initialBundle, onBundleLoaded,
-  onClose, onSaved, onOpenExisting,
+  onClose, onSaved, onOpenExisting, seed,
 }: {
   propertyId: string;
   channels: CrmChannel[];
@@ -50,27 +128,37 @@ export function NewQuoteWizard({
   onSaved: (id: string) => void;
   /** Anti-duplicidade: abrir o lead existente em vez de criar outro. */
   onOpenExisting: (quoteId: string) => void;
+  /** Editar um orçamento existente ou nascer com o cliente preenchido. */
+  seed?: QuoteSeed | null;
 }) {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const editingId = seed?.quoteId ?? null;
+  const hasSeed = !!seed;
+  // Com semente o cliente já está resolvido: começa direto na calculadora.
+  const [step, setStep] = useState<1 | 2 | 3>(hasSeed ? 3 : 1);
 
-  // ── Passo 1: lead ──────────────────────────────────────────────────────────
-  const [name, setName] = useState("");
-  const [source, setSource] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [document, setDocument] = useState("");
-  const [checkIn, setCheckIn] = useState(todayIso());
-  const [checkOut, setCheckOut] = useState(addDays(todayIso(), 2));
-  const [adultsRaw, setAdultsRaw] = useState("2");
-  const [childrenRaw, setChildrenRaw] = useState("0");
-  const [babiesRaw, setBabiesRaw] = useState("0");
-  const [petsRaw, setPetsRaw] = useState("0");
-  const [linkedGuest, setLinkedGuest] = useState<{ id: string; name: string } | null>(null);
+  // ── Passo 1: lead + composição ─────────────────────────────────────────────
+  const [name, setName] = useState(seed?.clientName ?? "");
+  const [source, setSource] = useState(seed?.source ?? "");
+  const [phone, setPhone] = useState(seed?.clientPhone ?? "");
+  const [email, setEmail] = useState(seed?.clientEmail ?? "");
+  const [document, setDocument] = useState(seed?.clientDocument ?? "");
+  const [checkIn, setCheckIn] = useState(seed?.checkIn ?? todayIso());
+  const [checkOut, setCheckOut] = useState(seed?.checkOut ?? addDays(todayIso(), 2));
+  const [rooms, setRooms] = useState<DraftRoom[]>(() => seedRooms(seed));
+  const [linkedGuest, setLinkedGuest] = useState<{ id: string; name: string } | null>(
+    seed?.guestId ? { id: seed.guestId, name: seed.clientName || seed.guestId } : null
+  );
 
-  const adults = Math.max(1, parseInt(adultsRaw) || 1);
-  const children = Math.max(0, parseInt(childrenRaw) || 0);
-  const babies = Math.max(0, parseInt(babiesRaw) || 0);
-  const pets = Math.max(0, parseInt(petsRaw) || 0);
+  const patchRoom = (id: string, patch: Partial<DraftRoom>) =>
+    setRooms((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const addRoom = () => setRooms((prev) => [...prev, newDraftRoom()]);
+  const duplicateRoom = (id: string) => setRooms((prev) => {
+    const src = prev.find((r) => r.id === id);
+    if (!src) return prev;
+    return [...prev, newDraftRoom({ ...src, id: `r${++draftSeq}`, selectedCategory: null })];
+  });
+  const removeRoom = (id: string) =>
+    setRooms((prev) => (prev.length > 1 ? prev.filter((r) => r.id !== id) : prev));
 
   const step1Error = !name.trim() ? "Informe o nome do cliente."
     : !source ? "Informe a origem do lead."
@@ -84,6 +172,8 @@ export function NewQuoteWizard({
 
   const goNext = async () => {
     if (step1Error) { toast.error(step1Error); return; }
+    // Editando / cliente já resolvido: não há o que confirmar.
+    if (hasSeed || linkedGuest) { setStep(3); return; }
     setChecking(true);
     try {
       const qs = new URLSearchParams({ propertyId });
@@ -118,18 +208,20 @@ export function NewQuoteWizard({
     setStep(3);
   };
 
-  // ── Passo 3: calculadora ───────────────────────────────────────────────────
+  // ── Passo 3: calculadora (uma por acomodação) ──────────────────────────────
   const [bundle, setBundle] = useState<RateBundle | null>(initialBundle);
-  const [fluctuationPct, setFluctuationPct] = useState(0);
-  const [discountIds, setDiscountIds] = useState<string[]>([]);
-  const [adhocValue, setAdhocValue] = useState("");
-  const [adhocType, setAdhocType] = useState<"pct" | "brl">("pct");
+  const [fluctuationPct, setFluctuationPct] = useState(seed?.fluctuationPct ?? 0);
+  const [discountIds, setDiscountIds] = useState<string[]>(seed?.discountIds ?? []);
+  const [adhocValue, setAdhocValue] = useState(seed?.adhocValue ? String(seed.adhocValue) : "");
+  const [adhocType, setAdhocType] = useState<"pct" | "brl">(seed?.adhocType === "brl" ? "brl" : "pct");
   const [detailed, setDetailed] = useState(false);
-  const [deselected, setDeselected] = useState<Set<string>>(new Set());
+  /** Opções fora da mensagem, por acomodação: roomId → Set(categoryId). */
+  const [deselected, setDeselected] = useState<Record<string, Set<string>>>({});
   const [availability, setAvailability] = useState<Record<string, RateAvailability>>({});
   const [events, setEvents] = useState<{ title: string; date: string }[]>([]);
   const [saving, setSaving] = useState(false);
-  const [savedId, setSavedId] = useState<string | null>(null);
+  // Editando: o "salvo" já é o orçamento existente desde o início.
+  const [savedId, setSavedId] = useState<string | null>(editingId);
   const [askSent, setAskSent] = useState(false);
   const savedKeyRef = useRef<string | null>(null);
 
@@ -153,26 +245,65 @@ export function NewQuoteWizard({
     return () => { cancelled = true; };
   }, [step, propertyId, checkIn, checkOut]);
 
-  const input: RateQuoteInput = useMemo(() => ({
-    checkIn, checkOut, adults, children, babies, pets,
+  const commercial = useMemo(() => ({
     fluctuationPct, discountIds,
     adhocValue: parseFloat(adhocValue) || 0, adhocType,
-  }), [checkIn, checkOut, adults, children, babies, pets, fluctuationPct, discountIds, adhocValue, adhocType]);
+  }), [fluctuationPct, discountIds, adhocValue, adhocType]);
 
-  const quote = useMemo(() => {
+  /** Uma cotação por acomodação — o motor é o mesmo, o pax é que muda. */
+  const roomQuotes = useMemo(() => {
     if (!bundle) return null;
-    return computeQuote(input, {
+    const data = {
       tables: bundle.tables, periods: bundle.periods,
       settings: bundle.settings, categories: bundle.categories,
+    };
+    return rooms.map((room) => {
+      const input: RateQuoteInput = { checkIn, checkOut, ...paxOf(room), ...commercial };
+      return { room, input, result: computeQuote(input, data) as RateQuoteResult };
     });
-  }, [input, bundle]);
+  }, [rooms, checkIn, checkOut, commercial, bundle]);
+
+  /** Pax somado — os placeholders da mensagem falam do grupo inteiro. */
+  const totalInput: RateQuoteInput = useMemo(() => {
+    const sum = rooms.reduce((acc, r) => {
+      const p = paxOf(r);
+      return {
+        adults: acc.adults + p.adults, children: acc.children + p.children,
+        babies: acc.babies + p.babies, pets: acc.pets + p.pets,
+      };
+    }, { adults: 0, children: 0, babies: 0, pets: 0 });
+    return { checkIn, checkOut, ...sum, ...commercial };
+  }, [rooms, checkIn, checkOut, commercial]);
+
+  const blocked = roomQuotes?.some((rq) => rq.result.categories.length === 0) ?? true;
+
+  /** Total do orçamento: escolhida quando houver, senão o mínimo ("a partir de"). */
+  const totals = useMemo(() => {
+    if (!roomQuotes) return { value: 0, approximate: false };
+    let value = 0, approximate = false;
+    for (const rq of roomQuotes) {
+      const options = rq.result.categories;
+      const chosen = rq.room.selectedCategory
+        ? options.find((c) => c.categoryId === rq.room.selectedCategory)
+        : undefined;
+      if (chosen) { value += chosen.finalTotal; continue; }
+      const mins = options.map((c) => c.finalTotal).filter((v) => v > 0);
+      if (mins.length === 0) continue;
+      value += Math.min(...mins);
+      if (mins.length > 1) approximate = true;
+    }
+    return { value, approximate };
+  }, [roomQuotes]);
 
   // Mudou o cálculo/cliente → o save anterior não representa mais o orçamento.
-  const quoteKey = JSON.stringify([input, name, document, phone, email, linkedGuest?.id ?? null, source]);
+  const quoteKey = JSON.stringify([
+    checkIn, checkOut, commercial, rooms, name, document, phone, email,
+    linkedGuest?.id ?? null, source,
+  ]);
   const isSavedCurrent = savedId !== null && savedKeyRef.current === quoteKey;
 
   const save = async (status: "open" | "sent"): Promise<string | null> => {
-    if (!quote || quote.categories.length === 0) {
+    if (blocked) {
       toast.error("Nenhuma categoria com preço para esses parâmetros.");
       return null;
     }
@@ -188,9 +319,14 @@ export function NewQuoteWizard({
             clientPhone: phone.trim(), clientEmail: email.trim(),
             guestId: linkedGuest?.id ?? null,
             weddingId: null, source: source || null,
-            checkIn, checkOut, adults, children, babies, pets,
-            fluctuationPct, discountIds,
-            adhocValue: parseFloat(adhocValue) || 0, adhocType,
+            checkIn, checkOut,
+            // Só a COMPOSIÇÃO vai — as opções e os preços são calculados no
+            // servidor (o cliente nunca manda valor).
+            rooms: rooms.map((r) => ({
+              id: r.id, label: r.label.trim() || null,
+              ...paxOf(r), selectedCategory: r.selectedCategory,
+            })),
+            ...commercial,
             status,
           },
         }),
@@ -211,7 +347,9 @@ export function NewQuoteWizard({
   const saveAndClose = async () => {
     const id = await save("open");
     if (!id) return;
-    toast.success("Salvo no funil — follow-up e validade criados automaticamente.");
+    toast.success(editingId
+      ? "Cotação atualizada — valores recalculados."
+      : "Salvo no funil — follow-up e validade criados automaticamente.");
     onSaved(id);
     onClose();
   };
@@ -224,18 +362,35 @@ export function NewQuoteWizard({
   };
 
   const copyQuote = async () => {
-    if (!bundle || !quote) return;
-    const selected = quote.categories.filter((c) => !deselected.has(c.categoryId));
-    if (selected.length === 0) { toast.error("Selecione pelo menos uma categoria."); return; }
-
+    if (!bundle || !roomQuotes) return;
     const settings = bundle.settings;
     const linkOf = (categoryId: string) =>
       bundle.categories.find((c) => c.id === categoryId)?.siteUrl || undefined;
-    const msgCtx = { attendantName, input, isWedding: false };
-    const resumo = selected
-      .map((c) => buildCategoryBlock(c, linkOf(c.categoryId), settings.msgSingleTemplate || DEFAULT_MSG_SINGLE_TEMPLATE, detailed))
-      .join("\n");
+    const single = settings.msgSingleTemplate || DEFAULT_MSG_SINGLE_TEMPLATE;
+
+    // Com uma acomodação a mensagem sai idêntica à de sempre; com várias,
+    // um bloco por acomodação para o cliente entender que escolhe uma de cada.
+    // forEach com índice: o target do tsconfig não itera `.entries()`.
+    const parts: string[] = [];
+    roomQuotes.forEach((rq, i) => {
+      const off = deselected[rq.room.id] ?? new Set<string>();
+      const picked = rq.result.categories.filter((c) => !off.has(c.categoryId));
+      if (picked.length === 0) return;
+      const blocks = picked
+        .map((c) => buildCategoryBlock(c, linkOf(c.categoryId), single, detailed))
+        .join("\n");
+      parts.push(roomQuotes.length === 1
+        ? blocks
+        : `*${roomLabel(rq.room, i)}* — ${paxLabel(rq.room)}\n${blocks}`);
+    });
+    if (parts.length === 0) { toast.error("Selecione pelo menos uma categoria."); return; }
+
+    let resumo = parts.join("\n");
+    if (roomQuotes.length > 1) {
+      resumo += `\n💰 *Total ${totals.approximate ? "a partir de " : ""}R$ ${formatBRL(totals.value)}* (${roomQuotes.length} acomodações)`;
+    }
     const avisos = buildEventNotices(events, settings.eventTemplate);
+    const msgCtx = { attendantName, input: totalInput, isWedding: false };
     const msg = processTemplate(settings.msgTemplate || DEFAULT_MSG_TEMPLATE, msgCtx, resumo, avisos);
 
     try {
@@ -268,11 +423,12 @@ export function NewQuoteWizard({
 
   const toggleDiscount = (id: string) =>
     setDiscountIds((prev) => prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]);
-  const toggleCategory = (id: string) =>
+
+  const toggleCategory = (roomId: string, categoryId: string) =>
     setDeselected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
+      const next = new Set(prev[roomId] ?? []);
+      if (next.has(categoryId)) next.delete(categoryId); else next.add(categoryId);
+      return { ...prev, [roomId]: next };
     });
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -305,6 +461,60 @@ export function NewQuoteWizard({
   const dupQuotes = matches?.quotes ?? [];
   const candidates = [...(matches?.phoneMatches ?? []), ...(matches?.nameMatches ?? [])];
 
+  /** Uma opção de cabana dentro de uma acomodação. */
+  const optionRow = (room: DraftRoom, c: RateQuoteCategory) => {
+    const off = (deselected[room.id] ?? new Set()).has(c.categoryId);
+    const avail = availability[c.categoryId];
+    const discounted = Math.abs(c.finalTotal - c.rawTotal) > 5;
+    const chosen = room.selectedCategory === c.categoryId;
+    return (
+      <div key={c.categoryId}
+        style={{
+          ...S.row, display: "flex", alignItems: "center", gap: 10,
+          padding: "9px 12px", opacity: off ? 0.45 : 1,
+          border: `1px solid ${chosen ? T.g1Border : off ? T.border : T.border2}`,
+          background: chosen ? T.gradSoft : T.glass,
+        }}>
+        <input type="checkbox" checked={!off} onChange={() => toggleCategory(room.id, c.categoryId)}
+          title="Incluir na mensagem" style={{ accentColor: T.g1, cursor: "pointer" }} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: T.text }}>{c.category}</div>
+          <div style={{ fontSize: 10.5, color: T.muted }}>média R$ {formatBRL(c.avgNightly)}/noite</div>
+        </div>
+        {avail && (
+          <span title={avail.freeCabins.join(", ")}
+            style={pillS(
+              avail.free > 0 ? T.emeraldBg : "rgba(248,113,113,0.12)",
+              avail.free > 0 ? T.emerald : T.red,
+              avail.free > 0 ? T.emeraldBorder : "rgba(248,113,113,0.3)"
+            )}>
+            {avail.free > 0 ? `${avail.free}/${avail.total} livre${avail.free > 1 ? "s" : ""}` : "Ocupada"}
+          </span>
+        )}
+        {discounted && (
+          <span style={{ fontSize: 11, color: T.muted2, textDecoration: "line-through" }}>
+            R$ {formatBRL(c.rawTotal)}
+          </span>
+        )}
+        <span style={{ fontSize: 13, fontWeight: 900, color: chosen ? T.g1 : T.text }}>
+          R$ {formatBRL(c.finalTotal)}
+        </span>
+        <button
+          onClick={() => patchRoom(room.id, { selectedCategory: chosen ? null : c.categoryId })}
+          title={chosen ? "Desmarcar" : "Marcar como escolhida pelo cliente"}
+          style={{
+            padding: "5px 9px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
+            fontSize: 10, fontWeight: 800, flexShrink: 0,
+            border: `1px solid ${chosen ? T.g1Border : T.border2}`,
+            background: chosen ? T.gradSoft : "transparent",
+            color: chosen ? T.g1 : T.muted,
+          }}>
+          {chosen ? "escolhida" : "escolher"}
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
       style={{
@@ -313,7 +523,7 @@ export function NewQuoteWizard({
         justifyContent: "center", padding: 24,
       }}>
       <div style={{
-        width: "100%", maxWidth: 720, maxHeight: "90vh", background: T.card,
+        width: "100%", maxWidth: 780, maxHeight: "90vh", background: T.card,
         border: `1px solid ${T.border2}`, borderRadius: 20,
         display: "flex", flexDirection: "column", overflow: "hidden",
         boxShadow: "0 32px 80px rgba(0,0,0,.7)",
@@ -321,10 +531,17 @@ export function NewQuoteWizard({
         {/* Header */}
         <div style={{ padding: "18px 22px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 900, color: T.text }}>Nova cotação</div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: T.text }}>
+              {editingId ? "Editar cotação" : hasSeed ? "Nova cotação para o cliente" : "Nova cotação"}
+            </div>
+            {editingId && (
+              <div style={{ fontSize: 11.5, color: T.muted, marginTop: 2 }}>
+                Recalcula e substitui os valores deste orçamento.
+              </div>
+            )}
             <div style={{ display: "flex", gap: 14, marginTop: 6 }}>
-              {stepDot(1, "Cliente")}
-              {stepDot(2, "Confirmação")}
+              {stepDot(1, "Pedido")}
+              {!hasSeed && stepDot(2, "Confirmação")}
               {stepDot(3, "Cotação")}
             </div>
           </div>
@@ -385,12 +602,56 @@ export function NewQuoteWizard({
                   onChange={(e) => setCheckOut(e.target.value)} />
               </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
-              {numField("Adultos", adultsRaw, setAdultsRaw)}
-              {numField("Crianças (pagantes)", childrenRaw, setChildrenRaw)}
-              {numField("Bebês (isentos)", babiesRaw, setBabiesRaw)}
-              {numField("Pets", petsRaw, setPetsRaw)}
+
+            {/* Composição do pedido */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+              <span style={{ ...fieldLabel, margin: 0 }}>Acomodações pedidas</span>
+              <span style={{ fontSize: 10.5, color: T.muted2 }}>
+                {rooms.length > 1 ? `${rooms.length} cabanas na mesma reserva` : "uma cabana"}
+              </span>
+              <button onClick={addRoom}
+                style={{
+                  marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5,
+                  padding: "6px 11px", borderRadius: 9, cursor: "pointer", fontFamily: "inherit",
+                  fontSize: 11, fontWeight: 800, background: T.gradSoft,
+                  border: `1px solid ${T.g1Border}`, color: T.g1,
+                }}>
+                <Plus size={12} /> Adicionar acomodação
+              </button>
             </div>
+            {rooms.map((r, i) => (
+              <div key={r.id} style={{ ...S.row, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{
+                    width: 22, height: 22, borderRadius: 7, background: T.gradSoft,
+                    border: `1px solid ${T.g1Border}`, color: T.g1, fontSize: 10, fontWeight: 900,
+                    display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                  }}>{i + 1}</span>
+                  <input style={{ ...S.input, flex: 1, padding: "6px 10px", fontSize: 12 }}
+                    placeholder={`Rótulo (opcional) — ex.: Casal, Família`}
+                    value={r.label} onChange={(e) => patchRoom(r.id, { label: e.target.value })} />
+                  <button onClick={() => duplicateRoom(r.id)} title="Duplicar acomodação"
+                    style={{ ...S.ghostBtn, padding: "6px 10px", fontSize: 11 }}>
+                    <Copy size={12} /> Duplicar
+                  </button>
+                  {rooms.length > 1 && (
+                    <button onClick={() => removeRoom(r.id)} title="Remover"
+                      style={{
+                        padding: 6, borderRadius: 8, background: "none", border: "none",
+                        color: T.muted, cursor: "pointer", display: "flex", flexShrink: 0,
+                      }}>
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10 }}>
+                  {numField("Adultos", r.adults, (v) => patchRoom(r.id, { adults: v }))}
+                  {numField("Crianças", r.children, (v) => patchRoom(r.id, { children: v }))}
+                  {numField("Bebês", r.babies, (v) => patchRoom(r.id, { babies: v }))}
+                  {numField("Pets", r.pets, (v) => patchRoom(r.id, { pets: v }))}
+                </div>
+              </div>
+            ))}
           </>)}
 
           {step === 2 && matches && (<>
@@ -455,32 +716,30 @@ export function NewQuoteWizard({
               <b style={{ color: T.text }}>{name}</b>
               {linkedGuest && <span style={pillS(T.emeraldBg, T.emerald, T.emeraldBorder)}>hóspede vinculado</span>}
               <span>{fmtBR(checkIn)} → {fmtBR(checkOut)}</span>
-              <span>{adults + children} pagante{adults + children !== 1 ? "s" : ""}</span>
-              {babies > 0 && <span>+{babies} isento{babies > 1 ? "s" : ""}</span>}
-              {pets > 0 && <span>+{pets} pet{pets > 1 ? "s" : ""}</span>}
+              <span>{rooms.length} acomodaç{rooms.length > 1 ? "ões" : "ão"}</span>
               <button onClick={() => setStep(1)}
                 style={{
                   marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 4,
                   background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
                   fontSize: 11, fontWeight: 700, color: T.muted, textDecoration: "underline", textUnderlineOffset: 2,
                 }}>
-                <ArrowLeft size={11} /> editar dados
+                <ArrowLeft size={11} /> editar pedido
               </button>
             </div>
 
-            {!bundle || !quote ? (
+            {!bundle || !roomQuotes ? (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "48px 0", gap: 10, color: T.muted }}>
                 <Loader2 size={18} className="animate-spin" color={T.g1} /> Carregando tarifário…
               </div>
             ) : (<>
-              {quote.uncoveredDates.length > 0 && (
+              {roomQuotes[0].result.uncoveredDates.length > 0 && (
                 <div style={{ background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 11, padding: "9px 13px", fontSize: 12, color: T.red }}>
-                  Sem regra de tarifário para {quote.uncoveredDates.length} data(s) — cadastre no Tarifário → Calendário.
+                  Sem regra de tarifário para {roomQuotes[0].result.uncoveredDates.length} data(s) — cadastre no Tarifário → Calendário.
                 </div>
               )}
-              {quote.nights > 0 && quote.nights < quote.minNightsRequired && (
+              {roomQuotes[0].result.nights > 0 && roomQuotes[0].result.nights < roomQuotes[0].result.minNightsRequired && (
                 <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 11, padding: "9px 13px", fontSize: 12, color: T.amber }}>
-                  Período exige mínimo de {quote.minNightsRequired} diárias (cotação tem {quote.nights}).
+                  Período exige mínimo de {roomQuotes[0].result.minNightsRequired} diárias (cotação tem {roomQuotes[0].result.nights}).
                 </div>
               )}
               {events.map((ev, i) => (
@@ -489,7 +748,7 @@ export function NewQuoteWizard({
                 </div>
               ))}
 
-              {/* Ajustes (a calculadora SIT) */}
+              {/* Ajustes comerciais — valem para o orçamento inteiro */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>
                   <label style={fieldLabel}>Flutuação de ocupação</label>
@@ -534,57 +793,43 @@ export function NewQuoteWizard({
                 </div>
               )}
 
-              {/* Categorias */}
-              {quote.categories.length === 0 ? (
-                <p style={{ fontSize: 13, color: T.muted, textAlign: "center", padding: "24px 0", margin: 0 }}>
-                  Nenhuma categoria com preço para esses parâmetros.
-                </p>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {quote.categories.map((c) => {
-                    const off = deselected.has(c.categoryId);
-                    const avail = availability[c.categoryId];
-                    const discounted = Math.abs(c.finalTotal - c.rawTotal) > 5;
-                    return (
-                      <div key={c.categoryId}
-                        onClick={() => toggleCategory(c.categoryId)}
-                        style={{
-                          ...S.row, display: "flex", alignItems: "center", gap: 10,
-                          padding: "9px 12px", cursor: "pointer", opacity: off ? 0.45 : 1,
-                          border: `1px solid ${off ? T.border : T.g1Border}`,
-                        }}>
-                        <input type="checkbox" readOnly checked={!off} style={{ accentColor: T.g1 }} />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12.5, fontWeight: 700, color: T.text }}>{c.category}</div>
-                          <div style={{ fontSize: 10.5, color: T.muted }}>média R$ {formatBRL(c.avgNightly)}/noite</div>
-                        </div>
-                        {avail && (
-                          <span title={avail.freeCabins.join(", ")}
-                            style={pillS(
-                              avail.free > 0 ? T.emeraldBg : "rgba(248,113,113,0.12)",
-                              avail.free > 0 ? T.emerald : T.red,
-                              avail.free > 0 ? T.emeraldBorder : "rgba(248,113,113,0.3)"
-                            )}>
-                            {avail.free > 0 ? `${avail.free}/${avail.total} livre${avail.free > 1 ? "s" : ""}` : "Ocupada"}
-                          </span>
-                        )}
-                        {discounted && (
-                          <span style={{ fontSize: 11, color: T.muted2, textDecoration: "line-through" }}>
-                            R$ {formatBRL(c.rawTotal)}
-                          </span>
-                        )}
-                        <span style={{ fontSize: 13, fontWeight: 900, color: T.text }}>R$ {formatBRL(c.finalTotal)}</span>
-                      </div>
-                    );
-                  })}
+              {/* Opções por acomodação */}
+              {roomQuotes.map((rq, i) => (
+                <div key={rq.room.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {roomQuotes.length > 1 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 12, fontWeight: 800, color: T.text }}>
+                        {roomLabel(rq.room, i)}
+                      </span>
+                      <span style={{ fontSize: 11, color: T.muted }}>{paxLabel(rq.room)}</span>
+                      {rq.room.selectedCategory && (
+                        <span style={{ ...pillS(T.gradSoft, T.g1, T.g1Border), fontSize: 9 }}>escolhida</span>
+                      )}
+                    </div>
+                  )}
+                  {rq.result.categories.length === 0 ? (
+                    <p style={{ fontSize: 12, color: T.red, margin: 0 }}>
+                      Nenhuma categoria comporta {paxLabel(rq.room)} neste período.
+                    </p>
+                  ) : (
+                    rq.result.categories.map((c) => optionRow(rq.room, c))
+                  )}
                 </div>
-              )}
+              ))}
 
-              <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11.5, color: T.muted, cursor: "pointer" }}>
-                <input type="checkbox" checked={detailed} onChange={(e) => setDetailed(e.target.checked)}
-                  style={{ accentColor: T.g1 }} />
-                Detalhar cálculos na mensagem
-              </label>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11.5, color: T.muted, cursor: "pointer" }}>
+                  <input type="checkbox" checked={detailed} onChange={(e) => setDetailed(e.target.checked)}
+                    style={{ accentColor: T.g1 }} />
+                  Detalhar cálculos na mensagem
+                </label>
+                <span style={{ marginLeft: "auto", fontSize: 13, fontWeight: 900, color: T.text }}>
+                  {totals.approximate ? "a partir de " : ""}R$ {formatBRL(totals.value)}
+                  {roomQuotes.length > 1 && (
+                    <span style={{ fontSize: 11, fontWeight: 600, color: T.muted }}> · {roomQuotes.length} acomodações</span>
+                  )}
+                </span>
+              </div>
             </>)}
           </>)}
         </div>
@@ -614,12 +859,12 @@ export function NewQuoteWizard({
                 <Phone size={13} /> WhatsApp
               </a>
             )}
-            <button onClick={saveAndClose} disabled={saving || !quote || quote.categories.length === 0}
+            <button onClick={saveAndClose} disabled={saving || blocked}
               style={{ ...S.ghostBtn, marginLeft: "auto", opacity: saving ? 0.6 : 1 }}>
               {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-              Salvar no funil
+              {editingId ? "Salvar alterações" : "Salvar no funil"}
             </button>
-            <button onClick={copyQuote} disabled={saving || !quote || quote.categories.length === 0}
+            <button onClick={copyQuote} disabled={saving || blocked}
               style={{ ...S.gradBtn, opacity: saving ? 0.7 : 1 }}>
               <Copy size={14} /> Copiar orçamento
             </button>
