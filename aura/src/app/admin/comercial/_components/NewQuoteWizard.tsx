@@ -15,6 +15,7 @@ import {
   Trash2, X,
 } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import { parseMoneyBR, moneyToInput } from "@/lib/parse-money";
 import {
   computeQuote, processTemplate, buildCategoryBlock, buildEventNotices,
@@ -150,6 +151,8 @@ export function NewQuoteWizard({
   const hasSeed = !!seed;
   // Com semente o cliente já está resolvido: começa direto na calculadora.
   const [step, setStep] = useState<1 | 2 | 3>(hasSeed ? 3 : 1);
+  // Digitou algo e clicou fora / Esc não pode sumir com o pedido sem avisar.
+  const { requestClose, guardProps, markDirty } = useCloseGuard(onClose);
 
   // ── Passo 1: lead + composição ─────────────────────────────────────────────
   const [name, setName] = useState(seed?.clientName ?? "");
@@ -164,18 +167,25 @@ export function NewQuoteWizard({
     seed?.guestId ? { id: seed.guestId, name: seed.clientName || seed.guestId } : null
   );
 
-  const patchRoom = (id: string, patch: Partial<DraftRoom>) =>
+  // Choke point único: cobre digitação (redundante com o guardProps) E os
+  // botões que mudam acomodação sem passar por input nativo (escolher
+  // cabana, voltar ao período do orçamento).
+  const patchRoom = (id: string, patch: Partial<DraftRoom>) => {
+    markDirty();
     setRooms((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  const addRoom = () => setRooms((prev) => [...prev, newDraftRoom()]);
-  const duplicateRoom = (id: string) => setRooms((prev) => {
+  };
+  const addRoom = () => { markDirty(); setRooms((prev) => [...prev, newDraftRoom()]); };
+  const duplicateRoom = (id: string) => { markDirty(); setRooms((prev) => {
     const src = prev.find((r) => r.id === id);
     if (!src) return prev;
     return [...prev, newDraftRoom({
       ...src, id: `r${++draftSeq}`, selectedCategory: null, prices: { ...src.prices },
     })];
-  });
-  const removeRoom = (id: string) =>
+  }); };
+  const removeRoom = (id: string) => {
+    markDirty();
     setRooms((prev) => (prev.length > 1 ? prev.filter((r) => r.id !== id) : prev));
+  };
 
   const step1Error = !name.trim() ? "Informe o nome do cliente."
     : !source ? "Informe a origem do lead."
@@ -508,8 +518,10 @@ export function NewQuoteWizard({
     }
   };
 
-  const toggleDiscount = (id: string) =>
+  const toggleDiscount = (id: string) => {
+    markDirty();
     setDiscountIds((prev) => prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]);
+  };
 
   const toggleCategory = (roomId: string, categoryId: string) =>
     setDeselected((prev) => {
@@ -632,13 +644,13 @@ export function NewQuoteWizard({
   };
 
   return (
-    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    <div onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
       style={{
         position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.6)",
         backdropFilter: "blur(4px)", display: "flex", alignItems: "center",
         justifyContent: "center", padding: 24,
       }}>
-      <div style={{
+      <div {...guardProps} style={{
         width: "100%", maxWidth: 780, maxHeight: "90vh", background: T.card,
         border: `1px solid ${T.border2}`, borderRadius: 20,
         display: "flex", flexDirection: "column", overflow: "hidden",
@@ -661,7 +673,7 @@ export function NewQuoteWizard({
               {stepDot(3, "Cotação")}
             </div>
           </div>
-          <button onClick={onClose}
+          <button onClick={requestClose}
             style={{ padding: 8, borderRadius: 10, background: "none", border: "none", cursor: "pointer", color: T.muted, display: "flex" }}>
             <X size={15} />
           </button>
@@ -674,7 +686,7 @@ export function NewQuoteWizard({
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
               <div>
                 <label style={fieldLabel}>Nome do cliente *</label>
-                <input style={S.input} value={name} autoFocus
+                <input style={S.input} value={name} autoFocus autoComplete="off"
                   onChange={(e) => { setName(e.target.value); setLinkedGuest(null); }} />
               </div>
               <div>
@@ -690,16 +702,17 @@ export function NewQuoteWizard({
               <div>
                 <label style={fieldLabel}>Telefone (WhatsApp)</label>
                 <input style={S.input} inputMode="tel" placeholder="Só dígitos" value={phone}
+                  autoComplete="off"
                   onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))} />
               </div>
               <div>
                 <label style={fieldLabel}>E-mail</label>
-                <input style={S.input} type="email" value={email}
+                <input style={S.input} type="email" value={email} autoComplete="off"
                   onChange={(e) => setEmail(e.target.value)} />
               </div>
               <div>
                 <label style={fieldLabel}>CPF (opcional)</label>
-                <input style={S.input} value={document}
+                <input style={S.input} value={document} autoComplete="off"
                   onChange={(e) => setDocument(e.target.value)} />
               </div>
             </div>
@@ -1004,7 +1017,7 @@ export function NewQuoteWizard({
         {/* Footer */}
         <div style={{ padding: "14px 22px", borderTop: `1px solid ${T.border}`, display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>
           {step === 1 && (<>
-            <button onClick={onClose} style={S.ghostBtn}>Cancelar</button>
+            <button onClick={requestClose} style={S.ghostBtn}>Cancelar</button>
             <button onClick={goNext} disabled={checking}
               style={{ ...S.gradBtn, marginLeft: "auto", opacity: checking ? 0.7 : 1 }}>
               {checking ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}

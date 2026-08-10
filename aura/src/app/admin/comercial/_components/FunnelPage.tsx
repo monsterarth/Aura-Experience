@@ -521,6 +521,7 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
               <Search size={13} color={T.muted} />
               <input value={search} onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar por nome, telefone, e-mail…"
+                autoComplete="off"
                 style={{ background: "none", border: "none", outline: "none", color: T.text, fontFamily: "inherit", fontSize: 13, flex: 1 }} />
             </div>
             <span style={{ fontSize: 11, color: T.muted2 }}>
