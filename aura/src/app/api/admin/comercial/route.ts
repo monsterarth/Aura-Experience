@@ -7,7 +7,8 @@ import { CrmService } from "@/services/crm-service";
 
 export const dynamic = "force-dynamic";
 
-const READ_ROLES = ["super_admin", "admin", "manager", "reception"] as const;
+// marketing lê o pipeline (KPIs por canal na página de Marketing) — leitura só.
+const READ_ROLES = ["super_admin", "admin", "manager", "reception", "marketing"] as const;
 
 export async function GET(req: NextRequest) {
   const auth = await requireAuth([...READ_ROLES]);
