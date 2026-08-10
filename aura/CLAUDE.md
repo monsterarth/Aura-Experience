@@ -170,6 +170,7 @@ Deeper docs live in `docs/`, read on demand:
 - `docs/CRON.md` — cron runbook.
 - `docs/DEPLOYMENT.md` — Vercel + Supabase setup, env vars, migration order, `whatsapp-service`.
 - `docs/REFACTORING.md` — plan for splitting the largest files (not yet executed).
+- `docs/MODULARIZATION.md` — core × módulos / planos por propriedade. Execution deferred, but its **section 1 rules apply NOW** to all new code: new module → settings flag day one; core flows never hard-depend on module tables (soft check, default ON — `stock-integration.ts` pattern); new crons skip properties without the module.
 
 Area-specific `CLAUDE.md` files are auto-loaded when working in: `src/services/`, `src/app/admin/`, `src/app/api/`, `src/app/check-in/`.
 
