@@ -7,6 +7,7 @@
 import {
   CabinCategory,
   RateBreakdownItem,
+  RateFluctuationRule,
   RatePeriod,
   RatePromo,
   RateQuoteCategory,
@@ -84,6 +85,8 @@ interface RateData {
   settings: RateSettings;
   /** Categorias da propriedade — resolvem id → nome comercial. */
   categories: CabinCategory[];
+  /** Regras de flutuação por período — só o modo Automática consome. */
+  fluctuations?: RateFluctuationRule[];
 }
 
 /** Nome a exibir/mandar no WhatsApp: comercial quando houver, senão operacional. */
@@ -145,16 +148,33 @@ export function computeQuote(input: RateQuoteInput, data: RateData): RateQuoteRe
   );
   const petFee = (input.pets || 0) * (settings.petFee || 0) * nights;
 
+  // Flutuação por noite. Modo Automática: o % da regra de rate_fluctuations
+  // que cobre a noite (sem regra = 0%); manual: o % único do input. A média
+  // simples das noites é o número que a UI exibe ("média +7%") — o cálculo
+  // em si é noite a noite, que é o correto quando as diárias variam.
+  const auto = !!input.fluctuationAuto;
+  const fluctRules = auto
+    ? [...(data.fluctuations || [])].sort((a, b) => a.startDate.localeCompare(b.startDate))
+    : null;
+  const nightlyPcts = allNights.map((iso) => auto
+    ? (fluctRules!.find((f) => iso >= f.startDate && iso <= f.endDate)?.pct ?? 0)
+    : (input.fluctuationPct || 0));
+  const fluctuationAvgPct = nights > 0
+    ? Math.round((nightlyPcts.reduce((s, p) => s + p, 0) / nights) * 100) / 100
+    : 0;
+
   const results: RateQuoteCategory[] = [];
 
   for (const categoryId of categoryIds) {
     let rawTotal = 0;
     let accumulated = 0;
+    let fluctTotal = 0;
     let daysWithoutPrice = 0;
     const periodNights: Record<string, number> = {};
     const promoSavings: Record<string, number> = {};
 
-    for (const iso of allNights) {
+    for (let ni = 0; ni < allNights.length; ni++) {
+      const iso = allNights[ni];
       const rule = findRule(sorted, iso)!;
       const tableId = isWeekendNight(iso) ? rule.weekendTableId : rule.weekdayTableId;
       const table = tableId ? tableById.get(tableId) : undefined;
@@ -164,7 +184,9 @@ export function computeQuote(input: RateQuoteInput, data: RateData): RateQuoteRe
       if (dailyRaw <= 0) daysWithoutPrice++;
       periodNights[rule.name] = (periodNights[rule.name] || 0) + 1;
 
-      let daily = dailyRaw * (1 + (input.fluctuationPct || 0) / 100);
+      const fluctDelta = dailyRaw * (nightlyPcts[ni] / 100);
+      fluctTotal += fluctDelta;
+      let daily = dailyRaw + fluctDelta;
 
       for (const promo of settings.promos || []) {
         if (promoAppliesToNight(promo, iso, nights)) {
@@ -181,10 +203,12 @@ export function computeQuote(input: RateQuoteInput, data: RateData): RateQuoteRe
     const breakdown: RateBreakdownItem[] = [
       { label: `Valor tabela (${nights} noite${nights > 1 ? 's' : ''})`, value: rawTotal, kind: 'base' },
     ];
-    if (input.fluctuationPct) {
+    if (Math.abs(fluctTotal) > 0.005) {
       breakdown.push({
-        label: `Ajuste ocupação (${input.fluctuationPct > 0 ? '+' : ''}${input.fluctuationPct}%)`,
-        value: rawTotal * (input.fluctuationPct / 100),
+        label: auto
+          ? `Ajuste ocupação automático (média ${fluctuationAvgPct > 0 ? '+' : ''}${fluctuationAvgPct}%)`
+          : `Ajuste ocupação (${input.fluctuationPct > 0 ? '+' : ''}${input.fluctuationPct}%)`,
+        value: fluctTotal,
         kind: 'fluct',
       });
     }
@@ -229,7 +253,7 @@ export function computeQuote(input: RateQuoteInput, data: RateData): RateQuoteRe
   }
 
   results.sort((a, b) => a.finalTotal - b.finalTotal);
-  return { categories: results, uncoveredDates: [], minNightsRequired, nights };
+  return { categories: results, uncoveredDates: [], minNightsRequired, nights, fluctuationAvgPct };
 }
 
 /**
@@ -440,27 +464,38 @@ export function buildEventNotices(
     .join('\n');
 }
 
-// ── Resolução de conflitos de regras de calendário (port do SIT) ─────────────
+// ── Resolução de conflitos de regras por intervalo (port do SIT) ─────────────
+// Genérico sobre {id, startDate, endDate}: serve para regras de calendário
+// (rate_periods) E para regras de flutuação (rate_fluctuations).
 
-export interface PeriodConflictResult {
+export interface DateRangeRule {
+  id: string;
+  startDate: string;
+  endDate: string;
+}
+
+export interface RangeConflictResult<T extends DateRangeRule> {
   /** Regras existentes (aparadas/partidas) que permanecem. */
-  keep: RatePeriod[];
+  keep: T[];
   /** Novas regras a inserir (a própria, ou os pedaços no modo fill). */
-  insert: Omit<RatePeriod, 'id'>[];
+  insert: Omit<T, 'id'>[];
   /** ids de regras existentes que devem ser removidas. */
   removeIds: string[];
 }
+
+/** Alias de compatibilidade (consumidores antigos falam de períodos). */
+export type PeriodConflictResult = RangeConflictResult<RatePeriod>;
 
 /**
  * Modo SOBREPOR: apara/parte/remove as regras antigas que tocam o intervalo da
  * nova e insere a nova inteira.
  */
-export function resolveOverwrite(
-  existing: RatePeriod[],
-  next: Omit<RatePeriod, 'id'> & { id?: string }
-): PeriodConflictResult {
-  const keep: RatePeriod[] = [];
-  const insert: Omit<RatePeriod, 'id'>[] = [];
+export function resolveOverwrite<T extends DateRangeRule>(
+  existing: T[],
+  next: Omit<T, 'id'> & { id?: string }
+): RangeConflictResult<T> {
+  const keep: T[] = [];
+  const insert: Omit<T, 'id'>[] = [];
   const removeIds: string[] = [];
 
   for (const o of existing) {
@@ -474,21 +509,21 @@ export function resolveOverwrite(
     const splitInTwo = o.startDate < next.startDate && o.endDate > next.endDate;
     if (splitInTwo) {
       removeIds.push(o.id);
-      insert.push({ ...stripId(o), endDate: addDays(next.startDate, -1) });
-      insert.push({ ...stripId(o), startDate: addDays(next.endDate, 1) });
+      insert.push({ ...stripId(o), endDate: addDays(next.startDate, -1) } as Omit<T, 'id'>);
+      insert.push({ ...stripId(o), startDate: addDays(next.endDate, 1) } as Omit<T, 'id'>);
       continue;
     }
 
     if (o.startDate < next.startDate) {
       removeIds.push(o.id);
-      insert.push({ ...stripId(o), endDate: addDays(next.startDate, -1) });
+      insert.push({ ...stripId(o), endDate: addDays(next.startDate, -1) } as Omit<T, 'id'>);
     } else {
       removeIds.push(o.id);
-      insert.push({ ...stripId(o), startDate: addDays(next.endDate, 1) });
+      insert.push({ ...stripId(o), startDate: addDays(next.endDate, 1) } as Omit<T, 'id'>);
     }
   }
 
-  insert.push(stripId(next));
+  insert.push(stripId(next) as Omit<T, 'id'>);
   return { keep, insert, removeIds };
 }
 
@@ -496,35 +531,40 @@ export function resolveOverwrite(
  * Modo PREENCHER VAZIOS: mantém tudo que existe e cria a nova regra só nos
  * buracos livres do intervalo. Retorna insert=[] se não houver buraco.
  */
-export function resolveFill(
-  existing: RatePeriod[],
-  next: Omit<RatePeriod, 'id'> & { id?: string }
-): PeriodConflictResult {
+export function resolveFill<T extends DateRangeRule>(
+  existing: T[],
+  next: Omit<T, 'id'> & { id?: string }
+): RangeConflictResult<T> {
   const removeIds: string[] = next.id ? [next.id] : [];
   const others = existing.filter((p) => !(next.id && p.id === next.id));
   const conflicts = others
     .filter((p) => p.startDate <= next.endDate && p.endDate >= next.startDate)
     .sort((a, b) => a.startDate.localeCompare(b.startDate));
 
-  const insert: Omit<RatePeriod, 'id'>[] = [];
+  const insert: Omit<T, 'id'>[] = [];
   let cursor = next.startDate;
 
   for (const c of conflicts) {
     if (c.startDate > cursor) {
       const gapEnd = addDays(c.startDate, -1);
-      if (gapEnd >= cursor) insert.push({ ...stripId(next), startDate: cursor, endDate: gapEnd });
+      if (gapEnd >= cursor) {
+        insert.push({ ...stripId(next), startDate: cursor, endDate: gapEnd } as Omit<T, 'id'>);
+      }
     }
     const afterConflict = addDays(c.endDate, 1);
     if (afterConflict > cursor) cursor = afterConflict;
   }
   if (cursor <= next.endDate) {
-    insert.push({ ...stripId(next), startDate: cursor, endDate: next.endDate });
+    insert.push({ ...stripId(next), startDate: cursor, endDate: next.endDate } as Omit<T, 'id'>);
   }
 
   return { keep: others, insert, removeIds };
 }
 
-export function findOverlaps(existing: RatePeriod[], next: { id?: string; startDate: string; endDate: string }): RatePeriod[] {
+export function findOverlaps<T extends DateRangeRule>(
+  existing: T[],
+  next: { id?: string; startDate: string; endDate: string }
+): T[] {
   return existing.filter(
     (p) => (!next.id || p.id !== next.id) && p.startDate <= next.endDate && p.endDate >= next.startDate
   );

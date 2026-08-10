@@ -2308,8 +2308,30 @@ export interface RateTable {
   propertyId: string;
   name: string;
   prices: Record<string, Record<string, number>>;
+  /**
+   * Arquivada = fora das listas ativas e dos selects de período; vive na aba
+   * Arquivo (histórico de preços). Regra antiga que ainda aponta para ela
+   * continua resolvendo — arquivar não quebra o calendário.
+   */
+  archivedAt?: Timestamp | null;
+  archivedBy?: string | null;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
+}
+
+/**
+ * Snapshot de uma tabela ANTES de uma alteração real (ou da exclusão) — o
+ * histórico de preços da fazenda. `tableId` sem FK: a versão sobrevive.
+ */
+export interface RateTableVersion {
+  id: string;
+  tableId: string;
+  propertyId: string;
+  name: string;
+  prices: RateTable['prices'];
+  replacedAt: Timestamp;
+  replacedBy?: string | null;
+  replacedByName?: string | null;
 }
 
 /**
@@ -2333,6 +2355,28 @@ export interface RateFluctuation {
   id: string;
   name: string;
   pct: number;         // positivo encarece
+}
+
+/**
+ * Um PRESET de flutuação atribuído a um intervalo de datas (tabela
+ * rate_fluctuations) — difere de `RateFluctuation`, que é só a opção do
+ * select. `pct` é snapshot assinado do preset no momento da atribuição:
+ * editar o preset depois não reprecifica períodos já atribuídos. A cotação
+ * em modo "Automática" aplica o % de cada noite e exibe a média.
+ */
+export interface RateFluctuationRule {
+  id: string;
+  propertyId: string;
+  /** id do preset em `RateSettings.fluctuations` (JSONB — sem FK). */
+  presetId?: string | null;
+  /** Label do preset na atribuição (calendário/auditoria). */
+  name?: string | null;
+  startDate: string;   // YYYY-MM-DD (primeira noite)
+  endDate: string;     // YYYY-MM-DD (última noite, inclusive)
+  pct: number;         // assinado: positivo encarece
+  createdAt?: Timestamp;
+  createdBy?: string | null;
+  createdByName?: string | null;
 }
 
 /** Desconto manual de checkbox (ex.: "Pix à vista -5%"). */
@@ -2384,6 +2428,11 @@ export interface RateQuoteInput {
   babies: number;      // isentos
   pets: number;
   fluctuationPct: number;
+  /**
+   * Modo "Automática": ignora `fluctuationPct` e aplica, noite a noite, o %
+   * da regra de `rate_fluctuations` que cobre cada noite (sem regra = 0%).
+   */
+  fluctuationAuto?: boolean;
   /** ids de RateDiscount marcados. */
   discountIds: string[];
   adhocValue: number;
@@ -2421,6 +2470,8 @@ export interface RateQuoteResult {
   /** maior mínimo de diárias entre as regras tocadas. */
   minNightsRequired: number;
   nights: number;
+  /** Média simples dos % de flutuação por noite (modo Automática exibe). */
+  fluctuationAvgPct?: number;
 }
 
 /**
@@ -2678,6 +2729,11 @@ export interface RateQuoteRecord {
   babies: number;
   pets: number;
   fluctuationPct: number;
+  /**
+   * Salvo em modo "Automática" — reabre em auto; `fluctuationPct` guarda a
+   * média efetiva do período (exibição/histórico).
+   */
+  fluctuationAuto?: boolean;
   discountIds: string[];
   adhocValue: number;
   adhocType: 'pct' | 'brl';
