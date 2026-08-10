@@ -40,10 +40,12 @@ type MatchContext = {
   quotes: RateQuoteRecord[];
 };
 
-/** Acomodação em edição — pax como string para o campo poder ficar vazio. */
+/** Acomodação em edição — pax como string para o campo poder ficar vazio.
+ *  checkIn/checkOut vazios = herda o período do orçamento. */
 type DraftRoom = {
   id: string;
   label: string;
+  checkIn: string; checkOut: string;
   adults: string; children: string; babies: string; pets: string;
   selectedCategory: string | null;
 };
@@ -51,6 +53,7 @@ type DraftRoom = {
 let draftSeq = 0;
 const newDraftRoom = (over?: Partial<DraftRoom>): DraftRoom => ({
   id: `r${++draftSeq}`, label: "",
+  checkIn: "", checkOut: "",
   adults: "2", children: "0", babies: "0", pets: "0",
   selectedCategory: null,
   ...over,
@@ -97,8 +100,12 @@ export type QuoteSeed = {
 
 function seedRooms(seed?: QuoteSeed | null): DraftRoom[] {
   if (seed?.rooms && seed.rooms.length > 0) {
+    // Datas iguais às do orçamento voltam vazias (= "herda"), para o campo
+    // por acomodação só aparecer preenchido quando REALMENTE difere.
     return seed.rooms.map((r) => newDraftRoom({
       id: r.id, label: r.label ?? "",
+      checkIn: r.checkIn && r.checkIn !== seed.checkIn ? r.checkIn : "",
+      checkOut: r.checkOut && r.checkOut !== seed.checkOut ? r.checkOut : "",
       adults: String(r.adults), children: String(r.children),
       babies: String(r.babies), pets: String(r.pets),
       selectedCategory: r.selectedCategory ?? null,
@@ -217,8 +224,11 @@ export function NewQuoteWizard({
   const [detailed, setDetailed] = useState(false);
   /** Opções fora da mensagem, por acomodação: roomId → Set(categoryId). */
   const [deselected, setDeselected] = useState<Record<string, Set<string>>>({});
-  const [availability, setAvailability] = useState<Record<string, RateAvailability>>({});
-  const [events, setEvents] = useState<{ title: string; date: string }[]>([]);
+  /** Disponibilidade + eventos por período ("in|out") — acomodações podem diferir. */
+  const [contextByPeriod, setContextByPeriod] = useState<Record<string, {
+    availability: Record<string, RateAvailability>;
+    events: { title: string; date: string }[];
+  }>>({});
   const [saving, setSaving] = useState(false);
   // Editando: o "salvo" já é o orçamento existente desde o início.
   const [savedId, setSavedId] = useState<string | null>(editingId);
@@ -234,23 +244,50 @@ export function NewQuoteWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [propertyId]);
 
-  // Disponibilidade real + eventos do período (mesma rota do Tarifário).
+  // Disponibilidade real + eventos, POR PERÍODO distinto (acomodações podem
+  // ter datas próprias). A rota é a mesma do Tarifário; a chave é "in|out".
+  const periodKeys = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of rooms) {
+      const p = { checkIn: r.checkIn || checkIn, checkOut: r.checkOut || checkOut };
+      if (p.checkIn && p.checkOut && p.checkIn < p.checkOut) set.add(`${p.checkIn}|${p.checkOut}`);
+    }
+    return Array.from(set).sort();
+  }, [rooms, checkIn, checkOut]);
+
   useEffect(() => {
-    if (step !== 3 || !checkIn || !checkOut || checkIn >= checkOut) return;
+    if (step !== 3 || periodKeys.length === 0) return;
     let cancelled = false;
-    fetch(`/api/admin/tarifario/context?propertyId=${propertyId}&in=${checkIn}&out=${checkOut}`)
-      .then((r) => (r.ok ? r.json() : { availability: {}, events: [] }))
-      .then((d) => { if (!cancelled) { setAvailability(d.availability || {}); setEvents(d.events || []); } })
-      .catch(() => { if (!cancelled) { setAvailability({}); setEvents([]); } });
+    Promise.all(periodKeys.map(async (key) => {
+      const [ci, co] = key.split("|");
+      const res = await fetch(`/api/admin/tarifario/context?propertyId=${propertyId}&in=${ci}&out=${co}`)
+        .catch(() => null);
+      const d = res?.ok ? await res.json() : { availability: {}, events: [] };
+      return [key, d] as const;
+    })).then((entries) => {
+      if (cancelled) return;
+      const byPeriod: Record<string, { availability: Record<string, RateAvailability>; events: { title: string; date: string }[] }> = {};
+      for (const [key, d] of entries) {
+        byPeriod[key] = { availability: d.availability || {}, events: d.events || [] };
+      }
+      setContextByPeriod(byPeriod);
+    });
     return () => { cancelled = true; };
-  }, [step, propertyId, checkIn, checkOut]);
+  }, [step, propertyId, periodKeys]);
 
   const commercial = useMemo(() => ({
     fluctuationPct, discountIds,
     adhocValue: parseFloat(adhocValue) || 0, adhocType,
   }), [fluctuationPct, discountIds, adhocValue, adhocType]);
 
-  /** Uma cotação por acomodação — o motor é o mesmo, o pax é que muda. */
+  /** Período efetivo da acomodação: o próprio, ou o do orçamento. */
+  const periodOf = (room: DraftRoom) => {
+    const ci = room.checkIn || checkIn;
+    const co = room.checkOut || checkOut;
+    return { checkIn: ci, checkOut: co > ci ? co : checkOut };
+  };
+
+  /** Uma cotação por acomodação — mesmo motor; pax E período podem variar. */
   const roomQuotes = useMemo(() => {
     if (!bundle) return null;
     const data = {
@@ -258,9 +295,10 @@ export function NewQuoteWizard({
       settings: bundle.settings, categories: bundle.categories,
     };
     return rooms.map((room) => {
-      const input: RateQuoteInput = { checkIn, checkOut, ...paxOf(room), ...commercial };
+      const input: RateQuoteInput = { ...periodOf(room), ...paxOf(room), ...commercial };
       return { room, input, result: computeQuote(input, data) as RateQuoteResult };
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rooms, checkIn, checkOut, commercial, bundle]);
 
   /** Pax somado — os placeholders da mensagem falam do grupo inteiro. */
@@ -324,7 +362,8 @@ export function NewQuoteWizard({
             // servidor (o cliente nunca manda valor).
             rooms: rooms.map((r) => ({
               id: r.id, label: r.label.trim() || null,
-              ...paxOf(r), selectedCategory: r.selectedCategory,
+              ...periodOf(r), ...paxOf(r),
+              selectedCategory: r.selectedCategory,
             })),
             ...commercial,
             status,
@@ -389,7 +428,12 @@ export function NewQuoteWizard({
     if (roomQuotes.length > 1) {
       resumo += `\n💰 *Total ${totals.approximate ? "a partir de " : ""}R$ ${formatBRL(totals.value)}* (${roomQuotes.length} acomodações)`;
     }
-    const avisos = buildEventNotices(events, settings.eventTemplate);
+    // Eventos de TODOS os períodos envolvidos, sem repetir.
+    const allEvents = Object.values(contextByPeriod).flatMap((c) => c.events);
+    const uniqueEvents = allEvents.filter(
+      (ev, i) => allEvents.findIndex((o) => o.title === ev.title && o.date === ev.date) === i
+    );
+    const avisos = buildEventNotices(uniqueEvents, settings.eventTemplate);
     const msgCtx = { attendantName, input: totalInput, isWedding: false };
     const msg = processTemplate(settings.msgTemplate || DEFAULT_MSG_TEMPLATE, msgCtx, resumo, avisos);
 
@@ -464,7 +508,8 @@ export function NewQuoteWizard({
   /** Uma opção de cabana dentro de uma acomodação. */
   const optionRow = (room: DraftRoom, c: RateQuoteCategory) => {
     const off = (deselected[room.id] ?? new Set()).has(c.categoryId);
-    const avail = availability[c.categoryId];
+    const p = periodOf(room);
+    const avail = contextByPeriod[`${p.checkIn}|${p.checkOut}`]?.availability[c.categoryId];
     const discounted = Math.abs(c.finalTotal - c.rawTotal) > 5;
     const chosen = room.selectedCategory === c.categoryId;
     return (
@@ -717,6 +762,11 @@ export function NewQuoteWizard({
               {linkedGuest && <span style={pillS(T.emeraldBg, T.emerald, T.emeraldBorder)}>hóspede vinculado</span>}
               <span>{fmtBR(checkIn)} → {fmtBR(checkOut)}</span>
               <span>{rooms.length} acomodaç{rooms.length > 1 ? "ões" : "ão"}</span>
+              {rooms.some((r) => r.checkIn || r.checkOut) && (
+                <span style={{ ...pillS(T.gradSoft, T.g1, T.g1Border), fontSize: 9 }}>
+                  datas por acomodação
+                </span>
+              )}
               <button onClick={() => setStep(1)}
                 style={{
                   marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 4,
@@ -742,7 +792,10 @@ export function NewQuoteWizard({
                   Período exige mínimo de {roomQuotes[0].result.minNightsRequired} diárias (cotação tem {roomQuotes[0].result.nights}).
                 </div>
               )}
-              {events.map((ev, i) => (
+              {(() => {
+                const all = Object.values(contextByPeriod).flatMap((c) => c.events);
+                return all.filter((ev, i) => all.findIndex((o) => o.title === ev.title && o.date === ev.date) === i);
+              })().map((ev, i) => (
                 <div key={i} style={{ background: "rgba(96,165,250,0.08)", border: "1px solid rgba(96,165,250,0.3)", borderRadius: 11, padding: "9px 13px", fontSize: 12, color: T.blue }}>
                   Evento no período: <b>{ev.title}</b> ({fmtBR(ev.date)}) — o aviso entra na mensagem.
                 </div>
@@ -793,29 +846,71 @@ export function NewQuoteWizard({
                 </div>
               )}
 
-              {/* Opções por acomodação */}
-              {roomQuotes.map((rq, i) => (
-                <div key={rq.room.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {roomQuotes.length > 1 && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {/* Opções por acomodação — com período editável aqui mesmo
+                  (chegadas escalonadas), recalculando ao vivo. */}
+              {roomQuotes.map((rq, i) => {
+                const p = periodOf(rq.room);
+                const custom = !!(rq.room.checkIn || rq.room.checkOut);
+                const nights = rq.result.nights;
+                return (
+                  <div key={rq.room.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       <span style={{ fontSize: 12, fontWeight: 800, color: T.text }}>
-                        {roomLabel(rq.room, i)}
+                        {roomQuotes.length > 1 ? roomLabel(rq.room, i) : "Cabanas oferecidas"}
                       </span>
                       <span style={{ fontSize: 11, color: T.muted }}>{paxLabel(rq.room)}</span>
                       {rq.room.selectedCategory && (
                         <span style={{ ...pillS(T.gradSoft, T.g1, T.g1Border), fontSize: 9 }}>escolhida</span>
                       )}
+                      {/* Período desta acomodação */}
+                      <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5 }}>
+                        <input type="date" value={p.checkIn}
+                          title="Check-in desta acomodação"
+                          onChange={(e) => patchRoom(rq.room.id, { checkIn: e.target.value })}
+                          style={{
+                            ...S.input, width: 132, padding: "5px 8px", fontSize: 11,
+                            borderColor: custom ? T.g1Border : T.border2,
+                            color: custom ? T.g1 : T.text,
+                          }} />
+                        <span style={{ fontSize: 11, color: T.muted2 }}>→</span>
+                        <input type="date" value={p.checkOut}
+                          title="Check-out desta acomodação"
+                          onChange={(e) => patchRoom(rq.room.id, { checkOut: e.target.value })}
+                          style={{
+                            ...S.input, width: 132, padding: "5px 8px", fontSize: 11,
+                            borderColor: custom ? T.g1Border : T.border2,
+                            color: custom ? T.g1 : T.text,
+                          }} />
+                        <span style={{ fontSize: 10.5, color: T.muted, minWidth: 48 }}>
+                          {nights} noite{nights !== 1 ? "s" : ""}
+                        </span>
+                        {custom && (
+                          <button onClick={() => patchRoom(rq.room.id, { checkIn: "", checkOut: "" })}
+                            title="Voltar ao período do orçamento"
+                            style={{
+                              padding: 4, borderRadius: 7, background: "none", border: "none",
+                              color: T.muted, cursor: "pointer", display: "flex",
+                            }}>
+                            <X size={12} />
+                          </button>
+                        )}
+                      </span>
                     </div>
-                  )}
-                  {rq.result.categories.length === 0 ? (
-                    <p style={{ fontSize: 12, color: T.red, margin: 0 }}>
-                      Nenhuma categoria comporta {paxLabel(rq.room)} neste período.
-                    </p>
-                  ) : (
-                    rq.result.categories.map((c) => optionRow(rq.room, c))
-                  )}
-                </div>
-              ))}
+                    {rq.result.uncoveredDates.length > 0 && (
+                      <p style={{ fontSize: 11.5, color: T.red, margin: 0 }}>
+                        Sem regra de tarifário em {rq.result.uncoveredDates.length} data(s) deste período.
+                      </p>
+                    )}
+                    {rq.result.categories.length === 0 ? (
+                      <p style={{ fontSize: 12, color: T.red, margin: 0 }}>
+                        Nenhuma categoria comporta {paxLabel(rq.room)} neste período.
+                      </p>
+                    ) : (
+                      rq.result.categories.map((c) => optionRow(rq.room, c))
+                    )}
+                  </div>
+                );
+              })}
 
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11.5, color: T.muted, cursor: "pointer" }}>

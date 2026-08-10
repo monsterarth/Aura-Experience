@@ -413,15 +413,22 @@ export const RateService = {
       adhocValue: Math.max(0, Number(payload.adhocValue) || 0),
       adhocType: (payload.adhocType === "brl" ? "brl" : "pct") as "pct" | "brl",
     };
-    const inputFor = (pax: { adults?: number; children?: number; babies?: number; pets?: number }): RateQuoteInput => ({
-      checkIn: payload.checkIn!,
-      checkOut: payload.checkOut!,
-      adults: Math.max(1, Number(pax.adults) || 2),
-      children: Math.max(0, Number(pax.children) || 0),
-      babies: Math.max(0, Number(pax.babies) || 0),
-      pets: Math.max(0, Number(pax.pets) || 0),
-      ...commercial,
-    });
+    // Cada acomodação pode ter período PRÓPRIO (chegada escalonada); sem isso,
+    // herda o do orçamento. Data inválida cai no período do orçamento — nunca
+    // se inventa intervalo.
+    const inputFor = (r: Partial<RateQuoteRoom>): RateQuoteInput => {
+      const ci = ISO_DATE.test(r.checkIn || "") ? r.checkIn! : payload.checkIn!;
+      const co = ISO_DATE.test(r.checkOut || "") && r.checkOut! > ci ? r.checkOut! : payload.checkOut!;
+      return {
+        checkIn: ci,
+        checkOut: co > ci ? co : payload.checkOut!,
+        adults: Math.max(1, Number(r.adults) || 2),
+        children: Math.max(0, Number(r.children) || 0),
+        babies: Math.max(0, Number(r.babies) || 0),
+        pets: Math.max(0, Number(r.pets) || 0),
+        ...commercial,
+      };
+    };
 
     // Sem `rooms` no payload (chamador antigo) → uma acomodação com o pax raiz.
     const requested = Array.isArray(payload.rooms) && payload.rooms.length > 0
@@ -448,12 +455,21 @@ export const RateService = {
       return {
         id: r.id || crypto.randomUUID(),
         label: r.label?.trim() || null,
+        // Guarda as datas SEMPRE (já sanitizadas): a acomodação passa a ser
+        // autocontida para quem lê o orçamento depois.
+        checkIn: input.checkIn, checkOut: input.checkOut,
         adults: input.adults, children: input.children,
         babies: input.babies, pets: input.pets,
         options: result.categories,
         selectedCategory: pick ? pick.categoryId || pick.category : null,
       };
     });
+
+    // Colunas raiz: intervalo TOTAL do pedido (menor entrada → maior saída) —
+    // é o período que o funil, os prazos do lead e a ficha mostram. As datas
+    // de cada acomodação ficam dentro de `rooms`.
+    const spanIn = rooms.reduce((m, r) => (r.checkIn! < m ? r.checkIn! : m), rooms[0].checkIn!);
+    const spanOut = rooms.reduce((m, r) => (r.checkOut! > m ? r.checkOut! : m), rooms[0].checkOut!);
 
     // Espelho da acomodação 1 nas colunas raiz — é o que mantém as telas
     // legadas (funil do tarifário, vínculo com estadia) funcionando.
@@ -480,8 +496,8 @@ export const RateService = {
       guestId: payload.guestId || null,
       weddingId: payload.weddingId || null,
       source,
-      checkIn: payload.checkIn,
-      checkOut: payload.checkOut,
+      checkIn: spanIn,
+      checkOut: spanOut,
       adults: input.adults,
       children: input.children,
       babies: input.babies,
@@ -522,7 +538,8 @@ export const RateService = {
       return existing.id;
     }
 
-    const lead = await CrmService.initialQuoteLeadDates(propertyId, payload.checkIn);
+    // A validade do lead não passa da PRIMEIRA chegada (span de entrada).
+    const lead = await CrmService.initialQuoteLeadDates(propertyId, spanIn);
     const id = crypto.randomUUID();
     const { error } = await admin.from("rate_quotes").insert({
       id,
@@ -915,7 +932,10 @@ export const RateService = {
 
     if (total == null || total <= 0) return { linked: true };
 
-    const quoteNights = nightsBetween(quote.checkIn, quote.checkOut) || chosen?.nights || 1;
+    // As noites da OPÇÃO casada vêm primeiro: com acomodações de períodos
+    // diferentes, o intervalo raiz é o span do pedido (maior que o desta
+    // cabana) e dividir por ele daria uma diária menor que a real.
+    const quoteNights = chosen?.nights || nightsBetween(quote.checkIn, quote.checkOut) || 1;
     const nightlyRate = Math.round((total / quoteNights) * 100) / 100;
     const stayNights = nightsBetween(stay.checkIn.slice(0, 10), stay.checkOut.slice(0, 10));
     // Datas iguais às do orçamento → total exato; ajustadas → diária × noites reais.

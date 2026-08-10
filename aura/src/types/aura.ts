@@ -2430,6 +2430,13 @@ export interface RateQuoteRoom {
   id: string;
   /** Rótulo livre ("Casal 1", "Família"); vazio = numeração automática. */
   label?: string | null;
+  /**
+   * Período PRÓPRIO desta acomodação (chegadas escalonadas: um casal entra
+   * um dia antes). Ausente = herda o período do orçamento. As colunas raiz
+   * checkIn/checkOut guardam o intervalo TOTAL (menor entrada → maior saída).
+   */
+  checkIn?: string | null;
+  checkOut?: string | null;
   adults: number;
   children: number;
   babies: number;

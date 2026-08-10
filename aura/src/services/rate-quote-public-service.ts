@@ -37,6 +37,12 @@ export type PublicQuoteOption = {
 export type PublicQuoteRoom = {
   id: string;
   label: string;
+  /** Período desta acomodação (pode diferir: chegadas escalonadas). */
+  checkIn: string;
+  checkOut: string;
+  nights: number;
+  /** true quando o período difere do intervalo geral — a tela destaca. */
+  ownPeriod: boolean;
   adults: number;
   children: number;
   babies: number;
@@ -145,14 +151,21 @@ export const RateQuotePublicService = {
       checkIn: q.checkIn,
       checkOut: q.checkOut,
       nights: rooms[0]?.options[0]?.nights ?? 0,
-      rooms: rooms.map((room, i) => ({
-        id: room.id,
-        label: room.label?.trim() || (rooms.length > 1 ? `Acomodação ${i + 1}` : "Sua cabana"),
-        adults: room.adults, children: room.children,
-        babies: room.babies, pets: room.pets,
-        options: room.options.map((c) => publicOption(c, siteUrlOf(c.categoryId))),
-        selectedCategory: room.selectedCategory ?? null,
-      })),
+      rooms: rooms.map((room, i) => {
+        const ci = room.checkIn || q.checkIn;
+        const co = room.checkOut || q.checkOut;
+        return {
+          id: room.id,
+          label: room.label?.trim() || (rooms.length > 1 ? `Acomodação ${i + 1}` : "Sua cabana"),
+          checkIn: ci, checkOut: co,
+          nights: room.options[0]?.nights ?? 0,
+          ownPeriod: ci !== q.checkIn || co !== q.checkOut,
+          adults: room.adults, children: room.children,
+          babies: room.babies, pets: room.pets,
+          options: room.options.map((c) => publicOption(c, siteUrlOf(c.categoryId))),
+          selectedCategory: room.selectedCategory ?? null,
+        };
+      }),
       total,
       approximate,
       acceptedAt: q.acceptedAt ?? null,

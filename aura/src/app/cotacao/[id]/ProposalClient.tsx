@@ -128,6 +128,14 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
                 {room.babies > 0 ? ` · ${room.babies} bebê${room.babies > 1 ? "s" : ""}` : ""}
                 {room.pets > 0 ? ` · ${room.pets} pet${room.pets > 1 ? "s" : ""}` : ""}
               </span>
+              {room.ownPeriod && (
+                <span style={{
+                  fontSize: 11, fontWeight: 700, color: "var(--brand)",
+                  background: "var(--brand-soft)", borderRadius: 999, padding: "2px 9px",
+                }}>
+                  {fmtBR(room.checkIn)} a {fmtBR(room.checkOut)} · {room.nights} noite{room.nights !== 1 ? "s" : ""}
+                </span>
+              )}
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

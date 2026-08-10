@@ -126,15 +126,23 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
 
       {rooms.map((room, i) => {
         const label = room.label?.trim() || (rooms.length > 1 ? `Acomodação ${i + 1}` : "Cabanas oferecidas");
+        // Período próprio (chegada escalonada) — só aparece quando difere.
+        const ownPeriod = (room.checkIn && room.checkIn !== quote.checkIn)
+          || (room.checkOut && room.checkOut !== quote.checkOut);
         return (
           <div key={room.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <span style={{ fontSize: 11.5, fontWeight: 800, color: T.text }}>{label}</span>
               <span style={{ fontSize: 10.5, color: T.muted }}>
                 {room.adults + room.children} pagante{room.adults + room.children !== 1 ? "s" : ""}
                 {room.babies > 0 ? ` · ${room.babies} isento${room.babies > 1 ? "s" : ""}` : ""}
                 {room.pets > 0 ? ` · ${room.pets} pet${room.pets > 1 ? "s" : ""}` : ""}
               </span>
+              {ownPeriod && (
+                <span style={{ ...pillS(T.gradSoft, T.g1, T.g1Border), fontSize: 9 }}>
+                  {fmtBR(room.checkIn!)} → {fmtBR(room.checkOut!)}
+                </span>
+              )}
             </div>
             {room.options.map((c) => {
               const key = c.categoryId || c.category;
