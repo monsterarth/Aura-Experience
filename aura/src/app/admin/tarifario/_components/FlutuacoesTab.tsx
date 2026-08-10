@@ -30,7 +30,11 @@ export function FlutuacoesTab({ propertyId, bundle, onRefresh }: {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [conflicts, setConflicts] = useState<{ name: string; startDate: string; endDate: string }[] | null>(null);
 
-  const presets = bundle.settings.fluctuations || [];
+  // Sempre por %: mesma ordem do editor em Configurações e do select da cotação.
+  const presets = useMemo(
+    () => [...(bundle.settings.fluctuations || [])].sort((a, b) => a.pct - b.pct),
+    [bundle.settings.fluctuations]
+  );
   const rules = useMemo(
     () => [...(bundle.fluctuations ?? [])].sort((a, b) => b.startDate.localeCompare(a.startDate)),
     [bundle.fluctuations]

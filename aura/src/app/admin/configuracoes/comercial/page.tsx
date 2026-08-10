@@ -10,7 +10,7 @@
 //
 // Não usa usePropertySection: os dados são de rate_settings (tabela própria),
 // não de properties.settings — carrega do bundle e salva no PUT do tarifário.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useProperty } from "@/context/PropertyContext";
 import { SaveBar } from "../_components/SaveBar";
@@ -27,6 +27,67 @@ type Draft = Pick<
   RateSettings,
   "petFee" | "fluctuations" | "msgTemplate" | "msgSingleTemplate" | "eventTemplate" | "inclusionsText"
 >;
+
+/**
+ * Uma flutuação da lista — nome e % editáveis IN PLACE (antes só dava para
+ * apagar e recriar). Commit no blur/Enter, como o resto do app: comitar a
+ * cada tecla faria o campo perder o foco/valor no meio da digitação de "-5,5".
+ */
+function FluctuationRow({ f, onSave, onRemove }: {
+  f: RateFluctuation;
+  onSave: (id: string, patch: Partial<Pick<RateFluctuation, "name" | "pct">>) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [name, setName] = useState(f.name);
+  const [pctText, setPctText] = useState(String(f.pct));
+
+  // Só resincroniza quando o dado vem de FORA (troca de propriedade, reset) —
+  // não a cada render, senão a digitação em andamento seria apagada.
+  useEffect(() => setName(f.name), [f.name]);
+  useEffect(() => setPctText(String(f.pct)), [f.pct]);
+
+  const commitName = () => {
+    const v = name.trim();
+    if (v && v !== f.name) onSave(f.id, { name: v });
+    else setName(f.name);
+  };
+  const commitPct = () => {
+    const v = parseFloat(pctText.replace(",", "."));
+    if (Number.isFinite(v) && v !== f.pct) onSave(f.id, { pct: v });
+    else setPctText(String(f.pct));
+  };
+  const blurOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+  };
+
+  const pctColor = f.pct > 0 ? "text-amber-500" : f.pct < 0 ? "text-emerald-500" : "text-muted-foreground";
+
+  return (
+    <div className="flex items-center gap-3 bg-secondary border border-border rounded-xl px-3 py-2">
+      <input
+        className="flex-1 min-w-0 bg-transparent text-sm font-medium text-foreground outline-none border-b border-transparent focus:border-primary/50"
+        value={name} onChange={(e) => setName(e.target.value)}
+        onBlur={commitName} onKeyDown={blurOnEnter}
+      />
+      <span className="flex items-center gap-0.5 shrink-0">
+        <input
+          className={`w-14 bg-transparent text-sm font-bold text-right outline-none border-b border-transparent focus:border-primary/50 ${pctColor}`}
+          inputMode="decimal" value={pctText}
+          onChange={(e) => setPctText(e.target.value)}
+          onBlur={commitPct} onKeyDown={blurOnEnter}
+        />
+        <span className={`text-sm font-bold ${pctColor}`}>%</span>
+      </span>
+      <button
+        onClick={() => onRemove(f.id)}
+        className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 shrink-0"
+        title="Remover (períodos já atribuídos não mudam — o % fica congelado na regra)"
+      >
+        <Trash2 size={13} />
+      </button>
+    </div>
+  );
+}
 
 export default function ComercialConfigPage() {
   const { currentProperty: property } = useProperty();
@@ -63,14 +124,33 @@ export default function ComercialConfigPage() {
     setDirty(true);
   };
 
+  // Updater FUNCIONAL (nunca lê `draft` do closure externo): add, editar e
+  // remover em sequência rápida sem risco de um passo pisar no outro.
+  const patchFluctuations = (updater: (list: RateFluctuation[]) => RateFluctuation[]) => {
+    setDraft((prev) => (prev ? { ...prev, fluctuations: updater(prev.fluctuations) } : prev));
+    setDirty(true);
+  };
+
   const addFluct = () => {
-    if (!draft) return;
     const pct = parseFloat(newFluct.pct.replace(",", "."));
-    if (!newFluct.name.trim() || isNaN(pct)) return toast.error("Preencha nome e percentual.");
+    if (!newFluct.name.trim() || !Number.isFinite(pct)) return toast.error("Preencha nome e percentual.");
     const item: RateFluctuation = { id: crypto.randomUUID(), name: newFluct.name.trim(), pct };
-    patch({ fluctuations: [...draft.fluctuations, item] });
+    patchFluctuations((list) => [...list, item]);
     setNewFluct({ name: "", pct: "" });
   };
+
+  const updateFluct = (id: string, item: Partial<Pick<RateFluctuation, "name" | "pct">>) =>
+    patchFluctuations((list) => list.map((f) => (f.id === id ? { ...f, ...item } : f)));
+
+  const removeFluct = (id: string) =>
+    patchFluctuations((list) => list.filter((f) => f.id !== id));
+
+  // Sempre por %: a lista não pode reordenar sozinha enquanto alguém digita
+  // (o componente da linha só comita no blur), só reflete depois de salvar.
+  const sortedFluctuations = useMemo(
+    () => (draft ? [...draft.fluctuations].sort((a, b) => a.pct - b.pct) : []),
+    [draft]
+  );
 
   const save = async () => {
     if (!draft || !property?.id) return;
@@ -132,28 +212,17 @@ export default function ComercialConfigPage() {
         description="As opções de ajuste que o orçamento oferece. Positivo encarece; negativo desconta. A atribuição por PERÍODO (para o modo Automática) é feita em Tarifário › Flutuações."
       >
         <div className="space-y-2">
-          {draft.fluctuations.length === 0 && (
+          {sortedFluctuations.length === 0 && (
             <p className="text-xs text-muted-foreground">Nenhuma flutuação cadastrada.</p>
           )}
-          {draft.fluctuations.map((f) => (
-            <div key={f.id} className="flex items-center gap-3 bg-secondary border border-border rounded-xl px-3 py-2">
-              <span className="flex-1 text-sm font-medium text-foreground truncate">{f.name}</span>
-              <span className={`text-sm font-bold ${f.pct > 0 ? "text-amber-500" : "text-emerald-500"}`}>
-                {f.pct > 0 ? "+" : ""}{f.pct}%
-              </span>
-              <button
-                onClick={() => patch({ fluctuations: draft.fluctuations.filter((x) => x.id !== f.id) })}
-                className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
-                title="Remover (períodos já atribuídos não mudam — o % fica congelado na regra)"
-              >
-                <Trash2 size={13} />
-              </button>
-            </div>
+          {sortedFluctuations.map((f) => (
+            <FluctuationRow key={f.id} f={f} onSave={updateFluct} onRemove={removeFluct} />
           ))}
           <div className="flex gap-2 pt-1">
             <input
               className="field-input flex-1" placeholder="Nome (ex.: Baixa ocupação)"
               value={newFluct.name} onChange={(e) => setNewFluct((p) => ({ ...p, name: e.target.value }))}
+              onKeyDown={(e) => { if (e.key === "Enter") addFluct(); }}
             />
             <input
               className="field-input w-24" placeholder="±%" inputMode="decimal"
@@ -165,7 +234,8 @@ export default function ComercialConfigPage() {
             </button>
           </div>
           <p className="text-[10px] text-muted-foreground">
-            Remover uma flutuação não altera períodos já atribuídos — o percentual fica congelado na regra.
+            Clique no nome ou no % para editar direto na lista — a ordem segue sempre o percentual.
+            Remover não altera períodos já atribuídos: o valor fica congelado na regra.
           </p>
         </div>
       </SectionCard>

@@ -914,7 +914,7 @@ export function NewQuoteWizard({
                     }}>
                     {autoAvailable && <option value="auto">Automática (regras por período)</option>}
                     <option value="0">Padrão (0%)</option>
-                    {bundle.settings.fluctuations.map((f) => (
+                    {[...bundle.settings.fluctuations].sort((a, b) => a.pct - b.pct).map((f) => (
                       <option key={f.id} value={String(f.pct)}>{f.name} ({f.pct > 0 ? "+" : ""}{f.pct}%)</option>
                     ))}
                     {/* pct órfão (preset removido / média de um auto antigo re-salvo
