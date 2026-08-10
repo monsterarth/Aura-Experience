@@ -7,7 +7,9 @@ import { RateService } from "@/services/rate-service";
 
 export const dynamic = "force-dynamic";
 
-const WRITE_ROLES = ["super_admin", "admin", "manager", "reception"] as const;
+// Regras de calendário são de gestão — recepção consulta, não escreve
+// (refactor fase 4; flutuações têm rota própria onde recepção PODE).
+const WRITE_ROLES = ["super_admin", "admin", "manager"] as const;
 const DELETE_ROLES = ["super_admin", "admin", "manager"] as const;
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
