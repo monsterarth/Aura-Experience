@@ -2451,12 +2451,13 @@ export interface RateQuoteRoom {
   /** Categoria escolhida para esta acomodação (categoryId). */
   selectedCategory?: string | null;
   /**
-   * Valor fechado PARA ESTA acomodação (desconto, condição especial). Vence a
-   * tabela no cálculo dela — e o total do orçamento é a soma das acomodações.
-   * É aqui que a negociação acontece; `RateQuoteRecord.negotiatedValue` (o
-   * valor global) só vale para orçamentos anteriores às acomodações.
+   * Preço oferecido POR CABANA nesta acomodação: `categoryId → valor`.
+   * O tarifário calcula tudo (flutuação, promoções, descontos); o vendedor
+   * pode baixar o preço de uma cabana específica sem mexer nas outras. Na
+   * proposta, a opção com preço menor mostra o valor calculado riscado.
+   * Vazio = vale o valor do tarifário.
    */
-  negotiatedValue?: number | null;
+  priceOverrides?: Record<string, number> | null;
 }
 
 // ==========================================

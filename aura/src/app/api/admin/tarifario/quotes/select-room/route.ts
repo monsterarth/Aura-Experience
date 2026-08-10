@@ -1,7 +1,8 @@
 // Altera UMA acomodação do orçamento: a cabana escolhida (categoryId=null
-// desmarca) e/ou o valor combinado dela (negotiatedValue=null volta à tabela).
-// Endpoint próprio em vez de PATCH livre: o preço de tabela vem sempre das
-// `options` calculadas no servidor, e o valor combinado é decisão explícita.
+// desmarca) e/ou o preço oferecido de UMA cabana dela (price.value=null volta
+// ao tarifário). Endpoint próprio em vez de PATCH livre: o preço de tabela vem
+// sempre das `options` calculadas no servidor, e a oferta manual é explícita —
+// registrada na timeline e na auditoria com a cabana citada.
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isAuthError, assertPropertyAccess } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
@@ -25,10 +26,16 @@ export async function POST(req: NextRequest) {
 
   try {
     // Só entra no patch o que veio no body — omitir é diferente de limpar.
-    const patch: { selectedCategory?: string | null; negotiatedValue?: number | null } = {};
+    const patch: {
+      selectedCategory?: string | null;
+      price?: { categoryId: string; value: number | null };
+    } = {};
     if ("categoryId" in body) patch.selectedCategory = body.categoryId ? String(body.categoryId) : null;
-    if ("negotiatedValue" in body) {
-      patch.negotiatedValue = body.negotiatedValue == null ? null : Number(body.negotiatedValue);
+    if (body?.price?.categoryId) {
+      patch.price = {
+        categoryId: String(body.price.categoryId),
+        value: body.price.value == null ? null : Number(body.price.value),
+      };
     }
     if (Object.keys(patch).length === 0) {
       return NextResponse.json({ error: "Nada para alterar" }, { status: 400 });

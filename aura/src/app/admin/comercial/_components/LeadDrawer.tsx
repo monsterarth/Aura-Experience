@@ -10,6 +10,7 @@ import {
   Mail, MessageSquare, Pencil, Phone, Send, Tag, X, XCircle,
 } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
+import { offeredTotal, resolveRoomValue } from "@/lib/rate-engine";
 import { parseMoneyBR, moneyToInput } from "@/lib/parse-money";
 import { CrmChannel, CrmLead, RateQuoteRecord, RateQuoteRoom, WeddingInstallment } from "@/types/aura";
 import { ClientPanel } from "./ClientPanel";
@@ -56,9 +57,9 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
   const [quote, setQuote] = useState<RateQuoteRecord | null>(null);
   const [confirming, setConfirming] = useState<{ roomId: string; categoryId: string } | null>(null);
   const [saving, setSaving] = useState(false);
-  /** Acomodação com o valor em edição (id) + rascunho do campo. */
-  const [editingValue, setEditingValue] = useState<string | null>(null);
-  const [valueDraft, setValueDraft] = useState("");
+  /** Cabana com o preço em edição (acomodação + categoria) + rascunho. */
+  const [editingPrice, setEditingPrice] = useState<{ roomId: string; categoryId: string } | null>(null);
+  const [priceDraft, setPriceDraft] = useState("");
 
   useEffect(() => {
     let alive = true;
@@ -88,10 +89,10 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
       }] : []);
   if (rooms.length === 0) return null;
 
-  /** Grava a mudança da acomodação (escolha e/ou valor combinado). */
+  /** Grava a mudança da acomodação (escolha e/ou preço de uma cabana). */
   const patchRoom = async (
     roomId: string,
-    patch: { categoryId?: string | null; negotiatedValue?: number | null },
+    patch: { categoryId?: string | null; price?: { categoryId: string; value: number | null } },
     okMsg: string,
   ) => {
     setSaving(true);
@@ -104,7 +105,7 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
       if (!res.ok) throw new Error(d?.error);
       setQuote(d.quote);
       setConfirming(null);
-      setEditingValue(null);
+      setEditingPrice(null);
       onChanged();
       toast.success(okMsg);
     } catch (e) {
@@ -117,11 +118,12 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
   const commit = (roomId: string, categoryId: string | null) =>
     patchRoom(roomId, { categoryId }, categoryId ? "Cabana escolhida." : "Escolha desfeita.");
 
-  const commitValue = (room: RateQuoteRoom) => {
-    const v = parseMoneyBR(valueDraft);
+  /** Preço oferecido DESTA cabana; vazio/0 volta ao valor do tarifário. */
+  const commitPrice = (roomId: string, categoryId: string) => {
+    const v = parseMoneyBR(priceDraft);
     const value = Number.isFinite(v) && v > 0 ? v : null;
-    patchRoom(room.id, { negotiatedValue: value },
-      value ? "Valor combinado atualizado." : "Valor voltou à tabela.");
+    patchRoom(roomId, { price: { categoryId, value } },
+      value ? "Preço oferecido atualizado." : "Cabana voltou ao valor de tabela.");
   };
 
   const nights = rooms[0]?.options[0]?.nights ?? 0;
@@ -176,60 +178,22 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
                   {roomNights > 0 ? ` · ${roomNights}n` : ""}
                 </span>
               )}
-
-              {/* Valor combinado DESTA acomodação — o total do orçamento é a
-                  soma; é aqui que a negociação acontece. */}
-              {active && (
-                <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5 }}>
-                  {editingValue === room.id ? (<>
-                    <input autoFocus style={{ ...S.input, width: 110, padding: "4px 8px", fontSize: 11 }}
-                      inputMode="decimal" placeholder="Ex.: 3450,00"
-                      value={valueDraft} onChange={(e) => setValueDraft(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") commitValue(room);
-                        if (e.key === "Escape") setEditingValue(null);
-                      }} />
-                    <button onClick={() => commitValue(room)} disabled={busyAll}
-                      style={{ ...S.gradBtn, padding: "4px 10px", fontSize: 10.5, boxShadow: "none" }}>
-                      {saving ? <Loader2 size={11} className="animate-spin" /> : "OK"}
-                    </button>
-                    <button onClick={() => setEditingValue(null)}
-                      style={{ ...S.ghostBtn, padding: "4px 8px", fontSize: 10.5 }}>
-                      Cancelar
-                    </button>
-                  </>) : room.negotiatedValue ? (<>
-                    <span style={{ ...pillS("rgba(245,158,11,0.15)", T.amber, "rgba(245,158,11,0.3)"), fontSize: 9 }}>
-                      combinado R$ {money(room.negotiatedValue)}
-                    </span>
-                    <button onClick={() => { setValueDraft(moneyToInput(room.negotiatedValue!)); setEditingValue(room.id); }}
-                      title="Alterar o valor combinado" disabled={busyAll}
-                      style={{ padding: 4, borderRadius: 7, background: "none", border: "none", color: T.muted, cursor: "pointer", display: "flex" }}>
-                      <Pencil size={11} />
-                    </button>
-                    <button onClick={() => patchRoom(room.id, { negotiatedValue: null }, "Valor voltou à tabela.")}
-                      title="Voltar ao valor de tabela" disabled={busyAll}
-                      style={{ padding: 4, borderRadius: 7, background: "none", border: "none", color: T.muted, cursor: "pointer", display: "flex" }}>
-                      <X size={11} />
-                    </button>
-                  </>) : (
-                    <button onClick={() => { setValueDraft(""); setEditingValue(room.id); }}
-                      title="Fechar um valor para esta acomodação" disabled={busyAll}
-                      style={{
-                        display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 9px",
-                        borderRadius: 8, border: `1px solid ${T.border2}`, background: "transparent",
-                        color: T.muted, fontSize: 10, fontWeight: 800, cursor: "pointer", fontFamily: "inherit",
-                      }}>
-                      <Pencil size={10} /> valor combinado
-                    </button>
-                  )}
-                </span>
-              )}
             </div>
             {room.options.map((c) => {
               const key = c.categoryId || c.category;
               const chosen = room.selectedCategory === c.categoryId || room.selectedCategory === c.category;
               const asking = confirming?.roomId === room.id && confirming.categoryId === key;
-              const discounted = Math.abs(c.finalTotal - c.rawTotal) > 5;
+              const editing = editingPrice?.roomId === room.id && editingPrice.categoryId === key;
+              // Preço oferecido DESTA cabana: a negociação acontece aqui, uma
+              // cabana por vez — o total do orçamento é consequência.
+              const offered = offeredTotal(room, c);
+              const custom = Math.abs(offered - c.finalTotal) > 0.5;
+              // Riscado = o que o tarifário calculou (flutuação já embutida)
+              // quando estamos oferecendo mais barato; sem oferta própria, o
+              // riscado volta a ser o valor cheio antes dos descontos.
+              const strike = custom
+                ? (offered < c.finalTotal ? c.finalTotal : null)
+                : (Math.abs(c.finalTotal - c.rawTotal) > 5 ? c.rawTotal : null);
               return (
                 <div key={key}
                   style={{
@@ -242,16 +206,56 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
                     <div style={{ fontSize: 12.5, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {c.category}
                     </div>
-                    <div style={{ fontSize: 10.5, color: T.muted }}>média R$ {money(c.avgNightly)}/noite</div>
+                    <div style={{ fontSize: 10.5, color: T.muted }}>
+                      média R$ {money(custom && c.nights > 0 ? offered / c.nights : c.avgNightly)}/noite
+                      {custom ? " · preço oferecido" : ""}
+                    </div>
                   </div>
-                  {discounted && !asking && (
-                    <span style={{ fontSize: 11, color: T.muted2, textDecoration: "line-through", flexShrink: 0 }}>
-                      R$ {money(c.rawTotal)}
+
+                  {editing ? (
+                    <span style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+                      <input autoFocus style={{ ...S.input, width: 108, padding: "4px 8px", fontSize: 11 }}
+                        inputMode="decimal" placeholder={moneyToInput(c.finalTotal)}
+                        value={priceDraft} onChange={(e) => setPriceDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") commitPrice(room.id, key);
+                          if (e.key === "Escape") setEditingPrice(null);
+                        }} />
+                      <button onClick={() => commitPrice(room.id, key)} disabled={busyAll}
+                        style={{ ...S.gradBtn, padding: "4px 10px", fontSize: 10.5, boxShadow: "none" }}>
+                        {saving ? <Loader2 size={11} className="animate-spin" /> : "OK"}
+                      </button>
+                      <button onClick={() => setEditingPrice(null)}
+                        style={{ ...S.ghostBtn, padding: "4px 8px", fontSize: 10.5 }}>
+                        Cancelar
+                      </button>
                     </span>
-                  )}
-                  <span style={{ fontSize: 13, fontWeight: 900, color: chosen ? T.g1 : T.text, flexShrink: 0 }}>
-                    R$ {money(c.finalTotal)}
-                  </span>
+                  ) : (<>
+                    {strike && !asking && (
+                      <span style={{ fontSize: 11, color: T.muted2, textDecoration: "line-through", flexShrink: 0 }}>
+                        R$ {money(strike)}
+                      </span>
+                    )}
+                    <span style={{ fontSize: 13, fontWeight: 900, flexShrink: 0, color: custom ? T.amber : chosen ? T.g1 : T.text }}>
+                      R$ {money(offered)}
+                    </span>
+                    {active && !asking && (
+                      <span style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
+                        <button onClick={() => { setPriceDraft(custom ? moneyToInput(offered) : ""); setEditingPrice({ roomId: room.id, categoryId: key }); }}
+                          title="Oferecer outro valor para esta cabana" disabled={busyAll}
+                          style={{ padding: 4, borderRadius: 7, background: "none", border: "none", color: custom ? T.amber : T.muted, cursor: "pointer", display: "flex" }}>
+                          <Pencil size={11} />
+                        </button>
+                        {custom && (
+                          <button onClick={() => patchRoom(room.id, { price: { categoryId: key, value: null } }, "Cabana voltou ao valor de tabela.")}
+                            title="Voltar ao valor do tarifário" disabled={busyAll}
+                            style={{ padding: 4, borderRadius: 7, background: "none", border: "none", color: T.muted, cursor: "pointer", display: "flex" }}>
+                            <X size={11} />
+                          </button>
+                        )}
+                      </span>
+                    )}
+                  </>)}
 
                   {asking ? (
                     <span style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
@@ -293,6 +297,23 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
           </div>
         );
       })}
+
+      {(() => {
+        const totals = rooms.map((r) => resolveRoomValue(r));
+        const sum = totals.reduce((s, t) => s + t.value, 0);
+        const approx = totals.some((t) => t.approximate);
+        if (sum <= 0) return null;
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, paddingTop: 2 }}>
+            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: T.muted }}>
+              {approx ? "Total a partir de" : "Total do orçamento"}
+            </span>
+            <span style={{ marginLeft: "auto", fontSize: 15, fontWeight: 900, color: T.text }}>
+              R$ {money(sum)}
+            </span>
+          </div>
+        );
+      })()}
 
       {lead.negotiatedValue != null && (
         <p style={{ fontSize: 10.5, color: T.muted, margin: 0 }}>

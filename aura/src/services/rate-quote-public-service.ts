@@ -15,7 +15,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { AuditService } from "./audit-service";
 import { CrmService } from "./crm-service";
-import { resolveRoomValue } from "@/lib/rate-engine";
+import { offeredTotal, resolveRoomValue } from "@/lib/rate-engine";
 import { parseMultiLang } from "@/lib/multilang";
 import { RateQuoteCategory, RateQuoteRecord, RateQuoteRoom } from "@/types/aura";
 
@@ -48,8 +48,6 @@ export type PublicQuoteRoom = {
   pets: number;
   options: PublicQuoteOption[];
   selectedCategory: string | null;
-  /** Valor fechado com o cliente para esta acomodação (vence a tabela). */
-  negotiatedValue: number | null;
 };
 
 export type PublicQuoteView = {
@@ -107,14 +105,29 @@ function policyTextOf(settings: unknown): string | null {
   return (ml.pt || ml.en || ml.es || "").trim() || null;
 }
 
-function publicOption(c: RateQuoteCategory, siteUrl?: string): PublicQuoteOption {
+/**
+ * A cabana como o cliente vê. `total` é o preço OFERECIDO (com o ajuste que o
+ * vendedor fez para esta cabana); `wasTotal` é o "de" do de/por — o valor que
+ * o tarifário calculou, com a flutuação já embutida, quando estamos
+ * oferecendo mais barato. Sem oferta própria, o "de" volta a ser o valor
+ * cheio antes dos descontos.
+ */
+function publicOption(
+  room: Pick<RateQuoteRoom, "priceOverrides">,
+  c: RateQuoteCategory,
+  siteUrl?: string
+): PublicQuoteOption {
+  const total = offeredTotal(room, c);
+  const was = total < c.finalTotal - 0.5 ? c.finalTotal
+    : total >= c.finalTotal - 0.5 && c.rawTotal > total + 5 ? c.rawTotal
+    : null;
   return {
     categoryId: c.categoryId || c.category,
     name: c.category,
     nights: c.nights,
-    total: c.finalTotal,
-    avgNightly: c.avgNightly,
-    ...(c.rawTotal > c.finalTotal + 5 ? { wasTotal: c.rawTotal } : {}),
+    total,
+    avgNightly: c.nights > 0 ? total / c.nights : c.avgNightly,
+    ...(was ? { wasTotal: was } : {}),
     ...(siteUrl ? { siteUrl } : {}),
   };
 }
@@ -205,9 +218,8 @@ export const RateQuotePublicService = {
         nights: room.options[0]?.nights ?? 0,
         adults: room.adults, children: room.children,
         babies: room.babies, pets: room.pets,
-        options: room.options.map((c) => publicOption(c, siteUrlOf(c.categoryId))),
+        options: room.options.map((c) => publicOption(room, c, siteUrlOf(c.categoryId))),
         selectedCategory: room.selectedCategory ?? null,
-        negotiatedValue: room.negotiatedValue ?? null,
       })),
       total,
       approximate,

@@ -233,31 +233,38 @@ export function computeQuote(input: RateQuoteInput, data: RateData): RateQuoteRe
 }
 
 /**
- * Total de UMA acomodação. Precedência: valor negociado desta acomodação →
- * a cabana escolhida → opção única → mínimo das opções ("a partir de").
+ * Preço OFERECIDO de uma cabana dentro da acomodação: o override manual do
+ * vendedor quando existir, senão o total calculado pelo tarifário.
+ * É o número que vale para o cliente e para a soma do orçamento.
+ */
+export function offeredTotal(
+  room: Pick<RateQuoteRoom, 'priceOverrides'>,
+  option: RateQuoteCategory
+): number {
+  const ov = room.priceOverrides?.[option.categoryId] ?? room.priceOverrides?.[option.category];
+  return typeof ov === 'number' && ov > 0 ? ov : option.finalTotal;
+}
+
+/**
+ * Total de UMA acomodação. Precedência: a cabana escolhida → opção única →
+ * mínimo das opções ("a partir de"). Sempre pelo preço OFERECIDO (com o
+ * override do vendedor aplicado).
  */
 export function resolveRoomValue(
-  room: Pick<RateQuoteRoom, 'options' | 'selectedCategory' | 'negotiatedValue'>
+  room: Pick<RateQuoteRoom, 'options' | 'selectedCategory' | 'priceOverrides'>
 ): { value: number; approximate: boolean; chosen?: RateQuoteCategory } {
   const options = room.options || [];
-
-  if (typeof room.negotiatedValue === 'number' && room.negotiatedValue > 0) {
-    const chosen = room.selectedCategory
-      ? options.find((c) => c.categoryId === room.selectedCategory || c.category === room.selectedCategory)
-      : options.length === 1 ? options[0] : undefined;
-    return { value: room.negotiatedValue, approximate: false, chosen };
-  }
 
   if (room.selectedCategory) {
     const chosen = options.find(
       (c) => c.categoryId === room.selectedCategory || c.category === room.selectedCategory
     );
-    if (chosen) return { value: chosen.finalTotal, approximate: false, chosen };
+    if (chosen) return { value: offeredTotal(room, chosen), approximate: false, chosen };
   }
   if (options.length === 1) {
-    return { value: options[0].finalTotal, approximate: false, chosen: options[0] };
+    return { value: offeredTotal(room, options[0]), approximate: false, chosen: options[0] };
   }
-  const totals = options.map((c) => c.finalTotal).filter((v) => v > 0);
+  const totals = options.map((c) => offeredTotal(room, c)).filter((v) => v > 0);
   return { value: totals.length ? Math.min(...totals) : 0, approximate: totals.length > 1 };
 }
 

@@ -29,8 +29,6 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
     let sum = 0;
     let partial = false;
     for (const room of quote.rooms) {
-      // Valor combinado com o cliente vence a tabela.
-      if (room.negotiatedValue) { sum += room.negotiatedValue; continue; }
       const chosen = room.options.find((o) => o.categoryId === picks[room.id]);
       if (chosen) { sum += chosen.total; continue; }
       const mins = room.options.map((o) => o.total).filter((v) => v > 0);
@@ -158,16 +156,6 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
               )}
             </div>
 
-            {room.negotiatedValue && (
-              <p style={{
-                fontSize: 12.5, color: "var(--brand-deep)", background: "var(--brand-soft)",
-                borderRadius: 12, padding: "9px 13px", margin: "0 0 10px", lineHeight: 1.5,
-              }}>
-                Valor combinado com você para esta acomodação:{" "}
-                <b>R$ {money(room.negotiatedValue)}</b> — vale para a cabana que escolher abaixo.
-              </p>
-            )}
-
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {room.options.map((o) => {
                 const picked = picks[room.id] === o.categoryId;
@@ -209,13 +197,19 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
                         )}
                       </span>
                     </span>
+                    {/* Com valor especial, o preço de tabela sai riscado e o
+                        oferecido ganha destaque — é o que o cliente compara. */}
                     <span style={{ textAlign: "right", flexShrink: 0 }}>
                       {o.wasTotal && (
                         <span style={{ display: "block", fontSize: 12, color: "var(--muted)", textDecoration: "line-through" }}>
                           R$ {money(o.wasTotal)}
                         </span>
                       )}
-                      <span style={{ display: "block", fontSize: 17, fontWeight: 800, color: "var(--ink)" }}>
+                      <span style={{
+                        display: "block", fontWeight: 800,
+                        fontSize: o.wasTotal ? 19 : 17,
+                        color: o.wasTotal ? "var(--brand-deep)" : "var(--ink)",
+                      }}>
                         R$ {money(o.total)}
                       </span>
                     </span>

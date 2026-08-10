@@ -49,8 +49,8 @@ type DraftRoom = {
   checkIn: string; checkOut: string;
   adults: string; children: string; babies: string; pets: string;
   selectedCategory: string | null;
-  /** Valor fechado para ESTA acomodação (vazio = vale a tabela). */
-  negotiatedValue: string;
+  /** Preço oferecido por CABANA (`categoryId → texto`); ausente = tabela. */
+  prices: Record<string, string>;
 };
 
 let draftSeq = 0;
@@ -58,7 +58,7 @@ const newDraftRoom = (over?: Partial<DraftRoom>): DraftRoom => ({
   id: `r${++draftSeq}`, label: "",
   checkIn: "", checkOut: "",
   adults: "2", children: "0", babies: "0", pets: "0",
-  selectedCategory: null, negotiatedValue: "",
+  selectedCategory: null, prices: {},
   ...over,
 });
 
@@ -112,7 +112,9 @@ function seedRooms(seed?: QuoteSeed | null): DraftRoom[] {
       adults: String(r.adults), children: String(r.children),
       babies: String(r.babies), pets: String(r.pets),
       selectedCategory: r.selectedCategory ?? null,
-      negotiatedValue: r.negotiatedValue ? moneyToInput(r.negotiatedValue) : "",
+      prices: Object.fromEntries(
+        Object.entries(r.priceOverrides ?? {}).map(([k, v]) => [k, moneyToInput(Number(v))])
+      ),
     }));
   }
   if (seed) {
@@ -168,7 +170,9 @@ export function NewQuoteWizard({
   const duplicateRoom = (id: string) => setRooms((prev) => {
     const src = prev.find((r) => r.id === id);
     if (!src) return prev;
-    return [...prev, newDraftRoom({ ...src, id: `r${++draftSeq}`, selectedCategory: null })];
+    return [...prev, newDraftRoom({
+      ...src, id: `r${++draftSeq}`, selectedCategory: null, prices: { ...src.prices },
+    })];
   });
   const removeRoom = (id: string) =>
     setRooms((prev) => (prev.length > 1 ? prev.filter((r) => r.id !== id) : prev));
@@ -321,29 +325,37 @@ export function NewQuoteWizard({
 
   const blocked = roomQuotes?.some((rq) => rq.result.categories.length === 0) ?? true;
 
-  /** Valor combinado da acomodação (vazio/zero = vale a tabela). */
-  const negotiatedOf = (room: DraftRoom): number | null => {
-    const v = parseMoneyBR(room.negotiatedValue);
-    return Number.isFinite(v) && v > 0 ? v : null;
+  /** Preço oferecido DESTA cabana (vazio/zero = vale o tarifário). */
+  const priceOf = (room: DraftRoom, c: RateQuoteCategory): number => {
+    const v = parseMoneyBR(room.prices[c.categoryId] ?? "");
+    return Number.isFinite(v) && v > 0 ? v : c.finalTotal;
+  };
+
+  /** Só os overrides válidos, prontos para o payload. */
+  const overridesOf = (room: DraftRoom, options: RateQuoteCategory[]) => {
+    const out: Record<string, number> = {};
+    for (const c of options) {
+      const v = parseMoneyBR(room.prices[c.categoryId] ?? "");
+      if (Number.isFinite(v) && v > 0) out[c.categoryId] = v;
+    }
+    return out;
   };
 
   /**
-   * Total do orçamento = soma das acomodações. Por acomodação: valor
-   * combinado → cabana escolhida → mínimo das opções ("a partir de").
-   * Mesma precedência do resolveRoomValue no servidor.
+   * Total do orçamento = soma das acomodações. Por acomodação: cabana
+   * escolhida → mínimo das opções ("a partir de"), sempre pelo preço
+   * OFERECIDO. Mesma precedência do resolveRoomValue no servidor.
    */
   const totals = useMemo(() => {
     if (!roomQuotes) return { value: 0, approximate: false };
     let value = 0, approximate = false;
     for (const rq of roomQuotes) {
-      const negotiated = negotiatedOf(rq.room);
-      if (negotiated) { value += negotiated; continue; }
       const options = rq.result.categories;
       const chosen = rq.room.selectedCategory
         ? options.find((c) => c.categoryId === rq.room.selectedCategory)
         : undefined;
-      if (chosen) { value += chosen.finalTotal; continue; }
-      const mins = options.map((c) => c.finalTotal).filter((v) => v > 0);
+      if (chosen) { value += priceOf(rq.room, chosen); continue; }
+      const mins = options.map((c) => priceOf(rq.room, c)).filter((v) => v > 0);
       if (mins.length === 0) continue;
       value += Math.min(...mins);
       if (mins.length > 1) approximate = true;
@@ -378,11 +390,13 @@ export function NewQuoteWizard({
             checkIn, checkOut,
             // Só a COMPOSIÇÃO vai — as opções e os preços são calculados no
             // servidor (o cliente nunca manda valor).
-            rooms: rooms.map((r) => ({
+            rooms: roomQuotes!.map(({ room: r, result }) => ({
               id: r.id, label: r.label.trim() || null,
               ...periodOf(r), ...paxOf(r),
               selectedCategory: r.selectedCategory,
-              negotiatedValue: negotiatedOf(r),
+              // Só o preço OFERECIDO por cabana vai daqui; o valor de tabela é
+              // sempre recalculado no servidor.
+              priceOverrides: overridesOf(r, result.categories),
             })),
             ...commercial,
             status,
@@ -444,7 +458,10 @@ export function NewQuoteWizard({
       const picked = rq.result.categories.filter((c) => !off.has(c.categoryId));
       if (picked.length === 0) return;
       const blocks = picked
-        .map((c) => buildCategoryBlock(c, linkOf(c.categoryId), single, detailed))
+        // O que vai na mensagem é o preço OFERECIDO (com o ajuste manual).
+        .map((c) => buildCategoryBlock(
+          { ...c, finalTotal: priceOf(rq.room, c) }, linkOf(c.categoryId), single, detailed
+        ))
         .join("\n");
       parts.push(roomQuotes.length === 1
         ? blocks
@@ -536,8 +553,18 @@ export function NewQuoteWizard({
     const off = (deselected[room.id] ?? new Set()).has(c.categoryId);
     const p = periodOf(room);
     const avail = contextByPeriod[`${p.checkIn}|${p.checkOut}`]?.availability[c.categoryId];
-    const discounted = Math.abs(c.finalTotal - c.rawTotal) > 5;
     const chosen = room.selectedCategory === c.categoryId;
+    // O preço é editável AQUI, cabana por cabana. Riscado = o valor que o
+    // tarifário calculou (flutuação incluída) quando ofereço mais barato;
+    // sem oferta própria, o riscado volta a ser o valor cheio.
+    const draft = room.prices[c.categoryId] ?? "";
+    const offered = priceOf(room, c);
+    const custom = Math.abs(offered - c.finalTotal) > 0.5;
+    const strike = custom
+      ? (offered < c.finalTotal ? c.finalTotal : null)
+      : (Math.abs(c.finalTotal - c.rawTotal) > 5 ? c.rawTotal : null);
+    const setPrice = (v: string) =>
+      patchRoom(room.id, { prices: { ...room.prices, [c.categoryId]: v } });
     return (
       <div key={c.categoryId}
         style={{
@@ -550,7 +577,10 @@ export function NewQuoteWizard({
           title="Incluir na mensagem" style={{ accentColor: T.g1, cursor: "pointer" }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: T.text }}>{c.category}</div>
-          <div style={{ fontSize: 10.5, color: T.muted }}>média R$ {formatBRL(c.avgNightly)}/noite</div>
+          <div style={{ fontSize: 10.5, color: T.muted }}>
+            média R$ {formatBRL(custom && c.nights > 0 ? offered / c.nights : c.avgNightly)}/noite
+            {custom ? " · preço oferecido" : ""}
+          </div>
         </div>
         {avail && (
           <span title={avail.freeCabins.join(", ")}
@@ -562,13 +592,28 @@ export function NewQuoteWizard({
             {avail.free > 0 ? `${avail.free}/${avail.total} livre${avail.free > 1 ? "s" : ""}` : "Ocupada"}
           </span>
         )}
-        {discounted && (
+        {strike && (
           <span style={{ fontSize: 11, color: T.muted2, textDecoration: "line-through" }}>
-            R$ {formatBRL(c.rawTotal)}
+            R$ {formatBRL(strike)}
           </span>
         )}
-        <span style={{ fontSize: 13, fontWeight: 900, color: chosen ? T.g1 : T.text }}>
-          R$ {formatBRL(c.finalTotal)}
+        <span title="Preço oferecido desta cabana — vazio volta ao tarifário"
+          style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: custom ? T.amber : T.muted }}>R$</span>
+          <input style={{
+              ...S.input, width: 96, padding: "5px 8px", fontSize: 12.5, fontWeight: 900,
+              textAlign: "right",
+              borderColor: custom ? "rgba(245,158,11,0.4)" : T.border2,
+              color: custom ? T.amber : chosen ? T.g1 : T.text,
+            }}
+            inputMode="decimal" placeholder={formatBRL(c.finalTotal)}
+            value={draft} onChange={(e) => setPrice(e.target.value)} />
+          {custom && (
+            <button onClick={() => setPrice("")} title="Voltar ao valor do tarifário"
+              style={{ padding: 3, borderRadius: 7, background: "none", border: "none", color: T.muted, cursor: "pointer", display: "flex" }}>
+              <X size={12} />
+            </button>
+          )}
         </span>
         <button
           onClick={() => patchRoom(room.id, { selectedCategory: chosen ? null : c.categoryId })}
@@ -923,34 +968,6 @@ export function NewQuoteWizard({
                       </span>
                     </div>
 
-                    {/* Valor combinado DESTA acomodação — vence a tabela e
-                        entra no total (que é a soma das acomodações). */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <label style={{ fontSize: 10.5, color: T.muted }}>Valor combinado</label>
-                      <input style={{
-                          ...S.input, width: 130, padding: "5px 9px", fontSize: 11.5,
-                          borderColor: rq.room.negotiatedValue ? "rgba(245,158,11,0.4)" : T.border2,
-                          color: rq.room.negotiatedValue ? T.amber : T.text,
-                        }}
-                        inputMode="decimal" placeholder="valor de tabela"
-                        value={rq.room.negotiatedValue}
-                        onChange={(e) => patchRoom(rq.room.id, { negotiatedValue: e.target.value })} />
-                      {rq.room.negotiatedValue && (
-                        <button onClick={() => patchRoom(rq.room.id, { negotiatedValue: "" })}
-                          title="Voltar ao valor de tabela"
-                          style={{
-                            padding: 4, borderRadius: 7, background: "none", border: "none",
-                            color: T.muted, cursor: "pointer", display: "flex",
-                          }}>
-                          <X size={12} />
-                        </button>
-                      )}
-                      {rq.room.negotiatedValue && (
-                        <span style={{ fontSize: 10.5, color: T.muted }}>
-                          substitui o preço da cabana escolhida
-                        </span>
-                      )}
-                    </div>
                     {rq.result.uncoveredDates.length > 0 && (
                       <p style={{ fontSize: 11.5, color: T.red, margin: 0 }}>
                         Sem regra de tarifário em {rq.result.uncoveredDates.length} data(s) deste período.

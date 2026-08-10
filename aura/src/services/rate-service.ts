@@ -16,8 +16,8 @@ import {
   RateAvailability,
 } from "@/types/aura";
 import {
-  addDays, computeQuote, findOverlaps, nightsBetween, resolveFill, resolveOverwrite,
-  resolveQuoteValue, resolveRoomValue,
+  addDays, computeQuote, findOverlaps, nightsBetween, offeredTotal, resolveFill,
+  resolveOverwrite, resolveQuoteValue, resolveRoomValue,
 } from "@/lib/rate-engine";
 import { AuditService } from "./audit-service";
 import { CrmService } from "./crm-service";
@@ -453,7 +453,18 @@ export const RateService = {
       const pick = r.selectedCategory
         ? result.categories.find((c) => c.categoryId === r.selectedCategory || c.category === r.selectedCategory)
         : undefined;
-      const negotiated = Number(r.negotiatedValue);
+      // Preços oferecidos sobrevivem ao recálculo (são decisão comercial, não
+      // resultado de tabela), mas só para categorias que ainda existem nas
+      // opções — mudar as datas pode tirar uma cabana da lista.
+      const overrides: Record<string, number> = {};
+      for (const [key, raw] of Object.entries(r.priceOverrides ?? {})) {
+        const v = Number(raw);
+        if (!Number.isFinite(v) || v <= 0) continue;
+        if (result.categories.some((c) => c.categoryId === key || c.category === key)) {
+          overrides[key] = v;
+        }
+      }
+
       return {
         id: r.id || crypto.randomUUID(),
         label: r.label?.trim() || null,
@@ -464,9 +475,7 @@ export const RateService = {
         babies: input.babies, pets: input.pets,
         options: result.categories,
         selectedCategory: pick ? pick.categoryId || pick.category : null,
-        // O valor combinado sobrevive ao recálculo (é decisão comercial, não
-        // resultado de tabela) — só some quando zerado explicitamente.
-        negotiatedValue: Number.isFinite(negotiated) && negotiated > 0 ? negotiated : null,
+        priceOverrides: Object.keys(overrides).length > 0 ? overrides : null,
       };
     });
 
@@ -514,10 +523,9 @@ export const RateService = {
       rooms,
       snapshot,
       selectedCategory: chosen ? chosen.categoryId || chosen.category : null,
-      // finalValue = soma das acomodações quando cada uma já tem valor fechado
-      // (escolha ou valor combinado); senão fica null e o total sai
-      // "a partir de" via resolveQuoteValue.
-      finalValue: rooms.every((r) => r.selectedCategory || r.negotiatedValue)
+      // finalValue = soma das acomodações quando TODAS têm cabana escolhida;
+      // senão fica null e o total sai "a partir de" via resolveQuoteValue.
+      finalValue: rooms.every((r) => r.selectedCategory)
         ? rooms.reduce((s, r) => s + resolveRoomValue(r).value, 0)
         : null,
       notes: payload.notes?.trim() || null,
@@ -668,17 +676,21 @@ export const RateService = {
   },
 
   /**
-   * Altera UMA acomodação: a cabana escolhida e/ou o valor combinado dela.
-   * Endpoint próprio em vez de PATCH livre — o preço de tabela vem SEMPRE das
-   * `options` já calculadas no servidor; o cliente só aponta qual opção quer,
-   * e o valor combinado é decisão comercial explícita (com auditoria).
-   * `selectedCategory: null` desmarca; `negotiatedValue: null` volta à tabela.
+   * Altera UMA acomodação: a cabana escolhida e/ou o preço oferecido de UMA
+   * das cabanas dela. Endpoint próprio em vez de PATCH livre — as opções e o
+   * preço de tabela vêm SEMPRE do servidor; o que o vendedor manda é qual
+   * opção quer e por quanto oferece (com auditoria).
+   * `selectedCategory: null` desmarca; `price: null` volta ao valor calculado.
    */
   async patchQuoteRoom(
     propertyId: string,
     quoteId: string,
     roomId: string,
-    patch: { selectedCategory?: string | null; negotiatedValue?: number | null },
+    patch: {
+      selectedCategory?: string | null;
+      /** Preço oferecido de UMA cabana: { categoryId, value|null }. */
+      price?: { categoryId: string; value: number | null };
+    },
     actor?: { id: string; name: string }
   ): Promise<RateQuoteRecord> {
     const admin = supabaseAdmin!;
@@ -694,7 +706,6 @@ export const RateService = {
           babies: quote.babies, pets: quote.pets,
           options: quote.snapshot || [],
           selectedCategory: quote.selectedCategory ?? null,
-          negotiatedValue: quote.negotiatedValue ?? null,
         } as RateQuoteRoom];
 
     const target = rooms.find((r) => r.id === roomId) ?? (rooms.length === 1 ? rooms[0] : null);
@@ -714,17 +725,23 @@ export const RateService = {
       changes.selectedCategory = picked;
     }
 
-    if ("negotiatedValue" in patch) {
-      const v = Number(patch.negotiatedValue);
-      changes.negotiatedValue = Number.isFinite(v) && v > 0 ? v : null;
+    if (patch.price) {
+      const option = target.options.find(
+        (c) => c.categoryId === patch.price!.categoryId || c.category === patch.price!.categoryId
+      );
+      if (!option) throw new Error("Essa cabana não está entre as opções desta acomodação.");
+      const key = option.categoryId || option.category;
+      const v = Number(patch.price.value);
+      const next = { ...(target.priceOverrides ?? {}) };
+      if (Number.isFinite(v) && v > 0) next[key] = v; else delete next[key];
+      changes.priceOverrides = Object.keys(next).length > 0 ? next : null;
     }
 
     const before = resolveRoomValue(target).value;
     const next = rooms.map((r) => (r.id === target.id ? { ...r, ...changes } : r));
     const updated = next.find((r) => r.id === target.id)!;
     const first = next[0];
-    // Fechado = cada acomodação com escolha OU valor combinado.
-    const allSettled = next.every((r) => r.selectedCategory || r.negotiatedValue);
+    const allSettled = next.every((r) => r.selectedCategory);
 
     const { data, error } = await admin
       .from("rate_quotes")
@@ -742,13 +759,23 @@ export const RateService = {
     if (error) throw new Error(error.message);
 
     const label = target.label || `Acomodação ${next.indexOf(updated) + 1}`;
+    const priceOption = patch.price
+      ? target.options.find(
+          (c) => c.categoryId === patch.price!.categoryId || c.category === patch.price!.categoryId
+        )
+      : undefined;
 
-    if ("negotiatedValue" in changes) {
+    if (patch.price) {
       const after = resolveRoomValue(updated).value;
       await CrmService.logInteraction(propertyId, "quote", quoteId, "value_change", {
         actorId: actor?.id, actorName: actor?.name,
-        note: label,
-        payload: { from: before, to: after, negotiated: changes.negotiatedValue ?? null, roomId: target.id },
+        note: `${label} · ${priceOption?.category ?? patch.price.categoryId}`,
+        payload: {
+          from: before, to: after, roomId: target.id,
+          categoryId: patch.price.categoryId,
+          offered: patch.price.value ?? null,
+          tableValue: priceOption?.finalTotal ?? null,
+        },
       });
     }
 
@@ -760,10 +787,11 @@ export const RateService = {
           : null;
         details.push(catName ? `cabana escolhida — ${catName}` : "escolha de cabana desfeita");
       }
-      if ("negotiatedValue" in changes) {
-        details.push(changes.negotiatedValue
-          ? `valor combinado R$ ${changes.negotiatedValue.toFixed(2)} (era R$ ${before.toFixed(2)})`
-          : "valor voltou à tabela");
+      if (patch.price) {
+        const cat = priceOption?.category ?? patch.price.categoryId;
+        details.push(patch.price.value
+          ? `${cat} oferecida por R$ ${Number(patch.price.value).toFixed(2)} (tabela R$ ${(priceOption?.finalTotal ?? 0).toFixed(2)})`
+          : `${cat} voltou ao valor de tabela`);
       }
       await AuditService.log({
         propertyId, userId: actor.id, userName: actor.name,
@@ -940,6 +968,8 @@ export const RateService = {
 
     const snapshot = quote.snapshot || [];
     let chosen = undefined as (typeof snapshot)[number] | undefined;
+    /** Preço OFERECIDO da opção casada (com o ajuste manual da cabana). */
+    let chosenTotal: number | null = null;
 
     if (stay.cabinId) {
       const { data: cabin } = await admin
@@ -949,7 +979,7 @@ export const RateService = {
         // DA ACOMODAÇÃO que casa com a cabana — não o total do grupo todo.
         for (const room of quote.rooms ?? []) {
           const hit = room.options.find((c) => c.categoryId === cabin.categoryId);
-          if (hit) { chosen = hit; break; }
+          if (hit) { chosen = hit; chosenTotal = offeredTotal(room, hit); break; }
         }
         if (!chosen) chosen = snapshot.find((c) => c.categoryId === cabin.categoryId);
       }
@@ -963,7 +993,7 @@ export const RateService = {
     const multiRoom = (quote.rooms?.length ?? 0) > 1;
     const negotiated = !multiRoom && typeof quote.negotiatedValue === "number" && quote.negotiatedValue > 0
       ? quote.negotiatedValue : null;
-    let total: number | null = negotiated ?? (chosen ? chosen.finalTotal : null);
+    let total: number | null = negotiated ?? chosenTotal ?? (chosen ? chosen.finalTotal : null);
     if (total == null) {
       const res = resolveQuoteValue(quote);
       if (res.chosen) { chosen = res.chosen; total = res.value; }
