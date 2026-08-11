@@ -337,6 +337,26 @@ export function NewQuoteWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rooms, checkIn, checkOut, commercial, bundle]);
 
+  // Reabrindo um orçamento salvo: pré-marca só as cabanas que estavam REALMENTE
+  // oferecidas (as chaves de `options`, já filtradas pelo fix de "oferece o
+  // parque inteiro"), não tudo o que recalcula agora. Roda uma vez só — depois
+  // disso o toggle do vendedor manda. Acomodação nova (sem par no seed) começa
+  // com tudo marcado, como sempre.
+  const seedDeselectedDone = useRef(false);
+  useEffect(() => {
+    if (seedDeselectedDone.current || !seed?.rooms?.length || !roomQuotes) return;
+    seedDeselectedDone.current = true;
+    const next: Record<string, Set<string>> = {};
+    for (const rq of roomQuotes) {
+      const saved = seed.rooms.find((r) => r.id === rq.room.id);
+      if (!saved) continue;
+      const offeredIds = new Set(saved.options.map((o) => o.categoryId || o.category));
+      const off = new Set(rq.result.categories.filter((c) => !offeredIds.has(c.categoryId)).map((c) => c.categoryId));
+      if (off.size > 0) next[rq.room.id] = off;
+    }
+    if (Object.keys(next).length > 0) setDeselected(next);
+  }, [seed, roomQuotes]);
+
   /** Pax somado — os placeholders da mensagem falam do grupo inteiro. */
   const totalInput: RateQuoteInput = useMemo(() => {
     const sum = rooms.reduce((acc, r) => {
@@ -349,7 +369,17 @@ export function NewQuoteWizard({
     return { checkIn, checkOut, ...sum, ...commercial };
   }, [rooms, checkIn, checkOut, commercial]);
 
-  const blocked = roomQuotes?.some((rq) => rq.result.categories.length === 0) ?? true;
+  /** Cabanas MARCADAS desta acomodação — é o que vai ser oferecido de verdade. */
+  const includedOf = (rq: NonNullable<typeof roomQuotes>[number]) => {
+    const off = deselected[rq.room.id] ?? new Set<string>();
+    return rq.result.categories.filter((c) => !off.has(c.categoryId));
+  };
+
+  // Sem categoria computável, OU categorias computadas mas nenhuma marcada —
+  // os dois travam Salvar/Copiar (nada pra oferecer de qualquer jeito).
+  const blocked = roomQuotes?.some(
+    (rq) => rq.result.categories.length === 0 || includedOf(rq).length === 0
+  ) ?? true;
 
   /** Preço oferecido DESTA cabana (vazio/zero = vale o tarifário). */
   const priceOf = (room: DraftRoom, c: RateQuoteCategory): number => {
@@ -376,7 +406,8 @@ export function NewQuoteWizard({
     if (!roomQuotes) return { value: 0, approximate: false };
     let value = 0, approximate = false;
     for (const rq of roomQuotes) {
-      const options = rq.result.categories;
+      // Só as MARCADAS — o total tem que bater com o que vai ser salvo/oferecido.
+      const options = includedOf(rq);
       const chosen = rq.room.selectedCategory
         ? options.find((c) => c.categoryId === rq.room.selectedCategory)
         : undefined;
@@ -387,6 +418,7 @@ export function NewQuoteWizard({
       if (mins.length > 1) approximate = true;
     }
     return { value, approximate };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomQuotes]);
 
   // Mudou o cálculo/cliente → o save anterior não representa mais o orçamento.
@@ -398,7 +430,10 @@ export function NewQuoteWizard({
 
   const save = async (status: "open" | "sent"): Promise<string | null> => {
     if (blocked) {
-      toast.error("Nenhuma categoria com preço para esses parâmetros.");
+      const empty = roomQuotes?.find((rq) => rq.result.categories.length > 0 && includedOf(rq).length === 0);
+      toast.error(empty
+        ? `Selecione ao menos uma cabana em "${roomLabel(empty.room, roomQuotes!.indexOf(empty))}".`
+        : "Nenhuma categoria com preço para esses parâmetros.");
       return null;
     }
     setSaving(true);
@@ -416,14 +451,20 @@ export function NewQuoteWizard({
             checkIn, checkOut,
             // Só a COMPOSIÇÃO vai — as opções e os preços são calculados no
             // servidor (o cliente nunca manda valor).
-            rooms: roomQuotes!.map(({ room: r, result }) => ({
-              id: r.id, label: r.label.trim() || null,
-              ...periodOf(r), ...paxOf(r),
-              selectedCategory: r.selectedCategory,
-              // Só o preço OFERECIDO por cabana vai daqui; o valor de tabela é
-              // sempre recalculado no servidor.
-              priceOverrides: overridesOf(r, result.categories),
-            })),
+            rooms: roomQuotes!.map((rq) => {
+              const r = rq.room;
+              return {
+                id: r.id, label: r.label.trim() || null,
+                ...periodOf(r), ...paxOf(r),
+                selectedCategory: r.selectedCategory,
+                // Só o preço OFERECIDO por cabana vai daqui; o valor de tabela é
+                // sempre recalculado no servidor.
+                priceOverrides: overridesOf(r, rq.result.categories),
+                // Só as cabanas MARCADAS aqui — o servidor filtra `options` por
+                // essa lista, senão a proposta pública oferecia o parque inteiro.
+                includedCategoryIds: includedOf(rq).map((c) => c.categoryId),
+              };
+            }),
             ...commercial,
             status,
           },
@@ -545,6 +586,18 @@ export function NewQuoteWizard({
       if (next.has(categoryId)) next.delete(categoryId); else next.add(categoryId);
       return { ...prev, [roomId]: next };
     });
+
+  /** Marca todas as cabanas computadas desta acomodação como oferecidas. */
+  const selectAllCategories = (roomId: string) =>
+    setDeselected((prev) => {
+      const next = { ...prev };
+      delete next[roomId];
+      return next;
+    });
+
+  /** Desmarca tudo — ponto de partida pra escolher só 1 ou 2 cabanas específicas. */
+  const selectNoCategories = (roomId: string, categoryIds: string[]) =>
+    setDeselected((prev) => ({ ...prev, [roomId]: new Set(categoryIds) }));
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -997,6 +1050,30 @@ export function NewQuoteWizard({
                       {rq.room.selectedCategory && (
                         <span style={{ ...pillS(T.gradSoft, T.g1, T.g1Border), fontSize: 9 }}>escolhida</span>
                       )}
+                      {/* Marcar/desmarcar tudo de uma vez — só vale a pena com
+                          mais de uma opção pra escolher. */}
+                      {rq.result.categories.length > 1 && (
+                        <span style={{ display: "flex", gap: 4 }}>
+                          <button onClick={() => selectAllCategories(rq.room.id)}
+                            title="Oferecer todas as cabanas desta acomodação"
+                            style={{
+                              padding: "3px 8px", borderRadius: 7, cursor: "pointer", fontFamily: "inherit",
+                              fontSize: 10, fontWeight: 800, border: `1px solid ${T.border2}`,
+                              background: "transparent", color: T.muted,
+                            }}>
+                            Todas
+                          </button>
+                          <button onClick={() => selectNoCategories(rq.room.id, rq.result.categories.map((c) => c.categoryId))}
+                            title="Desmarcar tudo — depois marque só as cabanas que quer oferecer"
+                            style={{
+                              padding: "3px 8px", borderRadius: 7, cursor: "pointer", fontFamily: "inherit",
+                              fontSize: 10, fontWeight: 800, border: `1px solid ${T.border2}`,
+                              background: "transparent", color: T.muted,
+                            }}>
+                            Nenhuma
+                          </button>
+                        </span>
+                      )}
                       {/* Período desta acomodação */}
                       <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5 }}>
                         <input type="date" value={p.checkIn}
@@ -1041,9 +1118,15 @@ export function NewQuoteWizard({
                       <p style={{ fontSize: 12, color: T.red, margin: 0 }}>
                         Nenhuma categoria comporta {paxLabel(rq.room)} neste período.
                       </p>
-                    ) : (
-                      rq.result.categories.map((c) => optionRow(rq.room, c))
-                    )}
+                    ) : (<>
+                      {includedOf(rq).length === 0 && (
+                        <p style={{ fontSize: 11.5, color: T.red, margin: 0 }}>
+                          Nenhuma cabana marcada — o cliente não teria o que escolher. Marque ao
+                          menos uma abaixo antes de salvar.
+                        </p>
+                      )}
+                      {rq.result.categories.map((c) => optionRow(rq.room, c))}
+                    </>)}
                   </div>
                 );
               })}

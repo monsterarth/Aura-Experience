@@ -708,18 +708,32 @@ export const RateService = {
             : `Nenhuma categoria com preço para a acomodação ${i + 1}.`
         );
       }
-      // A escolha só vale se a categoria existir nas opções recalculadas.
+
+      // `options` é o que o CLIENTE vê — só as cabanas que o vendedor marcou
+      // para oferecer, nunca todo o parque da pousada. Sem a lista (chamador
+      // antigo) cai no comportamento anterior: oferece tudo o que computou.
+      const included = Array.isArray(r.includedCategoryIds)
+        ? new Set(r.includedCategoryIds.map(String))
+        : null;
+      const offered = included
+        ? result.categories.filter((c) => included.has(c.categoryId) || included.has(c.category))
+        : result.categories;
+      if (offered.length === 0) {
+        throw new Error(`Selecione ao menos uma cabana para oferecer na acomodação ${i + 1}.`);
+      }
+
+      // A escolha só vale se a categoria estiver entre as OFERECIDAS.
       const pick = r.selectedCategory
-        ? result.categories.find((c) => c.categoryId === r.selectedCategory || c.category === r.selectedCategory)
+        ? offered.find((c) => c.categoryId === r.selectedCategory || c.category === r.selectedCategory)
         : undefined;
       // Preços oferecidos sobrevivem ao recálculo (são decisão comercial, não
-      // resultado de tabela), mas só para categorias que ainda existem nas
-      // opções — mudar as datas pode tirar uma cabana da lista.
+      // resultado de tabela), mas só para cabanas que seguem oferecidas —
+      // mudar as datas ou desmarcar uma opção não pode deixar um preço orfão.
       const overrides: Record<string, number> = {};
       for (const [key, raw] of Object.entries(r.priceOverrides ?? {})) {
         const v = Number(raw);
         if (!Number.isFinite(v) || v <= 0) continue;
-        if (result.categories.some((c) => c.categoryId === key || c.category === key)) {
+        if (offered.some((c) => c.categoryId === key || c.category === key)) {
           overrides[key] = v;
         }
       }
@@ -732,7 +746,7 @@ export const RateService = {
         checkIn: input.checkIn, checkOut: input.checkOut,
         adults: input.adults, children: input.children,
         babies: input.babies, pets: input.pets,
-        options: result.categories,
+        options: offered,
         selectedCategory: pick ? pick.categoryId || pick.category : null,
         priceOverrides: Object.keys(overrides).length > 0 ? overrides : null,
       };

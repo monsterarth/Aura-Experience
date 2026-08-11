@@ -2511,6 +2511,14 @@ export interface RateQuoteRoom {
    * Vazio = vale o valor do tarifário.
    */
   priceOverrides?: Record<string, number> | null;
+  /**
+   * ENTRADA de save, não campo persistido: quais categoryId o vendedor
+   * marcou pra oferecer nesta acomodação. O servidor filtra `options` por
+   * essa lista antes de gravar — depois de salvo, `options` (as chaves dela)
+   * já É o registro do que foi oferecido; não há necessidade de reler isso.
+   * Ausente = oferece tudo o que o tarifário calculou (chamador antigo).
+   */
+  includedCategoryIds?: string[] | null;
 }
 
 // ==========================================
