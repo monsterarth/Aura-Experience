@@ -37,13 +37,17 @@ export async function getLatestPublishedVersion(): Promise<string | null> {
   return data?.version ?? null;
 }
 
-/** Latest N published entries (flattened) — for the landing strip. */
-export async function getLatestChangelogEntries(limit = 16): Promise<
-  (ChangelogEntry & { version: string })[]
-> {
+/** Latest N published entries (flattened) — for the landing strip.
+ *  `types` restringe por tipo (ex.: só 'feature' na home institucional, para o
+ *  marquee ser vitrine de novidades e não diário de correções). */
+export async function getLatestChangelogEntries(
+  limit = 16,
+  types?: ChangelogEntryType[],
+): Promise<(ChangelogEntry & { version: string })[]> {
   const releases = await getPublishedChangelogs();
   return releases
     .flatMap(r => (r.entries ?? []).map(e => ({ ...e, version: r.version })))
+    .filter(e => !types || types.includes(e.type))
     .slice(0, limit);
 }
 

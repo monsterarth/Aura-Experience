@@ -29,6 +29,14 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.next({ request });
     }
 
+    // ── Home institucional (/aura): pública, nunca redireciona ─────────────────
+    // É a página que se mostra em feira/prospecção — precisa abrir rápido e
+    // funcionar logado ou não. Sem sessão a validar, retorno seco: evita o
+    // round-trip ao servidor de Auth do Supabase em cada visita.
+    if (pathname === '/aura' || pathname.startsWith('/aura/')) {
+        return NextResponse.next({ request });
+    }
+
     // ── Rotas públicas do hóspede: não exigem sessão ───────────────────────────
     // /check-in e /feedback são acessadas por hóspedes não autenticados. Pular o
     // supabase.auth.getUser() (round-trip ao servidor de Auth do Supabase) reduz a
