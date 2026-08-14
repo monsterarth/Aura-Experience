@@ -119,7 +119,12 @@ export async function updateSession(request: NextRequest) {
     }
 
     const isAdminPage = pathname.startsWith('/admin') && !pathname.includes('/login');
-    const isAdminApi = pathname.startsWith('/api/admin');
+    // /api/admin/auth/* é o FLUXO de autenticação (login/me/signout) e precisa ser
+    // alcançável SEM sessão — senão o login fica atrás da própria parede que abre: o
+    // POST em /api/admin/auth/login voltava 401 "Não autenticado" antes de rodar.
+    // Cada rota de auth se autoprotege (login valida credenciais; me/signout tratam
+    // a ausência de sessão sozinhas), então tirá-las do gate não abre buraco.
+    const isAdminApi = pathname.startsWith('/api/admin') && !pathname.startsWith('/api/admin/auth/');
     const isStaffApp = pathname.startsWith('/governanta') || pathname.startsWith('/maid') || pathname.startsWith('/houseman') || pathname.startsWith('/maintenance') || pathname.startsWith('/waiter');
 
     // Proteger páginas de staff — redireciona para login se não autenticado
