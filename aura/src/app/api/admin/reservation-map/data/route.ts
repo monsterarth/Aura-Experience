@@ -2,7 +2,7 @@
 // Retorna cabanas, stays (com nomes), tarefas e staff para o mapa de reservas.
 // Usa supabaseAdmin — sem browser navigator.locks.
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { requireAuth, isAuthError, scopedPropertyId } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { stayDisplayName } from '@/lib/stay-display';
 
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     if (!supabaseAdmin) return NextResponse.json(null, { status: 500 });
 
     const { searchParams } = new URL(request.url);
-    const propertyId = searchParams.get('propertyId');
+    const propertyId = scopedPropertyId(auth, searchParams.get('propertyId'));
     const windowStart = searchParams.get('windowStart');
     const windowEnd = searchParams.get('windowEnd');
     if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });

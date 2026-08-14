@@ -31,6 +31,8 @@ export interface WhatsAppSessionView {
   disconnectionReasonCode?: number | null;
   ownerNumber?: string | null;
   elapsedMs: number;
+  /** Envs do Coolify presentes no servidor — habilita o botão de reinício remoto. */
+  restartAvailable?: boolean;
 }
 
 export const PropertySettingsClient = {
@@ -99,6 +101,18 @@ export const PropertySettingsClient = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ propertyId, action }),
+    }));
+  },
+
+  /**
+   * Recria o container da Evolution via Coolify — passa por FORA dela, então funciona
+   * justamente quando o processo travou e nada acima responde. Leva ~1 min para voltar.
+   */
+  async whatsappRestart(propertyId: string): Promise<{ ok: boolean; message?: string }> {
+    return handle(await fetch("/api/admin/whatsapp/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ propertyId, action: "restart" }),
     }));
   },
 };

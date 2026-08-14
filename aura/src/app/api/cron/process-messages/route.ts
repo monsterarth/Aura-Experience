@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { WhatsAppMessage } from "@/types/aura";
-import { parseEvolutionError } from "@/lib/evolution-error";
+import { parseEvolutionError, isSessionDownError } from "@/lib/evolution-error";
 import { PropertySecretsService } from "@/services/property-secrets-service";
+import { WhatsAppHealthService } from "@/services/whatsapp-health-service";
 
 async function writeCronLog(action: string, entityId: string, details: string, newData: object) {
   try {
@@ -74,9 +75,14 @@ export async function GET(request: Request) {
 
     let successCount = 0;
     let failCount = 0;
+    // Para o vigia: propriedades cujos envios falharam com assinatura de sessão morta,
+    // e todas as que este ciclo tocou (para o aviso de recuperação).
+    const sessionDownProps = new Set<string>();
+    const touchedProps = new Set<string>();
 
     for (const msgDoc of snapshot) {
       const msg = msgDoc as any as WhatsAppMessage;
+      if (msg.propertyId) touchedProps.add(msg.propertyId);
 
       const { error: markErr } = await supabaseAdmin
         .from("messages")
@@ -182,6 +188,9 @@ export async function GET(request: Request) {
 
       } catch (error: any) {
         console.error(`Erro ao enviar mensagem ${msg.id}:`, error.message);
+        if (isSessionDownError(error?.message) && msg.propertyId) {
+          sessionDownProps.add(msg.propertyId);
+        }
         const nextAttempts = (msg.attempts || 0) + 1;
         const isoNow = new Date().toISOString();
 
@@ -214,6 +223,22 @@ export async function GET(request: Request) {
       }
     }
 
+    // Vigia: o resultado dos envios REAIS acima é o único sinal honesto de sessão morta
+    // (connectionState/fetchInstances mentem "open"). Ciclo 100% falho com assinatura de
+    // sessão → tenta recuperar (restart via Coolify + push). Ciclo com sucesso → fecha
+    // incidente aberto. Falha do vigia nunca derruba o cron.
+    let watchdog: string | undefined;
+    try {
+      if (successCount === 0 && sessionDownProps.size > 0) {
+        const w = await WhatsAppHealthService.checkAndRecover("fila", Array.from(sessionDownProps));
+        watchdog = `${w.verdict}:${w.acted}`;
+      } else if (successCount > 0) {
+        await WhatsAppHealthService.notifyRecoveredIfNeeded(Array.from(touchedProps));
+      }
+    } catch (e) {
+      console.error("[process-messages] vigia falhou:", e);
+    }
+
     const { count } = await supabaseAdmin
       .from("messages")
       .select("*", { count: "exact", head: true })
@@ -225,7 +250,7 @@ export async function GET(request: Request) {
       'CRON_PROCESS_MESSAGES',
       'process-messages',
       `${snapshot.length} mensagem(ns) processada(s): ${successCount} enviada(s), ${failCount} com falha/adiada(s)`,
-      { processed: snapshot.length, sent: successCount, failed: failCount, leftInQueue: count || 0, startedAt, finishedAt, durationMs: new Date(finishedAt).getTime() - new Date(startedAt).getTime() }
+      { processed: snapshot.length, sent: successCount, failed: failCount, leftInQueue: count || 0, watchdog, startedAt, finishedAt, durationMs: new Date(finishedAt).getTime() - new Date(startedAt).getTime() }
     );
     return NextResponse.json({
       success: true,

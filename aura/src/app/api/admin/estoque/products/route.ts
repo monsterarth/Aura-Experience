@@ -1,13 +1,13 @@
 // src/app/api/admin/estoque/products/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { requireAuth, isAuthError, scopedPropertyId } from '@/lib/api-auth';
 import { StockService } from '@/services/stock-service';
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(['super_admin', 'admin', 'manager', 'compras']);
   if (isAuthError(auth)) return auth;
   const url = new URL(request.url);
-  const propertyId = url.searchParams.get('propertyId');
+  const propertyId = scopedPropertyId(auth, url.searchParams.get('propertyId'));
   if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
   if (url.searchParams.get('lowStock') === '1') {
     return NextResponse.json(await StockService.getLowStock(propertyId));
@@ -25,7 +25,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(['super_admin', 'admin', 'manager', 'compras']);
   if (isAuthError(auth)) return auth;
-  const { propertyId, ...payload } = await request.json();
+  const { propertyId: requestedPropertyId, ...payload } = await request.json();
+  const propertyId = scopedPropertyId(auth, requestedPropertyId);
   if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
   try {
     const id = await StockService.upsertProduct(propertyId, payload, { id: auth.staff.id, name: auth.staff.fullName });
@@ -40,7 +41,7 @@ export async function DELETE(request: NextRequest) {
   if (isAuthError(auth)) return auth;
   const url = new URL(request.url);
   const id = url.searchParams.get('id');
-  const propertyId = url.searchParams.get('propertyId');
+  const propertyId = scopedPropertyId(auth, url.searchParams.get('propertyId'));
   if (!id || !propertyId) return NextResponse.json({ error: 'id and propertyId required' }, { status: 400 });
   try {
     await StockService.deleteProduct(propertyId, id, { id: auth.staff.id, name: auth.staff.fullName });

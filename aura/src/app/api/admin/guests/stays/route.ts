@@ -3,7 +3,7 @@
 // Pelo client do browser a leitura dependia da RLS de `stays`/`cabins` e voltava vazia:
 // a aba "Histórico de Estadias" dizia "nenhuma estadia registrada" para quem tinha.
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { requireAuth, isAuthError, scopedPropertyId } from '@/lib/api-auth';
 import { GuestService } from '@/services/guest-service';
 
 export async function GET(request: NextRequest) {
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     if (isAuthError(auth)) return auth;
 
     const { searchParams } = new URL(request.url);
-    const propertyId = searchParams.get('propertyId');
+    const propertyId = scopedPropertyId(auth, searchParams.get('propertyId'));
     const guestId = searchParams.get('guestId');
 
     if (!propertyId) return NextResponse.json({ error: 'propertyId obrigatório.' }, { status: 400 });

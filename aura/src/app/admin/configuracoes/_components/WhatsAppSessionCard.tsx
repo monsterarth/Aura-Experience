@@ -10,14 +10,14 @@
 //
 // A UI é deliberadamente honesta sobre o que cada sinal prova: "conectada" aparece em tom
 // neutro, não verde comemorativo, porque a Evolution relata "open" com o socket fechado.
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { SectionCard } from "@/components/ui/SectionCard";
 import {
   PropertySettingsClient, WhatsAppSessionView, WhatsAppSessionStatus,
 } from "@/lib/property-settings-client";
 import { toast } from "sonner";
 import {
-  Activity, AlertOctagon, AlertTriangle, CheckCircle2, Loader2, QrCode, RefreshCw, PowerOff,
+  Activity, AlertOctagon, AlertTriangle, CheckCircle2, Loader2, QrCode, RefreshCw, PowerOff, RotateCcw,
 } from "lucide-react";
 
 interface Props {
@@ -38,10 +38,11 @@ const LOOK: Record<WhatsAppSessionStatus, { label: string; cls: string; Icon: Re
 export function WhatsAppSessionCard({ propertyId, configured }: Props) {
   const [view, setView] = useState<WhatsAppSessionView | null>(null);
   const [checking, setChecking] = useState(false);
-  const [acting, setActing] = useState<"reconnect" | "logout" | null>(null);
+  const [acting, setActing] = useState<"reconnect" | "logout" | "restart" | null>(null);
   const [qr, setQr] = useState<string | null>(null);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [needsLogout, setNeedsLogout] = useState(false);
+  const recheckTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const check = useCallback(async () => {
     if (!configured) return;
@@ -52,6 +53,13 @@ export function WhatsAppSessionCard({ propertyId, configured }: Props) {
   }, [propertyId, configured]);
 
   useEffect(() => { check(); }, [check]);
+  useEffect(() => () => { recheckTimers.current.forEach(clearTimeout); }, []);
+
+  /** O restart leva ~1 min até a Evolution voltar — re-verifica sozinho em 30s e 90s. */
+  const scheduleRechecks = useCallback(() => {
+    recheckTimers.current.forEach(clearTimeout);
+    recheckTimers.current = [30_000, 90_000].map((ms) => setTimeout(check, ms));
+  }, [check]);
 
   const act = async (action: "reconnect" | "logout") => {
     if (action === "logout" && !window.confirm(
@@ -78,6 +86,30 @@ export function WhatsAppSessionCard({ propertyId, configured }: Props) {
         toast.error(r.message ?? "Não foi possível.");
       }
       await check();
+    } catch (e) { toast.error((e as Error).message); }
+    finally { setActing(null); }
+  };
+
+  /** Recria o container via Coolify — o remédio quando o processo trava ou o logout não pega. */
+  const restart = async () => {
+    if (!window.confirm(
+      "Reiniciar a Evolution recria o container no servidor (o mesmo Restart do Coolify) e " +
+      "derruba TODAS as instâncias por cerca de 1 minuto. Use quando estiver travada ou quando " +
+      "a sessão zumbi não desconectar. Continuar?",
+    )) return;
+
+    setActing("restart");
+    setQr(null);
+    setPairingCode(null);
+    setNeedsLogout(false);
+    try {
+      const r = await PropertySettingsClient.whatsappRestart(propertyId);
+      if (r.ok) {
+        toast.success(r.message ?? "Reinício disparado.");
+        scheduleRechecks();
+      } else {
+        toast.error(r.message ?? "Não foi possível reiniciar.");
+      }
     } catch (e) { toast.error((e as Error).message); }
     finally { setActing(null); }
   };
@@ -118,8 +150,9 @@ export function WhatsAppSessionCard({ propertyId, configured }: Props) {
           {view?.status === "travada" && (
             <p className="text-[11px] text-muted-foreground leading-snug">
               Nada aqui (nem o QR) funciona com o processo enroscado, porque é ele que gera o QR.
-              Com o autoheal instalado no servidor, o restart acontece sozinho em segundos — espere
-              e clique em Verificar de novo.
+              {view.restartAvailable
+                ? " Use Reiniciar Evolution abaixo — ele passa por fora dela, via Coolify, e funciona mesmo com tudo travado."
+                : " Com o autoheal instalado no servidor, o restart acontece sozinho em segundos — espere e clique em Verificar de novo."}
             </p>
           )}
 
@@ -143,6 +176,15 @@ export function WhatsAppSessionCard({ propertyId, configured }: Props) {
             >
               {acting === "logout" ? <Loader2 size={12} className="animate-spin" /> : <PowerOff size={12} />} Encerrar sessão
             </button>
+            {view?.restartAvailable && (
+              <button
+                onClick={restart} disabled={busy}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-amber-500/10 text-amber-500 hover:bg-amber-500/20 disabled:opacity-50"
+                title="Recria o container da Evolution via Coolify — funciona mesmo com o processo travado."
+              >
+                {acting === "restart" ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />} Reiniciar Evolution
+              </button>
+            )}
           </div>
 
           {needsLogout && (

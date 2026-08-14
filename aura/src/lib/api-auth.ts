@@ -161,6 +161,29 @@ export function assertPropertyAccess(
 }
 
 /**
+ * propertyId EFETIVO com escopo de tenant, sem 404 (coerção silenciosa).
+ *
+ * Cargos cross-tenant (default: só admin-tier — super_admin/admin/manager) podem
+ * pedir outra propriedade via query/body; qualquer outro cargo fica SEMPRE preso ao
+ * próprio `staff.propertyId`, mesmo que mande outro id. Fecha o IDOR de "trocar o
+ * ?propertyId=" para ler/escrever dados de outra pousada.
+ *
+ * Não-quebra: a UI legítima já manda o próprio propertyId (PropertyContext prende
+ * todo mundo menos o super_admin), então para o uso normal o valor é idêntico — só
+ * o pedido forjado é neutralizado. Ideal para GET/list/dashboard e para writes de
+ * cargo operacional (que só pode agir na própria propriedade). Quando o certo é
+ * ERRAR em vez de coagir (rota de configuração cross-tenant), use assertPropertyAccess.
+ */
+export function scopedPropertyId(
+    auth: AuthResult,
+    requested: string | null | undefined,
+    crossTenantRoles: UserRole[] = ['super_admin', 'admin', 'manager'],
+): string | null {
+    const canCross = hasRole(auth.staff.role, auth.staff.secondaryRoles, crossTenantRoles);
+    return (canCross && requested) ? requested : auth.staff.propertyId;
+}
+
+/**
  * Type guard: verifica se o resultado é um NextResponse (erro) ou AuthResult (sucesso).
  */
 export function isAuthError(result: AuthResult | NextResponse): result is NextResponse {

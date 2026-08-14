@@ -18,11 +18,14 @@ export async function GET(request: Request) {
 
   try {
     if (staffId) {
-      const { data, error } = await supabaseAdmin
+      // Escopo de tenant: cargo não-super_admin só lê a escala de um staff da PRÓPRIA
+      // propriedade. Sem isto, um staffId (uuid) de outra pousada devolvia a escala dela.
+      let q = supabaseAdmin
         .from('staff_schedules')
         .select('*')
-        .eq('staffId', staffId)
-        .order('dayOfWeek');
+        .eq('staffId', staffId);
+      if (auth.staff.role !== 'super_admin') q = q.eq('propertyId', auth.staff.propertyId);
+      const { data, error } = await q.order('dayOfWeek');
       if (error) throw error;
       return NextResponse.json(data || []);
     }

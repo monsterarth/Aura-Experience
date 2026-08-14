@@ -3,7 +3,7 @@
 // Roda no servidor com service-role: o client do browser pendura no lock frio de auth e
 // deixava o spinner do campo de CPF girando pra sempre.
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { requireAuth, isAuthError, scopedPropertyId } from '@/lib/api-auth';
 import { GuestService } from '@/services/guest-service';
 
 export async function GET(request: NextRequest) {
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     if (isAuthError(auth)) return auth;
 
     const { searchParams } = new URL(request.url);
-    const propertyId = searchParams.get('propertyId');
+    const propertyId = scopedPropertyId(auth, searchParams.get('propertyId'));
     const doc = searchParams.get('doc');
 
     if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });

@@ -32,6 +32,8 @@ export async function GET(request: Request) {
 
     if (staffId) {
       query = query.eq('staffId', staffId);
+      // Escopo de tenant: não-super_admin só vê overrides de staff da própria propriedade.
+      if (auth.staff.role !== 'super_admin') query = query.eq('propertyId', auth.staff.propertyId);
     } else if (propertyId) {
       if (auth.staff.role !== 'super_admin' && auth.staff.propertyId !== propertyId) {
         return NextResponse.json({ error: "Sem permissão para esta propriedade." }, { status: 403 });

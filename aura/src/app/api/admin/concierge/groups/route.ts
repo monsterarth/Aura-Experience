@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { requireAuth, isAuthError, scopedPropertyId } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   if (!supabaseAdmin) return NextResponse.json([], { status: 500 });
 
   const { searchParams } = new URL(request.url);
-  const propertyId = searchParams.get('propertyId');
+  const propertyId = scopedPropertyId(auth, searchParams.get('propertyId'));
   if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
 
   const { data, error } = await supabaseAdmin
@@ -27,7 +27,8 @@ export async function POST(request: NextRequest) {
   if (!supabaseAdmin) return NextResponse.json({ error: 'Server error' }, { status: 500 });
 
   const body = await request.json();
-  const { propertyId, name, name_en, name_es, icon, color, order } = body;
+  const { name, name_en, name_es, icon, color, order } = body;
+  const propertyId = scopedPropertyId(auth, body.propertyId);
   if (!propertyId || !name) {
     return NextResponse.json({ error: 'propertyId and name required' }, { status: 400 });
   }

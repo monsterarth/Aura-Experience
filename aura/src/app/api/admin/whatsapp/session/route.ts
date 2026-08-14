@@ -23,6 +23,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requirePropertyAccess, isAuthError } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { PropertySecretsService } from "@/services/property-secrets-service";
+import { CoolifyService } from "@/services/coolify-service";
 
 const ROLES = ["super_admin", "admin", "manager"] as const;
 
@@ -173,7 +174,11 @@ export async function GET(request: NextRequest) {
         elapsedMs: 0,
       });
     }
-    return NextResponse.json({ instance, ...(await diagnose(baseUrl, apiKey, instance)) });
+    return NextResponse.json({
+      instance,
+      restartAvailable: CoolifyService.isConfigured(),
+      ...(await diagnose(baseUrl, apiKey, instance)),
+    });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }
@@ -187,16 +192,42 @@ export async function GET(request: NextRequest) {
  *
  *   "logout" DERRUBA a sessão atual de propósito. É o único jeito de forçar QR novo numa
  *   sessão zumbi — e é destrutivo se a sessão estiver de pé, por isso a UI confirma antes.
+ *
+ *   "restart" recria o container da Evolution via API do Coolify — o único remédio quando
+ *   o processo trava ou quando a sessão zumbi nem desconecta. Passa por FORA da Evolution,
+ *   então funciona justamente quando nada dentro dela responde.
  */
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const propertyId: string | undefined = body?.propertyId;
-  const action: "reconnect" | "logout" = body?.action;
+  const action: "reconnect" | "logout" | "restart" = body?.action;
   const auth = await requirePropertyAccess(propertyId, [...ROLES]);
   if (isAuthError(auth)) return auth;
 
-  if (action !== "reconnect" && action !== "logout") {
-    return NextResponse.json({ error: "action inválida (reconnect | logout)." }, { status: 400 });
+  if (action !== "reconnect" && action !== "logout" && action !== "restart") {
+    return NextResponse.json({ error: "action inválida (reconnect | logout | restart)." }, { status: 400 });
+  }
+
+  if (action === "restart") {
+    const result = await CoolifyService.restartEvolution();
+    await db().from("audit_logs").insert({
+      id: crypto.randomUUID(),
+      propertyId: propertyId!,
+      userId: auth.staff.id,
+      userName: auth.staff.fullName,
+      action: "WHATSAPP_RESTART_MANUAL",
+      entity: "WHATSAPP",
+      entityId: "evolution",
+      details: `Reinício manual da Evolution via Coolify: ${result.message}`,
+      newData: result,
+      timestamp: new Date().toISOString(),
+    });
+    return NextResponse.json({
+      ok: result.ok,
+      message: result.ok
+        ? "Reinício disparado no Coolify. A Evolution recria em ~1 minuto — verifique de novo e, se a sessão não voltar sozinha, gere o QR."
+        : result.message,
+    });
   }
 
   try {

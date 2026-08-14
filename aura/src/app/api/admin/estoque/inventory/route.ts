@@ -1,13 +1,13 @@
 // src/app/api/admin/estoque/inventory/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { requireAuth, isAuthError, scopedPropertyId } from '@/lib/api-auth';
 import { InventoryService } from '@/services/inventory-service';
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(['super_admin', 'admin', 'manager', 'compras']);
   if (isAuthError(auth)) return auth;
   const url = new URL(request.url);
-  const propertyId = url.searchParams.get('propertyId');
+  const propertyId = scopedPropertyId(auth, url.searchParams.get('propertyId'));
   if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
   const id = url.searchParams.get('id');
   if (id) return NextResponse.json(await InventoryService.getCount(propertyId, id));
@@ -18,7 +18,8 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth(['super_admin', 'admin', 'manager', 'compras']);
   if (isAuthError(auth)) return auth;
   const body = await request.json();
-  const { propertyId, action } = body;
+  const propertyId = scopedPropertyId(auth, body.propertyId);
+  const { action } = body;
   if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
   const actor = { id: auth.staff.id, name: auth.staff.fullName };
   try {
@@ -45,7 +46,7 @@ export async function DELETE(request: NextRequest) {
   if (isAuthError(auth)) return auth;
   const url = new URL(request.url);
   const id = url.searchParams.get('id');
-  const propertyId = url.searchParams.get('propertyId');
+  const propertyId = scopedPropertyId(auth, url.searchParams.get('propertyId'));
   if (!id || !propertyId) return NextResponse.json({ error: 'id and propertyId required' }, { status: 400 });
   try {
     await InventoryService.deleteCount(propertyId, id, { id: auth.staff.id, name: auth.staff.fullName });

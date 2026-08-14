@@ -1,6 +1,6 @@
 // src/app/api/admin/guests/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { requireAuth, isAuthError, scopedPropertyId } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     if (!supabaseAdmin) return NextResponse.json([], { status: 500 });
 
     const { searchParams } = new URL(request.url);
-    const propertyId = searchParams.get('propertyId');
+    const propertyId = scopedPropertyId(auth, searchParams.get('propertyId'));
     if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
 
     let query = supabaseAdmin

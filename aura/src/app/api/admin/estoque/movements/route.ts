@@ -1,6 +1,6 @@
 // src/app/api/admin/estoque/movements/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { requireAuth, isAuthError, scopedPropertyId } from '@/lib/api-auth';
 import { StockService } from '@/services/stock-service';
 import { StockMovementType, StockReferenceType } from '@/types/aura';
 
@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   const auth = await requireAuth(['super_admin', 'admin', 'manager', 'compras']);
   if (isAuthError(auth)) return auth;
   const url = new URL(request.url);
-  const propertyId = url.searchParams.get('propertyId');
+  const propertyId = scopedPropertyId(auth, url.searchParams.get('propertyId'));
   if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
   // ?staff=1 → colaboradores selecionáveis em locais do tipo 'staff'
   if (url.searchParams.get('staff')) {
@@ -39,7 +39,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(['super_admin', 'admin', 'manager', 'compras']);
   if (isAuthError(auth)) return auth;
-  const { propertyId, action, ...input } = await request.json();
+  const { propertyId: requestedPropertyId, action, ...input } = await request.json();
+  const propertyId = scopedPropertyId(auth, requestedPropertyId);
   if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
   const actor = { id: auth.staff.id, name: auth.staff.fullName };
   try {
