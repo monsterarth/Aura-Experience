@@ -2,7 +2,6 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import Image from "next/image";
 
 import { Loader2, Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
@@ -10,12 +9,32 @@ import { toast } from "sonner";
 import { roleHome } from "@/lib/role-routes";
 
 export default function AdminLoginPage() {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Enquanto verifica se já existe sessão — evita piscar o formulário para quem já está logado.
+  const [checking, setChecking] = useState(true);
+
+  // Já logado? Sai do login direto para a tela do cargo. Complementa o guard do
+  // middleware (que só age em request nova ao servidor); aqui cobre já estar na
+  // página, e é a rede que pega um login cuja navegação não completou.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/auth/me');
+        if (!cancelled && res.ok) {
+          const data = await res.json().catch(() => null);
+          window.location.replace(roleHome(data?.staff?.role));
+          return;
+        }
+      } catch { /* sem sessão → mostra o formulário */ }
+      if (!cancelled) setChecking(false);
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (error) setError(null);
@@ -42,9 +61,11 @@ export default function AdminLoginPage() {
 
       toast.success(`Bem-vindo de volta, ${String(data.fullName || '').split(' ')[0]}!`);
 
-      // refresh() para os server components relerem os cookies de sessão recém-postos.
-      router.refresh();
-      router.push(roleHome(data.role));
+      // Navegação DURA (não router.push): o browser refaz a request com os cookies de
+      // sessão recém-postos e o middleware libera o destino. Elimina a corrida do
+      // refresh()+push que às vezes prendia o usuário no login. replace() tira o login
+      // do histórico (o "voltar" não retorna ao formulário).
+      window.location.replace(roleHome(data.role));
 
     } catch (err: any) {
       const message = err?.message || "Falha ao acessar o sistema.";
@@ -54,6 +75,14 @@ export default function AdminLoginPage() {
       setLoading(false);
     }
   };
+
+  if (checking) {
+    return (
+      <main className="min-h-[100dvh] w-full flex items-center justify-center bg-[#141414] text-white">
+        <Loader2 className="w-6 h-6 animate-spin text-[#E0FFFF]" />
+      </main>
+    );
+  }
 
   return (
     <main className="min-[100dvh] w-full flex flex-col items-center justify-center bg-[#141414] p-4 md:p-6 relative overflow-hidden font-sans text-white">
