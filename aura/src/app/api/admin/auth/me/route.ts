@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createClientServer } from '@/lib/supabase-server';
+import { sanitizePropertyForClient } from '@/lib/property-settings';
 
 export async function GET() {
     try {
@@ -30,7 +31,7 @@ export async function GET() {
                 .select('*')
                 .eq('id', staff.propertyId)
                 .single();
-            property = data;
+            property = sanitizePropertyForClient(data);
         }
 
         return NextResponse.json({ staff, property });

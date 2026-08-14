@@ -7,14 +7,16 @@
 // `stays`, `guests`, `cabins` e `properties` com a chave anon. Aqui isso vira uma
 // chamada só, com service-role, e a posse é o próprio código de acesso.
 //
-// REGRA INEGOCIÁVEL: a propriedade sai por ALLOWLIST literal de chaves. Um
-// `select('*')` aqui entregaria `settings.whatsappConfig` — que ainda guarda a
-// cópia da apiKey da Evolution — para qualquer pessoa com um código de estadia.
-// Mesma disciplina do asset-public-service.
+// REGRA INEGOCIÁVEL: a propriedade sai por ALLOWLIST literal de chaves (nunca
+// `select('*')`). Os segredos de integração hoje vivem no cofre `property_secrets`
+// (fora de `settings`), mas a allowlist é o que garante que qualquer campo sensível
+// NOVO em `settings` não escape por aqui só por existir. Mesma disciplina do
+// asset-public-service.
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { StayService } from "@/services/stay-service";
 import { SurveyService } from "@/services/survey-service";
+import { clientIp, isRateLimited, logAttempt } from "@/lib/login-attempts";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +57,18 @@ export async function GET(req: NextRequest) {
 
   try {
     const stays = await StayService.getStaysByAccessCode(code);
-    if (!stays.length) return NextResponse.json({ error: "Código não encontrado." }, { status: 404 });
+    if (!stays.length) {
+      // Só código INVÁLIDO paga o custo do rate-limit — a carga por código válido
+      // (toda vez que o portal recarrega) nunca toca a tabela de tentativas. Fecha o
+      // brute force do código por esta rota, que ignorava a trava do login do portal.
+      const ip = clientIp(req.headers);
+      await logAttempt(ip, false);
+      if (await isRateLimited(ip, 10)) {
+        return NextResponse.json({ error: "Muitas tentativas. Aguarde alguns minutos." }, { status: 429 });
+      }
+      await new Promise((r) => setTimeout(r, 800));
+      return NextResponse.json({ error: "Código não encontrado." }, { status: 404 });
+    }
 
     // Estadia escolhida: a pedida (se pertence ao código) ou a primeira.
     const chosen = (stayId && stays.find((s: any) => s.id === stayId)) || stays[0];

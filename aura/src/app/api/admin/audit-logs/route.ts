@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { serverError } from '@/lib/api-error';
 
 export async function GET(request: NextRequest) {
     const auth = await requireAuth();
@@ -44,7 +45,12 @@ export async function GET(request: NextRequest) {
     const excludePrefix = searchParams.get('excludePrefix') || '';
     if (excludePrefix) query = query.not('action', 'like', `${excludePrefix}%`);
     if (search) {
-        query = query.or(`userName.ilike.%${search}%,details.ilike.%${search}%`);
+        // Neutraliza a sintaxe de filtro do PostgREST: vírgula e parênteses SEPARAM e
+        // ANINHAM condições dentro do .or(), e '*' é curinga. Sem isto, um termo com
+        // ',' ou '()' reescreve o filtro (ex.: injetar uma condição sempre-verdadeira).
+        // Não é SQLi (PostgREST parametriza), mas é injeção de sintaxe de filtro.
+        const safe = search.replace(/[,()*\\]/g, ' ').trim();
+        if (safe) query = query.or(`userName.ilike.%${safe}%,details.ilike.%${safe}%`);
     }
     if (startDate) query = query.gte('timestamp', startDate);
     if (endDate) {
@@ -55,7 +61,7 @@ export async function GET(request: NextRequest) {
     }
 
     const { data, error, count } = await query;
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return serverError('audit-logs', error);
 
     return NextResponse.json({ logs: data, total: count });
 }

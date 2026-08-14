@@ -66,12 +66,18 @@ export const StayService = {
   },
 
   async generateUniqueAccessCode(propertyId: string): Promise<string> {
+    // 32 chars → divide 2^32 exatamente, então o módulo NÃO enviesa a distribuição.
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     let code = "";
     let isUnique = false;
 
     while (!isUnique) {
-      code = Array.from({ length: 8 }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
+      // crypto.getRandomValues (Web Crypto, global no Node 18+) no lugar de
+      // Math.random(): o código de acesso é credencial do portal do hóspede, não
+      // pode sair de um PRNG previsível.
+      const buf = new Uint32Array(8);
+      crypto.getRandomValues(buf);
+      code = Array.from(buf, (n) => chars.charAt(n % chars.length)).join('');
 
       const { data } = await db()
         .from('stays')

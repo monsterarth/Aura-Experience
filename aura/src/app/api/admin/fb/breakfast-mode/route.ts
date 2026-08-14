@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requirePropertyAccess, isAuthError } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import { mergePropertySettings } from "@/lib/property-settings";
+import { mergePropertySettings, sanitizePropertyForClient } from "@/lib/property-settings";
 import { AuditService } from "@/services/audit-service";
 import { FBSettings, UserRole } from "@/types/aura";
 
@@ -55,7 +55,7 @@ export async function PATCH(request: NextRequest) {
     // volta ao valor velho no próximo render que lê `property.settings`.
     const { data: property } = await supabaseAdmin
       .from("properties").select("*").eq("id", propertyId!).single();
-    return NextResponse.json({ ok: true, property });
+    return NextResponse.json({ ok: true, property: sanitizePropertyForClient(property) });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }

@@ -11,8 +11,7 @@
 // "conta" (status=finished only) filtra server-side e só retorna as que têm saldo.
 // ──────────────────────────────────────────────────────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { stayDisplayName } from '@/lib/stay-display';
 
@@ -22,26 +21,23 @@ const CLOSED_STAYS_LIMIT = 100;
 
 export async function GET(request: NextRequest) {
     try {
-        // Validate session server-side
-        const cookieStore = cookies();
-        const supabase = createServerClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-            {
-                cookies: {
-                    getAll() { return cookieStore.getAll(); },
-                    setAll() {},
-                },
-            }
-        );
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
-        if (authError || !user) return NextResponse.json(null, { status: 401 });
+        // Sessão + cargo. Antes esta rota só validava autenticação inline (herança do
+        // mutirão do navigator.locks): QUALQUER staff logado — inclusive cargos de
+        // campo — podia ler estadias + nome de hóspede + fólio de QUALQUER propriedade
+        // trocando o ?propertyId=. Agora: cargo restrito + escopo de propriedade.
+        const auth = await requireAuth(['super_admin', 'admin', 'reception', 'governance', 'manager']);
+        if (isAuthError(auth)) return auth;
 
         if (!supabaseAdmin) return NextResponse.json(null, { status: 500 });
 
         const { searchParams } = new URL(request.url);
-        const propertyId = searchParams.get('propertyId');
+        const requested = searchParams.get('propertyId');
         const statusParam = searchParams.get('status'); // comma-separated
+
+        // admin-tier pode consultar a propriedade pedida (super_admin tem seletor);
+        // os demais ficam presos à própria — fecha o IDOR cross-property.
+        const isAdminTier = ['super_admin', 'admin', 'manager'].includes(auth.staff.role);
+        const propertyId = isAdminTier && requested ? requested : auth.staff.propertyId;
 
         if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
 

@@ -2,13 +2,11 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { createClientBrowser } from "@/lib/supabase-browser";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 
 import { Loader2, Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
-import { Staff } from "@/types/aura";
 import { roleHome } from "@/lib/role-routes";
 
 export default function AdminLoginPage() {
@@ -29,49 +27,27 @@ export default function AdminLoginPage() {
     setError(null);
 
     try {
-      const supabase = createClientBrowser();
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      // Login server-side: rate limit por IP + log de tentativa + sessão via cookie.
+      // (Antes o signInWithPassword rodava aqui no browser, sem trava nem registro.)
+      const res = await fetch('/api/admin/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json().catch(() => ({}));
 
-      if (authError || !authData.user) {
-        throw new Error(authError?.message || "Credenciais inválidas.");
+      if (!res.ok) {
+        throw new Error(data?.error || "Falha ao acessar o sistema.");
       }
 
-      const user = authData.user;
+      toast.success(`Bem-vindo de volta, ${String(data.fullName || '').split(' ')[0]}!`);
 
-      const { data: userData, error: staffError } = await supabase
-        .from('staff')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      if (staffError || !userData) {
-        throw new Error("Usuário autenticado, mas perfil não encontrado no Aura.");
-      }
-
-      const staff = userData as Staff;
-      if (!staff.active) {
-        throw new Error("Esta conta foi desativada pela administração.");
-      }
-
-
-
-      toast.success(`Bem-vindo de volta, ${userData.fullName.split(' ')[0]}!`);
-
-      const targetPath = roleHome(userData.role);
-      router.push(targetPath);
+      // refresh() para os server components relerem os cookies de sessão recém-postos.
+      router.refresh();
+      router.push(roleHome(data.role));
 
     } catch (err: any) {
-      console.error("[Aura Login Error]", err.code);
-      let message = "Falha ao acessar o sistema.";
-
-      if (err.message) {
-        if (err.message.includes("Invalid login credentials") || err.message.includes("Credenciais")) {
-          message = "Credenciais inválidas.";
-        } else {
-          message = err.message;
-        }
-      }
-
+      const message = err?.message || "Falha ao acessar o sistema.";
       setError(message);
       toast.error(message);
     } finally {

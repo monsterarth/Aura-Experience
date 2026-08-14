@@ -325,7 +325,10 @@ export const fbService = {
             .order('delivery_time', { ascending: true, nullsFirst: false })
             .order('created_at', { ascending: false });
 
-        if (filters?.date) {
+        if (filters?.date && /^\d{4}-\d{2}-\d{2}$/.test(filters.date)) {
+            // Só aplica o filtro se a data for YYYY-MM-DD estrito — o valor entra num
+            // .or() do PostgREST, onde vírgula/parênteses são sintaxe. O formato fixo
+            // (vindo de um date picker) impede reescrever o filtro por um valor forjado.
             // Match by delivery_date OR (delivery_date is null AND created_at falls on that date)
             query = query.or(`delivery_date.eq.${filters.date},and(delivery_date.is.null,created_at.gte.${filters.date}T00:00:00,created_at.lte.${filters.date}T23:59:59)`);
         }

@@ -148,9 +148,13 @@ export function assertPropertyAccess(
     }
     if (hasRole(auth.staff.role, auth.staff.secondaryRoles, crossTenantRoles)) return null;
     if (auth.staff.propertyId !== propertyId) {
+        // 404 (não 403) numa negação CROSS-TENANT: um recurso de outra propriedade
+        // deve parecer inexistente para não confirmar sua existência (mesma
+        // convenção de /api/admin/stays/[id]). A negação por CARGO continua 403 em
+        // requireAuth — ali é sobre a AÇÃO, não revela um recurso específico.
         return NextResponse.json(
-            { error: 'Acesso negado: esta propriedade não é a sua.' },
-            { status: 403 }
+            { error: 'Recurso não encontrado.' },
+            { status: 404 }
         );
     }
     return null;

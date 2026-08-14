@@ -61,6 +61,27 @@ export const SETTINGS_KEY_ROLES: Record<string, UserRole[]> = {
   // da allowlist, tentar gravá-las agora devolve 400 em vez de ressuscitar o legado.
 };
 
+/**
+ * Remove segredos de integração de um objeto `property` antes de devolvê-lo ao
+ * NAVEGADOR. A fonte única dos segredos é o cofre `property_secrets` (service-role,
+ * fora de `settings`) — o texto puro em `settings.whatsappConfig` foi apagado em
+ * migrations/property_secrets_cleanup.sql. Esta função é a trava de garantia: caso
+ * um resíduo legado sobreviva (ou seja reintroduzido por bug), a chave nunca chega
+ * ao cliente. O navegador só precisa dos campos públicos (apiUrl/instanceName/…),
+ * que continuam intactos.
+ */
+export function sanitizePropertyForClient<T extends Record<string, any> | null | undefined>(property: T): T {
+  const settings = (property as any)?.settings;
+  const wa = settings?.whatsappConfig;
+  if (!wa || typeof wa !== 'object') return property;
+  if (!('apiKey' in wa) && !('chatwootApiToken' in wa)) return property;
+  const { apiKey, chatwootApiToken, ...safeWa } = wa;
+  return {
+    ...(property as any),
+    settings: { ...settings, whatsappConfig: safeWa },
+  };
+}
+
 export interface SettingsPatchRejection {
   unknown: string[];
   forbidden: string[];
