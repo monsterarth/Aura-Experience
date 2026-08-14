@@ -3,7 +3,7 @@
 // A escrita pelo client do browser pendurava no lock frio de auth (mesma causa do spinner
 // infinito na busca de CPF) — aqui a reserva não fica no meio do caminho.
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { requireAuth, isAuthError, scopedPropertyId } from '@/lib/api-auth';
 import { GuestService } from '@/services/guest-service';
 
 export async function POST(request: NextRequest) {
@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     if (isAuthError(auth)) return auth;
 
     const body = await request.json().catch(() => null);
-    const propertyId = body?.propertyId;
+    const propertyId = scopedPropertyId(auth, body?.propertyId);
     const guestData = body?.guestData;
 
     if (!propertyId) return NextResponse.json({ error: 'propertyId obrigatório.' }, { status: 400 });

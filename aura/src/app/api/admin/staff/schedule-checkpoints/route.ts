@@ -25,6 +25,8 @@ export async function GET(request: Request) {
         .select('*')
         .eq('staffId', staffId)
         .order('effectiveDate', { ascending: false });
+      // Escopo de tenant: não-super_admin só vê checkpoints de staff da própria propriedade.
+      if (auth.staff.role !== 'super_admin') query = query.eq('propertyId', auth.staff.propertyId);
 
       if (from) query = query.gte('effectiveDate', from);
       if (to) query = query.lte('effectiveDate', to);

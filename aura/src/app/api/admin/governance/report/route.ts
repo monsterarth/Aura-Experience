@@ -1,7 +1,7 @@
 // src/app/api/admin/governance/report/route.ts
 // Retorna chegadas para uma data específica (relatório de governança).
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { requireAuth, isAuthError, scopedPropertyId } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     if (!supabaseAdmin) return NextResponse.json(null, { status: 500 });
 
     const { searchParams } = new URL(request.url);
-    const propertyId = searchParams.get('propertyId');
+    const propertyId = scopedPropertyId(auth, searchParams.get('propertyId'));
     const date = searchParams.get('date'); // YYYY-MM-DD
     if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
     if (!date) return NextResponse.json({ error: 'date required' }, { status: 400 });

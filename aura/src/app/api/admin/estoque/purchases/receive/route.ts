@@ -1,12 +1,13 @@
 // src/app/api/admin/estoque/purchases/receive/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { requireAuth, isAuthError, scopedPropertyId } from '@/lib/api-auth';
 import { PurchaseService } from '@/services/purchase-service';
 
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(['super_admin', 'admin', 'manager', 'compras']);
   if (isAuthError(auth)) return auth;
-  const { propertyId, purchaseId, overrides } = await request.json();
+  const { propertyId: requestedPropertyId, purchaseId, overrides } = await request.json();
+  const propertyId = scopedPropertyId(auth, requestedPropertyId);
   if (!propertyId || !purchaseId) return NextResponse.json({ error: 'propertyId and purchaseId required' }, { status: 400 });
   try {
     await PurchaseService.receivePurchase(propertyId, purchaseId, { id: auth.staff.id, name: auth.staff.fullName }, overrides);

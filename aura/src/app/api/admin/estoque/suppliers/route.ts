@@ -1,13 +1,13 @@
 // src/app/api/admin/estoque/suppliers/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { requireAuth, isAuthError, scopedPropertyId } from '@/lib/api-auth';
 import { SupplierService } from '@/services/supplier-service';
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(['super_admin', 'admin', 'manager', 'compras']);
   if (isAuthError(auth)) return auth;
   const url = new URL(request.url);
-  const propertyId = url.searchParams.get('propertyId');
+  const propertyId = scopedPropertyId(auth, url.searchParams.get('propertyId'));
   if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
   const detail = url.searchParams.get('detail');
   if (detail) return NextResponse.json(await SupplierService.getSupplierDetail(propertyId, detail));
@@ -17,7 +17,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(['super_admin', 'admin', 'manager', 'compras']);
   if (isAuthError(auth)) return auth;
-  const { propertyId, ...payload } = await request.json();
+  const { propertyId: requestedPropertyId, ...payload } = await request.json();
+  const propertyId = scopedPropertyId(auth, requestedPropertyId);
   if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
   try {
     const id = await SupplierService.upsertSupplier(propertyId, payload, { id: auth.staff.id, name: auth.staff.fullName });
@@ -32,7 +33,7 @@ export async function DELETE(request: NextRequest) {
   if (isAuthError(auth)) return auth;
   const url = new URL(request.url);
   const id = url.searchParams.get('id');
-  const propertyId = url.searchParams.get('propertyId');
+  const propertyId = scopedPropertyId(auth, url.searchParams.get('propertyId'));
   if (!id || !propertyId) return NextResponse.json({ error: 'id and propertyId required' }, { status: 400 });
   try {
     await SupplierService.deleteSupplier(propertyId, id, { id: auth.staff.id, name: auth.staff.fullName });

@@ -2,7 +2,7 @@
 // CRUD de Pontos de Interesse (MapPoi) — marcadores leves no mapa do resort.
 // Usados para portões, locais de foto, trilhas, estacionamentos e lugares externos.
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, isAuthError } from "@/lib/api-auth";
+import { requireAuth, isAuthError, scopedPropertyId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { MapPoi } from "@/types/aura";
 
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     if (isAuthError(auth)) return auth;
 
     const { searchParams } = new URL(request.url);
-    const propertyId = searchParams.get("propertyId") ?? auth.staff.propertyId;
+    const propertyId = scopedPropertyId(auth, searchParams.get("propertyId"));
 
     if (!supabaseAdmin) return NextResponse.json({ error: "Server error" }, { status: 500 });
 

@@ -4,7 +4,7 @@
 // Apaga a resposta e reseta o flag da estadia (hasSurvey/npsScore),
 // liberando o hóspede a responder de novo (útil para testes).
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth, isAuthError } from "@/lib/api-auth";
+import { requireAuth, isAuthError, scopedPropertyId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { SurveyService } from "@/services/survey-service";
 
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     if (!supabaseAdmin) return NextResponse.json({ error: "Server configuration error" }, { status: 500 });
 
     const requested = new URL(req.url).searchParams.get("propertyId");
-    const propertyId = requested || auth.staff.propertyId;
+    const propertyId = scopedPropertyId(auth, requested);
     if (!propertyId) return NextResponse.json({ responses: [] });
 
     try {
