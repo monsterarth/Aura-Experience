@@ -106,8 +106,20 @@ seems "stuck", check whether an external trigger is actually hitting them.
 
 | Name | What it does | Notes |
 |------|--------------|-------|
-| `process-messages` | Drains the WhatsApp send queue: recovers messages stuck in `processing` >3 min, sends `pending` messages via the Evolution API (batches of 15) | Designed for a **short interval** (≈ every minute). Needs `EVOLUTION_API_*` |
+| `process-messages` | Drains the WhatsApp send queue: recovers messages stuck in `processing` >3 min, sends `pending` messages via the Evolution API (batches of 15). **Also runs the WhatsApp watchdog inline**: a cycle where every send fails with the dead-session signature triggers auto-recovery (Coolify restart + admin push); a successful cycle closes the incident with a "voltou" push | Designed for a **short interval** (≈ every minute). Needs `EVOLUTION_API_*`; auto-restart also needs `COOLIFY_*` |
+| `whatsapp-watchdog` | Standalone watchdog (`WhatsAppHealthService`): probes Evolution from outside (timeout = frozen process) and checks recent real-send results; restarts the Evolution service via the Coolify API (30 min cooldown) and pushes alerts to admins/managers | Optional — the same logic already piggybacks on `process-messages`; this adds coverage when the queue is idle. Suggested every 10–15 min. Needs `EVOLUTION_API_*` + `COOLIFY_*` |
 | `housekeeping-routines` | Applies fixed-interval housekeeping rules (`applyFixedIntervalRules`) per property | Complements `daily-housekeeping` |
+
+### WhatsApp watchdog — how it decides (see `src/services/whatsapp-health-service.ts`)
+
+Evolution's cheap indicators (`connectionState`, `fetchInstances`) lie **optimistically** — they
+report `open` with the socket closed. The watchdog therefore only trusts three signals: real
+sends failing with the dead-session signature (`isSessionDownError`), the outside probe timing
+out (frozen process), or Evolution itself admitting a non-`open` state. Reaction ladder:
+restart via Coolify (cooldown 30 min, dedup with the manual button) → if still down, "needs QR"
+push → on the first successful send, "recovered" push. All events are recorded in `audit_logs`
+(`entity = 'WHATSAPP'`, actions `WHATSAPP_WATCHDOG_*` / `WHATSAPP_RESTART_MANUAL`) — that is
+also where the cooldown/dedup state lives (no extra table).
 
 ## Troubleshooting
 

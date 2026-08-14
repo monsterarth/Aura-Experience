@@ -50,3 +50,14 @@ export function parseEvolutionError(httpStatus: number, rawBody: string): string
     ? `Sessão do WhatsApp desconectada (${detail}) — reconecte a instância lendo o QR novamente. [${codes}]`
     : `${detail} [${codes}]`;
 }
+
+/**
+ * Reconhece em `messages.errorMessage` a assinatura de sessão morta — tanto o texto que
+ * `parseEvolutionError` produz quanto os motivos crus do Baileys, caso a mensagem tenha
+ * sido gravada por outro caminho. É o critério que o vigia usa para distinguir "a sessão
+ * caiu" (restart + QR resolvem) de erros de conteúdo/número, que não justificam restart.
+ */
+export function isSessionDownError(message: string | null | undefined): boolean {
+  if (!message) return false;
+  return /sessão do whatsapp desconectada|connection closed|connection failure/i.test(message);
+}
