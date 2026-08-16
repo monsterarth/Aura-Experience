@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError, scopedPropertyId } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { serverError } from '@/lib/api-error';
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth(['super_admin', 'admin', 'reception', 'governance']);
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
     .eq('propertyId', propertyId)
     .order('order', { ascending: true });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError('concierge/groups', error);
   return NextResponse.json(data ?? []);
 }
 
@@ -52,6 +53,6 @@ export async function POST(request: NextRequest) {
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError('concierge/groups', error);
   return NextResponse.json(data);
 }

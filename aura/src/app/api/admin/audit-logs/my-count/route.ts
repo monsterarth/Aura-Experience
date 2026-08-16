@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { serverError } from '@/lib/api-error';
 
 // Retorna contagem de ações de um usuário para exibição no card de perfil.
 // Qualquer role autenticada pode consultar. Usuários comuns só podem ver
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest) {
     if (startDate) query = query.gte('timestamp', startDate);
 
     const { count, error } = await query;
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return serverError('audit-logs/my-count', error);
 
     return NextResponse.json({ count: count ?? 0 });
 }

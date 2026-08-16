@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { serverError } from '@/lib/api-error';
 import { AuditService } from '@/services/audit-service';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -48,7 +49,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     .update({ ...safe, updatedAt: new Date().toISOString() })
     .eq('id', params.id);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError('weddings/[id]', error);
 
   if (before) {
     const couple = `${before.bride} & ${before.groom}`;
@@ -89,7 +90,7 @@ export async function DELETE(_: NextRequest, { params }: { params: { id: string 
     .from('weddings').select('bride, groom, weddingDate, propertyId').eq('id', params.id).single();
 
   const { error } = await supabaseAdmin!.from('weddings').delete().eq('id', params.id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError('weddings/[id]', error);
 
   if (before) {
     await AuditService.log({

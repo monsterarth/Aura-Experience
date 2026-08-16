@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { serverError } from '@/lib/api-error';
 
 export async function PATCH(request: NextRequest) {
     const auth = await requireAuth();
@@ -37,7 +38,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const { error } = await query;
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return serverError('notifications/mark-read', error);
 
     return NextResponse.json({ ok: true });
 }

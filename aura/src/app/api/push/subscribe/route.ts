@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth, isAuthError } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
+import { serverError } from "@/lib/api-error";
 
 export async function POST(req: Request) {
   const auth = await requireAuth();
@@ -33,10 +34,7 @@ export async function POST(req: Request) {
       { onConflict: "endpoint" }
     );
 
-  if (error) {
-    console.error("[Push] subscribe error:", error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  if (error) return serverError('push/subscribe', error);
 
   return NextResponse.json({ ok: true });
 }

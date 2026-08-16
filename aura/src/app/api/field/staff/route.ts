@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { serverError } from '@/lib/api-error';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,10 +27,7 @@ export async function GET(req: Request) {
     .select('id, fullName, role, secondaryRoles, active, propertyId')
     .eq('propertyId', propertyId);
 
-  if (error) {
-    console.error('[field/staff]', error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  if (error) return serverError('field/staff', error);
 
   return NextResponse.json(data ?? []);
 }

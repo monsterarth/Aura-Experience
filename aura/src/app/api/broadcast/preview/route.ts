@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { serverError } from "@/lib/api-error";
 
 export const dynamic = 'force-dynamic';
 
@@ -38,7 +39,7 @@ export async function GET(request: Request) {
   }
 
   const { data: stays, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError('broadcast/preview', error);
 
   if (!stays || stays.length === 0) {
     return NextResponse.json({ count: 0, names: [] });

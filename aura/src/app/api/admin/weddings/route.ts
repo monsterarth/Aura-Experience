@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { serverError } from '@/lib/api-error';
 import { AuditService } from '@/services/audit-service';
 import { WeddingService } from '@/services/wedding-service';
 
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError('weddings', error);
 
   // Contrato novo nasce com as 3 parcelas padrão (30/35/35), editáveis na
   // aba financeiro. Best-effort: sem a migration das parcelas o casamento

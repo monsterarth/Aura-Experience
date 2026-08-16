@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { serverError } from '@/lib/api-error';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,10 +22,7 @@ export async function GET(req: Request) {
     .eq('propertyId', propertyId)
     .order('number', { ascending: true });
 
-  if (error) {
-    console.error('[field/cabins]', error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  if (error) return serverError('field/cabins', error);
 
   return NextResponse.json(data ?? []);
 }

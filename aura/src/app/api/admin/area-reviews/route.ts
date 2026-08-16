@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isAuthError, assertPropertyAccess } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
+import { serverError } from "@/lib/api-error";
 import { mergePropertySettings } from "@/lib/property-settings";
 
 export const dynamic = "force-dynamic";
@@ -48,7 +49,7 @@ export async function PATCH(req: NextRequest) {
         .from("structure_reviews")
         .update({ status, updatedAt: new Date().toISOString() })
         .eq("id", id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return serverError('area-reviews', error);
     return NextResponse.json({ success: true });
 }
 

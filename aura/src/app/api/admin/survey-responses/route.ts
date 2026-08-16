@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isAuthError, scopedPropertyId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
+import { serverError } from "@/lib/api-error";
 import { SurveyService } from "@/services/survey-service";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +40,7 @@ export async function DELETE(req: NextRequest) {
     const { data: resp } = await supabaseAdmin.from("survey_responses").select("stayId").eq("id", id).maybeSingle();
 
     const { error } = await supabaseAdmin.from("survey_responses").delete().eq("id", id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return serverError('survey-responses', error);
 
     if (resp?.stayId) {
         await supabaseAdmin.from("stays").update({ hasSurvey: false, npsScore: null }).eq("id", resp.stayId);

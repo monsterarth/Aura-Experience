@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isAuthError, scopedPropertyId } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
+import { serverError } from "@/lib/api-error";
 import { MapPoi } from "@/types/aura";
 
 // GET /api/admin/map-pois?propertyId=xxx
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
         .eq("propertyId", propertyId)
         .order("createdAt", { ascending: false });
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return serverError('map-pois', error);
     return NextResponse.json({ pois: data ?? [] });
 }
 
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
         .from("map_pois")
         .insert({ id, propertyId, name, category, showOnMap: true, ...rest });
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return serverError('map-pois', error);
     return NextResponse.json({ id }, { status: 201 });
 }
 
@@ -64,7 +65,7 @@ export async function PATCH(request: NextRequest) {
         .eq("id", id)
         .eq("propertyId", auth.staff.propertyId);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return serverError('map-pois', error);
     return NextResponse.json({ ok: true });
 }
 
@@ -84,6 +85,6 @@ export async function DELETE(request: NextRequest) {
         .eq("id", id)
         .eq("propertyId", auth.staff.propertyId);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return serverError('map-pois', error);
     return NextResponse.json({ ok: true });
 }

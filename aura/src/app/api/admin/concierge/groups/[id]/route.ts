@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { serverError } from '@/lib/api-error';
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAuth(['super_admin', 'admin']);
@@ -19,7 +20,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError('concierge/groups/[id]', error);
   return NextResponse.json(data);
 }
 
@@ -38,6 +39,6 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     .eq('id', params.id)
     .eq('propertyId', propertyId);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return serverError('concierge/groups/[id]', error);
   return NextResponse.json({ success: true });
 }

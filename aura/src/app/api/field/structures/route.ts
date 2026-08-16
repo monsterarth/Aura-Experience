@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { serverError } from '@/lib/api-error';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,10 +27,7 @@ export async function GET(req: Request) {
     .select('*')
     .eq('propertyId', propertyId);
 
-  if (error) {
-    console.error('[field/structures]', error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  if (error) return serverError('field/structures', error);
 
   return NextResponse.json(data ?? []);
 }
