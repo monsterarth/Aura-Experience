@@ -2439,6 +2439,12 @@ export interface RateQuoteInput {
   discountIds: string[];
   adhocValue: number;
   adhocType: 'pct' | 'brl';
+  /**
+   * EXCEÇÃO de ocupação: computa também as categorias que não têm preço para
+   * este pax, usando a maior coluna de pax com preço (a Eco de 2 é cotada
+   * para 3 pelo valor de 2). Off = comportamento normal, a categoria some.
+   */
+  allowOverCapacity?: boolean;
 }
 
 export type RateBreakdownKind = 'base' | 'fluct' | 'promo' | 'discount' | 'adhoc' | 'fee';
@@ -2463,6 +2469,12 @@ export interface RateQuoteCategory {
   periodNights: Record<string, number>;
   /** noites em que a tabela não tinha preço para esse pax (0 = ok). */
   daysWithoutPrice: number;
+  /**
+   * Só em cotação de EXCEÇÃO: a categoria não tem preço para o pax pedido e
+   * o valor saiu da coluna de `pricedPax`. Ausente = ocupação normal.
+   * `requestedPax` já vem limitado a MAX_PAX (grupo de 7+ aparece como 6).
+   */
+  overCapacity?: { requestedPax: number; pricedPax: number };
 }
 
 export interface RateQuoteResult {
@@ -2519,6 +2531,14 @@ export interface RateQuoteRoom {
    * Ausente = oferece tudo o que o tarifário calculou (chamador antigo).
    */
   includedCategoryIds?: string[] | null;
+  /**
+   * EXCEÇÃO de ocupação liberada NESTA acomodação: as cabanas sem preço para
+   * o pax pedido entram em `options`, cada uma marcada por `overCapacity`.
+   * Quem grava é só o servidor, e só quando a exceção produziu opção.
+   */
+  allowOverCapacity?: boolean;
+  /** Justificativa da exceção — obrigatória; vai para a timeline e a auditoria. */
+  overCapacityReason?: string | null;
 }
 
 // ==========================================

@@ -18,8 +18,8 @@ import {
   RateAvailability,
 } from "@/types/aura";
 import {
-  addDays, computeQuote, findOverlaps, nightsBetween, offeredTotal, resolveFill,
-  resolveOverwrite, resolveQuoteValue, resolveRoomValue,
+  addDays, computeQuote, findOverlaps, MIN_OVER_CAPACITY_REASON, nightsBetween,
+  offeredTotal, resolveFill, resolveOverwrite, resolveQuoteValue, resolveRoomValue,
 } from "@/lib/rate-engine";
 import { AuditService } from "./audit-service";
 import { CrmService } from "./crm-service";
@@ -39,6 +39,36 @@ const QUOTE_PATCH_FIELDS = [
 const QUOTE_STAGE_LABEL: Record<RateQuoteStatus, string> = {
   open: "Aberto", sent: "Enviado", negotiating: "Negociando", won: "Ganho", lost: "Perdido",
 };
+
+/**
+ * Assinatura da exceção de capacidade do orçamento (acomodações × categorias ×
+ * motivo). Re-salvar sem mexer na exceção não repete a nota na timeline.
+ */
+function overCapacitySignature(rooms: RateQuoteRoom[] | null | undefined): string {
+  return (rooms ?? [])
+    .filter((r) => r.allowOverCapacity)
+    .map((r) => [
+      r.id,
+      r.overCapacityReason ?? "",
+      r.options.filter((c) => c.overCapacity).map((c) => c.categoryId).sort().join(","),
+    ].join(":"))
+    .join("|");
+}
+
+/** Uma linha legível por acomodação em exceção — vai para a nota e a auditoria. */
+function overCapacityDetail(rooms: RateQuoteRoom[]): string {
+  return rooms
+    .filter((r) => r.allowOverCapacity)
+    .map((r) => {
+      const pax = r.adults + r.children;
+      const exc = r.options
+        .filter((c) => c.overCapacity)
+        .map((c) => `${c.category} (tabela de ${c.overCapacity!.pricedPax}p para ${pax}p)`)
+        .join(", ");
+      return `${r.label || "Acomodação"}: ${exc}`;
+    })
+    .join(" · ");
+}
 
 export const DEFAULT_RATE_SETTINGS = (propertyId: string): RateSettings => ({
   propertyId,
@@ -685,6 +715,9 @@ export const RateService = {
         children: Math.max(0, Number(r.children) || 0),
         babies: Math.max(0, Number(r.babies) || 0),
         pets: Math.max(0, Number(r.pets) || 0),
+        // Exceção de ocupação é decisão POR acomodação (a família de 3 vai
+        // para a Eco; o casal ao lado segue na regra normal).
+        allowOverCapacity: r.allowOverCapacity === true,
         ...commercial,
       };
     };
@@ -698,6 +731,16 @@ export const RateService = {
 
     let firstAvgPct = 0;
     const rooms: RateQuoteRoom[] = requested.map((r, i) => {
+      // A exceção só existe COM justificativa: a flag habilita o cálculo, o
+      // texto é a prova comercial que fica no orçamento e na auditoria.
+      const wantsOver = r.allowOverCapacity === true;
+      const overReason = typeof r.overCapacityReason === "string" ? r.overCapacityReason.trim() : "";
+      if (wantsOver && overReason.length < MIN_OVER_CAPACITY_REASON) {
+        throw new Error(
+          `Justifique a exceção de capacidade da acomodação ${i + 1} (mínimo ${MIN_OVER_CAPACITY_REASON} caracteres).`
+        );
+      }
+
       const input = inputFor(r);
       const result = computeQuote(input, { ...data, fluctuations: data.fluctuations ?? undefined });
       if (i === 0) firstAvgPct = result.fluctuationAvgPct ?? 0;
@@ -715,9 +758,12 @@ export const RateService = {
       const included = Array.isArray(r.includedCategoryIds)
         ? new Set(r.includedCategoryIds.map(String))
         : null;
-      const offered = included
+      const computed = included
         ? result.categories.filter((c) => included.has(c.categoryId) || included.has(c.category))
         : result.categories;
+      // Defesa em profundidade: sem a flag o motor nem computa a exceção — mas
+      // se um dia computar, ela não passa daqui para o orçamento salvo.
+      const offered = wantsOver ? computed : computed.filter((c) => !c.overCapacity);
       if (offered.length === 0) {
         throw new Error(`Selecione ao menos uma cabana para oferecer na acomodação ${i + 1}.`);
       }
@@ -749,6 +795,11 @@ export const RateService = {
         options: offered,
         selectedCategory: pick ? pick.categoryId || pick.category : null,
         priceOverrides: Object.keys(overrides).length > 0 ? overrides : null,
+        // Só marca quando a exceção DE FATO produziu opção — orçamento com
+        // selo e nenhuma cabana fora de capacidade seria ruído na auditoria.
+        allowOverCapacity: wantsOver && offered.some((c) => c.overCapacity),
+        overCapacityReason:
+          wantsOver && offered.some((c) => c.overCapacity) ? overReason : null,
       };
     });
 
@@ -809,6 +860,35 @@ export const RateService = {
       notes: payload.notes?.trim() || null,
     };
 
+    // Exceção de capacidade: registra na timeline e na auditoria SÓ quando algo
+    // mudou (re-salvar o mesmo orçamento não vira uma pilha de notas iguais).
+    const overNow = overCapacitySignature(rooms);
+    const logOverCapacity = async (quoteId: string) => {
+      if (!overNow || overNow === overCapacitySignature(existing?.rooms)) return;
+      const detail = overCapacityDetail(rooms);
+      const reason = rooms.find((r) => r.allowOverCapacity)?.overCapacityReason ?? "";
+      await CrmService.logInteraction(propertyId, "quote", quoteId, "note", {
+        actorId, actorName,
+        note: `Exceção de capacidade — ${detail}. Justificativa: ${reason}`,
+        payload: {
+          tag: "over_capacity",
+          rooms: rooms.filter((r) => r.allowOverCapacity).map((r) => ({
+            roomId: r.id,
+            requestedPax: r.adults + r.children,
+            reason: r.overCapacityReason,
+            categories: r.options.filter((c) => c.overCapacity).map((c) => ({
+              categoryId: c.categoryId, pricedPax: c.overCapacity!.pricedPax,
+            })),
+          })),
+        },
+      });
+      await AuditService.log({
+        propertyId, userId: actorId, userName: actorName,
+        action: existing ? "UPDATE" : "CREATE", entity: "RATE_QUOTE", entityId: quoteId,
+        details: `EXCEÇÃO DE CAPACIDADE em ${common.clientName || "sem nome"} — ${detail}. Justificativa: ${reason}`,
+      });
+    };
+
     if (existing) {
       // Reabertura: recalcula e atualiza o MESMO orçamento (não duplica lead).
       const { error } = await admin
@@ -827,6 +907,7 @@ export const RateService = {
         action: "UPDATE", entity: "RATE_QUOTE", entityId: existing.id,
         details: `Orçamento de ${common.clientName || "sem nome"} recalculado (${payload.checkIn} → ${payload.checkOut}).`,
       });
+      await logOverCapacity(existing.id);
       return existing.id;
     }
 
@@ -858,6 +939,7 @@ export const RateService = {
       action: "CREATE", entity: "RATE_QUOTE", entityId: id,
       details: `Orçamento criado: ${common.clientName || "sem nome"} · ${payload.checkIn} → ${payload.checkOut}${source ? ` · origem ${source}` : ""}.`,
     });
+    await logOverCapacity(id);
     return id;
   },
 
@@ -1278,15 +1360,28 @@ export const RateService = {
     id: string,
     actorId: string,
     actorName: string
-  ): Promise<{ guestId: string; checkIn: string; checkOut: string }> {
+  ): Promise<{
+    guestId: string; checkIn: string; checkOut: string;
+    adults: number; children: number; babies: number;
+  }> {
     const admin = supabaseAdmin!;
     const { data } = await admin
       .from("rate_quotes")
-      .select("checkIn, checkOut")
+      .select("checkIn, checkOut, rooms, adults, children, babies")
       .eq("id", id)
       .eq("propertyId", propertyId)
       .maybeSingle();
     if (!data) throw new Error("Orçamento não encontrado.");
+
+    // Pax da acomodação 1 (as colunas raiz já a espelham; ficam de fallback
+    // para orçamentos anteriores às `rooms`). Sem isto a estadia nasceria com
+    // 2 adultos fixos e a venda em exceção travaria no pré-check-in.
+    const first = (data.rooms as RateQuoteRoom[] | null)?.[0];
+    const pax = {
+      adults: Math.max(1, Number(first?.adults ?? data.adults) || 2),
+      children: Math.max(0, Number(first?.children ?? data.children) || 0),
+      babies: Math.max(0, Number(first?.babies ?? data.babies) || 0),
+    };
 
     const { guestId } = await this.ensureGuestForQuote(propertyId, id, { id: actorId, name: actorName });
     if (!guestId) {
@@ -1297,7 +1392,11 @@ export const RateService = {
     await CrmService.logInteraction(propertyId, "quote", id, "converted", {
       actorId, actorName, payload: { guestId },
     });
-    return { guestId, checkIn: data.checkIn as string, checkOut: data.checkOut as string };
+    return {
+      guestId,
+      checkIn: data.checkIn as string, checkOut: data.checkOut as string,
+      ...pax,
+    };
   },
 
   /**

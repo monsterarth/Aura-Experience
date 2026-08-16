@@ -11,15 +11,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  ArrowLeft, ArrowRight, BadgeCheck, Copy, Loader2, Phone, Plus, Save,
-  Trash2, X,
+  AlertTriangle, ArrowLeft, ArrowRight, BadgeCheck, Copy, Loader2, Pencil,
+  Phone, Plus, Save, Trash2, X,
 } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
 import { useCloseGuard } from "@/lib/use-discard-guard";
 import { parseMoneyBR, moneyToInput } from "@/lib/parse-money";
 import {
   computeQuote, processTemplate, buildCategoryBlock, buildEventNotices,
-  DEFAULT_MSG_TEMPLATE, DEFAULT_MSG_SINGLE_TEMPLATE,
+  DEFAULT_MSG_TEMPLATE, DEFAULT_MSG_SINGLE_TEMPLATE, MIN_OVER_CAPACITY_REASON,
   addDays, dateToIso, formatBRL,
 } from "@/lib/rate-engine";
 import type { RateBundle } from "@/services/rate-service";
@@ -52,6 +52,9 @@ type DraftRoom = {
   selectedCategory: string | null;
   /** Preço oferecido por CABANA (`categoryId → texto`); ausente = tabela. */
   prices: Record<string, string>;
+  /** Exceção de ocupação liberada nesta acomodação (+ o motivo, obrigatório). */
+  allowOverCapacity: boolean;
+  overCapacityReason: string;
 };
 
 let draftSeq = 0;
@@ -60,6 +63,7 @@ const newDraftRoom = (over?: Partial<DraftRoom>): DraftRoom => ({
   checkIn: "", checkOut: "",
   adults: "2", children: "0", babies: "0", pets: "0",
   selectedCategory: null, prices: {},
+  allowOverCapacity: false, overCapacityReason: "",
   ...over,
 });
 
@@ -118,6 +122,10 @@ function seedRooms(seed?: QuoteSeed | null): DraftRoom[] {
       prices: Object.fromEntries(
         Object.entries(r.priceOverrides ?? {}).map(([k, v]) => [k, moneyToInput(Number(v))])
       ),
+      // Sem isto a exceção se perde ao reabrir: a cabana fora de capacidade
+      // sumiria do recálculo e o vendedor não veria o porquê.
+      allowOverCapacity: r.allowOverCapacity === true,
+      overCapacityReason: r.overCapacityReason ?? "",
     }));
   }
   if (seed) {
@@ -252,6 +260,8 @@ export function NewQuoteWizard({
   const [detailed, setDetailed] = useState(false);
   /** Opções fora da mensagem, por acomodação: roomId → Set(categoryId). */
   const [deselected, setDeselected] = useState<Record<string, Set<string>>>({});
+  /** Painel de justificativa da exceção aberto (roomId) + rascunho do motivo. */
+  const [overDraft, setOverDraft] = useState<{ roomId: string; text: string } | null>(null);
   /** Disponibilidade + eventos por período ("in|out") — acomodações podem diferir. */
   const [contextByPeriod, setContextByPeriod] = useState<Record<string, {
     availability: Record<string, RateAvailability>;
@@ -331,7 +341,10 @@ export function NewQuoteWizard({
       fluctuations: bundle.fluctuations ?? undefined,
     };
     return rooms.map((room) => {
-      const input: RateQuoteInput = { ...periodOf(room), ...paxOf(room), ...commercial };
+      const input: RateQuoteInput = {
+        ...periodOf(room), ...paxOf(room), ...commercial,
+        allowOverCapacity: room.allowOverCapacity,
+      };
       return { room, input, result: computeQuote(input, data) as RateQuoteResult };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -436,6 +449,13 @@ export function NewQuoteWizard({
         : "Nenhuma categoria com preço para esses parâmetros.");
       return null;
     }
+    // O servidor recusa exceção sem motivo — barrar aqui evita perder o clique.
+    if (roomQuotes?.some((rq) =>
+      rq.room.allowOverCapacity && rq.room.overCapacityReason.trim().length < MIN_OVER_CAPACITY_REASON
+    )) {
+      toast.error("Justifique a exceção de capacidade antes de salvar.");
+      return null;
+    }
     setSaving(true);
     try {
       const res = await fetch("/api/admin/tarifario/quotes", {
@@ -463,6 +483,8 @@ export function NewQuoteWizard({
                 // Só as cabanas MARCADAS aqui — o servidor filtra `options` por
                 // essa lista, senão a proposta pública oferecia o parque inteiro.
                 includedCategoryIds: includedOf(rq).map((c) => c.categoryId),
+                allowOverCapacity: r.allowOverCapacity,
+                overCapacityReason: r.allowOverCapacity ? r.overCapacityReason.trim() : null,
               };
             }),
             ...commercial,
@@ -599,6 +621,30 @@ export function NewQuoteWizard({
   const selectNoCategories = (roomId: string, categoryIds: string[]) =>
     setDeselected((prev) => ({ ...prev, [roomId]: new Set(categoryIds) }));
 
+  // ── Exceção de ocupação ────────────────────────────────────────────────────
+
+  const openOverPanel = (room: DraftRoom) =>
+    setOverDraft({ roomId: room.id, text: room.overCapacityReason });
+
+  const confirmOver = () => {
+    if (!overDraft) return;
+    const text = overDraft.text.trim();
+    if (text.length < MIN_OVER_CAPACITY_REASON) {
+      toast.error(`Descreva o motivo da exceção (mín. ${MIN_OVER_CAPACITY_REASON} caracteres).`);
+      return;
+    }
+    patchRoom(overDraft.roomId, { allowOverCapacity: true, overCapacityReason: text });
+    setOverDraft(null);
+  };
+
+  /** Desligar limpa a escolha: a cabana escolhida pode ser justamente a de exceção. */
+  const cancelOver = (room: DraftRoom) => {
+    patchRoom(room.id, {
+      allowOverCapacity: false, overCapacityReason: "", selectedCategory: null,
+    });
+    setOverDraft(null);
+  };
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   const numField = (label: string, value: string, set: (v: string) => void) => (
@@ -632,6 +678,9 @@ export function NewQuoteWizard({
   /** Uma opção de cabana dentro de uma acomodação. */
   const optionRow = (room: DraftRoom, c: RateQuoteCategory) => {
     const off = (deselected[room.id] ?? new Set()).has(c.categoryId);
+    // Cabana em exceção: não tem preço para este pax, foi cotada pela maior
+    // tabela que tem. Fica em âmbar — mas a escolhida mantém o gradiente.
+    const over = c.overCapacity;
     const p = periodOf(room);
     const avail = contextByPeriod[`${p.checkIn}|${p.checkOut}`]?.availability[c.categoryId];
     const chosen = room.selectedCategory === c.categoryId;
@@ -651,8 +700,8 @@ export function NewQuoteWizard({
         style={{
           ...S.row, display: "flex", alignItems: "center", gap: 10,
           padding: "9px 12px", opacity: off ? 0.45 : 1,
-          border: `1px solid ${chosen ? T.g1Border : off ? T.border : T.border2}`,
-          background: chosen ? T.gradSoft : T.glass,
+          border: `1px solid ${chosen ? T.g1Border : off ? T.border : over ? T.amberBorder : T.border2}`,
+          background: chosen ? T.gradSoft : over ? T.amberBg : T.glass,
         }}>
         <input type="checkbox" checked={!off} onChange={() => toggleCategory(room.id, c.categoryId)}
           title="Incluir na mensagem" style={{ accentColor: T.g1, cursor: "pointer" }} />
@@ -661,8 +710,16 @@ export function NewQuoteWizard({
           <div style={{ fontSize: 10.5, color: T.muted }}>
             média R$ {formatBRL(custom && c.nights > 0 ? offered / c.nights : c.avgNightly)}/noite
             {custom ? " · preço oferecido" : ""}
+            {over ? ` · preço de ${over.pricedPax} pessoa${over.pricedPax > 1 ? "s" : ""}` : ""}
           </div>
         </div>
+        {over && (
+          <span
+            title={`Sem preço para ${over.requestedPax} pessoas — cotada pela tabela de ${over.pricedPax}.`}
+            style={{ ...pillS(T.amberBg, T.amber, T.amberBorder), fontSize: 9, gap: 3 }}>
+            <AlertTriangle size={9} /> exceção · tabela {over.pricedPax}p
+          </span>
+        )}
         {avail && (
           <span title={avail.freeCabins.join(", ")}
             style={pillS(
@@ -1074,6 +1131,35 @@ export function NewQuoteWizard({
                           </button>
                         </span>
                       )}
+                      {/* Exceção de ocupação: liberada por acomodação, sempre
+                          com motivo. Ligada, vira um selo com os controles. */}
+                      {rq.room.allowOverCapacity ? (
+                        <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                          <span title={rq.room.overCapacityReason}
+                            style={{ ...pillS(T.amberBg, T.amber, T.amberBorder), fontSize: 9, gap: 3 }}>
+                            <AlertTriangle size={9} /> exceção de capacidade
+                          </span>
+                          <button onClick={() => openOverPanel(rq.room)} title="Editar a justificativa"
+                            style={{ padding: 3, borderRadius: 7, background: "none", border: "none", color: T.muted, cursor: "pointer", display: "flex" }}>
+                            <Pencil size={11} />
+                          </button>
+                          <button onClick={() => cancelOver(rq.room)} title="Remover a exceção"
+                            style={{ padding: 3, borderRadius: 7, background: "none", border: "none", color: T.muted, cursor: "pointer", display: "flex" }}>
+                            <X size={11} />
+                          </button>
+                        </span>
+                      ) : (
+                        <button onClick={() => openOverPanel(rq.room)}
+                          title="Oferecer também cabanas sem preço para este número de pessoas"
+                          style={{
+                            padding: "3px 8px", borderRadius: 7, cursor: "pointer", fontFamily: "inherit",
+                            fontSize: 10, fontWeight: 800, border: `1px solid ${T.border2}`,
+                            background: "transparent", color: T.muted,
+                            display: "inline-flex", alignItems: "center", gap: 4,
+                          }}>
+                          <AlertTriangle size={10} /> Fora da capacidade
+                        </button>
+                      )}
                       {/* Período desta acomodação */}
                       <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5 }}>
                         <input type="date" value={p.checkIn}
@@ -1114,10 +1200,65 @@ export function NewQuoteWizard({
                         Sem regra de tarifário em {rq.result.uncoveredDates.length} data(s) deste período.
                       </p>
                     )}
+
+                    {/* Justificativa da exceção — inline, não modal: o vendedor
+                        continua vendo as opções enquanto escreve. */}
+                    {overDraft?.roomId === rq.room.id && (
+                      <div style={{
+                        background: T.amberBg, border: `1px solid ${T.amberBorder}`,
+                        borderRadius: 11, padding: "11px 13px",
+                        display: "flex", flexDirection: "column", gap: 7,
+                      }}>
+                        <div style={{ fontSize: 11.5, fontWeight: 800, color: T.amber, display: "flex", alignItems: "center", gap: 5 }}>
+                          <AlertTriangle size={12} /> Exceção de capacidade
+                        </div>
+                        <p style={{ fontSize: 11, color: T.muted, margin: 0, lineHeight: 1.5 }}>
+                          As cabanas sem preço para {paxLabel(rq.room)} passam a aparecer, cotadas
+                          pela maior tabela de pessoas que elas têm. A justificativa fica no
+                          orçamento, na timeline do lead e na auditoria.
+                        </p>
+                        <textarea rows={2} autoFocus
+                          value={overDraft.text}
+                          onChange={(e) => setOverDraft({ roomId: rq.room.id, text: e.target.value })}
+                          placeholder="Ex.: criança de 4 anos dormindo com os pais — colchão extra combinado com a governança."
+                          style={{ ...S.input, resize: "vertical", fontSize: 12, lineHeight: 1.45 }} />
+                        <div style={{ display: "flex", gap: 7 }}>
+                          <button onClick={() => setOverDraft(null)} style={{ ...S.ghostBtn, fontSize: 11, padding: "6px 12px" }}>
+                            Cancelar
+                          </button>
+                          <button onClick={confirmOver}
+                            style={{
+                              padding: "6px 12px", borderRadius: 9, cursor: "pointer", fontFamily: "inherit",
+                              fontSize: 11, fontWeight: 800,
+                              background: T.amberBg, border: `1px solid ${T.amberBorder}`, color: T.amber,
+                            }}>
+                            Liberar exceção
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {rq.result.categories.length === 0 ? (
-                      <p style={{ fontSize: 12, color: T.red, margin: 0 }}>
-                        Nenhuma categoria comporta {paxLabel(rq.room)} neste período.
-                      </p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+                        <p style={{ fontSize: 12, color: T.red, margin: 0 }}>
+                          {rq.room.allowOverCapacity
+                            ? "Nenhuma categoria tem preço em nenhuma ocupação neste período."
+                            : `Nenhuma categoria comporta ${paxLabel(rq.room)} neste período.`}
+                        </p>
+                        {/* Ponto de descoberta do recurso. Some quando o problema
+                            é falta de tarifa (aí exceção não resolve nada). */}
+                        {!rq.room.allowOverCapacity && rq.result.uncoveredDates.length === 0 &&
+                          overDraft?.roomId !== rq.room.id && (
+                          <button onClick={() => openOverPanel(rq.room)}
+                            style={{
+                              padding: "5px 10px", borderRadius: 8, cursor: "pointer", fontFamily: "inherit",
+                              fontSize: 11, fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 5,
+                              background: T.amberBg, border: `1px solid ${T.amberBorder}`, color: T.amber,
+                            }}>
+                            <AlertTriangle size={11} /> Cotar fora da capacidade (exceção)
+                          </button>
+                        )}
+                      </div>
                     ) : (<>
                       {includedOf(rq).length === 0 && (
                         <p style={{ fontSize: 11.5, color: T.red, margin: 0 }}>

@@ -366,6 +366,11 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
     if (confirm("Criar a estadia agora, já pré-preenchida?")) {
       const params = new URLSearchParams({
         checkIn: data.checkIn, checkOut: data.checkOut, quoteId: lead.id,
+        // O pax vem do orçamento: a estadia não pode nascer com 2 adultos
+        // fixos quando a negociação fechou outra composição.
+        adults: String(data.adults ?? 2),
+        children: String(data.children ?? 0),
+        babies: String(data.babies ?? 0),
       });
       if (data.guestId) params.set("guestId", data.guestId);
       router.push(`/admin/stays/new?${params}`);

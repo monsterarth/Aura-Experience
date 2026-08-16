@@ -112,6 +112,9 @@ function findRule(periods: RatePeriod[], iso: string): RatePeriod | undefined {
  * - pagantes = adultos + crianças, limitado a 1..6 — é o índice na tabela;
  * - noite sem preço para o pax soma 0 (categoria some se o total ficar 0 —
  *   é assim que "4 pessoas não cabem na Praia 1" é filtrado);
+ * - com `input.allowOverCapacity`, a categoria SEM preço para o pax pedido
+ *   não some: é cotada pela maior coluna de pax que tenha preço e sai marcada
+ *   com `overCapacity` (a exceção pontual do funil de vendas);
  * - qualquer noite sem regra de calendário bloqueia o orçamento inteiro
  *   (uncoveredDates preenchido, categories vazio).
  */
@@ -163,9 +166,36 @@ export function computeQuote(input: RateQuoteInput, data: RateData): RateQuoteRe
     ? Math.round((nightlyPcts.reduce((s, p) => s + p, 0) / nights) * 100) / 100
     : 0;
 
+  // Tabela vigente de cada noite (FDS → weekendTableId), resolvida UMA vez: o
+  // modo exceção varre várias colunas de pax por categoria.
+  const nightTables = allNights.map((iso) => {
+    const rule = findRule(sorted, iso)!;
+    const tableId = isWeekendNight(iso) ? rule.weekendTableId : rule.weekdayTableId;
+    return { rule, table: tableId ? tableById.get(tableId) : undefined };
+  });
+
   const results: RateQuoteCategory[] = [];
 
   for (const categoryId of categoryIds) {
+    const priceAt = (ni: number, p: number): number =>
+      Number(nightTables[ni].table?.prices?.[categoryId]?.[String(p)]) || 0;
+    const hasPriceFor = (p: number) => allNights.some((_, ni) => priceAt(ni, p) > 0);
+
+    // Normal: a coluna do pax pedido. Em exceção, quando NENHUMA noite tem
+    // preço nessa coluna, cai na maior coluna com preço e marca a categoria.
+    let effPax = pax;
+    let overCapacity: RateQuoteCategory['overCapacity'];
+    if (input.allowOverCapacity && !hasPriceFor(pax)) {
+      let fallback = 0;
+      for (let p = pax - 1; p >= 1; p--) {
+        if (hasPriceFor(p)) { fallback = p; break; }
+      }
+      // Categoria sem preço em pax NENHUM segue invisível, mesmo na exceção.
+      if (fallback === 0) continue;
+      effPax = fallback;
+      overCapacity = { requestedPax: pax, pricedPax: fallback };
+    }
+
     let rawTotal = 0;
     let accumulated = 0;
     let fluctTotal = 0;
@@ -175,10 +205,8 @@ export function computeQuote(input: RateQuoteInput, data: RateData): RateQuoteRe
 
     for (let ni = 0; ni < allNights.length; ni++) {
       const iso = allNights[ni];
-      const rule = findRule(sorted, iso)!;
-      const tableId = isWeekendNight(iso) ? rule.weekendTableId : rule.weekdayTableId;
-      const table = tableId ? tableById.get(tableId) : undefined;
-      const dailyRaw = Number(table?.prices?.[categoryId]?.[String(pax)]) || 0;
+      const { rule } = nightTables[ni];
+      const dailyRaw = priceAt(ni, effPax);
 
       rawTotal += dailyRaw;
       if (dailyRaw <= 0) daysWithoutPrice++;
@@ -249,6 +277,7 @@ export function computeQuote(input: RateQuoteInput, data: RateData): RateQuoteRe
       breakdown,
       periodNights,
       daysWithoutPrice,
+      ...(overCapacity ? { overCapacity } : {}),
     });
   }
 
@@ -388,6 +417,24 @@ Enxoval completo e roupa de cama`;
 export const DEFAULT_EVENT_TEMPLATE =
   '🍹 Durante sua estadia teremos um evento especial: *{NOME_EVENTO}* em {DATA_EVENTO}. Aproveite!';
 
+/**
+ * Aviso de ocupação estendida (cabana cotada em exceção). Texto FIXO, não
+ * configurável por propriedade: é uma frase que precisa ficar conservadora
+ * ("a confirmar na chegada") — reescrever convida promessa indevida.
+ * A versão curta vai na mensagem de WhatsApp e na linha da opção; a longa é
+ * o bloco de aviso da proposta pública.
+ */
+export const OVER_CAPACITY_SHORT =
+  'Ocupação estendida — acomodação extra a confirmar na chegada';
+
+/** Tamanho mínimo da justificativa da exceção — vale no wizard e no servidor. */
+export const MIN_OVER_CAPACITY_REASON = 10;
+
+export const OVER_CAPACITY_NOTICE =
+  'Ocupação estendida: uma das cabanas escolhidas é preparada para menos pessoas do que o ' +
+  'seu grupo. A acomodação extra foi combinada com a pousada e é montada na chegada. ' +
+  'Qualquer dúvida, fale com a gente antes de confirmar.';
+
 export interface QuoteMessageContext {
   attendantName: string;
   input: RateQuoteInput;
@@ -436,6 +483,7 @@ export function buildCategoryBlock(
       block += `   ▫ ${item.label}: R$ ${v}\n`;
     }
     block += `   ➡ *Total: R$ ${formatBRL(quote.finalTotal)}*\n`;
+    if (quote.overCapacity) block += `   ⚠ ${OVER_CAPACITY_SHORT}\n`;
     if (link) block += `🔗 ${link}\n`;
     return block;
   }
@@ -447,7 +495,10 @@ export function buildCategoryBlock(
   return block
     .split('\n')
     .filter((l) => !(!link && l.includes('🔗')))
-    .join('\n') + '\n';
+    .join('\n')
+    // O aviso vem DEPOIS do template da cabana — a mensagem copiada tem que
+    // dizer o mesmo que a proposta pública.
+    + (quote.overCapacity ? `\n⚠ ${OVER_CAPACITY_SHORT}` : '') + '\n';
 }
 
 export function buildEventNotices(

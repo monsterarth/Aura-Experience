@@ -1,7 +1,7 @@
 // src/app/check-in/form/[stayId]/page.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { GuestApi } from "@/lib/guest-api";
 import { chatwootSyncOnPreCheckinComplete } from "@/app/actions/chatwoot-actions";
@@ -413,6 +413,19 @@ export default function UnifiedPreCheckin() {
   const [cabin, setCabin] = useState<any>(null);
   const [groupStays, setGroupStays] = useState<any[]>([]);
   const [countdown, setCountdown] = useState(5);
+
+  /**
+   * Teto de hóspedes da ficha. NÃO é só a capacidade cadastrada da cabana: a
+   * reserva pode ter sido vendida em exceção de ocupação (combinada ainda no
+   * orçamento) e a ficha pode já ter mais gente do que a capacidade. O hóspede
+   * nunca pode travar num número menor do que aquilo que ele já comprou.
+   */
+  const maxCapacity = useMemo(() => {
+    const c = stay.counts || {};
+    const declared = (c.adults || 0) + (c.children || 0) + (c.babies || 0);
+    const current = 1 + (stay.additionalGuests?.length || 0);
+    return Math.max(cabin?.capacity || 0, declared, current) || 99;
+  }, [cabin, stay.counts, stay.additionalGuests]);
 
   const [isEditingName, setIsEditingName] = useState(false);
 
@@ -1149,7 +1162,7 @@ export default function UnifiedPreCheckin() {
             </h3>
             {cabin?.capacity && (
               <span className="text-[10px] font-bold uppercase text-muted-foreground bg-secondary px-3 py-1.5 rounded-lg border border-border">
-                {1 + (stay.additionalGuests?.length || 0)}/{cabin.capacity}
+                {1 + (stay.additionalGuests?.length || 0)}/{maxCapacity}
               </span>
             )}
           </div>
@@ -1216,7 +1229,6 @@ export default function UnifiedPreCheckin() {
             ))}
 
             {(() => {
-              const maxCapacity = cabin?.capacity || 99;
               const currentTotal = 1 + (stay.additionalGuests?.length || 0);
               const isFull = currentTotal >= maxCapacity;
               const addGuest = (type: string) => {

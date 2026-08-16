@@ -9,13 +9,17 @@
 // (CPF), negotiatedValue, notes, source, createdBy, lostReason e o
 // `breakdown` de cada opção (que expõe a régua de desconto interna).
 // `rawTotal` só sai quando for MAIOR que o final — é o "de/por" comercial.
+// `overCapacity` SAI de propósito: é o que sustenta o aviso de ocupação
+// estendida — o cliente tem que saber que a cabana é preparada para menos
+// gente ANTES de aceitar. A justificativa interna (`overCapacityReason`) fica
+// de fora, como todo o resto do raciocínio comercial.
 //
 // A tabela tem RLS `TO authenticated`, então estas consultas rodam com
 // service-role: a allowlist é a única defesa.
 import { supabaseAdmin } from "@/lib/supabase";
 import { AuditService } from "./audit-service";
 import { CrmService } from "./crm-service";
-import { offeredTotal, resolveRoomValue } from "@/lib/rate-engine";
+import { offeredTotal, OVER_CAPACITY_NOTICE, resolveRoomValue } from "@/lib/rate-engine";
 import { parseMultiLang } from "@/lib/multilang";
 import { RateQuoteCategory, RateQuoteRecord, RateQuoteRoom } from "@/types/aura";
 
@@ -33,6 +37,8 @@ export type PublicQuoteOption = {
   /** Só quando houve desconto (o "de" do de/por). */
   wasTotal?: number;
   siteUrl?: string;
+  /** Cabana vendida em ocupação estendida — rende o aviso na opção. */
+  overCapacity?: { requestedPax: number; pricedPax: number };
 };
 
 export type PublicQuoteRoom = {
@@ -72,6 +78,11 @@ export type PublicQuoteView = {
   inclusions: string[];
   /** Regras da pousada (settings.generalPolicyText) — aceite obrigatório. */
   policyText: string | null;
+  /**
+   * Aviso de ocupação estendida — preenchido quando ALGUMA opção de alguma
+   * acomodação foi cotada em exceção. A página só exibe; quem decide é aqui.
+   */
+  overCapacityNotice: string | null;
   property: {
     id: string;
     name: string;
@@ -129,6 +140,7 @@ function publicOption(
     avgNightly: c.nights > 0 ? total / c.nights : c.avgNightly,
     ...(was ? { wasTotal: was } : {}),
     ...(siteUrl ? { siteUrl } : {}),
+    ...(c.overCapacity ? { overCapacity: c.overCapacity } : {}),
   };
 }
 
@@ -227,6 +239,8 @@ export const RateQuotePublicService = {
       expiresAt: q.expiresAt ?? null,
       inclusions,
       policyText: policyTextOf(property?.settings),
+      overCapacityNotice: rooms.some((r) => r.options.some((c) => c.overCapacity))
+        ? OVER_CAPACITY_NOTICE : null,
       property: {
         id: property?.id ?? q.propertyId,
         name: property?.name ?? "",

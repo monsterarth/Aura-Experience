@@ -82,6 +82,12 @@ function NewStayPageContent() {
   const prefilledCheckOut = searchParams.get('checkOut');
   const prefilledGuestId = searchParams.get('guestId');
   const prefilledQuoteId = searchParams.get('quoteId');
+  /** Composição fechada no funil — sem ela a estadia nasceria sempre com 2 adultos. */
+  const seedPax = {
+    adults: Math.max(1, parseInt(searchParams.get('adults') || '') || 2),
+    children: Math.max(0, parseInt(searchParams.get('children') || '') || 0),
+    babies: Math.max(0, parseInt(searchParams.get('babies') || '') || 0),
+  };
 
   const [loading, setLoading] = useState(false);
   const [searchingGuest, setSearchingGuest] = useState(false);
@@ -128,7 +134,7 @@ function NewStayPageContent() {
       if (prefilledCabinId && cabinSelections.length === 0) {
         const match = cabinsData.find(c => c.id === prefilledCabinId);
         if (match) {
-          setCabinSelections([{ cabinId: match.id, name: match.name, adults: 2, children: 0, babies: 0 }]);
+          setCabinSelections([{ cabinId: match.id, name: match.name, ...seedPax }]);
         }
       }
     });
@@ -172,7 +178,10 @@ function NewStayPageContent() {
     setCabinSelections(prev => {
       const exists = prev.find(s => s.cabinId === cabin.id);
       if (exists) return prev.filter(s => s.cabinId !== cabin.id);
-      return [...prev, { cabinId: cabin.id, name: cabin.name, adults: 2, children: 0, babies: 0 }];
+      // A PRIMEIRA cabana herda a composição fechada no funil; as seguintes
+      // são acréscimo do operador e começam no padrão.
+      const pax = prev.length === 0 ? seedPax : { adults: 2, children: 0, babies: 0 };
+      return [...prev, { cabinId: cabin.id, name: cabin.name, ...pax }];
     });
   };
 
@@ -280,7 +289,7 @@ function NewStayPageContent() {
       // CRIA A ESTADIA
       const cabinConfigs = cabinSelections.length > 0
         ? cabinSelections
-        : [{ cabinId: null, name: internalUse ? (internalLabel.trim() || 'Uso da Casa') : 'Sem Cabana', adults: 2, children: 0, babies: 0 }];
+        : [{ cabinId: null, name: internalUse ? (internalLabel.trim() || 'Uso da Casa') : 'Sem Cabana', ...seedPax }];
 
       const result = await StayService.createStayRecord({
         propertyId: contextProperty.id,

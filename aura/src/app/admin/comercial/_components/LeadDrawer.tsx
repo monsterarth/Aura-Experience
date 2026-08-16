@@ -6,8 +6,9 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  BedDouble, CalendarClock, CalendarDays, CopyPlus, ExternalLink, Heart, Link2,
-  Loader2, Mail, MessageSquare, Pencil, Phone, Send, Tag, Trash2, X, XCircle,
+  AlertTriangle, BedDouble, CalendarClock, CalendarDays, CopyPlus, ExternalLink,
+  Heart, Link2, Loader2, Mail, MessageSquare, Pencil, Phone, Send, Tag, Trash2,
+  X, XCircle,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { T } from "@/lib/admin-tokens";
@@ -180,7 +181,17 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
                   {roomNights > 0 ? ` · ${roomNights}n` : ""}
                 </span>
               )}
+              {room.allowOverCapacity && (
+                <span style={{ ...pillS(T.amberBg, T.amber, T.amberBorder), fontSize: 9, gap: 3 }}>
+                  <AlertTriangle size={9} /> exceção de capacidade
+                </span>
+              )}
             </div>
+            {room.allowOverCapacity && room.overCapacityReason && (
+              <p style={{ fontSize: 10.5, color: T.amber, margin: 0, lineHeight: 1.45 }}>
+                Justificativa: {room.overCapacityReason}
+              </p>
+            )}
             {room.options.map((c) => {
               const key = c.categoryId || c.category;
               const chosen = room.selectedCategory === c.categoryId || room.selectedCategory === c.category;
@@ -213,6 +224,13 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
                       {custom ? " · preço oferecido" : ""}
                     </div>
                   </div>
+                  {c.overCapacity && (
+                    <span
+                      title={`Sem preço para ${c.overCapacity.requestedPax} pessoas — cotada pela tabela de ${c.overCapacity.pricedPax}.`}
+                      style={{ ...pillS(T.amberBg, T.amber, T.amberBorder), fontSize: 9, gap: 3, flexShrink: 0 }}>
+                      <AlertTriangle size={9} /> exceção · tabela {c.overCapacity.pricedPax}p
+                    </span>
+                  )}
 
                   {editing ? (
                     <span style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>

@@ -196,6 +196,13 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
                           </>
                         )}
                       </span>
+                      {/* Ocupação estendida: o cliente precisa saber ANTES de
+                          escolher que esta cabana é preparada para menos gente. */}
+                      {o.overCapacity && (
+                        <span style={{ display: "block", fontSize: 11.5, color: "var(--muted)", marginTop: 3 }}>
+                          ⚠ Ocupação estendida — acomodação extra a confirmar na chegada
+                        </span>
+                      )}
                     </span>
                     {/* Com valor especial, o preço de tabela sai riscado e o
                         oferecido ganha destaque — é o que o cliente compara. */}
@@ -219,6 +226,21 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
             </div>
           </section>
         ))}
+
+        {/* Aviso de ocupação estendida — só aparece quando alguma cabana da
+            proposta foi cotada acima da ocupação normal. */}
+        {quote.overCapacityNotice && (
+          <section style={{
+            background: "var(--surface)", border: "1px solid var(--line)",
+            borderRadius: 16, padding: "14px 16px", marginBottom: 14,
+            display: "flex", alignItems: "flex-start", gap: 10,
+          }}>
+            <span style={{ fontSize: 16, lineHeight: 1.3, flexShrink: 0 }}>⚠</span>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.55 }}>
+              {quote.overCapacityNotice}
+            </p>
+          </section>
+        )}
 
         {/* O que está incluso — vem do Tarifário → Comercial. */}
         {quote.inclusions.length > 0 && (
