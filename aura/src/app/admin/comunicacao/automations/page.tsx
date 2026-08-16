@@ -29,11 +29,16 @@ export default function AutomationsQueuePage() {
     const archiveThreshold = new Date();
     archiveThreshold.setDate(archiveThreshold.getDate() - 4);
 
+    // A fila não é só do robô: o disparo em massa (/api/broadcast) grava com
+    // isAutomated=false e passa pelo MESMO cron. Filtrar só por isAutomated
+    // escondia essas falhas — apareciam no painel da recepção sem nenhum lugar
+    // para reenviar. O que define "fila" é ter scheduledFor; mensagem de conversa
+    // manual (CommunicationCenter) sai sem agendamento e continua fora daqui.
     const { data } = await supabase
       .from('messages')
       .select('*')
       .eq('propertyId', property.id)
-      .eq('isAutomated', true)
+      .or('isAutomated.is.true,scheduledFor.not.is.null')
       .order('createdAt', { ascending: false })
       .limit(200);
 
@@ -71,7 +76,7 @@ export default function AutomationsQueuePage() {
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `propertyId=eq.${property.id}` }, (payload: any) => {
         const inserted = payload.new as any;
-        if (inserted.isAutomated) setMessages(prev => [inserted, ...prev]);
+        if (inserted.isAutomated || inserted.scheduledFor) setMessages(prev => [inserted, ...prev]);
       })
       .subscribe((status: string) => { if (status === 'SUBSCRIBED') subscribed = true; });
 
@@ -188,6 +193,11 @@ export default function AutomationsQueuePage() {
     return trigger ? (triggers[trigger] || trigger) : 'Gatilho Desconhecido';
   };
 
+  // Sem triggerEvent e sem isAutomated = veio do disparo em massa. Dizer "Gatilho
+  // Desconhecido" nesses casos mandava quem olha caçar uma automação que não existe.
+  const originLabel = (msg: any) =>
+    msg.isAutomated ? translateTrigger(msg.triggerEvent) : 'Disparo em Massa';
+
   return (
     <div className="flex flex-col h-full bg-muted/20 pb-20">
       <header className="flex items-center justify-between px-6 py-5 bg-background border-b sticky top-0 z-10 shadow-sm">
@@ -262,7 +272,7 @@ export default function AutomationsQueuePage() {
                     )}
 
                     <div className="flex flex-col gap-2 flex-1 min-w-0">
-                      <div className="flex items-center gap-3"><span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-primary/10 text-primary">{translateTrigger(msg.triggerEvent)}</span><span className="text-sm font-medium text-foreground">Destino: {msg.to}</span></div>
+                      <div className="flex items-center gap-3"><span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold ${msg.isAutomated ? 'bg-primary/10 text-primary' : 'bg-blue-500/10 text-blue-600'}`}>{originLabel(msg)}</span><span className="text-sm font-medium text-foreground">Destino: {msg.to}</span></div>
                       <p className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-lg line-clamp-2 border border-dashed">{msg.body}</p>
                       <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1"><span className="flex items-center gap-1"><CalendarClock className="w-3.5 h-3.5" /> Agendado para: {formatDate(msg.scheduledFor || msg.createdAt)}</span>{msg.attempts > 0 && <span className="flex items-center gap-1"><RefreshCw className="w-3.5 h-3.5" /> Tentativas: {msg.attempts}/3</span>}</div>
                     </div>

@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
             supabaseAdmin.from('survey_responses').select('id, stayId, metrics, createdAt')
                 .eq('propertyId', propertyId).gte('createdAt', since48h).order('createdAt', { ascending: false }),
             // Mensagens com falha nas últimas 48h
-            supabaseAdmin.from('messages').select('id, triggerEvent, to, createdAt')
+            supabaseAdmin.from('messages').select('id, triggerEvent, to, createdAt, isAutomated, scheduledFor')
                 .eq('propertyId', propertyId).eq('status', 'failed')
                 .gte('createdAt', since48h).order('createdAt', { ascending: false }).limit(5),
             // Pedidos de café hoje (fb_orders usa snake_case)

@@ -230,12 +230,20 @@ export default function ReceptionDashboard() {
                 time: formatTimeAgo(r.createdAt),
             };
         }),
-        ...msgFailures.map(m => ({
-            type: 'message_error' as const,
-            title: 'Falha: Mensagem Automática',
-            desc: `Não foi possível enviar (${m.triggerEvent || 'automação'}) para ${m.to || 'hóspede'}.`,
-            time: formatTimeAgo(m.createdAt),
-        })),
+        // Nem toda falha é do robô: disparo em massa e conversa manual caem na mesma
+        // tabela. Chamar tudo de "automática" mandava a recepção procurar a falha na
+        // fila de automações, onde ela não estava.
+        ...msgFailures.map(m => {
+            const origin = m.isAutomated
+                ? `automação: ${m.triggerEvent || 'gatilho'}`
+                : m.scheduledFor ? 'disparo em massa' : 'mensagem manual';
+            return {
+                type: 'message_error' as const,
+                title: m.isAutomated ? 'Falha: Mensagem Automática' : 'Falha no Envio de WhatsApp',
+                desc: `Não foi possível enviar (${origin}) para ${m.to || 'hóspede'}.`,
+                time: formatTimeAgo(m.createdAt),
+            };
+        }),
     ].slice(0, 5);
 
     // ==========================================
