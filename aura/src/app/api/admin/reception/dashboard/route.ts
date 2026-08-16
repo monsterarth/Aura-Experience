@@ -2,7 +2,7 @@
 // Retorna todos os dados estáticos do painel da recepção em uma única chamada.
 // Usa supabaseAdmin (service role) — sem browser navigator.locks.
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { requireAuth, isAuthError, scopedPropertyId } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { stayDisplayName } from '@/lib/stay-display';
 
@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     if (!supabaseAdmin) return NextResponse.json(null, { status: 500 });
 
     const { searchParams } = new URL(request.url);
-    const propertyId = searchParams.get('propertyId');
+    const propertyId = scopedPropertyId(auth, searchParams.get('propertyId'));
     if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
 
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
