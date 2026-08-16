@@ -65,8 +65,12 @@ export async function GET(request: Request) {
 
       if (rules.length === 0) continue;
 
+      // Chaveado por triggerEvent, NÃO por id: desde que a regra virou por propriedade
+      // o id é namespaced ("fazenda-do-rosa__pre_checkin_48h"), e as buscas abaixo são
+      // pelo nome do gatilho. Chavear por id fazia todas elas darem undefined — nenhuma
+      // mensagem era enfileirada e o cron logava "0 mensagem(ns) enfileirada(s)".
       const activeRules = rules.reduce((acc, rule) => {
-        acc[rule.id] = rule;
+        acc[rule.triggerEvent] = rule;
         return acc;
       }, {} as Record<string, AutomationRule>);
 

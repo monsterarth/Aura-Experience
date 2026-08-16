@@ -383,8 +383,11 @@ export class AutomationService {
       ];
 
       const existing = data ?? [];
-      const existingIds = new Set(existing.map((r: any) => r.id));
-      const missingTriggers = allTriggers.filter((t: any) => !existingIds.has(t));
+      // Comparar por triggerEvent, não por id: desde que a regra virou por propriedade
+      // o id é namespaced (`fazenda-do-rosa__welcome_checkin`) e nunca bate com o nome
+      // do gatilho — todas as 7 pareciam faltar a cada leitura.
+      const existingTriggers = new Set(existing.map((r: any) => r.triggerEvent));
+      const missingTriggers = allTriggers.filter((t: any) => !existingTriggers.has(t));
       if (missingTriggers.length === 0) return existing as AutomationRule[];
 
       const newRules = missingTriggers.map((trigger: any) => ({

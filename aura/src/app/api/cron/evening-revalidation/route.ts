@@ -105,12 +105,20 @@ export async function GET(request: Request) {
       if (!templateSnap) continue;
       const template = templateSnap as any as MessageTemplate;
 
+      // Faixa do dia, não igualdade: checkOut é timestamptz ("2026-08-17T15:00:00+00")
+      // e `.eq(checkOut, '2026-08-17')` vira 00:00:00+00 no Postgres — nunca casava,
+      // então esta rede de segurança do pre_checkout nunca enfileirou nada.
+      // O recorte é o dia UTC, o mesmo que a Fase A usa no slice(0,10).
+      const dayAfter = new Date(tomorrowStr + 'T00:00:00Z');
+      dayAfter.setUTCDate(dayAfter.getUTCDate() + 1);
+
       const { data: staysSnap } = await supabaseAdmin
         .from('stays')
         .select('*')
         .eq('propertyId', propertyId)
         .eq('status', 'active')
-        .eq('checkOut', tomorrowStr);
+        .gte('checkOut', `${tomorrowStr}T00:00:00Z`)
+        .lt('checkOut', dayAfter.toISOString());
 
       if (!staysSnap) continue;
 
