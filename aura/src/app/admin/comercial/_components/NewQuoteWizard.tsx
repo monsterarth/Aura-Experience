@@ -2,7 +2,11 @@
 // 1) dados do lead (nome + origem + um contato) e a COMPOSIÇÃO do pedido —
 //    quantas acomodações e o pax de cada uma (2 cabanas de casal, 1 casal +
 //    1 família…). Tudo isso é UMA negociação, UM card no funil.
-// 2) "é essa pessoa?" — cruza com a base (telefone/nome/CPF) + anti-duplicidade
+// 2) "é essa pessoa?" — cruza com a base (telefone/nome/CPF) + anti-duplicidade.
+//    Achar orçamento aberto do mesmo cliente NÃO descarta o que foi digitado:
+//    entra um COMPARATIVO (nos moldes do diálogo de arquivo repetido) com o que
+//    está salvo × o que foi preenchido, e três saídas — atualizar aquele lead
+//    com o pedido novo, manter o pedido salvo, ou criar um card à parte.
 // 3) a calculadora SIT embutida, POR acomodação (computeQuote puro no cliente,
 //    mesmo motor do Tarifário; o save recalcula no servidor) → salvar /
 //    copiar → "enviado?"
@@ -27,7 +31,7 @@ import {
   CrmChannel, Guest, RateAvailability, RateQuoteCategory, RateQuoteInput,
   RateQuoteRecord, RateQuoteResult, RateQuoteRoom,
 } from "@/types/aura";
-import { S, fmtBR, pillS } from "./shared";
+import { S, fmtBR, pillS, QUOTE_STAGES } from "./shared";
 
 const todayIso = () => dateToIso(new Date());
 
@@ -74,13 +78,30 @@ const paxOf = (r: DraftRoom) => ({
   babies: Math.max(0, parseInt(r.babies) || 0),
   pets: Math.max(0, parseInt(r.pets) || 0),
 });
-const paxLabel = (r: DraftRoom) => {
-  const p = paxOf(r);
+type Pax = { adults: number; children: number; babies: number; pets: number };
+const paxText = (p: Pax) => {
   const parts = [`${p.adults + p.children} pagante${p.adults + p.children !== 1 ? "s" : ""}`];
   if (p.babies > 0) parts.push(`${p.babies} isento${p.babies > 1 ? "s" : ""}`);
   if (p.pets > 0) parts.push(`${p.pets} pet${p.pets > 1 ? "s" : ""}`);
   return parts.join(" · ");
 };
+const paxLabel = (r: DraftRoom) => paxText(paxOf(r));
+
+const sumPax = (list: Pax[]): Pax => list.reduce((a, p) => ({
+  adults: a.adults + p.adults, children: a.children + p.children,
+  babies: a.babies + p.babies, pets: a.pets + p.pets,
+}), { adults: 0, children: 0, babies: 0, pets: 0 });
+
+/** Noites entre duas datas ISO (ambas UTC-meia-noite: a subtração é exata). */
+const nightsBetween = (a: string, b: string) =>
+  Math.max(0, Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000));
+
+/** Composição de um orçamento salvo — `rooms` quando existe, colunas raiz nos
+ *  antigos (pré-fase 3, que só tinham uma acomodação). */
+const quoteComposition = (q: RateQuoteRecord): { count: number; pax: Pax } =>
+  q.rooms && q.rooms.length > 0
+    ? { count: q.rooms.length, pax: sumPax(q.rooms) }
+    : { count: 1, pax: { adults: q.adults, children: q.children, babies: q.babies, pets: q.pets } };
 
 /** Semente do wizard: reabrir para EDITAR ou clonar o cliente numa cotação nova. */
 export type QuoteSeed = {
@@ -162,7 +183,7 @@ export function NewQuoteWizard({
   // Com semente o cliente já está resolvido: começa direto na calculadora.
   const [step, setStep] = useState<1 | 2 | 3>(hasSeed ? 3 : 1);
   // Digitou algo e clicou fora / Esc não pode sumir com o pedido sem avisar.
-  const { requestClose, guardProps, markDirty } = useCloseGuard(onClose);
+  const { requestClose, confirmDiscard, guardProps, markDirty } = useCloseGuard(onClose);
 
   // ── Passo 1: lead + composição ─────────────────────────────────────────────
   const [name, setName] = useState(seed?.clientName ?? "");
@@ -206,11 +227,20 @@ export function NewQuoteWizard({
   // ── Passo 2: match ─────────────────────────────────────────────────────────
   const [checking, setChecking] = useState(false);
   const [matches, setMatches] = useState<MatchContext | null>(null);
+  /**
+   * Orçamento que já existia e foi ADOTADO no passo 2: em vez de descartar o
+   * que a recepção acabou de digitar para abrir a ficha antiga, o wizard passa
+   * a atualizar aquele lead com o pedido da tela. Nada é digitado duas vezes e
+   * o funil não ganha card repetido.
+   */
+  const [adopted, setAdopted] = useState<RateQuoteRecord | null>(null);
+  /** Qual dos orçamentos repetidos está no comparativo (default: o 1º). */
+  const [compareId, setCompareId] = useState<string | null>(null);
 
   const goNext = async () => {
     if (step1Error) { toast.error(step1Error); return; }
-    // Editando / cliente já resolvido: não há o que confirmar.
-    if (hasSeed || linkedGuest) { setStep(3); return; }
+    // Editando / cliente já resolvido / duplicado já tratado: nada a confirmar.
+    if (hasSeed || adopted || linkedGuest) { setStep(3); return; }
     setChecking(true);
     try {
       const qs = new URLSearchParams({ propertyId });
@@ -234,6 +264,56 @@ export function NewQuoteWizard({
     } finally {
       setChecking(false);
     }
+  };
+
+  /**
+   * "Continuar neste": o pedido digitado agora passa a valer PARA o orçamento
+   * que já existe. `savedId` recebe o id dele — o save vai com `id` e atualiza
+   * o mesmo lead. O que já estava preenchido fica; só o que estava em branco é
+   * completado pela ficha antiga.
+   */
+  const adoptQuote = (q: RateQuoteRecord, keepSaved = false) => {
+    setAdopted(q);
+    setSavedId(q.id);
+    savedKeyRef.current = null;   // o que está na tela ainda não foi gravado
+    if (q.guestId) setLinkedGuest({ id: q.guestId, name: q.clientName || name });
+    if (!phone.trim() && q.clientPhone) setPhone(q.clientPhone);
+    if (!email.trim() && q.clientEmail) setEmail(q.clientEmail);
+    if (!document.trim() && q.clientDocument) setDocument(q.clientDocument);
+    if (!source && q.source) setSource(q.source);
+    if (keepSaved) applyQuoteToDraft(q);
+    markDirty();
+    setStep(3);
+  };
+
+  /** Traz período, acomodações e ajustes comerciais do orçamento salvo para a
+   *  tela — o lado "manter o que já estava" do comparativo. */
+  const applyQuoteToDraft = (q: RateQuoteRecord) => {
+    setCheckIn(q.checkIn);
+    setCheckOut(q.checkOut);
+    setRooms(seedRooms({
+      quoteId: q.id, checkIn: q.checkIn, checkOut: q.checkOut, rooms: q.rooms,
+      adults: q.adults, children: q.children, babies: q.babies, pets: q.pets,
+    }));
+    setFluctuationPct(q.fluctuationPct ?? 0);
+    setFluctuationAuto(q.fluctuationAuto === true);
+    setDiscountIds(q.discountIds ?? []);
+    setAdhocValue(q.adhocValue ? String(q.adhocValue) : "");
+    setAdhocType(q.adhocType === "brl" ? "brl" : "pct");
+  };
+
+  /** É a MESMA viagem e o que foi digitado era repetição: volta ao pedido salvo. */
+  const restoreAdopted = () => {
+    if (!adopted) return;
+    markDirty();
+    applyQuoteToDraft(adopted);
+  };
+
+  /** Era outra negociação afinal: volta a nascer lead novo, sem perder a tela. */
+  const undoAdopt = () => {
+    setAdopted(null);
+    setSavedId(null);
+    savedKeyRef.current = null;
   };
 
   const confirmGuest = (g: Guest) => {
@@ -508,7 +588,9 @@ export function NewQuoteWizard({
   const saveAndClose = async () => {
     const id = await save("open");
     if (!id) return;
-    toast.success(editingId
+    toast.success(adopted
+      ? "Orçamento existente atualizado — sem card repetido no funil."
+      : editingId
       ? "Cotação atualizada — valores recalculados."
       : "Salvo no funil — follow-up e validade criados automaticamente.");
     onSaved(id);
@@ -672,8 +754,122 @@ export function NewQuoteWizard({
     </span>
   );
 
+  /** Orçamento que este wizard vai ATUALIZAR: o reaberto para editar ou o
+   *  adotado no passo 2. Ausente = nasce lead novo. */
+  const targetId = editingId ?? adopted?.id ?? null;
+
   const dupQuotes = matches?.quotes ?? [];
   const candidates = [...(matches?.phoneMatches ?? []), ...(matches?.nameMatches ?? [])];
+
+  /**
+   * Comparativo do passo 2 — a ideia do diálogo de arquivo repetido do Windows:
+   * lado a lado o que JÁ está no funil e o que acabou de ser preenchido, com as
+   * diferenças em destaque, e três saídas explícitas (substituir / manter /
+   * ficar com os dois). Nenhuma delas descarta o pedido em silêncio.
+   */
+  const compare = dupQuotes.find((q) => q.id === compareId) ?? dupQuotes[0] ?? null;
+
+  const compareRow = (label: string, left: string, right: string) => {
+    const diff = left !== right;
+    const cell = (v: string, side: "left" | "right"): React.CSSProperties => ({
+      padding: "7px 10px", fontSize: 12, minWidth: 0, overflowWrap: "anywhere",
+      borderRadius: 8,
+      background: diff && side === "right" ? T.amberBg : "transparent",
+      border: `1px solid ${diff && side === "right" ? T.amberBorder : "transparent"}`,
+      color: diff ? (side === "right" ? T.amber : T.muted) : T.text,
+      fontWeight: diff && side === "right" ? 800 : 600,
+      textDecoration: diff && side === "left" ? "line-through" : "none",
+    });
+    return (
+      <div key={label} style={{ display: "contents" }}>
+        <span style={{ ...fieldLabel, margin: 0, alignSelf: "center" }}>{label}</span>
+        <span style={cell(left, "left")}>{left}</span>
+        <span style={cell(right, "right")}>{right}</span>
+      </div>
+    );
+  };
+
+  const compareBlock = (q: RateQuoteRecord) => {
+    const stage = QUOTE_STAGES.find((s) => s.id === q.status);
+    const saved = quoteComposition(q);
+    const draft = { count: rooms.length, pax: sumPax(rooms.map(paxOf)) };
+    const savedValue = q.negotiatedValue ?? q.finalValue ?? 0;
+    const contactOf = (p: string, e: string) => [p, e].filter(Boolean).join(" · ") || "—";
+    const created = String(q.createdAt || "").slice(0, 10);
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {/* Cabeçalho das duas colunas */}
+        <div style={{ display: "grid", gridTemplateColumns: "84px 1fr 1fr", gap: 6, alignItems: "center" }}>
+          <span />
+          <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 10px", fontSize: 11, fontWeight: 800, color: T.muted }}>
+            {stage && (
+              <span style={{ width: 7, height: 7, borderRadius: 999, background: stage.dot, flexShrink: 0 }} />
+            )}
+            Já no funil{stage ? ` · ${stage.label}` : ""}
+            {created && <span style={{ fontWeight: 600, color: T.muted2 }}> · {fmtBR(created)}</span>}
+          </span>
+          <span style={{ padding: "0 10px", fontSize: 11, fontWeight: 800, color: T.g1 }}>
+            O que você preencheu agora
+          </span>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "84px 1fr 1fr", gap: 6, alignItems: "center" }}>
+          {compareRow("Cliente", q.clientName || "sem nome", name.trim() || "sem nome")}
+          {compareRow("Período",
+            `${fmtBR(q.checkIn)} → ${fmtBR(q.checkOut)}`,
+            `${fmtBR(checkIn)} → ${fmtBR(checkOut)}`)}
+          {compareRow("Noites",
+            String(nightsBetween(q.checkIn, q.checkOut)),
+            String(nightsBetween(checkIn, checkOut)))}
+          {compareRow("Acomodações",
+            `${saved.count} · ${paxText(saved.pax)}`,
+            `${draft.count} · ${paxText(draft.pax)}`)}
+          {compareRow("Contato",
+            contactOf(q.clientPhone || "", q.clientEmail || ""),
+            contactOf(phone.trim(), email.trim()))}
+          {/* Valor não é comparável no passo 2: o novo só é calculado adiante. */}
+          <span style={{ ...fieldLabel, margin: 0, alignSelf: "center" }}>Valor</span>
+          <span style={{ padding: "7px 10px", fontSize: 12, fontWeight: 700, color: T.text }}>
+            {savedValue > 0 ? `R$ ${formatBRL(savedValue)}` : "a definir"}
+            {q.negotiatedValue ? (
+              <span style={{ fontSize: 10.5, fontWeight: 600, color: T.muted }}> · negociado</span>
+            ) : null}
+          </span>
+          <span style={{ padding: "7px 10px", fontSize: 11.5, color: T.muted2 }}>
+            calculado no passo seguinte
+          </span>
+        </div>
+
+        {/* As três saídas — nenhuma perde o que está na tela sem avisar. */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
+          <button onClick={() => adoptQuote(q)}
+            title="O orçamento que já existe passa a valer com o pedido desta tela"
+            style={{ ...S.gradBtn, padding: "8px 13px", fontSize: 12 }}>
+            <Save size={13} /> Atualizar com o novo pedido
+          </button>
+          <button onClick={() => adoptQuote(q, true)}
+            title="Continua neste orçamento com o pedido que já estava salvo"
+            style={{ ...S.ghostBtn, padding: "8px 13px", fontSize: 12 }}>
+            Manter o que já estava
+          </button>
+          <button onClick={() => setStep(3)}
+            title="Duas negociações distintas do mesmo cliente — cada uma com seu card"
+            style={{ ...S.ghostBtn, padding: "8px 13px", fontSize: 12 }}>
+            São pedidos diferentes — criar outro
+          </button>
+          <button onClick={() => { if (confirmDiscard()) onOpenExisting(q.id); }}
+            title="Fecha o wizard e abre a ficha (descarta o que foi preenchido)"
+            style={{
+              ...S.ghostBtn, padding: "8px 11px", fontSize: 11,
+              marginLeft: "auto", color: T.muted2,
+            }}>
+            Só abrir a ficha
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   /** Uma opção de cabana dentro de uma acomodação. */
   const optionRow = (room: DraftRoom, c: RateQuoteCategory) => {
@@ -786,9 +982,9 @@ export function NewQuoteWizard({
         <div style={{ padding: "18px 22px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontSize: 16, fontWeight: 900, color: T.text }}>
-              {editingId ? "Editar cotação" : hasSeed ? "Nova cotação para o cliente" : "Nova cotação"}
+              {targetId ? "Editar cotação" : hasSeed ? "Nova cotação para o cliente" : "Nova cotação"}
             </div>
-            {editingId && (
+            {targetId && (
               <div style={{ fontSize: 11.5, color: T.muted, marginTop: 2 }}>
                 Recalcula e substitui os valores deste orçamento.
               </div>
@@ -807,6 +1003,53 @@ export function NewQuoteWizard({
 
         {/* Body */}
         <div style={{ flex: 1, overflowY: "auto", padding: 22, display: "flex", flexDirection: "column", gap: 14 }}>
+
+          {/* Orçamento adotado no passo 2 — fica à vista até salvar, inclusive
+              se o vendedor voltar para o pedido: é o que explica por que não
+              vai nascer card novo no funil. */}
+          {adopted && (
+            <div style={{
+              background: T.amberBg, border: `1px solid ${T.amberBorder}`,
+              borderRadius: 12, padding: "12px 14px", display: "flex",
+              flexDirection: "column", gap: 7,
+            }}>
+              <p style={{ fontSize: 12.5, fontWeight: 800, color: T.amber, margin: 0 }}>
+                Atualizando o orçamento que já existia
+              </p>
+              <p style={{ fontSize: 11.5, color: T.text, margin: 0 }}>
+                Pedido salvo: {fmtBR(adopted.checkIn)} → {fmtBR(adopted.checkOut)}
+                {adopted.finalValue ? ` · R$ ${formatBRL(adopted.finalValue)}` : ""}
+                {(adopted.checkIn !== checkIn || adopted.checkOut !== checkOut) && (
+                  <b style={{ color: T.amber }}>
+                    {" "}→ vai passar para {fmtBR(checkIn)} → {fmtBR(checkOut)}
+                  </b>
+                )}
+              </p>
+              {/* O valor negociado NÃO é recalculado no save — se o pedido mudou,
+                  ele continua mandando no funil até a recepção revisar na ficha. */}
+              {(adopted.negotiatedValue ?? 0) > 0 && (
+                <p style={{ fontSize: 10.5, color: T.muted, margin: 0 }}>
+                  Este orçamento tem valor negociado de{" "}
+                  <b style={{ color: T.text }}>R$ {formatBRL(adopted.negotiatedValue!)}</b> — ele
+                  continua valendo no funil; revise na ficha se o pedido mudou.
+                </p>
+              )}
+              {/* Estágio, follow-up, validade e histórico do lead são preservados
+                  pelo servidor (o update do saveQuote não mexe em status). */}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button onClick={restoreAdopted}
+                  title="Descarta o pedido digitado e volta ao que estava salvo neste orçamento"
+                  style={{ ...S.ghostBtn, padding: "5px 10px", fontSize: 11 }}>
+                  Usar o pedido original
+                </button>
+                <button onClick={undoAdopt}
+                  title="Mantém tudo o que está na tela, mas salva como um lead novo"
+                  style={{ ...S.ghostBtn, padding: "5px 10px", fontSize: 11 }}>
+                  É outra negociação — criar novo
+                </button>
+              </div>
+            </div>
+          )}
 
           {step === 1 && (<>
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
@@ -910,30 +1153,43 @@ export function NewQuoteWizard({
           </>)}
 
           {step === 2 && matches && (<>
-            {dupQuotes.length > 0 && (
+            {compare && (
               <div style={{
-                background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)",
-                borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 8,
+                background: T.amberBg, border: `1px solid ${T.amberBorder}`,
+                borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 10,
               }}>
-                <p style={{ fontSize: 12.5, fontWeight: 800, color: T.amber, margin: 0 }}>
-                  Este cliente já tem orçamento aberto
-                </p>
-                {dupQuotes.slice(0, 3).map((q) => (
-                  <div key={q.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: T.text }}>
-                    <span>{fmtBR(q.checkIn)} → {fmtBR(q.checkOut)} · {q.clientName || "sem nome"}</span>
-                    <button onClick={() => onOpenExisting(q.id)}
-                      style={{
-                        marginLeft: "auto", padding: "5px 10px", borderRadius: 9, border: "none",
-                        background: "rgba(245,158,11,0.18)", color: T.amber,
-                        fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: "inherit",
-                      }}>
-                      Abrir esse
-                    </button>
+                <div>
+                  <p style={{ fontSize: 12.5, fontWeight: 800, color: T.amber, margin: 0 }}>
+                    Este cliente já tem orçamento aberto
+                  </p>
+                  <p style={{ fontSize: 10.5, color: T.muted, margin: "3px 0 0" }}>
+                    Compare os dois e decida — nada do que você preencheu se perde em
+                    nenhuma das opções.
+                  </p>
+                </div>
+
+                {/* Mais de um repetido: escolhe qual entra no comparativo. */}
+                {dupQuotes.length > 1 && (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {dupQuotes.slice(0, 4).map((q) => {
+                      const on = q.id === compare.id;
+                      return (
+                        <button key={q.id} onClick={() => setCompareId(q.id)}
+                          style={{
+                            padding: "4px 9px", borderRadius: 999, cursor: "pointer",
+                            fontFamily: "inherit", fontSize: 10.5, fontWeight: 800,
+                            background: on ? T.gradSoft : T.glass,
+                            border: `1px solid ${on ? T.g1Border : T.border2}`,
+                            color: on ? T.g1 : T.muted,
+                          }}>
+                          {fmtBR(q.checkIn)} → {fmtBR(q.checkOut)}
+                        </button>
+                      );
+                    })}
                   </div>
-                ))}
-                <p style={{ fontSize: 10.5, color: T.muted, margin: 0 }}>
-                  Criar outro duplica o lead no funil — prefira reabrir e recalcular o existente.
-                </p>
+                )}
+
+                {compareBlock(compare)}
               </div>
             )}
 
@@ -960,10 +1216,15 @@ export function NewQuoteWizard({
               </div>
             )}
 
-            <button onClick={() => setStep(3)}
-              style={{ ...S.ghostBtn, justifyContent: "center", padding: "10px 16px" }}>
-              {candidates.length > 0 ? "Não é nenhuma dessas — seguir sem vínculo" : "Seguir mesmo assim"}
-            </button>
+            {/* Com o comparativo em tela as três saídas já estão lá; este botão
+                só faz sentido para as SUGESTÕES de ficha (ou quando não há
+                nenhum orçamento repetido para comparar). */}
+            {(candidates.length > 0 || !compare) && (
+              <button onClick={() => setStep(3)}
+                style={{ ...S.ghostBtn, justifyContent: "center", padding: "10px 16px" }}>
+                {candidates.length > 0 ? "Não é nenhuma dessas — seguir sem vínculo" : "Seguir mesmo assim"}
+              </button>
+            )}
           </>)}
 
           {step === 3 && (<>
@@ -1317,7 +1578,7 @@ export function NewQuoteWizard({
             <button onClick={saveAndClose} disabled={saving || blocked}
               style={{ ...S.ghostBtn, marginLeft: "auto", opacity: saving ? 0.6 : 1 }}>
               {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-              {editingId ? "Salvar alterações" : "Salvar no funil"}
+              {targetId ? "Salvar alterações" : "Salvar no funil"}
             </button>
             <button onClick={copyQuote} disabled={saving || blocked}
               style={{ ...S.gradBtn, opacity: saving ? 0.7 : 1 }}>
