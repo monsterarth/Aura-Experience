@@ -62,10 +62,11 @@ export const ConciergeService = {
       .eq('propertyId', propertyId);
     if (error) throw error;
 
+    const name = data.name ?? await this._groupName(groupId) ?? groupId;
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName,
       action: 'UPDATE', entity: 'CONCIERGE', entityId: groupId,
-      details: `Grupo de concierge atualizado: ${groupId}`,
+      details: `Grupo de concierge atualizado: ${name}`,
     });
   },
 
@@ -75,13 +76,35 @@ export const ConciergeService = {
     actorId: string,
     actorName: string
   ): Promise<void> {
-    await this.updateGroup(propertyId, groupId, { active: false }, actorId, actorName);
+    // Nome antes do update; e um log só (antes o updateGroup interno gerava um
+    // "atualizado" redundante junto do "desativado").
+    const name = await this._groupName(groupId) ?? groupId;
+    const { error } = await supabase
+      .from('concierge_groups')
+      .update({ active: false, updatedAt: new Date().toISOString() })
+      .eq('id', groupId)
+      .eq('propertyId', propertyId);
+    if (error) throw error;
 
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName,
       action: 'DELETE', entity: 'CONCIERGE', entityId: groupId,
-      details: `Grupo de concierge desativado: ${groupId}`,
+      details: `Grupo de concierge desativado: ${name}`,
     });
+  },
+
+  /** Nome do grupo para logs legíveis (null se não encontrado). */
+  async _groupName(groupId: string): Promise<string | null> {
+    const { data } = await supabase
+      .from('concierge_groups').select('name').eq('id', groupId).maybeSingle();
+    return (data as { name?: string } | null)?.name ?? null;
+  },
+
+  /** Nome do item para logs legíveis (null se não encontrado). */
+  async _itemName(itemId: string): Promise<string | null> {
+    const { data } = await supabase
+      .from('concierge_items').select('name').eq('id', itemId).maybeSingle();
+    return (data as { name?: string } | null)?.name ?? null;
   },
 
   // ==========================================
@@ -179,10 +202,11 @@ export const ConciergeService = {
       .eq('propertyId', propertyId);
     if (error) throw error;
 
+    const name = data.name ?? await this._itemName(itemId) ?? itemId;
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName,
       action: 'UPDATE', entity: 'CONCIERGE', entityId: itemId,
-      details: `Item de concierge atualizado: ${itemId}`,
+      details: `Item de concierge atualizado: ${name}`,
     });
   },
 
@@ -202,7 +226,7 @@ export const ConciergeService = {
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName,
       action: 'DELETE', entity: 'CONCIERGE', entityId: itemId,
-      details: `Item de concierge arquivado: ${itemId}`,
+      details: `Item de concierge arquivado: ${await this._itemName(itemId) ?? itemId}`,
     });
   },
 
@@ -222,7 +246,7 @@ export const ConciergeService = {
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName,
       action: 'UPDATE', entity: 'CONCIERGE', entityId: itemId,
-      details: `Item de concierge restaurado do arquivo: ${itemId}`,
+      details: `Item de concierge restaurado do arquivo: ${await this._itemName(itemId) ?? itemId}`,
     });
   },
 

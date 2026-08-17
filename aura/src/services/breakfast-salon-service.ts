@@ -324,6 +324,8 @@ export const BreakfastSalonService = {
       .select('*')
       .single();
 
+    const { data: table } = await supabase
+      .from('breakfast_tables').select('name').eq('id', tableId).maybeSingle();
     await AuditService.log({
       propertyId,
       userId: actorId,
@@ -331,7 +333,7 @@ export const BreakfastSalonService = {
       action: 'FB_ORDER_CREATED',
       entity: 'FB_ORDER',
       entityId: id,
-      details: `Pedido buffet pelo garçom. Mesa: ${tableId}. ${items.length} item(ns).`,
+      details: `Pedido buffet pelo garçom — ${table?.name ?? 'mesa'}${cabinName ? ` (${cabinName})` : ''}: ${items.length} item(ns).`,
     });
 
     return mapSalonOrder(data);

@@ -82,6 +82,11 @@ export async function POST(req: Request) {
     .update({ status: "sent", messageIdApi: apiMessageId, attempts: (msg.attempts || 0) + 1, lastAttemptAt: new Date().toISOString(), errorMessage: null })
     .eq("id", messageId);
 
+  // Nome do contato (id = número) e trecho do corpo — o log conta a história
+  // sozinho; o UUID da mensagem fica só no entityId.
+  const { data: contact } = await supabaseAdmin
+    .from("contacts").select("name").eq("id", msg.to).eq("propertyId", propertyId).maybeSingle();
+  const snippet = (msg.body || "").slice(0, 60) + ((msg.body || "").length > 60 ? "…" : "");
   await supabaseAdmin.from("audit_logs").insert({
     id: crypto.randomUUID(),
     propertyId,
@@ -90,7 +95,7 @@ export async function POST(req: Request) {
     action: "MESSAGE_MANUAL_SEND",
     entity: "MESSAGE",
     entityId: messageId,
-    details: `Reenvio manual da mensagem ${messageId} para ${msg.to}.`,
+    details: `Reenvio manual para ${contact?.name ?? msg.to}: "${snippet}"`,
     timestamp: new Date().toISOString()
   });
 

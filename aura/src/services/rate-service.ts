@@ -1342,7 +1342,7 @@ export const RateService = {
         action: "UPDATE", entity: "RATE_QUOTE", entityId: id,
         details: `Orçamento de ${quote.clientName || "sem nome"} promovido a hóspede (${
           opts?.create ? "ficha nova" : "ficha existente"
-        } ${guestId}).`,
+        }).`,
       });
     }
 

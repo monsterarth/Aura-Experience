@@ -3,6 +3,20 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { Stay, MessageTemplate, WhatsAppMessage, AutomationTriggerEvent, Guest, Cabin, AutomationRule, Property } from "@/types/aura";
 import { AuditService } from "./audit-service";
 
+// Nome humano de cada gatilho — usado nos logs de auditoria (os ids são
+// namespaced e ilegíveis). As páginas de automação têm labels próprios com
+// descrição; este é o resumo curto canônico do serviço.
+const AUTOMATION_TRIGGER_LABELS: Record<string, string> = {
+  pre_checkin_48h: "Pré check-in (48h)",
+  pre_checkin_24h: "Pré check-in (24h)",
+  welcome_checkin: "Boas-vindas (check-in)",
+  pre_checkout: "Pré check-out",
+  checkout_thanks: "Agradecimento (check-out)",
+  nps_survey: "Pesquisa NPS",
+  structure_booking_confirmed: "Agendamento confirmado",
+  custom_scheduled: "Agendada personalizada",
+};
+
 export class AutomationService {
   static async triggerStructureBookingAutomation(propertyId: string, stayId: string, structureName: string, date: string, startTime: string, templateId: string, cancellationReason?: string) {
     if (!templateId) return;
@@ -449,6 +463,10 @@ export class AutomationService {
       }
 
       const isToggle = Object.keys(data).length === 1 && 'active' in data;
+      // O id é namespaced (`fazenda-do-rosa__welcome_checkin`) — no log entra o
+      // nome do gatilho em português, não o id cru.
+      const trigger = ruleId.includes("__") ? ruleId.split("__").pop()! : ruleId;
+      const ruleLabel = AUTOMATION_TRIGGER_LABELS[trigger] ?? trigger;
       await AuditService.log({
         propertyId,
         userId: "SYSTEM",
@@ -457,8 +475,8 @@ export class AutomationService {
         entity: "AUTOMATION",
         entityId: ruleId,
         details: isToggle
-          ? `Regra de automação "${ruleId}" ${data.active ? 'ativada' : 'desativada'}.`
-          : `Regra de automação "${ruleId}" atualizada.`,
+          ? `Regra de automação "${ruleLabel}" ${data.active ? 'ativada' : 'desativada'}.`
+          : `Regra de automação "${ruleLabel}" atualizada.`,
         newData: data
       });
 

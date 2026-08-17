@@ -197,9 +197,10 @@ export const AssetPublicService = {
       return { ok: false, error: "Não foi possível registrar o relato. Tente novamente." };
     }
 
-    // O id da tarefa entra no `details` de propósito: AuditService deduplica por
-    // (userId, entityId, details) em 10s, e dois relatos legítimos com o mesmo
-    // texto colapsariam num log só.
+    // Uma referência do chamado entra no `details` de propósito: AuditService
+    // deduplica por (userId, entityId, details) em 10s, e dois relatos legítimos
+    // com o mesmo texto colapsariam num log só. Ref curta em vez do UUID inteiro
+    // para o log continuar legível.
     await AuditService.log({
       propertyId: a.propertyId,
       userId: "public",
@@ -207,7 +208,7 @@ export const AssetPublicService = {
       action: "ASSET_PUBLIC_REPORT",
       entity: "ASSET",
       entityId: a.id,
-      details: `Relato pela plaqueta em ${a.name}: chamado ${taskId}.`,
+      details: `Relato pela plaqueta em ${a.name}: chamado aberto na manutenção (ref ${taskId.slice(0, 8)}).`,
     });
 
     // triggerTaskPush é no-op no servidor e /api/push/notify exige sessão —

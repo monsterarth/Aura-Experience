@@ -696,10 +696,12 @@ export const StayService = {
 
     if (error) throw error;
 
+    const { data: newGuest } = await supabase
+      .from('guests').select('fullName').eq('id', newGuestId).maybeSingle();
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName,
       action: "REASSIGN_GUEST", entity: "STAY", entityId: stayId,
-      details: `Titular alterado para ${newGuestId}`
+      details: `Titular alterado para ${newGuest?.fullName ?? newGuestId}.`
     });
   },
 
@@ -805,9 +807,12 @@ export const StayService = {
       .update({ cabinId: null, updatedAt: new Date().toISOString() })
       .eq('id', stayId).eq('propertyId', propertyId);
 
+    const { data: oldCabin } = await supabase
+      .from('cabins').select('number, name').eq('id', oldCabinId).maybeSingle();
+    const cabinLabel = oldCabin ? `cabana ${oldCabin.number ?? oldCabin.name}` : oldCabinId;
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
-      details: `Cabana removida da reserva: ${oldCabinId} → sem cabana.`
+      details: `Cabana removida da reserva: ${cabinLabel} → sem cabana.`
     });
   },
 

@@ -207,8 +207,12 @@ export const GuestService = {
     // A ficha que fica precisa existir NESTA propriedade: sem isso, um id errado
     // transferiria as estadias para o vazio e ainda assim apagaria a secundária.
     const { data: primary } = await db()
-      .from('guests').select('id').eq('id', primaryId).eq('propertyId', propertyId).maybeSingle();
+      .from('guests').select('id, fullName').eq('id', primaryId).eq('propertyId', propertyId).maybeSingle();
     if (!primary) throw new Error('Cadastro principal não encontrado nesta propriedade.');
+
+    // Nome da secundária antes do delete — depois não existe mais para consultar.
+    const { data: secondary } = await db()
+      .from('guests').select('fullName').eq('id', secondaryId).eq('propertyId', propertyId).maybeSingle();
 
     const { data: stays, error: staysErr } = await db()
       .from('stays')
@@ -240,7 +244,7 @@ export const GuestService = {
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName,
       action: "UPDATE", entity: "GUEST", entityId: primaryId,
-      details: `Cadastros unificados: ${secondaryId} → ${primaryId}. ${stayCount} estadia(s) transferida(s).`
+      details: `Cadastros unificados: ${secondary?.fullName ?? secondaryId} → ${(primary as { fullName?: string }).fullName ?? primaryId}. ${stayCount} estadia(s) transferida(s).`
     });
 
     return stayCount;

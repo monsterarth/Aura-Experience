@@ -20,7 +20,7 @@ export async function submitConciergeRequest(
   // 1. Validate stay
   const { data: stay, error: stayError } = await supabaseAdmin
     .from('stays')
-    .select('id, propertyId, cabinId, accessCode, status, dnd_enabled')
+    .select('id, propertyId, cabinId, guestId, accessCode, status, dnd_enabled')
     .eq('id', stayId)
     .eq('accessCode', accessCode)
     .eq('status', 'active')
@@ -81,15 +81,24 @@ export async function submitConciergeRequest(
     return { success: false, error: 'Erro ao criar pedido.' };
   }
 
-  // 4.5. Web Push imediato para a recepção (houseman/admin já são cobertos pelo
+  // 4.5. Nomes legíveis para o push e o log de auditoria — nunca ID cru.
+  const [{ data: cabin }, { data: guest }] = await Promise.all([
+    stay.cabinId
+      ? supabaseAdmin.from('cabins').select('name').eq('id', stay.cabinId).maybeSingle()
+      : Promise.resolve({ data: null as { name: string } | null }),
+    stay.guestId
+      ? supabaseAdmin.from('guests').select('fullName').eq('id', stay.guestId).maybeSingle()
+      : Promise.resolve({ data: null as { fullName: string } | null }),
+  ]);
+  const itemName = (itemRow as ConciergeItem | null)?.name ?? 'item';
+  const cabinLabel = cabin?.name ? ` — ${cabin.name}` : '';
+
+  // Web Push imediato para a recepção (houseman/admin já são cobertos pelo
   // webhook /api/push/send/concierge). Fire-and-forget: push nunca quebra o pedido.
   try {
-    const { data: cabin } = stay.cabinId
-      ? await supabaseAdmin.from('cabins').select('name').eq('id', stay.cabinId).maybeSingle()
-      : { data: null };
     await fanOutByRole(stay.propertyId, ['reception'], {
       title: '🛎️ Novo pedido de concierge',
-      body: `${quantity}x ${(itemRow as ConciergeItem | null)?.name ?? 'item'}${cabin?.name ? ` — ${cabin.name}` : ''}`,
+      body: `${quantity}x ${itemName}${cabinLabel}`,
       url: '/admin/concierge',
       tag: `concierge-request-${requestId}`,
       role: 'reception',
@@ -99,11 +108,11 @@ export async function submitConciergeRequest(
   await AuditService.log({
     propertyId: stay.propertyId,
     userId: stayId,
-    userName: "Hóspede",
+    userName: guest?.fullName ? `${guest.fullName} (hóspede)` : "Hóspede",
     action: "CONCIERGE_REQUESTED",
     entity: "CONCIERGE",
-    entityId: crypto.randomUUID(),
-    details: `Pedido de concierge enviado pelo hóspede via portal. Item: ${itemId}. Quantidade: ${quantity}.`
+    entityId: requestId,
+    details: `Pedido de concierge enviado pelo hóspede via portal: ${quantity}x ${itemName}${cabinLabel}.`
   });
 
   return { success: true };
