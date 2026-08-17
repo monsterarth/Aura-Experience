@@ -19,8 +19,8 @@ interface WhatsAppNotif {
   id: string;
   body: string;
   createdAt: string;
+  contactId?: string;
   cabinName?: string;
-  contactName?: string;
   stayId?: string;
 }
 
@@ -29,6 +29,7 @@ interface ConciergeNotif {
   itemName: string;
   quantity: number;
   cabinName?: string;
+  notes?: string;
   createdAt: string;
 }
 
@@ -70,24 +71,33 @@ async function requestBrowserPermission(): Promise<boolean> {
   return result === 'granted';
 }
 
-function fireBrowserNotification(title: string, body: string, onClick?: () => void) {
+function fireBrowserNotification(
+  title: string,
+  body: string,
+  onClick?: () => void,
+  opts?: { tag?: string; requireInteraction?: boolean }
+) {
   if (typeof window === 'undefined' || !('Notification' in window)) return;
   if (Notification.permission !== 'granted') return;
   try {
     const n = new Notification(title, {
       body,
       icon: '/logo_flat.png',
-      tag: 'aura-message',
+      tag: opts?.tag ?? 'aura-message',
+      requireInteraction: opts?.requireInteraction ?? false,
     });
     if (onClick) n.onclick = () => { window.focus(); onClick(); n.close(); };
   } catch { /* ignore */ }
 }
 
+// Intervalo do re-alerta de concierge enquanto houver pendentes (canal veemente)
+const CONCIERGE_REMIND_MS = 2 * 60_000;
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function NotificationCenter() {
   const { currentProperty: property } = useProperty();
-  const { refetch: refetchNotifCounts } = useNotifications();
+  const { counts, refetch: refetchNotifCounts } = useNotifications();
   const { userData } = useAuth();
   const router = useRouter();
   const supabase = createClientBrowser();
@@ -98,6 +108,7 @@ export function NotificationCenter() {
   const [whatsapp, setWhatsapp] = useState<WhatsAppNotif[]>([]);
   const [concierge, setConcierge] = useState<ConciergeNotif[]>([]);
   const [bookings, setBookings] = useState<BookingNotif[]>([]);
+  const [clearingWa, setClearingWa] = useState(false);
 
   // Track previous counts to detect new arrivals
   const prevWhatsappIds = useRef<Set<string>>(new Set());
@@ -113,6 +124,10 @@ export function NotificationCenter() {
   const bookingsBuffer = useRef<BookingNotif[]>([]);
   const bookingsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSoundAt = useRef(0);
+
+  // Lista viva para o loop de re-alerta (sem reiniciar o timer a cada fetch)
+  const conciergeRef = useRef<ConciergeNotif[]>([]);
+  conciergeRef.current = concierge;
 
   const propertyId = property?.id;
 
@@ -136,6 +151,40 @@ export function NotificationCenter() {
       audioRef.current.currentTime = 0;
       audioRef.current.play().catch(() => { /* autoplay blocked */ });
     } catch { /* ignore */ }
+  }, []);
+
+  // Som URGENTE do concierge: campainha dupla sintetizada (WebAudio), mais alta e
+  // fora do rate-limit comum — o balcão precisa ouvir mesmo no meio de uma rajada
+  // de mensagens.
+  const playUrgentSound = useCallback(() => {
+    try {
+      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new Ctx();
+      if (ctx.state === 'suspended') { ctx.resume().catch(() => {}); }
+      const ding = (freq: number, at: number, dur = 0.22) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime + at);
+        gain.gain.exponentialRampToValueAtTime(0.55, ctx.currentTime + at + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + dur);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(ctx.currentTime + at);
+        osc.stop(ctx.currentTime + at + dur + 0.05);
+      };
+      // "ding-dong" ×2 — recepção de balcão
+      ding(987.77, 0); ding(783.99, 0.24);
+      ding(987.77, 0.62); ding(783.99, 0.86);
+      window.setTimeout(() => { ctx.close().catch(() => {}); }, 2200);
+    } catch {
+      // Fallback: mp3 padrão no volume máximo
+      try {
+        const a = new Audio('/notification.mp3');
+        a.volume = 1;
+        a.play().catch(() => {});
+      } catch { /* ignore */ }
+    }
   }, []);
 
   // ─── Flush coalescido (um toast por rajada, id estável → substitui em vez de empilhar) ──
@@ -178,7 +227,7 @@ export function NotificationCenter() {
     conciergeTimer.current = null;
     if (items.length === 0) return;
 
-    playSound();
+    playUrgentSound();
 
     let title: string;
     let description: string;
@@ -191,17 +240,22 @@ export function NotificationCenter() {
       description = 'Toque para ver os pedidos';
     }
 
-    toast.message(title, {
+    // Persistente de propósito: pedido de hóspede não pode se perder no meio dos
+    // toasts de mensagem — só sai clicando, atendendo ou zerando a fila.
+    toast.warning(title, {
       id: 'notif-concierge',
       description,
-      duration: 8000,
-      action: { label: 'Ver', onClick: () => router.push('/admin/concierge') },
+      duration: Infinity,
+      action: { label: 'Atender', onClick: () => router.push('/admin/concierge') },
     });
 
     if (document.visibilityState !== 'visible') {
-      fireBrowserNotification(title, description, () => router.push('/admin/concierge'));
+      fireBrowserNotification(title, description, () => router.push('/admin/concierge'), {
+        tag: 'aura-concierge',
+        requireInteraction: true,
+      });
     }
-  }, [playSound, router]);
+  }, [playUrgentSound, router]);
 
   const flushBookings = useCallback(() => {
     const items = bookingsBuffer.current;
@@ -240,7 +294,7 @@ export function NotificationCenter() {
     if (!propertyId) return;
     const { data } = await supabase
       .from('messages')
-      .select('id, body, createdAt, stayId')
+      .select('id, body, createdAt, stayId, contactId')
       .eq('propertyId', propertyId)
       .eq('direction', 'inbound')
       .eq('isReadByAdmin', false)
@@ -272,6 +326,7 @@ export function NotificationCenter() {
       id: m.id,
       body: m.body,
       createdAt: m.createdAt,
+      contactId: m.contactId || undefined,
       cabinName: stayMap[m.stayId] || undefined,
     }));
 
@@ -293,7 +348,7 @@ export function NotificationCenter() {
     if (!propertyId) return;
     const { data } = await supabase
       .from('concierge_requests')
-      .select('id, itemId, quantity, cabinId, createdAt')
+      .select('id, itemId, quantity, cabinId, notes, createdAt')
       .eq('propertyId', propertyId)
       .eq('status', 'pending')
       .order('createdAt', { ascending: true })
@@ -317,6 +372,7 @@ export function NotificationCenter() {
       itemName: itemMap[r.itemId] || 'Item',
       quantity: r.quantity,
       cabinName: cabinMap[r.cabinId] || undefined,
+      notes: r.notes || undefined,
       createdAt: r.createdAt,
     }));
 
@@ -403,6 +459,49 @@ export function NotificationCenter() {
     requestBrowserPermission();
   }, [canAlert]);
 
+  // ─── Re-alerta de concierge: enquanto houver pendente, relembra a cada 2 min ──
+  // Toast persistente + campainha + notificação do navegador (aba oculta). Pausa
+  // quando o balcão já está na tela de concierge.
+
+  const hasConcierge = concierge.length > 0;
+
+  useEffect(() => {
+    if (!canAlert) return;
+    if (!hasConcierge) {
+      toast.dismiss('notif-concierge');
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const items = conciergeRef.current;
+      if (items.length === 0) return;
+      if (window.location.pathname.startsWith('/admin/concierge')) return;
+
+      const oldest = items[0]; // fetch ordena por createdAt asc
+      const waitedMin = Math.max(1, Math.round((Date.now() - new Date(oldest.createdAt).getTime()) / 60_000));
+      const title = items.length === 1
+        ? '🛎️ Pedido de concierge aguardando'
+        : `🛎️ ${items.length} pedidos de concierge aguardando`;
+      const description = `O mais antigo espera há ${waitedMin} min. Toque para atender.`;
+
+      playUrgentSound();
+      toast.warning(title, {
+        id: 'notif-concierge',
+        description,
+        duration: Infinity,
+        action: { label: 'Atender', onClick: () => router.push('/admin/concierge') },
+      });
+      if (document.visibilityState !== 'visible') {
+        fireBrowserNotification(title, description, () => router.push('/admin/concierge'), {
+          tag: 'aura-concierge',
+          requireInteraction: true,
+        });
+      }
+    }, CONCIERGE_REMIND_MS);
+
+    return () => clearInterval(interval);
+  }, [canAlert, hasConcierge, playUrgentSound, router]);
+
   // ─── Cleanup dos timers de coalescência ─────────────────────────────────────
 
   useEffect(() => {
@@ -459,33 +558,37 @@ export function NotificationCenter() {
   }, [open]);
 
   // ─── Mark all WhatsApp messages as read ────────────────────────────────────
+  // Só limpa o estado local quando o servidor CONFIRMA — antes, uma falha
+  // silenciosa fazia o painel fingir que limpou e tudo voltava no F5.
 
   const markAllRead = useCallback(async () => {
-    if (!propertyId) return;
+    if (!propertyId || clearingWa) return;
+    setClearingWa(true);
     try {
-      await fetch('/api/admin/notifications/mark-read', {
+      const res = await fetch('/api/admin/notifications/mark-read', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ markAll: true, propertyId }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setWhatsapp([]);
+      prevWhatsappIds.current = new Set();
       refetchNotifCounts();
-    } catch { /* silent */ }
-  }, [propertyId, refetchNotifCounts]);
+    } catch {
+      toast.error('Não foi possível limpar as mensagens. Tente novamente.');
+    } finally {
+      setClearingWa(false);
+    }
+  }, [propertyId, clearingWa, refetchNotifCounts]);
 
-  const handleOpen = () => {
-    setOpen(prev => {
-      const next = !prev;
-      if (next && whatsapp.length > 0) {
-        markAllRead();
-      }
-      return next;
-    });
-  };
+  const handleOpen = () => setOpen(prev => !prev);
 
   // ─── Badge count ────────────────────────────────────────────────────────────
+  // WhatsApp entra como UMA notificação agregada ("N novas mensagens"), para o
+  // volume de mensagens não afogar concierge e agendamentos no sino.
 
-  const total = whatsapp.length + concierge.length + bookings.length;
+  const waCount = Math.max(counts.messages, whatsapp.length);
+  const total = (waCount > 0 ? 1 : 0) + concierge.length + bookings.length;
 
   // ─── Tab blinking when there are unread notifications ───────────────────────
 
@@ -493,7 +596,7 @@ export function NotificationCenter() {
     if (total === 0 || !canAlert) return;
 
     const originalTitle = document.title;
-    const alertTitle = `(${total}) Nova mensagem — Aura`;
+    const alertTitle = `(${total}) Notificações — Aura`;
     let blinkState = false;
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -540,6 +643,14 @@ export function NotificationCenter() {
     router.push(path);
   };
 
+  // ─── WhatsApp aggregate preview ─────────────────────────────────────────────
+
+  const waConvCount = new Set(whatsapp.map(m => m.contactId || m.id)).size;
+  const waNames = Array.from(new Set(whatsapp.map(m => m.cabinName).filter(Boolean))) as string[];
+  const waSubtitle = waNames.length > 0
+    ? `${waNames.slice(0, 2).join(', ')}${waConvCount > 2 ? ` e mais ${waConvCount - 2} conversa${waConvCount - 2 > 1 ? 's' : ''}` : ''}`
+    : `${waConvCount}${whatsapp.length >= 20 ? '+' : ''} conversa${waConvCount !== 1 ? 's' : ''} — toque para abrir`;
+
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   if (!propertyId || !canSeeBell) return null;
@@ -560,10 +671,16 @@ export function NotificationCenter() {
         <Bell size={18} className={cn(total > 0 && !open && "animate-[wiggle_1s_ease-in-out_infinite]")} />
         {total > 0 && (
           <>
-            {/* Ping ring */}
+            {/* Ping ring — laranja quando há concierge esperando (prioridade do balcão) */}
             <span className="absolute -top-1 -right-1 flex h-[18px] w-[18px]">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-60" />
-              <span className="relative inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-black rounded-full leading-none">
+              <span className={cn(
+                "animate-ping absolute inline-flex h-full w-full rounded-full opacity-60",
+                concierge.length > 0 ? "bg-orange-500" : "bg-red-500"
+              )} />
+              <span className={cn(
+                "relative inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-white text-[10px] font-black rounded-full leading-none",
+                concierge.length > 0 ? "bg-orange-500" : "bg-red-500"
+              )}>
                 {total > 99 ? '99+' : total}
               </span>
             </span>
@@ -578,12 +695,13 @@ export function NotificationCenter() {
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <span className="text-sm font-black tracking-tight">Notificações</span>
             <div className="flex items-center gap-2">
-              {whatsapp.length > 0 && (
+              {waCount > 0 && (
                 <button
                   onClick={markAllRead}
-                  className="text-[10px] font-bold text-muted-foreground hover:text-foreground transition-colors uppercase tracking-wide"
+                  disabled={clearingWa}
+                  className="text-[10px] font-bold text-muted-foreground hover:text-foreground transition-colors uppercase tracking-wide disabled:opacity-50"
                 >
-                  Limpar mensagens
+                  {clearingWa ? 'Limpando…' : 'Limpar mensagens'}
                 </button>
               )}
               <button onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground transition-colors">
@@ -600,40 +718,22 @@ export function NotificationCenter() {
               </div>
             ) : (
               <>
-                {/* WhatsApp section */}
-                {whatsapp.length > 0 && (
-                  <NotifSection
-                    icon={<MessageSquare size={14} className="text-green-500" />}
-                    label="WhatsApp"
-                    count={whatsapp.length}
-                    onViewAll={() => goTo('/admin/comunicacao')}
-                  >
-                    {whatsapp.map(m => (
-                      <NotifRow
-                        key={m.id}
-                        title={m.cabinName || 'Hóspede'}
-                        subtitle={m.body}
-                        time={timeAgo(m.createdAt)}
-                        onClick={() => goTo('/admin/comunicacao')}
-                      />
-                    ))}
-                  </NotifSection>
-                )}
-
-                {/* Concierge section */}
+                {/* Concierge section — primeiro e com destaque: é o que o balcão não pode perder */}
                 {concierge.length > 0 && (
                   <NotifSection
                     icon={<ShoppingBag size={14} className="text-orange-500" />}
                     label="Concierge"
                     count={concierge.length}
+                    accent="orange"
                     onViewAll={() => goTo('/admin/concierge')}
                   >
                     {concierge.map(r => (
                       <NotifRow
                         key={r.id}
                         title={r.cabinName || 'Pedido'}
-                        subtitle={`${r.quantity}x ${r.itemName}`}
+                        subtitle={`${r.quantity}x ${r.itemName}${r.notes ? ` · ${r.notes}` : ''}`}
                         time={timeAgo(r.createdAt)}
+                        accent="orange"
                         onClick={() => goTo('/admin/concierge')}
                       />
                     ))}
@@ -659,6 +759,23 @@ export function NotificationCenter() {
                     ))}
                   </NotifSection>
                 )}
+
+                {/* WhatsApp — agregado numa única notificação */}
+                {waCount > 0 && (
+                  <NotifSection
+                    icon={<MessageSquare size={14} className="text-green-500" />}
+                    label="WhatsApp"
+                    count={waCount}
+                    onViewAll={() => goTo('/admin/comunicacao')}
+                  >
+                    <NotifRow
+                      title={`${waCount} nova${waCount > 1 ? 's' : ''} mensage${waCount > 1 ? 'ns' : 'm'}`}
+                      subtitle={waSubtitle}
+                      time={whatsapp[0] ? timeAgo(whatsapp[0].createdAt) : ''}
+                      onClick={() => goTo('/admin/comunicacao')}
+                    />
+                  </NotifSection>
+                )}
               </>
             )}
           </div>
@@ -671,24 +788,34 @@ export function NotificationCenter() {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function NotifSection({
-  icon, label, count, onViewAll, children
+  icon, label, count, onViewAll, children, accent
 }: {
   icon: React.ReactNode;
   label: string;
   count: number;
   onViewAll: () => void;
   children: React.ReactNode;
+  accent?: 'orange';
 }) {
   return (
-    <div className="border-b border-border last:border-b-0">
+    <div className={cn(
+      "border-b border-border last:border-b-0",
+      accent === 'orange' && "bg-orange-500/[0.06]"
+    )}>
       <button
         onClick={onViewAll}
         className="w-full flex items-center justify-between px-4 py-2 hover:bg-muted/40 transition-colors group"
       >
         <div className="flex items-center gap-2">
           {icon}
-          <span className="text-[11px] font-black uppercase tracking-widest text-muted-foreground">{label}</span>
-          <span className="text-[10px] font-bold bg-muted px-1.5 py-0.5 rounded-full">{count}</span>
+          <span className={cn(
+            "text-[11px] font-black uppercase tracking-widest",
+            accent === 'orange' ? "text-orange-500" : "text-muted-foreground"
+          )}>{label}</span>
+          <span className={cn(
+            "text-[10px] font-bold px-1.5 py-0.5 rounded-full",
+            accent === 'orange' ? "bg-orange-500/15 text-orange-500" : "bg-muted"
+          )}>{count}</span>
         </div>
         <ChevronRight size={12} className="text-muted-foreground group-hover:text-foreground transition-colors" />
       </button>
@@ -697,11 +824,12 @@ function NotifSection({
   );
 }
 
-function NotifRow({ title, subtitle, time, onClick }: {
+function NotifRow({ title, subtitle, time, onClick, accent }: {
   title: string;
   subtitle: string;
   time: string;
   onClick: () => void;
+  accent?: 'orange';
 }) {
   return (
     <button
@@ -709,7 +837,7 @@ function NotifRow({ title, subtitle, time, onClick }: {
       className="w-full flex items-start gap-3 px-4 py-2.5 hover:bg-muted/40 transition-colors text-left"
     >
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-bold truncate">{title}</p>
+        <p className={cn("text-xs font-bold truncate", accent === 'orange' && "text-orange-400")}>{title}</p>
         <p className="text-[11px] text-muted-foreground truncate">{subtitle}</p>
       </div>
       <span className="text-[10px] text-muted-foreground whitespace-nowrap mt-0.5 shrink-0">{time}</span>

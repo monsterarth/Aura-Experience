@@ -3,6 +3,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { AuditService } from "@/services/audit-service";
 import { ConciergeService } from "@/services/concierge-service";
+import { fanOutByRole } from "@/lib/push-notify";
 import { ConciergeItem } from "@/types/aura";
 
 /**
@@ -60,10 +61,11 @@ export async function submitConciergeRequest(
 
   // 4. Insert request
   const now = new Date().toISOString();
+  const requestId = crypto.randomUUID();
   const { error: insertError } = await supabaseAdmin
     .from('concierge_requests')
     .insert({
-      id: crypto.randomUUID(),
+      id: requestId,
       propertyId: stay.propertyId,
       stayId,
       cabinId: stay.cabinId || null,
@@ -78,6 +80,21 @@ export async function submitConciergeRequest(
   if (insertError) {
     return { success: false, error: 'Erro ao criar pedido.' };
   }
+
+  // 4.5. Web Push imediato para a recepção (houseman/admin já são cobertos pelo
+  // webhook /api/push/send/concierge). Fire-and-forget: push nunca quebra o pedido.
+  try {
+    const { data: cabin } = stay.cabinId
+      ? await supabaseAdmin.from('cabins').select('name').eq('id', stay.cabinId).maybeSingle()
+      : { data: null };
+    await fanOutByRole(stay.propertyId, ['reception'], {
+      title: '🛎️ Novo pedido de concierge',
+      body: `${quantity}x ${(itemRow as ConciergeItem | null)?.name ?? 'item'}${cabin?.name ? ` — ${cabin.name}` : ''}`,
+      url: '/admin/concierge',
+      tag: `concierge-request-${requestId}`,
+      role: 'reception',
+    });
+  } catch { /* silencioso */ }
 
   await AuditService.log({
     propertyId: stay.propertyId,

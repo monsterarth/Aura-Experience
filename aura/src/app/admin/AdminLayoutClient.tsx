@@ -9,6 +9,8 @@ import { PropertyProvider } from "@/context/PropertyContext";
 import { Toaster } from "sonner";
 import { NotificationProvider } from "@/context/NotificationContext";
 import { ImpersonateBanner } from "@/components/admin/ImpersonateBanner";
+import { PushNotificationManager } from "@/components/PushNotificationManager";
+import { NOTIFICATION_ALERT_ROLES, hasAnyRole } from "@/lib/notifications";
 
 const DARK_VARS = `
   --background: 0 0% 8% !important;
@@ -60,6 +62,11 @@ function AdminLayoutInner({ children, initialTheme }: { children: React.ReactNod
 
   const isLight = (userData?.uiTheme ?? initialTheme) === 'light';
 
+  // Web Push no desktop do balcão: mesmo com a aba fechada, pedido de concierge chega.
+  // Restrito aos cargos do canal interruptivo (hoje: recepção) para não pedir
+  // permissão de notificação a todo mundo.
+  const canPush = hasAnyRole(userData?.role, userData?.secondaryRoles, NOTIFICATION_ALERT_ROLES);
+
   return (
     <div
       className={`aura-admin-root flex min-[100dvh] w-full font-sans overflow-hidden ${isLight ? 'bg-[#f5f3f0] text-[#262d38]' : 'bg-[#141414] text-white'}`}
@@ -68,6 +75,7 @@ function AdminLayoutInner({ children, initialTheme }: { children: React.ReactNod
 
       {!isLoginPage && <Sidebar isOpen={mobileNavOpen} setIsOpen={setMobileNavOpen} />}
       {!isLoginPage && <ImpersonateBanner />}
+      {!isLoginPage && canPush && <PushNotificationManager role="reception" />}
 
       <main
         className={`flex-1 relative z-10 flex flex-col h-[100dvh] ${isLight ? 'bg-[#ede9e4]' : 'bg-[#151515]'}`}
