@@ -20,6 +20,7 @@ import {
   StockProduct,
   StockMovement,
   StockMovementHistory,
+  StockBatchDetail,
   StockMovementHistoryFilters,
   StockCabinOption,
   StockLocationDetail,
@@ -759,17 +760,17 @@ export const StockService = {
   },
 
   // ── MOVIMENTAÇÕES ────────────────────────────────────────────────────────────
-  async getMovements(propertyId: string, limit = 100): Promise<StockMovement[]> {
-    const [{ data: moves }, { data: products }, { data: locations }, staffName] = await Promise.all([
-      db().from("stock_movements").select("*").eq("propertyId", propertyId)
-        .order("createdAt", { ascending: false }).limit(limit),
+  /** Resolve nomes de produto, local e colaborador numa lista de movimentações. */
+  async _enrichMovements(propertyId: string, moves: StockMovement[]): Promise<StockMovement[]> {
+    if (moves.length === 0) return [];
+    const [{ data: products }, { data: locations }, staffName] = await Promise.all([
       db().from("stock_products").select("id, name").eq("propertyId", propertyId),
       db().from("stock_locations").select("id, name").eq("propertyId", propertyId),
       this._staffNamer(propertyId),
     ]);
     const pMap = new Map((products ?? []).map((p: { id: string; name: string }) => [p.id, p]));
     const lMap = new Map((locations ?? []).map((l: { id: string; name: string }) => [l.id, l]));
-    return ((moves ?? []) as StockMovement[]).map((m) => ({
+    return moves.map((m) => ({
       ...m,
       product: pMap.get(m.productId) as StockProduct | undefined,
       fromLocation: m.fromLocationId ? (lMap.get(m.fromLocationId) as StockLocation | undefined) : undefined,
@@ -777,6 +778,38 @@ export const StockService = {
       fromStaffName: staffName(m.fromStaffId),
       toStaffName: staffName(m.toStaffId),
     }));
+  },
+
+  async getMovements(propertyId: string, limit = 100): Promise<StockMovement[]> {
+    const { data: moves } = await db().from("stock_movements").select("*").eq("propertyId", propertyId)
+      .order("createdAt", { ascending: false }).limit(limit);
+    return this._enrichMovements(propertyId, (moves ?? []) as StockMovement[]);
+  },
+
+  /**
+   * TODAS as movimentações de um lote — sem limite e sem filtro de tela.
+   *
+   * Existe porque a tela de Movimentações carrega só as últimas 80: contar o lote
+   * pelo que está carregado subestima o tamanho dele. Quem for estornar precisa
+   * ver a lista inteira, não a fatia que coube na página.
+   */
+  async getBatchMovements(propertyId: string, batchRef: string): Promise<StockBatchDetail> {
+    // O estorno nasce com batchRef nulo (é lançamento novo, não parte do lote),
+    // então a única marca que liga um ao outro é a nota. Sem esta contagem a tela
+    // convidaria a estornar de novo — e a segunda inversão RE-APLICA o movimento
+    // original no saldo, silenciosamente.
+    const [{ data: moves }, { data: reversals }] = await Promise.all([
+      db().from("stock_movements").select("*")
+        .eq("propertyId", propertyId).eq("batchRef", batchRef)
+        .order("createdAt", { ascending: true }),
+      db().from("stock_movements").select("id")
+        .eq("propertyId", propertyId)
+        .eq("notes", `Estorno do lote ${batchRef.slice(0, 8)}`),
+    ]);
+    return {
+      movements: await this._enrichMovements(propertyId, (moves ?? []) as StockMovement[]),
+      reversalCount: (reversals ?? []).length,
+    };
   },
 
   /**

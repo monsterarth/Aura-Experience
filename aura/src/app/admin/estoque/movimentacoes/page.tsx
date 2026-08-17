@@ -11,10 +11,11 @@ import StockLocationPicker from "@/components/admin/StockLocationPicker";
 import StaffSelect from "@/components/admin/StaffSelect";
 import BatchMovementModal from "@/components/admin/BatchMovementModal";
 import ProductDetailModal from "@/components/admin/ProductDetailModal";
+import StockBatchPanel from "@/components/admin/StockBatchPanel";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { Loader2, ArrowLeftRight, ArrowDownToLine, ArrowUpFromLine, Repeat, SlidersHorizontal, AlertOctagon, Save, Layers, History } from "lucide-react";
+import { Loader2, ArrowLeftRight, ArrowDownToLine, ArrowUpFromLine, Repeat, SlidersHorizontal, AlertOctagon, Save, Layers, History, ChevronDown, ChevronRight } from "lucide-react";
 
 const TYPES: { value: StockMovementType; label: string; icon: React.ElementType; color: string }[] = [
   { value: "entry", label: "Entrada", icon: ArrowDownToLine, color: "text-emerald-500" },
@@ -59,6 +60,8 @@ export default function EstoqueMovimentacoesPage() {
   const [saving, setSaving] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
   const [productId, setProductId] = useState<string | null>(null);
+  // Lote expandido na tabela (só leitura — ver StockBatchPanel).
+  const [openBatch, setOpenBatch] = useState<string | null>(null);
   // "Estoque principal" (Configurações → Parâmetros): origem padrão da transferência.
   const [defaultLocationId, setDefaultLocationId] = useState("");
   // true assim que o usuário mexe na Origem — trava o autofill do local padrão (ver efeito abaixo).
@@ -201,21 +204,9 @@ export default function EstoqueMovimentacoesPage() {
     }
   };
 
-  /** Estorna um lote inteiro gerando movimentações inversas — nada é apagado. */
-  const revertBatch = async (batchRef: string) => {
-    if (!property?.id) return;
-    const count = movements.filter((m) => m.batchRef === batchRef).length;
-    if (!confirm(
-      `Estornar este lote?\n\n${count} movimentação(ões) visível(is) neste lote receberão uma movimentação inversa. ` +
-      `Nada é apagado do histórico — o estorno entra como lançamento novo.`
-    )) return;
-    setSaving(true);
-    try {
-      const r = await StockClient.revertBatch(property.id, batchRef);
-      await loadMovements();
-      toast.success(`${r.reverted} movimentação(ões) estornada(s).`);
-    } catch (e) { toast.error((e as Error).message); } finally { setSaving(false); }
-  };
+  /** Abre/fecha o detalhe de um lote. Esta tela é só de leitura — o estorno vive no Histórico. */
+  const toggleBatch = (batchRef: string) =>
+    setOpenBatch((cur) => (cur === batchRef ? null : batchRef));
 
   const typeMeta = (t: StockMovementType) => TYPES.find((x) => x.value === t)!;
   const fmtDate = (s: string) => new Date(s).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -395,8 +386,10 @@ export default function EstoqueMovimentacoesPage() {
               {movements.map((m) => {
                 const meta = typeMeta(m.type);
                 const Icon = meta.icon;
+                const isOpen = !!m.batchRef && openBatch === m.batchRef;
                 return (
-                  <tr key={m.id} onClick={() => m.productId && setProductId(m.productId)}
+                  <React.Fragment key={m.id}>
+                  <tr onClick={() => m.productId && setProductId(m.productId)}
                     className="border-b border-border/50 last:border-0 hover:bg-secondary/30 cursor-pointer">
                     <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{fmtDate(m.createdAt)}</td>
                     <td className="px-4 py-3">
@@ -407,10 +400,11 @@ export default function EstoqueMovimentacoesPage() {
                     <td className="px-4 py-3 text-foreground">
                       {m.product?.name ?? "—"}
                       {m.batchRef && (
-                        <button onClick={(e) => { e.stopPropagation(); revertBatch(m.batchRef!); }} disabled={saving}
-                          title="Movimentação lançada em lote — clique para estornar o lote inteiro"
-                          className="ml-1.5 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary text-muted-foreground hover:text-foreground align-middle">
-                          Lote
+                        <button onClick={(e) => { e.stopPropagation(); toggleBatch(m.batchRef!); }}
+                          title="Lançada em lote — clique para ver todas as movimentações deste lote"
+                          className={cn("ml-1.5 inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded align-middle transition-colors",
+                            isOpen ? "bg-primary/15 text-primary" : "bg-secondary text-muted-foreground hover:text-foreground")}>
+                          {isOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />} Lote
                         </button>
                       )}
                     </td>
@@ -427,6 +421,14 @@ export default function EstoqueMovimentacoesPage() {
                       <span className="block truncate" title={m.notes || undefined}>{m.notes || "—"}</span>
                     </td>
                   </tr>
+                  {isOpen && property && (
+                    <tr className="bg-secondary/20">
+                      <td colSpan={7} className="px-4 pb-4 pt-0">
+                        <StockBatchPanel propertyId={property.id} batchRef={m.batchRef!} />
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 );
               })}
               {movements.length === 0 && (

@@ -6,7 +6,7 @@ import {
   StockReport, StockReportFilters, StockReportKind,
   CabinLinkReport, StockCabinOption, StockLocationDetail, StockLocationOverview,
   StockCategory, StockLocation, StockProduct, StockMovement, StockStaffOption, StockSettings,
-  StockMovementHistory, StockMovementHistoryFilters,
+  StockMovementHistory, StockMovementHistoryFilters, StockBatchDetail,
   Supplier, Purchase, PurchaseItem, Asset, StockBatch, InventoryCount, ProductDetail, SupplierDetail, StockDashboard,
   AssetDetail, AssetLabel, AssetDisposalInput, AssetTransferInput,
   AssetInventoryCount, AssetInventoryItemStatus, AssetInventoryItemUpdate,
@@ -79,6 +79,9 @@ export const StockClient = {
     return get<StockMovementHistory>("estoque/movements", pid, `&${p.toString()}`);
   },
   movementStaff: (pid: string) => get<StockStaffOption[]>("estoque/movements", pid, "&staff=1"),
+  /** Todas as movimentações de um lote — a contagem real, não a fatia carregada na tela. */
+  batchMovements: (pid: string, batchRef: string) =>
+    get<StockBatchDetail>("estoque/movements", pid, `&batch=${encodeURIComponent(batchRef)}`),
   registerMovement: (body: Record<string, unknown> & { propertyId: string }) => post("estoque/movements", body),
   registerBatch: (body: BatchMovementInput & { propertyId: string }) =>
     post<BatchMovementResult>("estoque/movements", { action: "batch", ...body }),

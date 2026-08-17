@@ -32,6 +32,11 @@ export async function GET(request: NextRequest) {
       pageSize: Number(p.get('pageSize') ?? 50),
     }));
   }
+  // ?batch=<ref> → todas as movimentações do lote (sem limite), para o painel de detalhe
+  const batchRef = url.searchParams.get('batch');
+  if (batchRef) {
+    return NextResponse.json(await StockService.getBatchMovements(propertyId, batchRef));
+  }
   const limit = Number(url.searchParams.get('limit') ?? 100);
   return NextResponse.json(await StockService.getMovements(propertyId, limit));
 }

@@ -1716,6 +1716,16 @@ export interface StockMovementHistory {
   pageSize: number;
 }
 
+/** Conteúdo completo de um lote — o que foi lançado junto e se já foi estornado. */
+export interface StockBatchDetail {
+  movements: StockMovement[];
+  /**
+   * Quantas movimentações de estorno deste lote já existem. Maior que zero = o lote
+   * já foi revertido; estornar de novo RE-APLICA o movimento original no saldo.
+   */
+  reversalCount: number;
+}
+
 /**
  * Reconciliação entre a coleção `cabins` e os locais de estoque do tipo cabana.
  * Uma proposta NUNCA é aplicada sozinha — o usuário confirma linha a linha.

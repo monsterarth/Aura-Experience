@@ -15,13 +15,14 @@ import {
 } from "@/types/aura";
 import StaffSelect from "@/components/admin/StaffSelect";
 import ProductDetailModal from "@/components/admin/ProductDetailModal";
+import StockBatchPanel from "@/components/admin/StockBatchPanel";
 import { splitLocations } from "@/lib/stock-locations";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
   Loader2, ArrowLeft, History, Search, X, MessageSquareText,
   ArrowDownToLine, ArrowUpFromLine, Repeat, SlidersHorizontal, AlertOctagon,
-  ChevronLeft, ChevronRight,
+  ChevronLeft, ChevronRight, ChevronDown,
 } from "lucide-react";
 
 const TYPES: { value: StockMovementType; label: string; icon: React.ElementType; color: string }[] = [
@@ -77,6 +78,10 @@ export default function EstoqueHistoricoPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [productId, setProductId] = useState<string | null>(null);
+  // Lote expandido. É por dentro desta expansão que o estorno acontece.
+  const [openBatch, setOpenBatch] = useState<string | null>(null);
+  const toggleBatch = (batchRef: string) =>
+    setOpenBatch((cur) => (cur === batchRef ? null : batchRef));
 
   useEffect(() => {
     if (!property?.id) return;
@@ -335,6 +340,14 @@ export default function EstoqueHistoricoPage() {
                             {origin}
                           </span>
                         )}
+                        {m.batchRef && (
+                          <button onClick={(e) => { e.stopPropagation(); toggleBatch(m.batchRef!); }}
+                            title="Lançada em lote — clique para ver o lote inteiro e, se for o caso, estorná-lo"
+                            className={cn("ml-1.5 inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded align-middle transition-colors",
+                              openBatch === m.batchRef ? "bg-primary/15 text-primary" : "bg-secondary text-muted-foreground hover:text-foreground")}>
+                            {openBatch === m.batchRef ? <ChevronDown size={10} /> : <ChevronRight size={10} />} Lote
+                          </button>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums font-medium whitespace-nowrap">
                         {Number(m.quantity)} <span className="text-xs font-normal text-muted-foreground">{m.product?.unit ?? ""}</span>
@@ -349,6 +362,16 @@ export default function EstoqueHistoricoPage() {
                         {m.responsibleName ?? m.performedByName ?? "—"}
                       </td>
                     </tr>
+                    {/* Detalhe do lote. O estorno vive AQUI dentro: não dá para inverter um
+                        lote sem antes ver, na íntegra, o que vai ser invertido. */}
+                    {m.batchRef && openBatch === m.batchRef && property && (
+                      <tr className="border-b border-border/50 bg-secondary/20">
+                        <td colSpan={6} className="px-4 pb-4 pt-1">
+                          <StockBatchPanel propertyId={property.id} batchRef={m.batchRef}
+                            onReverted={() => { setOpenBatch(null); load(); }} />
+                        </td>
+                      </tr>
+                    )}
                     {/* A observação ganha a linha inteira — é o motivo desta tela existir. */}
                     {m.notes && (
                       <tr onClick={() => m.productId && setProductId(m.productId)}
