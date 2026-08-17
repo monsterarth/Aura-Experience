@@ -44,6 +44,7 @@ function quoteToLead(q: RateQuoteRecord): CrmLead {
     phone: q.clientPhone,
     email: q.clientEmail,
     document: q.clientDocument,
+    documentType: q.clientDocumentType,
     source: q.source,
     stage: q.status,
     value: v.value,

@@ -29,7 +29,8 @@ const QUOTE_STATUSES: RateQuoteStatus[] = ["open", "sent", "negotiating", "won",
 
 /** Campos de rate_quotes que o PATCH pode alterar (whitelist). */
 const QUOTE_PATCH_FIELDS = [
-  "clientName", "clientDocument", "clientPhone", "clientEmail",
+  "clientName", "clientDocument", "clientDocumentType", "clientPhone", "clientEmail",
+  "clientLanguage",
   "guestId", "stayId", "weddingId", "source",
   "selectedCategory", "finalValue", "negotiatedValue",
   "status", "lostReason", "notes",
@@ -547,7 +548,12 @@ export const RateService = {
     if (settings.categoryLinks && typeof settings.categoryLinks === "object" && !Array.isArray(settings.categoryLinks)) {
       clean.categoryLinks = settings.categoryLinks;
     }
-    for (const key of ["msgTemplate", "msgSingleTemplate", "eventTemplate", "inclusionsText"] as const) {
+    for (const key of [
+      "msgTemplate", "msgTemplate_en", "msgTemplate_es",
+      "msgSingleTemplate", "msgSingleTemplate_en", "msgSingleTemplate_es",
+      "eventTemplate", "eventTemplate_en", "eventTemplate_es",
+      "inclusionsText", "inclusionsText_en", "inclusionsText_es",
+    ] as const) {
       if (typeof settings[key] === "string" || settings[key] === null) clean[key] = settings[key];
     }
     const { error } = await admin.from("rate_settings").upsert(
@@ -829,8 +835,14 @@ export const RateService = {
     const common = {
       clientName: payload.clientName?.trim() || null,
       clientDocument: payload.clientDocument?.trim() || null,
+      // Default CPF: documento internacional é opt-in, o padrão continua sendo o de sempre.
+      clientDocumentType: payload.clientDocumentType?.trim() || "CPF",
       clientPhone: payload.clientPhone ? payload.clientPhone.replace(/\D/g, "") : null,
       clientEmail: payload.clientEmail?.trim() || null,
+      // Idioma falado pelo hóspede — rege a proposta pública e o template de
+      // WhatsApp copiado. Default PT: só muda quando o vendedor sabe que é outro.
+      clientLanguage: (payload.clientLanguage === "en" || payload.clientLanguage === "es")
+        ? payload.clientLanguage : "pt",
       guestId: payload.guestId || null,
       weddingId: payload.weddingId || null,
       source,
@@ -1215,7 +1227,10 @@ export const RateService = {
     actor: { id: string; name: string },
     opts?: {
       guestId?: string | null;
-      create?: { document: string; fullName: string; phone?: string | null; email?: string | null } | null;
+      create?: {
+        document: string; documentType?: string | null;
+        fullName: string; phone?: string | null; email?: string | null;
+      } | null;
     }
   ): Promise<{ guestId: string | null }> {
     const admin = supabaseAdmin!;
@@ -1245,8 +1260,13 @@ export const RateService = {
     } else if (opts?.create) {
       const fullName = (opts.create.fullName || "").trim();
       const normId = GuestService.normalizeDocument(opts.create.document || "");
+      const docType = opts.create.documentType?.trim() || quote.clientDocumentType || "CPF";
       if (!fullName) throw new Error("Informe o nome completo do hóspede.");
-      if (!normId) throw new Error("Informe um CPF válido para abrir a ficha.");
+      if (!normId) {
+        throw new Error(
+          docType === "CPF" ? "Informe um CPF válido para abrir a ficha." : "Informe um documento válido para abrir a ficha."
+        );
+      }
 
       const phone = (opts.create.phone ?? quote.clientPhone ?? "").replace(/\D/g, "");
       const email = (opts.create.email ?? quote.clientEmail ?? "").trim();
@@ -1259,7 +1279,7 @@ export const RateService = {
         .maybeSingle();
 
       if (existing) {
-        // CPF já cadastrado: vincula em vez de duplicar a ficha.
+        // Documento já cadastrado: vincula em vez de duplicar a ficha.
         guestId = existing.id as string;
       } else {
         const newGuest: Omit<Guest, "updatedAt"> = {
@@ -1272,18 +1292,19 @@ export const RateService = {
           birthDate: "",
           gender: "NAO_INFORMADO",
           occupation: "",
-          document: { type: "CPF", number: normId },
+          document: { type: docType, number: normId },
           address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", country: "Brasil" },
           allergies: [],
-          preferredLanguage: "pt",
+          preferredLanguage: quote.clientLanguage || "pt",
         };
         guestId = await GuestService.upsertGuestDirect(propertyId, newGuest, actor.id, actor.name);
       }
 
-      // O lead segue a ficha: nome/CPF conferidos valem mais que o digitado às
-      // pressas na cotação.
+      // O lead segue a ficha: nome/documento conferidos valem mais que o
+      // digitado às pressas na cotação.
       if (fullName !== (quote.clientName || "")) clientPatch.clientName = fullName;
       if (normId !== (quote.clientDocument || "")) clientPatch.clientDocument = normId;
+      if (docType !== (quote.clientDocumentType || "CPF")) clientPatch.clientDocumentType = docType;
       if (phone && phone !== (quote.clientPhone || "")) clientPatch.clientPhone = phone;
       if (email && email !== (quote.clientEmail || "")) clientPatch.clientEmail = email;
     } else if (!guestId && quote.clientDocument) {
@@ -1308,10 +1329,10 @@ export const RateService = {
             birthDate: "",
             gender: "NAO_INFORMADO",
             occupation: "",
-            document: { type: "CPF", number: quote.clientDocument },
+            document: { type: quote.clientDocumentType || "CPF", number: quote.clientDocument },
             address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", country: "Brasil" },
             allergies: [],
-            preferredLanguage: "pt",
+            preferredLanguage: quote.clientLanguage || "pt",
           };
           guestId = await GuestService.upsertGuestDirect(propertyId, newGuest, actor.id, actor.name);
         }

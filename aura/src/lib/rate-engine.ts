@@ -417,23 +417,40 @@ Enxoval completo e roupa de cama`;
 export const DEFAULT_EVENT_TEMPLATE =
   '🍹 Durante sua estadia teremos um evento especial: *{NOME_EVENTO}* em {DATA_EVENTO}. Aproveite!';
 
+/** Idioma do hóspede — rege qual variante de template/texto fixo é usada. */
+export type MsgLang = 'pt' | 'en' | 'es';
+
 /**
  * Aviso de ocupação estendida (cabana cotada em exceção). Texto FIXO, não
  * configurável por propriedade: é uma frase que precisa ficar conservadora
- * ("a confirmar na chegada") — reescrever convida promessa indevida.
+ * ("a confirmar na chegada") — reescrever convida promessa indevida. Só o
+ * IDIOMA muda, por chave — nunca o conteúdo.
  * A versão curta vai na mensagem de WhatsApp e na linha da opção; a longa é
  * o bloco de aviso da proposta pública.
  */
-export const OVER_CAPACITY_SHORT =
-  'Ocupação estendida — acomodação extra a confirmar na chegada';
+export const OVER_CAPACITY_SHORT: Record<MsgLang, string> = {
+  pt: 'Ocupação estendida — acomodação extra a confirmar na chegada',
+  en: 'Extended occupancy — extra bedding to be confirmed on arrival',
+  es: 'Ocupación extendida — cama extra a confirmar en la llegada',
+};
 
 /** Tamanho mínimo da justificativa da exceção — vale no wizard e no servidor. */
 export const MIN_OVER_CAPACITY_REASON = 10;
 
-export const OVER_CAPACITY_NOTICE =
-  'Ocupação estendida: uma das cabanas escolhidas é preparada para menos pessoas do que o ' +
-  'seu grupo. A acomodação extra foi combinada com a pousada e é montada na chegada. ' +
-  'Qualquer dúvida, fale com a gente antes de confirmar.';
+export const OVER_CAPACITY_NOTICE: Record<MsgLang, string> = {
+  pt:
+    'Ocupação estendida: uma das cabanas escolhidas é preparada para menos pessoas do que o ' +
+    'seu grupo. A acomodação extra foi combinada com a pousada e é montada na chegada. ' +
+    'Qualquer dúvida, fale com a gente antes de confirmar.',
+  en:
+    'Extended occupancy: one of the chosen cabins is set up for fewer people than your group. ' +
+    'The extra bedding was arranged with the inn and is set up on arrival. ' +
+    'Any questions, reach out before confirming.',
+  es:
+    'Ocupación extendida: una de las cabañas elegidas está preparada para menos personas de las ' +
+    'que trae su grupo. La cama extra fue acordada con la posada y se monta en la llegada. ' +
+    'Cualquier duda, hable con nosotros antes de confirmar.',
+};
 
 export interface QuoteMessageContext {
   attendantName: string;
@@ -472,7 +489,8 @@ export function buildCategoryBlock(
   quote: RateQuoteCategory,
   link: string | undefined,
   singleTemplate: string,
-  detailed: boolean
+  detailed: boolean,
+  lang: MsgLang = 'pt'
 ): string {
   let block = '';
   if (detailed) {
@@ -483,7 +501,7 @@ export function buildCategoryBlock(
       block += `   ▫ ${item.label}: R$ ${v}\n`;
     }
     block += `   ➡ *Total: R$ ${formatBRL(quote.finalTotal)}*\n`;
-    if (quote.overCapacity) block += `   ⚠ ${OVER_CAPACITY_SHORT}\n`;
+    if (quote.overCapacity) block += `   ⚠ ${OVER_CAPACITY_SHORT[lang]}\n`;
     if (link) block += `🔗 ${link}\n`;
     return block;
   }
@@ -498,7 +516,7 @@ export function buildCategoryBlock(
     .join('\n')
     // O aviso vem DEPOIS do template da cabana — a mensagem copiada tem que
     // dizer o mesmo que a proposta pública.
-    + (quote.overCapacity ? `\n⚠ ${OVER_CAPACITY_SHORT}` : '') + '\n';
+    + (quote.overCapacity ? `\n⚠ ${OVER_CAPACITY_SHORT[lang]}` : '') + '\n';
 }
 
 export function buildEventNotices(

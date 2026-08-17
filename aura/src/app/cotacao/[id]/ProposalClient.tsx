@@ -1,17 +1,184 @@
 // A parte interativa da proposta: o cliente escolhe UMA cabana por
 // acomodação e aceita. Visual no tema "camaleão" do Portal do Hóspede.
+//
+// Idioma: abre no idioma que o vendedor marcou no orçamento (quote.language)
+// — quem falou com o hóspede sabe o idioma dele antes de mandar o link. O
+// hóspede pode trocar por conta própria (pastilhas PT/EN/ES no cabeçalho,
+// mesmo padrão do portal do hóspede — ver check-in/[code]/CLAUDE.md); a
+// troca é só estado local da página, nunca grava no banco.
 "use client";
 
 import { useMemo, useRef, useState } from "react";
 import { acceptQuoteProposal } from "@/app/actions/quote-actions";
 import { DISPLAY_FONT } from "@/app/check-in/[code]/_portal/ui";
+import { MsgLang, OVER_CAPACITY_NOTICE, OVER_CAPACITY_SHORT } from "@/lib/rate-engine";
 import type { PublicQuoteView } from "@/services/rate-quote-public-service";
 
 const money = (v: number) =>
   v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtBR = (iso: string) => iso.slice(0, 10).split("-").reverse().join("/");
 
+type Dict = {
+  eyebrow: string;
+  greeting: (name: string) => string;
+  greetingFallback: string;
+  periodMixed: (a: string, b: string) => string;
+  period: (a: string, b: string, nights: number) => string;
+  validity: (date: string) => string;
+  acceptedTitle: string;
+  acceptedBody: string;
+  talkToInn: string;
+  introMulti: (n: number) => string;
+  introSingle: string;
+  people: (n: number) => string;
+  babies: (n: number) => string;
+  pets: (n: number) => string;
+  perNight: (v: string) => string;
+  seePhotos: string;
+  inclusionsTitle: string;
+  policyTitle: string;
+  policyRead: string;
+  policyHide: string;
+  policyCheckbox: string;
+  totalFrom: string;
+  totalLabel: string;
+  accommodationsCount: (n: number) => string;
+  sending: string;
+  pickAllRooms: string;
+  pickOne: string;
+  acceptPolicyFirst: string;
+  acceptButton: string;
+  disclaimer: string;
+  genericError: string;
+};
+
+const DICT: Record<MsgLang, Dict> = {
+  pt: {
+    eyebrow: "Sua proposta",
+    greeting: (name) => `Olá, ${name}!`,
+    greetingFallback: "Que bom te receber!",
+    periodMixed: (a, b) => `Chegadas em datas diferentes · entre ${a} e ${b}`,
+    period: (a, b, n) => `${a} a ${b} · ${n} noite${n !== 1 ? "s" : ""}`,
+    validity: (date) => `Válida até ${date} mediante disponibilidade`,
+    acceptedTitle: "Proposta aceita!",
+    acceptedBody: "Recebemos a sua escolha e já avisamos a recepção. Em instantes entramos em contato para confirmar a reserva e combinar o pagamento.",
+    talkToInn: "Falar com a pousada",
+    introMulti: (n) => `Preparamos opções para as ${n} acomodações. Escolha uma cabana para cada e confirme abaixo.`,
+    introSingle: "Escolha a cabana que mais combina com você e confirme abaixo.",
+    people: (n) => `${n} pessoa${n !== 1 ? "s" : ""}`,
+    babies: (n) => `${n} bebê${n > 1 ? "s" : ""}`,
+    pets: (n) => `${n} pet${n > 1 ? "s" : ""}`,
+    perNight: (v) => `R$ ${v} por noite`,
+    seePhotos: "ver fotos",
+    inclusionsTitle: "O que está incluso",
+    policyTitle: "Regras da pousada",
+    policyRead: "ler",
+    policyHide: "ocultar",
+    policyCheckbox: "Li e aceito as regras da pousada.",
+    totalFrom: "A partir de",
+    totalLabel: "Total",
+    accommodationsCount: (n) => `${n} acomodações`,
+    sending: "Registrando…",
+    pickAllRooms: "Escolha uma cabana para cada acomodação",
+    pickOne: "Escolha uma cabana",
+    acceptPolicyFirst: "Aceite as regras da pousada",
+    acceptButton: "Aceitar proposta",
+    disclaimer: "Aceitar não gera cobrança: a recepção confirma a disponibilidade e combina o pagamento com você.",
+    genericError: "Não foi possível registrar.",
+  },
+  en: {
+    eyebrow: "Your quote",
+    greeting: (name) => `Hi, ${name}!`,
+    greetingFallback: "Great to have you here!",
+    periodMixed: (a, b) => `Arrivals on different dates · between ${a} and ${b}`,
+    period: (a, b, n) => `${a} to ${b} · ${n} night${n !== 1 ? "s" : ""}`,
+    validity: (date) => `Valid until ${date}, subject to availability`,
+    acceptedTitle: "Quote accepted!",
+    acceptedBody: "We've received your choice and already notified the front desk. We'll be in touch shortly to confirm your booking and arrange payment.",
+    talkToInn: "Talk to the inn",
+    introMulti: (n) => `We've prepared options for your ${n} accommodations. Pick a cabin for each and confirm below.`,
+    introSingle: "Pick the cabin that suits you best and confirm below.",
+    people: (n) => `${n} ${n !== 1 ? "people" : "person"}`,
+    babies: (n) => `${n} ${n > 1 ? "infants" : "infant"}`,
+    pets: (n) => `${n} pet${n > 1 ? "s" : ""}`,
+    perNight: (v) => `R$ ${v} per night`,
+    seePhotos: "see photos",
+    inclusionsTitle: "What's included",
+    policyTitle: "House rules",
+    policyRead: "read",
+    policyHide: "hide",
+    policyCheckbox: "I've read and accept the house rules.",
+    totalFrom: "From",
+    totalLabel: "Total",
+    accommodationsCount: (n) => `${n} accommodations`,
+    sending: "Submitting…",
+    pickAllRooms: "Pick a cabin for each accommodation",
+    pickOne: "Pick a cabin",
+    acceptPolicyFirst: "Accept the house rules",
+    acceptButton: "Accept quote",
+    disclaimer: "Accepting doesn't charge you — the front desk will confirm availability and arrange payment with you.",
+    genericError: "Couldn't submit your choice.",
+  },
+  es: {
+    eyebrow: "Su presupuesto",
+    greeting: (name) => `¡Hola, ${name}!`,
+    greetingFallback: "¡Qué bueno recibirte!",
+    periodMixed: (a, b) => `Llegadas en fechas distintas · entre el ${a} y el ${b}`,
+    period: (a, b, n) => `${a} al ${b} · ${n} noche${n !== 1 ? "s" : ""}`,
+    validity: (date) => `Válida hasta el ${date}, sujeta a disponibilidad`,
+    acceptedTitle: "¡Presupuesto aceptado!",
+    acceptedBody: "Recibimos su elección y ya avisamos a recepción. En breve nos pondremos en contacto para confirmar la reserva y coordinar el pago.",
+    talkToInn: "Hablar con la posada",
+    introMulti: (n) => `Preparamos opciones para los ${n} alojamientos. Elija una cabaña para cada uno y confirme abajo.`,
+    introSingle: "Elija la cabaña que más le guste y confirme abajo.",
+    people: (n) => `${n} persona${n !== 1 ? "s" : ""}`,
+    babies: (n) => `${n} bebé${n > 1 ? "s" : ""}`,
+    pets: (n) => `${n} mascota${n > 1 ? "s" : ""}`,
+    perNight: (v) => `R$ ${v} por noche`,
+    seePhotos: "ver fotos",
+    inclusionsTitle: "Qué incluye",
+    policyTitle: "Reglas de la posada",
+    policyRead: "leer",
+    policyHide: "ocultar",
+    policyCheckbox: "Leí y acepto las reglas de la posada.",
+    totalFrom: "Desde",
+    totalLabel: "Total",
+    accommodationsCount: (n) => `${n} alojamientos`,
+    sending: "Enviando…",
+    pickAllRooms: "Elija una cabaña para cada alojamiento",
+    pickOne: "Elija una cabaña",
+    acceptPolicyFirst: "Acepte las reglas de la posada",
+    acceptButton: "Aceptar presupuesto",
+    disclaimer: "Aceptar no genera ningún cobro: recepción confirmará la disponibilidad y coordinará el pago con usted.",
+    genericError: "No se pudo registrar su elección.",
+  },
+};
+
+function LangSwitcher({ lang, setLang }: { lang: MsgLang; setLang: (l: MsgLang) => void }) {
+  return (
+    <div style={{
+      display: "inline-flex", gap: 3, background: "var(--surface)",
+      border: "1px solid var(--line)", borderRadius: 999, padding: 3, marginTop: 10,
+    }}>
+      {(["pt", "en", "es"] as const).map((l) => (
+        <button key={l} type="button" onClick={() => setLang(l)}
+          style={{
+            padding: "4px 11px", borderRadius: 999, border: "none", cursor: "pointer",
+            fontFamily: "inherit", fontSize: 10.5, fontWeight: 800, letterSpacing: ".06em",
+            textTransform: "uppercase",
+            background: lang === l ? "var(--brand)" : "transparent",
+            color: lang === l ? "#fff" : "var(--muted)",
+          }}>
+          {l}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
+  const [lang, setLang] = useState<MsgLang>(quote.language);
+  const t = DICT[lang];
   const [picks, setPicks] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
     for (const r of quote.rooms) if (r.selectedCategory) initial[r.id] = r.selectedCategory;
@@ -62,7 +229,7 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
     });
     setSending(false);
     if (res.ok) setAccepted(true);
-    else setError(res.error ?? "Não foi possível registrar.");
+    else setError(res.error ?? t.genericError);
   };
 
   const waLink = quote.property.whatsapp
@@ -82,26 +249,27 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
           fontSize: 11, fontWeight: 700, letterSpacing: ".14em", textTransform: "uppercase",
           color: "var(--muted)", margin: 0,
         }}>
-          Sua proposta
+          {t.eyebrow}
         </p>
         <h1 style={{
           fontFamily: DISPLAY_FONT, fontSize: 30, lineHeight: 1.15,
           color: "var(--ink)", margin: "6px 0 8px", fontWeight: 400,
         }}>
-          {quote.clientFirstName ? `Olá, ${quote.clientFirstName}!` : "Que bom te receber!"}
+          {quote.clientFirstName ? t.greeting(quote.clientFirstName) : t.greetingFallback}
         </h1>
         {/* Períodos mistos: a data vive em cada acomodação, não aqui — senão
             o cliente lê o span do grupo como se fosse a estadia dele. */}
         <p style={{ fontSize: 14, color: "var(--ink-soft)", margin: 0 }}>
           {quote.mixedPeriods
-            ? `Chegadas em datas diferentes · entre ${fmtBR(quote.checkIn)} e ${fmtBR(quote.checkOut)}`
-            : `${fmtBR(quote.checkIn)} a ${fmtBR(quote.checkOut)} · ${quote.nights} noite${quote.nights !== 1 ? "s" : ""}`}
+            ? t.periodMixed(fmtBR(quote.checkIn), fmtBR(quote.checkOut))
+            : t.period(fmtBR(quote.checkIn), fmtBR(quote.checkOut), quote.nights)}
         </p>
         {showValidity && !accepted && (
           <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>
-            Válida até {fmtBR(quote.expiresAt!)} mediante disponibilidade
+            {t.validity(fmtBR(quote.expiresAt!))}
           </p>
         )}
+        <LangSwitcher lang={lang} setLang={setLang} />
       </header>
 
       {accepted ? (
@@ -110,12 +278,10 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
           borderRadius: 18, padding: "28px 22px", textAlign: "center",
         }}>
           <p style={{ fontFamily: DISPLAY_FONT, fontSize: 24, color: "var(--ink)", margin: "0 0 8px", fontWeight: 400 }}>
-            Proposta aceita!
+            {t.acceptedTitle}
           </p>
           <p style={{ fontSize: 14, color: "var(--ink-soft)", margin: 0, lineHeight: 1.55 }}>
-            Recebemos a sua escolha e já avisamos a recepção. Em instantes
-            entramos em contato para confirmar a reserva e combinar o
-            pagamento.
+            {t.acceptedBody}
           </p>
           {waLink && (
             <a href={waLink} target="_blank" rel="noreferrer"
@@ -124,15 +290,13 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
                 borderRadius: 999, background: "var(--brand)", color: "#fff",
                 fontSize: 14, fontWeight: 700, textDecoration: "none",
               }}>
-              Falar com a pousada
+              {t.talkToInn}
             </a>
           )}
         </div>
       ) : (<>
         <p style={{ fontSize: 14, color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: 20 }}>
-          {quote.rooms.length > 1
-            ? `Preparamos opções para as ${quote.rooms.length} acomodações. Escolha uma cabana para cada e confirme abaixo.`
-            : "Escolha a cabana que mais combina com você e confirme abaixo."}
+          {quote.rooms.length > 1 ? t.introMulti(quote.rooms.length) : t.introSingle}
         </p>
 
         {quote.rooms.map((room) => (
@@ -142,16 +306,16 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
                 {room.label}
               </h2>
               <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                {room.adults + room.children} pessoa{room.adults + room.children !== 1 ? "s" : ""}
-                {room.babies > 0 ? ` · ${room.babies} bebê${room.babies > 1 ? "s" : ""}` : ""}
-                {room.pets > 0 ? ` · ${room.pets} pet${room.pets > 1 ? "s" : ""}` : ""}
+                {t.people(room.adults + room.children)}
+                {room.babies > 0 ? ` · ${t.babies(room.babies)}` : ""}
+                {room.pets > 0 ? ` · ${t.pets(room.pets)}` : ""}
               </span>
               {quote.mixedPeriods && (
                 <span style={{
                   fontSize: 11, fontWeight: 700, color: "var(--brand)",
                   background: "var(--brand-soft)", borderRadius: 999, padding: "2px 9px",
                 }}>
-                  {fmtBR(room.checkIn)} a {fmtBR(room.checkOut)} · {room.nights} noite{room.nights !== 1 ? "s" : ""}
+                  {t.period(fmtBR(room.checkIn), fmtBR(room.checkOut), room.nights)}
                 </span>
               )}
             </div>
@@ -184,14 +348,14 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
                         {o.name}
                       </span>
                       <span style={{ display: "block", fontSize: 12, color: "var(--muted)", marginTop: 2 }}>
-                        R$ {money(o.avgNightly)} por noite
+                        {t.perNight(money(o.avgNightly))}
                         {o.siteUrl && (
                           <>
                             {" · "}
                             <a href={o.siteUrl} target="_blank" rel="noreferrer"
                               onClick={(e) => e.stopPropagation()}
                               style={{ color: "var(--brand)", textDecoration: "underline" }}>
-                              ver fotos
+                              {t.seePhotos}
                             </a>
                           </>
                         )}
@@ -200,7 +364,7 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
                           escolher que esta cabana é preparada para menos gente. */}
                       {o.overCapacity && (
                         <span style={{ display: "block", fontSize: 11.5, color: "var(--muted)", marginTop: 3 }}>
-                          ⚠ Ocupação estendida — acomodação extra a confirmar na chegada
+                          ⚠ {OVER_CAPACITY_SHORT[lang]}
                         </span>
                       )}
                     </span>
@@ -237,19 +401,19 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
           }}>
             <span style={{ fontSize: 16, lineHeight: 1.3, flexShrink: 0 }}>⚠</span>
             <p style={{ margin: 0, fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.55 }}>
-              {quote.overCapacityNotice}
+              {OVER_CAPACITY_NOTICE[lang]}
             </p>
           </section>
         )}
 
-        {/* O que está incluso — vem do Tarifário → Comercial. */}
+        {/* O que está incluso — vem do Tarifário → Comercial, já no idioma certo. */}
         {quote.inclusions.length > 0 && (
           <section style={{
             background: "var(--surface)", border: "1px solid var(--line)",
             borderRadius: 16, padding: "16px 18px", marginBottom: 14,
           }}>
             <h2 style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)", margin: "0 0 10px" }}>
-              O que está incluso
+              {t.inclusionsTitle}
             </h2>
             <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
               {quote.inclusions.map((item, i) => (
@@ -280,10 +444,10 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
                 fontFamily: "inherit", textAlign: "left",
               }}>
               <span style={{ fontSize: 14, fontWeight: 700, color: "var(--ink)" }}>
-                Regras da pousada
+                {t.policyTitle}
               </span>
               <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--brand)", fontWeight: 700 }}>
-                {policyOpen ? "ocultar" : "ler"}
+                {policyOpen ? t.policyHide : t.policyRead}
               </span>
             </button>
 
@@ -304,7 +468,7 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
               <input type="checkbox" checked={policyOk}
                 onChange={(e) => setPolicyOk(e.target.checked)}
                 style={{ marginTop: 2, width: 18, height: 18, accentColor: "var(--brand)", flexShrink: 0 }} />
-              Li e aceito as regras da pousada.
+              {t.policyCheckbox}
             </label>
           </section>
         )}
@@ -322,8 +486,8 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
         }}>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 12 }}>
             <span style={{ fontSize: 13, color: "var(--ink-soft)" }}>
-              {total.partial ? "A partir de" : "Total"}
-              {quote.rooms.length > 1 ? ` · ${quote.rooms.length} acomodações` : ""}
+              {total.partial ? t.totalFrom : t.totalLabel}
+              {quote.rooms.length > 1 ? ` · ${t.accommodationsCount(quote.rooms.length)}` : ""}
             </span>
             <span style={{ fontFamily: DISPLAY_FONT, fontSize: 26, color: "var(--ink)" }}>
               R$ {money(total.sum)}
@@ -348,15 +512,14 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
               cursor: canAccept && !sending ? "pointer" : "default",
               opacity: sending ? 0.7 : 1,
             }}>
-            {sending ? "Registrando…"
-              : !allPicked ? (quote.rooms.length > 1 ? "Escolha uma cabana para cada acomodação" : "Escolha uma cabana")
-              : policyPending ? "Aceite as regras da pousada"
-              : "Aceitar proposta"}
+            {sending ? t.sending
+              : !allPicked ? (quote.rooms.length > 1 ? t.pickAllRooms : t.pickOne)
+              : policyPending ? t.acceptPolicyFirst
+              : t.acceptButton}
           </button>
 
           <p style={{ fontSize: 11.5, color: "var(--muted)", textAlign: "center", margin: "10px 0 0", lineHeight: 1.5 }}>
-            Aceitar não gera cobrança: a recepção confirma a disponibilidade e
-            combina o pagamento com você.
+            {t.disclaimer}
           </p>
         </div>
       </>)}

@@ -19,7 +19,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { AuditService } from "./audit-service";
 import { CrmService } from "./crm-service";
-import { offeredTotal, OVER_CAPACITY_NOTICE, resolveRoomValue } from "@/lib/rate-engine";
+import { offeredTotal, resolveRoomValue, MsgLang } from "@/lib/rate-engine";
 import { parseMultiLang } from "@/lib/multilang";
 import { RateQuoteCategory, RateQuoteRecord, RateQuoteRoom } from "@/types/aura";
 
@@ -68,6 +68,9 @@ export type PublicQuoteView = {
    * e aparece em TODAS as acomodações (inclusive a que coincide com o span).
    */
   mixedPeriods: boolean;
+  /** Idioma falado pelo hóspede (escolhido pelo vendedor no wizard) — a
+   *  página abre nele; o hóspede pode trocar por conta própria na tela. */
+  language: MsgLang;
   rooms: PublicQuoteRoom[];
   /** Total com as escolhas atuais; approximate = ainda falta escolher. */
   total: number;
@@ -79,10 +82,11 @@ export type PublicQuoteView = {
   /** Regras da pousada (settings.generalPolicyText) — aceite obrigatório. */
   policyText: string | null;
   /**
-   * Aviso de ocupação estendida — preenchido quando ALGUMA opção de alguma
-   * acomodação foi cotada em exceção. A página só exibe; quem decide é aqui.
+   * Aviso de ocupação estendida — true quando ALGUMA opção de alguma
+   * acomodação foi cotada em exceção. O TEXTO (traduzido) mora no dicionário
+   * do próprio ProposalClient — aqui só decide SE ele aparece.
    */
-  overCapacityNotice: string | null;
+  overCapacityNotice: boolean;
   property: {
     id: string;
     name: string;
@@ -107,13 +111,15 @@ function roomsOf(q: RateQuoteRecord): RateQuoteRoom[] {
  * Regras da pousada como texto. As políticas são MULTILÍNGUES no banco
  * (`{pt,en,es}` — ver lib/multilang), não string: tratar como string quebrava
  * a página inteira em propriedades que já tinham a política preenchida.
- * A proposta é em PT; cai para outro idioma só se o PT estiver vazio.
+ * Prefere o idioma do hóspede; cai para PT → EN → ES conforme o que estiver
+ * preenchido (também serve para `acceptQuote` só checar "existe alguma
+ * política", sem lang específico).
  */
-function policyTextOf(settings: unknown): string | null {
+function policyTextOf(settings: unknown, lang: MsgLang = "pt"): string | null {
   const raw = (settings as { generalPolicyText?: unknown } | null)?.generalPolicyText;
   if (!raw) return null;
   const ml = parseMultiLang(raw);
-  return (ml.pt || ml.en || ml.es || "").trim() || null;
+  return (ml[lang] || ml.pt || ml.en || ml.es || "").trim() || null;
 }
 
 /**
@@ -169,6 +175,10 @@ export const RateQuotePublicService = {
     const rooms = roomsOf(q);
     if (rooms.length === 0) return null;
 
+    // Idioma falado pelo hóspede, escolhido pelo vendedor no wizard.
+    const language: MsgLang = q.clientLanguage === "en" || q.clientLanguage === "es"
+      ? q.clientLanguage : "pt";
+
     // Link do site por categoria (o cliente quer ver a cabana).
     const { data: cats } = await supabaseAdmin
       .from("cabin_categories")
@@ -177,15 +187,21 @@ export const RateQuotePublicService = {
     const siteUrlOf = (categoryId: string) =>
       (cats ?? []).find((c) => c.id === categoryId)?.siteUrl || undefined;
 
-    // "O que está incluso" — texto comercial do tarifário, uma linha por item.
-    // Coluna nova: propriedade sem a migration aplicada devolve erro e a
-    // seção some, em vez de derrubar a proposta.
+    // "O que está incluso" — texto comercial do tarifário, uma linha por item,
+    // no idioma do hóspede (vazio em EN/ES cai no PT). Colunas novas:
+    // propriedade sem a migration aplicada devolve erro e a seção some, em
+    // vez de derrubar a proposta.
     const { data: rateSettings } = await supabaseAdmin
       .from("rate_settings")
-      .select("inclusionsText")
+      .select("inclusionsText, inclusionsText_en, inclusionsText_es")
       .eq("propertyId", q.propertyId)
       .maybeSingle();
-    const inclusions = String((rateSettings as { inclusionsText?: string } | null)?.inclusionsText ?? "")
+    const inclusionsRow = rateSettings as
+      { inclusionsText?: string; inclusionsText_en?: string; inclusionsText_es?: string } | null;
+    const inclusionsRaw = (language === "en" ? inclusionsRow?.inclusionsText_en
+      : language === "es" ? inclusionsRow?.inclusionsText_es
+      : null) || inclusionsRow?.inclusionsText || "";
+    const inclusions = String(inclusionsRaw)
       .split("\n")
       .map((l) => l.replace(/^\s*[-•*]\s*/, "").trim())
       .filter(Boolean);
@@ -222,6 +238,7 @@ export const RateQuotePublicService = {
       checkOut: q.checkOut,
       nights: rooms[0]?.options[0]?.nights ?? 0,
       mixedPeriods,
+      language,
       rooms: rooms.map((room, i) => ({
         id: room.id,
         label: room.label?.trim() || (rooms.length > 1 ? `Acomodação ${i + 1}` : "Sua cabana"),
@@ -238,9 +255,8 @@ export const RateQuotePublicService = {
       acceptedAt: q.acceptedAt ?? null,
       expiresAt: q.expiresAt ?? null,
       inclusions,
-      policyText: policyTextOf(property?.settings),
-      overCapacityNotice: rooms.some((r) => r.options.some((c) => c.overCapacity))
-        ? OVER_CAPACITY_NOTICE : null,
+      policyText: policyTextOf(property?.settings, language),
+      overCapacityNotice: rooms.some((r) => r.options.some((c) => c.overCapacity)),
       property: {
         id: property?.id ?? q.propertyId,
         name: property?.name ?? "",

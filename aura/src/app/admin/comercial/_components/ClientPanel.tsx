@@ -10,6 +10,7 @@ import { BadgeCheck, Home, Link2, Loader2, UserPlus } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
 import { CrmLead, Guest, RateQuoteRecord } from "@/types/aura";
 import { resolveQuoteValue } from "@/lib/rate-engine";
+import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import { PromoteGuestModal, PromotePayload } from "./PromoteGuestModal";
 import { S, QUOTE_STAGES, fmtBR, money, pillS } from "./shared";
 
@@ -87,6 +88,8 @@ export function ClientPanel({
   const [ctx, setCtx] = useState<ClientContext | null>(null);
   const [loading, setLoading] = useState(false);
   const [promoting, setPromoting] = useState(false);
+  const [docTypes, setDocTypes] = useState<FnrhDomain[]>([]);
+  useEffect(() => { FnrhService.getTiposDocumento().then(setDocTypes); }, []);
 
   useEffect(() => {
     if (!lead.guestId && !lead.phone) { setCtx(null); return; }
@@ -197,11 +200,21 @@ export function ClientPanel({
             placeholder="Só dígitos" onCommit={(v) => onPatch({ clientPhone: v })} />
           <LeadField label="E-mail" value={lead.email ?? ""} busy={busy}
             placeholder="cliente@email.com" onCommit={(v) => onPatch({ clientEmail: v })} />
-          <div style={{ gridColumn: "1 / -1" }}>
-            <LeadField label="CPF (habilita criar a ficha)" value={lead.document ?? ""}
-              busy={busy} placeholder="Só números"
-              onCommit={(v) => onPatch({ clientDocument: v })} />
+          <div>
+            <label style={{
+              fontSize: 9, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase",
+              color: T.muted, marginBottom: 4, display: "block",
+            }}>Tipo de documento</label>
+            <select style={{ ...S.input, padding: "7px 10px", fontSize: 12, background: T.card }}
+              value={lead.documentType ?? "CPF"} disabled={busy}
+              onChange={(e) => onPatch({ clientDocumentType: e.target.value })}>
+              {docTypes.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+            </select>
           </div>
+          <LeadField label="Documento (habilita criar a ficha)" value={lead.document ?? ""}
+            busy={busy} placeholder={(lead.documentType ?? "CPF") === "CPF" ? "Só números" : undefined}
+            digitsOnly={(lead.documentType ?? "CPF") === "CPF"}
+            onCommit={(v) => onPatch({ clientDocument: v })} />
         </div>
       )}
 

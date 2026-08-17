@@ -11,6 +11,8 @@ import { useEffect, useState } from "react";
 import { BadgeCheck, Loader2, Search, UserPlus, X } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
 import { CrmLead, Guest } from "@/types/aura";
+import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
+import { GuestService } from "@/services/guest-service";
 import { S, pillS } from "./shared";
 
 const fieldLabel: React.CSSProperties = {
@@ -20,7 +22,12 @@ const fieldLabel: React.CSSProperties = {
 
 export type PromotePayload =
   | { guestId: string }
-  | { create: { document: string; fullName: string; phone: string | null; email: string | null } };
+  | {
+      create: {
+        document: string; documentType: string; fullName: string;
+        phone: string | null; email: string | null;
+      };
+    };
 
 export function PromoteGuestModal({
   propertyId, lead, busy, onClose, onConfirm,
@@ -36,12 +43,16 @@ export function PromoteGuestModal({
   const [query, setQuery] = useState(lead.title === "Sem nome" ? "" : lead.title);
   const [matches, setMatches] = useState<Guest[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [docTypes, setDocTypes] = useState<FnrhDomain[]>([]);
+  useEffect(() => { FnrhService.getTiposDocumento().then(setDocTypes); }, []);
 
   // Ficha nova: prefill com o que o vendedor já digitou na cotação.
   const [fullName, setFullName] = useState(lead.title === "Sem nome" ? "" : lead.title);
   const [document, setDocument] = useState(lead.document ?? "");
+  const [documentType, setDocumentType] = useState(lead.documentType ?? "CPF");
   const [phone, setPhone] = useState(lead.phone ?? "");
   const [email, setEmail] = useState(lead.email ?? "");
+  const docLabel = docTypes.find((d) => d.id === documentType)?.label ?? documentType;
 
   // Busca combinada: telefone do lead + o que estiver no campo (nome ou CPF).
   // Debounce curto — o vendedor digita o nome inteiro antes de decidir.
@@ -69,18 +80,24 @@ export function PromoteGuestModal({
     return () => { alive = false; clearTimeout(t); };
   }, [propertyId, lead.phone, query]);
 
-  const docDigits = document.replace(/\D/g, "");
+  // CPF é sempre só dígitos (11); outros documentos (passaporte, DNI, RG…)
+  // podem ter letras — mesma normalização alfanumérica do servidor
+  // (GuestService.normalizeDocument), só o tamanho mínimo é CPF-específico.
+  const docNorm = documentType === "CPF"
+    ? document.replace(/\D/g, "")
+    : GuestService.normalizeDocument(document);
   const newError = !fullName.trim() ? "Informe o nome completo."
-    : docDigits.length < 11 ? "O CPF é obrigatório para abrir a ficha."
+    : documentType === "CPF" && docNorm.length < 11 ? "O CPF é obrigatório para abrir a ficha."
+    : !docNorm ? `Informe um ${docLabel.toLowerCase()} válido para abrir a ficha.`
     : null;
-  /** CPF já cadastrado: o servidor vincula, mas o vendedor precisa saber. */
-  const docMatch = (matches ?? []).find((g) => g.id.replace(/\D/g, "") === docDigits);
+  /** Documento já cadastrado: o servidor vincula, mas o vendedor precisa saber. */
+  const docMatch = (matches ?? []).find((g) => GuestService.normalizeDocument(g.id) === docNorm);
 
   const confirmNew = () => {
     if (newError) return;
     onConfirm({
       create: {
-        document: docDigits, fullName: fullName.trim(),
+        document: docNorm, documentType, fullName: fullName.trim(),
         phone: phone.replace(/\D/g, "") || null, email: email.trim() || null,
       },
     });
@@ -135,7 +152,7 @@ export function PromoteGuestModal({
             <div style={{ position: "relative" }}>
               <Search size={13} style={{ position: "absolute", left: 11, top: 11, color: T.muted }} />
               <input autoFocus style={{ ...S.input, paddingLeft: 32 }}
-                placeholder="Buscar por nome ou CPF"
+                placeholder="Buscar por nome ou documento"
                 value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
 
@@ -172,7 +189,7 @@ export function PromoteGuestModal({
                         {g.fullName}
                       </p>
                       <p style={{ fontSize: 11, color: T.muted, margin: "2px 0 0" }}>
-                        CPF {g.id}{g.phone ? ` · ${g.phone}` : ""}
+                        {g.document?.type || "Doc."} {g.id}{g.phone ? ` · ${g.phone}` : ""}
                       </p>
                     </div>
                     {samePhone && (
@@ -197,14 +214,26 @@ export function PromoteGuestModal({
                   onChange={(e) => setFullName(e.target.value)} />
               </div>
               <div>
-                <label style={fieldLabel}>CPF *</label>
-                <input style={S.input} inputMode="numeric" placeholder="Só números"
-                  value={document} onChange={(e) => setDocument(e.target.value.replace(/\D/g, ""))} />
+                <label style={fieldLabel}>Tipo de documento</label>
+                <select style={{ ...S.input, background: T.card }}
+                  value={documentType} onChange={(e) => setDocumentType(e.target.value)}>
+                  {docTypes.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+                </select>
               </div>
               <div>
                 <label style={fieldLabel}>Telefone</label>
                 <input style={S.input} inputMode="numeric"
                   value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))} />
+              </div>
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label style={fieldLabel}>{docLabel} *</label>
+                <input style={S.input}
+                  inputMode={documentType === "CPF" ? "numeric" : "text"}
+                  placeholder={documentType === "CPF" ? "Só números" : undefined}
+                  value={document}
+                  onChange={(e) => setDocument(
+                    documentType === "CPF" ? e.target.value.replace(/\D/g, "") : e.target.value
+                  )} />
               </div>
               <div style={{ gridColumn: "1 / -1" }}>
                 <label style={fieldLabel}>E-mail</label>
@@ -218,8 +247,8 @@ export function PromoteGuestModal({
                 border: "1px solid rgba(245,158,11,0.3)", borderRadius: 12,
                 padding: "9px 12px", margin: 0, lineHeight: 1.5,
               }}>
-                Esse CPF já tem ficha (<b>{docMatch.fullName}</b>) — vamos vincular a existente
-                em vez de criar outra.
+                Esse documento já tem ficha (<b>{docMatch.fullName}</b>) — vamos vincular a
+                existente em vez de criar outra.
               </p>
             )}
             <p style={{ fontSize: 11.5, color: T.muted, margin: 0, lineHeight: 1.5 }}>

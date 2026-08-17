@@ -2450,13 +2450,21 @@ export interface RateSettings {
   /** @deprecated Migrado para `CabinCategory.siteUrl`; mantido só para linhas antigas. */
   categoryLinks: Record<string, string>;
   msgTemplate?: string | null;
+  msgTemplate_en?: string | null;
+  msgTemplate_es?: string | null;
   msgSingleTemplate?: string | null;
+  msgSingleTemplate_en?: string | null;
+  msgSingleTemplate_es?: string | null;
   eventTemplate?: string | null;
+  eventTemplate_en?: string | null;
+  eventTemplate_es?: string | null;
   /**
    * "O que está incluso" — texto que o cliente lê na proposta pública, acima
    * das regras da pousada. Uma linha por item (vira lista na tela).
    */
   inclusionsText?: string | null;
+  inclusionsText_en?: string | null;
+  inclusionsText_es?: string | null;
   updatedAt?: Timestamp;
 }
 
@@ -2650,6 +2658,8 @@ export interface CrmLead {
   email?: string | null;
   /** CPF/doc do lead (orçamentos) — habilita criar a ficha de hóspede. */
   document?: string | null;
+  /** FNRH ID do tipo de documento (orçamentos) — default CPF. */
+  documentType?: string | null;
   source?: string | null;
   /** Estágio bruto da entidade de origem (RateQuoteStatus ou WeddingStatus). */
   stage: string;
@@ -2783,8 +2793,13 @@ export interface RateQuoteRecord {
   // Cliente (lead)
   clientName?: string | null;
   clientDocument?: string | null;
+  /** FNRH ID do tipo de documento (CPF/PASSAPORTE/RG/DNI/CNH/OUTRO) — default CPF. */
+  clientDocumentType?: string | null;
   clientPhone?: string | null;
   clientEmail?: string | null;
+  /** Idioma falado pelo hóspede — escolhido pelo vendedor no wizard. Rege a
+   *  proposta pública e o template de WhatsApp copiado. Default 'pt'. */
+  clientLanguage?: 'pt' | 'en' | 'es' | null;
   guestId?: string | null;
   stayId?: string | null;
   weddingId?: string | null;

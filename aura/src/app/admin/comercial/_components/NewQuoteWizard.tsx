@@ -27,6 +27,7 @@ import {
   addDays, dateToIso, formatBRL,
 } from "@/lib/rate-engine";
 import type { RateBundle } from "@/services/rate-service";
+import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import {
   CrmChannel, Guest, RateAvailability, RateQuoteCategory, RateQuoteInput,
   RateQuoteRecord, RateQuoteResult, RateQuoteRoom,
@@ -111,6 +112,10 @@ export type QuoteSeed = {
   clientPhone?: string | null;
   clientEmail?: string | null;
   clientDocument?: string | null;
+  /** FNRH ID do tipo de documento (CPF/PASSAPORTE/RG/DNI/CNH/OUTRO) — default CPF. */
+  clientDocumentType?: string | null;
+  /** Idioma falado pelo hóspede — rege a proposta pública e o WhatsApp copiado. */
+  clientLanguage?: "pt" | "en" | "es" | null;
   guestId?: string | null;
   source?: string | null;
   checkIn?: string | null;
@@ -191,6 +196,10 @@ export function NewQuoteWizard({
   const [phone, setPhone] = useState(seed?.clientPhone ?? "");
   const [email, setEmail] = useState(seed?.clientEmail ?? "");
   const [document, setDocument] = useState(seed?.clientDocument ?? "");
+  const [documentType, setDocumentType] = useState(seed?.clientDocumentType ?? "CPF");
+  const [language, setLanguage] = useState<"pt" | "en" | "es">(seed?.clientLanguage ?? "pt");
+  const [docTypes, setDocTypes] = useState<FnrhDomain[]>([]);
+  useEffect(() => { FnrhService.getTiposDocumento().then(setDocTypes); }, []);
   const [checkIn, setCheckIn] = useState(seed?.checkIn ?? todayIso());
   const [checkOut, setCheckOut] = useState(seed?.checkOut ?? addDays(todayIso(), 2));
   const [rooms, setRooms] = useState<DraftRoom[]>(() => seedRooms(seed));
@@ -280,6 +289,8 @@ export function NewQuoteWizard({
     if (!phone.trim() && q.clientPhone) setPhone(q.clientPhone);
     if (!email.trim() && q.clientEmail) setEmail(q.clientEmail);
     if (!document.trim() && q.clientDocument) setDocument(q.clientDocument);
+    if (q.clientDocumentType) setDocumentType(q.clientDocumentType);
+    if (q.clientLanguage) setLanguage(q.clientLanguage);
     if (!source && q.source) setSource(q.source);
     if (keepSaved) applyQuoteToDraft(q);
     markDirty();
@@ -320,6 +331,8 @@ export function NewQuoteWizard({
     setLinkedGuest({ id: g.id, name: g.fullName });
     setName(g.fullName);
     if (!document.trim() && g.document?.number) setDocument(g.document.number);
+    if (g.document?.type) setDocumentType(g.document.type);
+    if (g.preferredLanguage) setLanguage(g.preferredLanguage);
     if (!email.trim() && g.email) setEmail(g.email);
     if (!phone.trim() && g.phone) setPhone(g.phone);
     setStep(3);
@@ -516,7 +529,7 @@ export function NewQuoteWizard({
 
   // Mudou o cálculo/cliente → o save anterior não representa mais o orçamento.
   const quoteKey = JSON.stringify([
-    checkIn, checkOut, commercial, rooms, name, document, phone, email,
+    checkIn, checkOut, commercial, rooms, name, document, documentType, language, phone, email,
     linkedGuest?.id ?? null, source,
   ]);
   const isSavedCurrent = savedId !== null && savedKeyRef.current === quoteKey;
@@ -545,6 +558,7 @@ export function NewQuoteWizard({
           quote: {
             id: savedId ?? undefined,   // re-salvar atualiza o MESMO lead
             clientName: name.trim(), clientDocument: document.trim(),
+            clientDocumentType: documentType, clientLanguage: language,
             clientPhone: phone.trim(), clientEmail: email.trim(),
             guestId: linkedGuest?.id ?? null,
             weddingId: null, source: source || null,
@@ -618,7 +632,12 @@ export function NewQuoteWizard({
     const settings = bundle.settings;
     const linkOf = (categoryId: string) =>
       bundle.categories.find((c) => c.id === categoryId)?.siteUrl || undefined;
-    const single = settings.msgSingleTemplate || DEFAULT_MSG_SINGLE_TEMPLATE;
+    // Idioma do orçamento escolhe a variante do template — vazio (não
+    // traduzido ainda) cai no PT, igual ao resto do i18n inline do projeto.
+    const pickLang = (base: string | null | undefined, en: string | null | undefined, es: string | null | undefined) =>
+      (language === "en" ? en : language === "es" ? es : null) || base;
+    const single = pickLang(settings.msgSingleTemplate, settings.msgSingleTemplate_en, settings.msgSingleTemplate_es)
+      || DEFAULT_MSG_SINGLE_TEMPLATE;
 
     // Com uma acomodação a mensagem sai idêntica à de sempre; com várias,
     // um bloco por acomodação para o cliente entender que escolhe uma de cada.
@@ -631,7 +650,7 @@ export function NewQuoteWizard({
       const blocks = picked
         // O que vai na mensagem é o preço OFERECIDO (com o ajuste manual).
         .map((c) => buildCategoryBlock(
-          { ...c, finalTotal: priceOf(rq.room, c) }, linkOf(c.categoryId), single, detailed
+          { ...c, finalTotal: priceOf(rq.room, c) }, linkOf(c.categoryId), single, detailed, language
         ))
         .join("\n");
       parts.push(roomQuotes.length === 1
@@ -649,12 +668,15 @@ export function NewQuoteWizard({
     const uniqueEvents = allEvents.filter(
       (ev, i) => allEvents.findIndex((o) => o.title === ev.title && o.date === ev.date) === i
     );
-    const avisos = buildEventNotices(uniqueEvents, settings.eventTemplate);
+    const avisos = buildEventNotices(uniqueEvents, pickLang(settings.eventTemplate, settings.eventTemplate_en, settings.eventTemplate_es));
     const msgCtx = {
       attendantName, input: totalInput, isWedding: false,
       quoteLink: quoteId ? `${proposalBase}/cotacao/${quoteId}` : null,
     };
-    const msg = processTemplate(settings.msgTemplate || DEFAULT_MSG_TEMPLATE, msgCtx, resumo, avisos);
+    const msg = processTemplate(
+      pickLang(settings.msgTemplate, settings.msgTemplate_en, settings.msgTemplate_es) || DEFAULT_MSG_TEMPLATE,
+      msgCtx, resumo, avisos
+    );
 
     try {
       await navigator.clipboard.writeText(msg);
@@ -1080,14 +1102,40 @@ export function NewQuoteWizard({
                   onChange={(e) => setEmail(e.target.value)} />
               </div>
               <div>
-                <label style={fieldLabel}>CPF (opcional)</label>
-                <input style={S.input} value={document} autoComplete="off"
-                  onChange={(e) => setDocument(e.target.value)} />
+                <label style={fieldLabel}>Documento (opcional)</label>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <select style={{ ...S.input, flex: "0 0 104px", background: T.card }}
+                    value={documentType} onChange={(e) => setDocumentType(e.target.value)}>
+                    {docTypes.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+                  </select>
+                  <input style={{ ...S.input, flex: 1, minWidth: 0 }} value={document} autoComplete="off"
+                    onChange={(e) => setDocument(e.target.value)} />
+                </div>
               </div>
             </div>
             <p style={{ fontSize: 10.5, color: T.muted2, margin: "-6px 0 0" }}>
               Pelo menos UM meio de contato (telefone ou e-mail) é obrigatório.
             </p>
+            <div>
+              <label style={fieldLabel}>Idioma do hóspede</label>
+              <div style={{ display: "inline-flex", gap: 4, background: T.glass, borderRadius: 11, padding: 3 }}>
+                {(["pt", "en", "es"] as const).map((l) => (
+                  <button key={l} type="button" onClick={() => setLanguage(l)}
+                    style={{
+                      padding: "6px 14px", borderRadius: 8, border: "none", cursor: "pointer",
+                      fontFamily: "inherit", fontSize: 10.5, fontWeight: 900, letterSpacing: ".06em",
+                      textTransform: "uppercase",
+                      background: language === l ? T.gradSoft : "transparent",
+                      color: language === l ? T.g1 : T.muted,
+                    }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+              <span style={{ marginLeft: 10, fontSize: 10.5, color: T.muted2 }}>
+                Idioma da proposta pública e da mensagem de WhatsApp — padrão PT.
+              </span>
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <div>
                 <label style={fieldLabel}>Check-in *</label>

@@ -25,8 +25,17 @@ import {
 /** Só o recorte desta tela — descontos/promos (Marketing) ficam intactos. */
 type Draft = Pick<
   RateSettings,
-  "petFee" | "fluctuations" | "msgTemplate" | "msgSingleTemplate" | "eventTemplate" | "inclusionsText"
+  | "petFee" | "fluctuations"
+  | "msgTemplate" | "msgTemplate_en" | "msgTemplate_es"
+  | "msgSingleTemplate" | "msgSingleTemplate_en" | "msgSingleTemplate_es"
+  | "eventTemplate" | "eventTemplate_en" | "eventTemplate_es"
+  | "inclusionsText" | "inclusionsText_en" | "inclusionsText_es"
 >;
+
+type EditLang = "pt" | "en" | "es";
+/** Chave da coluna real para um template base no idioma em edição — PT usa a
+ *  coluna original, EN/ES usam a coluna irmã "_en"/"_es". */
+const langKey = (base: string, lang: EditLang) => (lang === "pt" ? base : `${base}_${lang}`) as keyof Draft;
 
 /**
  * Uma flutuação da lista — nome e % editáveis IN PLACE (antes só dava para
@@ -95,6 +104,9 @@ export default function ComercialConfigPage() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [newFluct, setNewFluct] = useState({ name: "", pct: "" });
+  // Idioma em edição para "Templates do orçamento" e "O que está incluso" —
+  // PT é sempre a coluna original; EN/ES editam as colunas irmãs "_en"/"_es".
+  const [editLang, setEditLang] = useState<EditLang>("pt");
 
   const load = useCallback(async () => {
     if (!property?.id) return;
@@ -107,9 +119,17 @@ export default function ComercialConfigPage() {
         petFee: s.petFee ?? 50,
         fluctuations: s.fluctuations ?? [],
         msgTemplate: s.msgTemplate ?? null,
+        msgTemplate_en: s.msgTemplate_en ?? null,
+        msgTemplate_es: s.msgTemplate_es ?? null,
         msgSingleTemplate: s.msgSingleTemplate ?? null,
+        msgSingleTemplate_en: s.msgSingleTemplate_en ?? null,
+        msgSingleTemplate_es: s.msgSingleTemplate_es ?? null,
         eventTemplate: s.eventTemplate ?? null,
+        eventTemplate_en: s.eventTemplate_en ?? null,
+        eventTemplate_es: s.eventTemplate_es ?? null,
         inclusionsText: s.inclusionsText ?? null,
+        inclusionsText_en: s.inclusionsText_en ?? null,
+        inclusionsText_es: s.inclusionsText_es ?? null,
       });
       setDirty(false);
     } catch {
@@ -178,19 +198,44 @@ export default function ComercialConfigPage() {
   }
 
   const templateField = (
-    label: string, key: "msgTemplate" | "msgSingleTemplate" | "eventTemplate" | "inclusionsText",
+    label: string, base: "msgTemplate" | "msgSingleTemplate" | "eventTemplate" | "inclusionsText",
     fallback: string, rows: number, hint?: string
-  ) => (
-    <div>
-      <label className="field-label">{label}</label>
-      <textarea
-        className="field-input w-full font-mono text-xs leading-relaxed"
-        rows={rows}
-        placeholder={fallback}
-        value={draft[key] ?? ""}
-        onChange={(e) => patch({ [key]: e.target.value || null } as Partial<Draft>)}
-      />
-      {hint && <p className="text-[10px] text-muted-foreground mt-1">{hint}</p>}
+  ) => {
+    const key = langKey(base, editLang);
+    // EN/ES vazio cai no texto PT na hora de usar — o placeholder mostra
+    // exatamente esse texto, não o padrão genérico, para o vendedor saber o
+    // que vai sair se deixar em branco.
+    const placeholder = editLang === "pt" ? fallback : (draft[base] as string | null) || fallback;
+    return (
+      <div>
+        <label className="field-label">{label}</label>
+        <textarea
+          className="field-input w-full font-mono text-xs leading-relaxed"
+          rows={rows}
+          placeholder={placeholder}
+          value={(draft[key] as string | null) ?? ""}
+          onChange={(e) => patch({ [key]: e.target.value || null } as Partial<Draft>)}
+        />
+        {hint && <p className="text-[10px] text-muted-foreground mt-1">{hint}</p>}
+        {editLang !== "pt" && (
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Vazio = usa o texto em Português.
+          </p>
+        )}
+      </div>
+    );
+  };
+
+  const langSwitcher = (
+    <div className="inline-flex gap-1 bg-secondary/70 rounded-lg p-1 border border-border/40">
+      {(["pt", "en", "es"] as const).map((l) => (
+        <button key={l} type="button" onClick={() => setEditLang(l)}
+          className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-md transition-all ${
+            editLang === l ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+          }`}>
+          {l}
+        </button>
+      ))}
     </div>
   );
 
@@ -242,9 +287,15 @@ export default function ComercialConfigPage() {
 
       <SectionCard
         title="Templates do orçamento" icon={MessageSquareText}
-        description="Os textos que a cotação copia para o WhatsApp. Vazio = usa o padrão (mostrado no campo)."
+        description="Os textos que a cotação copia para o WhatsApp, em PT/EN/ES — o idioma escolhido no orçamento decide qual sai. Vazio em PT = usa o padrão (mostrado no campo); vazio em EN/ES = usa o texto em Português."
       >
         <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
+              Editando em
+            </span>
+            {langSwitcher}
+          </div>
           {templateField(
             "Mensagem principal", "msgTemplate", DEFAULT_MSG_TEMPLATE, 10,
             "Variáveis: {ATENDENTE} {DATA_IN} {DATA_OUT} {QTD_PESSOAS} {PAGANTES} {FREE} {RESUMO_CABANAS} {AVISO_EVENTO} {QUOTE_LINK} {CASAMENTO_HEADER}"
@@ -262,9 +313,17 @@ export default function ComercialConfigPage() {
 
       <SectionCard
         title="O que está incluso" icon={CircleDollarSign}
-        description="Lista exibida na proposta pública (/cotacao), acima das regras da pousada. Uma linha por item."
+        description="Lista exibida na proposta pública (/cotacao), acima das regras da pousada, em PT/EN/ES. Uma linha por item."
       >
-        {templateField("Itens (um por linha)", "inclusionsText", DEFAULT_INCLUSIONS_TEXT, 6)}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
+              Editando em
+            </span>
+            {langSwitcher}
+          </div>
+          {templateField("Itens (um por linha)", "inclusionsText", DEFAULT_INCLUSIONS_TEXT, 6)}
+        </div>
       </SectionCard>
 
       <SaveBar dirty={dirty} saving={saving} onSave={save} onReset={() => { setDirty(false); load(); }} />

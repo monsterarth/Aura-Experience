@@ -80,6 +80,7 @@ export class FnrhService {
             { id: "CPF", label: "CPF" },
             { id: "PASSAPORTE", label: "Passaporte" },
             { id: "RG", label: "RG (Registro Geral)" },
+            { id: "DNI", label: "DNI" },
             { id: "CNH", label: "CNH" },
             { id: "OUTRO", label: "Outro" }
         ];

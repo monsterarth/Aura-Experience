@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
     const create = body?.create?.document
       ? {
           document: String(body.create.document),
+          documentType: body.create.documentType ? String(body.create.documentType) : null,
           fullName: String(body.create.fullName ?? ""),
           phone: body.create.phone ? String(body.create.phone) : null,
           email: body.create.email ? String(body.create.email) : null,
@@ -44,8 +45,8 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     console.error("Erro ao promover lead a hóspede:", e);
     const msg = e instanceof Error ? e.message : "Falha ao promover a hóspede.";
-    // Dado inválido (CPF/nome) é erro do formulário, não do servidor.
-    const bad = /CPF|nome completo|não encontrado/i.test(msg);
+    // Dado inválido (documento/nome) é erro do formulário, não do servidor.
+    const bad = /CPF|documento|nome completo|não encontrado/i.test(msg);
     return NextResponse.json({ error: msg }, { status: bad ? 400 : 500 });
   }
 }

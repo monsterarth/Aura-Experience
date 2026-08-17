@@ -69,6 +69,7 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
     quoteId: keepId ? q.id : null,
     clientName: q.clientName, clientPhone: q.clientPhone,
     clientEmail: q.clientEmail, clientDocument: q.clientDocument,
+    clientDocumentType: q.clientDocumentType, clientLanguage: q.clientLanguage,
     guestId: q.guestId, source: q.source,
     checkIn: keepId ? q.checkIn : null, checkOut: keepId ? q.checkOut : null,
     rooms: keepId ? q.rooms ?? null : null,
@@ -192,6 +193,8 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
             openWizard({
               clientName: g.fullName, clientPhone: g.phone || null,
               clientEmail: g.email || null, clientDocument: g.id, guestId: g.id,
+              clientDocumentType: g.document?.type || null,
+              clientLanguage: g.preferredLanguage || null,
             });
           } else {
             toast.info("Hóspede não encontrado — cotação em branco.");
