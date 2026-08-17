@@ -22,6 +22,7 @@ import { GuestService } from "@/services/guest-service";
 import { CabinService } from "@/services/cabin-service";
 import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import { sanitizeDocumentForFnrh, validateCPF } from "@/lib/utils-checkin";
+import { EMPTY_PET, PET_HARD_CAP, maxPetsOf, readPets, writePets } from "@/lib/pets";
 import { cn } from "@/lib/utils";
 import { supabase, safeRemoveChannel } from "@/lib/supabase";
 import { Stay, Guest, Cabin, FolioItem } from "@/types/aura";
@@ -167,7 +168,7 @@ export default function StayDetailPage() {
       lastCity:             s.lastCity || "",
       nextCity:             s.nextCity || "",
       hasPet:               s.hasPet || false,
-      petDetails:           s.petDetails || { name: "", species: "Cachorro", weight: 0, breed: "" },
+      pets:                 readPets(s),
       additionalGuests:     s.additionalGuests || [],
       housekeepingItems:    s.housekeepingItems || [],
       cestaBreakfastEnabled: s.cestaBreakfastEnabled || false,
@@ -249,6 +250,8 @@ export default function StayDetailPage() {
       const { cabinId: _ci, ...rest } = formData;
       const stayPayload: Partial<Stay> = {
         ...rest, housekeepingItems: cleanHk,
+        // Mantém pets/hasPet/petDetails coerentes entre si numa escrita só.
+        ...writePets(!!formData.hasPet, formData.pets),
         checkIn:  parseDateFromInput(checkInStr,  stay.checkIn)  || stay.checkIn,
         checkOut: parseDateFromInput(checkOutStr, stay.checkOut) || stay.checkOut,
         additionalGuests: (formData.additionalGuests || []).map((ag: any) => ({ ...ag, document: ag.document ? sanitizeDocumentForFnrh(ag.document) : "" })),
@@ -360,6 +363,22 @@ export default function StayDetailPage() {
                      || currentBabies   !== (formData.counts?.babies   ?? 0);
 
   const nights = stay ? differenceInCalendarDays(new Date(stay.checkOut), new Date(stay.checkIn)) : 0;
+
+  // Pets. O limite da propriedade só gera aviso — quem chega com dois pets chega
+  // com dois pets, e a ficha precisa registrar isso.
+  const petList: any[] = formData.pets ?? [];
+  const maxPets = maxPetsOf(currentProperty?.settings);
+
+  const patchPet = (idx: number, patch: Record<string, any>) =>
+    setFormData((p: any) => ({
+      ...p,
+      pets: (p.pets ?? []).map((pet: any, i: number) => (i === idx ? { ...pet, ...patch } : pet)),
+    }));
+
+  const addPet = () => setFormData((p: any) => ({ ...p, pets: [...(p.pets ?? []), { ...EMPTY_PET }] }));
+
+  const removePet = (idx: number) =>
+    setFormData((p: any) => ({ ...p, pets: (p.pets ?? []).filter((_: any, i: number) => i !== idx) }));
 
   // ── Area Configs component ────────────────────────────────────────────────
 
@@ -879,39 +898,63 @@ export default function StayDetailPage() {
 
                 {/* Pet */}
                 <div className="flex items-center justify-between pt-1">
-                  <FL icon={PawPrint}>Pet</FL>
+                  <FL icon={PawPrint}>Pet{petList.length > 1 ? `s (${petList.length})` : ""}</FL>
                   <div className="flex items-center gap-2">
+                    {petList.length > maxPets && (
+                      <span className="text-[9px] font-black text-amber-600 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-md whitespace-nowrap">
+                        ⚠ Acima do limite ({maxPets})
+                      </span>
+                    )}
                     <span className="text-[10px] text-muted-foreground font-medium">Com pet?</span>
                     <button type="button" disabled={locked}
-                      onClick={() => setFormData({ ...formData, hasPet: !formData.hasPet })}
+                      onClick={() => setFormData((p: any) => ({
+                        ...p,
+                        hasPet: !p.hasPet,
+                        pets: !p.hasPet ? (p.pets?.length ? p.pets : [{ ...EMPTY_PET }]) : [],
+                      }))}
                       className={cn("relative w-10 h-5 rounded-full transition-all disabled:opacity-50", formData.hasPet ? "bg-orange-500" : "bg-border")}>
                       <span className={cn("absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform", formData.hasPet && "translate-x-5")} />
                     </button>
                   </div>
                 </div>
-                {formData.hasPet && (
-                  <div className="grid grid-cols-2 gap-2">
+                {formData.hasPet && petList.map((pet: any, idx: number) => (
+                  <div key={idx} className={cn("grid grid-cols-2 gap-2", idx > 0 && "pt-3 mt-1 border-t border-border")}>
+                    {petList.length > 1 && (
+                      <div className="col-span-2 flex items-center justify-between">
+                        <span className="text-[9px] font-black uppercase tracking-widest text-orange-500">Pet {idx + 1}</span>
+                        {isEditing && !isGovOnly && (
+                          <button type="button" onClick={() => removePet(idx)}
+                            className="p-1 text-destructive hover:bg-destructive/10 rounded-lg transition-colors"><Trash2 size={13} /></button>
+                        )}
+                      </div>
+                    )}
                     <div className="col-span-2">
                       <FL icon={PawPrint}>Nome do Pet</FL>
-                      {locked ? <RV>{formData.petDetails?.name}</RV> : <FI value={formData.petDetails?.name} onChange={(e) => setFormData({ ...formData, petDetails: { ...formData.petDetails, name: e.target.value } })} />}
+                      {locked ? <RV>{pet.name}</RV> : <FI value={pet.name || ""} onChange={(e) => patchPet(idx, { name: e.target.value })} />}
                     </div>
                     <div>
                       <FL icon={PawPrint}>Espécie</FL>
-                      {locked ? <RV>{formData.petDetails?.species}</RV>
-                        : <FS value={formData.petDetails?.species} onChange={(e) => setFormData({ ...formData, petDetails: { ...formData.petDetails, species: e.target.value } })}>
+                      {locked ? <RV>{pet.species}</RV>
+                        : <FS value={pet.species || "Cachorro"} onChange={(e) => patchPet(idx, { species: e.target.value })}>
                             <option>Cachorro</option><option>Gato</option><option>Outro</option>
                           </FS>}
                     </div>
                     <div>
                       <FL icon={PawPrint}>Peso (kg)</FL>
-                      {locked ? <RV>{formData.petDetails?.weight}kg</RV>
-                        : <FI type="number" value={formData.petDetails?.weight || ""} onChange={(e) => setFormData({ ...formData, petDetails: { ...formData.petDetails, weight: Number(e.target.value) } })} />}
+                      {locked ? <RV>{pet.weight ? `${pet.weight}kg` : ""}</RV>
+                        : <FI type="number" value={pet.weight || ""} onChange={(e) => patchPet(idx, { weight: Number(e.target.value) })} />}
                     </div>
                     <div className="col-span-2">
                       <FL icon={PawPrint}>Raça</FL>
-                      {locked ? <RV>{formData.petDetails?.breed}</RV> : <FI value={formData.petDetails?.breed} onChange={(e) => setFormData({ ...formData, petDetails: { ...formData.petDetails, breed: e.target.value } })} />}
+                      {locked ? <RV>{pet.breed}</RV> : <FI value={pet.breed || ""} onChange={(e) => patchPet(idx, { breed: e.target.value })} />}
                     </div>
                   </div>
+                ))}
+                {formData.hasPet && isEditing && !isGovOnly && petList.length < PET_HARD_CAP && (
+                  <button type="button" onClick={addPet}
+                    className="w-full py-2 rounded-xl border border-dashed border-orange-500/30 text-orange-500 text-[10px] font-black uppercase tracking-widest hover:bg-orange-500/5 transition-colors">
+                    + Pet
+                  </button>
                 )}
               </div>
             </Card>

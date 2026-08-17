@@ -78,8 +78,8 @@ export const SETTINGS_DOMAINS: SettingsDomain[] = [
       },
       {
         id: "pets", title: "Política de pets", kind: "hub", roles: ADMIN_MANAGER,
-        description: "Aceita pets, peso mínimo e máximo, e o aviso mostrado no pré-check-in.",
-        keywords: ["pet", "pets", "cachorro", "animal", "peso", "aviso"],
+        description: "Aceita pets, peso mínimo e máximo, quantidade e o aviso mostrado no pré-check-in.",
+        keywords: ["pet", "pets", "cachorro", "animal", "peso", "aviso", "quantidade", "máximo", "dois"],
         icon: ScrollText, href: () => "/admin/configuracoes/operacao",
       },
       {

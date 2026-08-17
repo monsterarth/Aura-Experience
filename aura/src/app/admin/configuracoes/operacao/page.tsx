@@ -25,6 +25,7 @@ interface Draft {
   acceptsPets: boolean;
   petMinWeight: number;
   petMaxWeight: number;
+  maxPets: number;
 }
 
 export default function OperacaoPage() {
@@ -41,6 +42,7 @@ export default function OperacaoPage() {
       acceptsPets: s.acceptsPets ?? false,
       petMinWeight: Number(s.petMinWeight ?? 1),
       petMaxWeight: Number(s.petMaxWeight ?? 15),
+      maxPets: Number(s.maxPets ?? 1),
     };
   });
 
@@ -122,6 +124,26 @@ export default function OperacaoPage() {
             <p className="text-xs text-muted-foreground">
               Pet fora desta faixa é bloqueado no formulário de pré-check-in.
             </p>
+
+            <div className="border-t border-border" />
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="field-label">Máximo de pets</label>
+                <input
+                  type="number" min={1} max={5} className="field-input w-full"
+                  value={draft.maxPets}
+                  onChange={(e) => patch({ maxPets: parseInt(e.target.value) || 1 })}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Diferente do peso, este número <strong>não bloqueia</strong>: o hóspede consegue
+              informar mais pets do que a política prevê e o formulário só avisa que a recepção
+              vai confirmar antes da chegada. Bloquear faria ele omitir o segundo pet e chegar
+              com ele mesmo assim.
+            </p>
+
             <div className="border-t border-border" />
             <MultiLangField
               label="Aviso curto de pet"

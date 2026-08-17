@@ -269,7 +269,7 @@ export const StayService = {
   // status/checkInActual/cabinId/financeiro ficam de fora e não podem ser sobrescritos por aqui.
   PRE_CHECKIN_GUEST_EDITABLE_FIELDS: [
     'expectedArrivalTime', 'vehiclePlate', 'travelReason', 'transportation',
-    'lastCity', 'nextCity', 'hasPet', 'petDetails', 'additionalGuests',
+    'lastCity', 'nextCity', 'hasPet', 'petDetails', 'pets', 'additionalGuests',
     'counts', 'areaConfigs',
   ] as const,
 

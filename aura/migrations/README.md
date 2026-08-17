@@ -27,7 +27,7 @@ record**. There is **no migration runner** — each file was applied manually vi
 | 2026-03-06 | `setup_surveys_rls.sql` | RLS policies for surveys |
 | 2026-03-11 | `add_concierge_tables.sql` | Concierge requests + catalog tables |
 | 2026-03-11 | `add_dnd_maintenance_and_system_bugs.sql` | DND, maintenance flags, system bug log |
-| 2026-03-11 | `add_raca_column.sql` | Pet breed (`raca`) column |
+| 2026-03-11 | `add_raca_column.sql` | `guests.raca` — raça/etnia do hóspede para o FNRH (não tem relação com pets) |
 | 2026-03-11 | `alpha_bug_fixes.sql` | Assorted alpha-phase fixes |
 | 2026-03-11 | `fb_migration.sql` | Food & Beverage base schema |
 | 2026-03-11 | `fb_orders_table.sql` | F&B orders table |
@@ -79,3 +79,4 @@ record**. There is **no migration runner** — each file was applied manually vi
 | 2026-08-09 | `crm_phase3_quote_rooms.sql` | CRM fase 3: `rate_quotes."rooms"` (acomodações pedidas na MESMA negociação, com as opções de cada uma) + `"acceptedAt"` (aceite na proposta pública) + kind `client_accepted` |
 | 2026-08-10 | `tarifario_inclusions.sql` | `rate_settings."inclusionsText"` — "O que está incluso" (uma linha por item) exibido na proposta pública acima das regras; editável em Tarifário → Comercial |
 | 2026-08-10 | `tarifario_phase4_flutuacoes_arquivo.sql` | Tarifário fase 4: `rate_fluctuations` (preset de flutuação atribuído a um período — cotação "Automática" aplica noite a noite), `rate_table_versions` (histórico de preços — snapshot antes de cada alteração/exclusão), `rate_tables."archivedAt"/"archivedBy"` (arquivo) e `rate_quotes."fluctuationAuto"` |
+| 2026-08-17 | `stays_multi_pet.sql` | Pets: `stays."pets"` (array jsonb) com backfill de `"petDetails"` — mais de um pet por estadia; `hasPet` e `petDetails` (= pets[0]) seguem mantidos |

@@ -44,6 +44,7 @@ export const SETTINGS_KEY_ROLES: Record<string, UserRole[]> = {
   acceptsPets: ["super_admin", "admin", "manager"],
   petMinWeight: ["super_admin", "admin", "manager"],
   petMaxWeight: ["super_admin", "admin", "manager"],
+  maxPets: ["super_admin", "admin", "manager"],
   petPolicyAlert: ["super_admin", "admin", "manager"],
   earlyCheckInMessage: ["super_admin", "admin", "manager"],
   lateCheckInMessage: ["super_admin", "admin", "manager"],

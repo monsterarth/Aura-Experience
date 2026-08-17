@@ -103,6 +103,20 @@ export interface Property {
     generalPolicyText?: Record<string, string>;
     privacyPolicyText?: Record<string, string>;
 
+    // Pets. Editados em Configurações → Operacional.
+    petPolicyAlert?: Record<string, string>;
+    /** false → a seção de pets some do pré-check-in. */
+    acceptsPets?: boolean;
+    petMinWeight?: number;
+    /** Peso fora da faixa BLOQUEIA o pet no formulário. */
+    petMaxWeight?: number;
+    /**
+     * Quantos pets a propriedade aceita (padrão 1). Diferente do peso, passar deste
+     * número NÃO bloqueia: o formulário avisa e registra, e a recepção confirma antes
+     * da chegada. Bloquear faria o hóspede omitir o segundo pet — que é o bug original.
+     */
+    maxPets?: number;
+
     // Avaliações de área (mapa): visibilidade pública opt-in (padrão privado/só equipe).
     // Quando public=true, reviews passam por moderação antes de aparecer aos hóspedes.
     areaReviews?: { public?: boolean };
@@ -692,6 +706,14 @@ export interface SurveyResponseWithStay extends SurveyResponse {
   checkOut?: Timestamp;
 }
 
+/** Um pet da estadia. A faixa de peso aceita é por propriedade (`petMinWeight`/`petMaxWeight`). */
+export interface PetDetails {
+  name: string;
+  breed?: string;
+  species: 'Cachorro' | 'Gato' | 'Outro';
+  weight: number;
+}
+
 // --- ENTIDADE ESTADIA ---
 export interface Stay {
   id: string;
@@ -745,13 +767,20 @@ export interface Stay {
   nextCity: string;
 
   // Extras
+  /**
+   * true quando há ao menos um pet. Derivado de `pets` na escrita (ver `writePets`
+   * em `@/lib/pets`), mas continua sendo a coluna que as patinhas leem na lista de
+   * estadias, no mapa da propriedade, na governança e no gate da política no portal.
+   */
   hasPet: boolean;
-  petDetails?: {
-    name: string;
-    breed?: string;
-    species: 'Cachorro' | 'Gato' | 'Outro';
-    weight: number; // Limite de 15kg
-  };
+  /** Legado: espelho de `pets[0]`. Ler sempre via `readPets`, nunca direto. */
+  petDetails?: PetDetails;
+  /**
+   * Fonte da verdade dos pets. A propriedade declara quantos aceita em
+   * `settings.maxPets`, mas passar do limite nunca bloqueia o pré-check-in — o
+   * formulário avisa e registra assim mesmo (informação omitida é pior).
+   */
+  pets?: PetDetails[];
 
   // Reserva interna / uso da casa
   internalUse?: boolean;   // true → ocupação interna (manutenção, família, bloqueio), não é cliente

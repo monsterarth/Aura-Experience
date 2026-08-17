@@ -11,6 +11,7 @@ import {
   Users, Plane, AlertCircle, Plus, Trash2, Clock, CheckCircle, FileText, X, Globe
 } from "lucide-react";
 import { fetchCEP, sanitizeDocumentForFnrh, validateCPF } from "@/lib/utils-checkin";
+import { DEFAULT_PET_WEIGHT, EMPTY_PET, PET_HARD_CAP, maxPetsOf, readPets, writePets } from "@/lib/pets";
 import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import { toast, Toaster } from "sonner";
 import { cn } from "@/lib/utils";
@@ -99,6 +100,10 @@ const translations = {
     petCat: "Gato",
     petOther: "Outro",
     petWeight: "Peso",
+    petOne: "Pet",
+    petAdd: "Adicionar outro pet",
+    petRemove: "Remover pet",
+    petOverLimit: "Nossa política prevê até {n} por acomodação. Registramos a informação e a recepção confirma a possibilidade antes da sua chegada.",
     termsTitle: "Termos e Aceite",
     termsDesc: "Para finalizar o seu pré-check-in, por favor, leia e concorde com as políticas da nossa propriedade.",
     agree: "Li e concordo com a",
@@ -198,6 +203,10 @@ const translations = {
     petCat: "Cat",
     petOther: "Other",
     petWeight: "Weight",
+    petOne: "Pet",
+    petAdd: "Add another pet",
+    petRemove: "Remove pet",
+    petOverLimit: "Our policy allows up to {n} per accommodation. We have recorded your information and the front desk will confirm before your arrival.",
     termsTitle: "Terms and Agreement",
     termsDesc: "To complete your pre-check-in, please read and agree to our property's policies.",
     agree: "I have read and agree to the",
@@ -297,6 +306,10 @@ const translations = {
     petCat: "Gato",
     petOther: "Otro",
     petWeight: "Peso",
+    petOne: "Mascota",
+    petAdd: "Añadir otra mascota",
+    petRemove: "Quitar mascota",
+    petOverLimit: "Nuestra política permite hasta {n} por alojamiento. Registramos la información y la recepción lo confirmará antes de su llegada.",
     termsTitle: "Términos y Aceptación",
     termsDesc: "Para finalizar su pre-check-in, lea y acepte las políticas de nuestra propiedad.",
     agree: "He leído y acepto la",
@@ -362,6 +375,98 @@ function hexToHSL(hex: string): string {
   return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
 }
 
+/**
+ * Seletor de peso de UM pet. Vive no nível do módulo (e não inline na seção) porque
+ * agora se repete por pet — inline, cada tecla digitada remontaria o input e o campo
+ * perderia o foco.
+ *
+ * O peso é o único limite que BLOQUEIA: fora da faixa da propriedade, o pet aparece
+ * marcado como não aceito e o stepper trava nas bordas. Quantidade de pets é outra
+ * história — essa só avisa.
+ */
+function PetWeightField({ value, onChange, min, max, label, lang }: {
+  value: number;
+  onChange: (weight: number) => void;
+  min: number;
+  max: number;
+  label: string;
+  lang: 'pt' | 'en' | 'es';
+}) {
+  const current = value || Math.max(DEFAULT_PET_WEIGHT, min);
+
+  const sizeInfo = (w: number) => {
+    if (w <= 5)  return { label: lang === 'en' ? 'Toy/Miniature' : 'Miniatura/Toy', color: 'text-blue-500' };
+    if (w <= 10) return { label: lang === 'en' ? 'Small' : lang === 'es' ? 'Pequeño' : 'Pequeno', color: 'text-green-500' };
+    if (w <= 25) return { label: lang === 'en' ? 'Medium' : lang === 'es' ? 'Mediano' : 'Médio', color: 'text-yellow-600' };
+    if (w <= 45) return { label: lang === 'en' ? 'Large' : 'Grande', color: 'text-orange-500' };
+    return { label: lang === 'en' ? 'Giant' : 'Gigante', color: 'text-red-500' };
+  };
+
+  const size = sizeInfo(current);
+  const isBlocked = current < min || current > max;
+  const clamp = (w: number) => Math.min(max, Math.max(min, w));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-end">
+        <div>
+          <span className="text-[10px] font-bold uppercase text-orange-600">{label}</span>
+          <p className={cn("text-2xl font-black", size.color)}>
+            {current}{current >= 40 && max >= 40 ? '+' : ''}kg
+            <span className="text-sm font-bold ml-2 opacity-80">— {size.label}</span>
+          </p>
+        </div>
+        {isBlocked && (
+          <span className="text-[9px] font-bold uppercase bg-red-500/10 text-red-500 px-2 py-1 rounded-lg">
+            {lang === 'en' ? 'Not accepted' : lang === 'es' ? 'No aceptado' : 'Não aceito'}
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-4 bg-background border border-border p-2 rounded-2xl w-full">
+        <button
+          type="button"
+          onClick={() => onChange(Math.max(min, current - 1))}
+          disabled={current <= min}
+          className="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-xl bg-secondary text-foreground hover:bg-orange-500 hover:text-white disabled:opacity-30 disabled:hover:bg-secondary disabled:hover:text-foreground transition-all active:scale-95"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
+
+        <div className="flex-1 text-center relative">
+          <input
+            type="number"
+            value={current || ""}
+            onChange={(e) => { const w = parseInt(e.target.value); if (!isNaN(w)) onChange(w); }}
+            onBlur={(e) => onChange(clamp(parseInt(e.target.value) || min))}
+            className="w-full text-center bg-transparent border-none outline-none text-2xl font-black text-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          />
+          <span className="text-xs font-bold text-muted-foreground uppercase absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+            {current >= 40 && max >= 40 ? '+ kg' : 'kg'}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onChange(Math.min(max, current + 1))}
+          disabled={current >= max}
+          className="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-xl bg-secondary text-foreground hover:bg-orange-500 hover:text-white disabled:opacity-30 disabled:hover:bg-secondary disabled:hover:text-foreground transition-all active:scale-95"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        </button>
+      </div>
+
+      <div className="bg-orange-500/5 border border-orange-500/10 p-2 rounded-lg text-center">
+        <p className="text-[9px] font-bold text-orange-600/70 uppercase">
+          {lang === 'en' ? `Accepted range: ${min}kg — ${max >= 40 ? '40+' : max}kg`
+            : lang === 'es' ? `Rango aceptado: ${min}kg — ${max >= 40 ? '40+' : max}kg`
+            : `Faixa aceita: ${min}kg — ${max >= 40 ? '40+' : max}kg`}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function UnifiedPreCheckin() {
   const { stayId } = useParams();
   const router = useRouter();
@@ -404,7 +509,7 @@ export default function UnifiedPreCheckin() {
   const [stay, setStay] = useState<any>({
     transportation: 'CARRO',
     travelReason: 'TURISMO',
-    petDetails: { species: 'Cachorro', weight: 5, name: "", breed: "" },
+    pets: [],
     lastCity: "", nextCity: "", vehiclePlate: "", expectedArrivalTime: "",
     additionalGuests: [], counts: { adults: 1, children: 0, babies: 0 },
     areaConfigs: [], bedAssignments: []
@@ -475,7 +580,7 @@ export default function UnifiedPreCheckin() {
           }));
           setStay((prev: any) => ({
             ...prev, ...data.stay, propertyId: targetPropertyId,
-            petDetails: { ...prev.petDetails, ...(data.stay?.petDetails || {}) },
+            pets: readPets(data.stay),
             additionalGuests: data.stay.additionalGuests || [],
             counts: data.stay.counts || { adults: 1, children: 0, babies: 0 },
             areaConfigs: data.stay.areaConfigs || [],
@@ -692,6 +797,8 @@ export default function UnifiedPreCheckin() {
       const { areaConfigs, bedAssignments, ...stayRest } = stay;
       const fnrhStayPayload = {
         ...stayRest,
+        // Mantém pets/hasPet/petDetails coerentes entre si numa escrita só.
+        ...writePets(!!stay.hasPet, stay.pets),
         additionalGuests: stay.additionalGuests.map((ag: any) => ({
           ...ag,
           document: ag.document ? sanitizeDocumentForFnrh(ag.document) : ""
@@ -817,6 +924,28 @@ export default function UnifiedPreCheckin() {
   };
 
   const petPolicyAlert = propertyData?.settings?.petPolicyAlert?.[lang] || propertyData?.settings?.petPolicyAlert?.pt || "Pet Friendly! Read our policy.";
+
+  // Regras de pet da propriedade. Peso bloqueia; quantidade só avisa.
+  const petMinWeight: number = propertyData?.settings?.petMinWeight || 1;
+  const petMaxWeight: number = propertyData?.settings?.petMaxWeight || 40;
+  const maxPets = maxPetsOf(propertyData?.settings);
+  const pets: any[] = stay.pets ?? [];
+
+  /** Troca UM pet da lista sem tocar nos outros. */
+  const patchPet = (idx: number, patch: Record<string, any>) =>
+    setStay((prev: any) => ({
+      ...prev,
+      pets: (prev.pets ?? []).map((p: any, i: number) => (i === idx ? { ...p, ...patch } : p)),
+    }));
+
+  const addPet = () =>
+    setStay((prev: any) => ({
+      ...prev,
+      pets: [...(prev.pets ?? []), { ...EMPTY_PET, weight: Math.max(DEFAULT_PET_WEIGHT, petMinWeight) }],
+    }));
+
+  const removePet = (idx: number) =>
+    setStay((prev: any) => ({ ...prev, pets: (prev.pets ?? []).filter((_: any, i: number) => i !== idx) }));
   const petPolicyText = propertyData?.settings?.petPolicyText?.[lang] || propertyData?.settings?.petPolicyText?.pt || "Pet policy not defined.";
   const generalPolicyText = propertyData?.settings?.generalPolicyText?.[lang] || propertyData?.settings?.generalPolicyText?.pt || "General policy not defined.";
   const privacyPolicyText = propertyData?.settings?.privacyPolicyText?.[lang] || propertyData?.settings?.privacyPolicyText?.pt || "Privacy policy not defined.";
@@ -1576,9 +1705,17 @@ export default function UnifiedPreCheckin() {
                 <p className="font-black text-lg text-foreground">{t.petTitle}</p>
                 <p className="text-[10px] text-muted-foreground uppercase font-bold">{t.petDesc}</p>
               </div>
-              <input type="checkbox" checked={stay.hasPet} onChange={e => {
-                setStay({ ...stay, hasPet: e.target.checked });
-                if (!e.target.checked) setAgreedPet(false);
+              <input type="checkbox" checked={!!stay.hasPet} onChange={e => {
+                const on = e.target.checked;
+                // Ligar com a lista vazia semeia o primeiro pet; desligar limpa tudo.
+                setStay((prev: any) => ({
+                  ...prev,
+                  hasPet: on,
+                  pets: on
+                    ? (prev.pets?.length ? prev.pets : [{ ...EMPTY_PET, weight: Math.max(DEFAULT_PET_WEIGHT, petMinWeight) }])
+                    : [],
+                }));
+                if (!on) setAgreedPet(false);
               }} className="w-6 h-6 accent-orange-500 rounded-lg cursor-pointer" />
             </label>
 
@@ -1589,122 +1726,77 @@ export default function UnifiedPreCheckin() {
                   {petPolicyAlert}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <input
-                    placeholder={t.petName}
-                    value={stay.petDetails?.name || ""}
-                    onChange={e => setStay({ ...stay, petDetails: { ...stay.petDetails, name: e.target.value } })}
-                    className="bg-background border border-border p-4 rounded-2xl text-sm focus:border-orange-500/50 outline-none transition-colors text-foreground"
-                  />
-                  <input
-                    placeholder={t.petBreed}
-                    value={stay.petDetails?.breed || ""}
-                    onChange={e => setStay({ ...stay, petDetails: { ...stay.petDetails, breed: e.target.value } })}
-                    className="bg-background border border-border p-4 rounded-2xl text-sm focus:border-orange-500/50 outline-none transition-colors text-foreground"
-                  />
-                  <select
-                    value={stay.petDetails?.species || "Cachorro"}
-                    onChange={e => setStay({ ...stay, petDetails: { ...stay.petDetails, species: e.target.value } })}
-                    className="bg-background border border-border p-4 rounded-2xl text-sm outline-none focus:border-orange-500/50 transition-colors text-foreground appearance-none"
-                  >
-                    <option value="Cachorro">{t.petDog}</option>
-                    <option value="Gato">{t.petCat}</option>
-                    <option value="Outro">{t.petOther}</option>
-                  </select>
-                </div>
-
-                {/* Weight Selector with Size Categories */}
-                {(() => {
-                  const petMinWeight = propertyData?.settings?.petMinWeight || 1;
-                  const petMaxWeight = propertyData?.settings?.petMaxWeight || 40;
-                  const currentWeight = stay.petDetails?.weight || Math.max(5, petMinWeight);
-
-                  const getSizeLabel = (w: number) => {
-                    if (w <= 5) return { label: lang === 'en' ? 'Toy/Miniature' : lang === 'es' ? 'Miniatura/Toy' : 'Miniatura/Toy', color: 'text-blue-500' };
-                    if (w <= 10) return { label: lang === 'en' ? 'Small' : lang === 'es' ? 'Pequeño' : 'Pequeno', color: 'text-green-500' };
-                    if (w <= 25) return { label: lang === 'en' ? 'Medium' : lang === 'es' ? 'Mediano' : 'Médio', color: 'text-yellow-600' };
-                    if (w <= 45) return { label: lang === 'en' ? 'Large' : lang === 'es' ? 'Grande' : 'Grande', color: 'text-orange-500' };
-                    return { label: lang === 'en' ? 'Giant' : lang === 'es' ? 'Gigante' : 'Gigante', color: 'text-red-500' };
-                  };
-
-                  const sizeInfo = getSizeLabel(currentWeight);
-                  const isBlocked = currentWeight < petMinWeight || currentWeight > petMaxWeight;
-
-                  const handleWeightChange = (newWeight: number) => {
-                    if (isNaN(newWeight)) return;
-                    setStay({ ...stay, petDetails: { ...stay.petDetails, weight: newWeight } });
-                  };
-
-                  const handleBlur = (w: number) => {
-                    let finalW = w;
-                    if (w < petMinWeight) finalW = petMinWeight;
-                    if (w > petMaxWeight) finalW = petMaxWeight;
-                    setStay({ ...stay, petDetails: { ...stay.petDetails, weight: finalW } });
-                  };
-
-                  const decrement = () => handleWeightChange(Math.max(petMinWeight, currentWeight - 1));
-                  const increment = () => handleWeightChange(Math.min(petMaxWeight, currentWeight + 1));
-
-                  return (
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-end">
-                        <div>
-                          <span className="text-[10px] font-bold uppercase text-orange-600">{t.petWeight}</span>
-                          <p className={cn("text-2xl font-black", sizeInfo.color)}>
-                            {currentWeight}{currentWeight >= 40 && petMaxWeight >= 40 ? '+' : ''}kg
-                            <span className="text-sm font-bold ml-2 opacity-80">— {sizeInfo.label}</span>
-                          </p>
-                        </div>
-                        {isBlocked && (
-                          <span className="text-[9px] font-bold uppercase bg-red-500/10 text-red-500 px-2 py-1 rounded-lg">
-                            {lang === 'en' ? 'Not accepted' : lang === 'es' ? 'No aceptado' : 'Não aceito'}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Premium Stepper */}
-                      <div className="flex items-center gap-4 bg-background border border-border p-2 rounded-2xl w-full">
+                {pets.map((pet: any, idx: number) => (
+                  <div key={idx} className="space-y-4">
+                    {pets.length > 1 && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-orange-600">
+                          {t.petOne} {idx + 1}
+                        </span>
                         <button
                           type="button"
-                          onClick={decrement}
-                          disabled={currentWeight <= petMinWeight}
-                          className="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-xl bg-secondary text-foreground hover:bg-orange-500 hover:text-white disabled:opacity-30 disabled:hover:bg-secondary disabled:hover:text-foreground transition-all active:scale-95"
+                          onClick={() => removePet(idx)}
+                          className="text-[10px] font-bold uppercase text-red-500 hover:bg-red-500/10 px-3 py-1.5 rounded-lg transition-colors"
                         >
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                        </button>
-
-                        <div className="flex-1 text-center relative">
-                          <input
-                            type="number"
-                            value={currentWeight || ""}
-                            onChange={(e) => handleWeightChange(parseInt(e.target.value))}
-                            onBlur={(e) => handleBlur(parseInt(e.target.value) || petMinWeight)}
-                            className="w-full text-center bg-transparent border-none outline-none text-2xl font-black text-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                          />
-                          <span className="text-xs font-bold text-muted-foreground uppercase absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                            {currentWeight >= 40 && petMaxWeight >= 40 ? '+ kg' : 'kg'}
-                          </span>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={increment}
-                          disabled={currentWeight >= petMaxWeight}
-                          className="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-xl bg-secondary text-foreground hover:bg-orange-500 hover:text-white disabled:opacity-30 disabled:hover:bg-secondary disabled:hover:text-foreground transition-all active:scale-95"
-                        >
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                          {t.petRemove}
                         </button>
                       </div>
+                    )}
 
-                      {/* Accepted range indicator */}
-                      <div className="bg-orange-500/5 border border-orange-500/10 p-2 rounded-lg text-center">
-                        <p className="text-[9px] font-bold text-orange-600/70 uppercase">
-                          {lang === 'en' ? `Accepted range: ${petMinWeight}kg — ${petMaxWeight >= 40 ? '40+' : petMaxWeight}kg` : lang === 'es' ? `Rango aceptado: ${petMinWeight}kg — ${petMaxWeight >= 40 ? '40+' : petMaxWeight}kg` : `Faixa aceita: ${petMinWeight}kg — ${petMaxWeight >= 40 ? '40+' : petMaxWeight}kg`}
-                        </p>
-                      </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <input
+                        placeholder={t.petName}
+                        value={pet.name || ""}
+                        onChange={e => patchPet(idx, { name: e.target.value })}
+                        className="bg-background border border-border p-4 rounded-2xl text-sm focus:border-orange-500/50 outline-none transition-colors text-foreground"
+                      />
+                      <input
+                        placeholder={t.petBreed}
+                        value={pet.breed || ""}
+                        onChange={e => patchPet(idx, { breed: e.target.value })}
+                        className="bg-background border border-border p-4 rounded-2xl text-sm focus:border-orange-500/50 outline-none transition-colors text-foreground"
+                      />
+                      <select
+                        value={pet.species || "Cachorro"}
+                        onChange={e => patchPet(idx, { species: e.target.value })}
+                        className="bg-background border border-border p-4 rounded-2xl text-sm outline-none focus:border-orange-500/50 transition-colors text-foreground appearance-none"
+                      >
+                        <option value="Cachorro">{t.petDog}</option>
+                        <option value="Gato">{t.petCat}</option>
+                        <option value="Outro">{t.petOther}</option>
+                      </select>
                     </div>
-                  );
-                })()}
+
+                    <PetWeightField
+                      value={pet.weight}
+                      onChange={(w) => patchPet(idx, { weight: w })}
+                      min={petMinWeight}
+                      max={petMaxWeight}
+                      label={t.petWeight}
+                      lang={lang}
+                    />
+
+                    {idx < pets.length - 1 && <div className="border-t border-orange-500/20 pt-2" />}
+                  </div>
+                ))}
+
+                {/* Passar do limite da propriedade AVISA, nunca bloqueia: o hóspede que não
+                    consegue declarar o 2º pet simplesmente chega com ele sem avisar. */}
+                {pets.length > maxPets && (
+                  <div className="text-xs text-orange-700 bg-orange-500/15 p-4 rounded-xl border border-orange-500/30 leading-relaxed font-semibold">
+                    {t.petOverLimit.replace("{n}", `${maxPets} ${t.petOne.toLowerCase()}${maxPets > 1 ? "s" : ""}`)}
+                  </div>
+                )}
+
+                {pets.length < PET_HARD_CAP && (
+                  <button
+                    type="button"
+                    onClick={addPet}
+                    className="w-full py-4 rounded-2xl border-2 border-dashed border-orange-500/30 text-orange-600 text-sm font-bold hover:bg-orange-500/5 hover:border-orange-500/50 transition-all active:scale-[0.99]"
+                  >
+                    + {t.petAdd}
+                  </button>
+                )}
               </div>
             )}
           </section>

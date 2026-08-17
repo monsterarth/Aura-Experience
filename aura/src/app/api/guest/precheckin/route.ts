@@ -23,7 +23,7 @@ const PUBLIC_SETTINGS_KEYS = [
   "generalPolicyText", "privacyPolicyText", "petPolicyText", "petPolicyAlert",
   "earlyCheckInMessage", "lateCheckInMessage",
   "checkInTime", "checkOutTime", "receptionStartTime", "receptionEndTime",
-  "acceptsPets", "petMinWeight", "petMaxWeight",
+  "acceptsPets", "petMinWeight", "petMaxWeight", "maxPets",
 ] as const;
 
 function publicProperty(p: Record<string, any> | null) {
