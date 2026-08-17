@@ -72,6 +72,40 @@ function LeadField({ label, value, placeholder, busy, digitsOnly, onCommit }: {
   );
 }
 
+/**
+ * Select do lead com estado LOCAL (mesmo espírito do LeadField): sem isso, o
+ * <select> preso direto no valor do lead volta para a opção antiga entre o
+ * clique e o PATCH+reload assíncrono terminar — a troca parece "não pegar" e
+ * o usuário tem que selecionar de novo.
+ */
+function LeadSelect({ label, value, options, busy, onCommit }: {
+  label: string;
+  value: string;
+  options: FnrhDomain[];
+  busy: boolean;
+  onCommit: (v: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const syncedTo = useRef(value);
+  useEffect(() => {
+    if (syncedTo.current !== value) { syncedTo.current = value; setDraft(value); }
+  }, [value]);
+
+  return (
+    <div>
+      <label style={{
+        fontSize: 9, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase",
+        color: T.muted, marginBottom: 4, display: "block",
+      }}>{label}</label>
+      <select style={{ ...S.input, padding: "7px 10px", fontSize: 12, background: T.card }}
+        value={draft} disabled={busy}
+        onChange={(e) => { const v = e.target.value; setDraft(v); onCommit(v); }}>
+        {options.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
 export function ClientPanel({
   propertyId, lead, busy, editable, onPromote, onPatch,
 }: {
@@ -200,17 +234,8 @@ export function ClientPanel({
             placeholder="Só dígitos" onCommit={(v) => onPatch({ clientPhone: v })} />
           <LeadField label="E-mail" value={lead.email ?? ""} busy={busy}
             placeholder="cliente@email.com" onCommit={(v) => onPatch({ clientEmail: v })} />
-          <div>
-            <label style={{
-              fontSize: 9, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase",
-              color: T.muted, marginBottom: 4, display: "block",
-            }}>Tipo de documento</label>
-            <select style={{ ...S.input, padding: "7px 10px", fontSize: 12, background: T.card }}
-              value={lead.documentType ?? "CPF"} disabled={busy}
-              onChange={(e) => onPatch({ clientDocumentType: e.target.value })}>
-              {docTypes.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
-            </select>
-          </div>
+          <LeadSelect label="Tipo de documento" value={lead.documentType ?? "CPF"} busy={busy}
+            options={docTypes} onCommit={(v) => onPatch({ clientDocumentType: v })} />
           <LeadField label="Documento (habilita criar a ficha)" value={lead.document ?? ""}
             busy={busy} placeholder={(lead.documentType ?? "CPF") === "CPF" ? "Só números" : undefined}
             digitsOnly={(lead.documentType ?? "CPF") === "CPF"}
