@@ -37,77 +37,29 @@ const drawerLabel: React.CSSProperties = {
   color: T.muted, margin: 0,
 };
 
-/** Campo do lead com commit no blur (só quando muda) — nada de patch por tecla. */
-function LeadField({ label, value, placeholder, busy, digitsOnly, onCommit }: {
-  label: string;
-  value: string;
-  placeholder?: string;
-  busy: boolean;
-  digitsOnly?: boolean;
-  onCommit: (v: string | null) => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  const syncedTo = useRef(value);
-  useEffect(() => {
-    if (syncedTo.current !== value) { syncedTo.current = value; setDraft(value); }
-  }, [value]);
+type LeadDraft = {
+  clientName: string;
+  clientPhone: string;
+  clientEmail: string;
+  clientDocumentType: string;
+  clientDocument: string;
+};
 
-  const commit = () => {
-    const clean = digitsOnly ? draft.replace(/\D/g, "") : draft.trim();
-    if (clean !== (value ?? "")) onCommit(clean || null);
-  };
+const draftFromLead = (lead: CrmLead): LeadDraft => ({
+  clientName: lead.title === "Sem nome" ? "" : lead.title,
+  clientPhone: lead.phone ?? "",
+  clientEmail: lead.email ?? "",
+  clientDocumentType: lead.documentType ?? "CPF",
+  clientDocument: lead.document ?? "",
+});
 
-  return (
-    <div>
-      <label style={{
-        fontSize: 9, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase",
-        color: T.muted, marginBottom: 4, display: "block",
-      }}>{label}</label>
-      <input style={{ ...S.input, padding: "7px 10px", fontSize: 12 }}
-        value={draft} placeholder={placeholder} disabled={busy}
-        onChange={(e) => setDraft(digitsOnly ? e.target.value.replace(/\D/g, "") : e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
-    </div>
-  );
-}
-
-/**
- * Select do lead com estado LOCAL (mesmo espírito do LeadField): sem isso, o
- * <select> preso direto no valor do lead volta para a opção antiga entre o
- * clique e o PATCH+reload assíncrono terminar — a troca parece "não pegar" e
- * o usuário tem que selecionar de novo.
- */
-function LeadSelect({ label, value, options, busy, onCommit }: {
-  label: string;
-  value: string;
-  options: FnrhDomain[];
-  busy: boolean;
-  onCommit: (v: string) => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  const syncedTo = useRef(value);
-  useEffect(() => {
-    if (syncedTo.current !== value) { syncedTo.current = value; setDraft(value); }
-  }, [value]);
-
-  return (
-    <div>
-      <label style={{
-        fontSize: 9, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase",
-        color: T.muted, marginBottom: 4, display: "block",
-      }}>{label}</label>
-      <select style={{ ...S.input, padding: "7px 10px", fontSize: 12, background: T.card }}
-        value={draft} disabled={busy}
-        onChange={(e) => { const v = e.target.value; setDraft(v); onCommit(v); }}>
-        {options.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
-      </select>
-    </div>
-  );
-}
+const fieldLabelSm: React.CSSProperties = {
+  fontSize: 9, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase",
+  color: T.muted, marginBottom: 4, display: "block",
+};
 
 export function ClientPanel({
-  propertyId, lead, busy, editable, onPromote, onPatch,
+  propertyId, lead, busy, editable, onPromote, onPatch, onDirtyChange,
 }: {
   propertyId: string;
   lead: CrmLead;
@@ -116,14 +68,54 @@ export function ClientPanel({
   editable?: boolean;
   /** Vincula a ficha escolhida na modal (existente) ou cria uma nova. */
   onPromote: (payload: PromotePayload) => Promise<void>;
-  /** Grava nome/telefone/e-mail/CPF direto no orçamento. */
+  /** Grava nome/telefone/e-mail/documento direto no orçamento — só no "Salvar". */
   onPatch?: (patch: Record<string, unknown>) => Promise<void>;
+  /** Avisa o drawer que há edição não salva (fecha com confirmação). */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [ctx, setCtx] = useState<ClientContext | null>(null);
   const [loading, setLoading] = useState(false);
   const [promoting, setPromoting] = useState(false);
   const [docTypes, setDocTypes] = useState<FnrhDomain[]>([]);
   useEffect(() => { FnrhService.getTiposDocumento().then(setDocTypes); }, []);
+
+  // Dados do lead: rascunho local, só grava quando o vendedor clica em
+  // "Salvar" — o patch por tecla/seleção era lento e a troca parecia "não
+  // pegar" enquanto o servidor não confirmava.
+  const [draft, setDraft] = useState<LeadDraft>(() => draftFromLead(lead));
+  const [saving, setSaving] = useState(false);
+  const syncedLeadId = useRef(lead.id);
+  useEffect(() => {
+    if (syncedLeadId.current !== lead.id) {
+      syncedLeadId.current = lead.id;
+      setDraft(draftFromLead(lead));
+    }
+  }, [lead]);
+
+  const isDirty = !!editable && !!onPatch && JSON.stringify(draft) !== JSON.stringify(draftFromLead(lead));
+  useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
+  // Painel desmontando (drawer fechou de outro jeito) não pode deixar o
+  // aviso de sujeira "preso" ligado pro próximo lead que abrir.
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+
+  const patchDraft = <K extends keyof LeadDraft>(key: K, value: LeadDraft[K]) =>
+    setDraft((d) => ({ ...d, [key]: value }));
+
+  const saveDraft = async () => {
+    if (!onPatch || !isDirty || saving) return;
+    setSaving(true);
+    try {
+      await onPatch({
+        clientName: draft.clientName.trim() || null,
+        clientPhone: draft.clientPhone.replace(/\D/g, "") || null,
+        clientEmail: draft.clientEmail.trim() || null,
+        clientDocumentType: draft.clientDocumentType,
+        clientDocument: draft.clientDocument || null,
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (!lead.guestId && !lead.phone) { setCtx(null); return; }
@@ -222,24 +214,63 @@ export function ClientPanel({
       )}
 
       {/* Dados do lead — editáveis enquanto não há ficha vinculada (depois a
-          fonte da verdade é a ficha do hóspede). */}
+          fonte da verdade é a ficha do hóspede). Só grava no "Salvar". */}
       {!guest && editable && onPatch && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          <div style={{ gridColumn: "1 / -1" }}>
-            <LeadField label="Nome" value={lead.title === "Sem nome" ? "" : lead.title} busy={busy}
-              placeholder="Nome do cliente"
-              onCommit={(v) => onPatch({ clientName: v })} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label style={fieldLabelSm}>Nome</label>
+              <input style={{ ...S.input, padding: "7px 10px", fontSize: 12 }}
+                value={draft.clientName} placeholder="Nome do cliente" disabled={busy || saving}
+                onChange={(e) => patchDraft("clientName", e.target.value)} />
+            </div>
+            <div>
+              <label style={fieldLabelSm}>Telefone</label>
+              <input style={{ ...S.input, padding: "7px 10px", fontSize: 12 }}
+                value={draft.clientPhone} placeholder="Só dígitos" disabled={busy || saving}
+                onChange={(e) => patchDraft("clientPhone", e.target.value.replace(/\D/g, ""))} />
+            </div>
+            <div>
+              <label style={fieldLabelSm}>E-mail</label>
+              <input style={{ ...S.input, padding: "7px 10px", fontSize: 12 }}
+                value={draft.clientEmail} placeholder="cliente@email.com" disabled={busy || saving}
+                onChange={(e) => patchDraft("clientEmail", e.target.value)} />
+            </div>
+            <div>
+              <label style={fieldLabelSm}>Tipo de documento</label>
+              <select style={{ ...S.input, padding: "7px 10px", fontSize: 12, background: T.card }}
+                value={draft.clientDocumentType} disabled={busy || saving}
+                onChange={(e) => patchDraft("clientDocumentType", e.target.value)}>
+                {docTypes.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={fieldLabelSm}>Documento (habilita criar a ficha)</label>
+              <input style={{ ...S.input, padding: "7px 10px", fontSize: 12 }}
+                value={draft.clientDocument} disabled={busy || saving}
+                placeholder={draft.clientDocumentType === "CPF" ? "Só números" : undefined}
+                onChange={(e) => patchDraft(
+                  "clientDocument",
+                  draft.clientDocumentType === "CPF" ? e.target.value.replace(/\D/g, "") : e.target.value
+                )} />
+            </div>
           </div>
-          <LeadField label="Telefone" value={lead.phone ?? ""} busy={busy} digitsOnly
-            placeholder="Só dígitos" onCommit={(v) => onPatch({ clientPhone: v })} />
-          <LeadField label="E-mail" value={lead.email ?? ""} busy={busy}
-            placeholder="cliente@email.com" onCommit={(v) => onPatch({ clientEmail: v })} />
-          <LeadSelect label="Tipo de documento" value={lead.documentType ?? "CPF"} busy={busy}
-            options={docTypes} onCommit={(v) => onPatch({ clientDocumentType: v })} />
-          <LeadField label="Documento (habilita criar a ficha)" value={lead.document ?? ""}
-            busy={busy} placeholder={(lead.documentType ?? "CPF") === "CPF" ? "Só números" : undefined}
-            digitsOnly={(lead.documentType ?? "CPF") === "CPF"}
-            onCommit={(v) => onPatch({ clientDocument: v })} />
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button onClick={saveDraft} disabled={!isDirty || busy || saving}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px",
+                borderRadius: 10, border: `1px solid ${isDirty ? T.g1Border : T.border}`,
+                background: isDirty ? T.gradSoft : "transparent",
+                color: isDirty ? T.g1 : T.muted, fontSize: 11.5, fontWeight: 800,
+                cursor: isDirty && !saving ? "pointer" : "default",
+                fontFamily: "inherit", opacity: busy || saving ? 0.6 : 1,
+              }}>
+              {saving && <Loader2 size={12} className="animate-spin" />} Salvar
+            </button>
+            {isDirty && (
+              <span style={{ fontSize: 10.5, color: T.amber }}>Alterações não salvas</span>
+            )}
+          </div>
         </div>
       )}
 

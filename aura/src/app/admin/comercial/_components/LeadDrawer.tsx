@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { T } from "@/lib/admin-tokens";
+import { useCloseGuard } from "@/lib/use-discard-guard";
 import { offeredTotal, resolveRoomValue } from "@/lib/rate-engine";
 import { parseMoneyBR, moneyToInput } from "@/lib/parse-money";
 import { CrmChannel, CrmLead, RateQuoteRecord, RateQuoteRoom, WeddingInstallment } from "@/types/aura";
@@ -724,6 +725,13 @@ export function LeadDrawer({
   const [timelineKey, setTimelineKey] = useState(0);
   // Com acomodações, o valor é fechado por acomodação (some o campo global).
   const [quoteHasRooms, setQuoteHasRooms] = useState(false);
+  // Dados do cliente (ClientPanel) têm o próprio "Salvar" — fechar o drawer
+  // com edição pendente ali precisa avisar, não descartar em silêncio.
+  const [clientDirty, setClientDirty] = useState(false);
+  const { requestClose } = useCloseGuard(onClose, {
+    dirty: clientDirty,
+    message: "Há alterações não salvas nos dados do cliente. Fechar mesmo assim?",
+  });
 
   const isQuote = lead.entityType === "quote";
   const stages = isQuote ? QUOTE_STAGES : WEDDING_STAGES;
@@ -774,7 +782,7 @@ export function LeadDrawer({
   });
 
   return (
-    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    <div onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
       style={{
         position: "fixed", inset: 0, zIndex: 50, background: "rgba(0,0,0,0.6)",
         backdropFilter: "blur(4px)", display: "flex", justifyContent: "flex-end",
@@ -809,7 +817,7 @@ export function LeadDrawer({
                 {lead.title}
               </h2>
             </div>
-            <button onClick={onClose}
+            <button onClick={requestClose}
               style={{
                 padding: 8, borderRadius: 11, background: "none", border: "none",
                 cursor: "pointer", color: T.muted, display: "flex", flexShrink: 0,
@@ -892,7 +900,8 @@ export function LeadDrawer({
             {/* Titular — só orçamentos; recorrente/novo, vínculo e histórico do cliente */}
             {isQuote && (
               <ClientPanel propertyId={propertyId} lead={lead} busy={busy}
-                editable={active} onPromote={promoteAndRefresh} onPatch={patchAndRefresh} />
+                editable={active} onPromote={promoteAndRefresh} onPatch={patchAndRefresh}
+                onDirtyChange={setClientDirty} />
             )}
 
             {/* Orçamento — acomodações pedidas e as cabanas oferecidas em cada */}
