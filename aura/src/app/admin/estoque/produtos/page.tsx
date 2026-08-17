@@ -120,6 +120,7 @@ export default function EstoqueProdutosPage() {
                 <th className="text-right px-4 py-3">Saldo</th>
                 <th className="text-right px-4 py-3">Mínimo</th>
                 <th className="text-left px-4 py-3">Unidade</th>
+                <th className="text-right px-4 py-3">Custo médio</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
@@ -143,6 +144,9 @@ export default function EstoqueProdutosPage() {
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{Number(p.minStock)}</td>
                     <td className="px-4 py-3 text-muted-foreground text-xs">{p.unit}</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
+                      {Number(p.averageCost) > 0 ? `R$ ${Number(p.averageCost).toFixed(2)}` : "—"}
+                    </td>
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-1">
                         <button onClick={() => setForm(p)} className="p-1.5 text-muted-foreground hover:text-foreground"><Pencil size={14} /></button>
@@ -153,7 +157,7 @@ export default function EstoqueProdutosPage() {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
+                <tr><td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
                   {products.length === 0 ? "Nenhum produto cadastrado ainda." : "Nenhum produto encontrado."}
                 </td></tr>
               )}
