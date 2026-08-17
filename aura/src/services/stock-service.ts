@@ -100,6 +100,27 @@ const AUDIT_ACTION: Record<StockMovementType, AuditLog["action"]> = {
   loss: "STOCK_LOSS",
 };
 
+const TYPE_PT: Record<StockMovementType, string> = {
+  entry: "Entrada",
+  exit: "Saída",
+  transfer: "Transferência",
+  adjustment: "Ajuste",
+  loss: "Perda",
+};
+
+/** Sufixo "de onde para onde" dos details de auditoria — o log fica legível sozinho. */
+function routeText(
+  type: StockMovementType,
+  fromName?: string | null,
+  toName?: string | null
+): string {
+  if (type === "transfer") return fromName && toName ? ` — ${fromName} → ${toName}` : "";
+  if (type === "entry") return toName ? ` — em ${toName}` : "";
+  if (type === "exit" || type === "loss") return fromName ? ` — de ${fromName}` : "";
+  const loc = toName ?? fromName;
+  return loc ? ` — em ${loc}` : "";
+}
+
 export const StockService = {
   // ── CATEGORIAS ─────────────────────────────────────────────────────────────
   async getCategories(propertyId: string): Promise<StockCategory[]> {
@@ -1002,10 +1023,16 @@ export const StockService = {
         break;
     }
 
+    const locNames = await this._locationNames(client, [input.fromLocationId, input.toLocationId]);
+    const route = routeText(
+      input.type,
+      input.fromLocationId ? locNames[input.fromLocationId] : null,
+      input.toLocationId ? locNames[input.toLocationId] : null
+    );
     await AuditService.log({
       propertyId, userId: actor.id, userName: actor.name,
       action: AUDIT_ACTION[input.type], entity: "STOCK", entityId: input.productId,
-      details: `${input.type.toUpperCase()} de ${qty} ${product.unit} — ${product.name}.`,
+      details: `${TYPE_PT[input.type]} de ${qty} ${product.unit} — ${product.name}${route}.`,
     });
     return id;
   },
@@ -1067,10 +1094,16 @@ export const StockService = {
       }
     }
 
+    const locNames = await this._locationNames(client, [fromLocationId, toLocationId]);
+    const route = routeText(
+      input.type,
+      fromLocationId ? locNames[fromLocationId] : null,
+      toLocationId ? locNames[toLocationId] : null
+    );
     await AuditService.log({
       propertyId, userId: actor.id, userName: actor.name,
       action: AUDIT_ACTION[input.type], entity: "STOCK", entityId: batchRef,
-      details: `Lançamento em lote: ${ok.length} linha(s) de ${input.type}.`,
+      details: `${TYPE_PT[input.type]} em lote: ${ok.length} ite${ok.length === 1 ? "m" : "ns"}${route}.`,
     });
     return { batchRef, ok, failed: null, remaining: [], preflight: [] };
   },
@@ -1180,6 +1213,14 @@ export const StockService = {
       details: `Lote estornado: ${reverted} movimentação(ões) invertida(s).`,
     });
     return { reverted };
+  },
+
+  /** Nomes de locais por id — usado só para montar details de auditoria legíveis. */
+  async _locationNames(client: DB, ids: Array<string | null | undefined>): Promise<Record<string, string>> {
+    const clean = Array.from(new Set(ids.filter(Boolean))) as string[];
+    if (clean.length === 0) return {};
+    const { data } = await client.from("stock_locations").select("id, name").in("id", clean);
+    return Object.fromEntries(((data ?? []) as { id: string; name: string }[]).map((l) => [l.id, l.name]));
   },
 
   async _totalQty(client: DB, productId: string): Promise<number> {

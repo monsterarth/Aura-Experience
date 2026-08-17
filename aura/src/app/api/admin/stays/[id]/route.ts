@@ -107,7 +107,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         action: 'CHECKOUT',
         entity: 'STAY',
         entityId: stayId,
-        details: `Check-out da ${checkoutCabinLabel} realizado. Regras de automação de governança aplicadas.`,
+        details: `Check-out da ${checkoutCabinLabel} realizado.`,
     });
 
     // Trigger post-checkout automations (server-side via supabaseAdmin — RLS-safe)
