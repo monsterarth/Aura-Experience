@@ -269,7 +269,9 @@ function SitePanel({ wedding, onDataChanged }: { wedding: Wedding; onDataChanged
     } finally {
       setLoading(false);
     }
-  }, [wedding.id]);
+    // Reavalia quando o casamento muda de tabela/status/janela (ex.: recepção
+    // vinculou a tabela no formulário) — o checklist de ativação depende disso.
+  }, [wedding.id, wedding.rateTableId, wedding.status, wedding.checkin, wedding.checkout]);
 
   useEffect(() => { setLoading(true); setSite(null); load(); }, [load]);
 

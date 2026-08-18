@@ -202,7 +202,12 @@ function CasamentosPageInner() {
     try {
       const res = await fetch(`/api/admin/weddings?propertyId=${property.id}`);
       if (!res.ok) throw new Error('Erro ao carregar casamentos');
-      setWeddings(await res.json());
+      const list: Wedding[] = await res.json();
+      setWeddings(list);
+      // Mantém o drawer aberto em sincronia com o servidor: sem isso, editar o
+      // casamento (ex.: vincular a tabela de tarifa) deixava a aba Site com o
+      // objeto velho e o checklist de ativação travado no vermelho.
+      setSelected(prev => (prev ? (list.find(w => w.id === prev.id) ?? prev) : prev));
     } catch (err: any) {
       toast.error(err?.message || 'Erro ao carregar casamentos');
     } finally {

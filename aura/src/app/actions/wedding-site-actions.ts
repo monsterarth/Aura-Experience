@@ -11,12 +11,20 @@ import { WeddingSiteService } from '@/services/wedding-site-service';
 const RATE_LIMIT_MAX = 10;
 const FAILURE_DELAY_MS = 1500;
 
-export async function validateWeddingCode(code: string): Promise<{ code: string }> {
+// Retorna um resultado discriminado em vez de LANÇAR: em produção o Next
+// mascara a mensagem de erro de server actions ("An error occurred…"), então
+// `error.message === 'RATE_LIMITED'` nunca casaria e o usuário veria sempre a
+// mensagem genérica. O objeto de retorno atravessa o masking intacto.
+export type WeddingCodeResult =
+  | { ok: true; code: string }
+  | { ok: false; reason: 'rate_limited' | 'invalid' };
+
+export async function validateWeddingCode(code: string): Promise<WeddingCodeResult> {
   const headersList = await headers();
   const ip = clientIp(headersList);
 
   if (await isRateLimited(ip, RATE_LIMIT_MAX)) {
-    throw new Error('RATE_LIMITED');
+    return { ok: false, reason: 'rate_limited' };
   }
 
   const clean = (code || '').replace(/\D/g, '').slice(0, 6);
@@ -26,9 +34,9 @@ export async function validateWeddingCode(code: string): Promise<{ code: string 
     await logAttempt(ip, false);
     // O delay é o que torna força bruta impraticável mesmo em alta vazão.
     await new Promise((r) => setTimeout(r, FAILURE_DELAY_MS));
-    throw new Error('INVALID_CODE');
+    return { ok: false, reason: 'invalid' };
   }
 
   await logAttempt(ip, true);
-  return { code: clean };
+  return { ok: true, code: clean };
 }

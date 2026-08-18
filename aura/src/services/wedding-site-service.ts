@@ -254,9 +254,12 @@ export const WeddingSiteService = {
    */
   async quoteForGuest(
     code: string,
-    input: WeddingGuestInput
+    input: WeddingGuestInput,
+    /** Dados do tarifário já carregados (a pré-reserva reaproveita para o
+     *  preço travado e o snapshot saírem do MESMO recorte). */
+    preloaded?: { resolved: ResolvedSite; data: Awaited<ReturnType<typeof RateService.getRateData>> }
   ): Promise<{ ok: true; quote: WeddingSiteQuote } | { ok: false; error: string }> {
-    const resolved = await this.resolveCode(code);
+    const resolved = preloaded?.resolved ?? await this.resolveCode(code);
     if (!resolved) return { ok: false, error: "not_found" };
     const { wedding } = resolved;
 
@@ -280,7 +283,7 @@ export const WeddingSiteService = {
     if (adults + children > 6) return { ok: false, error: "too_many_guests" };
 
     if (!wedding.rateTableId) return { ok: false, error: "rate_unavailable" };
-    const data = await RateService.getRateData(wedding.propertyId);
+    const data = preloaded?.data ?? await RateService.getRateData(wedding.propertyId);
     if (!data.tables.some((t) => t.id === wedding.rateTableId)) {
       return { ok: false, error: "rate_unavailable" };
     }
@@ -291,6 +294,10 @@ export const WeddingSiteService = {
       data
     );
     if (result.uncoveredDates.length > 0) return { ok: false, error: "uncovered" };
+    // Extensão que joga a estadia abaixo do mínimo de diárias do período (ex.:
+    // 1 noite de Réveillon com minNights 4): na página pública não há vendedor
+    // para ver o aviso, então a cotação é bloqueada em vez de prometer preço.
+    if (result.nights < result.minNightsRequired) return { ok: false, error: "min_nights" };
     // Noite sem preço soma 0 no motor (no funil o vendedor vê daysWithoutPrice
     // e decide) — numa página PÚBLICA isso seria preço subcobrado prometido ao
     // convidado. Opção com buraco de preço não sai.
@@ -367,8 +374,11 @@ export const WeddingSiteService = {
     const hasPolicy = !!(policy.pt?.trim() || policy.en?.trim() || policy.es?.trim());
     if (hasPolicy && !input.policyAccepted) return { ok: false, error: "policy_required" };
 
-    // Recalcula no servidor — do cliente vem só a COMPOSIÇÃO pedida.
-    const quoted = await this.quoteForGuest(input.code, input);
+    // Recalcula no servidor — do cliente vem só a COMPOSIÇÃO pedida. Um único
+    // getRateData alimenta a cotação E o snapshot: preço travado e breakdown
+    // saem do mesmo recorte (sem janela de divergência entre duas leituras).
+    const data = await RateService.getRateData(wedding.propertyId);
+    const quoted = await this.quoteForGuest(input.code, input, { resolved, data });
     if (!quoted.ok) return quoted;
     const option = quoted.quote.options.find((o) => o.categoryId === input.categoryId);
     if (!option) return { ok: false, error: "invalid_option" };
@@ -385,7 +395,6 @@ export const WeddingSiteService = {
       .limit(1);
     if (dup && dup.length > 0) return { ok: false, error: "duplicate" };
 
-    const data = await RateService.getRateData(wedding.propertyId);
     const snapshotCat = this.buildSnapshotCategory(wedding, input, data, option.categoryId);
 
     const room: RateQuoteRoom = {
@@ -509,8 +518,13 @@ export const WeddingSiteService = {
     );
     const full = result.options.find((o) => o.categoryId === categoryId);
     if (!full) {
-      // Nunca deveria acontecer (a opção veio do mesmo motor nesta request).
-      throw new Error("Categoria fora do resultado do motor.");
+      // Não deveria acontecer (a opção veio do mesmo motor + mesmo `data`),
+      // mas um throw aqui viraria 500 numa rota pública. Snapshot mínimo.
+      return {
+        categoryId, category: categoryId, nights: nightsBetween(input.checkIn, input.checkOut),
+        rawTotal: 0, finalTotal: 0, avgNightly: 0,
+        breakdown: [], periodNights: {}, daysWithoutPrice: 0,
+      };
     }
     const { windowTotal: _w, extensionTotal: _e, petFee: _p, ...cat } = full;
     return cat;

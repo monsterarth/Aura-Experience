@@ -302,7 +302,7 @@ export const WeddingService = {
    * código. Faixa 100000–999999 (nunca nasce com zero à esquerda) via
    * crypto.getRandomValues com rejection sampling (sem viés de módulo).
    */
-  async generateUniqueSiteCode(): Promise<string> {
+  async generateUniqueSiteCode(exclude: string[] = []): Promise<string> {
     const RANGE = 900_000;
     const LIMIT = Math.floor(0x1_0000_0000 / RANGE) * RANGE;
     for (let attempt = 0; attempt < 20; attempt++) {
@@ -310,6 +310,10 @@ export const WeddingService = {
       crypto.getRandomValues(buf);
       if (buf[0] >= LIMIT) continue; // rejeita a cauda que enviesaria o módulo
       const code = String(100_000 + (buf[0] % RANGE));
+      // `exclude`: o outro código sendo gerado na MESMA ativação ainda não está
+      // no banco, então a consulta abaixo não o vê — sem isso, guestCode podia
+      // sair igual ao coupleCode e o convidado herdaria o papel dos noivos.
+      if (exclude.includes(code)) continue;
 
       const { data } = await supabaseAdmin
         .from("weddings")
@@ -349,7 +353,7 @@ export const WeddingService = {
     if (!table) throw new Error("A tabela vinculada não existe mais — escolha outra no formulário.");
 
     const guestCode = wedding.guestCode || await this.generateUniqueSiteCode();
-    const coupleCode = wedding.coupleCode || await this.generateUniqueSiteCode();
+    const coupleCode = wedding.coupleCode || await this.generateUniqueSiteCode([guestCode]);
     const { error } = await supabaseAdmin
       .from("weddings")
       .update({ guestCode, coupleCode, siteEnabled: true, updatedAt: new Date().toISOString() })
@@ -402,7 +406,9 @@ export const WeddingService = {
 
     const patch: Record<string, string> = {};
     if (which === "guest" || which === "both") patch.guestCode = await this.generateUniqueSiteCode();
-    if (which === "couple" || which === "both") patch.coupleCode = await this.generateUniqueSiteCode();
+    if (which === "couple" || which === "both") {
+      patch.coupleCode = await this.generateUniqueSiteCode(patch.guestCode ? [patch.guestCode] : []);
+    }
 
     const { error } = await supabaseAdmin
       .from("weddings")

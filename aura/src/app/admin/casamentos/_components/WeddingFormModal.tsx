@@ -125,7 +125,11 @@ export function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }
         followUpAt: form.status === 'tentative' ? (form.followUpAt || null) : null,
         expiresAt: form.status === 'tentative' ? (form.expiresAt || null) : null,
         rateTableId: form.rateTableId || null,
-        maxExtendNights: Math.max(0, Math.min(7, parseInt(form.maxExtendNights) || 0)),
+        // Em branco = usa o default (2); "0" digitado = sem extensão. Sem esta
+        // distinção, limpar o campo salvava 0 em silêncio e sumia com os
+        // steppers de noites extras no site.
+        maxExtendNights: form.maxExtendNights.trim() === ''
+          ? 2 : Math.max(0, Math.min(7, parseInt(form.maxExtendNights) || 0)),
       };
 
       const res = initial

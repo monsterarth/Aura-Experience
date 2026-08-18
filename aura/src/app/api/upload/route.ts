@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
+import { clientIp, isRateLimited, logAttempt } from '@/lib/login-attempts';
 
 const ALLOWED_MIME_TYPES = [
     'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml',
     'application/pdf', // notas fiscais / documentos de patrimônio
 ];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const WEDDING_RATE_MAX = 10;      // tentativas de código do casal por IP/15min
+const WEDDING_FAIL_DELAY_MS = 1500;
 
 export async function POST(request: Request): Promise<NextResponse> {
     try {
@@ -28,6 +31,14 @@ export async function POST(request: Request): Promise<NextResponse> {
             // Site dos noivos: só o código do CASAL (coupleCode) autoriza — é a
             // credencial do painel de personalização. Convidado (guestCode) não
             // sobe nada. Site precisa estar no ar e o casamento confirmado.
+            //
+            // Mesmo estrangulamento das outras superfícies do site (o código de
+            // 6 dígitos é enumerável): rate-limit por IP + delay no erro, senão
+            // este branch vira oráculo grátis de enumeração do coupleCode.
+            const ip = clientIp(request.headers);
+            if (await isRateLimited(ip, WEDDING_RATE_MAX)) {
+                return NextResponse.json({ error: 'Muitas tentativas. Aguarde alguns minutos.' }, { status: 429 });
+            }
             const { data: weddingCheck } = await supabaseAdmin
                 .from('weddings')
                 .select('id')
@@ -36,7 +47,13 @@ export async function POST(request: Request): Promise<NextResponse> {
                 .eq('status', 'confirmed')
                 .maybeSingle();
 
-            if (weddingCheck) { isAuthorized = true; imagesOnly = true; }
+            if (weddingCheck) {
+                isAuthorized = true; imagesOnly = true;
+            } else {
+                await logAttempt(ip, false);
+                await new Promise((r) => setTimeout(r, WEDDING_FAIL_DELAY_MS));
+                return NextResponse.json({ error: 'Não autorizado. Acesso negado para upload.' }, { status: 401 });
+            }
         } else if (stayId && accessCode) {
             // Verifica se o hóspede tem uma hospedagem válida para autorizar o upload de fotos do relato
             const { data: stayCheck } = await supabaseAdmin
@@ -81,10 +98,11 @@ export async function POST(request: Request): Promise<NextResponse> {
             );
         }
 
-        // O painel dos noivos só sobe FOTO (a lista geral aceita PDF de nota
-        // fiscal — não faz sentido numa capa de site).
-        if (imagesOnly && !file.type.startsWith('image/')) {
-            return NextResponse.json({ error: 'Apenas imagens são aceitas.' }, { status: 400 });
+        // O painel dos noivos só sobe FOTO raster. SVG fica de fora: é servido
+        // do bucket público com o content-type do cliente e executaria script
+        // se aberto direto (XSS armazenado numa credencial anônima).
+        if (imagesOnly && (!file.type.startsWith('image/') || file.type === 'image/svg+xml')) {
+            return NextResponse.json({ error: 'Apenas imagens (JPG, PNG, WebP) são aceitas.' }, { status: 400 });
         }
 
         // Rejeitar extensões perigosas (defesa em profundidade)

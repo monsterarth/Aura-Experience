@@ -67,6 +67,12 @@ export interface WeddingQuoteResult {
   extensionNights: number;
   /** Noites de EXTENSÃO sem regra de calendário — bloqueiam a cotação inteira. */
   uncoveredDates: string[];
+  /**
+   * Maior mínimo de diárias entre os rate_periods tocados pelas EXTENSÕES (a
+   * janela do casamento é minNights 1). Numa superfície pública não há vendedor
+   * para ver o aviso — o chamador compara com o total de noites e bloqueia.
+   */
+  minNightsRequired: number;
 }
 
 const EMPTY_COMMERCIAL = {
@@ -86,6 +92,7 @@ export function computeWeddingQuote(
   const empty: WeddingQuoteResult = {
     options: [], nights, windowNights,
     extensionNights: Math.max(0, nights - windowNights), uncoveredDates: [],
+    minNightsRequired: 1,
   };
   if (nights <= 0 || windowNights <= 0) return empty;
 
@@ -123,6 +130,19 @@ export function computeWeddingQuote(
   if (input.checkIn < window.checkin) segments.push({ checkIn: input.checkIn, checkOut: window.checkin });
   if (input.checkOut > window.checkout) segments.push({ checkIn: window.checkout, checkOut: input.checkOut });
 
+  // Promoção automática com minNights é elegibilidade da ESTADIA, não do
+  // segmento: cada extensão é cotada isolada (1-2 noites), então sem este
+  // pré-filtro uma promo "fique 3+ noites" nunca pegaria as noites extras
+  // mesmo com a estadia total qualificando — sobrepreço silencioso contra o
+  // convidado. Filtra pela estadia inteira e zera o minNights (o gate já
+  // passou); é o mesmo resultado que um hóspede comum teria no intervalo
+  // contíguo completo.
+  const extSettings = {
+    ...data.settings,
+    promos: (data.settings.promos || [])
+      .filter((p) => nights >= (p.minNights || 1))
+      .map((p) => ({ ...p, minNights: 1 })),
+  };
   const extResults = segments.map((seg) =>
     computeQuote(
       {
@@ -133,7 +153,7 @@ export function computeWeddingQuote(
       {
         tables: data.tables,
         periods: data.periods,
-        settings: data.settings,
+        settings: extSettings,
         categories: data.categories,
         fluctuations: data.fluctuations ?? undefined,
       }
@@ -142,6 +162,9 @@ export function computeWeddingQuote(
 
   const uncovered = extResults.flatMap((r) => r.uncoveredDates);
   if (uncovered.length > 0) return { ...empty, uncoveredDates: uncovered };
+
+  // Mínimo de diárias dos períodos tocados pela extensão (a janela é 1).
+  const minNightsRequired = extResults.reduce((m, r) => Math.max(m, r.minNightsRequired || 1), 1);
 
   // ── Merge por categoria: precisa ter preço em TODOS os segmentos ──────────
   const petFeeRate = data.settings.petFee || 0;
@@ -205,5 +228,5 @@ export function computeWeddingQuote(
   }
 
   options.sort((a, b) => a.finalTotal - b.finalTotal);
-  return { options, nights, windowNights, extensionNights: extNights, uncoveredDates: [] };
+  return { options, nights, windowNights, extensionNights: extNights, uncoveredDates: [], minNightsRequired };
 }

@@ -7,6 +7,7 @@
 // Preço NUNCA é calculado aqui: tudo vem de /api/wedding-site/* (server).
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast, Toaster } from "sonner";
 import {
   Loader2, Minus, Plus, Heart, CalendarDays, Users, PawPrint, Baby,
   CheckCircle2, ExternalLink, Camera, Palette, Gift, BedDouble, Sparkles,
@@ -45,8 +46,8 @@ const S = {
   } as React.CSSProperties,
 };
 
-function Stepper({ value, min, max, onChange }: {
-  value: number; min: number; max: number; onChange: (v: number) => void;
+function Stepper({ value, min, max, onChange, label }: {
+  value: number; min: number; max: number; onChange: (v: number) => void; label?: string;
 }) {
   const btn = (disabled: boolean): React.CSSProperties => ({
     width: 34, height: 34, borderRadius: 10, border: "1px solid var(--line)",
@@ -54,12 +55,13 @@ function Stepper({ value, min, max, onChange }: {
     display: "flex", alignItems: "center", justifyContent: "center",
     cursor: disabled ? "default" : "pointer", flexShrink: 0,
   });
+  const suffix = label ? ` ${label}` : "";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <button type="button" aria-label="-" disabled={value <= min} style={btn(value <= min)}
+      <button type="button" aria-label={`Menos${suffix}`} disabled={value <= min} style={btn(value <= min)}
         onClick={() => value > min && onChange(value - 1)}><Minus size={15} /></button>
-      <span style={{ minWidth: 20, textAlign: "center", fontSize: 16, fontWeight: 800 }}>{value}</span>
-      <button type="button" aria-label="+" disabled={value >= max} style={btn(value >= max)}
+      <span aria-live="polite" style={{ minWidth: 20, textAlign: "center", fontSize: 16, fontWeight: 800 }}>{value}</span>
+      <button type="button" aria-label={`Mais${suffix}`} disabled={value >= max} style={btn(value >= max)}
         onClick={() => value < max && onChange(value + 1)}><Plus size={15} /></button>
     </div>
   );
@@ -79,6 +81,8 @@ export default function SiteClient({ code, site, overview }: Props) {
 
   return (
     <div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column" }}>
+      {/* Toaster local: o global vive no layout do admin — /casamento/[code] é público. */}
+      <Toaster richColors position="top-center" />
       <Hero site={site} lang={lang} setLang={setLang} t={t} />
 
       <div style={{ width: "100%", maxWidth: 680, margin: "0 auto", padding: "0 16px 40px", boxSizing: "border-box", flex: 1 }}>
@@ -196,6 +200,15 @@ function Simulator({ code, site, lang, t }: {
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [selected, setSelected] = useState<WeddingSiteOption | null>(null);
 
+  // Mudou a busca (datas/ocupantes) → a cotação e a escolha viram pó: sem isso,
+  // o convidado confirmaria vendo o preço ANTIGO e a pré-reserva sairia com
+  // outro (o servidor recalcula pelas datas novas). Força re-cotar.
+  useEffect(() => {
+    setQuote(null);
+    setSelected(null);
+    setQuoteError(null);
+  }, [checkIn, checkOut, adults, children, babies, pets]);
+
   // Pré-reserva
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -217,6 +230,7 @@ function Simulator({ code, site, lang, t }: {
     setQuoteError(null);
     setQuote(null);
     setSelected(null);
+    formShownAt.current = 0; // nova cotação → recomeça o relógio anti-robô
     try {
       const res = await fetch("/api/wedding-site/quote", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -240,7 +254,10 @@ function Simulator({ code, site, lang, t }: {
     if (o.free <= 0) return;
     setSelected(o);
     setSubmitError(null);
-    formShownAt.current = Date.now();
+    // Só marca o relógio na PRIMEIRA vez que o formulário aparece — trocar de
+    // cabana não reinicia a contagem, senão um convidado que revê a escolha e
+    // confirma rápido cairia no filtro anti-robô com tela de sucesso falsa.
+    if (!formShownAt.current) formShownAt.current = Date.now();
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 60);
   };
 
@@ -262,9 +279,12 @@ function Simulator({ code, site, lang, t }: {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data?.ok) {
-        setSubmitError(t.errors[data?.error] || t.errors.server_error);
-        // Vaga que esgotou no meio do caminho: refaz a consulta na hora.
-        if (data?.error === "sold_out") { setSelected(null); runQuote(); }
+        const msg = t.errors[data?.error] || t.errors.server_error;
+        // Vaga que esgotou no meio do caminho: o formulário some (setSelected
+        // null), então a mensagem inline iria junto — mostra via toast e refaz
+        // a consulta para a lista refletir a disponibilidade nova.
+        if (data?.error === "sold_out") { toast.error(msg); setSelected(null); runQuote(); }
+        else setSubmitError(msg);
         return;
       }
       setDone(data.summary || { category: selected.name, total: selected.total, checkIn, checkOut });
@@ -334,7 +354,7 @@ function Simulator({ code, site, lang, t }: {
               <div key={label} style={{ border: "1px solid var(--line)", borderRadius: 14, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
                 <span style={{ fontSize: 12, fontWeight: 800, color: "var(--ink-soft)" }}>{label}</span>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                  <Stepper value={value} min={0} max={maxExtend} onChange={set} />
+                  <Stepper value={value} min={0} max={maxExtend} onChange={set} label={label} />
                   <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>
                     {value} {value === 1 ? t.night : t.nights}
                   </span>
@@ -370,7 +390,7 @@ function Simulator({ code, site, lang, t }: {
                 <div style={{ fontSize: 11, color: "var(--muted)" }}>{hint}</div>
               </div>
             </div>
-            <Stepper value={value} min={min} max={max} onChange={set} />
+            <Stepper value={value} min={min} max={max} onChange={set} label={label} />
           </div>
         ))}
         {adults + children > 6 && (
@@ -466,11 +486,11 @@ function Simulator({ code, site, lang, t }: {
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <input style={S.input} placeholder={t.fullName} value={name} autoComplete="name"
+            <input style={S.input} placeholder={t.fullName} aria-label={t.fullName} value={name} autoComplete="name"
               onChange={(e) => setName(e.target.value)} maxLength={120} />
-            <input style={S.input} placeholder={t.whatsapp} value={phone} autoComplete="tel"
+            <input style={S.input} placeholder={t.whatsapp} aria-label={t.whatsapp} value={phone} autoComplete="tel"
               inputMode="tel" onChange={(e) => setPhone(e.target.value)} maxLength={20} />
-            <input style={S.input} placeholder={`${t.email} (${t.optional})`} value={email} autoComplete="email"
+            <input style={S.input} placeholder={`${t.email} (${t.optional})`} aria-label={t.email} value={email} autoComplete="email"
               inputMode="email" onChange={(e) => setEmail(e.target.value)} maxLength={160} />
             {/* Honeypot — invisível para humanos, irresistível para robôs. */}
             <input ref={websiteRef} type="text" name="website" tabIndex={-1} autoComplete="off"

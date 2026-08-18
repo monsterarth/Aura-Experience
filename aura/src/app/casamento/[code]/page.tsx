@@ -10,13 +10,22 @@
 // confirmado e módulo desativado dão a MESMA resposta (notFound).
 import React from "react";
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import type { Metadata } from "next";
 import { WeddingSiteService } from "@/services/wedding-site-service";
+import { clientIp, isRateLimited, logAttempt } from "@/lib/login-attempts";
 import { getPortalThemeVars } from "@/app/check-in/[code]/_portal/theme";
 import { Property } from "@/types/aura";
 import SiteClient from "../_site/SiteClient";
 
 export const dynamic = "force-dynamic";
+
+// Teto de MISSES por IP na página: o código de 6 dígitos é enumerável, e o
+// 404-vs-200 desta rota seria um oráculo grátis sem estrangulamento (as rotas
+// /api/wedding-site/* já pagam login_attempts). Só código INVÁLIDO conta — um
+// convidado com código real nunca é barrado. Folga alta para não travar quem
+// erra a URL algumas vezes; mesmo assim inviabiliza varrer o espaço.
+const PAGE_MISS_MAX = 30;
 
 /** Página de convite jamais deve entrar num índice de busca. */
 export async function generateMetadata({ params }: { params: { code: string } }): Promise<Metadata> {
@@ -28,8 +37,16 @@ export async function generateMetadata({ params }: { params: { code: string } })
 }
 
 export default async function CasamentoPage({ params }: { params: { code: string } }) {
+  const ip = clientIp(headers());
+  // IP que já estourou o teto de misses some no notFound antes de qualquer
+  // consulta — não é oráculo nem carga de banco para um scanner.
+  if (await isRateLimited(ip, PAGE_MISS_MAX)) notFound();
+
   const site = await WeddingSiteService.getPublicSite(params.code);
-  if (!site) notFound();
+  if (!site) {
+    await logAttempt(ip, false);
+    notFound();
+  }
 
   // Painel dos noivos precisa da ocupação — só o coupleCode resolve overview.
   const overview = site.role === "couple"

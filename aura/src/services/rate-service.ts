@@ -844,7 +844,11 @@ export const RateService = {
       clientLanguage: (payload.clientLanguage === "en" || payload.clientLanguage === "es")
         ? payload.clientLanguage : "pt",
       guestId: payload.guestId || null,
-      weddingId: payload.weddingId || null,
+      // Preserva o vínculo com o casamento num RE-SAVE que não o reenvia (o
+      // wizard de orçamento manda weddingId:null): sem isto, recalcular uma
+      // pré-reserva de convidado apagava o weddingId — e com ele o selo 💍, o
+      // soft-block da disponibilidade e a contagem do painel dos noivos.
+      weddingId: payload.weddingId ?? existing?.weddingId ?? null,
       source,
       checkIn: spanIn,
       checkOut: spanOut,

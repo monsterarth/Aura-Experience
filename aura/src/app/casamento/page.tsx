@@ -30,17 +30,20 @@ function WeddingCodeContent() {
     }
     setLoading(true);
     try {
-      const { code: valid } = await validateWeddingCode(clean);
-      router.push(`/casamento/${valid}`);
-    } catch (error) {
-      if (error instanceof Error && error.message === "RATE_LIMITED") {
-        toast.error("Muitas tentativas. Aguarde 15 minutos e tente novamente.");
-      } else {
-        toast.error("Código não encontrado — confira no convite.");
+      const res = await validateWeddingCode(clean);
+      if (res.ok) {
+        router.push(`/casamento/${res.code}`);
+        return; // mantém o loading durante a navegação
       }
-      setLoading(false);
-      setAutoLoading(false);
+      toast.error(res.reason === "rate_limited"
+        ? "Muitas tentativas. Aguarde 15 minutos e tente novamente."
+        : "Código não encontrado — confira no convite.");
+    } catch {
+      toast.error("Não foi possível acessar agora — tente de novo em instantes.");
     }
+    // Só chega aqui em erro/rate-limit: volta para o formulário.
+    setLoading(false);
+    setAutoLoading(false);
   };
 
   useEffect(() => {
@@ -56,6 +59,9 @@ function WeddingCodeContent() {
   if (autoLoading) {
     return (
       <div className="min-h-[100dvh] flex flex-col items-center justify-center p-6 bg-stone-100 text-stone-900">
+        {/* Toaster também aqui: se o auto-submit do QR falhar, o toast de erro
+            precisa de um alvo montado antes de o formulário reaparecer. */}
+        <Toaster richColors position="top-center" />
         <Loader2 className="w-12 h-12 text-rose-400 animate-spin" />
         <p className="mt-6 text-stone-500 text-sm font-medium">Abrindo o site do casamento…</p>
       </div>
