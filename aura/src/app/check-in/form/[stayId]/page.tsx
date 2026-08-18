@@ -11,6 +11,7 @@ import {
   Users, Plane, AlertCircle, Plus, Trash2, Clock, CheckCircle, FileText, X, Globe
 } from "lucide-react";
 import { fetchCEP, sanitizeDocumentForFnrh, validateCPF } from "@/lib/utils-checkin";
+import { defaultCountryForLang, splitPhone, joinPhone, isLocalNumberValid } from "@/lib/phone";
 import { DEFAULT_PET_WEIGHT, EMPTY_PET, PET_HARD_CAP, maxPetsOf, readPets, writePets } from "@/lib/pets";
 import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import { toast, Toaster } from "sonner";
@@ -519,6 +520,11 @@ export default function UnifiedPreCheckin() {
   const [groupStays, setGroupStays] = useState<any[]>([]);
   const [countdown, setCountdown] = useState(5);
 
+  // DDI do WhatsApp separado do número: pt nasce "55" e editável; en/es nasce
+  // vazio e obrigatório. `guest.phone` guarda só o número local; o DDI é aqui.
+  const [phoneCountry, setPhoneCountry] = useState("55");
+  const countryTouched = React.useRef(false);
+
   /**
    * Teto de hóspedes da ficha. NÃO é só a capacidade cadastrada da cabana: a
    * reserva pode ter sido vendida em exceção de ocupação (combinada ainda no
@@ -569,8 +575,16 @@ export default function UnifiedPreCheckin() {
           setPropertyData(propData);
           setFnrhDomains({ generos, racas, transportes, motivos, tiposDocumento });
 
+          // Telefone já gravado (recepção/edição) entra dividido: DDI no campo
+          // próprio, número local no guest.phone. Idioma do hóspede decide o
+          // DDI padrão quando o número veio sem código de país.
+          const guestLang = (data.guest?.preferredLanguage as string) || lang;
+          const split = splitPhone(data.guest?.phone, guestLang);
+          if (split.hadCountry) countryTouched.current = true; // só quando o DDI veio do número salvo
+          setPhoneCountry(split.country);
           setGuest((prev: any) => ({
             ...prev, ...data.guest,
+            phone: split.number,
             address: { ...prev.address, ...(data.guest?.address || {}) },
             document: { ...prev.document, ...(data.guest?.document || {}) },
             nationality: data.guest?.nationality || prev.nationality || "BR",
@@ -718,6 +732,11 @@ export default function UnifiedPreCheckin() {
       else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guest.email)) {
         errors.push(lang === 'en' ? 'Invalid e-mail' : lang === 'es' ? 'Correo electrónico inválido' : 'E-mail inválido');
       }
+      // WhatsApp com DDI: código do país + número local válidos.
+      const ddi = phoneCountry.replace(/\D/g, '');
+      const local = (guest.phone || '').replace(/\D/g, '');
+      if (!ddi) errors.push(lang === 'en' ? 'Country code' : lang === 'es' ? 'Código de país' : 'Código do país (WhatsApp)');
+      if (!local || !isLocalNumberValid(ddi, local)) errors.push('WhatsApp');
     }
     if (step === 2) {
       stay.additionalGuests?.forEach((g: any, index: number) => {
@@ -736,6 +755,12 @@ export default function UnifiedPreCheckin() {
     return errors;
   };
 
+  // Troca de idioma reposiciona o DDI padrão enquanto o hóspede não editar.
+  useEffect(() => {
+    if (countryTouched.current) return;
+    setPhoneCountry(defaultCountryForLang(lang));
+  }, [lang]);
+
   const getDraftPayload = (step: 1 | 2 | 3) => {
     if (step === 1) return {
       guestData: {
@@ -747,6 +772,8 @@ export default function UnifiedPreCheckin() {
         occupation: guest.occupation,
         nationality: guest.nationality,
         email: guest.email,
+        // DDI + número local viram o telefone salvo (já com código de país).
+        phone: joinPhone(phoneCountry, guest.phone),
         preferredLanguage: lang
       },
       stayData: {} as Record<string, any>
@@ -787,6 +814,8 @@ export default function UnifiedPreCheckin() {
       const { nationalityName: _nn, residenceCountry: _rc, ...guestForDb } = guest;
       const fnrhGuestPayload = {
         ...guestForDb,
+        // Sobrescreve o phone local do estado pelo valor com DDI (o que vai ao banco).
+        phone: joinPhone(phoneCountry, guest.phone),
         preferredLanguage: lang,
         document: {
           ...guest.document,
@@ -1277,6 +1306,39 @@ export default function UnifiedPreCheckin() {
               className="w-full bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 transition-colors text-sm font-medium"
               placeholder="seu@email.com"
             />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-muted-foreground uppercase">
+              WhatsApp *{" "}
+              <span className="normal-case font-medium text-muted-foreground/70">
+                {lang === 'en' ? '(country code + number)' : lang === 'es' ? '(código de país + número)' : '(código do país + número)'}
+              </span>
+            </label>
+            <div className="flex gap-2">
+              <div className="flex items-center bg-secondary border border-border rounded-2xl px-3 focus-within:border-primary/50 transition-colors">
+                <span className="text-sm font-bold text-muted-foreground">+</span>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  aria-label={lang === 'en' ? 'Country code' : lang === 'es' ? 'Código de país' : 'Código do país (DDI)'}
+                  value={phoneCountry.replace(/\D/g, "")}
+                  onChange={e => { countryTouched.current = true; setPhoneCountry(e.target.value.replace(/\D/g, "").slice(0, 3)); }}
+                  placeholder="55"
+                  className="w-12 bg-transparent py-4 pl-1 outline-none text-sm font-medium font-mono text-center"
+                />
+              </div>
+              <input
+                type="tel"
+                inputMode="numeric"
+                autoComplete="tel"
+                aria-label={lang === 'en' ? 'Phone number' : lang === 'es' ? 'Número de teléfono' : 'Número com DDD'}
+                value={(guest.phone || "").replace(/\D/g, "")}
+                onChange={e => setGuest({ ...guest, phone: e.target.value.replace(/\D/g, "") })}
+                className="flex-1 bg-secondary border border-border p-4 rounded-2xl outline-none focus:border-primary/50 transition-colors text-sm font-medium font-mono"
+                placeholder={lang === 'en' ? 'Area code + number' : lang === 'es' ? 'DDD + número' : '48 99999-9999'}
+              />
+            </div>
           </div>
         </section>
         )}

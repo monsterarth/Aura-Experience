@@ -10,6 +10,7 @@ import { CabinService } from "@/services/cabin-service";
 import { ContactService } from "@/services/contact-service"; // NOVO: Para já inserir na agenda
 import { chatwootSyncOnStayCreated } from "@/app/actions/chatwoot-actions";
 import { validateCPF } from "@/lib/utils-checkin";
+import { defaultCountryForLang, splitPhone, joinPhone, isLocalNumberValid } from "@/lib/phone";
 import { Cabin, Guest } from "@/types/aura";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import {
@@ -99,9 +100,13 @@ function NewStayPageContent() {
   const [guestData, setGuestData] = useState({
     fullName: "",
     email: "",
-    phone: "",
+    phone: "", // número LOCAL (sem DDI); o DDI vive em phoneCountry
     preferredLanguage: "pt" as "pt" | "en" | "es"
   });
+  // DDI separado: pt nasce "55" e editável; en/es nasce vazio e obrigatório.
+  const [phoneCountry, setPhoneCountry] = useState("55");
+  // Marca edição manual do DDI para a troca de idioma não sobrescrever.
+  const countryTouched = useRef(false);
 
   const [cabinSelections, setCabinSelections] = useState<CabinSelection[]>([]);
 
@@ -126,6 +131,13 @@ function NewStayPageContent() {
     if (checked) setSendAutomations(false);
   };
 
+  // Troca de idioma reposiciona o DDI padrão — só enquanto o operador não
+  // tiver mexido no campo (aí respeita o que ele digitou).
+  useEffect(() => {
+    if (countryTouched.current) return;
+    setPhoneCountry(defaultCountryForLang(guestData.preferredLanguage));
+  }, [guestData.preferredLanguage]);
+
   useEffect(() => {
     if (!contextProperty?.id) return;
 
@@ -144,7 +156,11 @@ function NewStayPageContent() {
       lookupGuestByDoc(contextProperty.id, prefilledGuestId).then(guest => {
         if (guest) {
           setDocNumber(guest.id);
-          setGuestData({ fullName: guest.fullName, email: guest.email || "", phone: guest.phone ? guest.phone.replace(/\D/g, '') : "", preferredLanguage: (guest.preferredLanguage as "pt" | "en" | "es") || "pt" });
+          const gl = (guest.preferredLanguage as "pt" | "en" | "es") || "pt";
+          const { country, number, hadCountry } = splitPhone(guest.phone, gl);
+          if (hadCountry) countryTouched.current = true; // só quando o DDI veio do número salvo
+          setPhoneCountry(country);
+          setGuestData({ fullName: guest.fullName, email: guest.email || "", phone: number, preferredLanguage: gl });
         }
       }).catch(() => { /* pré-preenchimento é best-effort; usuário digita os dados */ });
     }
@@ -161,7 +177,11 @@ function NewStayPageContent() {
     try {
       const guest = await lookupGuestByDoc(contextProperty.id, docNumber);
       if (guest) {
-        setGuestData({ fullName: guest.fullName, email: guest.email || "", phone: guest.phone ? guest.phone.replace(/\D/g, '') : "", preferredLanguage: (guest.preferredLanguage as "pt" | "en" | "es") || "pt" });
+        const gl = (guest.preferredLanguage as "pt" | "en" | "es") || "pt";
+        const { country, number, hadCountry } = splitPhone(guest.phone, gl);
+        if (hadCountry) countryTouched.current = true; // só quando o DDI veio do número salvo
+        setPhoneCountry(country);
+        setGuestData({ fullName: guest.fullName, email: guest.email || "", phone: number, preferredLanguage: gl });
         toast.info("Hóspede encontrado!");
       } else {
         toast.info("Hóspede novo. Preencha os dados.");
@@ -208,11 +228,19 @@ function NewStayPageContent() {
       return toast.error("CPF inválido. Verifique o número digitado.");
     }
 
-    const cleanedPhone = guestData.phone.replace(/\D/g, '');
+    // Junta DDI + número — é o que vai para o banco (o `to` do WhatsApp).
+    const cleanedCountry = phoneCountry.replace(/\D/g, '');
+    const cleanedLocal = guestData.phone.replace(/\D/g, '');
+    const cleanedPhone = joinPhone(cleanedCountry, cleanedLocal);
 
     // Telefone só é obrigatório quando há comunicação prevista (reserva normal)
-    if (!internalUse && cleanedPhone.length < 10) {
-      return toast.error("O número de WhatsApp digitado é muito curto.");
+    if (!internalUse) {
+      if (!cleanedCountry) {
+        return toast.error("Informe o código do país (DDI) do WhatsApp.");
+      }
+      if (!isLocalNumberValid(cleanedCountry, cleanedLocal)) {
+        return toast.error("O número de WhatsApp digitado é muito curto.");
+      }
     }
 
     setLoading(true);
@@ -421,15 +449,27 @@ function NewStayPageContent() {
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase text-muted-foreground">WhatsApp {internalUse ? "(opcional)" : "*"}</label>
                   <div className="flex">
-                    <span className="flex items-center px-3 bg-secondary border border-r-0 border-border rounded-l-xl text-sm font-bold text-foreground">+</span>
+                    <span className="flex items-center pl-3 pr-1 bg-secondary border border-r-0 border-border rounded-l-xl text-sm font-bold text-muted-foreground">+</span>
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      aria-label="Código do país (DDI)"
+                      required={!internalUse}
+                      value={phoneCountry.replace(/\D/g, "")}
+                      onChange={e => { countryTouched.current = true; setPhoneCountry(e.target.value.replace(/\D/g, "").slice(0, 3)); }}
+                      placeholder="55"
+                      title="Código do país (DDI). Brasil = 55."
+                      className="w-14 p-3 bg-secondary border border-border text-foreground font-mono outline-none focus:border-primary/50 transition-colors text-center"
+                    />
                     <input
                       required={!internalUse}
                       type="tel"
                       autoComplete="tel"
+                      aria-label="Número do WhatsApp (com DDD)"
                       value={(guestData.phone ?? "").replace(/\D/g, "")}
                       onChange={e => setGuestData({ ...guestData, phone: e.target.value.replace(/\D/g, "") })}
-                      placeholder="55 53 98116-9216"
-                      className="flex-1 p-3 bg-secondary border border-border rounded-r-xl text-foreground font-mono outline-none focus:border-primary/50 transition-colors"
+                      placeholder="53 98116-9216"
+                      className="flex-1 p-3 bg-secondary border border-l-0 border-border rounded-r-xl text-foreground font-mono outline-none focus:border-primary/50 transition-colors"
                     />
                   </div>
                 </div>
