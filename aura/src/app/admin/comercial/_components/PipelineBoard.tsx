@@ -139,6 +139,12 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen, onDropL
                           <Tag size={9} /> {src}
                         </span>
                       )}
+                      {l.entityType === "quote" && l.weddingId && (
+                        <span title="Convidado de casamento (pré-reserva do site dos noivos)"
+                          style={pillS(T.roseBg, T.rose, T.roseBorder)}>
+                          <Heart size={9} /> casamento
+                        </span>
+                      )}
                       {alert && (
                         <span style={pillS(
                           alert === "expired" ? "rgba(248,113,113,0.12)" : "rgba(245,158,11,0.12)",

@@ -21,6 +21,7 @@ export const SETTINGS_KEY_ROLES: Record<string, UserRole[]> = {
   hasStock: ["super_admin"],
   hasBreakfast: ["super_admin"],
   hasKDS: ["super_admin"],
+  hasWeddingSite: ["super_admin"],
 
   // Identidade e integrações.
   slogan: ["super_admin", "admin"],

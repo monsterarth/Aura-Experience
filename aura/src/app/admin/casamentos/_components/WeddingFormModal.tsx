@@ -20,6 +20,7 @@ type WeddingFormData = {
   checkin: string; checkout: string; exclusivity: boolean; cabinsOccupied: string;
   contractTotal: string;
   followUpAt: string; expiresAt: string;
+  rateTableId: string; maxExtendNights: string;
 };
 
 const EMPTY_FORM: WeddingFormData = {
@@ -30,6 +31,7 @@ const EMPTY_FORM: WeddingFormData = {
   checkin: '', checkout: '', exclusivity: false, cabinsOccupied: '',
   contractTotal: '',
   followUpAt: '', expiresAt: '',
+  rateTableId: '', maxExtendNights: '2',
 };
 
 function weddingToForm(w: Wedding): WeddingFormData {
@@ -43,6 +45,8 @@ function weddingToForm(w: Wedding): WeddingFormData {
     exclusivity: w.exclusivity, cabinsOccupied: w.cabinsOccupied != null ? String(w.cabinsOccupied) : '',
     contractTotal: w.contractTotal ? String(w.contractTotal) : '',
     followUpAt: w.followUpAt ?? '', expiresAt: w.expiresAt ?? '',
+    rateTableId: w.rateTableId ?? '',
+    maxExtendNights: w.maxExtendNights != null ? String(w.maxExtendNights) : '2',
   };
 }
 
@@ -78,6 +82,17 @@ export function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }
       .catch(() => {});
   }, [open, propertyId]);
 
+  // Tabelas ativas do tarifário — alimentam o select da tarifa do simulador
+  // de convidados (rota leve; o bundle inteiro do tarifário não é necessário).
+  const [rateTables, setRateTables] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    if (!open) return;
+    fetch(`/api/admin/weddings/rate-tables?propertyId=${propertyId}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d?.tables) setRateTables(d.tables); })
+      .catch(() => {});
+  }, [open, propertyId]);
+
   const set = (key: keyof WeddingFormData) => (val: string | boolean) =>
     setForm(f => ({ ...f, [key]: val }));
 
@@ -109,6 +124,8 @@ export function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }
         // para não deixar data órfã sinalizando follow-up de contrato fechado.
         followUpAt: form.status === 'tentative' ? (form.followUpAt || null) : null,
         expiresAt: form.status === 'tentative' ? (form.expiresAt || null) : null,
+        rateTableId: form.rateTableId || null,
+        maxExtendNights: Math.max(0, Math.min(7, parseInt(form.maxExtendNights) || 0)),
       };
 
       const res = initial
@@ -202,6 +219,25 @@ export function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }
                 <FInput value={form.cabinsOccupied} onChange={set('cabinsOccupied')} type="number" placeholder="Ex: 10" />
               </FField>
             )}
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase', color: T.muted, marginTop: 6 }}>
+              Simulador de convidados
+            </div>
+            <FRow>
+              <FField label="Tabela de tarifa do casamento">
+                <FSelect value={form.rateTableId} onChange={set('rateTableId')} options={[
+                  { value: '', label: '— sem tabela —' },
+                  ...rateTables.map(rt => ({ value: rt.id, label: rt.name })),
+                ]} />
+              </FField>
+              <FField label="Extensão máx. (noites por lado)">
+                <FInput value={form.maxExtendNights} onChange={set('maxExtendNights')} type="number" placeholder="2" />
+              </FField>
+            </FRow>
+            <div style={{ fontSize: 12, color: T.muted, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12, padding: '10px 14px', lineHeight: 1.5 }}>
+              A tabela vale para TODAS as noites da janela do evento (preço seco, sem flutuação/promoção).
+              Noites estendidas pelos convidados saem pelo tarifário normal. O site é ativado na aba
+              <b> Site</b> do painel do casamento.
+            </div>
           </>)}
 
           {tab === 'financeiro' && (<>

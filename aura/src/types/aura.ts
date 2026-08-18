@@ -1477,6 +1477,24 @@ export interface WeddingInstallment {
   createdAt?: Timestamp;
 }
 
+/**
+ * Personalização do site dos noivos — editada pelo casal no painel (código
+ * dos noivos) ou pela recepção. Ausente/campo vazio = herda a identidade da
+ * propriedade (tema camaleão padrão).
+ */
+export interface WeddingSiteConfig {
+  /** Foto de capa (URL do storage — sobe pela rota /api/upload com coupleCode). */
+  coverPhotoUrl?: string | null;
+  /** Mensagem de boas-vindas escrita pelo casal (texto livre, um idioma só). */
+  welcomeMessage?: string | null;
+  /** Overrides de cor sobre o tema da propriedade (hex). */
+  colors?: {
+    primary?: string | null;
+    background?: string | null;
+    surface?: string | null;
+  } | null;
+}
+
 export interface Wedding {
   id: string;
   propertyId: string;
@@ -1521,6 +1539,18 @@ export interface Wedding {
   secondInstallmentValue?: number;
   /** @deprecated Ver depositValue. */
   secondInstallmentPaid?: boolean;
+  // Site dos noivos (simulador de convidados)
+  /** Código de 6 dígitos dos CONVIDADOS (vai no convite) — acesso ao simulador. */
+  guestCode?: string | null;
+  /** Código de 6 dígitos dos NOIVOS — painel do casal (ocupação + personalização). */
+  coupleCode?: string | null;
+  /** Tabela do tarifário que precifica a janela do evento (única, todas as noites). */
+  rateTableId?: string | null;
+  /** Quantas noites o convidado pode estender antes/depois da janela (por lado). */
+  maxExtendNights?: number;
+  /** Site público ligado — só com status 'confirmed' + tabela + datas. */
+  siteEnabled?: boolean;
+  siteConfig?: WeddingSiteConfig | null;
   // Notes
   notes?: string;
   createdAt: Timestamp;

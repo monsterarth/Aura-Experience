@@ -15,13 +15,28 @@ export async function POST(request: Request): Promise<NextResponse> {
         const stayId = formData.get('stayId') as string;
         const accessCode = formData.get('accessCode') as string;
         const assetCode = formData.get('assetCode') as string;
+        const weddingCode = formData.get('weddingCode') as string;
 
         // Auth authorization
         let isAuthorized = false;
+        let imagesOnly = false;
         const auth = await requireAuth();
 
         if (!isAuthError(auth)) {
             isAuthorized = true; // Equipe autenticada
+        } else if (weddingCode && /^\d{6}$/.test(weddingCode)) {
+            // Site dos noivos: só o código do CASAL (coupleCode) autoriza — é a
+            // credencial do painel de personalização. Convidado (guestCode) não
+            // sobe nada. Site precisa estar no ar e o casamento confirmado.
+            const { data: weddingCheck } = await supabaseAdmin
+                .from('weddings')
+                .select('id')
+                .eq('coupleCode', weddingCode)
+                .eq('siteEnabled', true)
+                .eq('status', 'confirmed')
+                .maybeSingle();
+
+            if (weddingCheck) { isAuthorized = true; imagesOnly = true; }
         } else if (stayId && accessCode) {
             // Verifica se o hóspede tem uma hospedagem válida para autorizar o upload de fotos do relato
             const { data: stayCheck } = await supabaseAdmin
@@ -64,6 +79,12 @@ export async function POST(request: Request): Promise<NextResponse> {
                 { error: `Tipo de arquivo não permitido: ${file.type}. Apenas imagens são aceitas.` },
                 { status: 400 }
             );
+        }
+
+        // O painel dos noivos só sobe FOTO (a lista geral aceita PDF de nota
+        // fiscal — não faz sentido numa capa de site).
+        if (imagesOnly && !file.type.startsWith('image/')) {
+            return NextResponse.json({ error: 'Apenas imagens são aceitas.' }, { status: 400 });
         }
 
         // Rejeitar extensões perigosas (defesa em profundidade)

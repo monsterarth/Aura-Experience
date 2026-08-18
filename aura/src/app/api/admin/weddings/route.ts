@@ -52,6 +52,8 @@ export async function POST(request: NextRequest) {
   // Whitelist: cliente não reescreve campos de identidade/sistema.
   const rest = { ...body };
   delete rest.id; delete rest.propertyId; delete rest.createdAt; delete rest.updatedAt;
+  // Site dos noivos nasce desligado — códigos/ativação só pela rota [id]/site.
+  delete rest.guestCode; delete rest.coupleCode; delete rest.siteEnabled;
 
   // Negociação nova nasce com prazo: sem isso o lead fica aberto até a data do
   // evento, que pode estar a anos de distância.

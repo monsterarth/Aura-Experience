@@ -294,6 +294,134 @@ export const WeddingService = {
     });
   },
 
+  // ── Site dos noivos (simulador de convidados) ────────────────────────────────
+
+  /**
+   * Código de 6 dígitos único GLOBALMENTE entre guestCode E coupleCode — a URL
+   * /casamento/<code> não tem contexto de propriedade, o lookup é só pelo
+   * código. Faixa 100000–999999 (nunca nasce com zero à esquerda) via
+   * crypto.getRandomValues com rejection sampling (sem viés de módulo).
+   */
+  async generateUniqueSiteCode(): Promise<string> {
+    const RANGE = 900_000;
+    const LIMIT = Math.floor(0x1_0000_0000 / RANGE) * RANGE;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const buf = new Uint32Array(1);
+      crypto.getRandomValues(buf);
+      if (buf[0] >= LIMIT) continue; // rejeita a cauda que enviesaria o módulo
+      const code = String(100_000 + (buf[0] % RANGE));
+
+      const { data } = await supabaseAdmin
+        .from("weddings")
+        .select("id")
+        .or(`guestCode.eq.${code},coupleCode.eq.${code}`)
+        .limit(1);
+      if (!data || data.length === 0) return code;
+    }
+    throw new Error("Não foi possível gerar um código único — tente novamente.");
+  },
+
+  /**
+   * Liga o site público do casamento. Credencial só nasce quando usada:
+   * exige contrato fechado ('confirmed'), tabela vinculada e janela de datas.
+   * Reativar reaproveita os códigos existentes (convite já impresso).
+   */
+  async activateSite(
+    propertyId: string,
+    weddingId: string,
+    actor: { id: string; name: string }
+  ): Promise<{ guestCode: string; coupleCode: string }> {
+    const wedding = await this.getWeddingById(propertyId, weddingId);
+    if (!wedding) throw new Error("Casamento não encontrado.");
+    if (wedding.status !== "confirmed") {
+      throw new Error("Só casamento confirmado pode ter site — o código vai no convite.");
+    }
+    if (!wedding.rateTableId) {
+      throw new Error("Vincule uma tabela do tarifário antes de ativar o site (aba Hospedagem do formulário).");
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(wedding.checkin || "") || !/^\d{4}-\d{2}-\d{2}$/.test(wedding.checkout || "") || wedding.checkin >= wedding.checkout) {
+      throw new Error("Defina check-in e check-out da hospedagem antes de ativar o site.");
+    }
+    // Tabela precisa existir E ser da propriedade (FK é SET NULL — pode ter sumido).
+    const { data: table } = await supabaseAdmin
+      .from("rate_tables").select("id")
+      .eq("id", wedding.rateTableId).eq("propertyId", propertyId).maybeSingle();
+    if (!table) throw new Error("A tabela vinculada não existe mais — escolha outra no formulário.");
+
+    const guestCode = wedding.guestCode || await this.generateUniqueSiteCode();
+    const coupleCode = wedding.coupleCode || await this.generateUniqueSiteCode();
+    const { error } = await supabaseAdmin
+      .from("weddings")
+      .update({ guestCode, coupleCode, siteEnabled: true, updatedAt: new Date().toISOString() })
+      .eq("id", weddingId)
+      .eq("propertyId", propertyId);
+    if (error) throw new Error(error.message);
+
+    await AuditService.log({
+      propertyId, userId: actor.id, userName: actor.name,
+      action: "UPDATE", entity: "WEDDING", entityId: weddingId,
+      details: `Site dos noivos ATIVADO para ${wedding.bride} & ${wedding.groom} (código dos convidados ${guestCode}).`,
+    });
+    return { guestCode, coupleCode };
+  },
+
+  /** Desliga o site (os códigos ficam — reativar não invalida o convite). */
+  async deactivateSite(
+    propertyId: string,
+    weddingId: string,
+    actor: { id: string; name: string }
+  ): Promise<void> {
+    const wedding = await this.getWeddingById(propertyId, weddingId);
+    if (!wedding) throw new Error("Casamento não encontrado.");
+    const { error } = await supabaseAdmin
+      .from("weddings")
+      .update({ siteEnabled: false, updatedAt: new Date().toISOString() })
+      .eq("id", weddingId)
+      .eq("propertyId", propertyId);
+    if (error) throw new Error(error.message);
+
+    await AuditService.log({
+      propertyId, userId: actor.id, userName: actor.name,
+      action: "UPDATE", entity: "WEDDING", entityId: weddingId,
+      details: `Site dos noivos DESATIVADO para ${wedding.bride} & ${wedding.groom}.`,
+    });
+  },
+
+  /**
+   * Troca o(s) código(s) — ação explícita (código vazou, convite reimpresso).
+   * O código antigo morre na hora; quem tem o link antigo cai no notFound.
+   */
+  async regenerateSiteCodes(
+    propertyId: string,
+    weddingId: string,
+    which: "guest" | "couple" | "both",
+    actor: { id: string; name: string }
+  ): Promise<{ guestCode: string | null; coupleCode: string | null }> {
+    const wedding = await this.getWeddingById(propertyId, weddingId);
+    if (!wedding) throw new Error("Casamento não encontrado.");
+
+    const patch: Record<string, string> = {};
+    if (which === "guest" || which === "both") patch.guestCode = await this.generateUniqueSiteCode();
+    if (which === "couple" || which === "both") patch.coupleCode = await this.generateUniqueSiteCode();
+
+    const { error } = await supabaseAdmin
+      .from("weddings")
+      .update({ ...patch, updatedAt: new Date().toISOString() })
+      .eq("id", weddingId)
+      .eq("propertyId", propertyId);
+    if (error) throw new Error(error.message);
+
+    await AuditService.log({
+      propertyId, userId: actor.id, userName: actor.name,
+      action: "UPDATE", entity: "WEDDING", entityId: weddingId,
+      details: `Código(s) do site regenerado(s) (${which}) para ${wedding.bride} & ${wedding.groom}.`,
+    });
+    return {
+      guestCode: patch.guestCode ?? wedding.guestCode ?? null,
+      coupleCode: patch.coupleCode ?? wedding.coupleCode ?? null,
+    };
+  },
+
   // ── Parcelas (wedding_installments) ──────────────────────────────────────────
 
   async listInstallments(weddingId: string): Promise<WeddingInstallment[]> {

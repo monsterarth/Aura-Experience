@@ -5,11 +5,11 @@ import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { parseMoneyBR, moneyToInput } from "@/lib/parse-money";
 import { Wedding, WeddingInstallment, WeddingStatus } from "@/types/aura";
-import { Heart, Shield, Clock, X, Plus, Users, Globe, Star, Check, DollarSign, Calendar, Trash2, CheckCircle2, Archive, Loader2, Pencil } from "lucide-react";
+import { Heart, Shield, Clock, X, Plus, Users, Globe, Star, Check, DollarSign, Calendar, Trash2, CheckCircle2, Archive, Loader2, Pencil, Copy, RefreshCw, Power, ExternalLink } from "lucide-react";
 import { T, fmt, todayIso, daysUntil, nightsBetween, fmtMoney, STATUS_CFG, VENDOR_ICONS, Pill, CabinMap, leadState, installmentSummary } from "./lib";
 import { LostReasonModal } from "./LostReasonModal";
 
-type DrawerTab = 'evento' | 'hospedagem' | 'fornecedores' | 'financeiro';
+type DrawerTab = 'evento' | 'hospedagem' | 'fornecedores' | 'site' | 'financeiro';
 
 // ─── Parcelas (aba financeiro) ────────────────────────────────────────────────
 // Componente no topo do módulo de propósito: definido dentro do render o React
@@ -222,6 +222,235 @@ function InstallmentsPanel({ wedding, onDataChanged }: {
   );
 }
 
+// ─── Site dos noivos (aba Site) ───────────────────────────────────────────────
+// Componente no topo do módulo (mesma razão do InstallmentsPanel): definido
+// dentro do render, os inputs remontariam a cada tecla.
+
+type SiteState = {
+  enabled: boolean;
+  guestCode: string | null;
+  coupleCode: string | null;
+  rateTableId: string | null;
+  maxExtendNights: number;
+  status: string;
+  checkin: string | null;
+  checkout: string | null;
+};
+
+type SitePreReservation = {
+  id: string; clientName: string | null; clientPhone: string | null;
+  status: string; checkIn: string; checkOut: string; pax: number;
+  categoryName: string; value: number; stayId: string | null;
+  fromSite: boolean; createdAt: string;
+};
+
+const QUOTE_STATUS_CFG: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  open:        { label: "Pendente",    color: "#f59e0b", bg: "rgba(245,158,11,.08)", border: "rgba(245,158,11,.22)" },
+  sent:        { label: "Enviada",     color: "#60a5fa", bg: "rgba(96,165,250,.08)",  border: "rgba(96,165,250,.22)" },
+  negotiating: { label: "Negociando",  color: "#a78bfa", bg: "rgba(167,139,250,.08)", border: "rgba(167,139,250,.22)" },
+  won:         { label: "Confirmada",  color: "#4ade80", bg: "rgba(74,222,128,.08)",  border: "rgba(74,222,128,.22)" },
+  lost:        { label: "Perdida",     color: "#f87171", bg: "rgba(248,113,113,.08)", border: "rgba(248,113,113,.22)" },
+};
+
+function SitePanel({ wedding, onDataChanged }: { wedding: Wedding; onDataChanged?: () => void }) {
+  const [site, setSite] = useState<SiteState | null>(null);
+  const [preReservations, setPreReservations] = useState<SitePreReservation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/weddings/${wedding.id}/site`);
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.site) {
+        setSite(data.site);
+        setPreReservations(data.preReservations || []);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [wedding.id]);
+
+  useEffect(() => { setLoading(true); setSite(null); load(); }, [load]);
+
+  const act = async (body: Record<string, string>) => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/weddings/${wedding.id}/site`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Erro na operação.");
+      await load();
+      onDataChanged?.();
+      return true;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro na operação.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = (text: string, what: string) => {
+    navigator.clipboard.writeText(text)
+      .then(() => toast.success(`${what} copiado!`))
+      .catch(() => toast.error("Não foi possível copiar."));
+  };
+
+  if (loading) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "40px 0", color: T.muted }}>
+        <Loader2 size={16} className="animate-spin" /> Carregando…
+      </div>
+    );
+  }
+  if (!site) {
+    return <div style={{ fontSize: 13, color: T.muted, textAlign: "center", padding: "30px 0" }}>Não foi possível carregar o site.</div>;
+  }
+
+  const requirements = [
+    { ok: site.status === "confirmed", label: "Casamento confirmado" },
+    { ok: !!site.rateTableId, label: "Tabela de tarifa vinculada (aba Hospedagem do formulário)" },
+    { ok: !!site.checkin && !!site.checkout && (site.checkin ?? "") < (site.checkout ?? ""), label: "Janela de hospedagem definida (check-in/check-out)" },
+  ];
+  const ready = requirements.every((r) => r.ok);
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const guestLink = site.guestCode ? `${origin}/casamento?code=${site.guestCode}` : null;
+
+  const CodeRow = ({ label, code, link, which }: { label: string; code: string | null; link: string | null; which: "guest" | "couple" }) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 14px", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: T.muted }}>{label}</div>
+        <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: ".2em", marginTop: 2 }}>{code ?? "—"}</div>
+      </div>
+      {code && (
+        <>
+          {link && (
+            <button title="Copiar link" onClick={() => copy(link, "Link")}
+              style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", borderRadius: 9, border: `1px solid ${T.border2}`, background: T.glass2, cursor: "pointer", fontFamily: "inherit", fontSize: 11, fontWeight: 700, color: T.text }}>
+              <Copy size={11} /> link
+            </button>
+          )}
+          <button title="Copiar código" onClick={() => copy(code, "Código")}
+            style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${T.border2}`, background: T.glass2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}>
+            <Copy size={12} />
+          </button>
+          <button title="Regenerar código (o antigo morre na hora)" disabled={busy}
+            onClick={() => { if (confirm("Regenerar este código? Quem tiver o antigo perde o acesso — inclusive convites já impressos.")) act({ action: "regenerate", which }); }}
+            style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${T.amberBorder}`, background: T.amberBg, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <RefreshCw size={12} color={T.amber} />
+          </button>
+        </>
+      )}
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Estado + ativação */}
+      <div style={{ background: site.enabled ? T.greenBg : T.glass, border: `1px solid ${site.enabled ? T.greenBorder : T.border}`, borderRadius: 14, padding: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <Globe size={16} color={site.enabled ? T.green : T.muted} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: site.enabled ? T.green : T.text }}>
+              {site.enabled ? "Site no ar" : "Site desligado"}
+            </div>
+            <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>
+              Convidados simulam a hospedagem com a tarifa do casamento e deixam pré-reservas no funil comercial.
+            </div>
+          </div>
+          {site.enabled && guestLink && (
+            <a href={`/casamento/${site.guestCode}`} target="_blank" rel="noreferrer" title="Abrir o site como convidado"
+              style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", borderRadius: 9, border: `1px solid ${T.greenBorder}`, background: T.greenBg, fontFamily: "inherit", fontSize: 11, fontWeight: 800, color: T.green, textDecoration: "none", flexShrink: 0 }}>
+              <ExternalLink size={11} /> abrir
+            </a>
+          )}
+        </div>
+
+        {!site.enabled && (
+          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+            {requirements.map((r) => (
+              <div key={r.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: r.ok ? T.green : T.muted }}>
+                {r.ok ? <Check size={13} color={T.green} /> : <X size={13} color={T.red} />} {r.label}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button disabled={busy || (!site.enabled && !ready)}
+          onClick={async () => {
+            if (site.enabled) {
+              if (confirm("Desligar o site? Os códigos continuam válidos para quando reativar.")) {
+                await act({ action: "deactivate" });
+              }
+            } else if (await act({ action: "activate" })) {
+              toast.success("Site ativado!");
+            }
+          }}
+          style={{
+            marginTop: 12, width: "100%", padding: 10, borderRadius: 11,
+            border: site.enabled ? `1px solid ${T.border2}` : "none",
+            background: site.enabled ? T.glass : T.grad,
+            cursor: busy || (!site.enabled && !ready) ? "default" : "pointer",
+            opacity: busy || (!site.enabled && !ready) ? .55 : 1,
+            fontFamily: "inherit", fontSize: 13, fontWeight: 800,
+            color: site.enabled ? T.muted : "#fff",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+          }}>
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <Power size={14} />}
+          {site.enabled ? "Desligar site" : "Ativar site"}
+        </button>
+      </div>
+
+      {/* Códigos */}
+      {(site.guestCode || site.coupleCode) && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".05em", textTransform: "uppercase", color: T.muted }}>Códigos de acesso</div>
+          <CodeRow label="Convidados (vai no convite)" code={site.guestCode} link={guestLink} which="guest" />
+          <CodeRow label="Noivos (painel do casal)" code={site.coupleCode}
+            link={site.coupleCode ? `${origin}/casamento?code=${site.coupleCode}` : null} which="couple" />
+        </div>
+      )}
+
+      {/* Pré-reservas */}
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".05em", textTransform: "uppercase", color: T.muted, marginBottom: 8 }}>
+          Pré-reservas ({preReservations.length})
+        </div>
+        {preReservations.length === 0 ? (
+          <div style={{ fontSize: 12, color: T.muted, textAlign: "center", padding: "14px 0" }}>
+            Nenhuma pré-reserva ainda — os convidados aparecem aqui (e no funil comercial, com o selo 💍).
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {preReservations.map((p) => {
+              const cfg = QUOTE_STATUS_CFG[p.status] ?? QUOTE_STATUS_CFG.open;
+              return (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {p.clientName || "Sem nome"}
+                    </div>
+                    <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>
+                      {p.categoryName} · {fmt(p.checkIn)} → {fmt(p.checkOut)} · {p.pax} pax
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 900 }}>{fmtMoney(p.value)}</div>
+                    <Pill label={cfg.label} bg={cfg.bg} color={cfg.color} border={cfg.border} style={{ marginTop: 3, fontSize: 8 }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onEdit, onDelete, onStatusChange, onMarkLost, onFollowUp, onDataChanged }: {
   wedding: Wedding | null; cabinsTotal: number; onClose: () => void; showFinancial: boolean;
   onEdit: (w: Wedding) => void; onDelete: (w: Wedding) => void;
@@ -248,6 +477,7 @@ export function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onE
     { id: "evento",       label: "Evento" },
     { id: "hospedagem",   label: "Hospedagem" },
     { id: "fornecedores", label: `Fornecedores (${vendors.length})` },
+    { id: "site",         label: "Site" },
     ...(showFinancial ? [{ id: "financeiro" as DrawerTab, label: "Financeiro" }] : []),
   ];
 
@@ -452,6 +682,10 @@ export function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onE
                 <Plus size={14} /> Adicionar Fornecedor
               </button>
             </div>
+          )}
+
+          {tab === "site" && (
+            <SitePanel wedding={wedding} onDataChanged={onDataChanged} />
           )}
 
           {tab === "financeiro" && showFinancial && (

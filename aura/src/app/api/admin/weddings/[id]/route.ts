@@ -35,6 +35,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   const body = await request.json();
   const safe = { ...body };
   delete safe.id; delete safe.propertyId; delete safe.createdAt;
+  // Ciclo de vida do site dos noivos é exclusivo da rota [id]/site (ativação
+  // com pré-condições + auditoria própria); o form não pode sobrescrever.
+  delete safe.guestCode; delete safe.coupleCode; delete safe.siteEnabled;
 
   // Estado anterior: sem ele o log não diz o que mudou (o módulo não tinha
   // auditoria nenhuma — nenhuma alteração de casamento era registrada).
