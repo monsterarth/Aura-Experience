@@ -177,7 +177,7 @@ export default function EstoqueConfigPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-4xl mx-auto">
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-foreground">Configurações do Estoque</h1>
         <p className="text-sm text-muted-foreground">Categorias, locais e parâmetros de alerta.</p>
@@ -215,7 +215,7 @@ export default function EstoqueConfigPage() {
 
           {catForm && (
             <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
-              <div className="grid grid-cols-[60px_1fr_160px] gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-[60px_1fr_160px] gap-3">
                 <div><label className="field-label">Ícone</label>
                   <input className="field-input w-full text-center" placeholder="📦" value={catForm.icon ?? ""}
                     onChange={(e) => setCatForm({ ...catForm, icon: e.target.value })} /></div>
@@ -275,7 +275,7 @@ export default function EstoqueConfigPage() {
 
           {locForm && (
             <div className="bg-card border border-border rounded-2xl p-4 space-y-3">
-              <div className="grid grid-cols-[1fr_200px] gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_200px] gap-3">
                 <div><label className="field-label">Nome</label>
                   <input className="field-input w-full" placeholder="Ex.: Almoxarifado Central" value={locForm.name ?? ""}
                     onChange={(e) => setLocForm({ ...locForm, name: e.target.value })} /></div>
@@ -391,8 +391,8 @@ export default function EstoqueConfigPage() {
             <div className="flex justify-center py-12"><Loader2 className="animate-spin text-primary" /></div>
           ) : (
             <>
-              <div className="bg-card border border-border rounded-2xl overflow-hidden">
-                <table className="w-full text-sm">
+              <div className="bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
+                <table className="w-full text-sm min-w-[560px]">
                   <thead>
                     <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
                       <th className="text-left px-4 py-3">Cabana</th>

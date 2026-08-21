@@ -66,7 +66,7 @@ export default function FornecedoresPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><Truck size={22} /> Fornecedores</h1>
@@ -81,8 +81,8 @@ export default function FornecedoresPage() {
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
       ) : (
-        <div className="bg-card border border-border rounded-2xl overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
+          <table className="w-full text-sm min-w-[600px]">
             <thead>
               <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
                 <th className="text-left px-4 py-3">Fornecedor</th>
@@ -130,19 +130,19 @@ export default function FornecedoresPage() {
             <div className="p-5 space-y-4">
               <div><label className="field-label">Nome *</label>
                 <input className="field-input w-full" value={form.name ?? ""} autoFocus onChange={(e) => setF({ name: e.target.value })} /></div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className="field-label">CNPJ</label>
                   <input className="field-input w-full" value={form.cnpj ?? ""} onChange={(e) => setF({ cnpj: e.target.value })} /></div>
                 <div><label className="field-label">Categoria</label>
                   <input className="field-input w-full" placeholder="Ex.: Alimentos" value={form.category ?? ""} onChange={(e) => setF({ category: e.target.value })} /></div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className="field-label">Telefone</label>
                   <input className="field-input w-full" value={form.phone ?? ""} onChange={(e) => setF({ phone: e.target.value })} /></div>
                 <div><label className="field-label">E-mail</label>
                   <input className="field-input w-full" value={form.email ?? ""} onChange={(e) => setF({ email: e.target.value })} /></div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className="field-label">Contato</label>
                   <input className="field-input w-full" value={form.contactPerson ?? ""} onChange={(e) => setF({ contactPerson: e.target.value })} /></div>
                 <div><label className="field-label">Condição de pagamento</label>
@@ -186,7 +186,7 @@ export default function FornecedoresPage() {
                 </div>
                 <div className="p-5 overflow-y-auto space-y-5">
                   {/* Resumo */}
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="bg-secondary/40 rounded-xl p-3">
                       <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Compras</div>
                       <div className="text-lg font-bold tabular-nums text-foreground">{detail.stats.count}</div>
@@ -202,12 +202,12 @@ export default function FornecedoresPage() {
                   </div>
 
                   {/* Contato */}
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
                     {detail.supplier.phone && <div className="flex items-center gap-2 text-muted-foreground"><Phone size={13} /> {detail.supplier.phone}</div>}
                     {detail.supplier.email && <div className="flex items-center gap-2 text-muted-foreground"><Mail size={13} /> {detail.supplier.email}</div>}
                     {detail.supplier.contactPerson && <div className="text-muted-foreground">Contato: <span className="text-foreground">{detail.supplier.contactPerson}</span></div>}
                     {detail.supplier.paymentTerms && <div className="text-muted-foreground">Pagamento: <span className="text-foreground">{detail.supplier.paymentTerms}</span></div>}
-                    {detail.supplier.address && <div className="col-span-2 flex items-center gap-2 text-muted-foreground"><MapPin size={13} /> {detail.supplier.address}</div>}
+                    {detail.supplier.address && <div className="sm:col-span-2 flex items-center gap-2 text-muted-foreground"><MapPin size={13} /> {detail.supplier.address}</div>}
                   </div>
                   {detail.supplier.notes && <p className="text-xs text-muted-foreground border-l-2 border-border pl-2">{detail.supplier.notes}</p>}
 

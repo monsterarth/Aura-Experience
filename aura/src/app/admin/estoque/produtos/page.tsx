@@ -90,7 +90,7 @@ export default function EstoqueProdutosPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
       <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><Package size={22} /> Estoque</h1>
@@ -114,8 +114,8 @@ export default function EstoqueProdutosPage() {
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
       ) : (
-        <div className="bg-card border border-border rounded-2xl overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
+          <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
                 <th className="text-left px-4 py-3">Produto</th>
@@ -171,19 +171,19 @@ export default function EstoqueProdutosPage() {
 
       {/* Modal de produto */}
       {form && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={requestClose}>
-          <div className="bg-card border border-border w-full max-w-lg rounded-3xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="p-5 border-b border-border flex justify-between items-center">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-background/80 backdrop-blur-sm" onClick={requestClose}>
+          <div className="bg-card border border-border w-full max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92dvh] sm:max-h-[calc(100dvh-2rem)] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-5 border-b border-border flex justify-between items-center shrink-0">
               <h2 className="text-lg font-bold text-foreground">{form.id ? "Editar produto" : "Novo produto"}</h2>
               <button onClick={requestClose} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="p-5 space-y-4 overflow-y-auto">
               <div>
                 <label className="field-label">Nome *</label>
                 <input className="field-input w-full" value={form.name ?? ""} autoFocus
                   onChange={(e) => setForm({ ...form, name: e.target.value })} />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Categoria</label>
                   <select className="field-input w-full" value={form.categoryId ?? ""}
@@ -200,7 +200,7 @@ export default function EstoqueProdutosPage() {
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="field-label">SKU</label>
                   <input className="field-input w-full" value={form.sku ?? ""}
@@ -252,7 +252,7 @@ export default function EstoqueProdutosPage() {
                     onChange={(e) => setForm({ ...form, maidRequestable: e.target.checked })} className="w-4 h-4 accent-primary" />
                   <span className="text-sm text-foreground">Solicitável pela camareira</span>
                 </label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="field-label">Baixa na entrega</label>
                     <select className="field-input w-full" value={form.deductMode ?? "default"}
@@ -276,7 +276,7 @@ export default function EstoqueProdutosPage() {
                 </p>
               </div>
             </div>
-            <div className="p-5 border-t border-border flex justify-end gap-2">
+            <div className="p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] border-t border-border flex justify-end gap-2 shrink-0">
               <button onClick={requestClose} className="px-4 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground">Cancelar</button>
               <button onClick={save} disabled={saving}
                 className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground">

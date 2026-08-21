@@ -169,7 +169,7 @@ export default function ComprasPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
       <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><ShoppingCart size={22} /> Compras</h1>
@@ -183,8 +183,8 @@ export default function ComprasPage() {
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
       ) : (
-        <div className="bg-card border border-border rounded-2xl overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
+          <table className="w-full text-sm min-w-[600px]">
             <thead>
               <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
                 <th className="text-left px-4 py-3">NF / Fornecedor</th>
@@ -243,7 +243,7 @@ export default function ComprasPage() {
               <button onClick={requestClose} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
             </div>
             <div className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className="field-label">Fornecedor</label>
                   <select className="field-input w-full" value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })}>
                     <option value="">—</option>
@@ -254,7 +254,7 @@ export default function ComprasPage() {
                   <StockLocationSelect locations={flatLocations} value={form.locationId} placeholder="—"
                     onChange={(id) => setForm({ ...form, locationId: id })} /></div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div><label className="field-label">Nº da NF</label>
                   <input className="field-input w-full" value={form.invoiceNumber} onChange={(e) => setForm({ ...form, invoiceNumber: e.target.value })} /></div>
                 <div><label className="field-label">Data do pedido</label>
@@ -385,7 +385,7 @@ export default function ComprasPage() {
               <button onClick={() => setNota(null)} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
             </div>
             <div className="p-5 overflow-y-auto space-y-4">
-              <div className="grid grid-cols-3 gap-3 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
                 <div><div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Local</div><div className="text-foreground">{nota.location?.name ?? "—"}</div></div>
                 <div><div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Pedido</div><div className="text-foreground">{fmtDate(nota.orderDate)}</div></div>
                 <div><div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Recebido</div><div className="text-foreground">{fmtDate(nota.receivedDate)}</div></div>

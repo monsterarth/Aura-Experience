@@ -115,7 +115,7 @@ export default function EstoqueLocalPage() {
     `/admin/estoque/movimentacoes?${side}=${encodeURIComponent(locationId)}`;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <Link href="/admin/estoque/locais" className="inline-flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground mb-4">
         <ArrowLeft size={14} /> Estoques
       </Link>
@@ -171,8 +171,8 @@ export default function EstoqueLocalPage() {
 
       {/* Conteúdo */}
       <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">O que tem neste estoque</h2>
-      <div className="bg-card border border-border rounded-2xl overflow-hidden mb-6">
-        <table className="w-full text-sm">
+      <div className="bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto mb-6">
+        <table className="w-full text-sm min-w-[560px]">
           <thead>
             <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
               <th className="text-left px-4 py-3">Produto</th>
@@ -221,8 +221,8 @@ export default function EstoqueLocalPage() {
           Ver histórico completo →
         </Link>
       </div>
-      <div className="bg-card border border-border rounded-2xl overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
+        <table className="w-full text-sm min-w-[560px]">
           <thead>
             <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
               <th className="text-left px-4 py-3">Data</th>
@@ -279,7 +279,7 @@ export default function EstoqueLocalPage() {
       {/* Correção de saldo */}
       {fix && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={() => setFix(null)}>
-          <div className="bg-card border border-border w-full max-w-md rounded-3xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-card border border-border w-full max-w-md rounded-3xl shadow-2xl max-h-[92dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="p-5 border-b border-border flex justify-between items-center">
               <div>
                 <h2 className="text-lg font-bold text-foreground">Corrigir saldo</h2>
@@ -327,7 +327,7 @@ export default function EstoqueLocalPage() {
       {/* Gerir local */}
       {manage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={() => setManage(null)}>
-          <div className="bg-card border border-border w-full max-w-md rounded-3xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-card border border-border w-full max-w-md rounded-3xl shadow-2xl max-h-[92dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="p-5 border-b border-border flex justify-between items-center">
               <h2 className="text-lg font-bold text-foreground">Gerir local</h2>
               <button onClick={() => setManage(null)} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>

@@ -112,7 +112,7 @@ export default function InventarioPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><ClipboardList size={22} /> Inventário</h1>
@@ -127,8 +127,8 @@ export default function InventarioPage() {
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
       ) : (
-        <div className="bg-card border border-border rounded-2xl overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
+          <table className="w-full text-sm min-w-[600px]">
             <thead>
               <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
                 <th className="text-left px-4 py-3">Aberto em</th>
@@ -165,7 +165,7 @@ export default function InventarioPage() {
       {/* Modal novo inventário */}
       {newForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={requestCloseNew}>
-          <div className="bg-card border border-border w-full max-w-md rounded-3xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-card border border-border w-full max-w-md rounded-3xl shadow-2xl max-h-[92dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="p-5 border-b border-border flex justify-between items-center">
               <h2 className="text-lg font-bold text-foreground">Novo inventário</h2>
               <button onClick={requestCloseNew} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>

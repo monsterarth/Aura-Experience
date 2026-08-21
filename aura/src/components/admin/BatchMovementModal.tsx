@@ -212,7 +212,7 @@ export default function BatchMovementModal({
             ))}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {showFrom && (
               <div>
                 <label className="field-label">Origem</label>
@@ -251,13 +251,13 @@ export default function BatchMovementModal({
               <StaffSelect staff={staff} value={responsibleId} onChange={setResponsibleId} />
             </div>
             {convertingNames.length > 0 && (
-              <p className="col-span-2 text-xs font-medium text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+              <p className="sm:col-span-2 text-xs font-medium text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
                 <b>{locOf(to.locationId)?.name}</b> é ponto de consumo — estas linhas serão registradas como{" "}
                 <b>Saída (consumo)</b>: {convertingNames.join(", ")}.
               </p>
             )}
             {returningNames.length > 0 && (
-              <p className="col-span-2 text-xs font-medium text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+              <p className="sm:col-span-2 text-xs font-medium text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
                 <b>{locOf(from.locationId)?.name}</b> é ponto de consumo — estas linhas serão registradas como{" "}
                 <b>Entrada (devolução de setor)</b>: {returningNames.join(", ")}.
               </p>

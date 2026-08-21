@@ -58,7 +58,7 @@ export default function PerdasPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><AlertOctagon size={22} /> Perdas</h1>
@@ -131,8 +131,8 @@ export default function PerdasPage() {
           </section>
 
           {/* Lista */}
-          <section className="bg-card border border-border rounded-2xl overflow-hidden">
-            <table className="w-full text-sm">
+          <section className="bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
+            <table className="w-full text-sm min-w-[600px]">
               <thead>
                 <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
                   <th className="text-left px-4 py-3">Data</th>
