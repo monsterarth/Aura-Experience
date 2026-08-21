@@ -105,7 +105,7 @@ export default function EstoquesPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       <header className="mb-5 flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><Warehouse size={22} /> Estoques</h1>
@@ -120,7 +120,7 @@ export default function EstoquesPage() {
             <ArrowLeftRight size={16} /> Movimentar
           </Link>
           <Link href="/admin/estoque/configuracoes"
-            className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90">
+            className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90">
             <Plus size={16} /> Novo local
           </Link>
         </div>

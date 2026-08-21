@@ -86,15 +86,15 @@ export default function PatrimonioPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <header className="mb-5 flex items-start justify-between gap-4 flex-wrap">
+    <div className="max-w-6xl mx-auto">
+      <header className="mb-5 flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><Landmark size={22} /> Patrimônio</h1>
           <p className="text-sm text-muted-foreground">
             {filtered.length} ativo(s) · valor contábil {money(totalBook)}
           </p>
         </div>
-        <button onClick={() => setForm({ ...EMPTY_ASSET })} className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90">
+        <button onClick={() => setForm({ ...EMPTY_ASSET })} className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90">
           <Plus size={16} /> Novo ativo
         </button>
       </header>
@@ -103,44 +103,44 @@ export default function PatrimonioPage() {
 
       {/* Busca + filtros */}
       <div className="my-4 space-y-3">
-        <div className="relative max-w-sm">
+        <div className="relative w-full sm:max-w-sm">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input className="field-input w-full pl-9" placeholder="Buscar por nome, nº, série ou plaqueta…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
 
-        <div className="flex gap-2 flex-wrap items-center">
-          <Filter size={14} className="text-muted-foreground" />
-          <select className="field-input text-xs py-1.5" value={fStatus} onChange={(e) => setFStatus(e.target.value as AssetStatus | "")}>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+          <Filter size={14} className="hidden sm:block text-muted-foreground" />
+          <select className="field-input text-xs py-1.5 w-full sm:w-auto" value={fStatus} onChange={(e) => setFStatus(e.target.value as AssetStatus | "")}>
             <option value="">Todos os status</option>
             {(Object.entries(ASSET_STATUS) as [AssetStatus, { label: string }][]).map(([v, s]) => (
               <option key={v} value={v}>{s.label}</option>
             ))}
           </select>
-          <select className="field-input text-xs py-1.5" value={fCategory} onChange={(e) => setFCategory(e.target.value)}>
+          <select className="field-input text-xs py-1.5 w-full sm:w-auto" value={fCategory} onChange={(e) => setFCategory(e.target.value)}>
             <option value="">Todas as categorias</option>
             {categories.filter((c) => c.appliesTo !== "consumable").map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
-          <select className="field-input text-xs py-1.5" value={fLocation} onChange={(e) => setFLocation(e.target.value)}>
+          <select className="field-input text-xs py-1.5 w-full sm:w-auto" value={fLocation} onChange={(e) => setFLocation(e.target.value)}>
             <option value="">Todos os locais</option>
             {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
-          <select className="field-input text-xs py-1.5" value={fCustodian} onChange={(e) => setFCustodian(e.target.value)}>
+          <select className="field-input text-xs py-1.5 w-full sm:w-auto" value={fCustodian} onChange={(e) => setFCustodian(e.target.value)}>
             <option value="">Todos os responsáveis</option>
             {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          <select className="field-input text-xs py-1.5" value={fWarranty} onChange={(e) => setFWarranty(e.target.value as WarrantyFilter)}>
+          <select className="field-input text-xs py-1.5 w-full sm:w-auto" value={fWarranty} onChange={(e) => setFWarranty(e.target.value as WarrantyFilter)}>
             <option value="">Garantia: qualquer</option>
             <option value="active">Em garantia</option>
             <option value="expiring">Vencendo (60 dias)</option>
             <option value="expired">Vencida</option>
             <option value="none">Sem garantia</option>
           </select>
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+          <label className="col-span-2 sm:col-span-1 flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
             <input type="checkbox" checked={includeDisposed} onChange={(e) => setIncludeDisposed(e.target.checked)} />
             Incluir baixados
           </label>
           {hasFilters && (
-            <button onClick={clearFilters} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+            <button onClick={clearFilters} className="col-span-2 sm:col-span-1 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
               <X size={12} /> limpar
             </button>
           )}
@@ -150,8 +150,50 @@ export default function PatrimonioPage() {
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
       ) : (
-        <div className="bg-card border border-border rounded-2xl overflow-hidden">
-          <table className="w-full text-sm">
+        <>
+        {/* Mobile: cards — a tabela de 7 colunas nao cabe no celular */}
+        <div className="md:hidden space-y-2.5">
+          {filtered.map((a) => {
+            const st = ASSET_STATUS[a.status];
+            return (
+              <Link key={a.id} href={`/admin/patrimonio/${a.id}`} className="block bg-card border border-border rounded-2xl p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-foreground truncate">{a.name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                      {a.assetTag && <span className="font-mono">#{a.assetTag} · </span>}{a.category?.name ?? "Sem categoria"}
+                    </p>
+                  </div>
+                  <span className={cn("shrink-0 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md", st.cls)}>{st.label}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t border-border/60">
+                  <span className="text-xs text-muted-foreground truncate">
+                    {a.cabinName ?? a.location?.name ?? "Sem local"}{a.custodianName ? ` · ${a.custodianName}` : ""}
+                  </span>
+                  <span className="text-sm font-medium text-foreground tabular-nums shrink-0">{money(a.bookValue)}</span>
+                </div>
+                {a.warrantyUntil && (
+                  <span className={cn("mt-2 inline-flex items-center gap-1 text-[11px]",
+                    a.warrantyStatus === "active" && "text-emerald-500",
+                    a.warrantyStatus === "expiring" && "text-amber-500",
+                    a.warrantyStatus === "expired" && "text-muted-foreground",
+                  )}>
+                    <ShieldCheck size={11} /> Garantia até {new Date(a.warrantyUntil).toLocaleDateString("pt-BR")}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+          {filtered.length === 0 && (
+            <div className="bg-card border border-border rounded-2xl px-4 py-12 text-center text-sm text-muted-foreground">
+              {assets.length === 0 ? "Nenhum ativo cadastrado." : "Nenhum ativo encontrado com estes filtros."}
+            </div>
+          )}
+        </div>
+
+        {/* Desktop: tabela */}
+        <div className="hidden md:block bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
+          <table className="w-full text-sm min-w-[720px]">
             <thead>
               <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
                 <th className="text-left px-4 py-3">Ativo</th>
@@ -211,6 +253,7 @@ export default function PatrimonioPage() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {form && (

@@ -289,8 +289,12 @@ export default function BatchMovementModal({
                 const preErr = preflightByIndex.get(idx);
                 return (
                   <div key={idx}>
-                    <div className={cn("grid gap-2 items-center", showCost ? "grid-cols-[1fr_80px_100px_28px]" : "grid-cols-[1fr_80px_28px]")}>
-                      <select className={cn("field-input w-full py-1.5", (failed || preErr) && "border-destructive")}
+                    <div className={cn("grid gap-2 items-center",
+                      showCost
+                        ? "grid-cols-[1fr_1fr_28px] sm:grid-cols-[1fr_80px_100px_28px]"
+                        : "grid-cols-[1fr_28px] sm:grid-cols-[1fr_80px_28px]")}>
+                      <select className={cn("field-input w-full py-1.5 sm:col-span-1", showCost ? "col-span-3" : "col-span-2",
+                        (failed || preErr) && "border-destructive")}
                         value={r.productId} disabled={done || saving}
                         onChange={(e) => setRow(idx, { productId: e.target.value })}>
                         <option value="">Selecione…</option>

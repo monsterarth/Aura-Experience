@@ -115,7 +115,7 @@ export default function EstoqueLocalPage() {
     `/admin/estoque/movimentacoes?${side}=${encodeURIComponent(locationId)}`;
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+    <div className="max-w-5xl mx-auto">
       <Link href="/admin/estoque/locais" className="inline-flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground mb-4">
         <ArrowLeft size={14} /> Estoques
       </Link>
@@ -171,7 +171,43 @@ export default function EstoqueLocalPage() {
 
       {/* Conteúdo */}
       <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">O que tem neste estoque</h2>
-      <div className="bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto mb-6">
+      {/* Mobile: cards */}
+      <div className="md:hidden space-y-2.5 mb-6">
+        {detail.items.map((it) => (
+          <div key={it.productId} onClick={() => setProductId(it.productId)}
+            className={cn("bg-card border rounded-2xl p-4 cursor-pointer", it.belowMin ? "border-amber-500/40" : "border-border")}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-foreground flex items-center gap-1.5">
+                  {it.belowMin && <AlertTriangle size={13} className="text-amber-500 shrink-0" />}
+                  <span className="truncate">{it.name}</span>
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5 truncate">{it.categoryName ?? "—"}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className={cn("text-lg font-bold tabular-nums leading-none", it.belowMin && "text-amber-500")}>
+                  {it.quantity}<span className="text-xs font-normal text-muted-foreground"> {it.unit}</span>
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-1">mín. {Number(it.minStock)}</p>
+              </div>
+            </div>
+            <div className="flex justify-end mt-2" onClick={(e) => e.stopPropagation()}>
+              <button onClick={() => setFix({ productId: it.productId, name: it.name, current: it.quantity, unit: it.unit, qty: String(it.quantity), reason: "" })}
+                className="px-3 py-1.5 rounded-lg bg-secondary/60 text-xs font-bold text-muted-foreground hover:text-foreground">
+                Corrigir saldo
+              </button>
+            </div>
+          </div>
+        ))}
+        {detail.items.length === 0 && (
+          <div className="bg-card border border-border rounded-2xl px-4 py-12 text-center text-sm text-muted-foreground">
+            Nenhum produto com saldo neste estoque.
+          </div>
+        )}
+      </div>
+
+      {/* Desktop: tabela */}
+      <div className="hidden md:block bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto mb-6">
         <table className="w-full text-sm min-w-[560px]">
           <thead>
             <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
@@ -221,7 +257,48 @@ export default function EstoqueLocalPage() {
           Ver histórico completo →
         </Link>
       </div>
-      <div className="bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
+      {/* Mobile: cards */}
+      <div className="md:hidden space-y-2.5">
+        {detail.movements.map((m) => {
+          const consumedHere = m.toLocationId === locationId && (m.type === "exit" || m.type === "loss");
+          const returnedFromHere = m.fromLocationId === locationId && m.type === "entry";
+          const neutral = consumedHere || returnedFromHere;
+          const entering = !neutral && m.toLocationId === locationId;
+          return (
+            <div key={m.id} onClick={() => m.productId && setProductId(m.productId)}
+              className="bg-card border border-border rounded-2xl p-4 cursor-pointer">
+              <div className="flex items-baseline justify-between gap-3">
+                <p className="font-bold text-foreground truncate">{m.product?.name ?? "—"}</p>
+                <p className={cn("text-base font-bold tabular-nums shrink-0",
+                  neutral ? "text-muted-foreground" : entering ? "text-emerald-500" : "text-orange-500")}>
+                  {neutral ? "" : entering ? "+" : "−"}{Math.abs(Number(m.quantity))}
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {consumedHere
+                  ? `consumo — ${m.fromLocation?.name ? `de ${m.fromLocation.name}` : "no setor"}`
+                  : returnedFromHere
+                    ? `devolução — ${m.toLocation?.name ? `para ${m.toLocation.name}` : "ao estoque"}`
+                    : entering
+                      ? (m.fromLocation?.name ? `de ${m.fromLocation.name}` : "entrada")
+                      : (m.toLocation?.name ? `para ${m.toLocation.name}` : "saída")}
+              </p>
+              <div className="flex items-center justify-between gap-3 mt-2 text-[11px] text-muted-foreground">
+                <span className="truncate">{m.responsibleName ?? m.performedByName ?? "—"}</span>
+                <span className="shrink-0">{fmtDate(m.createdAt)}</span>
+              </div>
+            </div>
+          );
+        })}
+        {detail.movements.length === 0 && (
+          <div className="bg-card border border-border rounded-2xl px-4 py-12 text-center text-sm text-muted-foreground">
+            Sem movimentações neste local.
+          </div>
+        )}
+      </div>
+
+      {/* Desktop: tabela */}
+      <div className="hidden md:block bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
         <table className="w-full text-sm min-w-[560px]">
           <thead>
             <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">

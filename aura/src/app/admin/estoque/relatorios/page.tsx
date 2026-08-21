@@ -96,7 +96,7 @@ export default function EstoqueRelatoriosPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><FileText size={22} /> Relatórios</h1>
         <p className="text-sm text-muted-foreground">Filtre por estoque, item e período; exporte em CSV ou imprima.</p>
@@ -209,7 +209,7 @@ export default function EstoqueRelatoriosPage() {
 
 function ReportTable({ report }: { report: StockReport }) {
   return (
-    <table className="stk-table w-full text-sm min-w-[600px]">
+    <table className="stk-table w-full text-sm min-w-[600px] print:min-w-0">
       <thead>
         <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
           {report.columns.map((c) => (

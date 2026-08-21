@@ -78,7 +78,7 @@ function AdminLayoutInner({ children, initialTheme }: { children: React.ReactNod
       {!isLoginPage && canPush && <PushNotificationManager role="reception" />}
 
       <main
-        className={`flex-1 relative z-10 flex flex-col h-[100dvh] ${isLight ? 'bg-[#ede9e4]' : 'bg-[#151515]'}`}
+        className={`flex-1 min-w-0 relative z-10 flex flex-col h-[100dvh] ${isLight ? 'bg-[#ede9e4]' : 'bg-[#151515]'}`}
         style={impersonating ? { paddingTop: 42 } : undefined}
       >
         <div className="absolute top-0 right-0 w-[600px] h-[300px] bg-gradient-to-bl from-[#E6E6FA] via-[#B0E0E6]/20 to-transparent opacity-10 pointer-events-none rounded-full blur-[100px]" />

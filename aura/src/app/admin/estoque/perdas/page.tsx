@@ -58,7 +58,7 @@ export default function PerdasPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+    <div className="max-w-5xl mx-auto">
       <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><AlertOctagon size={22} /> Perdas</h1>
@@ -131,7 +131,32 @@ export default function PerdasPage() {
           </section>
 
           {/* Lista */}
-          <section className="bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
+          {/* Mobile: cards */}
+          <div className="md:hidden space-y-2.5">
+            {losses.map((l) => {
+              const meta = LOSS_META[(l.lossType ?? "other")];
+              return (
+                <div key={l.id} onClick={() => l.productId && setProductId(l.productId)}
+                  className="bg-card border border-border rounded-2xl p-4 cursor-pointer">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold" style={{ color: meta.color }}>{meta.label}</span>
+                    <span className="text-[11px] text-muted-foreground shrink-0">{fmtDate(l.createdAt)}</span>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3 mt-1.5">
+                    <p className="font-bold text-foreground truncate">{l.product?.name ?? "—"}</p>
+                    <p className="text-base font-bold tabular-nums shrink-0">{Number(l.quantity)}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">{money(Number(l.totalCost))}</p>
+                </div>
+              );
+            })}
+            {losses.length === 0 && (
+              <div className="bg-card border border-border rounded-2xl px-4 py-12 text-center text-sm text-muted-foreground">Nenhuma perda registrada no período.</div>
+            )}
+          </div>
+
+          {/* Desktop: tabela */}
+          <section className="hidden md:block bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
             <table className="w-full text-sm min-w-[600px]">
               <thead>
                 <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">

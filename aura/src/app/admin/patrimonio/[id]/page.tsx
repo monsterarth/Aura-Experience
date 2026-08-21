@@ -107,7 +107,7 @@ export default function AssetDetailPage() {
   if (loading) return <div className="flex justify-center py-24"><Loader2 className="animate-spin text-primary" /></div>;
   if (!data) {
     return (
-      <div className="p-8 max-w-3xl mx-auto">
+      <div className="max-w-3xl mx-auto">
         <p className="text-muted-foreground">Ativo não encontrado.</p>
         <Link href="/admin/patrimonio" className="text-sm text-primary font-bold mt-3 inline-block">← Voltar ao patrimônio</Link>
       </div>
@@ -119,7 +119,7 @@ export default function AssetDetailPage() {
   const isDisposed = a.status === "disposed";
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-5">
+    <div className="max-w-5xl mx-auto space-y-5">
       <Link href="/admin/patrimonio" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft size={15} /> Patrimônio
       </Link>

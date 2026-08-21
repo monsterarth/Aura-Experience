@@ -96,7 +96,7 @@ export default function PatrimonioRelatoriosPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       <Link href="/admin/patrimonio" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4">
         <ArrowLeft size={15} /> Patrimônio
       </Link>
@@ -196,7 +196,7 @@ export default function PatrimonioRelatoriosPage() {
 
 function ReportTable({ report }: { report: AssetReport }) {
   return (
-    <table className="stk-table w-full text-sm">
+    <table className="stk-table w-full text-sm min-w-[600px] print:min-w-0">
       <thead>
         <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
           {report.columns.map((c) => (

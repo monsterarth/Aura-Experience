@@ -174,7 +174,7 @@ export default function EstoqueHistoricoPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       <Link href="/admin/estoque/movimentacoes"
         className="inline-flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground mb-4">
         <ArrowLeft size={14} /> Movimentações
@@ -301,7 +301,78 @@ export default function EstoqueHistoricoPage() {
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
       ) : (
-        <div className="bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
+        <>
+        {/* Mobile: cards — inclui a observação, que é o motivo desta tela existir */}
+        <div className="md:hidden space-y-2.5">
+          {rows.map((m) => {
+            const meta = typeMeta(m.type);
+            const Icon = meta.icon;
+            const origin = m.referenceType && m.referenceType !== "manual" ? ORIGIN_LABEL[m.referenceType] : null;
+            const isOpen = openBatch === m.batchRef;
+            return (
+              <div key={m.id} className="bg-card border border-border rounded-2xl p-4">
+                <div onClick={() => m.productId && setProductId(m.productId)} className="cursor-pointer">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={cn("inline-flex items-center gap-1.5 text-xs font-bold", meta.color)}>
+                      <Icon size={13} /> {meta.label}
+                      {m.type === "loss" && m.lossType && (
+                        <span className="font-normal text-muted-foreground">· {LOSS_LABEL[m.lossType] ?? m.lossType}</span>
+                      )}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground shrink-0">{fmtDate(m.createdAt)}</span>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3 mt-1.5">
+                    <p className="font-bold text-foreground truncate">
+                      {m.product?.name ?? "—"}
+                      {origin && (
+                        <span className="ml-1.5 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-secondary text-muted-foreground align-middle">
+                          {origin}
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-base font-bold tabular-nums shrink-0">
+                      {Number(m.quantity)} <span className="text-xs font-normal text-muted-foreground">{m.product?.unit ?? ""}</span>
+                    </p>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {m.fromLocation?.name && <span>{m.fromLocation.name}{m.fromStaffName ? ` · ${m.fromStaffName}` : ""}</span>}
+                    {m.fromLocation?.name && m.toLocation?.name && <span> → </span>}
+                    {m.toLocation?.name && <span>{m.toLocation.name}{m.toStaffName ? ` · ${m.toStaffName}` : ""}</span>}
+                    {!m.fromLocation?.name && !m.toLocation?.name && "—"}
+                  </p>
+                  {m.notes && (
+                    <p className="flex items-start gap-1.5 text-xs text-foreground/80 bg-secondary/40 rounded-lg px-2.5 py-1.5 mt-2">
+                      <MessageSquareText size={13} className="shrink-0 mt-0.5 text-muted-foreground" />
+                      <span className="whitespace-pre-wrap">{m.notes}</span>
+                    </p>
+                  )}
+                  <p className="text-[11px] text-muted-foreground mt-1.5">{m.responsibleName ?? m.performedByName ?? "—"}</p>
+                </div>
+                {m.batchRef && (
+                  <button onClick={() => toggleBatch(m.batchRef!)}
+                    className={cn("mt-2.5 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded",
+                      isOpen ? "bg-primary/15 text-primary" : "bg-secondary text-muted-foreground")}>
+                    {isOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />} Lote
+                  </button>
+                )}
+                {isOpen && property && (
+                  <div className="mt-3">
+                    <StockBatchPanel propertyId={property.id} batchRef={m.batchRef!}
+                      onReverted={() => { setOpenBatch(null); load(); }} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {rows.length === 0 && (
+            <div className="bg-card border border-border rounded-2xl px-4 py-12 text-center text-sm text-muted-foreground">
+              {activeCount > 0 ? "Nenhuma movimentação com esses filtros." : "Nenhuma movimentação registrada ainda."}
+            </div>
+          )}
+        </div>
+
+        {/* Desktop: tabela */}
+        <div className="hidden md:block bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
           <table className="w-full text-sm min-w-[720px]">
             <thead>
               <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
@@ -395,6 +466,7 @@ export default function EstoqueHistoricoPage() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {productId && (

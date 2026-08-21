@@ -177,16 +177,16 @@ export default function EstoqueConfigPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="p-4 sm:p-6 max-w-4xl mx-auto">
+    <div className="max-w-4xl mx-auto">
       <header className="mb-6">
         <h1 className="text-2xl font-bold text-foreground">Configurações do Estoque</h1>
         <p className="text-sm text-muted-foreground">Categorias, locais e parâmetros de alerta.</p>
       </header>
 
-      <div className="flex gap-1 mb-6 bg-secondary/40 p-1 rounded-xl w-fit">
+      <div className="flex gap-1 mb-6 bg-secondary/40 p-1 rounded-xl w-full sm:w-fit overflow-x-auto">
         {([["categorias", "Categorias", Tag], ["locais", "Locais", MapPin], ["cabanas", "Cabanas", Home], ["parametros", "Parâmetros", SlidersHorizontal]] as const).map(([id, label, Icon]) => (
           <button key={id} onClick={() => setTab(id)}
-            className={cn("flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors",
+            className={cn("shrink-0 flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg text-sm font-bold transition-colors",
               tab === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
             <Icon size={15} /> {label}
           </button>

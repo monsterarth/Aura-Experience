@@ -153,7 +153,7 @@ export default function EtiquetasPage() {
   const cfg = SIZES[options.size];
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="max-w-5xl mx-auto">
       <Link href="/admin/patrimonio" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4">
         <ArrowLeft size={15} /> Patrimônio
       </Link>

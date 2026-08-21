@@ -227,7 +227,7 @@ export default function EstoqueMovimentacoesPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+    <div className="max-w-5xl mx-auto">
       <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><ArrowLeftRight size={22} /> Movimentações</h1>
@@ -394,7 +394,54 @@ export default function EstoqueMovimentacoesPage() {
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="animate-spin text-primary" /></div>
       ) : (
-        <div className="bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
+        <>
+        {/* Mobile: cards — a tabela de 7 colunas não cabe no celular */}
+        <div className="md:hidden space-y-2.5">
+          {movements.map((m) => {
+            const meta = typeMeta(m.type);
+            const Icon = meta.icon;
+            const isOpen = !!m.batchRef && openBatch === m.batchRef;
+            return (
+              <div key={m.id} className="bg-card border border-border rounded-2xl p-4">
+                <div onClick={() => m.productId && setProductId(m.productId)} className="cursor-pointer">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={cn("inline-flex items-center gap-1.5 text-xs font-bold", meta.color)}>
+                      <Icon size={13} /> {meta.label}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground shrink-0">{fmtDate(m.createdAt)}</span>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3 mt-1.5">
+                    <p className="font-bold text-foreground truncate">{m.product?.name ?? "—"}</p>
+                    <p className="text-base font-bold tabular-nums shrink-0">{Number(m.quantity)}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {m.fromLocation?.name && <span>{m.fromLocation.name}{m.fromStaffName ? ` · ${m.fromStaffName}` : ""}</span>}
+                    {m.fromLocation?.name && m.toLocation?.name && <span> → </span>}
+                    {m.toLocation?.name && <span>{m.toLocation.name}{m.toStaffName ? ` · ${m.toStaffName}` : ""}</span>}
+                  </p>
+                  {m.notes && <p className="text-xs text-foreground/80 italic mt-1.5">{m.notes}</p>}
+                  <p className="text-[11px] text-muted-foreground mt-1.5">{m.responsibleName ?? m.performedByName ?? "—"}</p>
+                </div>
+                {m.batchRef && (
+                  <button onClick={() => toggleBatch(m.batchRef!)}
+                    className={cn("mt-2.5 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded",
+                      isOpen ? "bg-primary/15 text-primary" : "bg-secondary text-muted-foreground")}>
+                    {isOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />} Lote
+                  </button>
+                )}
+                {isOpen && property && (
+                  <div className="mt-3"><StockBatchPanel propertyId={property.id} batchRef={m.batchRef!} /></div>
+                )}
+              </div>
+            );
+          })}
+          {movements.length === 0 && (
+            <div className="bg-card border border-border rounded-2xl px-4 py-12 text-center text-sm text-muted-foreground">Nenhuma movimentação ainda.</div>
+          )}
+        </div>
+
+        {/* Desktop: tabela */}
+        <div className="hidden md:block bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
           <table className="w-full text-sm min-w-[720px]">
             <thead>
               <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
@@ -462,6 +509,7 @@ export default function EstoqueMovimentacoesPage() {
             </tbody>
           </table>
         </div>
+        </>
       )}
     </div>
   );

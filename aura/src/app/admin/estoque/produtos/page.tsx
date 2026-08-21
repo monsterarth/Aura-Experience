@@ -90,8 +90,8 @@ export default function EstoqueProdutosPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
-      <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
+    <div className="max-w-6xl mx-auto">
+      <header className="mb-5 flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><Package size={22} /> Estoque</h1>
           <p className="text-sm text-muted-foreground">
@@ -100,12 +100,12 @@ export default function EstoqueProdutosPage() {
           </p>
         </div>
         <button onClick={() => setForm({ ...emptyForm })}
-          className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90">
+          className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90">
           <Plus size={16} /> Novo produto
         </button>
       </header>
 
-      <div className="relative mb-4 max-w-sm">
+      <div className="relative mb-4 w-full sm:max-w-sm">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <input className="field-input w-full pl-9" placeholder="Buscar por nome ou SKU…" value={search}
           onChange={(e) => setSearch(e.target.value)} />
@@ -114,7 +114,55 @@ export default function EstoqueProdutosPage() {
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
       ) : (
-        <div className="bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
+        <>
+        {/* Mobile: cards — tabela de 7 colunas nao cabe em 375px */}
+        <div className="md:hidden space-y-2.5">
+          {filtered.map((p) => {
+            const qty = p.totalQuantity ?? 0;
+            const low = p.active && qty < Number(p.minStock);
+            return (
+              <div key={p.id} onClick={() => openDetail(p.id)}
+                className={cn("bg-card border rounded-2xl p-4 cursor-pointer", low ? "border-amber-500/40" : "border-border")}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="font-bold text-foreground flex items-center gap-1.5">
+                      {low && <AlertTriangle size={13} className="text-amber-500 shrink-0" />}
+                      <span className="truncate">{p.name}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                      {catName(p.categoryId)}{p.sku ? ` · ${p.sku}` : ""}{!p.active ? " · inativo" : ""}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className={cn("text-lg font-bold tabular-nums leading-none", low ? "text-amber-500" : "text-foreground")}>
+                      {qty}<span className="text-xs font-normal text-muted-foreground"> {p.unit}</span>
+                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-1">mín. {Number(p.minStock)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-border/60">
+                  <span className="text-xs text-muted-foreground tabular-nums truncate">
+                    {Number(p.averageCost) > 0 ? `Custo médio R$ ${Number(p.averageCost).toFixed(2)}` : "Sem custo médio"}
+                  </span>
+                  <div className="flex gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => setForm(p)} aria-label="Editar"
+                      className="p-2 rounded-lg bg-secondary/60 text-muted-foreground hover:text-foreground"><Pencil size={15} /></button>
+                    <button onClick={() => remove(p.id)} aria-label="Arquivar"
+                      className="p-2 rounded-lg bg-secondary/60 text-muted-foreground hover:text-destructive"><Trash2 size={15} /></button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {filtered.length === 0 && (
+            <div className="bg-card border border-border rounded-2xl px-4 py-12 text-center text-sm text-muted-foreground">
+              {products.length === 0 ? "Nenhum produto cadastrado ainda." : "Nenhum produto encontrado."}
+            </div>
+          )}
+        </div>
+
+        {/* Desktop: tabela */}
+        <div className="hidden md:block bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
           <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
@@ -167,6 +215,7 @@ export default function EstoqueProdutosPage() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {/* Modal de produto */}

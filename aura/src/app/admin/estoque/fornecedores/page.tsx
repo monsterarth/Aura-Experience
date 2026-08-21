@@ -66,14 +66,14 @@ export default function FornecedoresPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
+    <div className="max-w-5xl mx-auto">
       <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><Truck size={22} /> Fornecedores</h1>
           <p className="text-sm text-muted-foreground">{suppliers.length} cadastrado(s)</p>
         </div>
         <button onClick={() => setForm({ ...empty })}
-          className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90">
+          className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90">
           <Plus size={16} /> Novo fornecedor
         </button>
       </header>
@@ -81,7 +81,37 @@ export default function FornecedoresPage() {
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
       ) : (
-        <div className="bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
+        <>
+        {/* Mobile: cards */}
+        <div className="md:hidden space-y-2.5">
+          {suppliers.map((s) => (
+            <div key={s.id} className="bg-card border border-border rounded-2xl p-4">
+              <div onClick={() => openDetail(s.id)} className="cursor-pointer">
+                <p className="font-bold text-foreground truncate">
+                  {s.name}{!s.active && <span className="ml-2 text-[10px] uppercase text-muted-foreground">(inativo)</span>}
+                </p>
+                {s.cnpj && <p className="text-xs text-muted-foreground mt-0.5">{s.cnpj}</p>}
+                <div className="text-xs text-muted-foreground mt-2 space-y-0.5">
+                  {s.phone && <div className="flex items-center gap-1.5"><Phone size={11} />{s.phone}</div>}
+                  {s.email && <div className="flex items-center gap-1.5 truncate"><Mail size={11} />{s.email}</div>}
+                  {s.paymentTerms && <div className="flex items-center gap-1.5">Pagamento: {s.paymentTerms}</div>}
+                </div>
+              </div>
+              <div className="flex justify-end gap-1.5 mt-3 pt-3 border-t border-border/60" onClick={(e) => e.stopPropagation()}>
+                <button onClick={() => setForm(s)} aria-label="Editar"
+                  className="p-2 rounded-lg bg-secondary/60 text-muted-foreground hover:text-foreground"><Pencil size={15} /></button>
+                <button onClick={() => remove(s.id)} aria-label="Remover"
+                  className="p-2 rounded-lg bg-secondary/60 text-muted-foreground hover:text-destructive"><Trash2 size={15} /></button>
+              </div>
+            </div>
+          ))}
+          {suppliers.length === 0 && (
+            <div className="bg-card border border-border rounded-2xl px-4 py-12 text-center text-sm text-muted-foreground">Nenhum fornecedor cadastrado.</div>
+          )}
+        </div>
+
+        {/* Desktop: tabela */}
+        <div className="hidden md:block bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
           <table className="w-full text-sm min-w-[600px]">
             <thead>
               <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
@@ -118,6 +148,7 @@ export default function FornecedoresPage() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {form && (

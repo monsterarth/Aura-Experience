@@ -169,13 +169,13 @@ export default function ComprasPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="p-4 sm:p-6 max-w-6xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><ShoppingCart size={22} /> Compras</h1>
           <p className="text-sm text-muted-foreground">{purchases.length} compra(s)</p>
         </div>
-        <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90">
+        <button onClick={openNew} className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90">
           <Plus size={16} /> Nova compra
         </button>
       </header>
@@ -183,7 +183,56 @@ export default function ComprasPage() {
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
       ) : (
-        <div className="bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
+        <>
+        {/* Mobile: cards */}
+        <div className="md:hidden space-y-2.5">
+          {purchases.map((p) => {
+            const st = STATUS[p.status];
+            const editable = p.status === "draft" || p.status === "ordered";
+            return (
+              <div key={p.id} className="bg-card border border-border rounded-2xl p-4">
+                <div onClick={() => setNota(p)} className="cursor-pointer">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-foreground flex items-center gap-1.5 truncate">
+                        {p.isEmergency && <Zap size={13} className="text-amber-500 shrink-0" />}
+                        {p.invoiceNumber || "(sem NF)"}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{p.supplier?.name ?? "Sem fornecedor"}</p>
+                    </div>
+                    <span className={cn("shrink-0 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md", st.cls)}>{st.label}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t border-border/60">
+                    <span className="text-xs text-muted-foreground truncate">
+                      {p.items?.length ?? 0} item(ns){p.location?.name ? ` · ${p.location.name}` : ""}
+                    </span>
+                    <span className="text-sm font-bold text-foreground tabular-nums shrink-0">R$ {Number(p.totalValue).toFixed(2)}</span>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
+                  {editable && (
+                    <button onClick={() => openReceive(p)}
+                      className="flex-1 py-2 text-xs font-bold rounded-lg bg-emerald-500/10 text-emerald-500">Receber</button>
+                  )}
+                  {editable && (
+                    <button onClick={() => openEdit(p)}
+                      className="flex-1 py-2 text-xs font-bold rounded-lg bg-secondary/60 text-muted-foreground">Editar</button>
+                  )}
+                  {p.status !== "received" && (
+                    <button onClick={() => remove(p)} aria-label="Excluir"
+                      className="px-3 py-2 rounded-lg bg-secondary/60 text-muted-foreground hover:text-destructive"><Trash2 size={15} /></button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {purchases.length === 0 && (
+            <div className="bg-card border border-border rounded-2xl px-4 py-12 text-center text-sm text-muted-foreground">Nenhuma compra registrada.</div>
+          )}
+        </div>
+
+        {/* Desktop: tabela */}
+        <div className="hidden md:block bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
           <table className="w-full text-sm min-w-[600px]">
             <thead>
               <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
@@ -233,6 +282,7 @@ export default function ComprasPage() {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {form && (
@@ -276,8 +326,8 @@ export default function ComprasPage() {
                 <label className="field-label">Itens</label>
                 <div className="space-y-2">
                   {form.items.map((it, idx) => (
-                    <div key={idx} className="grid grid-cols-[1fr_80px_100px_28px] gap-2 items-center">
-                      <select className="field-input w-full" value={it.productId} onChange={(e) => setItem(idx, { productId: e.target.value })}>
+                    <div key={idx} className="grid gap-2 items-center grid-cols-[1fr_1fr_28px] sm:grid-cols-[1fr_80px_100px_28px]">
+                      <select className="field-input w-full col-span-3 sm:col-span-1" value={it.productId} onChange={(e) => setItem(idx, { productId: e.target.value })}>
                         <option value="">Produto…</option>
                         {products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>)}
                       </select>
