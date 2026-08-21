@@ -38,7 +38,7 @@ const LOSS_LABEL: Record<string, string> = {
 // Movimentação que nasceu de outro módulo — vale sinalizar de onde veio.
 const ORIGIN_LABEL: Record<string, string> = {
   purchase: "Compra", consumption: "Consumo", inventory: "Inventário",
-  concierge: "Concierge", minibar: "Frigobar", fb: "A&B",
+  concierge: "Concierge", minibar: "Frigobar", fb: "A&B", restock: "Reposição",
 };
 const PERIOD_PRESETS = [
   { days: 7, label: "7 dias" }, { days: 30, label: "30 dias" },

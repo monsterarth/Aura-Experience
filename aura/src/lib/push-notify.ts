@@ -112,6 +112,22 @@ export async function notifyMaintenanceAssigned(taskId: string) {
   }
 }
 
+/**
+ * Notifica os mensageiros de um novo pedido de reposição (gatilho in-code na
+ * rota field, sem depender do webhook do Supabase — que segue existindo só
+ * para os pedidos de hóspede do Concierge).
+ */
+export async function notifyRestockRequested(propertyId: string, requestIds: string[], cabinLabel?: string | null) {
+  if (!requestIds.length) return;
+  await fanOutByRole(propertyId, ['houseman', 'admin', 'manager', 'super_admin'], {
+    title: 'Nova reposição',
+    body: cabinLabel ? `${cabinLabel}: ${requestIds.length} item(ns) para repor.` : `${requestIds.length} item(ns) para repor.`,
+    url: '/houseman',
+    tag: `restock-${requestIds[0]}`,
+    role: 'houseman',
+  });
+}
+
 /** Lê o propertyId de uma tarefa — usado para validar acesso do caller na rota /api/push/notify. */
 export async function getTaskPropertyId(
   domain: 'housekeeping' | 'maintenance',

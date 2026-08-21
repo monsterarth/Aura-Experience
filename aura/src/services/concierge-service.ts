@@ -136,6 +136,7 @@ export const ConciergeService = {
     return this._annotateAvailability(propertyId, (data || []) as ConciergeItem[]);
   },
 
+  /** @deprecated A reposição da camareira saiu do Concierge — o catálogo agora é RestockService.getCatalog (produtos do estoque com maidRequestable). Sem chamadores vivos. */
   async getConciergeItemsForMaid(propertyId: string): Promise<ConciergeItem[]> {
     const { data } = await supabase
       .from('concierge_items')
@@ -293,7 +294,9 @@ export const ConciergeService = {
   },
 
   async getPendingRequests(propertyId: string, requestedBy?: 'guest' | 'maid'): Promise<ConciergeRequest[]> {
-    let query = supabase
+    // db(): no servidor (rota field) o client do browser seria a anon key — que
+    // não lê mais estas tabelas desde o hardening; no browser continua igual.
+    let query = db()
       .from('concierge_requests')
       .select('*')
       .eq('propertyId', propertyId)
@@ -422,12 +425,18 @@ export const ConciergeService = {
     actorId: string,
     actorName: string
   ): Promise<void> {
-    const { error } = await supabase
+    // Precondição de status: dois mensageiros tocando "Assumir" ao mesmo tempo
+    // → o segundo update não casa nenhuma linha e leva CONFLICT (409 na rota).
+    const { data, error } = await db()
       .from('concierge_requests')
       .update({ status: 'in_progress', assignedTo: actorId, assignedName: actorName, updatedAt: new Date().toISOString() })
       .eq('id', requestId)
-      .eq('propertyId', propertyId);
+      .eq('propertyId', propertyId)
+      .eq('status', 'pending')
+      .select('id');
     if (error) throw error;
+    if (!data || data.length === 0)
+      throw Object.assign(new Error('Este pedido já foi assumido por outro colega.'), { code: 'CONFLICT' });
   },
 
   async deliverRequest(
@@ -460,12 +469,18 @@ export const ConciergeService = {
       totalPrice = (item.price || 0) * req.quantity;
     }
 
-    // 3. Update request
-    const { error: updErr } = await db()
+    // 3. Update request — condicional ao status para o toque duplo não cobrar
+    // fólio nem baixar estoque duas vezes. Aceita 'pending' de propósito: o
+    // launchFrigobar cria e entrega direto, sem passar por 'in_progress'.
+    const { data: updated, error: updErr } = await db()
       .from('concierge_requests')
       .update({ status: 'delivered', total_price: totalPrice, updatedAt: new Date().toISOString() })
-      .eq('id', requestId);
+      .eq('id', requestId)
+      .in('status', ['pending', 'in_progress'])
+      .select('id');
     if (updErr) throw updErr;
+    if (!updated || updated.length === 0)
+      throw Object.assign(new Error('Este pedido já foi finalizado.'), { code: 'CONFLICT' });
 
     // 4. Baixa de estoque (integração) — explode a ficha técnica. No-op se módulo off ou sem vínculo.
     if (item.category === 'consumption') {
@@ -517,12 +532,16 @@ export const ConciergeService = {
     requestId: string,
     reason: string
   ): Promise<void> {
-    const { error } = await supabase
+    const { data, error } = await db()
       .from('concierge_requests')
       .update({ status: 'not_delivered', notDeliveredReason: reason, updatedAt: new Date().toISOString() })
       .eq('id', requestId)
-      .eq('propertyId', propertyId);
+      .eq('propertyId', propertyId)
+      .in('status', ['pending', 'in_progress'])
+      .select('id');
     if (error) throw error;
+    if (!data || data.length === 0)
+      throw Object.assign(new Error('Este pedido já foi finalizado.'), { code: 'CONFLICT' });
   },
 
   async returnRequest(

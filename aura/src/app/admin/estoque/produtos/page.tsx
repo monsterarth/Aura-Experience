@@ -5,8 +5,9 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { supabase } from "@/lib/supabase";
 import { StockClient } from "@/lib/stock-client";
-import { StockProduct, StockCategory, StockUnit } from "@/types/aura";
+import { StockLocation, StockProduct, StockCategory, StockUnit } from "@/types/aura";
 import ProductDetailModal from "@/components/admin/ProductDetailModal";
+import StockLocationSelect from "@/components/admin/StockLocationSelect";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useDiscardGuard } from "@/lib/use-discard-guard";
@@ -22,6 +23,7 @@ export default function EstoqueProdutosPage() {
   const { currentProperty: property } = useProperty();
   const [products, setProducts] = useState<StockProduct[]>([]);
   const [categories, setCategories] = useState<StockCategory[]>([]);
+  const [locations, setLocations] = useState<StockLocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<Partial<StockProduct> | null>(null);
@@ -35,11 +37,12 @@ export default function EstoqueProdutosPage() {
   const load = useCallback(async () => {
     if (!property?.id) return;
     try {
-      const [prods, cats] = await Promise.all([
+      const [prods, cats, locs] = await Promise.all([
         StockClient.products(property.id),
         StockClient.categories(property.id),
+        StockClient.locations(property.id),
       ]);
-      setProducts(prods); setCategories(cats);
+      setProducts(prods); setCategories(cats); setLocations(locs.filter((l) => l.active));
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -240,6 +243,38 @@ export default function EstoqueProdutosPage() {
                   local passa a controlar o saldo dele (ex.: enxoval na lavanderia).
                 </p>
               )}
+
+              {/* Reposição (camareira) & fonte de baixa */}
+              <div className="border-t border-border pt-4 space-y-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Reposição da camareira</p>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={form.maidRequestable ?? false}
+                    onChange={(e) => setForm({ ...form, maidRequestable: e.target.checked })} className="w-4 h-4 accent-primary" />
+                  <span className="text-sm text-foreground">Solicitável pela camareira</span>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="field-label">Baixa na entrega</label>
+                    <select className="field-input w-full" value={form.deductMode ?? "default"}
+                      onChange={(e) => setForm({ ...form, deductMode: e.target.value as StockProduct["deductMode"], ...(e.target.value !== "location" ? { deductLocationId: null } : {}) })}>
+                      <option value="default">Seguir categoria (padrão)</option>
+                      <option value="none">Não baixar</option>
+                      <option value="location">Local específico</option>
+                    </select>
+                  </div>
+                  {form.deductMode === "location" && (
+                    <div>
+                      <label className="field-label">Baixar de</label>
+                      <StockLocationSelect locations={locations} value={form.deductLocationId ?? ""}
+                        onChange={(id) => setForm({ ...form, deductLocationId: id || null })} />
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  De onde o estoque sai quando o mensageiro entrega a reposição. &quot;Seguir categoria&quot; usa o
+                  local definido na categoria (nenhum configurado = entrega sem baixa automática).
+                </p>
+              </div>
             </div>
             <div className="p-5 border-t border-border flex justify-end gap-2">
               <button onClick={requestClose} className="px-4 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground">Cancelar</button>

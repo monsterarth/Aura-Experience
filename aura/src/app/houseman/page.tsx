@@ -3,9 +3,10 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
-import { ConciergeService } from "@/services/concierge-service";
-import { ConciergeRequest } from "@/types/aura";
+import { ConciergeRequest, RestockRequest } from "@/types/aura";
 import { supabase } from "@/lib/supabase";
+import { RestockService } from "@/services/restock-service";
+import { postFieldAction } from "@/lib/field-api";
 import { useRouter } from "next/navigation";
 import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
 import { ScrapWall } from "@/components/admin/profile/ScrapWall";
@@ -145,6 +146,23 @@ function groupByCabin(reqs: ConciergeRequest[]): Map<string, ConciergeRequest[]>
     map.set(key, [...(map.get(key) ?? []), r]);
   }
   return map;
+}
+
+function groupRestockByCabin(reqs: RestockRequest[]): Map<string, RestockRequest[]> {
+  const map = new Map<string, RestockRequest[]>();
+  for (const r of reqs) {
+    const key = r.cabinId ?? "sem-cabana";
+    map.set(key, [...(map.get(key) ?? []), r]);
+  }
+  return map;
+}
+
+/** Instrução de busca de um pedido de reposição (onde retirar / alerta de falta). */
+function fetchInstruction(r: RestockRequest): { text: string; warn: boolean } | null {
+  if (r.fallbackSourceName)
+    return { text: `Não há no ${r.plannedSourceName ?? "estoque"} — pegar no ${r.fallbackSourceName}`, warn: true };
+  if (r.plannedSourceName) return { text: `Retirar de ${r.plannedSourceName}`, warn: false };
+  return null;
 }
 
 // ─── Request Card ─────────────────────────────────────────────────────────────
@@ -509,17 +527,297 @@ function CabinGroup({
   );
 }
 
-// ─── Requests screen ──────────────────────────────────────────────────────────
+// ─── Restock Cabin Group ──────────────────────────────────────────────────────
+// Mesmo desenho do CabinGroup do Concierge, mas para pedidos de REPOSIÇÃO
+// (produto do estoque): mostra a instrução de onde retirar e o alerta de falta.
 
-function RequestsScreen({
-  requests, done, userId, onAssign, onDeliver, onNotDeliver, actionLoading,
+function RestockCabinGroup({
+  reqs, userId, onAssign, onDeliver, onNotDeliver, actionLoading,
 }: {
-  requests: ConciergeRequest[];
-  done: ConciergeRequest[];
+  reqs: RestockRequest[];
   userId: string;
   onAssign: (ids: string[]) => void;
   onDeliver: (ids: string[]) => void;
   onNotDeliver: (ids: string[], reason: string) => void;
+  actionLoading: Record<string, boolean>;
+}) {
+  const status = reqs[0]?.status ?? "pending";
+  const isPending = status === "pending";
+  const isInProgress = status === "in_progress";
+  const cabinLabel = reqs[0]?.cabinName || "Sem cabana";
+  const oldestCreatedAt = reqs.reduce((oldest, r) =>
+    new Date(r.createdAt as string) < new Date(oldest) ? (r.createdAt as string) : oldest,
+    reqs[0]?.createdAt as string
+  );
+  const assignedName = reqs.find(r => r.assignedName)?.assignedName;
+  const isMine = reqs.some(r => r.assignedTo === userId);
+  const isAnyLoading = reqs.some(r => actionLoading[r.id]);
+
+  const accentColor = isPending ? T.orange : T.blue;
+  const accentBg = isPending ? T.orangeBg : T.blueBg;
+  const accentBorder = isPending ? T.orangeBorder : T.blueBorder;
+
+  const [checkedIds, setCheckedIds] = React.useState<Set<string>>(() => new Set(reqs.map(r => r.id)));
+  const [showReasonPicker, setShowReasonPicker] = React.useState(false);
+  const [pickerReason, setPickerReason] = React.useState("");
+  const [otherText, setOtherText] = React.useState("");
+
+  React.useEffect(() => {
+    if (isInProgress) {
+      setCheckedIds(prev => {
+        const next = new Set(prev);
+        reqs.forEach(r => { if (!next.has(r.id)) next.add(r.id); });
+        return next;
+      });
+    }
+  }, [reqs.length, isInProgress]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleCheck = (id: string) => {
+    setCheckedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const checkedCount = Array.from(checkedIds).filter(id => reqs.some(r => r.id === id)).length;
+  const uncheckedIds = reqs.filter(r => !checkedIds.has(r.id)).map(r => r.id);
+
+  return (
+    <div style={{
+      borderRadius: 20, border: `2px solid ${accentBorder}`, background: accentBg,
+      padding: 16, marginBottom: 12, animation: "hm-fadein .2s ease",
+    }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 14 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" as const }}>
+            <I n="pkg" s={11} c={accentColor} />
+            <span style={{ fontSize: 13, fontWeight: 900, color: accentColor, letterSpacing: "0.04em", textTransform: "uppercase" as const }}>
+              {cabinLabel}
+            </span>
+            <span style={{ fontSize: 10, fontWeight: 700, background: T.gradSoft, border: "1px solid rgba(155,109,255,0.35)", color: "#c4b0ff", padding: "1px 6px", borderRadius: 999 }}>
+              Reposição
+            </span>
+            {reqs[0]?.requestedByName && (
+              <span style={{ fontSize: 10, color: T.muted }}>por {reqs[0].requestedByName.split(" ")[0]}</span>
+            )}
+          </div>
+          {isInProgress && assignedName && (
+            <div style={{ fontSize: 11, color: T.blue, display: "flex", alignItems: "center", gap: 4 }}>
+              <I n="user" s={11} c={T.blue} />
+              {isMine ? "Você assumiu" : `Assumido por ${assignedName}`}
+            </div>
+          )}
+        </div>
+        <div style={{ fontSize: 11, color: T.muted, display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+          <I n="clock" s={11} c={T.muted} />
+          {timeElapsed(oldestCreatedAt)}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
+        {reqs.map(r => {
+          const checked = checkedIds.has(r.id);
+          const instr = fetchInstruction(r);
+          return (
+            <div
+              key={r.id}
+              onClick={isInProgress ? () => toggleCheck(r.id) : undefined}
+              style={{
+                display: "flex", flexDirection: "column" as const, gap: 4,
+                padding: "10px 12px", borderRadius: 12,
+                background: checked || isPending ? "rgba(255,255,255,0.04)" : "transparent",
+                border: `1px solid ${checked || isPending ? accentBorder : "rgba(255,255,255,0.06)"}`,
+                cursor: isInProgress ? "pointer" : "default",
+                opacity: isInProgress && !checked ? 0.45 : 1,
+                transition: "opacity .15s, background .15s",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {isInProgress && (
+                  <div style={{
+                    width: 18, height: 18, borderRadius: 6, border: `2px solid ${checked ? T.blue : "rgba(255,255,255,0.2)"}`,
+                    background: checked ? T.blue : "transparent", flexShrink: 0,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    transition: "background .15s, border-color .15s",
+                  }}>
+                    {checked && <I n="check" s={11} c="#021a17" w={3} />}
+                  </div>
+                )}
+                <span style={{ fontSize: 16, fontWeight: 800, color: T.text, flex: 1, lineHeight: 1.2 }}>
+                  {Number(r.quantity)}× {r.productName ?? "—"}
+                </span>
+              </div>
+              {instr && (
+                <div style={{
+                  fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", gap: 5,
+                  color: instr.warn ? T.amber : T.muted, paddingLeft: isInProgress ? 28 : 0,
+                }}>
+                  <I n={instr.warn ? "info" : "arrow"} s={11} c={instr.warn ? T.amber : T.muted} />
+                  {instr.text}
+                </div>
+              )}
+              {r.notes && (
+                <div style={{ fontSize: 11, color: T.muted, fontStyle: "italic", paddingLeft: isInProgress ? 28 : 0 }}>&ldquo;{r.notes}&rdquo;</div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {isInProgress && (
+        <div style={{ fontSize: 11, color: T.muted, marginBottom: 10, textAlign: "right" as const }}>
+          {checkedCount}/{reqs.length} selecionados
+        </div>
+      )}
+
+      {isPending && (
+        <button
+          onClick={() => onAssign(reqs.map(r => r.id))}
+          disabled={isAnyLoading}
+          style={{
+            width: "100%", padding: "14px 16px", background: "transparent", border: `2px solid ${T.orange}`,
+            borderRadius: 14, color: T.orange, fontFamily: "inherit", fontSize: 13, fontWeight: 800,
+            textTransform: "uppercase" as const, letterSpacing: "0.04em", cursor: isAnyLoading ? "not-allowed" : "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: isAnyLoading ? 0.5 : 1,
+          }}
+        >
+          {isAnyLoading
+            ? <><div style={{ width: 14, height: 14, border: `2px solid ${T.orange}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" }} />Assumindo...</>
+            : <><I n="user" s={16} c={T.orange} w={2.5} /> Assumir Reposição ({reqs.length})</>
+          }
+        </button>
+      )}
+
+      {isInProgress && (
+        <button
+          onClick={() => {
+            const ids = reqs.filter(r => checkedIds.has(r.id)).map(r => r.id);
+            if (ids.length > 0) onDeliver(ids);
+          }}
+          disabled={isAnyLoading || checkedCount === 0}
+          style={{
+            width: "100%", padding: "14px 16px", background: checkedCount > 0 ? T.greenG : "transparent",
+            border: checkedCount > 0 ? "none" : `2px solid rgba(45,212,191,0.3)`,
+            borderRadius: 14, color: checkedCount > 0 ? "#021a17" : T.green, fontFamily: "inherit", fontSize: 13, fontWeight: 800,
+            textTransform: "uppercase" as const, letterSpacing: "0.04em",
+            cursor: (isAnyLoading || checkedCount === 0) ? "not-allowed" : "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            opacity: isAnyLoading ? 0.5 : checkedCount === 0 ? 0.4 : 1,
+            boxShadow: checkedCount > 0 ? "0 4px 20px rgba(45,212,191,0.3)" : "none",
+            transition: "background .2s, box-shadow .2s",
+          }}
+        >
+          {isAnyLoading
+            ? <><div style={{ width: 14, height: 14, border: "2px solid #021a17", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 1s linear infinite" }} />Confirmando...</>
+            : <><I n="check" s={16} c={checkedCount > 0 ? "#021a17" : T.green} w={2.5} /> Confirmar Entrega ({checkedCount})</>
+          }
+        </button>
+      )}
+
+      {isInProgress && uncheckedIds.length > 0 && !showReasonPicker && (
+        <button
+          onClick={() => setShowReasonPicker(true)}
+          disabled={isAnyLoading}
+          style={{
+            width: "100%", marginTop: 8, padding: "12px 16px", background: "transparent",
+            border: `1.5px solid rgba(248,113,113,0.4)`,
+            borderRadius: 14, color: T.red, fontFamily: "inherit", fontSize: 12, fontWeight: 800,
+            textTransform: "uppercase" as const, letterSpacing: "0.04em",
+            cursor: isAnyLoading ? "not-allowed" : "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            opacity: isAnyLoading ? 0.5 : 1,
+          }}
+        >
+          <I n="x" s={14} c={T.red} w={2.5} /> Não Entreguei ({uncheckedIds.length})
+        </button>
+      )}
+
+      {isInProgress && showReasonPicker && (
+        <div style={{ marginTop: 10, background: "rgba(248,113,113,0.06)", border: `1.5px solid rgba(248,113,113,0.3)`, borderRadius: 14, padding: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: T.red, letterSpacing: "0.06em", textTransform: "uppercase" as const, marginBottom: 10 }}>
+            Motivo — {uncheckedIds.length} item{uncheckedIds.length !== 1 ? "s" : ""} não entregue{uncheckedIds.length !== 1 ? "s" : ""}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column" as const, gap: 6, marginBottom: 10 }}>
+            {(["Sem estoque", "Cancelado", "Outro"] as const).map(r => (
+              <button
+                key={r}
+                onClick={() => { setPickerReason(r); if (r !== "Outro") setOtherText(""); }}
+                style={{
+                  padding: "9px 12px", borderRadius: 10,
+                  border: `1.5px solid ${pickerReason === r ? "rgba(248,113,113,0.7)" : "rgba(255,255,255,0.1)"}`,
+                  background: pickerReason === r ? "rgba(248,113,113,0.15)" : "transparent",
+                  color: pickerReason === r ? T.red : T.muted, fontFamily: "inherit", fontSize: 13, fontWeight: 700,
+                  textAlign: "left" as const, cursor: "pointer", transition: "all .15s",
+                }}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+          {pickerReason === "Outro" && (
+            <input
+              value={otherText}
+              onChange={e => setOtherText(e.target.value)}
+              placeholder="Descreve o motivo..."
+              style={{
+                width: "100%", padding: "9px 12px", marginBottom: 10,
+                background: "rgba(255,255,255,0.05)", border: `1px solid rgba(255,255,255,0.15)`,
+                borderRadius: 10, color: T.text, fontFamily: "inherit", fontSize: 13, outline: "none",
+              }}
+            />
+          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => { setShowReasonPicker(false); setPickerReason(""); setOtherText(""); }}
+              style={{ flex: 1, padding: "10px", background: "transparent", border: `1px solid rgba(255,255,255,0.1)`, borderRadius: 10, color: T.muted, fontFamily: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={() => {
+                const reason = pickerReason === "Outro" ? (otherText.trim() || "Outro") : pickerReason;
+                if (!reason) return;
+                onNotDeliver(uncheckedIds, reason);
+                setShowReasonPicker(false);
+                setPickerReason("");
+                setOtherText("");
+              }}
+              disabled={!pickerReason || (pickerReason === "Outro" && !otherText.trim()) || isAnyLoading}
+              style={{
+                flex: 2, padding: "10px",
+                background: "rgba(248,113,113,0.15)", border: `1.5px solid rgba(248,113,113,0.5)`,
+                borderRadius: 10, color: T.red, fontFamily: "inherit", fontSize: 12, fontWeight: 800,
+                cursor: (!pickerReason || (pickerReason === "Outro" && !otherText.trim())) ? "not-allowed" : "pointer",
+                opacity: (!pickerReason || (pickerReason === "Outro" && !otherText.trim())) ? 0.5 : 1,
+                textTransform: "uppercase" as const, letterSpacing: "0.04em",
+              }}
+            >
+              Confirmar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Requests screen ──────────────────────────────────────────────────────────
+
+function RequestsScreen({
+  requests, done, restock, userId, onAssign, onDeliver, onNotDeliver,
+  onRestockAssign, onRestockDeliver, onRestockNotDeliver, actionLoading,
+}: {
+  requests: ConciergeRequest[];
+  done: ConciergeRequest[];
+  restock: RestockRequest[];
+  userId: string;
+  onAssign: (ids: string[]) => void;
+  onDeliver: (ids: string[]) => void;
+  onNotDeliver: (ids: string[], reason: string) => void;
+  onRestockAssign: (ids: string[]) => void;
+  onRestockDeliver: (ids: string[]) => void;
+  onRestockNotDeliver: (ids: string[], reason: string) => void;
   actionLoading: Record<string, boolean>;
 }) {
   const pending = requests.filter(r => r.status === "pending");
@@ -528,20 +826,31 @@ function RequestsScreen({
   const groupedInProgress = groupByCabin(inProgress);
   const groupedDone = groupByCabin(done);
 
+  const restockPending = restock.filter(r => r.status === "pending");
+  const restockInProgress = restock.filter(r => r.status === "in_progress");
+  const restockDone = restock.filter(r => r.status === "delivered" || r.status === "not_delivered");
+  const groupedRestockPending = groupRestockByCabin(restockPending);
+  const groupedRestockInProgress = groupRestockByCabin(restockInProgress);
+  const groupedRestockDone = groupRestockByCabin(restockDone);
+
+  const totalPending = pending.length + restockPending.length;
+  const totalInProgress = inProgress.length + restockInProgress.length;
+  const nothingActive = requests.length === 0 && restockPending.length === 0 && restockInProgress.length === 0;
+
   return (
     <div className="hm-scroll" style={{ padding: "0 16px 24px" }}>
       <div style={{ padding: "10px 0 20px" }}>
         <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.3px" }}>Pedidos</div>
         <div style={{ fontSize: 13, color: T.muted, marginTop: 5 }}>
-          {pending.length > 0
-            ? `${pending.length} novo${pending.length !== 1 ? "s" : ""} · ${inProgress.length} em andamento`
-            : inProgress.length > 0
-            ? `${inProgress.length} em andamento`
+          {totalPending > 0
+            ? `${totalPending} novo${totalPending !== 1 ? "s" : ""} · ${totalInProgress} em andamento`
+            : totalInProgress > 0
+            ? `${totalInProgress} em andamento`
             : "Nenhum pedido ativo"}
         </div>
       </div>
 
-      {groupedPending.size > 0 && (
+      {(groupedPending.size > 0 || groupedRestockPending.size > 0) && (
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.orange, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.orange, animation: "hm-pulse 1.5s infinite" }} />
@@ -550,10 +859,13 @@ function RequestsScreen({
           {Array.from(groupedPending.entries()).map(([key, reqs]) => (
             <CabinGroup key={key} reqs={reqs} userId={userId} onAssign={onAssign} onDeliver={onDeliver} onNotDeliver={onNotDeliver} actionLoading={actionLoading} />
           ))}
+          {Array.from(groupedRestockPending.entries()).map(([key, reqs]) => (
+            <RestockCabinGroup key={`rs-${key}`} reqs={reqs} userId={userId} onAssign={onRestockAssign} onDeliver={onRestockDeliver} onNotDeliver={onRestockNotDeliver} actionLoading={actionLoading} />
+          ))}
         </div>
       )}
 
-      {groupedInProgress.size > 0 && (
+      {(groupedInProgress.size > 0 || groupedRestockInProgress.size > 0) && (
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.blue, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
             <Pulse size={6} />
@@ -562,10 +874,13 @@ function RequestsScreen({
           {Array.from(groupedInProgress.entries()).map(([key, reqs]) => (
             <CabinGroup key={key} reqs={reqs} userId={userId} onAssign={onAssign} onDeliver={onDeliver} onNotDeliver={onNotDeliver} actionLoading={actionLoading} />
           ))}
+          {Array.from(groupedRestockInProgress.entries()).map(([key, reqs]) => (
+            <RestockCabinGroup key={`rs-${key}`} reqs={reqs} userId={userId} onAssign={onRestockAssign} onDeliver={onRestockDeliver} onNotDeliver={onRestockNotDeliver} actionLoading={actionLoading} />
+          ))}
         </div>
       )}
 
-      {requests.length === 0 && done.length === 0 && (
+      {nothingActive && done.length === 0 && restockDone.length === 0 && (
         <div style={{ textAlign: "center", padding: "60px 0", color: T.muted }}>
           <div style={{ width: 64, height: 64, borderRadius: 20, background: T.greenBg, border: `1px solid ${T.greenBorder}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
             <I n="check" s={32} c={T.green} w={2.5} />
@@ -575,7 +890,7 @@ function RequestsScreen({
         </div>
       )}
 
-      {groupedDone.size > 0 && (
+      {(groupedDone.size > 0 || groupedRestockDone.size > 0) && (
         <div>
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.muted, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
             <I n="check" s={11} c={T.green} w={2.5} /> Entregues esta sessão
@@ -596,6 +911,27 @@ function RequestsScreen({
               ))}
             </div>
           ))}
+          {Array.from(groupedRestockDone.entries()).map(([key, reqs]) => (
+            <div key={`rs-${key}`} style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 16, marginBottom: 10, padding: "12px 14px", opacity: 0.7 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 900, color: T.green, letterSpacing: "0.04em", textTransform: "uppercase" as const }}>
+                  {reqs[0]?.cabinName || "Sem cabana"}
+                </span>
+                <span style={{ fontSize: 10, fontWeight: 700, background: T.gradSoft, border: "1px solid rgba(155,109,255,0.35)", color: "#c4b0ff", padding: "1px 6px", borderRadius: 999 }}>
+                  Reposição
+                </span>
+              </div>
+              {reqs.map(r => (
+                <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingBottom: 6 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>{Number(r.quantity)}× {r.productName ?? "—"}</div>
+                  {r.status === "not_delivered"
+                    ? <Pill color={T.red} bg={T.redBg} border="rgba(248,113,113,0.3)">{r.notDeliveredReason || "Não Entregue"}</Pill>
+                    : <Pill color={T.green} bg={T.greenBg} border={T.greenBorder}>Entregue</Pill>
+                  }
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -604,12 +940,16 @@ function RequestsScreen({
 
 // ─── Home screen ──────────────────────────────────────────────────────────────
 
-function HomeScreen({ requests, done, userName, onNav }: {
+function HomeScreen({ requests, done, restock, userName, onNav }: {
   requests: ConciergeRequest[];
   done: ConciergeRequest[];
+  restock: RestockRequest[];
   userName: string;
   onNav: (tab: Tab) => void;
 }) {
+  const restockPending = restock.filter(r => r.status === "pending");
+  const restockInProg = restock.filter(r => r.status === "in_progress");
+  const restockDone = restock.filter(r => r.status === "delivered" || r.status === "not_delivered");
   const pending = requests.filter(r => r.status === "pending");
   const inProg = requests.filter(r => r.status === "in_progress");
 
@@ -619,16 +959,18 @@ function HomeScreen({ requests, done, userName, onNav }: {
         <div style={{ fontSize: 13, color: T.muted, fontWeight: 600, marginBottom: 4 }}>{todayLabel()}</div>
         <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-0.3px" }}>Olá, {userName.split(" ")[0]}</div>
         <div style={{ fontSize: 14, color: T.muted, marginTop: 4 }}>
-          {requests.length === 0 ? "Nenhum pedido ativo." : `${pending.length} novo${pending.length !== 1 ? "s" : ""} · ${inProg.length} em andamento`}
+          {requests.length + restockPending.length + restockInProg.length === 0
+            ? "Nenhum pedido ativo."
+            : `${pending.length + restockPending.length} novo${pending.length + restockPending.length !== 1 ? "s" : ""} · ${inProg.length + restockInProg.length} em andamento`}
         </div>
       </div>
 
       {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
         {[
-          { label: "Novos", val: pending.length, color: T.orange, bg: T.orangeBg, border: T.orangeBorder },
-          { label: "Andamento", val: inProg.length, color: T.blue, bg: T.blueBg, border: T.blueBorder },
-          { label: "Entregues", val: done.length, color: T.green, bg: T.greenBg, border: T.greenBorder },
+          { label: "Novos", val: pending.length + restockPending.length, color: T.orange, bg: T.orangeBg, border: T.orangeBorder },
+          { label: "Andamento", val: inProg.length + restockInProg.length, color: T.blue, bg: T.blueBg, border: T.blueBorder },
+          { label: "Entregues", val: done.length + restockDone.length, color: T.green, bg: T.greenBg, border: T.greenBorder },
         ].map(s => (
           <GBorder key={s.label} style={{ flex: 1 }}>
             <div style={{ background: "rgba(10,12,22,0.9)", borderRadius: 20, padding: "16px 12px", textAlign: "center" }}>
@@ -640,16 +982,21 @@ function HomeScreen({ requests, done, userName, onNav }: {
       </div>
 
       {/* Pending alert */}
-      {pending.length > 0 && (
+      {(pending.length > 0 || restockPending.length > 0) && (
         <GBorder style={{ marginBottom: 16 }}>
           <div style={{ background: T.orangeBg, borderRadius: 20, padding: 16 }}>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.orange, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
               <div style={{ width: 6, height: 6, borderRadius: "50%", background: T.orange, animation: "hm-pulse 1.5s infinite" }} />
-              {pending.length} pedido{pending.length !== 1 ? "s" : ""} aguardando
+              {pending.length + restockPending.length} pedido{pending.length + restockPending.length !== 1 ? "s" : ""} aguardando
             </div>
             {Array.from(groupByCabin(pending).entries()).slice(0, 2).map(([key, reqs]) => (
               <div key={key} style={{ fontSize: 14, fontWeight: 700, color: T.orange, marginBottom: 4 }}>
                 {reqs[0]?.cabinName || "—"} — {reqs.length} {reqs.length === 1 ? "item" : "itens"}
+              </div>
+            ))}
+            {Array.from(groupRestockByCabin(restockPending).entries()).slice(0, 2).map(([key, reqs]) => (
+              <div key={`rs-${key}`} style={{ fontSize: 14, fontWeight: 700, color: T.orange, marginBottom: 4 }}>
+                {reqs[0]?.cabinName || "Sem cabana"} — reposição: {reqs.length} {reqs.length === 1 ? "item" : "itens"}
               </div>
             ))}
             {groupByCabin(pending).size > 2 && <div style={{ fontSize: 12, color: T.orange, opacity: 0.7 }}>+{groupByCabin(pending).size - 2} acomodações</div>}
@@ -663,11 +1010,11 @@ function HomeScreen({ requests, done, userName, onNav }: {
         </GBorder>
       )}
 
-      {requests.length === 0 && done.length === 0 && (
+      {requests.length === 0 && done.length === 0 && restock.length === 0 && (
         <div style={{ textAlign: "center", padding: "48px 0", color: T.muted }}>
           <div style={{ fontSize: 48, marginBottom: 12 }}>📦</div>
           <div style={{ fontSize: 16, fontWeight: 700, color: T.text }}>Tudo em dia!</div>
-          <div style={{ fontSize: 13, marginTop: 6 }}>Nenhum pedido de hóspedes ou camareiras.</div>
+          <div style={{ fontSize: 13, marginTop: 6 }}>Nenhum pedido de hóspedes ou reposições.</div>
         </div>
       )}
     </div>
@@ -803,6 +1150,7 @@ export default function HousemanPage() {
   const [tab, setTab] = useState<Tab>("home");
   const [requests, setRequests] = useState<ConciergeRequest[]>([]);
   const [done, setDone] = useState<ConciergeRequest[]>([]);
+  const [restock, setRestock] = useState<RestockRequest[]>([]);
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
   const [toast, setToastState] = useState<{ msg: string; color: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -820,15 +1168,44 @@ export default function HousemanPage() {
     if (!userData) { router.replace("/admin/login"); }
   }, [authLoading, userDataReady, userData, router]);
 
-  useEffect(() => {
+  // Dados via rota field (leitura pelo client do browser trava no lock frio);
+  // o realtime só dispara o refetch.
+  const fetchConcierge = useCallback(async () => {
     if (!property) return;
-    const unsub = ConciergeService.listenToPendingRequests(property.id, setRequests);
-    return unsub;
+    try {
+      const r = await fetch(`/api/field/concierge-requests?propertyId=${encodeURIComponent(property.id)}`, { cache: "no-store" });
+      if (r.ok) setRequests(await r.json());
+    } catch { /* mantém o estado atual */ }
   }, [property]);
 
-  // Audio bell on new pending request
+  const fetchRestock = useCallback(async () => {
+    if (!property) return;
+    try {
+      const r = await fetch(`/api/field/restock-requests?propertyId=${encodeURIComponent(property.id)}`, { cache: "no-store" });
+      if (r.ok) setRestock(await r.json());
+    } catch { /* mantém o estado atual */ }
+  }, [property]);
+
   useEffect(() => {
-    const pendingCount = requests.filter(r => r.status === "pending").length;
+    if (!property) return;
+    fetchConcierge();
+    const channel = supabase
+      .channel(`houseman_concierge_${property.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "concierge_requests", filter: `propertyId=eq.${property.id}` }, () => fetchConcierge())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [property, fetchConcierge]);
+
+  useEffect(() => {
+    if (!property) return;
+    fetchRestock();
+    return RestockService.listenToRequests(property.id, fetchRestock);
+  }, [property, fetchRestock]);
+
+  // Audio bell on new pending request (hóspede + reposição)
+  useEffect(() => {
+    const pendingCount = requests.filter(r => r.status === "pending").length
+      + restock.filter(r => r.status === "pending").length;
     if (pendingCount > prevCountRef.current) {
       try {
         if (!audioRef.current) audioRef.current = new Audio("/notification.mp3");
@@ -836,41 +1213,76 @@ export default function HousemanPage() {
       } catch { /* ignore */ }
     }
     prevCountRef.current = pendingCount;
-  }, [requests]);
+  }, [requests, restock]);
+
+  /** Ações da fila de HÓSPEDE via /api/field/concierge-requests (postFieldAction nunca lança). */
+  const conciergeAction = useCallback(async (
+    reqIds: string[], action: "assign" | "deliver" | "not_delivered", reason?: string,
+  ): Promise<{ okIds: string[]; firstError: string | null }> => {
+    setActionLoading(p => Object.fromEntries([...Object.entries(p), ...reqIds.map(id => [id, true])]));
+    const results = await Promise.all(reqIds.map(id =>
+      postFieldAction("/api/field/concierge-requests", { action, requestId: id, ...(reason ? { reason } : {}) })
+        .then(res => ({ id, res }))
+    ));
+    setActionLoading(p => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, reqIds.includes(k) ? false : v])));
+    const okIds = results.filter(r => r.res.ok).map(r => r.id);
+    const firstError = results.find(r => !r.res.ok)?.res.error ?? null;
+    fetchConcierge();
+    return { okIds, firstError };
+  }, [fetchConcierge]);
 
   const handleAssign = useCallback(async (reqIds: string[]) => {
-    if (!property || !userData) return;
-    setActionLoading(p => Object.fromEntries([...Object.entries(p), ...reqIds.map(id => [id, true])]));
-    try {
-      await Promise.all(reqIds.map(id => ConciergeService.assignRequest(property.id, id, userData.id, userData.fullName)));
-      showToast(reqIds.length === 1 ? "Pedido assumido!" : `${reqIds.length} pedidos assumidos!`);
-    } catch { showToast("Erro ao assumir pedido.", T.red); }
-    finally { setActionLoading(p => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, reqIds.includes(k) ? false : v]))); }
-  }, [property, userData, showToast]);
+    const { okIds, firstError } = await conciergeAction(reqIds, "assign");
+    if (firstError) showToast(firstError, T.red);
+    else showToast(okIds.length === 1 ? "Pedido assumido!" : `${okIds.length} pedidos assumidos!`);
+  }, [conciergeAction, showToast]);
 
   const handleDeliver = useCallback(async (reqIds: string[]) => {
-    if (!property || !userData) return;
-    setActionLoading(p => Object.fromEntries([...Object.entries(p), ...reqIds.map(id => [id, true])]));
-    try {
-      await Promise.all(reqIds.map(id => ConciergeService.deliverRequest(property.id, id, userData.id, userData.fullName)));
-      const delivered = requests.filter(r => reqIds.includes(r.id));
-      if (delivered.length > 0) setDone(prev => [...delivered.map(r => ({ ...r, status: "delivered" } as ConciergeRequest)), ...prev]);
-      showToast(reqIds.length === 1 ? "Entrega confirmada!" : `${reqIds.length} itens entregues!`);
-    } catch { showToast("Erro ao confirmar entrega.", T.red); }
-    finally { setActionLoading(p => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, reqIds.includes(k) ? false : v]))); }
-  }, [property, userData, requests, showToast]);
+    const { okIds, firstError } = await conciergeAction(reqIds, "deliver");
+    const delivered = requests.filter(r => okIds.includes(r.id));
+    if (delivered.length > 0) setDone(prev => [...delivered.map(r => ({ ...r, status: "delivered" } as ConciergeRequest)), ...prev]);
+    if (firstError) showToast(firstError, T.red);
+    else showToast(okIds.length === 1 ? "Entrega confirmada!" : `${okIds.length} itens entregues!`);
+  }, [conciergeAction, requests, showToast]);
 
   const handleNotDeliver = useCallback(async (reqIds: string[], reason: string) => {
-    if (!property || !userData) return;
+    const { okIds, firstError } = await conciergeAction(reqIds, "not_delivered", reason);
+    const notDelivered = requests.filter(r => okIds.includes(r.id));
+    if (notDelivered.length > 0) setDone(prev => [...notDelivered.map(r => ({ ...r, status: "not_delivered", notDeliveredReason: reason } as ConciergeRequest)), ...prev]);
+    if (firstError) showToast(firstError, T.red);
+    else showToast(okIds.length === 1 ? "Pedido marcado como não entregue." : `${okIds.length} itens não entregues.`, T.amber);
+  }, [conciergeAction, requests, showToast]);
+
+  /** Ações da fila de REPOSIÇÃO via /api/field/restock-requests. */
+  const restockAction = useCallback(async (
+    reqIds: string[], action: "assign" | "deliver" | "not_delivered", reason?: string,
+  ): Promise<{ okCount: number; firstError: string | null }> => {
     setActionLoading(p => Object.fromEntries([...Object.entries(p), ...reqIds.map(id => [id, true])]));
-    try {
-      await Promise.all(reqIds.map(id => ConciergeService.notDeliverRequest(property.id, id, reason)));
-      const notDelivered = requests.filter(r => reqIds.includes(r.id));
-      if (notDelivered.length > 0) setDone(prev => [...notDelivered.map(r => ({ ...r, status: "not_delivered", notDeliveredReason: reason } as ConciergeRequest)), ...prev]);
-      showToast(reqIds.length === 1 ? "Pedido marcado como não entregue." : `${reqIds.length} itens não entregues.`, T.amber);
-    } catch { showToast("Erro ao registar.", T.red); }
-    finally { setActionLoading(p => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, reqIds.includes(k) ? false : v]))); }
-  }, [property, userData, requests, showToast]);
+    const results = await Promise.all(reqIds.map(id =>
+      postFieldAction("/api/field/restock-requests", { action, requestId: id, ...(reason ? { reason } : {}) })
+    ));
+    setActionLoading(p => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, reqIds.includes(k) ? false : v])));
+    fetchRestock();
+    return { okCount: results.filter(r => r.ok).length, firstError: results.find(r => !r.ok)?.error ?? null };
+  }, [fetchRestock]);
+
+  const handleRestockAssign = useCallback(async (reqIds: string[]) => {
+    const { okCount, firstError } = await restockAction(reqIds, "assign");
+    if (firstError) showToast(firstError, T.red);
+    else showToast(okCount === 1 ? "Reposição assumida!" : `${okCount} reposições assumidas!`);
+  }, [restockAction, showToast]);
+
+  const handleRestockDeliver = useCallback(async (reqIds: string[]) => {
+    const { okCount, firstError } = await restockAction(reqIds, "deliver");
+    if (firstError) showToast(firstError, T.red);
+    else showToast(okCount === 1 ? "Entrega confirmada!" : `${okCount} itens entregues!`);
+  }, [restockAction, showToast]);
+
+  const handleRestockNotDeliver = useCallback(async (reqIds: string[], reason: string) => {
+    const { okCount, firstError } = await restockAction(reqIds, "not_delivered", reason);
+    if (firstError) showToast(firstError, T.red);
+    else showToast(okCount === 1 ? "Item marcado como não entregue." : `${okCount} itens não entregues.`, T.amber);
+  }, [restockAction, showToast]);
 
   const handleLogout = () => {
     showToast("Saindo...");
@@ -881,7 +1293,8 @@ export default function HousemanPage() {
       .finally(() => { window.location.href = '/admin/login'; });
   };
 
-  const pendingCount = requests.filter(r => r.status === "pending").length;
+  const pendingCount = requests.filter(r => r.status === "pending").length
+    + restock.filter(r => r.status === "pending").length;
 
   const navItems: { id: Tab; label: string; icon: IName; badge: number }[] = [
     { id: "home", label: "Início", icon: "home", badge: 0 },
@@ -951,8 +1364,8 @@ export default function HousemanPage() {
           </div>
 
           <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", position: "relative", zIndex: 1 }}>
-            {tab === "home" && <HomeScreen requests={requests} done={done} userName={userData?.fullName ?? "Mensageiro"} onNav={setTab} />}
-            {tab === "requests" && <RequestsScreen requests={requests} done={done} userId={userData?.id ?? ""} onAssign={handleAssign} onDeliver={handleDeliver} onNotDeliver={handleNotDeliver} actionLoading={actionLoading} />}
+            {tab === "home" && <HomeScreen requests={requests} done={done} restock={restock} userName={userData?.fullName ?? "Mensageiro"} onNav={setTab} />}
+            {tab === "requests" && <RequestsScreen requests={requests} done={done} restock={restock} userId={userData?.id ?? ""} onAssign={handleAssign} onDeliver={handleDeliver} onNotDeliver={handleNotDeliver} onRestockAssign={handleRestockAssign} onRestockDeliver={handleRestockDeliver} onRestockNotDeliver={handleRestockNotDeliver} actionLoading={actionLoading} />}
             {tab === "profile" && <ProfileScreen userData={userData} onLogout={handleLogout} />}
           </div>
 

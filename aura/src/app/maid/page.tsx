@@ -8,10 +8,11 @@ import { Sheet } from "@/components/maid/MinibarSheet";
 import { useCloseGuard } from "@/lib/use-discard-guard";
 import { HousekeepingService } from "@/services/housekeeping-service";
 import { CabinService } from "@/services/cabin-service";
-import { ConciergeService } from "@/services/concierge-service";
+import { RestockService } from "@/services/restock-service";
 import { StaffService } from "@/services/staff-service";
 import { supabase } from "@/lib/supabase";
-import { HousekeepingTask, Cabin, ConciergeItem, ConciergeRequest, Staff, Structure } from "@/types/aura";
+import { postFieldAction } from "@/lib/field-api";
+import { HousekeepingTask, Cabin, RestockCatalogItem, RestockRequest, Staff, Structure } from "@/types/aura";
 import { getTaskLabel } from "@/lib/task-ui";
 import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
 import { ScrapWall } from "@/components/admin/profile/ScrapWall";
@@ -200,13 +201,13 @@ function I({ n, s = 20, c = "currentColor", w = 1.8 }: { n: IName; s?: number; c
 // ─── Replenish Sheet ──────────────────────────────────────────────────────────
 
 function ReplenishSheet({
-  cabinName, maidItems, loading: loadingItems, onClose, onSend,
+  cabinName, catalog, loading: loadingItems, onClose, onSend,
 }: {
   cabinName: string;
-  maidItems: ConciergeItem[];
+  catalog: RestockCatalogItem[];
   loading: boolean;
   onClose: () => void;
-  onSend: (items: { itemId: string; qty: number }[]) => Promise<void>;
+  onSend: (items: { productId: string; quantity: number }[]) => Promise<void>;
 }) {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
@@ -224,29 +225,30 @@ function ReplenishSheet({
 
   const submit = async () => {
     setBusy(true);
-    const entries = Object.entries(cart).filter(([, q]) => q > 0).map(([itemId, qty]) => ({ itemId, qty }));
+    const entries = Object.entries(cart).filter(([, q]) => q > 0).map(([productId, quantity]) => ({ productId, quantity }));
     await onSend(entries);
     onClose();
   };
 
-  // Build ordered group list from items
+  // Grupos = categorias do ESTOQUE (o catálogo de reposição aponta produtos, não itens de Concierge)
   const groups = React.useMemo(() => {
-    const seen = new Map<string, { id: string; name: string; icon?: string; color?: string; order?: number }>();
-    for (const item of maidItems) {
-      if (item.group && !seen.has(item.group.id)) seen.set(item.group.id, item.group);
+    const seen = new Map<string, { id: string; name: string; icon?: string; order?: number }>();
+    for (const item of catalog) {
+      const id = item.categoryId ?? "sem-categoria";
+      if (!seen.has(id)) seen.set(id, { id, name: item.categoryName ?? "Outros", icon: item.categoryIcon, order: item.categoryOrder });
     }
-    return Array.from(seen.values()).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  }, [maidItems]);
+    return Array.from(seen.values()).sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+  }, [catalog]);
 
   const filtered = React.useMemo(() => {
-    let items = maidItems;
-    if (activeGroup) items = items.filter(i => i.groupId === activeGroup);
+    let items = catalog;
+    if (activeGroup) items = items.filter(i => (i.categoryId ?? "sem-categoria") === activeGroup);
     if (search.trim()) {
       const q = search.toLowerCase();
       items = items.filter(i => i.name.toLowerCase().includes(q));
     }
     return items;
-  }, [maidItems, activeGroup, search]);
+  }, [catalog, activeGroup, search]);
 
   return (
     <Sheet onClose={requestClose}>
@@ -262,7 +264,7 @@ function ReplenishSheet({
       </div>
 
       {/* Search + group filters */}
-      {!loadingItems && maidItems.length > 0 && (
+      {!loadingItems && catalog.length > 0 && (
         <div style={{ padding: "0 16px 12px", flexShrink: 0 }}>
           {/* Search */}
           <div style={{ position: "relative", marginBottom: 10 }}>
@@ -309,7 +311,7 @@ function ReplenishSheet({
               {groups.map(g => {
                 const active = activeGroup === g.id;
                 const emoji = g.icon && !g.icon.startsWith("http") ? g.icon : undefined;
-                const groupColor = g.color ?? T.g1;
+                const groupColor = T.g1;
                 return (
                   <button
                     key={g.id}
@@ -338,10 +340,10 @@ function ReplenishSheet({
           <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
             <I n="loader" s={24} c={T.amber} w={2} />
           </div>
-        ) : maidItems.length === 0 ? (
+        ) : catalog.length === 0 ? (
           <div style={{ textAlign: "center", padding: "40px 0", fontSize: 13, color: T.muted }}>
             Nenhum item de reposição configurado.<br />
-            <span style={{ opacity: 0.6, fontSize: 11 }}>Configure em Catálogo Concierge → Disponível para Camareira.</span>
+            <span style={{ opacity: 0.6, fontSize: 11 }}>Configure em Estoque → Produtos → &quot;Solicitável pela camareira&quot;.</span>
           </div>
         ) : filtered.length === 0 ? (
           <div style={{ textAlign: "center", padding: "40px 0", fontSize: 13, color: T.muted }}>
@@ -349,11 +351,11 @@ function ReplenishSheet({
           </div>
         ) : (
           filtered.map(item => {
-            const q = cart[item.id] ?? 0;
-            const soldOut = item.stockAvailable === false;
-            const emoji = item.image_url?.startsWith("emoji:") ? item.image_url.slice(6) : undefined;
+            const q = cart[item.productId] ?? 0;
+            const soldOut = item.availability === "out";
+            const emoji = item.categoryIcon && !item.categoryIcon.startsWith("http") ? item.categoryIcon : undefined;
             return (
-              <div key={item.id} style={{
+              <div key={item.productId} style={{
                 display: "flex", alignItems: "center", gap: 10, padding: "11px 12px",
                 borderRadius: 14, borderBottom: `1px solid ${T.border}`,
                 background: q > 0 ? "rgba(245,158,11,0.08)" : "transparent", transition: "background .15s",
@@ -363,11 +365,11 @@ function ReplenishSheet({
                 <span style={{ flex: 1, fontSize: 14, fontWeight: q > 0 ? 700 : 400, color: q > 0 ? T.amber : T.text }}>{item.name}</span>
                 {soldOut && <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".05em", textTransform: "uppercase" as const, color: "#f87171", flexShrink: 0 }}>Esgotado</span>}
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <button onClick={() => adj(item.id, -1)} disabled={!q} style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${T.border}`, background: T.glass2, cursor: q ? "pointer" : "not-allowed", opacity: q ? 1 : 0.3, display: "flex", alignItems: "center", justifyContent: "center", color: T.text }}>
+                  <button onClick={() => adj(item.productId, -1)} disabled={!q} style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${T.border}`, background: T.glass2, cursor: q ? "pointer" : "not-allowed", opacity: q ? 1 : 0.3, display: "flex", alignItems: "center", justifyContent: "center", color: T.text }}>
                     <I n="minus" s={13} />
                   </button>
                   <span style={{ width: 18, textAlign: "center", fontWeight: 900, fontSize: 14 }}>{q}</span>
-                  <button onClick={() => adj(item.id, 1)} disabled={soldOut} style={{ width: 30, height: 30, borderRadius: 8, background: `linear-gradient(135deg,${T.amberBg},rgba(252,211,77,0.15))`, border: `1px solid ${T.amberBorder}`, cursor: soldOut ? "not-allowed" : "pointer", opacity: soldOut ? 0.3 : 1, display: "flex", alignItems: "center", justifyContent: "center", color: T.amber }}>
+                  <button onClick={() => adj(item.productId, 1)} disabled={soldOut} style={{ width: 30, height: 30, borderRadius: 8, background: `linear-gradient(135deg,${T.amberBg},rgba(252,211,77,0.15))`, border: `1px solid ${T.amberBorder}`, cursor: soldOut ? "not-allowed" : "pointer", opacity: soldOut ? 0.3 : 1, display: "flex", alignItems: "center", justifyContent: "center", color: T.amber }}>
                     <I n="plus" s={13} />
                   </button>
                 </div>
@@ -419,7 +421,7 @@ function TaskSheet({
   onUpgrade: (taskId: string) => void;
 }) {
   const [showRep, setShowRep] = useState(false);
-  const [maidItems, setMaidItems] = useState<ConciergeItem[]>([]);
+  const [catalog, setCatalog] = useState<RestockCatalogItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
   const [loadingChecklist, setLoadingChecklist] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -478,9 +480,13 @@ function TaskSheet({
 
   const openRep = async () => {
     setShowRep(true);
-    if (maidItems.length > 0) return;
+    if (catalog.length > 0) return;
     setLoadingItems(true);
-    try { setMaidItems(await ConciergeService.getConciergeItemsForMaid(propertyId)); }
+    try {
+      // Catálogo via rota field (leitura pelo browser trava no lock frio).
+      const r = await fetch(`/api/field/restock-requests?catalog=1&propertyId=${encodeURIComponent(propertyId)}`, { cache: "no-store" });
+      if (r.ok) setCatalog(await r.json());
+    } catch { /* mantém vazio; a sheet mostra o empty-state */ }
     finally { setLoadingItems(false); }
   };
 
@@ -503,16 +509,14 @@ function TaskSheet({
     onClose();
   };
 
-  const handleSendRep = async (entries: { itemId: string; qty: number }[]) => {
-    try {
-      await Promise.all(entries.map(({ itemId, qty }) =>
-        ConciergeService.createRequest(
-          { propertyId, stayId: task.stayId, cabinId: task.cabinId, itemId, quantity: qty, requestedBy: "maid", notes: "Solicitado pela camareira" },
-          userId, userName
-        )
-      ));
-      showToast(`${entries.length} solicitação(ões) enviada(s)!`);
-    } catch { showToast("Erro ao enviar solicitação.", T.red); }
+  const handleSendRep = async (entries: { productId: string; quantity: number }[]) => {
+    // Um POST só para o lote inteiro; item em falta em todo lugar volta 422
+    // com "Item em falta — informe o gestor: ..." e NADA é gravado.
+    const res = await postFieldAction("/api/field/restock-requests", {
+      action: "create", propertyId, cabinId: task.cabinId ?? null, items: entries,
+    });
+    if (res.ok) showToast(`${entries.length} solicitação(ões) enviada(s)!`);
+    else showToast(res.error ?? "Erro ao enviar solicitação.", T.red);
   };
 
   const handleUpgrade = () => {
@@ -709,7 +713,7 @@ function TaskSheet({
       {showRep && (
         <ReplenishSheet
           cabinName={task.cabinName || "Cabana"}
-          maidItems={maidItems}
+          catalog={catalog}
           loading={loadingItems}
           onClose={() => setShowRep(false)}
           onSend={handleSendRep}
@@ -825,7 +829,7 @@ function FaxinasScreen({
   onToggle: (tid: string, cid: string) => void;
   propertyId: string; userId: string; userName: string;
   onChecklistLoaded: (taskId: string, checklist: ChecklistItem[]) => void;
-  repRequests: ConciergeRequest[];
+  repRequests: RestockRequest[];
   startingTaskId: string | null;
   onFinish: (taskId: string, checklist: ChecklistItem[]) => void;
   onPause: (taskId: string) => void;
@@ -890,7 +894,7 @@ function FaxinasScreen({
                           const color = isOnWay ? T.blue : T.amber;
                           const bg = isOnWay ? T.blueBg : T.amberBg;
                           const border = isOnWay ? T.blueBorder : T.amberBorder;
-                          const itemLabel = r.item?.name ?? "Item";
+                          const itemLabel = r.productName ?? "Item";
                           const statusLabel = isOnWay ? `${r.assignedName ?? 'Houseman'} a caminho` : "Aguardando houseman...";
                           return (
                             <div key={r.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 10px", borderRadius: 10, background: bg, border: `1px solid ${border}`, marginBottom: 5 }}>
@@ -1387,7 +1391,7 @@ export default function MaidPage() {
   const [dataLoading, setDataLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; color: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [repRequests, setRepRequests] = useState<ConciergeRequest[]>([]);
+  const [repRequests, setRepRequests] = useState<RestockRequest[]>([]);
   const [pauseConfirm, setPauseConfirm] = useState<{ currentTaskId: string; newTaskId: string } | null>(null);
   const startingRef = useRef(false);
   const [startingTaskId, setStartingTaskId] = useState<string | null>(null);
@@ -1521,10 +1525,24 @@ export default function MaidPage() {
     return () => unsubscribe?.();
   }, [property, userData?.id, userData?.role, showToast, authConfirmed]);
 
+  // Feed de reposições no cartão da faxina — fetch via rota field; o realtime
+  // da tabela restock_requests só dispara o refetch.
+  const fetchRepRequests = useCallback(async () => {
+    if (!property?.id) return;
+    try {
+      const r = await fetch(`/api/field/restock-requests?propertyId=${encodeURIComponent(property.id)}`, { cache: "no-store" });
+      if (r.ok) {
+        const rows = (await r.json()) as RestockRequest[];
+        setRepRequests(rows.filter(x => x.status === "pending" || x.status === "in_progress"));
+      }
+    } catch { /* mantém o estado atual */ }
+  }, [property?.id]);
+
   useEffect(() => {
     if (!property?.id) return;
-    return ConciergeService.listenToPendingRequests(property.id, setRepRequests, 'maid');
-  }, [property?.id]);
+    fetchRepRequests();
+    return RestockService.listenToRequests(property.id, fetchRepRequests);
+  }, [property?.id, fetchRepRequests]);
 
   const handleStart = useCallback(async (taskId: string) => {
     if (!property || !userData || startingRef.current) return;

@@ -228,6 +228,16 @@ export default function EstoqueConfigPage() {
                     {Object.entries(SCOPE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                   </select></div>
               </div>
+              <div className="max-w-sm">
+                <label className="field-label">Baixar de (reposição)</label>
+                <StockLocationSelect locations={flatLocations} value={catForm.deductLocationId ?? ""}
+                  placeholder="— nenhum (sem baixa automática) —"
+                  onChange={(id) => setCatForm({ ...catForm, deductLocationId: id || null })} />
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Local padrão de onde os produtos desta categoria saem quando o mensageiro entrega uma
+                  reposição. Cada produto pode sobrescrever no próprio cadastro.
+                </p>
+              </div>
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setCatForm(null)} className="px-3 py-2 text-xs font-bold text-muted-foreground hover:text-foreground"><X size={14} /></button>
                 <button onClick={saveCategory} disabled={saving}

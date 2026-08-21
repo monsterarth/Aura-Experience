@@ -13,7 +13,7 @@ import EmojiPicker from "emoji-picker-react";
 import {
   ShoppingBag, Loader2, CheckCircle2, RotateCcw, XCircle,
   Package, AlertTriangle, Clock, Pin, Eye, X, Save, Plus,
-  User, Wrench, ChevronLeft, ChevronRight, TrendingUp,
+  User, ChevronLeft, ChevronRight, TrendingUp,
   Calendar, Search, Filter, Edit2, EyeOff, Sparkles,
   Gift, ListOrdered, BookOpen, Layers, Trash2, Palette
 } from "lucide-react";
@@ -1786,15 +1786,17 @@ function CatalogFormModal({ form, setForm, editingId, saving, groups, stockProdu
           </div>
 
           {/* ── Disponibilidade ── */}
+          {/* A reposição da camareira saiu do Concierge (virou produto do estoque com
+              "Solicitável pela camareira") — o toggle Camareira foi aposentado; a
+              coluna availableForMaid fica no banco como resquício inofensivo. */}
           <div>
             <div style={{ ...sectionLabel, marginBottom: 6 }}>Disponibilidade</div>
             <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.35)', marginBottom: 12 }}>
-              Selecione quem pode solicitar este item. Nenhum selecionado = item inativo.
+              Item do cardápio do hóspede. Reposição da camareira agora é configurada em Estoque → Produtos.
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
               {([
                 { key: 'availableForGuest' as const, label: 'Hóspede', desc: 'Visível no app do hóspede.', Icon: User, color: '#2dd4bf', bg: 'rgba(45,212,191,0.08)', border: 'rgba(45,212,191,0.22)' },
-                { key: 'availableForMaid' as const, label: 'Camareira', desc: 'Visível no app da camareira.', Icon: Wrench, color: '#c084fc', bg: 'rgba(192,132,252,0.08)', border: 'rgba(192,132,252,0.22)' },
               ]).map(opt => {
                 const on = form[opt.key];
                 return (

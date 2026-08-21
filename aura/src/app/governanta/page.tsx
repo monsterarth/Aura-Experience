@@ -11,8 +11,8 @@ import { HousekeepingTaskManagerModal } from "@/components/admin/HousekeepingTas
 import { HousekeepingService } from "@/services/housekeeping-service";
 import { CabinService } from "@/services/cabin-service";
 import { StayService } from "@/services/stay-service";
-import { HousekeepingTask, Cabin, Staff, Structure, ConciergeItem } from "@/types/aura";
-import { ConciergeService } from "@/services/concierge-service";
+import { HousekeepingTask, Cabin, Staff, Structure, ConciergeItem, RestockCatalogItem, RestockRequest } from "@/types/aura";
+import { RestockService } from "@/services/restock-service";
 import { supabase } from "@/lib/supabase";
 import { createClientBrowserAuto } from "@/lib/supabase-browser";
 import { useRouter } from "next/navigation";
@@ -250,7 +250,7 @@ function ConferSheet({
   const [obs, setObs] = useState("");
   const [checklist, setChecklist] = useState<HousekeepingTask["checklist"]>(task.checklist || []);
   const [showRep, setShowRep] = useState(false);
-  const [repItems, setRepItems] = useState<ConciergeItem[]>([]);
+  const [repItems, setRepItems] = useState<RestockCatalogItem[]>([]);
   const [loadingRep, setLoadingRep] = useState(false);
   const [showMaint, setShowMaint] = useState(false);
   const { requestClose } = useCloseGuard(onClose, { dirty: !!obs.trim() });
@@ -262,17 +262,20 @@ function ConferSheet({
     setShowRep(true);
     if (repItems.length > 0) return;
     setLoadingRep(true);
-    try { setRepItems(await ConciergeService.getConciergeItemsForMaid(propertyId)); }
+    try {
+      // Catálogo de reposição via rota field (produtos do estoque).
+      const r = await fetch(`/api/field/restock-requests?catalog=1&propertyId=${encodeURIComponent(propertyId)}`, { cache: "no-store" });
+      if (r.ok) setRepItems(await r.json());
+    } catch { /* empty-state cobre */ }
     finally { setLoadingRep(false); }
   };
 
-  const handleSendRep = async (entries: { itemId: string; qty: number }[]) => {
-    await Promise.all(entries.map(({ itemId, qty }) =>
-      ConciergeService.createRequest(
-        { propertyId, stayId: task.stayId, cabinId: task.cabinId, itemId, quantity: qty, requestedBy: "maid", notes: "Solicitado pela governanta" },
-        actorId, actorName
-      )
-    ));
+  const handleSendRep = async (entries: { productId: string; quantity: number }[]) => {
+    const res = await postFieldAction("/api/field/restock-requests", {
+      action: "create", propertyId, cabinId: task.cabinId ?? null, items: entries,
+      notes: "Solicitado pela governanta",
+    });
+    if (!res.ok) throw new Error(res.error ?? "Erro ao enviar solicitação.");
   };
 
   const checkedCount = checklist.filter(i => i.checked).length;
@@ -462,13 +465,14 @@ function GovReplenishSheet({
   locationName, repItems, loading: loadingItems, onClose, onSend,
 }: {
   locationName: string;
-  repItems: ConciergeItem[];
+  repItems: RestockCatalogItem[];
   loading: boolean;
   onClose: () => void;
-  onSend: (items: { itemId: string; qty: number }[]) => Promise<void>;
+  onSend: (items: { productId: string; quantity: number }[]) => Promise<void>;
 }) {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
   const { requestClose } = useCloseGuard(onClose, {
     dirty: Object.values(cart).some(q => q > 0),
     message: "Sair sem lançar? Os itens marcados serão descartados.",
@@ -480,11 +484,17 @@ function GovReplenishSheet({
   const count = Object.values(cart).reduce((a, b) => a + b, 0);
 
   const submit = async () => {
-    setBusy(true);
-    const entries = Object.entries(cart).filter(([, q]) => q > 0).map(([itemId, qty]) => ({ itemId, qty }));
-    await onSend(entries);
-    onClose();
-    setBusy(false);
+    setBusy(true); setErr(null);
+    const entries = Object.entries(cart).filter(([, q]) => q > 0).map(([productId, quantity]) => ({ productId, quantity }));
+    try {
+      await onSend(entries);
+      onClose();
+    } catch (e) {
+      // Ex.: 422 "Item em falta — informe o gestor: ..." — nada foi gravado.
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -507,14 +517,14 @@ function GovReplenishSheet({
         ) : repItems.length === 0 ? (
           <div style={{ textAlign: "center", padding: "40px 0", fontSize: 13, color: T.muted }}>
             Nenhum item de reposição configurado.<br />
-            <span style={{ opacity: 0.6, fontSize: 11 }}>Configure em Catálogo Concierge → Disponível para Camareira.</span>
+            <span style={{ opacity: 0.6, fontSize: 11 }}>Configure em Estoque → Produtos → &quot;Solicitável pela camareira&quot;.</span>
           </div>
         ) : (
           repItems.map(item => {
-            const q = cart[item.id] ?? 0;
-            const soldOut = item.stockAvailable === false;
+            const q = cart[item.productId] ?? 0;
+            const soldOut = item.availability === "out";
             return (
-              <div key={item.id} style={{
+              <div key={item.productId} style={{
                 display: "flex", alignItems: "center", gap: 10, padding: "12px",
                 borderRadius: 14, borderBottom: `1px solid ${T.border}`,
                 background: q > 0 ? "rgba(245,158,11,0.08)" : "transparent", transition: "background .15s",
@@ -523,11 +533,11 @@ function GovReplenishSheet({
                 <span style={{ flex: 1, fontSize: 14, fontWeight: q > 0 ? 700 : 400, color: q > 0 ? T.amber : T.text }}>{item.name}</span>
                 {soldOut && <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".05em", textTransform: "uppercase" as const, color: "#f87171", flexShrink: 0 }}>Esgotado</span>}
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <button onClick={() => adj(item.id, -1)} disabled={!q} style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${T.border}`, background: T.glass2, cursor: q ? "pointer" : "not-allowed", opacity: q ? 1 : 0.3, display: "flex", alignItems: "center", justifyContent: "center", color: T.text }}>
+                  <button onClick={() => adj(item.productId, -1)} disabled={!q} style={{ width: 30, height: 30, borderRadius: 8, border: `1px solid ${T.border}`, background: T.glass2, cursor: q ? "pointer" : "not-allowed", opacity: q ? 1 : 0.3, display: "flex", alignItems: "center", justifyContent: "center", color: T.text }}>
                     <I n="minus" s={13} />
                   </button>
                   <span style={{ width: 18, textAlign: "center", fontWeight: 900, fontSize: 14 }}>{q}</span>
-                  <button onClick={() => adj(item.id, 1)} disabled={soldOut} style={{ width: 30, height: 30, borderRadius: 8, background: `linear-gradient(135deg,${T.amberBg},rgba(252,211,77,0.15))`, border: `1px solid ${T.amberBorder}`, cursor: soldOut ? "not-allowed" : "pointer", opacity: soldOut ? 0.3 : 1, display: "flex", alignItems: "center", justifyContent: "center", color: T.amber }}>
+                  <button onClick={() => adj(item.productId, 1)} disabled={soldOut} style={{ width: 30, height: 30, borderRadius: 8, background: `linear-gradient(135deg,${T.amberBg},rgba(252,211,77,0.15))`, border: `1px solid ${T.amberBorder}`, cursor: soldOut ? "not-allowed" : "pointer", opacity: soldOut ? 0.3 : 1, display: "flex", alignItems: "center", justifyContent: "center", color: T.amber }}>
                     <I n="plus" s={13} />
                   </button>
                 </div>
@@ -539,6 +549,11 @@ function GovReplenishSheet({
       </div>
 
       <div style={{ padding: "12px 16px", borderTop: `1px solid ${T.border}`, background: "#0d1020", flexShrink: 0 }}>
+        {err && (
+          <div style={{ marginBottom: 10, padding: "10px 12px", borderRadius: 12, background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", color: T.red, fontSize: 12, fontWeight: 700 }}>
+            {err}
+          </div>
+        )}
         <button
           disabled={!count || busy || loadingItems}
           onClick={submit}
@@ -1447,7 +1462,7 @@ function ProfileScreen({ userData, onLogout }: { userData: any; onLogout: () => 
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-type Screen = "dashboard" | "conference" | "all" | "profile";
+type Screen = "dashboard" | "conference" | "all" | "reposicao" | "profile";
 
 export default function GovernantaPage() {
   const { userData, authConfirmed } = useAuth();
@@ -1477,8 +1492,23 @@ export default function GovernantaPage() {
   // fronteira de Suspense no build.
   useEffect(() => {
     const s = new URLSearchParams(window.location.search).get("screen");
-    if (s === "conference" || s === "all" || s === "profile") setScreen(s);
+    if (s === "conference" || s === "all" || s === "reposicao" || s === "profile") setScreen(s);
   }, []);
+
+  // Fila de reposições (read-only): fetch via rota field, realtime só dispara o refetch.
+  const [restockQueue, setRestockQueue] = useState<RestockRequest[]>([]);
+  const fetchRestockQueue = useCallback(async () => {
+    if (!property?.id) return;
+    try {
+      const r = await fetch(`/api/field/restock-requests?propertyId=${encodeURIComponent(property.id)}`, { cache: "no-store" });
+      if (r.ok) setRestockQueue(await r.json());
+    } catch { /* mantém o estado atual */ }
+  }, [property?.id]);
+  useEffect(() => {
+    if (!property?.id) return;
+    fetchRestockQueue();
+    return RestockService.listenToRequests(property.id, fetchRestockQueue);
+  }, [property?.id, fetchRestockQueue]);
 
   const [minibarItems, setMinibarItems] = useState<ConciergeItem[]>([]);
   const [govMiniTarget, setGovMiniTarget] = useState<HousekeepingTask | null>(null);
@@ -2222,6 +2252,63 @@ export default function GovernantaPage() {
           )}
 
           {/* Profile view */}
+          {screen === "reposicao" && (() => {
+            const rsPending = restockQueue.filter(r => r.status === "pending");
+            const rsInProgress = restockQueue.filter(r => r.status === "in_progress");
+            const rsResolved = restockQueue.filter(r => r.status === "delivered" || r.status === "not_delivered" || r.status === "cancelled");
+            const Section = ({ title, color, rows, showAssigned }: { title: string; color: string; rows: RestockRequest[]; showAssigned?: boolean }) => (
+              rows.length === 0 ? null : (
+                <div style={{ marginBottom: 22 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color, marginBottom: 10 }}>{title}</div>
+                  {rows.map(r => (
+                    <div key={r.id} style={{ background: T.card2, border: `1px solid ${T.border}`, borderRadius: 14, padding: "12px 14px", marginBottom: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: T.text }}>
+                            {Number(r.quantity)}× {r.productName ?? "—"}
+                          </div>
+                          <div style={{ fontSize: 11, color: T.muted, marginTop: 3 }}>
+                            {r.cabinName ?? "Sem cabana"}
+                            {r.requestedByName ? ` · pedido por ${r.requestedByName.split(" ")[0]}` : ""}
+                            {showAssigned && r.assignedName ? ` · ${r.assignedName.split(" ")[0]} a caminho` : ""}
+                          </div>
+                        </div>
+                        <div style={{ flexShrink: 0, textAlign: "right" as const }}>
+                          {r.status === "pending" && <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase" as const, color: T.amber, background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 999, padding: "3px 9px" }}>Aguardando</span>}
+                          {r.status === "in_progress" && <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase" as const, color: T.blue, background: T.blueBg, border: `1px solid ${T.blueBorder}`, borderRadius: 999, padding: "3px 9px" }}>A caminho</span>}
+                          {r.status === "delivered" && <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase" as const, color: T.green, background: T.greenBg, border: `1px solid ${T.greenBorder}`, borderRadius: 999, padding: "3px 9px" }}>Entregue</span>}
+                          {r.status === "not_delivered" && <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase" as const, color: T.red, background: T.redBg, border: `1px solid ${T.redBorder}`, borderRadius: 999, padding: "3px 9px" }}>{r.notDeliveredReason || "Não entregue"}</span>}
+                          {r.status === "cancelled" && <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase" as const, color: T.muted, background: T.glass2, border: `1px solid ${T.border}`, borderRadius: 999, padding: "3px 9px" }}>Cancelado</span>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            );
+            return (
+              <div className="gov-scroll" style={{ padding: "0 16px 24px" }}>
+                <div style={{ padding: "10px 0 18px" }}>
+                  <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: "-0.3px" }}>Reposições</div>
+                  <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>
+                    {rsPending.length + rsInProgress.length > 0
+                      ? `${rsPending.length} aguardando · ${rsInProgress.length} a caminho`
+                      : "Nenhuma reposição ativa"}
+                  </div>
+                </div>
+                <Section title="Aguardando mensageiro" color={T.amber} rows={rsPending} />
+                <Section title="A caminho" color={T.blue} rows={rsInProgress} showAssigned />
+                <Section title="Resolvidas (últimas 12h)" color={T.muted} rows={rsResolved} />
+                {restockQueue.length === 0 && (
+                  <div style={{ textAlign: "center", padding: "48px 0", color: T.muted, fontSize: 13 }}>
+                    Nenhuma reposição por aqui.<br />
+                    <span style={{ opacity: 0.6, fontSize: 11 }}>Pedidos da camareira e da conferência aparecem nesta fila.</span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {screen === "profile" && (
             <ProfileScreen userData={userData} onLogout={handleLogout} />
           )}
@@ -2237,6 +2324,7 @@ export default function GovernantaPage() {
             { id: "dashboard" as Screen, icon: "home" as IName, label: "Início", badge: undefined as number | undefined },
             { id: "conference" as Screen, icon: "sparkles" as IName, label: "Conferir", badge: conferenceTasks.length as number | undefined },
             { id: "all" as Screen, icon: "list" as IName, label: "Todas", badge: undefined as number | undefined },
+            { id: "reposicao" as Screen, icon: "refresh" as IName, label: "Reposição", badge: restockQueue.filter(r => r.status === "pending" || r.status === "in_progress").length as number | undefined },
             { id: "profile" as Screen, icon: "user" as IName, label: "Perfil", badge: undefined as number | undefined },
           ]).map(tab => {
             const active = screen === tab.id;

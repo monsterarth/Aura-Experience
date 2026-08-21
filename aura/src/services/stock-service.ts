@@ -41,7 +41,7 @@ interface BatchChunk { qty: number; unitCost: number; expiryDate: string | null;
 
 /** Valores aceitos nos filtros do histórico — barra lixo vindo da query string. */
 const MOVEMENT_TYPES: StockMovementType[] = ["entry", "exit", "transfer", "adjustment", "loss"];
-const REFERENCE_TYPES: StockReferenceType[] = ["purchase", "consumption", "manual", "inventory", "concierge", "minibar", "fb"];
+const REFERENCE_TYPES: StockReferenceType[] = ["purchase", "consumption", "manual", "inventory", "concierge", "minibar", "fb", "restock"];
 
 type DB = NonNullable<typeof supabaseAdmin>;
 function db(): DB {

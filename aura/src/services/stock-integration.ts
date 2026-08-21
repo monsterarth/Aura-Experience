@@ -28,8 +28,40 @@ export const StockIntegration = {
     return (data?.defaultSaleLocationId as string | null) ?? null;
   },
 
+  /**
+   * Fonte de baixa de um produto — a cadeia ÚNICA usada por venda (Concierge/
+   * F&B) e reposição:
+   *   explícito ("Baixar de" do componente, só em 'sale')
+   *   → produto ('none' é TERMINAL nos dois modos; 'location' usa o fixo)
+   *   → categoria (deductLocationId; null = "nenhum")
+   *   → 'sale': defaultSaleLocationId (comportamento histórico) · 'restock': null.
+   * null = sem baixa automática.
+   */
+  async resolveDeductionSource(
+    propertyId: string,
+    productId: string,
+    opts: { explicitLocationId?: string | null; mode: "sale" | "restock" },
+  ): Promise<string | null> {
+    if (opts.mode === "sale" && opts.explicitLocationId) return opts.explicitLocationId;
+
+    const { data: p } = await db().from("stock_products")
+      .select("deductMode, deductLocationId, categoryId")
+      .eq("id", productId).eq("propertyId", propertyId).maybeSingle();
+    if (p) {
+      if (p.deductMode === "none") return null;
+      if (p.deductMode === "location" && p.deductLocationId) return p.deductLocationId as string;
+      if (p.categoryId) {
+        const { data: c } = await db().from("stock_categories")
+          .select("deductLocationId").eq("id", p.categoryId).maybeSingle();
+        if (c?.deductLocationId) return c.deductLocationId as string;
+      }
+    }
+    if (opts.mode === "restock") return null;
+    return this._defaultLocation(propertyId);
+  },
+
   /** Baixa de estoque por consumo/venda. Best-effort: NUNCA lança.
-   *  fromLocationId opcional sobrepõe o local de venda padrão ("Baixar de"). */
+   *  fromLocationId opcional sobrepõe a cadeia de resolução ("Baixar de"). */
   async consumeForSale(
     propertyId: string,
     opts: { productId?: string | null; quantity: number; referenceType: StockReferenceType; referenceId?: string | null; fromLocationId?: string | null },
@@ -38,9 +70,11 @@ export const StockIntegration = {
     try {
       if (!opts.productId || !(opts.quantity > 0)) return;
       if (!(await this.isEnabled(propertyId))) return;
-      const locationId = opts.fromLocationId ?? (await this._defaultLocation(propertyId));
+      const locationId = await this.resolveDeductionSource(propertyId, opts.productId, {
+        explicitLocationId: opts.fromLocationId, mode: "sale",
+      });
       if (!locationId) {
-        console.warn("[StockIntegration] sem local de baixa (defaultSaleLocationId não configurado) — baixa de estoque ignorada.");
+        console.warn("[StockIntegration] sem local de baixa (produto/categoria/defaultSaleLocationId) — baixa de estoque ignorada.");
         return;
       }
       await StockService.registerMovement(propertyId, {

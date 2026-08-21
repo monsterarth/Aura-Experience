@@ -1629,7 +1629,7 @@ export type StockLocationPolicy = 'stock' | 'consume_all' | 'consume_categories'
 export type StockUnit           = 'un' | 'kg' | 'g' | 'L' | 'ml' | 'cx' | 'pct' | 'par' | 'rolo';
 export type StockMovementType   = 'entry' | 'exit' | 'transfer' | 'adjustment' | 'loss';
 export type StockLossType       = 'expiry' | 'damage' | 'handling' | 'other';
-export type StockReferenceType  = 'purchase' | 'consumption' | 'manual' | 'inventory' | 'concierge' | 'minibar' | 'fb';
+export type StockReferenceType  = 'purchase' | 'consumption' | 'manual' | 'inventory' | 'concierge' | 'minibar' | 'fb' | 'restock';
 
 export interface StockCategory {
   id: string;
@@ -1640,6 +1640,8 @@ export interface StockCategory {
   icon?: string;            // emoji
   color?: string;
   appliesTo: StockCategoryScope;
+  /** Reposição: local padrão de baixa dos produtos desta categoria (null = "nenhum", sem baixa automática). */
+  deductLocationId?: string | null;
   order?: number;
   active: boolean;
   createdAt: Timestamp;
@@ -1674,6 +1676,11 @@ export interface StockProduct {
   trackExpiry: boolean;
   /** Bem durável (ex.: toalha de rosto) — nunca converte em consumo ao entrar num ponto de consumo. */
   neverConsume?: boolean;
+  /** Aparece no catálogo de reposição da camareira/governanta. */
+  maidRequestable?: boolean;
+  /** Fonte de baixa: 'default' segue a categoria; 'none' não baixa; 'location' usa deductLocationId. */
+  deductMode?: 'default' | 'none' | 'location';
+  deductLocationId?: string | null;
   minStock: number;
   maxStock?: number | null;
   averageCost: number;        // custo médio ponderado
@@ -1932,6 +1939,61 @@ export interface StockSettings {
   assetTagPrefix?: string;                // prefixo do nº de patrimônio (default 'PAT')
   assetTagPadding?: number;               // dígitos do sufixo (default 4 → PAT-0042)
   updatedAt: Timestamp;
+}
+
+// ── Reposição (camareira/governanta → mensageiro) ────────────────────────────
+// Extraída do Concierge: o pedido aponta PRODUTO do estoque e nunca toca fólio.
+
+export type RestockRequestStatus = 'pending' | 'in_progress' | 'delivered' | 'not_delivered' | 'cancelled';
+
+export interface RestockRequest {
+  id: string;
+  propertyId: string;
+  cabinId?: string | null;
+  productId: string;
+  quantity: number;
+  status: RestockRequestStatus;
+  notDeliveredReason?: string | null;
+  requestedById?: string;
+  requestedByName?: string;
+  requestedByRole?: 'maid' | 'governance';
+  assignedTo?: string | null;
+  assignedName?: string | null;
+  /** Fonte resolvida na criação (instrução "retirar de"). */
+  plannedSourceId?: string | null;
+  /** Local alternativo com saldo quando a fonte planejada estava em falta ("pegar no estoque Y"). */
+  fallbackSourceId?: string | null;
+  /** Fonte REALMENTE usada na baixa da entrega. */
+  sourceLocationId?: string | null;
+  notes?: string | null;
+  createdAt: Timestamp;
+  assignedAt?: Timestamp | null;
+  deliveredAt?: Timestamp | null;
+  updatedAt: Timestamp;
+  // Joined / virtual (enriquecidos na rota field)
+  productName?: string;
+  productUnit?: StockUnit;
+  cabinName?: string | null;
+  plannedSourceName?: string | null;
+  fallbackSourceName?: string | null;
+}
+
+/** Item do catálogo de reposição da camareira (produto + disponibilidade já resolvida). */
+export interface RestockCatalogItem {
+  productId: string;
+  name: string;
+  unit: StockUnit;
+  categoryId?: string | null;
+  categoryName?: string;
+  categoryIcon?: string;
+  categoryOrder?: number;
+  /**
+   * ok = tem saldo na fonte; fallback = fonte vazia mas há saldo em outro local;
+   * out = em falta em todo lugar (pedido bloqueado); ungated = sem fonte de
+   * baixa configurada ou módulo de estoque desligado (sem trava).
+   */
+  availability: 'ok' | 'fallback' | 'out' | 'ungated';
+  fallbackLocationName?: string | null;
 }
 
 // ── Fase 1: Fornecedores & Compras ───────────────────────────────────────────
