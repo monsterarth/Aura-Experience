@@ -214,11 +214,17 @@ export default function EstoqueProdutosPage() {
                     onChange={(e) => setForm({ ...form, maxStock: e.target.value === "" ? null : Number(e.target.value) })} />
                 </div>
               </div>
-              <div className="flex items-center gap-6">
+              <div className="flex items-center flex-wrap gap-x-6 gap-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={form.trackExpiry ?? false}
                     onChange={(e) => setForm({ ...form, trackExpiry: e.target.checked })} className="w-4 h-4 accent-primary" />
                   <span className="text-sm text-foreground">Controla validade</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer"
+                  title="Bem durável (ex.: toalha de rosto): nunca vira Saída (consumo) ao ser transferido para um ponto de consumo — mantém saldo lá.">
+                  <input type="checkbox" checked={form.neverConsume ?? false}
+                    onChange={(e) => setForm({ ...form, neverConsume: e.target.checked })} className="w-4 h-4 accent-primary" />
+                  <span className="text-sm text-foreground">Bem durável (não consumir)</span>
                 </label>
                 {form.id && (
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -228,6 +234,12 @@ export default function EstoqueProdutosPage() {
                   </label>
                 )}
               </div>
+              {form.neverConsume && (
+                <p className="text-xs text-muted-foreground -mt-2">
+                  Transferências deste produto para pontos de consumo continuam transferências normais — o
+                  local passa a controlar o saldo dele (ex.: enxoval na lavanderia).
+                </p>
+              )}
             </div>
             <div className="p-5 border-t border-border flex justify-end gap-2">
               <button onClick={requestClose} className="px-4 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground">Cancelar</button>

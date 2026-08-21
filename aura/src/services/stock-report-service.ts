@@ -60,6 +60,7 @@ export const StockReportService = {
     switch (kind) {
       case "position": return this.positionReport(propertyId, filters);
       case "losses": return this.movementsReport(propertyId, { ...filters, types: ["loss"] }, "losses");
+      case "consumption": return this.consumptionReport(propertyId, filters);
       default: return this.movementsReport(propertyId, filters, "movements");
     }
   },
@@ -120,6 +121,75 @@ export const StockReportService = {
       totals: {
         saldo: round2(rows.reduce((s, r) => s + r.saldo, 0)),
         valor: round2(rows.reduce((s, r) => s + r.valor, 0)),
+      },
+      meta: { generatedAt: now(), filterSummary: summarize(f, locations, products), rowCount: rows.length },
+    };
+  },
+
+  /**
+   * Consumo por setor: saídas de consumo (transferência convertida por política
+   * de local) e de reposição, agrupadas pelo SETOR — que numa saída convertida
+   * fica anotado em toLocationId. Cabanas aparecem como setor (a baixa da
+   * reposição anota a cabana de destino).
+   */
+  async consumptionReport(propertyId: string, f: StockReportFilters): Promise<StockReport> {
+    const client = db();
+    const { products, locations, categories } = await loadBase(propertyId);
+
+    let q = client.from("stock_movements").select("*")
+      .eq("propertyId", propertyId)
+      .eq("type", "exit")
+      .in("referenceType", ["consumption", "restock"]);
+    if (f.from) q = q.gte("createdAt", f.from);
+    if (f.to) q = q.lte("createdAt", `${f.to.slice(0, 10)}T23:59:59.999Z`);
+    if (f.productIds?.length) q = q.in("productId", f.productIds);
+    const { data: moves } = await q.order("createdAt", { ascending: false }).limit(5000);
+
+    const pMap = new Map(products.map((p) => [p.id, p]));
+    const lMap = new Map(locations.map((l) => [l.id, l]));
+    const catMap = new Map(categories.map((c) => [c.id, c.name]));
+
+    // Agrega por setor × categoria × item — o razão é por movimentação, o
+    // relatório responde "quanto cada setor consumiu no período".
+    const agg = new Map<string, { setor: string; categoria: string; item: string; unidade: string; quantidade: number; custo: number }>();
+    for (const m of (moves ?? []) as StockMovement[]) {
+      // O setor é o destino anotado; saída de consumo sem destino (ex.:
+      // regularização manual) agrupa pelo local de origem.
+      const sectorId = m.toLocationId ?? m.fromLocationId ?? null;
+      if (f.locationIds?.length && !(sectorId && f.locationIds.includes(sectorId))) continue;
+      const p = pMap.get(m.productId);
+      if (f.categoryIds?.length && !(p?.categoryId && f.categoryIds.includes(p.categoryId))) continue;
+      const key = `${sectorId}|${m.productId}`;
+      const cur = agg.get(key) ?? {
+        setor: sectorId ? (lMap.get(sectorId)?.name ?? "—") : "—",
+        categoria: p?.categoryId ? (catMap.get(p.categoryId) ?? "—") : "—",
+        item: p?.name ?? "—",
+        unidade: p?.unit ?? "",
+        quantidade: 0,
+        custo: 0,
+      };
+      cur.quantidade += Number(m.quantity);
+      cur.custo += Number(m.totalCost) || 0;
+      agg.set(key, cur);
+    }
+    const rows = Array.from(agg.values())
+      .map((r) => ({ ...r, quantidade: round2(r.quantidade), custo: round2(r.custo) }))
+      .sort((a, b) => a.setor.localeCompare(b.setor) || a.categoria.localeCompare(b.categoria) || a.item.localeCompare(b.item));
+
+    return {
+      kind: "consumption",
+      columns: [
+        { key: "setor", label: "Setor" },
+        { key: "categoria", label: "Categoria" },
+        { key: "item", label: "Item" },
+        { key: "unidade", label: "Un." },
+        { key: "quantidade", label: "Qtd.", align: "right" },
+        { key: "custo", label: "Custo", align: "right" },
+      ],
+      rows,
+      totals: {
+        quantidade: round2(rows.reduce((s, r) => s + r.quantidade, 0)),
+        custo: round2(rows.reduce((s, r) => s + r.custo, 0)),
       },
       meta: { generatedAt: now(), filterSummary: summarize(f, locations, products), rowCount: rows.length },
     };

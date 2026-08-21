@@ -19,6 +19,7 @@ const KINDS: { value: StockReportKind; label: string; hint: string }[] = [
   { value: "position", label: "Posição de estoque", hint: "Saldo, custo e valor por item em cada estoque" },
   { value: "movements", label: "Movimentações", hint: "Tudo que entrou, saiu e foi transferido no período" },
   { value: "losses", label: "Perdas", hint: "Só as perdas, com o motivo de cada uma" },
+  { value: "consumption", label: "Consumo por setor", hint: "Saídas de consumo e reposição por setor, com categoria e item" },
 ];
 
 const money = (n: number) => `R$ ${Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -102,7 +103,7 @@ export default function EstoqueRelatoriosPage() {
       </header>
 
       {/* Tipo de relatório */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
         {KINDS.map((k) => (
           <button key={k.value} onClick={() => { setKind(k.value); setReport(null); }}
             className={cn("text-left bg-card border rounded-2xl p-4 transition-colors",

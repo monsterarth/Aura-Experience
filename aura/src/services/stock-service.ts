@@ -25,6 +25,8 @@ import {
   StockCabinOption,
   StockLocationDetail,
   StockLocationOverview,
+  StockLocationPolicy,
+  StockLocationType,
   StockMovementType,
   StockReferenceType,
   StockStaffOption,
@@ -85,6 +87,15 @@ interface MovementInput {
   batchRef?: string | null;    // agrupa as movimentações lançadas juntas em lote
 }
 
+/** Local carregado uma vez por movimentação — staff-check, política de consumo e auditoria usam o mesmo mapa. */
+interface MovementLocation {
+  id: string;
+  name: string;
+  type: StockLocationType;
+  policy: StockLocationPolicy;
+  consumeCategoryIds: string[];
+}
+
 /** Erro lançado quando a operação levaria o saldo do local abaixo de zero. */
 export interface NegativeStockError extends Error {
   code: "NEGATIVE_STOCK";
@@ -113,8 +124,12 @@ const TYPE_PT: Record<StockMovementType, string> = {
 function routeText(
   type: StockMovementType,
   fromName?: string | null,
-  toName?: string | null
+  toName?: string | null,
+  converted = false
 ): string {
+  // Movimentação convertida por política de local (consumo/devolução): a rota
+  // completa origem → setor é a informação que importa.
+  if (converted && fromName && toName) return ` — ${fromName} → ${toName}`;
   if (type === "transfer") return fromName && toName ? ` — ${fromName} → ${toName}` : "";
   if (type === "entry") return toName ? ` — em ${toName}` : "";
   if (type === "exit" || type === "loss") return fromName ? ` — de ${fromName}` : "";
@@ -191,6 +206,19 @@ export const StockService = {
     // cabinId é vínculo de identidade com a cabana: só applyCabinLinks e
     // _resolveCabinLocation escrevem nele. Nunca pelo formulário de local.
     delete row.cabinId;
+    // Política de consumo: caller que não a envia (ex.: retypeToOther antigo)
+    // não mexe nela; valor fora do domínio cai no padrão; a lista de categorias
+    // só existe no modo por-categoria (evita lixo órfão quando o modo muda).
+    if (payload.policy === undefined) {
+      delete row.policy;
+      delete row.consumeCategoryIds;
+    } else {
+      const POLICIES: StockLocationPolicy[] = ["stock", "consume_all", "consume_categories"];
+      row.policy = POLICIES.includes(payload.policy) ? payload.policy : "stock";
+      row.consumeCategoryIds = row.policy === "consume_categories" && Array.isArray(payload.consumeCategoryIds)
+        ? payload.consumeCategoryIds
+        : [];
+    }
     const { error } = await db().from("stock_locations").upsert(row);
     if (error) throw error;
     await AuditService.log({
@@ -926,13 +954,17 @@ export const StockService = {
   async registerMovement(propertyId: string, input: MovementInput, actor: Actor): Promise<string> {
     const client = db();
     const { data: product } = await client
-      .from("stock_products").select("*").eq("id", input.productId).eq("propertyId", propertyId).single();
+      .from("stock_products").select("*, category:stock_categories(id, appliesTo)")
+      .eq("id", input.productId).eq("propertyId", propertyId).single();
     if (!product) throw new Error("Produto não encontrado.");
 
     // Cabana → local. Resolve ANTES da validação abaixo, senão uma movimentação
     // que só informa a cabana falharia com "exige local de destino".
     if (input.fromCabinId) input.fromLocationId = await this._resolveCabinLocation(client, propertyId, input.fromCabinId, actor);
     if (input.toCabinId) input.toLocationId = await this._resolveCabinLocation(client, propertyId, input.toCabinId, actor);
+
+    // Locais da movimentação (staff-check + política de consumo + auditoria) numa query só.
+    const locMap = await this._loadMovementLocations(client, propertyId, input);
 
     // Validação mínima de locais por tipo
     if ((input.type === "exit" || input.type === "loss") && !input.fromLocationId)
@@ -945,7 +977,35 @@ export const StockService = {
       throw new Error("Ajuste exige um local.");
 
     // Local do tipo 'staff' exige informar QUAL colaborador.
-    await this._assertStaffDetail(client, propertyId, input);
+    this._assertStaffDetail(input, locMap);
+
+    // ── Política do local (ponto de consumo) ────────────────────────────────
+    // Transferência que cruza a fronteira do estoque não é transferência:
+    // entregar num ponto de consumo É o consumo (vira saída, com o setor
+    // anotado em toLocationId), e o caminho de volta é devolução (vira
+    // entrada). Decidido ANTES de custo/guarda/FIFO/saldos, que já operam no
+    // tipo convertido.
+    let conversion: "consumption" | "sectorReturn" | null = null;
+    if (input.type === "transfer") {
+      const exempt = this._isConsumeExempt(product);
+      const destConsumes = !exempt && this._locationConsumes(locMap.get(input.toLocationId!), product.categoryId ?? null);
+      const origConsumes = !exempt && this._locationConsumes(locMap.get(input.fromLocationId!), product.categoryId ?? null);
+      if (destConsumes && origConsumes) {
+        throw new Error(`Nenhum dos dois locais controla o saldo de "${product.name}" — registre a saída de consumo direto do estoque de origem.`);
+      } else if (destConsumes) {
+        conversion = "consumption";
+        input.type = "exit";
+        input.referenceType = "consumption";
+      } else if (origConsumes) {
+        conversion = "sectorReturn";
+        input.type = "entry";
+        input.referenceType = "consumption";
+        // O custo volta ao estoque pelo médio atual — sem isso a entrada
+        // entraria a custo 0 e arrastaria o custo médio ponderado para baixo.
+        input.unitCost = Number(product.averageCost) || 0;
+        input.notes = input.notes ? `Devolução de setor — ${input.notes}` : "Devolução de setor";
+      }
+    }
 
     // Responsável pela ação: default = quem operou. O NOME é sempre resolvido no
     // servidor — o cliente manda só o id, como já vale para performedBy.
@@ -1056,16 +1116,16 @@ export const StockService = {
         break;
     }
 
-    const locNames = await this._locationNames(client, [input.fromLocationId, input.toLocationId]);
-    const route = routeText(
-      input.type,
-      input.fromLocationId ? locNames[input.fromLocationId] : null,
-      input.toLocationId ? locNames[input.toLocationId] : null
-    );
+    const locName = (id?: string | null) => (id ? locMap.get(id)?.name ?? null : null);
+    const typeLabel =
+      conversion === "consumption" ? "Saída (consumo)"
+      : conversion === "sectorReturn" ? "Entrada (devolução de setor)"
+      : TYPE_PT[input.type];
+    const route = routeText(input.type, locName(input.fromLocationId), locName(input.toLocationId), conversion !== null);
     await AuditService.log({
       propertyId, userId: actor.id, userName: actor.name,
       action: AUDIT_ACTION[input.type], entity: "STOCK", entityId: input.productId,
-      details: `${TYPE_PT[input.type]} de ${qty} ${product.unit} — ${product.name}${route}.`,
+      details: `${typeLabel} de ${qty} ${product.unit} — ${product.name}${route}.`,
     });
     return id;
   },
@@ -1151,10 +1211,16 @@ export const StockService = {
     input: BatchMovementInput & { fromLocationId: string | null; toLocationId: string | null },
   ): Promise<BatchLineError[]> {
     const errors: BatchLineError[] = [];
+    type PreflightProduct = {
+      id: string; name: string; deleted: boolean; active: boolean;
+      categoryId: string | null; neverConsume: boolean;
+      category: { appliesTo: string } | null;
+    };
     const { data: products } = await client.from("stock_products")
-      .select("id, name, deleted, active").eq("propertyId", propertyId)
+      .select("id, name, deleted, active, categoryId, neverConsume, category:stock_categories(appliesTo)")
+      .eq("propertyId", propertyId)
       .in("id", input.lines.map((l) => l.productId).filter(Boolean));
-    const pMap = new Map(((products ?? []) as { id: string; name: string; deleted: boolean; active: boolean }[]).map((p) => [p.id, p]));
+    const pMap = new Map(((products ?? []) as unknown as PreflightProduct[]).map((p) => [p.id, p]));
 
     // Locais exigidos por tipo — mesma regra do registerMovement, só que antecipada.
     const need = (cond: boolean, msg: string) => { if (cond) errors.push({ index: -1, productId: "", error: msg }); };
@@ -1163,6 +1229,13 @@ export const StockService = {
     need(input.type === "transfer" && (!input.fromLocationId || !input.toLocationId), "Transferência exige origem e destino.");
     need(input.type === "adjustment" && !input.toLocationId && !input.fromLocationId, "Ajuste exige um local.");
     if (errors.length > 0) return errors;
+
+    // Política dos locais do cabeçalho — antecipa o veredito de conversão do
+    // registerMovement: rejeita "nenhum lado controla" e isenta da guarda as
+    // linhas que virarão devolução (entrada não debita ninguém).
+    const locMap = await this._loadMovementLocations(client, propertyId, input);
+    const fromLoc = input.fromLocationId ? locMap.get(input.fromLocationId) : undefined;
+    const toLoc = input.toLocationId ? locMap.get(input.toLocationId) : undefined;
 
     const simulated = new Map<string, number>();
     const balanceOf = async (productId: string, locationId: string) => {
@@ -1180,9 +1253,24 @@ export const StockService = {
       if (!Number.isFinite(qty) || qty === 0) { errors.push({ index: i, productId: line.productId, error: `Quantidade inválida em "${p.name}".` }); continue; }
       if (input.type !== "adjustment" && qty < 0) { errors.push({ index: i, productId: line.productId, error: `Quantidade negativa em "${p.name}".` }); continue; }
 
+      // Conversão por política (transferência): mesmo veredito do registerMovement.
+      let lineType: StockMovementType = input.type;
+      if (input.type === "transfer") {
+        const exempt = this._isConsumeExempt(p);
+        const destConsumes = !exempt && this._locationConsumes(toLoc, p.categoryId);
+        const origConsumes = !exempt && this._locationConsumes(fromLoc, p.categoryId);
+        if (destConsumes && origConsumes) {
+          errors.push({ index: i, productId: line.productId, error: `"${p.name}": nenhum dos dois locais controla o saldo — registre uma saída de consumo.` });
+          continue;
+        }
+        // Devolução de setor vira entrada: não debita ninguém, sem guarda.
+        if (origConsumes) lineType = "entry";
+        // destConsumes vira saída — guarda idêntica à da transferência (debita a origem).
+      }
+
       // Razão simulado: o saldo previsto já considera as linhas anteriores do lote.
       const guard = this._negativeGuard(
-        { productId: line.productId, type: input.type, quantity: qty, fromLocationId: input.fromLocationId, toLocationId: input.toLocationId },
+        { productId: line.productId, type: lineType, quantity: qty, fromLocationId: input.fromLocationId, toLocationId: input.toLocationId },
         qty,
       );
       if (guard && guard.delta < 0) {
@@ -1280,16 +1368,10 @@ export const StockService = {
    * (formulário): as baixas automáticas (compra, inventário, consumo, validade)
    * não têm onde informá-lo.
    */
-  async _assertStaffDetail(client: DB, propertyId: string, input: MovementInput): Promise<void> {
-    const ids = [input.fromLocationId, input.toLocationId].filter(Boolean) as string[];
-    if (ids.length === 0) return;
+  _assertStaffDetail(input: MovementInput, locMap: Map<string, MovementLocation>): void {
     const required = (input.referenceType ?? "manual") === "manual";
-    const { data } = await client.from("stock_locations")
-      .select("id, name, type").eq("propertyId", propertyId).in("id", ids);
-    const map = new Map(((data ?? []) as StockLocation[]).map((l) => [l.id, l]));
-
     for (const side of ["from", "to"] as const) {
-      const loc = map.get((side === "from" ? input.fromLocationId : input.toLocationId) ?? "");
+      const loc = locMap.get((side === "from" ? input.fromLocationId : input.toLocationId) ?? "");
       const staffKey = `${side}StaffId` as const;
       if (loc?.type === "staff") {
         if (required && !input[staffKey]) throw new Error(`Selecione o colaborador em "${loc.name}".`);
@@ -1297,6 +1379,35 @@ export const StockService = {
         input[staffKey] = null;
       }
     }
+  },
+
+  /** Locais da movimentação numa query só — staff-check, política e auditoria leem o mesmo mapa. */
+  async _loadMovementLocations(client: DB, propertyId: string, input: Pick<MovementInput, "fromLocationId" | "toLocationId">): Promise<Map<string, MovementLocation>> {
+    const ids = Array.from(new Set([input.fromLocationId, input.toLocationId].filter(Boolean))) as string[];
+    if (ids.length === 0) return new Map();
+    const { data } = await client.from("stock_locations")
+      .select("id, name, type, policy, consumeCategoryIds")
+      .eq("propertyId", propertyId).in("id", ids);
+    return new Map(((data ?? []) as Array<Record<string, unknown>>).map((l) => [l.id as string, {
+      id: l.id as string,
+      name: l.name as string,
+      type: l.type as StockLocationType,
+      policy: (l.policy as StockLocationPolicy) ?? "stock",
+      consumeCategoryIds: Array.isArray(l.consumeCategoryIds) ? (l.consumeCategoryIds as string[]) : [],
+    }]));
+  },
+
+  /** O local consome (não controla saldo de) produtos desta categoria? */
+  _locationConsumes(loc: MovementLocation | undefined, categoryId: string | null): boolean {
+    if (!loc) return false;
+    if (loc.policy === "consume_all") return true;
+    if (loc.policy === "consume_categories") return !!categoryId && loc.consumeCategoryIds.includes(categoryId);
+    return false;
+  },
+
+  /** Isenções da conversão: patrimônio (categoria 'asset') e bem durável (produto neverConsume). */
+  _isConsumeExempt(product: { neverConsume?: boolean | null; category?: { appliesTo?: string | null } | null }): boolean {
+    return product.neverConsume === true || product.category?.appliesTo === "asset";
   },
 
   /** Local + delta a verificar contra saldo negativo (null quando não se aplica). */

@@ -73,6 +73,27 @@ export default function BatchMovementModal({
   const askFromStaff = showFrom && locOf(from.locationId)?.type === "staff";
   const askToStaff = showTo && locOf(to.locationId)?.type === "staff";
 
+  // Espelho client-side da conversão por política de local: lista quais linhas
+  // do lote virarão consumo/devolução (o veredito final é do servidor).
+  const consumesProduct = (loc: StockLocation | undefined, p: StockProduct | undefined) => {
+    if (!loc || !p) return false;
+    if (p.neverConsume || p.category?.appliesTo === "asset") return false;
+    if (loc.policy === "consume_all") return true;
+    if (loc.policy === "consume_categories") return !!p.categoryId && (loc.consumeCategoryIds ?? []).includes(p.categoryId);
+    return false;
+  };
+  const namesFor = (loc: StockLocation | undefined) => {
+    if (type !== "transfer" || !loc || (loc.policy ?? "stock") === "stock") return [];
+    const names = new Set<string>();
+    for (const r of rows) {
+      const p = products.find((x) => x.id === r.productId);
+      if (consumesProduct(loc, p)) names.add(p!.name);
+    }
+    return Array.from(names);
+  };
+  const convertingNames = namesFor(locOf(to.locationId));
+  const returningNames = convertingNames.length > 0 ? [] : namesFor(locOf(from.locationId));
+
   // Linhas já gravadas travam; só as pendentes seguem editáveis.
   const committed = useMemo(() => new Set((result?.ok ?? []).map((o) => o.index)), [result]);
   const failedIndex = result?.failed?.index ?? -1;
@@ -229,6 +250,18 @@ export default function BatchMovementModal({
               <label className="field-label">Responsável</label>
               <StaffSelect staff={staff} value={responsibleId} onChange={setResponsibleId} />
             </div>
+            {convertingNames.length > 0 && (
+              <p className="col-span-2 text-xs font-medium text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+                <b>{locOf(to.locationId)?.name}</b> é ponto de consumo — estas linhas serão registradas como{" "}
+                <b>Saída (consumo)</b>: {convertingNames.join(", ")}.
+              </p>
+            )}
+            {returningNames.length > 0 && (
+              <p className="col-span-2 text-xs font-medium text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+                <b>{locOf(from.locationId)?.name}</b> é ponto de consumo — estas linhas serão registradas como{" "}
+                <b>Entrada (devolução de setor)</b>: {returningNames.join(", ")}.
+              </p>
+            )}
             <div>
               <label className="field-label">Observações</label>
               <input className="field-input w-full" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Vale para todas as linhas" />

@@ -44,7 +44,9 @@ export default function InventarioPage() {
         StockClient.inventoryCounts(property.id), StockClient.locations(property.id),
         StockClient.categories(property.id), StockClient.cabinOptions(property.id),
       ]);
-      setCounts(c); setLocations(l.filter((x) => x.active)); setCategories(cat); setCabinOptions(cabins);
+      // Ponto de consumo total não tem o que contar (transferir p/ lá já é saída);
+      // locais de consumo POR CATEGORIA continuam contáveis (têm saldos isentos).
+      setCounts(c); setLocations(l.filter((x) => x.active && x.policy !== "consume_all")); setCategories(cat); setCabinOptions(cabins);
     } catch (e) { toast.error((e as Error).message); }
     finally { setLoading(false); }
   }, [property?.id]);

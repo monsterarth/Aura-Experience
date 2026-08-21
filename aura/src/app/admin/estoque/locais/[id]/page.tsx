@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { StockClient } from "@/lib/stock-client";
-import { StockLocationDetail, StockLocationType } from "@/types/aura";
+import { StockCategory, StockLocationDetail, StockLocationPolicy, StockLocationType } from "@/types/aura";
 import ProductDetailModal from "@/components/admin/ProductDetailModal";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,11 @@ const LOCATION_TYPES: { value: StockLocationType; label: string }[] = [
   { value: "bar", label: "Bar" }, { value: "laundry", label: "Lavanderia" },
   { value: "cabin", label: "Cabana" }, { value: "staff", label: "Colaboradores" },
   { value: "other", label: "Outro" },
+];
+const POLICY_OPTIONS: { value: StockLocationPolicy; label: string }[] = [
+  { value: "stock", label: "Estoque (controla saldo)" },
+  { value: "consume_all", label: "Ponto de consumo (tudo vira saída)" },
+  { value: "consume_categories", label: "Ponto de consumo por categoria" },
 ];
 
 // Tela operacional: saldo, mínimo e histórico. Custo/valor ficam na Visão Geral,
@@ -41,12 +46,17 @@ export default function EstoqueLocalPage() {
   const [saving, setSaving] = useState(false);
   const [fix, setFix] = useState<FixDraft | null>(null);
   const [productId, setProductId] = useState<string | null>(null);
-  const [manage, setManage] = useState<{ name: string; type: StockLocationType; active: boolean } | null>(null);
+  const [manage, setManage] = useState<{ name: string; type: StockLocationType; active: boolean; policy: StockLocationPolicy; consumeCategoryIds: string[] } | null>(null);
+  const [categories, setCategories] = useState<StockCategory[]>([]);
 
   const load = useCallback(async () => {
     if (!property?.id || !locationId) return;
     try {
-      setDetail(await StockClient.locationDetail(property.id, locationId));
+      const [d, cats] = await Promise.all([
+        StockClient.locationDetail(property.id, locationId),
+        StockClient.categories(property.id),
+      ]);
+      setDetail(d); setCategories(cats);
     } catch (e) { toast.error((e as Error).message); }
     finally { setLoading(false); }
   }, [property?.id, locationId]);
@@ -80,6 +90,7 @@ export default function EstoqueLocalPage() {
       await StockClient.saveLocation({
         propertyId: property.id, id: detail.location.id,
         name: manage.name.trim(), type: manage.type, active: manage.active,
+        policy: manage.policy, consumeCategoryIds: manage.consumeCategoryIds,
       });
       setManage(null); await load(); toast.success("Local atualizado.");
     } catch (e) { toast.error((e as Error).message); } finally { setSaving(false); }
@@ -116,6 +127,8 @@ export default function EstoqueLocalPage() {
           </h1>
           <p className="text-sm text-muted-foreground">
             {LOCATION_TYPES.find((t) => t.value === detail.location.type)?.label ?? detail.location.type}
+            {detail.location.policy === "consume_all" && " · ponto de consumo"}
+            {detail.location.policy === "consume_categories" && ` · ponto de consumo (${(detail.location.consumeCategoryIds ?? []).length} categoria(s))`}
             {isCabin && " · derivado do cadastro de cabanas"}
             {!detail.location.active && " · inativo"}
           </p>
@@ -129,7 +142,10 @@ export default function EstoqueLocalPage() {
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg bg-secondary text-foreground hover:bg-secondary/70">
             <Repeat size={14} /> Movimentar para cá
           </Link>
-          <button onClick={() => setManage({ name: detail.location.name, type: detail.location.type, active: detail.location.active })}
+          <button onClick={() => setManage({
+            name: detail.location.name, type: detail.location.type, active: detail.location.active,
+            policy: detail.location.policy ?? "stock", consumeCategoryIds: detail.location.consumeCategoryIds ?? [],
+          })}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg bg-secondary text-foreground hover:bg-secondary/70">
             <Settings2 size={14} /> Gerir local
           </button>
@@ -218,17 +234,30 @@ export default function EstoqueLocalPage() {
           </thead>
           <tbody>
             {detail.movements.map((m) => {
-              const entering = m.toLocationId === locationId;
+              // Numa saída convertida (ponto de consumo) o toLocationId é só a
+              // ANOTAÇÃO do setor — nenhum saldo entrou aqui. O mesmo vale para
+              // a devolução (entrada em outro estoque com este setor de origem).
+              const consumedHere = m.toLocationId === locationId && (m.type === "exit" || m.type === "loss");
+              const returnedFromHere = m.fromLocationId === locationId && m.type === "entry";
+              const neutral = consumedHere || returnedFromHere;
+              const entering = !neutral && m.toLocationId === locationId;
               return (
                 <tr key={m.id} onClick={() => m.productId && setProductId(m.productId)}
                   className="border-b border-border/50 last:border-0 hover:bg-secondary/30 cursor-pointer">
                   <td className="px-4 py-3 text-muted-foreground whitespace-nowrap text-xs">{fmtDate(m.createdAt)}</td>
                   <td className="px-4 py-3 text-foreground">{m.product?.name ?? "—"}</td>
-                  <td className={cn("px-4 py-3 text-right tabular-nums font-medium", entering ? "text-emerald-500" : "text-orange-500")}>
-                    {entering ? "+" : "−"}{Math.abs(Number(m.quantity))}
+                  <td className={cn("px-4 py-3 text-right tabular-nums font-medium",
+                    neutral ? "text-muted-foreground" : entering ? "text-emerald-500" : "text-orange-500")}>
+                    {neutral ? "" : entering ? "+" : "−"}{Math.abs(Number(m.quantity))}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">
-                    {entering ? (m.fromLocation?.name ? `de ${m.fromLocation.name}` : "entrada") : (m.toLocation?.name ? `para ${m.toLocation.name}` : "saída")}
+                    {consumedHere
+                      ? `consumo — ${m.fromLocation?.name ? `de ${m.fromLocation.name}` : "no setor"}`
+                      : returnedFromHere
+                        ? `devolução — ${m.toLocation?.name ? `para ${m.toLocation.name}` : "ao estoque"}`
+                        : entering
+                          ? (m.fromLocation?.name ? `de ${m.fromLocation.name}` : "entrada")
+                          : (m.toLocation?.name ? `para ${m.toLocation.name}` : "saída")}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground text-xs">{m.responsibleName ?? m.performedByName ?? "—"}</td>
                 </tr>
@@ -315,6 +344,39 @@ export default function EstoqueLocalPage() {
                   {LOCATION_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </div>
+              <div>
+                <label className="field-label">Controle de saldo</label>
+                <select className="field-input w-full" value={manage.policy}
+                  onChange={(e) => setManage({ ...manage, policy: e.target.value as StockLocationPolicy })}>
+                  {POLICY_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                </select>
+                {manage.policy === "consume_all" && (
+                  <p className="text-xs text-muted-foreground mt-1.5">
+                    Transferir para cá vira <b>Saída (consumo)</b> — o setor não acumula saldo.
+                    Patrimônio e bens duráveis continuam transferência normal.
+                  </p>
+                )}
+              </div>
+              {manage.policy === "consume_categories" && (
+                <div className="flex flex-wrap gap-1.5">
+                  {categories.filter((c) => c.appliesTo !== "asset").map((c) => {
+                    const sel = manage.consumeCategoryIds.includes(c.id);
+                    return (
+                      <button key={c.id} type="button"
+                        onClick={() => setManage({
+                          ...manage,
+                          consumeCategoryIds: sel
+                            ? manage.consumeCategoryIds.filter((x) => x !== c.id)
+                            : [...manage.consumeCategoryIds, c.id],
+                        })}
+                        className={cn("px-2.5 py-1.5 rounded-lg text-xs font-bold border",
+                          sel ? "bg-primary/15 border-primary/40 text-foreground" : "bg-secondary border-border text-muted-foreground")}>
+                        {c.icon} {c.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
               <label className="flex items-center gap-3 cursor-pointer">
                 <input type="checkbox" checked={manage.active} onChange={(e) => setManage({ ...manage, active: e.target.checked })}
                   className="w-4 h-4 accent-primary" />

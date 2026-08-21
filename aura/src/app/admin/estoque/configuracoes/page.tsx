@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { StockClient } from "@/lib/stock-client";
-import { CabinLinkReport, StockCategory, StockLocation, StockSettings, StockCategoryScope, StockLocationType } from "@/types/aura";
+import { CabinLinkReport, StockCategory, StockLocation, StockSettings, StockCategoryScope, StockLocationType, StockLocationPolicy } from "@/types/aura";
 import StockLocationSelect from "@/components/admin/StockLocationSelect";
 import { splitLocations } from "@/lib/stock-locations";
 import { useTabParam } from "@/lib/settings-deeplink";
@@ -29,6 +29,11 @@ const LOCATION_TYPES: { value: StockLocationType; label: string }[] = [
   { value: "bar", label: "Bar" }, { value: "laundry", label: "Lavanderia" },
   { value: "cabin", label: "Cabanas" }, { value: "staff", label: "Colaboradores" },
   { value: "other", label: "Outro" },
+];
+const POLICY_OPTIONS: { value: StockLocationPolicy; label: string }[] = [
+  { value: "stock", label: "Estoque (controla saldo)" },
+  { value: "consume_all", label: "Ponto de consumo (tudo vira saída)" },
+  { value: "consume_categories", label: "Ponto de consumo por categoria" },
 ];
 
 const SEED_CATEGORIES: Partial<StockCategory>[] = [
@@ -277,6 +282,47 @@ export default function EstoqueConfigPage() {
                   e o nome de quem levou fica no histórico da movimentação.
                 </p>
               )}
+              <div>
+                <label className="field-label">Controle de saldo</label>
+                <select className="field-input w-full" value={locForm.policy ?? "stock"}
+                  onChange={(e) => setLocForm({ ...locForm, policy: e.target.value as StockLocationPolicy })}>
+                  {POLICY_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+                </select>
+              </div>
+              {locForm.policy === "consume_all" && (
+                <p className="text-xs text-muted-foreground">
+                  Setor que <b>não controla estoque</b> (ex.: refeitório, lavanderia): transferir para cá é
+                  registrado como <b>Saída (consumo)</b> — o setor não acumula saldo e o histórico guarda o
+                  destino. Exceções que continuam transferência normal: categorias de <b>patrimônio</b> e
+                  produtos marcados como <b>bem durável</b>.
+                </p>
+              )}
+              {locForm.policy === "consume_categories" && (
+                <div className="space-y-1.5">
+                  <p className="text-xs text-muted-foreground">
+                    Transferências <b>destas categorias</b> viram Saída (consumo); as demais mantêm saldo aqui
+                    normalmente (ex.: o café controla alimentos, mas consome descartáveis na chegada).
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {categories.filter((c) => c.appliesTo !== "asset").map((c) => {
+                      const sel = (locForm.consumeCategoryIds ?? []).includes(c.id);
+                      return (
+                        <button key={c.id} type="button"
+                          onClick={() => setLocForm({
+                            ...locForm,
+                            consumeCategoryIds: sel
+                              ? (locForm.consumeCategoryIds ?? []).filter((x) => x !== c.id)
+                              : [...(locForm.consumeCategoryIds ?? []), c.id],
+                          })}
+                          className={cn("px-2.5 py-1.5 rounded-lg text-xs font-bold border",
+                            sel ? "bg-primary/15 border-primary/40 text-foreground" : "bg-secondary border-border text-muted-foreground")}>
+                          {c.icon} {c.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setLocForm(null)} className="px-3 py-2 text-xs font-bold text-muted-foreground hover:text-foreground"><X size={14} /></button>
                 <button onClick={saveLocation} disabled={saving}
@@ -292,6 +338,14 @@ export default function EstoqueConfigPage() {
               <div key={l.id} className="flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-3">
                 <MapPin size={16} className="text-muted-foreground" />
                 <span className="flex-1 font-medium text-foreground">{l.name}</span>
+                {l.policy === "consume_all" && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-amber-500/15 text-amber-500">Ponto de consumo</span>
+                )}
+                {l.policy === "consume_categories" && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-amber-500/15 text-amber-500">
+                    Consumo parcial ({(l.consumeCategoryIds ?? []).length})
+                  </span>
+                )}
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-secondary text-muted-foreground">
                   {LOCATION_TYPES.find((t) => t.value === l.type)?.label ?? l.type}
                 </span>

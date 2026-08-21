@@ -1618,6 +1618,14 @@ export interface ChangelogEntry {
 
 export type StockCategoryScope = 'consumable' | 'asset' | 'both';
 export type StockLocationType   = 'warehouse' | 'kitchen' | 'bar' | 'laundry' | 'cabin' | 'staff' | 'other';
+/**
+ * Política de controle de saldo do local:
+ * - 'stock': estoque de verdade — transferências mantêm saldo (padrão).
+ * - 'consume_all': ponto de consumo — transferência para cá vira SAÍDA (consumo do setor).
+ * - 'consume_categories': misto — só as categorias em consumeCategoryIds viram saída.
+ * Isenções (nunca convertem): categoria appliesTo 'asset' e produto neverConsume.
+ */
+export type StockLocationPolicy = 'stock' | 'consume_all' | 'consume_categories';
 export type StockUnit           = 'un' | 'kg' | 'g' | 'L' | 'ml' | 'cx' | 'pct' | 'par' | 'rolo';
 export type StockMovementType   = 'entry' | 'exit' | 'transfer' | 'adjustment' | 'loss';
 export type StockLossType       = 'expiry' | 'damage' | 'handling' | 'other';
@@ -1644,6 +1652,9 @@ export interface StockLocation {
   name: string;
   type: StockLocationType;
   cabinId?: string | null;
+  policy: StockLocationPolicy;
+  /** Só faz sentido quando policy === 'consume_categories'. */
+  consumeCategoryIds?: string[] | null;
   active: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -1661,6 +1672,8 @@ export interface StockProduct {
   barcode?: string;
   imageUrl?: string;
   trackExpiry: boolean;
+  /** Bem durável (ex.: toalha de rosto) — nunca converte em consumo ao entrar num ponto de consumo. */
+  neverConsume?: boolean;
   minStock: number;
   maxStock?: number | null;
   averageCost: number;        // custo médio ponderado
@@ -1780,7 +1793,7 @@ export interface CabinLinkCandidate {
 }
 
 // ── RELATÓRIOS DE ESTOQUE ─────────────────────────────────────────────────────
-export type StockReportKind = 'position' | 'movements' | 'losses';
+export type StockReportKind = 'position' | 'movements' | 'losses' | 'consumption';
 
 export interface StockReportFilters {
   /** Vazio = todos. Ids de stock_locations. */

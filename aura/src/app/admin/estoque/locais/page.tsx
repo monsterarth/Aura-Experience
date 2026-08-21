@@ -43,6 +43,17 @@ function StockCard({ s }: { s: StockLocationOverview }) {
         <ChevronRight size={15} className="shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
       </div>
 
+      {s.location.policy === "consume_all" && (
+        <span className="self-start text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500">
+          Ponto de consumo
+        </span>
+      )}
+      {s.location.policy === "consume_categories" && (
+        <span className="self-start text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-500">
+          Consumo parcial
+        </span>
+      )}
+
       <div>
         <p className={cn("text-lg font-bold tabular-nums leading-none", empty ? "text-muted-foreground" : "text-foreground")}>
           {empty ? "vazio" : <>{s.productCount} <span className="text-sm font-normal text-muted-foreground">item(ns)</span></>}

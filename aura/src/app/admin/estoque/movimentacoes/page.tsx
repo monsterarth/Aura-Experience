@@ -144,6 +144,19 @@ export default function EstoqueMovimentacoesPage() {
   const askFromStaff = showFrom && locationOf(form.fromLocationId)?.type === "staff";
   const askToStaff = showTo && locationOf(form.toLocationId)?.type === "staff";
 
+  // Espelho client-side da conversão por política de local (o veredito final é
+  // do servidor): antecipa para o operador que a transferência vira consumo.
+  const consumesSelected = (loc?: StockLocation) => {
+    if (!loc || !selectedProduct) return false;
+    if (selectedProduct.neverConsume || selectedProduct.category?.appliesTo === "asset") return false;
+    if (loc.policy === "consume_all") return true;
+    if (loc.policy === "consume_categories")
+      return !!selectedProduct.categoryId && (loc.consumeCategoryIds ?? []).includes(selectedProduct.categoryId);
+    return false;
+  };
+  const transferConsumes = form.type === "transfer" && consumesSelected(locationOf(form.toLocationId));
+  const transferReturns = form.type === "transfer" && !transferConsumes && consumesSelected(locationOf(form.fromLocationId));
+
   const submit = async () => {
     if (!property?.id) return;
     if (!form.productId) { toast.error("Selecione o produto."); return; }
@@ -333,6 +346,18 @@ export default function EstoqueMovimentacoesPage() {
                 <StaffSelect staff={staffOptions} value={form.toStaffId}
                   onChange={(id) => setForm({ ...form, toStaffId: id })} />
               </div>
+            )}
+            {transferConsumes && (
+              <p className="text-xs font-medium text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+                <b>{locationOf(form.toLocationId)?.name}</b> é ponto de consumo — será registrada como{" "}
+                <b>Saída (consumo)</b>: o saldo sai da origem e o setor fica anotado no histórico, sem acumular saldo.
+              </p>
+            )}
+            {transferReturns && (
+              <p className="text-xs font-medium text-amber-500 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+                <b>{locationOf(form.fromLocationId)?.name}</b> é ponto de consumo — será registrada como{" "}
+                <b>Entrada (devolução de setor)</b> no destino, ao custo médio atual do produto.
+              </p>
             )}
             {form.type === "loss" && (
               <div>
