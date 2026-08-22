@@ -18,9 +18,10 @@ import { useProperty } from "@/context/PropertyContext";
 import { StockClient } from "@/lib/stock-client";
 import { AssetLabel, AssetLabelOptions, DEFAULT_ASSET_LABEL_OPTIONS } from "@/types/aura";
 import { toast } from "sonner";
+import { PageShell, PageHeader, SkeletonList } from "@/components/aura";
 import { cn } from "@/lib/utils";
 import {
-  ArrowLeft, Loader2, Printer, Search, CheckSquare, Square, ShieldAlert, SlidersHorizontal, RotateCcw,
+  ArrowLeft, Printer, Search, CheckSquare, Square, ShieldAlert, SlidersHorizontal, RotateCcw,
 } from "lucide-react";
 import PrintReport from "@/components/admin/PrintReport";
 import AssetLabelCard from "@/components/admin/AssetLabelCard";
@@ -153,17 +154,15 @@ export default function EtiquetasPage() {
   const cfg = SIZES[options.size];
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <PageShell>
       <Link href="/admin/patrimonio" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4">
         <ArrowLeft size={15} /> Patrimônio
       </Link>
 
-      <header className="mb-4">
-        <h1 className="text-2xl font-bold text-foreground">Etiquetas de patrimônio</h1>
-        <p className="text-sm text-muted-foreground">
-          Monte a etiqueta, veja a prévia no tamanho real e imprima a folha A4.
-        </p>
-      </header>
+      <PageHeader
+        title="Etiquetas de patrimônio"
+        subtitle="Monte a etiqueta, veja a prévia no tamanho real e imprima a folha A4."
+      />
 
       <PatrimonioTabs active="etiquetas" />
 
@@ -328,7 +327,7 @@ export default function EtiquetasPage() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
+        <SkeletonList rows={5} avatar={false} />
       ) : labels.length === 0 ? (
         <p className="py-16 text-center text-muted-foreground">
           Nenhum ativo com plaqueta. Cadastre um ativo — o código é gerado automaticamente.
@@ -380,6 +379,6 @@ export default function EtiquetasPage() {
           </div>
         </PrintReport>
       )}
-    </div>
+    </PageShell>
   );
 }

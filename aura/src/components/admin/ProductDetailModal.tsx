@@ -9,8 +9,9 @@ import Link from "next/link";
 import { ProductDetail } from "@/types/aura";
 import { StockClient } from "@/lib/stock-client";
 import { toast } from "sonner";
+import { Dialog, SkeletonList } from "@/components/aura";
 import { cn } from "@/lib/utils";
-import { Loader2, X, Package, MapPin, CalendarClock, History, ChevronRight, MessageSquareText } from "lucide-react";
+import { Package, MapPin, CalendarClock, History, ChevronRight, MessageSquareText } from "lucide-react";
 
 const MOV_LABEL: Record<string, { label: string; color: string }> = {
   entry: { label: "Entrada", color: "text-emerald-500" },
@@ -46,24 +47,12 @@ export default function ProductDetailModal({ propertyId, productId, onClose, hig
   const todayStr = new Date().toISOString().slice(0, 10);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-card border border-border w-full max-w-2xl rounded-3xl shadow-2xl max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+    <Dialog open onClose={onClose} presentation="auto" size="lg" icon={Package} title={detail ? detail.product.name : "Produto"} subtitle={detail ? <>{detail.product.category?.name ?? "Sem categoria"} · unidade {detail.product.unit}{detail.product.sku ? ` · ${detail.product.sku}` : ""}</> : undefined}>
         {!detail ? (
-          <div className="flex justify-center py-20"><Loader2 className="animate-spin text-primary" /></div>
+          <SkeletonList rows={5} avatar={false} />
         ) : (
-          <>
-            <div className="p-5 border-b border-border flex justify-between items-start">
-              <div>
-                <h2 className="text-lg font-bold text-foreground flex items-center gap-2"><Package size={18} /> {detail.product.name}</h2>
-                <p className="text-xs text-muted-foreground">
-                  {detail.product.category?.name ?? "Sem categoria"} · unidade {detail.product.unit}{detail.product.sku ? ` · ${detail.product.sku}` : ""}
-                </p>
-              </div>
-              <button onClick={onClose} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
-            </div>
-
-            <div className="p-5 overflow-y-auto space-y-5">
-              <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <div className="bg-secondary/40 rounded-xl p-3">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Saldo total</div>
                   <div className="text-lg font-bold tabular-nums text-foreground">
@@ -182,9 +171,7 @@ export default function ProductDetailModal({ propertyId, productId, onClose, hig
                 ) : <p className="text-xs text-muted-foreground">Sem movimentações.</p>}
               </div>
             </div>
-          </>
         )}
-      </div>
-    </div>
+    </Dialog>
   );
 }

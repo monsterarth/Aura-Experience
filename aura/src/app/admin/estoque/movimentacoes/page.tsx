@@ -13,6 +13,7 @@ import BatchMovementModal from "@/components/admin/BatchMovementModal";
 import ProductDetailModal from "@/components/admin/ProductDetailModal";
 import StockBatchPanel from "@/components/admin/StockBatchPanel";
 import { toast } from "sonner";
+import { PageShell, PageHeader, SkeletonList, useConfirm } from "@/components/aura";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { Loader2, ArrowLeftRight, ArrowDownToLine, ArrowUpFromLine, Repeat, SlidersHorizontal, AlertOctagon, Save, Layers, History, ChevronDown, ChevronRight } from "lucide-react";
@@ -49,6 +50,7 @@ const emptyMov: MovForm = {
 
 export default function EstoqueMovimentacoesPage() {
   const { currentProperty: property } = useProperty();
+  const confirm = useConfirm();
   const { userData } = useAuth();
   const [products, setProducts] = useState<StockProduct[]>([]);
   const [locations, setLocations] = useState<StockLocation[]>([]);
@@ -201,11 +203,7 @@ export default function EstoqueMovimentacoesPage() {
     } catch (e) {
       const err = e as Error & { code?: string; available?: number; resulting?: number };
       if (err.code === "NEGATIVE_STOCK") {
-        const ok = window.confirm(
-          `⚠️ Estoque insuficiente neste local.\n\n` +
-          `Disponível: ${err.available}\nMovimentação: ${qty}\nSaldo final: ${err.resulting} (negativo)\n\n` +
-          `Deseja registrar mesmo assim, deixando o estoque negativo?`
-        );
+        const ok = await confirm({ title: "Estoque insuficiente neste local", description: `Disponível: ${err.available} · Movimentação: ${qty} · Saldo final: ${err.resulting} (negativo). Registrar mesmo assim, deixando o estoque negativo?`, confirmLabel: "Registrar assim mesmo", tone: "danger" });
         if (ok) {
           try { await send(true); } catch (e2) { toast.error((e2 as Error).message); }
         }
@@ -227,13 +225,12 @@ export default function EstoqueMovimentacoesPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="max-w-5xl mx-auto">
-      <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><ArrowLeftRight size={22} /> Movimentações</h1>
-          <p className="text-sm text-muted-foreground">Entradas, saídas, transferências, ajustes e perdas.</p>
-        </div>
-        <div className="flex gap-2">
+    <PageShell>
+      <PageHeader
+        icon={ArrowLeftRight}
+        title="Movimentações"
+        subtitle="Entradas, saídas, transferências, ajustes e perdas."
+        actions={(<><div className="flex gap-2">
           <Link href="/admin/estoque/movimentacoes/historico"
             className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-secondary text-foreground hover:bg-secondary/70">
             <History size={16} /> Histórico
@@ -242,8 +239,8 @@ export default function EstoqueMovimentacoesPage() {
             className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-secondary text-foreground hover:bg-secondary/70 disabled:opacity-50">
             <Layers size={16} /> Lançar em lote
           </button>
-        </div>
-      </header>
+        </div></>)}
+      />
 
       {productId && property && (
         <ProductDetailModal propertyId={property.id} productId={productId} onClose={() => setProductId(null)} />
@@ -392,7 +389,7 @@ export default function EstoqueMovimentacoesPage() {
       {/* Histórico */}
       <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">Últimas movimentações</h2>
       {loading ? (
-        <div className="flex justify-center py-12"><Loader2 className="animate-spin text-primary" /></div>
+        <SkeletonList rows={5} avatar={false} />
       ) : (
         <>
         {/* Mobile: cards — a tabela de 7 colunas não cabe no celular */}
@@ -511,6 +508,6 @@ export default function EstoqueMovimentacoesPage() {
         </div>
         </>
       )}
-    </div>
+    </PageShell>
   );
 }

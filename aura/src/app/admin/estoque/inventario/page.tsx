@@ -7,9 +7,10 @@ import { StockClient } from "@/lib/stock-client";
 import { InventoryCount, InventoryCountStatus, StockCabinOption, StockCategory, StockLocation } from "@/types/aura";
 import StockLocationPicker from "@/components/admin/StockLocationPicker";
 import { toast } from "sonner";
+import { PageShell, PageHeader, SkeletonList, useConfirm, Dialog, Button } from "@/components/aura";
 import { cn } from "@/lib/utils";
 import { useDiscardGuard } from "@/lib/use-discard-guard";
-import { Plus, Loader2, Save, X, ClipboardList, Trash2, CheckCircle2, Lock } from "lucide-react";
+import { Plus, Save, ClipboardList, Trash2, CheckCircle2, Lock } from "lucide-react";
 
 const STATUS: Record<InventoryCountStatus, { label: string; cls: string }> = {
   open: { label: "Aberto", cls: "bg-secondary text-muted-foreground" },
@@ -19,6 +20,7 @@ const STATUS: Record<InventoryCountStatus, { label: string; cls: string }> = {
 
 export default function InventarioPage() {
   const { currentProperty: property } = useProperty();
+  const confirm = useConfirm();
   const [counts, setCounts] = useState<InventoryCount[]>([]);
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [categories, setCategories] = useState<StockCategory[]>([]);
@@ -85,7 +87,7 @@ export default function InventarioPage() {
 
   const close = async () => {
     if (!property?.id || !detail) return;
-    if (!confirm("Fechar o inventário? As diferenças viram ajustes de estoque e a acuracidade é calculada.")) return;
+    if (!(await confirm({ title: "Fechar o inventário?", description: "As diferenças viram ajustes de estoque e a acuracidade é calculada.", confirmLabel: "Confirmar", tone: "danger" }))) return;
     setBusy(true);
     try {
       await saveItemsSilent();
@@ -101,7 +103,7 @@ export default function InventarioPage() {
   };
 
   const removeCount = async (id: string) => {
-    if (!property?.id || !confirm("Excluir este inventário?")) return;
+    if (!property?.id || !(await confirm({ title: "Excluir este inventário?", confirmLabel: "Confirmar", tone: "danger" }))) return;
     try { await StockClient.deleteCount(property.id, id); await load(); toast.success("Inventário excluído."); }
     catch (e) { toast.error((e as Error).message); }
   };
@@ -112,20 +114,16 @@ export default function InventarioPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="max-w-5xl mx-auto">
-      <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><ClipboardList size={22} /> Inventário</h1>
-          <p className="text-sm text-muted-foreground">{counts.length} contagem(ns)</p>
-        </div>
-        <button onClick={() => setNewForm({ locationId: "", scope: [] })}
-          className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90">
-          <Plus size={16} /> Novo inventário
-        </button>
-      </header>
+    <PageShell>
+      <PageHeader
+        icon={ClipboardList}
+        title="Inventário"
+        subtitle={<>{counts.length} contagem(ns)</>}
+        primaryAction={{ label: "Novo inventário", icon: Plus, onClick: () => setNewForm({ locationId: "", scope: [] }) }}
+      />
 
       {loading ? (
-        <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
+        <SkeletonList rows={5} avatar={false} />
       ) : (
         <>
         {/* Mobile: cards */}
@@ -201,13 +199,9 @@ export default function InventarioPage() {
 
       {/* Modal novo inventário */}
       {newForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={requestCloseNew}>
-          <div className="bg-card border border-border w-full max-w-md rounded-3xl shadow-2xl max-h-[92dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="p-5 border-b border-border flex justify-between items-center">
-              <h2 className="text-lg font-bold text-foreground">Novo inventário</h2>
-              <button onClick={requestCloseNew} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
-            </div>
-            <div className="p-5 space-y-4">
+        <Dialog open onClose={requestCloseNew} presentation="auto" size="sm" title="Novo inventário" footerRow
+          footer={(<><Button variant="ghost" onClick={requestCloseNew}>Cancelar</Button><Button variant="primary" icon={Plus} loading={creating} loadingText="Abrindo…" onClick={create}>Abrir contagem</Button></>)}>
+            <div className="space-y-4">
               <div>
                 <label className="field-label">Local *</label>
                 {/* Com cabanas: contar o enxoval de uma cabana é caso de uso real. Só as que
@@ -237,31 +231,22 @@ export default function InventarioPage() {
                 </div>
               </div>
             </div>
-            <div className="p-5 border-t border-border flex justify-end gap-2">
-              <button onClick={requestCloseNew} className="px-4 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground">Cancelar</button>
-              <button onClick={create} disabled={creating} className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground">
-                {creating ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Abrir contagem
-              </button>
-            </div>
-          </div>
-        </div>
+        </Dialog>
       )}
 
       {/* Detalhe da contagem */}
       {detail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-          <div className="bg-card border border-border w-full max-w-2xl rounded-3xl shadow-2xl max-h-[92vh] flex flex-col">
-            <div className="p-5 border-b border-border flex justify-between items-center">
-              <div>
-                <h2 className="text-lg font-bold text-foreground">Contagem · {detail.location?.name ?? ""}</h2>
-                <p className="text-xs text-muted-foreground">
-                  {STATUS[detail.status].label}
-                  {detail.accuracy != null && <> · acuracidade <b className="text-foreground">{detail.accuracy}%</b></>}
-                </p>
-              </div>
-              <button onClick={() => setDetail(null)} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
+        <Dialog open onClose={() => { if (!busy) setDetail(null); }} presentation="auto" size="lg" title={<>Contagem · {detail.location?.name ?? ""}</>}
+          subtitle={<>{STATUS[detail.status].label}{detail.accuracy != null && <> · acuracidade <b className="text-foreground">{detail.accuracy}%</b></>}</>}
+          footer={editing ? (
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, width: "100%" }}>
+              <Button variant="secondary" icon={Save} loading={busy} loadingText="Salvando…" onClick={saveItems}>Salvar contagem</Button>
+              <Button variant="primary" icon={Lock} disabled={busy} onClick={close}>Fechar e ajustar</Button>
             </div>
-            <div className="p-5 overflow-y-auto">
+          ) : (
+            <div className="flex items-center justify-center gap-2 text-emerald-500 text-sm font-bold" style={{ width: "100%" }}><CheckCircle2 size={16} /> Inventário fechado · acuracidade {detail.accuracy}%</div>
+          )}>
+            <div>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
@@ -297,24 +282,8 @@ export default function InventarioPage() {
                 </tbody>
               </table>
             </div>
-            {editing && (
-              <div className="p-5 border-t border-border flex justify-between gap-2">
-                <button onClick={saveItems} disabled={busy} className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-secondary text-foreground">
-                  {busy ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Salvar contagem
-                </button>
-                <button onClick={close} disabled={busy} className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground">
-                  <Lock size={15} /> Fechar e ajustar
-                </button>
-              </div>
-            )}
-            {!editing && (
-              <div className="p-5 border-t border-border flex items-center justify-center gap-2 text-emerald-500 text-sm font-bold">
-                <CheckCircle2 size={16} /> Inventário fechado · acuracidade {detail.accuracy}%
-              </div>
-            )}
-          </div>
-        </div>
+        </Dialog>
       )}
-    </div>
+    </PageShell>
   );
 }

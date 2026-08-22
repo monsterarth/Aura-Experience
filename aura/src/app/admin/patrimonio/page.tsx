@@ -10,8 +10,9 @@ import { useProperty } from "@/context/PropertyContext";
 import { StockClient } from "@/lib/stock-client";
 import { Asset, AssetStatus, StockCategory, StockLocation, StockStaffOption } from "@/types/aura";
 import { toast } from "sonner";
+import { PageShell, PageHeader, SkeletonList } from "@/components/aura";
 import { cn } from "@/lib/utils";
-import { Plus, Loader2, Landmark, ShieldCheck, Search, ChevronRight, Filter, X } from "lucide-react";
+import { Plus, Landmark, ShieldCheck, Search, ChevronRight, Filter, X } from "lucide-react";
 import AssetFormModal, { ASSET_STATUS, EMPTY_ASSET } from "@/components/admin/AssetFormModal";
 import PatrimonioTabs from "./PatrimonioTabs";
 
@@ -86,18 +87,13 @@ export default function PatrimonioPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <header className="mb-5 flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><Landmark size={22} /> Patrimônio</h1>
-          <p className="text-sm text-muted-foreground">
-            {filtered.length} ativo(s) · valor contábil {money(totalBook)}
-          </p>
-        </div>
-        <button onClick={() => setForm({ ...EMPTY_ASSET })} className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90">
-          <Plus size={16} /> Novo ativo
-        </button>
-      </header>
+    <PageShell>
+      <PageHeader
+        icon={Landmark}
+        title="Patrimônio"
+        subtitle={<>{filtered.length} ativo(s) · valor contábil {money(totalBook)}</>}
+        primaryAction={{ label: "Novo ativo", icon: Plus, onClick: () => setForm({ ...EMPTY_ASSET }) }}
+      />
 
       <PatrimonioTabs active="ativos" />
 
@@ -148,7 +144,7 @@ export default function PatrimonioPage() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
+        <SkeletonList rows={5} avatar={false} />
       ) : (
         <>
         {/* Mobile: cards — a tabela de 7 colunas nao cabe no celular */}
@@ -264,6 +260,6 @@ export default function PatrimonioPage() {
           onSaved={async () => { setForm(null); await load(); }}
         />
       )}
-    </div>
+    </PageShell>
   );
 }

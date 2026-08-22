@@ -7,8 +7,9 @@ import { supabase } from "@/lib/supabase";
 import { StockClient } from "@/lib/stock-client";
 import { Purchase, PurchaseStatus, Supplier, StockLocation, StockProduct } from "@/types/aura";
 import { toast } from "sonner";
+import { PageShell, PageHeader, SkeletonList, useConfirm, Dialog, Button, Pill } from "@/components/aura";
 import { cn } from "@/lib/utils";
-import { Plus, Loader2, Pencil, Trash2, Save, X, ShoppingCart, PackageCheck, Zap, Trash, Paperclip } from "lucide-react";
+import { Plus, Pencil, Trash2, Save, ShoppingCart, PackageCheck, Zap, Trash, Paperclip } from "lucide-react";
 import { FileUpload } from "@/components/admin/FileUpload";
 import StockLocationSelect from "@/components/admin/StockLocationSelect";
 import { splitLocations } from "@/lib/stock-locations";
@@ -36,6 +37,7 @@ const emptyForm: PForm = {
 
 export default function ComprasPage() {
   const { currentProperty: property } = useProperty();
+  const confirm = useConfirm();
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [locations, setLocations] = useState<StockLocation[]>([]);
@@ -161,7 +163,7 @@ export default function ComprasPage() {
   };
 
   const remove = async (p: Purchase) => {
-    if (!property?.id || !confirm("Excluir esta compra?")) return;
+    if (!property?.id || !(await confirm({ title: "Excluir esta compra?", confirmLabel: "Confirmar", tone: "danger" }))) return;
     try { await StockClient.deletePurchase(property.id, p.id); await load(); toast.success("Compra excluída."); }
     catch (e) { toast.error((e as Error).message); }
   };
@@ -169,19 +171,16 @@ export default function ComprasPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><ShoppingCart size={22} /> Compras</h1>
-          <p className="text-sm text-muted-foreground">{purchases.length} compra(s)</p>
-        </div>
-        <button onClick={openNew} className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90">
-          <Plus size={16} /> Nova compra
-        </button>
-      </header>
+    <PageShell>
+      <PageHeader
+        icon={ShoppingCart}
+        title="Compras"
+        subtitle={<>{purchases.length} compra(s)</>}
+        primaryAction={{ label: "Nova compra", icon: Plus, onClick: openNew }}
+      />
 
       {loading ? (
-        <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
+        <SkeletonList rows={5} avatar={false} />
       ) : (
         <>
         {/* Mobile: cards */}
@@ -286,13 +285,9 @@ export default function ComprasPage() {
       )}
 
       {form && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={requestClose}>
-          <div className="bg-card border border-border w-full max-w-2xl rounded-3xl shadow-2xl max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="p-5 border-b border-border flex justify-between items-center sticky top-0 bg-card z-10">
-              <h2 className="text-lg font-bold text-foreground">{form.id ? "Editar compra" : "Nova compra"}</h2>
-              <button onClick={requestClose} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
-            </div>
-            <div className="p-5 space-y-4">
+        <Dialog open onClose={requestClose} presentation="auto" size="lg" title={form.id ? "Editar compra" : "Nova compra"} footerRow
+          footer={(<><Button variant="ghost" onClick={requestClose}>Cancelar</Button><Button variant="primary" icon={Save} loading={saving} loadingText="Salvando…" onClick={save}>Salvar</Button></>)}>
+            <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className="field-label">Fornecedor</label>
                   <select className="field-input w-full" value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })}>
@@ -366,28 +361,14 @@ export default function ComprasPage() {
               <div><label className="field-label">Observações</label>
                 <input className="field-input w-full" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
             </div>
-            <div className="p-5 border-t border-border flex justify-end gap-2 sticky bottom-0 bg-card">
-              <button onClick={requestClose} className="px-4 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground">Cancelar</button>
-              <button onClick={save} disabled={saving} className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground">
-                {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Salvar
-              </button>
-            </div>
-          </div>
-        </div>
+        </Dialog>
       )}
 
       {/* Modal de recebimento — validade é informada aqui (quando a mercadoria chega) */}
       {receiving && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-          <div className="bg-card border border-border w-full max-w-xl rounded-3xl shadow-2xl max-h-[92vh] flex flex-col">
-            <div className="p-5 border-b border-border flex justify-between items-center">
-              <div>
-                <h2 className="text-lg font-bold text-foreground flex items-center gap-2"><PackageCheck size={18} className="text-emerald-500" /> Receber compra</h2>
-                <p className="text-xs text-muted-foreground">Entrada em &quot;{receiving.purchase.location?.name ?? ""}&quot;. Informe a validade dos itens perecíveis.</p>
-              </div>
-              <button onClick={() => setReceiving(null)} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
-            </div>
-            <div className="p-5 overflow-y-auto space-y-2">
+        <Dialog open onClose={() => { if (!receivingBusy) setReceiving(null); }} presentation="auto" size="md" icon={PackageCheck} iconTone="green" title="Receber compra" subtitle={<>Entrada em &quot;{receiving.purchase.location?.name ?? ""}&quot;. Informe a validade dos itens perecíveis.</>} footerRow
+          footer={(<><Button variant="ghost" onClick={() => setReceiving(null)} disabled={receivingBusy}>Cancelar</Button><Button variant="primary" icon={PackageCheck} loading={receivingBusy} loadingText="Recebendo…" onClick={confirmReceive}>Confirmar entrada</Button></>)}>
+            <div className="space-y-2">
               {receiving.rows.map((r, idx) => (
                 <div key={r.itemId} className="border border-border rounded-xl p-3">
                   <div className="flex justify-between text-sm">
@@ -407,34 +388,15 @@ export default function ComprasPage() {
               ))}
               {receiving.rows.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Compra sem itens.</p>}
             </div>
-            <div className="p-5 border-t border-border flex justify-end gap-2">
-              <button onClick={() => setReceiving(null)} className="px-4 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground">Cancelar</button>
-              <button onClick={confirmReceive} disabled={receivingBusy} className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold rounded-xl bg-emerald-600 text-white hover:bg-emerald-700">
-                {receivingBusy ? <Loader2 size={15} className="animate-spin" /> : <PackageCheck size={15} />} Confirmar entrada
-              </button>
-            </div>
-          </div>
-        </div>
+        </Dialog>
       )}
 
       {/* Nota de compra (digital) */}
       {nota && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={() => setNota(null)}>
-          <div className="bg-card border border-border w-full max-w-xl rounded-3xl shadow-2xl max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="p-5 border-b border-border flex justify-between items-start">
-              <div>
-                <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-                  <ShoppingCart size={18} /> Nota de compra{nota.invoiceNumber ? ` · ${nota.invoiceNumber}` : ""}
-                  {nota.isEmergency && <Zap size={14} className="text-amber-500" />}
-                </h2>
-                <p className="text-xs text-muted-foreground flex items-center gap-2 mt-0.5">
-                  {nota.supplier?.name ?? "Sem fornecedor"}
-                  <span className={cn("text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md", STATUS[nota.status].cls)}>{STATUS[nota.status].label}</span>
-                </p>
-              </div>
-              <button onClick={() => setNota(null)} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
-            </div>
-            <div className="p-5 overflow-y-auto space-y-4">
+        <Dialog open onClose={() => setNota(null)} presentation="auto" size="md" icon={ShoppingCart}
+          title={<>Nota de compra{nota.invoiceNumber ? ` · ${nota.invoiceNumber}` : ""}{nota.isEmergency && <Zap size={14} className="text-amber-500" style={{ display: "inline", marginLeft: 6 }} />}</>}
+          subtitle={<span className="flex items-center gap-2">{nota.supplier?.name ?? "Sem fornecedor"}<span className={cn("text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md", STATUS[nota.status].cls)}>{STATUS[nota.status].label}</span></span>}>
+            <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
                 <div><div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Local</div><div className="text-foreground">{nota.location?.name ?? "—"}</div></div>
                 <div><div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Pedido</div><div className="text-foreground">{fmtDate(nota.orderDate)}</div></div>
@@ -501,9 +463,8 @@ export default function ComprasPage() {
                 </a>
               )}
             </div>
-          </div>
-        </div>
+        </Dialog>
       )}
-    </div>
+    </PageShell>
   );
 }

@@ -7,9 +7,10 @@ import { useProperty } from "@/context/PropertyContext";
 import { StockClient } from "@/lib/stock-client";
 import { StockLocationOverview, StockLocationType } from "@/types/aura";
 import { toast } from "sonner";
+import { PageShell, PageHeader, SkeletonList } from "@/components/aura";
 import { cn } from "@/lib/utils";
 import {
-  Loader2, Warehouse, ChefHat, Wine, Shirt, Home, Users, Package,
+  Warehouse, ChefHat, Wine, Shirt, Home, Users, Package,
   AlertTriangle, ChevronRight, Search, Plus, ArrowLeftRight,
 } from "lucide-react";
 
@@ -105,26 +106,21 @@ export default function EstoquesPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <header className="mb-5 flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><Warehouse size={22} /> Estoques</h1>
-          <p className="text-sm text-muted-foreground">
-            {stocks.length} local(is) · {totals.units} unidades em estoque
-            {totals.below > 0 && <span className="text-amber-500 font-bold"> · {totals.below} item(ns) no mínimo</span>}
-          </p>
-        </div>
-        <div className="flex gap-2">
+    <PageShell>
+      <PageHeader
+        icon={Warehouse}
+        title="Estoques"
+        subtitle={<>{stocks.length} local(is) · {totals.units} unidades em estoque
+            {totals.below > 0 && <span className="text-amber-500 font-bold"> · {totals.below} item(ns) no mínimo</span>}</>}
+        primaryAction={{ label: "Novo local", icon: Plus, href: "/admin/estoque/configuracoes" }}
+        actions={(<><div className="flex gap-2">
           <Link href="/admin/estoque/movimentacoes"
             className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-secondary text-foreground hover:bg-secondary/70">
             <ArrowLeftRight size={16} /> Movimentar
           </Link>
-          <Link href="/admin/estoque/configuracoes"
-            className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90">
-            <Plus size={16} /> Novo local
-          </Link>
-        </div>
-      </header>
+          
+        </div></>)}
+      />
 
       <div className="relative mb-5 max-w-sm">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -132,7 +128,7 @@ export default function EstoquesPage() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-20"><Loader2 className="animate-spin text-primary" /></div>
+        <SkeletonList rows={5} avatar={false} />
       ) : groups.length === 0 ? (
         <p className="text-sm text-muted-foreground py-16 text-center">
           {q ? "Nenhum estoque com esse nome." : "Nenhum local cadastrado ainda."}
@@ -183,6 +179,6 @@ export default function EstoquesPage() {
           })}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

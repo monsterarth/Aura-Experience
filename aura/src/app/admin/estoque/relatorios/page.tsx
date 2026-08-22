@@ -12,6 +12,7 @@ import { toCsv, downloadCsv, stampedName } from "@/lib/csv";
 import PrintReport from "@/components/admin/PrintReport";
 import TickList from "@/components/admin/TickList";
 import { toast } from "sonner";
+import { PageShell, PageHeader } from "@/components/aura";
 import { cn } from "@/lib/utils";
 import { Loader2, FileText, Download, Printer } from "lucide-react";
 
@@ -96,11 +97,12 @@ export default function EstoqueRelatoriosPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><FileText size={22} /> Relatórios</h1>
-        <p className="text-sm text-muted-foreground">Filtre por estoque, item e período; exporte em CSV ou imprima.</p>
-      </header>
+    <PageShell>
+      <PageHeader
+        icon={FileText}
+        title="Relatórios"
+        subtitle="Filtre por estoque, item e período; exporte em CSV ou imprima."
+      />
 
       {/* Tipo de relatório */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
@@ -203,7 +205,7 @@ export default function EstoqueRelatoriosPage() {
           <ReportTable report={report} />
         </PrintReport>
       )}
-    </div>
+    </PageShell>
   );
 }
 

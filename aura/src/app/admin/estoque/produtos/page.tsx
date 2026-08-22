@@ -9,9 +9,10 @@ import { StockLocation, StockProduct, StockCategory, StockUnit } from "@/types/a
 import ProductDetailModal from "@/components/admin/ProductDetailModal";
 import StockLocationSelect from "@/components/admin/StockLocationSelect";
 import { toast } from "sonner";
+import { PageShell, PageHeader, SkeletonList, useConfirm, Dialog, Button } from "@/components/aura";
 import { cn } from "@/lib/utils";
 import { useDiscardGuard } from "@/lib/use-discard-guard";
-import { Plus, Loader2, Pencil, Trash2, Save, X, Package, AlertTriangle, Search } from "lucide-react";
+import { Plus, Pencil, Trash2, Save, Package, AlertTriangle, Search } from "lucide-react";
 
 const UNITS: StockUnit[] = ["un", "kg", "g", "L", "ml", "cx", "pct", "par", "rolo"];
 
@@ -21,6 +22,7 @@ const emptyForm: Partial<StockProduct> = {
 
 export default function EstoqueProdutosPage() {
   const { currentProperty: property } = useProperty();
+  const confirm = useConfirm();
   const [products, setProducts] = useState<StockProduct[]>([]);
   const [categories, setCategories] = useState<StockCategory[]>([]);
   const [locations, setLocations] = useState<StockLocation[]>([]);
@@ -82,7 +84,7 @@ export default function EstoqueProdutosPage() {
   };
 
   const remove = async (id: string) => {
-    if (!property?.id || !confirm("Arquivar este produto? O histórico de movimentações é preservado.")) return;
+    if (!property?.id || !(await confirm({ title: "Arquivar este produto?", description: "O histórico de movimentações é preservado.", confirmLabel: "Confirmar", tone: "danger" }))) return;
     try { await StockClient.deleteProduct(property.id, id); await load(); toast.success("Produto arquivado."); }
     catch (e) { toast.error((e as Error).message); }
   };
@@ -90,20 +92,14 @@ export default function EstoqueProdutosPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <header className="mb-5 flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><Package size={22} /> Estoque</h1>
-          <p className="text-sm text-muted-foreground">
-            {products.length} produto(s)
-            {lowCount > 0 && <span className="text-amber-500 font-bold"> · {lowCount} em estoque mínimo</span>}
-          </p>
-        </div>
-        <button onClick={() => setForm({ ...emptyForm })}
-          className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90">
-          <Plus size={16} /> Novo produto
-        </button>
-      </header>
+    <PageShell>
+      <PageHeader
+        icon={Package}
+        title="Estoque"
+        subtitle={<>{products.length} produto(s)
+            {lowCount > 0 && <span className="text-amber-500 font-bold"> · {lowCount} em estoque mínimo</span>}</>}
+        primaryAction={{ label: "Novo produto", icon: Plus, onClick: () => setForm({ ...emptyForm }) }}
+      />
 
       <div className="relative mb-4 w-full sm:max-w-sm">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -112,7 +108,7 @@ export default function EstoqueProdutosPage() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
+        <SkeletonList rows={5} avatar={false} />
       ) : (
         <>
         {/* Mobile: cards — tabela de 7 colunas nao cabe em 375px */}
@@ -220,13 +216,9 @@ export default function EstoqueProdutosPage() {
 
       {/* Modal de produto */}
       {form && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-background/80 backdrop-blur-sm" onClick={requestClose}>
-          <div className="bg-card border border-border w-full max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[92dvh] sm:max-h-[calc(100dvh-2rem)] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="p-5 border-b border-border flex justify-between items-center shrink-0">
-              <h2 className="text-lg font-bold text-foreground">{form.id ? "Editar produto" : "Novo produto"}</h2>
-              <button onClick={requestClose} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
-            </div>
-            <div className="p-5 space-y-4 overflow-y-auto">
+        <Dialog open onClose={requestClose} presentation="auto" size="md" title={form.id ? "Editar produto" : "Novo produto"} footerRow
+          footer={(<><Button variant="ghost" onClick={requestClose}>Cancelar</Button><Button variant="primary" icon={Save} loading={saving} loadingText="Salvando…" onClick={save}>Salvar</Button></>)}>
+            <div className="space-y-4">
               <div>
                 <label className="field-label">Nome *</label>
                 <input className="field-input w-full" value={form.name ?? ""} autoFocus
@@ -325,15 +317,7 @@ export default function EstoqueProdutosPage() {
                 </p>
               </div>
             </div>
-            <div className="p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] border-t border-border flex justify-end gap-2 shrink-0">
-              <button onClick={requestClose} className="px-4 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground">Cancelar</button>
-              <button onClick={save} disabled={saving}
-                className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground">
-                {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Salvar
-              </button>
-            </div>
-          </div>
-        </div>
+        </Dialog>
       )}
 
       {/* Ficha do produto — a mesma em qualquer tela do módulo */}
@@ -341,6 +325,6 @@ export default function EstoqueProdutosPage() {
         <ProductDetailModal propertyId={property.id} productId={detailId} onClose={closeDetail} />
       )}
 
-    </div>
+    </PageShell>
   );
 }

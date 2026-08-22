@@ -17,6 +17,7 @@ import {
   StockCabinOption, StockCategory, StockLocation,
 } from "@/types/aura";
 import { toast } from "sonner";
+import { PageShell, PageHeader, SkeletonList, useConfirm } from "@/components/aura";
 import { cn } from "@/lib/utils";
 import {
   Loader2, Plus, ClipboardCheck, ScanLine, Trash2, CheckCircle2,
@@ -35,6 +36,7 @@ const ITEM_STATUS: Record<AssetInventoryItemStatus, { label: string; cls: string
 
 export default function AssetInventoryPage() {
   const { currentProperty: property } = useProperty();
+  const confirm = useConfirm();
   const [counts, setCounts] = useState<AssetInventoryCount[]>([]);
   const [active, setActive] = useState<AssetInventoryCount | null>(null);
   const [loading, setLoading] = useState(true);
@@ -106,7 +108,7 @@ export default function AssetInventoryPage() {
 
   const close = async () => {
     if (!property?.id || !active) return;
-    if (!confirm("Fechar a conferência? Os pendentes viram 'não localizado' e os deslocados corrigem o local do ativo.")) return;
+    if (!(await confirm({ title: "Fechar a conferência?", description: "Os pendentes viram 'não localizado' e os deslocados corrigem o local do ativo.", confirmLabel: "Confirmar", tone: "danger" }))) return;
     try {
       const r = await StockClient.closeAssetCount(property.id, active.id);
       toast.success(`Conferência fechada · ${r.accuracy}% de acuracidade.`);
@@ -115,7 +117,7 @@ export default function AssetInventoryPage() {
   };
 
   const removeCount = async (id: string) => {
-    if (!property?.id || !confirm("Excluir esta conferência?")) return;
+    if (!property?.id || !(await confirm({ title: "Excluir esta conferência?", confirmLabel: "Confirmar", tone: "danger" }))) return;
     try { await StockClient.deleteAssetCount(property.id, id); await load(); }
     catch (e) { toast.error((e as Error).message); }
   };
@@ -134,22 +136,21 @@ export default function AssetInventoryPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <PageShell>
       <Link href="/admin/patrimonio" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4">
         <ArrowLeft size={15} /> Patrimônio
       </Link>
 
-      <header className="mb-4">
-        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><ClipboardCheck size={22} /> Conferência de patrimônio</h1>
-        <p className="text-sm text-muted-foreground">
-          Percorra o local bipando ou digitando os códigos das plaquetas. O que não for localizado vira divergência.
-        </p>
-      </header>
+      <PageHeader
+        icon={ClipboardCheck}
+        title="Conferência de patrimônio"
+        subtitle="Percorra o local bipando ou digitando os códigos das plaquetas. O que não for localizado vira divergência."
+      />
 
       <PatrimonioTabs active="inventario" />
 
       {loading ? (
-        <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
+        <SkeletonList rows={5} avatar={false} />
       ) : active ? (
         <div className="mt-5 space-y-5">
           {/* Bipagem */}
@@ -299,6 +300,6 @@ export default function AssetInventoryPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

@@ -6,9 +6,10 @@ import { useProperty } from "@/context/PropertyContext";
 import { StockClient } from "@/lib/stock-client";
 import { StockDashboard, StockMovementType } from "@/types/aura";
 import { toast } from "sonner";
+import { PageShell, PageHeader, SkeletonList } from "@/components/aura";
 import { cn } from "@/lib/utils";
 import {
-  Loader2, Package, DollarSign, AlertTriangle, Clock, ShoppingCart, CalendarClock,
+  Package, DollarSign, AlertTriangle, Clock, ShoppingCart, CalendarClock,
   Target, TrendingDown, Receipt,
 } from "lucide-react";
 import {
@@ -59,24 +60,22 @@ export default function EstoqueDashboardPage() {
   const k = data?.kpis;
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Visão Geral — Estoque</h1>
-          <p className="text-sm text-muted-foreground">Indicadores de compras, consumo e estoque.</p>
-        </div>
-        <div className="flex gap-1 bg-secondary/40 p-1 rounded-xl">
+    <PageShell>
+      <PageHeader
+        title="Visão Geral — Estoque"
+        subtitle="Indicadores de compras, consumo e estoque."
+        actions={(<><div className="flex gap-1 bg-secondary/40 p-1 rounded-xl">
           {PERIODS.map((d) => (
             <button key={d} onClick={() => setDays(d)}
               className={cn("px-3 py-1.5 rounded-lg text-xs font-bold", days === d ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
               {d} dias
             </button>
           ))}
-        </div>
-      </header>
+        </div></>)}
+      />
 
       {loading || !data || !k ? (
-        <div className="flex justify-center py-20"><Loader2 className="animate-spin text-primary" /></div>
+        <SkeletonList rows={5} avatar={false} />
       ) : (
         <div className="space-y-6">
           {/* KPIs */}
@@ -216,6 +215,6 @@ export default function EstoqueDashboardPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }

@@ -11,9 +11,10 @@ import { useProperty } from "@/context/PropertyContext";
 import { StockClient } from "@/lib/stock-client";
 import { AssetDetail, AssetMovement, MaintenanceTask } from "@/types/aura";
 import { toast } from "sonner";
+import { PageShell, PageHeader, useConfirm, usePrompt, PageSkeleton } from "@/components/aura";
 import { cn } from "@/lib/utils";
 import {
-  ArrowLeft, Loader2, Pencil, Trash2, ShieldCheck, ArrowRightLeft, ArchiveX,
+  ArrowLeft, Pencil, Trash2, ShieldCheck, ArrowRightLeft, ArchiveX,
   Wrench, History, FileText, TrendingDown, ScrollText, RotateCcw, MapPin, User, ExternalLink,
 } from "lucide-react";
 import AssetFormModal, { ASSET_STATUS } from "@/components/admin/AssetFormModal";
@@ -64,6 +65,8 @@ export default function AssetDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { currentProperty: property } = useProperty();
+  const confirm = useConfirm();
+  const prompt = usePrompt();
   const [data, setData] = useState<AssetDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -84,7 +87,7 @@ export default function AssetDetailPage() {
 
   const remove = async () => {
     if (!property?.id || !data) return;
-    if (!confirm("Excluir este ativo? Só é possível para cadastros sem histórico — para tirar do patrimônio, use Dar baixa.")) return;
+    if (!(await confirm({ title: "Excluir este ativo?", description: "Só é possível para cadastros sem histórico — para tirar do patrimônio, use Dar baixa.", confirmLabel: "Excluir", tone: "danger" }))) return;
     try {
       await StockClient.deleteAsset(property.id, data.asset.id);
       toast.success("Ativo excluído.");
@@ -94,7 +97,7 @@ export default function AssetDetailPage() {
 
   const reinstate = async () => {
     if (!property?.id || !data) return;
-    const reason = prompt("Motivo para reverter a baixa:");
+    const reason = await prompt({ title: "Reverter a baixa", label: "Motivo", placeholder: "Por que o ativo volta ao patrimônio?", required: true, confirmLabel: "Reverter" });
     if (!reason?.trim()) return;
     try {
       await StockClient.reinstateAsset(property.id, data.asset.id, reason.trim());
@@ -104,7 +107,7 @@ export default function AssetDetailPage() {
   };
 
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
-  if (loading) return <div className="flex justify-center py-24"><Loader2 className="animate-spin text-primary" /></div>;
+  if (loading) return <PageSkeleton kpis={0} rows={5} />;
   if (!data) {
     return (
       <div className="max-w-3xl mx-auto">
@@ -119,7 +122,7 @@ export default function AssetDetailPage() {
   const isDisposed = a.status === "disposed";
 
   return (
-    <div className="max-w-5xl mx-auto space-y-5">
+    <PageShell>
       <Link href="/admin/patrimonio" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft size={15} /> Patrimônio
       </Link>
@@ -392,6 +395,6 @@ export default function AssetDetailPage() {
           onDone={async () => { setMoving(false); await load(); }}
         />
       )}
-    </div>
+    </PageShell>
   );
 }

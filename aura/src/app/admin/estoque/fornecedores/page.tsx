@@ -6,9 +6,10 @@ import { useProperty } from "@/context/PropertyContext";
 import { StockClient } from "@/lib/stock-client";
 import { Supplier, SupplierDetail } from "@/types/aura";
 import { toast } from "sonner";
+import { PageShell, PageHeader, SkeletonList, useConfirm, Dialog, Button } from "@/components/aura";
 import { cn } from "@/lib/utils";
 import { useDiscardGuard } from "@/lib/use-discard-guard";
-import { Plus, Loader2, Pencil, Trash2, Save, X, Truck, Mail, Phone, ShoppingCart, MapPin } from "lucide-react";
+import { Plus, Pencil, Trash2, Save, Truck, Mail, Phone, ShoppingCart, MapPin } from "lucide-react";
 
 const PSTATUS: Record<string, { label: string; cls: string }> = {
   draft: { label: "Rascunho", cls: "bg-secondary text-muted-foreground" },
@@ -21,6 +22,7 @@ const empty: Partial<Supplier> = { name: "", active: true };
 
 export default function FornecedoresPage() {
   const { currentProperty: property } = useProperty();
+  const confirm = useConfirm();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState<Partial<Supplier> | null>(null);
@@ -56,7 +58,7 @@ export default function FornecedoresPage() {
     } catch (e) { toast.error((e as Error).message); } finally { setSaving(false); }
   };
   const remove = async (id: string) => {
-    if (!property?.id || !confirm("Remover este fornecedor?")) return;
+    if (!property?.id || !(await confirm({ title: "Remover este fornecedor?", confirmLabel: "Confirmar", tone: "danger" }))) return;
     try { await StockClient.deleteSupplier(property.id, id); await load(); toast.success("Fornecedor removido."); }
     catch (e) { toast.error((e as Error).message); }
   };
@@ -66,20 +68,16 @@ export default function FornecedoresPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="max-w-5xl mx-auto">
-      <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><Truck size={22} /> Fornecedores</h1>
-          <p className="text-sm text-muted-foreground">{suppliers.length} cadastrado(s)</p>
-        </div>
-        <button onClick={() => setForm({ ...empty })}
-          className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground hover:opacity-90">
-          <Plus size={16} /> Novo fornecedor
-        </button>
-      </header>
+    <PageShell>
+      <PageHeader
+        icon={Truck}
+        title="Fornecedores"
+        subtitle={<>{suppliers.length} cadastrado(s)</>}
+        primaryAction={{ label: "Novo fornecedor", icon: Plus, onClick: () => setForm({ ...empty }) }}
+      />
 
       {loading ? (
-        <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
+        <SkeletonList rows={5} avatar={false} />
       ) : (
         <>
         {/* Mobile: cards */}
@@ -152,13 +150,9 @@ export default function FornecedoresPage() {
       )}
 
       {form && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={requestClose}>
-          <div className="bg-card border border-border w-full max-w-lg rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="p-5 border-b border-border flex justify-between items-center sticky top-0 bg-card">
-              <h2 className="text-lg font-bold text-foreground">{form.id ? "Editar fornecedor" : "Novo fornecedor"}</h2>
-              <button onClick={requestClose} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
-            </div>
-            <div className="p-5 space-y-4">
+        <Dialog open onClose={requestClose} presentation="auto" size="md" title={form.id ? "Editar fornecedor" : "Novo fornecedor"} footerRow
+          footer={(<><Button variant="ghost" onClick={requestClose}>Cancelar</Button><Button variant="primary" icon={Save} loading={saving} loadingText="Salvando…" onClick={save}>Salvar</Button></>)}>
+            <div className="space-y-4">
               <div><label className="field-label">Nome *</label>
                 <input className="field-input w-full" value={form.name ?? ""} autoFocus onChange={(e) => setF({ name: e.target.value })} /></div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -190,32 +184,16 @@ export default function FornecedoresPage() {
                 </label>
               )}
             </div>
-            <div className="p-5 border-t border-border flex justify-end gap-2 sticky bottom-0 bg-card">
-              <button onClick={requestClose} className="px-4 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground">Cancelar</button>
-              <button onClick={save} disabled={saving} className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground">
-                {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Salvar
-              </button>
-            </div>
-          </div>
-        </div>
+        </Dialog>
       )}
 
       {/* Ficha do fornecedor */}
       {detailId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={closeDetail}>
-          <div className="bg-card border border-border w-full max-w-2xl rounded-3xl shadow-2xl max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <Dialog open onClose={closeDetail} presentation="auto" size="lg" icon={Truck} title={detail ? detail.supplier.name : "Fornecedor"} subtitle={detail ? <>{detail.supplier.category || "—"}{detail.supplier.cnpj ? ` · ${detail.supplier.cnpj}` : ""}</> : undefined}>
             {!detail ? (
-              <div className="flex justify-center py-20"><Loader2 className="animate-spin text-primary" /></div>
+              <SkeletonList rows={5} avatar={false} />
             ) : (
-              <>
-                <div className="p-5 border-b border-border flex justify-between items-start">
-                  <div>
-                    <h2 className="text-lg font-bold text-foreground flex items-center gap-2"><Truck size={18} /> {detail.supplier.name}</h2>
-                    <p className="text-xs text-muted-foreground">{detail.supplier.category || "—"}{detail.supplier.cnpj ? ` · ${detail.supplier.cnpj}` : ""}</p>
-                  </div>
-                  <button onClick={closeDetail} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
-                </div>
-                <div className="p-5 overflow-y-auto space-y-5">
+                <div className="space-y-5">
                   {/* Resumo */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div className="bg-secondary/40 rounded-xl p-3">
@@ -264,11 +242,9 @@ export default function FornecedoresPage() {
                     ) : <p className="text-xs text-muted-foreground">Nenhuma compra com este fornecedor ainda.</p>}
                   </div>
                 </div>
-              </>
             )}
-          </div>
-        </div>
+        </Dialog>
       )}
-    </div>
+    </PageShell>
   );
 }

@@ -14,6 +14,7 @@ import { toCsv, downloadCsv, stampedName } from "@/lib/csv";
 import PrintReport from "@/components/admin/PrintReport";
 import TickList from "@/components/admin/TickList";
 import { toast } from "sonner";
+import { PageShell, PageHeader } from "@/components/aura";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, Loader2, FileText, Download, Printer } from "lucide-react";
 import PatrimonioTabs from "../PatrimonioTabs";
@@ -96,15 +97,16 @@ export default function PatrimonioRelatoriosPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <PageShell>
       <Link href="/admin/patrimonio" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4">
         <ArrowLeft size={15} /> Patrimônio
       </Link>
 
-      <header className="mb-4">
-        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><FileText size={22} /> Relatórios de patrimônio</h1>
-        <p className="text-sm text-muted-foreground">Filtre, gere na tela, exporte em CSV ou imprima em A4.</p>
-      </header>
+      <PageHeader
+        icon={FileText}
+        title="Relatórios de patrimônio"
+        subtitle="Filtre, gere na tela, exporte em CSV ou imprima em A4."
+      />
 
       <PatrimonioTabs active="relatorios" />
 
@@ -190,7 +192,7 @@ export default function PatrimonioRelatoriosPage() {
           <ReportTable report={report} />
         </PrintReport>
       )}
-    </div>
+    </PageShell>
   );
 }
 

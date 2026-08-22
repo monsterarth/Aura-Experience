@@ -7,8 +7,9 @@ import { StockClient } from "@/lib/stock-client";
 import { StockMovement, StockBatch, StockLossType } from "@/types/aura";
 import ProductDetailModal from "@/components/admin/ProductDetailModal";
 import { toast } from "sonner";
+import { PageShell, PageHeader, SkeletonList } from "@/components/aura";
 import { cn } from "@/lib/utils";
-import { Loader2, AlertOctagon, CalendarClock } from "lucide-react";
+import { AlertOctagon, CalendarClock } from "lucide-react";
 
 const LOSS_META: Record<string, { label: string; color: string }> = {
   expiry: { label: "Vencimento", color: "#ef4444" },
@@ -58,24 +59,23 @@ export default function PerdasPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="max-w-5xl mx-auto">
-      <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2"><AlertOctagon size={22} /> Perdas</h1>
-          <p className="text-sm text-muted-foreground">Total no período: <span className="font-bold text-red-500">{money(totalCost)}</span></p>
-        </div>
-        <div className="flex gap-1 bg-secondary/40 p-1 rounded-xl">
+    <PageShell>
+      <PageHeader
+        icon={AlertOctagon}
+        title="Perdas"
+        subtitle={<>Total no período: <span className="font-bold text-red-500">{money(totalCost)}</span></>}
+        actions={(<><div className="flex gap-1 bg-secondary/40 p-1 rounded-xl">
           {PERIODS.map((d) => (
             <button key={d} onClick={() => setDays(d)}
               className={cn("px-3 py-1.5 rounded-lg text-xs font-bold", days === d ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
               {d} dias
             </button>
           ))}
-        </div>
-      </header>
+        </div></>)}
+      />
 
       {loading ? (
-        <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
+        <SkeletonList rows={5} avatar={false} />
       ) : (
         <div className="space-y-6">
           {/* Validade */}
@@ -193,6 +193,6 @@ export default function PerdasPage() {
       {productId && property && (
         <ProductDetailModal propertyId={property.id} productId={productId} onClose={() => setProductId(null)} />
       )}
-    </div>
+    </PageShell>
   );
 }

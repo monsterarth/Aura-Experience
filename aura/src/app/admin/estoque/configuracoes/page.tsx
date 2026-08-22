@@ -9,6 +9,7 @@ import StockLocationSelect from "@/components/admin/StockLocationSelect";
 import { splitLocations } from "@/lib/stock-locations";
 import { useTabParam } from "@/lib/settings-deeplink";
 import { toast } from "sonner";
+import { PageShell, PageHeader, SkeletonList, useConfirm } from "@/components/aura";
 import { cn } from "@/lib/utils";
 import { Plus, Trash2, Save, Loader2, Pencil, X, Sparkles, Tag, MapPin, SlidersHorizontal, Home, Link2, AlertTriangle } from "lucide-react";
 
@@ -49,6 +50,7 @@ const SEED_CATEGORIES: Partial<StockCategory>[] = [
 
 export default function EstoqueConfigPage() {
   const { currentProperty: property } = useProperty();
+  const confirm = useConfirm();
   // ?tab= vem do hub de configurações (ex.: ?tab=parametros).
   const [tab, setTab] = useState<Tab>(useTabParam(["categorias", "locais", "cabanas", "parametros"] as const, "categorias"));
 
@@ -95,7 +97,7 @@ export default function EstoqueConfigPage() {
     } catch (e) { toast.error((e as Error).message); } finally { setSaving(false); }
   };
   const deleteCategory = async (id: string) => {
-    if (!property?.id || !confirm("Remover esta categoria?")) return;
+    if (!property?.id || !(await confirm({ title: "Remover esta categoria?", confirmLabel: "Confirmar", tone: "danger" }))) return;
     try { await StockClient.deleteCategory(property.id, id); await load(); toast.success("Categoria removida."); }
     catch (e) { toast.error((e as Error).message); }
   };
@@ -118,7 +120,7 @@ export default function EstoqueConfigPage() {
     } catch (e) { toast.error((e as Error).message); } finally { setSaving(false); }
   };
   const deleteLocation = async (id: string) => {
-    if (!property?.id || !confirm("Remover este local?")) return;
+    if (!property?.id || !(await confirm({ title: "Remover este local?", confirmLabel: "Confirmar", tone: "danger" }))) return;
     try { await StockClient.deleteLocation(property.id, id); await load(); toast.success("Local removido."); }
     catch (e) { toast.error((e as Error).message); }
   };
@@ -139,11 +141,7 @@ export default function EstoqueConfigPage() {
       rename: renameCabins,
     }));
     const toLink = links.filter((l) => l.locationId).length;
-    if (!confirm(
-      `Vincular ${toLink} cabana(s) ao seu local de estoque?\n\n` +
-      `Só o vínculo é gravado — nenhum saldo, produto ou histórico é alterado. ` +
-      `Dá para desfazer depois trocando o local para "— não vincular —".`
-    )) return;
+    if (!(await confirm({ title: `Vincular ${toLink} cabana(s) ao seu local de estoque?`, description: "Só o vínculo é gravado — nenhum saldo, produto ou histórico é alterado. Dá para desfazer depois trocando o local para “— não vincular —”.", confirmLabel: "Vincular" }))) return;
     setSaving(true);
     try {
       const r = await StockClient.linkCabins(property.id, links);
@@ -156,7 +154,7 @@ export default function EstoqueConfigPage() {
   /** Tira o local do grupo "Cabanas" sem apagar nada — para o CABANAS genérico. */
   const retypeToOther = async (loc: { id: string; name: string }) => {
     if (!property?.id) return;
-    if (!confirm(`Mudar "${loc.name}" para o tipo Outro?\n\nEle sai do grupo Cabanas do seletor e continua com todo o saldo e histórico.`)) return;
+    if (!(await confirm({ title: `Mudar "${loc.name}" para o tipo Outro?`, description: "Ele sai do grupo Cabanas do seletor e continua com todo o saldo e histórico.", confirmLabel: "Mudar" }))) return;
     setSaving(true);
     try {
       await StockClient.saveLocation({ propertyId: property.id, id: loc.id, name: loc.name, type: "other" });
@@ -177,11 +175,11 @@ export default function EstoqueConfigPage() {
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold text-foreground">Configurações do Estoque</h1>
-        <p className="text-sm text-muted-foreground">Categorias, locais e parâmetros de alerta.</p>
-      </header>
+    <PageShell>
+      <PageHeader
+        title="Configurações do Estoque"
+        subtitle="Categorias, locais e parâmetros de alerta."
+      />
 
       <div className="flex gap-1 mb-6 bg-secondary/40 p-1 rounded-xl w-full sm:w-fit overflow-x-auto">
         {([["categorias", "Categorias", Tag], ["locais", "Locais", MapPin], ["cabanas", "Cabanas", Home], ["parametros", "Parâmetros", SlidersHorizontal]] as const).map(([id, label, Icon]) => (
@@ -194,7 +192,7 @@ export default function EstoqueConfigPage() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>
+        <SkeletonList rows={5} avatar={false} />
       ) : tab === "categorias" ? (
         <section className="space-y-3">
           <div className="flex justify-between items-center">
@@ -388,7 +386,7 @@ export default function EstoqueConfigPage() {
           </div>
 
           {!cabinReport ? (
-            <div className="flex justify-center py-12"><Loader2 className="animate-spin text-primary" /></div>
+            <SkeletonList rows={5} avatar={false} />
           ) : (
             <>
               <div className="bg-card border border-border rounded-2xl overflow-hidden overflow-x-auto">
@@ -518,6 +516,6 @@ export default function EstoqueConfigPage() {
           </button>
         </section>
       ) : null}
-    </div>
+    </PageShell>
   );
 }
