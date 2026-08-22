@@ -75,22 +75,22 @@
   .aura-admin-root { --page-pad: 32px; --tabbar-h: 0px; }
 }
 
-/* ── Tema claro (padrão quente/areia — continuidade com o claro atual) ── */
+/* ── Tema claro (paleta fria/azulada — escolhida pelo usuário no piloto, 22/08/2026) ── */
 .aura-admin-root[data-theme="light"] {
-  --t-bg: #ede9e4;
-  --t-bg-2: #e4dfd8;
+  --t-bg: #f4f5f7;
+  --t-bg-2: #eceef2;
   --t-card: #ffffff;
-  --t-drawer: #f8f6f3;
+  --t-drawer: #f9fafb;
   --t-elev: #ffffff;
-  --t-glass: rgba(30, 37, 48, 0.04);
-  --t-glass-2: rgba(30, 37, 48, 0.07);
-  --t-glass-3: rgba(30, 37, 48, 0.11);
-  --t-border: rgba(30, 37, 48, 0.1);
-  --t-border-2: rgba(30, 37, 48, 0.17);
-  --t-text: #1e2530;
-  --t-muted: rgba(30, 37, 48, 0.6);
-  --t-muted-2: rgba(30, 37, 48, 0.4);
-  --t-overlay: rgba(30, 37, 48, 0.4);
+  --t-glass: rgba(15, 23, 42, 0.04);
+  --t-glass-2: rgba(15, 23, 42, 0.07);
+  --t-glass-3: rgba(15, 23, 42, 0.11);
+  --t-border: rgba(15, 23, 42, 0.1);
+  --t-border-2: rgba(15, 23, 42, 0.17);
+  --t-text: #111827;
+  --t-muted: rgba(17, 24, 39, 0.6);
+  --t-muted-2: rgba(17, 24, 39, 0.4);
+  --t-overlay: rgba(17, 24, 39, 0.4);
   --t-ring: rgba(122, 78, 230, 0.45);
   --t-brand-text: #7a4ee6;
   /* semânticos mais escuros: todos ≥ 4.7:1 sobre branco */
@@ -105,21 +105,6 @@
   color-scheme: light;
 }
 
-/* Alternativa fria — só para comparar no piloto (toggle temporário); uma das duas será fixada. */
-.aura-admin-root[data-theme="light"][data-palette="cool"] {
-  --t-bg: #f4f5f7;
-  --t-bg-2: #eceef2;
-  --t-drawer: #f9fafb;
-  --t-glass: rgba(15, 23, 42, 0.04);
-  --t-glass-2: rgba(15, 23, 42, 0.07);
-  --t-glass-3: rgba(15, 23, 42, 0.11);
-  --t-border: rgba(15, 23, 42, 0.1);
-  --t-border-2: rgba(15, 23, 42, 0.17);
-  --t-text: #111827;
-  --t-muted: rgba(17, 24, 39, 0.6);
-  --t-muted-2: rgba(17, 24, 39, 0.4);
-  --t-overlay: rgba(17, 24, 39, 0.4);
-}
 
 /* ── Reduced motion: zera deslocamentos e durações de movimento; mantém --dur-1 (fade de cor) ── */
 @media (prefers-reduced-motion: reduce) {
@@ -163,29 +148,23 @@
   --radius: 1rem;
 }
 .aura-admin-root[data-theme="light"] {
-  --background: 30 15% 92%;
-  --foreground: 216 23% 15%;
+  --background: 220 14% 96%;
+  --foreground: 221 39% 11%;
   --card: 0 0% 100%;
-  --card-foreground: 216 23% 15%;
+  --card-foreground: 221 39% 11%;
   --popover: 0 0% 100%;
-  --popover-foreground: 216 23% 15%;
+  --popover-foreground: 221 39% 11%;
   --primary: 258 72% 60%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 30 10% 91%;
-  --secondary-foreground: 216 23% 15%;
-  --muted: 30 10% 91%;
+  --secondary: 220 10% 92%;
+  --secondary-foreground: 221 39% 11%;
+  --muted: 220 10% 92%;
   --muted-foreground: 216 10% 42%;
-  --accent: 30 10% 89%;
-  --accent-foreground: 216 23% 15%;
+  --accent: 220 10% 90%;
+  --accent-foreground: 221 39% 11%;
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 98%;
-  --border: 216 12% 86%;
-  --input: 216 12% 84%;
+  --border: 220 13% 87%;
+  --input: 220 13% 85%;
   --ring: 258 72% 60%;
-}
-.aura-admin-root[data-theme="light"][data-palette="cool"] {
-  --background: 220 14% 96%;
-  --secondary: 220 10% 92%;
-  --muted: 220 10% 92%;
-  --accent: 220 10% 90%;
 }

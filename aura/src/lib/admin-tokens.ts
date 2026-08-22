@@ -88,11 +88,11 @@ export const T_HEX = {
     border: "rgba(255,255,255,0.07)", glass: "rgba(255,255,255,0.035)",
   },
   light: {
-    bg: "#ede9e4", card: "#ffffff", text: "#1e2530", muted: "rgba(30,37,48,0.6)",
+    bg: "#f4f5f7", card: "#ffffff", text: "#111827", muted: "rgba(17,24,39,0.6)",
     g1: "#9b6dff", g2: "#4ec9d4", brandText: "#7a4ee6",
     green: "#0f766e", amber: "#b45309", blue: "#2563eb", red: "#dc2626",
     violet: "#7c3aed", rose: "#e11d48", emerald: "#047857", orange: "#c2410c",
-    border: "rgba(30,37,48,0.1)", glass: "rgba(30,37,48,0.04)",
+    border: "rgba(15,23,42,0.1)", glass: "rgba(15,23,42,0.04)",
   },
 } as const;
 
