@@ -1,67 +1,51 @@
 "use client";
 
+import { Bot, Building2, MessageSquareOff, MessagesSquare } from "lucide-react";
 import { useProperty } from "@/context/PropertyContext";
-import { Button } from "@/components/ui/button";
-import { Bot, MessageSquareOff } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { T } from "@/lib/admin-tokens";
+import { PageShell, PageHeader, PageSkeleton, EmptyState, Button } from "@/components/aura";
 
+/** Central de comunicação: o Chatwoot embutido (iframe) com atalho para a fila de automações. */
 export default function ComunicacaoPage() {
-  const router = useRouter();
-  const { currentProperty: property, loading: isLoading } = useProperty();
+  const { currentProperty: property, loading } = useProperty();
 
-  if (isLoading) {
-    return (
-      <div className="flex h-[80vh] items-center justify-center w-full">
-        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
-  }
+  if (loading) return <PageShell maxWidth="full"><PageSkeleton kpis={0} rows={6} /></PageShell>;
 
   if (!property) {
     return (
-      <div className="flex h-[80vh] flex-col items-center justify-center w-full bg-muted/20 rounded-xl border border-dashed">
-        <h2 className="text-xl font-semibold mb-2">Acesso Restrito</h2>
-        <p className="text-sm text-muted-foreground text-center max-w-md">
-          Nenhuma propriedade selecionada. Utilize o menu lateral para selecionar a propriedade.
-        </p>
-      </div>
+      <PageShell maxWidth="full">
+        <EmptyState icon={Building2} title="Selecione uma propriedade" description="Use o menu lateral para escolher a propriedade e abrir a central de comunicação." />
+      </PageShell>
     );
   }
 
   const chatwootUrl = property.settings?.whatsappConfig?.chatwootUrl || "";
-
   if (!chatwootUrl) {
     return (
-      <div className="flex h-[80vh] flex-col items-center justify-center w-full bg-muted/20 rounded-xl border border-dashed">
-        <MessageSquareOff className="w-12 h-12 text-muted-foreground mb-4" />
-        <h2 className="text-xl font-semibold mb-2">Chatwoot não configurado</h2>
-        <p className="text-sm text-muted-foreground text-center max-w-md">
-          A URL do Chatwoot não foi configurada para{" "}
-          <strong className="text-foreground">{property.name}</strong>.
-        </p>
-      </div>
+      <PageShell maxWidth="full">
+        <PageHeader icon={MessagesSquare} title="Comunicação" subtitle={property.name} />
+        <EmptyState
+          icon={MessageSquareOff}
+          title="Chatwoot não configurado"
+          description={<>A URL do Chatwoot ainda não foi configurada para <strong style={{ color: T.text }}>{property.name}</strong>.</>}
+          action={{ label: "Abrir configurações", href: "/admin/configuracoes" }}
+        />
+      </PageShell>
     );
   }
 
   return (
-    // Cancela o padding do layout admin (p-4 lg:p-8 pb-20) para o iframe ser borda a borda
-    <div className="-mt-4 -mb-20 -mx-4 lg:-mt-8 lg:-mb-20 lg:-mx-8 relative">
-      <iframe
-        src={chatwootUrl}
-        className="w-full block"
-        style={{ height: "100dvh" }}
+    <PageShell maxWidth="full" gap={12}>
+      <PageHeader
+        icon={MessagesSquare}
+        title="Comunicação"
+        subtitle="Conversas de WhatsApp (Chatwoot)"
+        actions={<Button variant="secondary" icon={Bot} href="/admin/comunicacao/automations">Fila de automações</Button>}
       />
-
-      {/* Botão flutuante — Fila de Automações */}
-      <div className="fixed top-6 right-6 z-50">
-        <Button
-          onClick={() => router.push("/admin/comunicacao/automations")}
-          className="gap-2 shadow-lg"
-        >
-          <Bot className="w-4 h-4" />
-          Fila de Automações
-        </Button>
+      {/* Altura: viewport menos topbar, padding da página, header e tab bar (celular). */}
+      <div style={{ borderRadius: 16, overflow: "hidden", border: `1px solid ${T.border}`, background: T.card, minHeight: 320, height: "calc(100dvh - var(--topbar-h, 48px) - 2 * var(--page-pad) - 96px - var(--tabbar-h, 0px))" }}>
+        <iframe src={chatwootUrl} title="Chatwoot" style={{ width: "100%", height: "100%", border: 0, display: "block" }} allow="clipboard-read; clipboard-write; microphone" />
       </div>
-    </div>
+    </PageShell>
   );
 }
