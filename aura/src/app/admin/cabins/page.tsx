@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { PageShell, PageHeader, Button, Dialog, SkeletonCards, EmptyState, useConfirm } from "@/components/aura";
 
 // ==========================================
 // GERENCIADOR DE CATEGORIAS
@@ -30,6 +31,7 @@ function CategoryManagerModal({
   const [draft, setDraft] = useState<Partial<CabinCategory>>({ name: "", shortName: "", siteUrl: "" });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const confirm = useConfirm();
 
   const reset = () => { setDraft({ name: "", shortName: "", siteUrl: "" }); setEditingId(null); };
 
@@ -56,7 +58,7 @@ function CategoryManagerModal({
   };
 
   const remove = async (c: CabinCategory) => {
-    if (!confirm(`Excluir a categoria "${c.name}"?`)) return;
+    if (!(await confirm({ title: "Excluir categoria?", description: `"${c.name}" deixa de existir para cabanas e tarifário.`, confirmLabel: "Excluir", tone: "danger" }))) return;
     try {
       await CabinService.deleteCategory(propertyId, c.id);
       toast.success("Categoria excluída.");
@@ -67,22 +69,8 @@ function CategoryManagerModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-background/80 backdrop-blur-sm p-6"
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-card border border-border w-full max-w-2xl rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
-        <header className="p-8 border-b border-border flex justify-between items-center shrink-0">
-          <div>
-            <h2 className="text-2xl font-black uppercase tracking-tighter italic text-foreground">Categorias</h2>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold mt-1">
-              Usadas pelas cabanas e pelo tarifário
-            </p>
-          </div>
-          <button type="button" onClick={onClose} className="p-2 bg-secondary text-muted-foreground rounded-full hover:bg-accent hover:text-foreground transition-colors">
-            <X />
-          </button>
-        </header>
-
-        <div className="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1">
+    <Dialog open onClose={onClose} presentation="auto" size="lg" title="Categorias" subtitle="Usadas pelas cabanas e pelo tarifário">
+        <div className="space-y-6">
           <div className="bg-secondary/50 border border-dashed border-border p-6 rounded-[24px] space-y-4">
             <h3 className="text-[10px] font-black uppercase text-primary tracking-widest">
               {editingId ? "Editar categoria" : "Nova categoria"}
@@ -171,13 +159,13 @@ function CategoryManagerModal({
             </p>
           </div>
         </div>
-      </div>
-    </div>
+    </Dialog>
   );
 }
 
 export default function CabinsPage() {
   const { currentProperty: property, loading: propertyLoading } = useProperty();
+  const confirm = useConfirm();
   const { userData } = useAuth();
 
   // Flag de segurança: Verifica se quem está acessando é ESTRITAMENTE a Governanta
@@ -315,7 +303,8 @@ export default function CabinsPage() {
   };
 
   const handleDelete = async (cabinId: string) => {
-    if (!property?.id || !confirm("Deseja realmente excluir esta unidade?")) return;
+    if (!property?.id) return;
+    if (!(await confirm({ title: "Excluir unidade?", description: "A cabana some das listas e do mapa. Esta ação não pode ser desfeita.", confirmLabel: "Excluir", tone: "danger" }))) return;
     try {
       await CabinService.deleteCabin(property.id, cabinId);
       toast.success("Unidade removida.");
@@ -411,49 +400,27 @@ export default function CabinsPage() {
 
   if (!property && !propertyLoading) {
     return (
-      <div className="p-24 text-center space-y-4 animate-in fade-in">
-        <Building2 size={64} className="mx-auto text-muted-foreground/20" />
-        <h2 className="text-2xl font-black uppercase italic text-muted-foreground">Selecione uma Propriedade no Menu Lateral</h2>
-      </div>
+      <PageShell><EmptyState icon={Building2} title="Selecione uma propriedade" description="As cabanas são por propriedade — escolha uma no menu lateral." /></PageShell>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4 md:space-y-10 animate-in fade-in duration-500">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-2xl md:text-4xl font-black tracking-tighter flex items-center gap-3 italic text-foreground">
-            <Home className="text-primary" size={36} /> {property?.name}
-          </h1>
-          <p className="text-muted-foreground font-bold uppercase text-[10px] tracking-widest mt-2 px-1">Gestão de Unidades & Inventário</p>
-        </div>
-        {/* Governanta não pode criar novas cabanas do zero */}
-        {!isGovOnly && (
-          <div className="flex gap-3">
-            <button
-              onClick={() => setIsCategoryManagerOpen(true)}
-              className="bg-secondary text-foreground font-black px-6 py-4 rounded-2xl flex items-center gap-2 hover:bg-accent transition-all active:scale-95"
-            >
-              Categorias <Tag size={20} />
-            </button>
-            <button
-              onClick={() => handleOpenBatchModal()}
-              className="bg-secondary text-foreground font-black px-6 py-4 rounded-2xl flex items-center gap-2 hover:bg-accent transition-all active:scale-95"
-            >
-              Criar em Lote <Layers size={20} />
-            </button>
-            <button
-              onClick={() => handleOpenModal()}
-              className="bg-primary text-primary-foreground font-black px-8 py-4 rounded-2xl flex items-center gap-2 hover:shadow-[0_0_20px_rgba(var(--primary),0.4)] transition-all active:scale-95"
-            >
-              Nova Unidade <Plus size={20} />
-            </button>
-          </div>
-        )}
-      </header>
+    <PageShell>
+      <PageHeader
+        icon={Home}
+        title={property?.name ?? "Cabanas"}
+        subtitle="Gestão de unidades e inventário"
+        primaryAction={!isGovOnly ? { label: "Nova unidade", icon: Plus, onClick: () => handleOpenModal() } : undefined}
+        actions={!isGovOnly ? (
+          <>
+            <Button variant="secondary" icon={Tag} onClick={() => setIsCategoryManagerOpen(true)}>Categorias</Button>
+            <Button variant="secondary" icon={Layers} onClick={() => handleOpenBatchModal()}>Criar em lote</Button>
+          </>
+        ) : undefined}
+      />
 
       {loading ? (
-        <div className="flex justify-center p-24"><Loader2 className="animate-spin text-primary" size={48} /></div>
+        <SkeletonCards n={6} minWidth={300} />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {cabins.map((cabin) => (
@@ -539,14 +506,9 @@ export default function CabinsPage() {
       )}
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-6">
-          <form onSubmit={handleSave} className="bg-card border border-border w-full max-w-4xl rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in duration-300 flex flex-col h-[90vh]">
-            <header className="p-8 border-b border-border flex justify-between items-center bg-card shrink-0">
-              <h2 className="text-2xl font-black uppercase tracking-tighter italic text-foreground">Configurar Unidade</h2>
-              <button type="button" onClick={() => setIsModalOpen(false)} className="p-2 bg-secondary text-muted-foreground rounded-full hover:bg-accent hover:text-foreground transition-colors"><X /></button>
-            </header>
-
-            <div className="p-10 space-y-12 overflow-y-auto custom-scrollbar flex-1">
+        <Dialog open onClose={() => setIsModalOpen(false)} presentation="auto" size="xl" rawBody title={isBatchMode ? "Criar unidades em lote" : "Configurar unidade"} ariaLabel="Configurar unidade">
+          <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+            <div className="p-5 sm:p-8 space-y-10 overflow-y-auto custom-scrollbar flex-1 min-h-0">
 
               <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {isBatchMode ? (
@@ -757,7 +719,7 @@ export default function CabinsPage() {
                 <h4 className="text-xs font-black uppercase text-primary tracking-widest flex items-center gap-2">
                   <Wifi size={16} /> Rede Wireless da Unidade
                 </h4>
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <input
                     disabled={isGovOnly}
                     placeholder="Rede (SSID)"
@@ -870,16 +832,14 @@ export default function CabinsPage() {
 
             </div>
 
-            <footer className="p-8 border-t border-border bg-muted/30 flex justify-end gap-4 shrink-0">
-              <button type="button" onClick={() => setIsModalOpen(false)} className="px-8 py-4 font-black uppercase text-[10px] text-muted-foreground hover:text-foreground">Cancelar</button>
-              <button type="submit" className="px-12 py-4 bg-primary text-primary-foreground font-black uppercase text-[10px] rounded-2xl hover:shadow-[0_0_30px_rgba(var(--primary),0.4)] active:scale-95 transition-all">
-                Confirmar Configuração
-              </button>
+            <footer className="ak-dialog__footer" style={{ display: "flex", flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
+              <Button type="button" variant="ghost" onClick={() => setIsModalOpen(false)}>Cancelar</Button>
+              <Button type="submit" variant="primary">Confirmar configuração</Button>
             </footer>
           </form>
-        </div>
+        </Dialog>
       )}
-    </div>
+    </PageShell>
   );
 }
 
