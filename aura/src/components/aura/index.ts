@@ -1,0 +1,27 @@
+// Aura Kit — primitivas da identidade do admin (responsivas, com tema e motion).
+// import { PageShell, PageHeader, Button, Dialog, DataList } from "@/components/aura";
+export { T, alpha, tone, T_HEX, type Tone } from "@/lib/admin-tokens";
+export * from "./motion";
+export * from "./hooks";
+export * from "./icon";
+export * from "./OverlayProvider";
+export * from "./Spinner";
+export * from "./Button";
+export * from "./Pill";
+export * from "./Card";
+export * from "./KpiCard";
+export * from "./Skeleton";
+export * from "./Loadable";
+export * from "./EmptyState";
+export * from "./Progress";
+export * from "./Dialog";
+export * from "./ConfirmDialog";
+export * from "./Field";
+export * from "./PageHeader";
+export * from "./FAB";
+export * from "./SegmentedTabs";
+export * from "./FilterChips";
+export * from "./SearchInput";
+export * from "./BottomTabBar";
+export * from "./Toolbar";
+export * from "./DataList";

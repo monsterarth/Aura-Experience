@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import "@/styles/aura-tokens.css";
+import "@/styles/aura-kit.css";
 import AdminLayoutClient from "./AdminLayoutClient";
 
 export const metadata: Metadata = { title: "Aura Admin" };
