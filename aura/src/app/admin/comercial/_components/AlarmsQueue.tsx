@@ -35,11 +35,11 @@ function AlarmRow({
     <div style={{
       display: "flex", alignItems: "center", gap: 12, padding: "12px 16px",
       background: T.card, borderRadius: 14,
-      border: `1px solid ${overdue ? "rgba(248,113,113,0.3)" : T.border}`,
+      border: `1px solid ${overdue ? T.redBorder : T.border}`,
     }}>
       <div style={{
         width: 36, height: 36, borderRadius: 11, flexShrink: 0,
-        background: overdue ? "rgba(248,113,113,0.12)" : T.glass2,
+        background: overdue ? T.redBg : T.glass2,
         color: overdue ? T.red : T.muted,
         display: "flex", alignItems: "center", justifyContent: "center",
       }}>

@@ -14,6 +14,7 @@ import { CrmLead, Guest } from "@/types/aura";
 import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import { GuestService } from "@/services/guest-service";
 import { S, pillS } from "./shared";
+import { Dialog } from "@/components/aura";
 
 const fieldLabel: React.CSSProperties = {
   fontSize: 9, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase",
@@ -107,34 +108,12 @@ export function PromoteGuestModal({
     flex: 1, textAlign: "center", padding: "8px 0", borderRadius: 9, border: "none",
     fontSize: 10, fontWeight: 900, letterSpacing: ".1em", textTransform: "uppercase",
     cursor: "pointer", fontFamily: "inherit",
-    background: on ? T.bg : "transparent", color: on ? "#fff" : T.muted,
+    background: on ? T.card : "transparent", color: on ? T.text : T.muted, boxShadow: on ? "0 1px 2px rgba(0,0,0,.08)" : "none",
   });
 
   return (
-    <div onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      style={{
-        position: "fixed", inset: 0, zIndex: 70, background: "rgba(0,0,0,0.6)",
-        backdropFilter: "blur(4px)", display: "flex", alignItems: "center",
-        justifyContent: "center", padding: 24,
-      }}>
-      <div style={{
-        width: "100%", maxWidth: 520, maxHeight: "88vh", background: T.card,
-        border: `1px solid ${T.border2}`, borderRadius: 20,
-        display: "flex", flexDirection: "column", overflow: "hidden",
-        boxShadow: "0 32px 80px rgba(0,0,0,.7)",
-      }}>
-        <div style={{ padding: "16px 20px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 15, fontWeight: 900, color: T.text }}>Promover a hóspede</div>
-            <div style={{ fontSize: 11.5, color: T.muted, marginTop: 2 }}>
-              A ficha é obrigatória para marcar o orçamento como ganho.
-            </div>
-          </div>
-          <button onClick={onClose}
-            style={{ padding: 7, borderRadius: 10, background: "none", border: "none", cursor: "pointer", color: T.muted, display: "flex" }}>
-            <X size={15} />
-          </button>
-        </div>
+    <Dialog open onClose={onClose} presentation="auto" size="md" rawBody title="Promover a hóspede" subtitle="A ficha é obrigatória para marcar o orçamento como ganho." ariaLabel="Promover a hóspede">
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
 
         <div style={{ padding: "12px 20px 0" }}>
           <div style={{ display: "flex", gap: 4, background: T.glass, borderRadius: 11, padding: 3 }}>
@@ -193,7 +172,7 @@ export function PromoteGuestModal({
                       </p>
                     </div>
                     {samePhone && (
-                      <span style={{ ...pillS("rgba(245,158,11,0.15)", T.amber, "rgba(245,158,11,0.3)"), flexShrink: 0 }}>
+                      <span style={{ ...pillS(T.amberBg, T.amber, T.amberBorder), flexShrink: 0 }}>
                         mesmo telefone
                       </span>
                     )}
@@ -243,8 +222,8 @@ export function PromoteGuestModal({
 
             {docMatch && (
               <p style={{
-                fontSize: 12, color: T.amber, background: "rgba(245,158,11,0.08)",
-                border: "1px solid rgba(245,158,11,0.3)", borderRadius: 12,
+                fontSize: 12, color: T.amber, background: T.amberBg,
+                border: `1px solid ${T.amberBorder}`, borderRadius: 12,
                 padding: "9px 12px", margin: 0, lineHeight: 1.5,
               }}>
                 Esse documento já tem ficha (<b>{docMatch.fullName}</b>) — vamos vincular a
@@ -258,7 +237,7 @@ export function PromoteGuestModal({
           </>)}
         </div>
 
-        <div style={{ padding: "13px 20px", borderTop: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="ak-dialog__footer" style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 8 }}>
           <button onClick={onClose} style={S.ghostBtn}>Cancelar</button>
           {mode === "new" && (
             <button onClick={confirmNew} disabled={busy || !!newError}
@@ -270,6 +249,6 @@ export function PromoteGuestModal({
           )}
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

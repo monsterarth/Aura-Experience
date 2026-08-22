@@ -21,6 +21,7 @@ import {
 import { T } from "@/lib/admin-tokens";
 import { useCloseGuard } from "@/lib/use-discard-guard";
 import { parseMoneyBR, moneyToInput } from "@/lib/parse-money";
+import { copyText } from "@/lib/clipboard";
 import {
   computeQuote, processTemplate, buildCategoryBlock, buildEventNotices,
   DEFAULT_MSG_TEMPLATE, DEFAULT_MSG_SINGLE_TEMPLATE, MIN_OVER_CAPACITY_REASON,
@@ -33,6 +34,7 @@ import {
   RateQuoteRecord, RateQuoteResult, RateQuoteRoom,
 } from "@/types/aura";
 import { S, fmtBR, pillS, QUOTE_STAGES } from "./shared";
+import { Dialog, IconButton } from "@/components/aura";
 
 const todayIso = () => dateToIso(new Date());
 
@@ -188,7 +190,7 @@ export function NewQuoteWizard({
   // Com semente o cliente já está resolvido: começa direto na calculadora.
   const [step, setStep] = useState<1 | 2 | 3>(hasSeed ? 3 : 1);
   // Digitou algo e clicou fora / Esc não pode sumir com o pedido sem avisar.
-  const { requestClose, confirmDiscard, guardProps, markDirty } = useCloseGuard(onClose);
+  const { requestClose, confirmDiscard, guardProps, markDirty } = useCloseGuard(onClose, { escape: false });
 
   // ── Passo 1: lead + composição ─────────────────────────────────────────────
   const [name, setName] = useState(seed?.clientName ?? "");
@@ -364,6 +366,8 @@ export function NewQuoteWizard({
   // Editando: o "salvo" já é o orçamento existente desde o início.
   const [savedId, setSavedId] = useState<string | null>(editingId);
   const [askSent, setAskSent] = useState(false);
+  /** Mensagem na tela para cópia manual — só quando o navegador recusou. */
+  const [manualMsg, setManualMsg] = useState<string | null>(null);
   const savedKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -425,6 +429,52 @@ export function NewQuoteWizard({
     return { checkIn: ci, checkOut: co > ci ? co : checkOut };
   };
 
+  /** Período REAL do orçamento: a envoltória das acomodações (menor entrada →
+   *  maior saída), a MESMA regra que o servidor grava nas colunas raiz. É o
+   *  que a proposta pública mostra — e o que precisa sair na mensagem: com o
+   *  período do PEDIDO aqui, mexer na data da cotação recalculava os valores
+   *  mas o WhatsApp copiado continuava saindo com as datas antigas. */
+  const span = useMemo(() => {
+    const periods = rooms.map(periodOf);
+    return {
+      checkIn: periods.reduce((m, p) => (p.checkIn < m ? p.checkIn : m), periods[0]?.checkIn ?? checkIn),
+      checkOut: periods.reduce((m, p) => (p.checkOut > m ? p.checkOut : m), periods[0]?.checkOut ?? checkOut),
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rooms, checkIn, checkOut]);
+
+  /**
+   * Data editada aqui no passo 3. Com UMA acomodação o período dela É o do
+   * orçamento: mover a data move a cotação inteira, em vez de criar um
+   * "período por acomodação" que o resto da tela — e a mensagem — ignorava.
+   * Com várias, a data é mesmo só daquela acomodação (chegada escalonada), e
+   * as duas pontas são materializadas para não sobrar metade herdada.
+   * Inverter as pontas não zera o período: a saída acompanha mantendo as
+   * noites, que é o que se espera de quem está REMARCANDO a estadia.
+   */
+  const patchPeriod = (room: DraftRoom, field: "checkIn" | "checkOut", value: string) => {
+    if (!value) return;   // limpar o campo no teclado não pode apagar o período
+    const cur = periodOf(room);
+    const next = field === "checkIn"
+      ? {
+          checkIn: value,
+          checkOut: value < cur.checkOut
+            ? cur.checkOut
+            : addDays(value, nightsBetween(cur.checkIn, cur.checkOut) || 1),
+        }
+      : {
+          checkIn: cur.checkIn,
+          checkOut: value > cur.checkIn ? value : addDays(cur.checkIn, 1),
+        };
+    if (rooms.length > 1) { patchRoom(room.id, next); return; }
+    markDirty();
+    setCheckIn(next.checkIn);
+    setCheckOut(next.checkOut);
+    // Sozinha, a acomodação volta a HERDAR: período próprio só faz sentido
+    // quando existe outra acomodação da qual diferir.
+    setRooms((prev) => prev.map((r) => ({ ...r, checkIn: "", checkOut: "" })));
+  };
+
   /** Uma cotação por acomodação — mesmo motor; pax E período podem variar. */
   const roomQuotes = useMemo(() => {
     if (!bundle) return null;
@@ -472,8 +522,8 @@ export function NewQuoteWizard({
         babies: acc.babies + p.babies, pets: acc.pets + p.pets,
       };
     }, { adults: 0, children: 0, babies: 0, pets: 0 });
-    return { checkIn, checkOut, ...sum, ...commercial };
-  }, [rooms, checkIn, checkOut, commercial]);
+    return { ...span, ...sum, ...commercial };
+  }, [rooms, span, commercial]);
 
   /** Cabanas MARCADAS desta acomodação — é o que vai ser oferecido de verdade. */
   const includedOf = (rq: NonNullable<typeof roomQuotes>[number]) => {
@@ -653,9 +703,14 @@ export function NewQuoteWizard({
           { ...c, finalTotal: priceOf(rq.room, c) }, linkOf(c.categoryId), single, detailed, language
         ))
         .join("\n");
+      // Com períodos diferentes entre acomodações, o cabeçalho do bloco leva a
+      // data DAQUELA — senão o cliente lê um período só, o do topo da mensagem.
+      const p = periodOf(rq.room);
+      const ownPeriod = p.checkIn !== span.checkIn || p.checkOut !== span.checkOut
+        ? ` · ${fmtBR(p.checkIn)} → ${fmtBR(p.checkOut)}` : "";
       parts.push(roomQuotes.length === 1
         ? blocks
-        : `*${roomLabel(rq.room, i)}* — ${paxLabel(rq.room)}\n${blocks}`);
+        : `*${roomLabel(rq.room, i)}* — ${paxLabel(rq.room)}${ownPeriod}\n${blocks}`);
     });
     if (parts.length === 0) { toast.error("Selecione pelo menos uma categoria."); return; }
 
@@ -678,13 +733,17 @@ export function NewQuoteWizard({
       msgCtx, resumo, avisos
     );
 
-    try {
-      await navigator.clipboard.writeText(msg);
-      toast.success("Cotação copiada — com o link da proposta.");
-    } catch {
-      toast.error("Não foi possível copiar. Copie manualmente.");
+    if (!(await copyText(msg))) {
+      // Falha típica: o vendedor troca de janela enquanto o orçamento salva e o
+      // navegador recusa a escrita ("documento sem foco"). Mandar "copie
+      // manualmente" sem nada para copiar deixava o vendedor sem saída — a
+      // mensagem vai para a tela, e o botão de lá é um gesto novo com a janela
+      // em foco (é o que costuma destravar).
+      setManualMsg(msg);
+      toast.error("Não foi possível copiar. A mensagem está na tela.");
       return;
     }
+    toast.success("Cotação copiada — com o link da proposta.");
     setAskSent(true);
   };
 
@@ -941,9 +1000,9 @@ export function NewQuoteWizard({
         {avail && (
           <span title={avail.freeCabins.join(", ")}
             style={pillS(
-              avail.free > 0 ? T.emeraldBg : "rgba(248,113,113,0.12)",
+              avail.free > 0 ? T.emeraldBg : T.redBg,
               avail.free > 0 ? T.emerald : T.red,
-              avail.free > 0 ? T.emeraldBorder : "rgba(248,113,113,0.3)"
+              avail.free > 0 ? T.emeraldBorder : T.redBorder
             )}>
             {avail.free > 0 ? `${avail.free}/${avail.total} livre${avail.free > 1 ? "s" : ""}` : "Ocupada"}
           </span>
@@ -959,7 +1018,7 @@ export function NewQuoteWizard({
           <input style={{
               ...S.input, width: 96, padding: "5px 8px", fontSize: 12.5, fontWeight: 900,
               textAlign: "right",
-              borderColor: custom ? "rgba(245,158,11,0.4)" : T.border2,
+              borderColor: custom ? T.amberBorder : T.border2,
               color: custom ? T.amber : chosen ? T.g1 : T.text,
             }}
             inputMode="decimal" placeholder={formatBRL(c.finalTotal)}
@@ -988,18 +1047,8 @@ export function NewQuoteWizard({
   };
 
   return (
-    <div onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
-      style={{
-        position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,0.6)",
-        backdropFilter: "blur(4px)", display: "flex", alignItems: "center",
-        justifyContent: "center", padding: 24,
-      }}>
-      <div {...guardProps} style={{
-        width: "100%", maxWidth: 780, maxHeight: "90vh", background: T.card,
-        border: `1px solid ${T.border2}`, borderRadius: 20,
-        display: "flex", flexDirection: "column", overflow: "hidden",
-        boxShadow: "0 32px 80px rgba(0,0,0,.7)",
-      }}>
+    <Dialog open onClose={requestClose} presentation="auto" size="xl" rawBody hideClose panelProps={guardProps} ariaLabel="Nova cotação">
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
         {/* Header */}
         <div style={{ padding: "18px 22px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
           <div style={{ minWidth: 0, flex: 1 }}>
@@ -1017,14 +1066,11 @@ export function NewQuoteWizard({
               {stepDot(3, "Cotação")}
             </div>
           </div>
-          <button onClick={requestClose}
-            style={{ padding: 8, borderRadius: 10, background: "none", border: "none", cursor: "pointer", color: T.muted, display: "flex" }}>
-            <X size={15} />
-          </button>
+          <IconButton icon={X} label="Fechar" variant="secondary" onClick={requestClose} />
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, overflowY: "auto", padding: 22, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 20, display: "flex", flexDirection: "column", gap: 14, overscrollBehavior: "contain" }}>
 
           {/* Orçamento adotado no passo 2 — fica à vista até salvar, inclusive
               se o vendedor voltar para o pedido: é o que explica por que não
@@ -1041,9 +1087,9 @@ export function NewQuoteWizard({
               <p style={{ fontSize: 11.5, color: T.text, margin: 0 }}>
                 Pedido salvo: {fmtBR(adopted.checkIn)} → {fmtBR(adopted.checkOut)}
                 {adopted.finalValue ? ` · R$ ${formatBRL(adopted.finalValue)}` : ""}
-                {(adopted.checkIn !== checkIn || adopted.checkOut !== checkOut) && (
+                {(adopted.checkIn !== span.checkIn || adopted.checkOut !== span.checkOut) && (
                   <b style={{ color: T.amber }}>
-                    {" "}→ vai passar para {fmtBR(checkIn)} → {fmtBR(checkOut)}
+                    {" "}→ vai passar para {fmtBR(span.checkIn)} → {fmtBR(span.checkOut)}
                   </b>
                 )}
               </p>
@@ -1279,7 +1325,7 @@ export function NewQuoteWizard({
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, color: T.muted }}>
               <b style={{ color: T.text }}>{name}</b>
               {linkedGuest && <span style={pillS(T.emeraldBg, T.emerald, T.emeraldBorder)}>hóspede vinculado</span>}
-              <span>{fmtBR(checkIn)} → {fmtBR(checkOut)}</span>
+              <span>{fmtBR(span.checkIn)} → {fmtBR(span.checkOut)}</span>
               <span>{rooms.length} acomodaç{rooms.length > 1 ? "ões" : "ão"}</span>
               {rooms.some((r) => r.checkIn || r.checkOut) && (
                 <span style={{ ...pillS(T.gradSoft, T.g1, T.g1Border), fontSize: 9 }}>
@@ -1302,12 +1348,12 @@ export function NewQuoteWizard({
               </div>
             ) : (<>
               {roomQuotes[0].result.uncoveredDates.length > 0 && (
-                <div style={{ background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 11, padding: "9px 13px", fontSize: 12, color: T.red }}>
+                <div style={{ background: T.redBg, border: `1px solid ${T.redBorder}`, borderRadius: 11, padding: "9px 13px", fontSize: 12, color: T.red }}>
                   Sem regra de tarifário para {roomQuotes[0].result.uncoveredDates.length} data(s) — cadastre no Tarifário → Calendário.
                 </div>
               )}
               {roomQuotes[0].result.nights > 0 && roomQuotes[0].result.nights < roomQuotes[0].result.minNightsRequired && (
-                <div style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 11, padding: "9px 13px", fontSize: 12, color: T.amber }}>
+                <div style={{ background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 11, padding: "9px 13px", fontSize: 12, color: T.amber }}>
                   Período exige mínimo de {roomQuotes[0].result.minNightsRequired} diárias (cotação tem {roomQuotes[0].result.nights}).
                 </div>
               )}
@@ -1315,7 +1361,7 @@ export function NewQuoteWizard({
                 const all = Object.values(contextByPeriod).flatMap((c) => c.events);
                 return all.filter((ev, i) => all.findIndex((o) => o.title === ev.title && o.date === ev.date) === i);
               })().map((ev, i) => (
-                <div key={i} style={{ background: "rgba(96,165,250,0.08)", border: "1px solid rgba(96,165,250,0.3)", borderRadius: 11, padding: "9px 13px", fontSize: 12, color: T.blue }}>
+                <div key={i} style={{ background: T.blueBg, border: `1px solid ${T.blueBorder}`, borderRadius: 11, padding: "9px 13px", fontSize: 12, color: T.blue }}>
                   Evento no período: <b>{ev.title}</b> ({fmtBR(ev.date)}) — o aviso entra na mensagem.
                 </div>
               ))}
@@ -1472,8 +1518,8 @@ export function NewQuoteWizard({
                       {/* Período desta acomodação */}
                       <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5 }}>
                         <input type="date" value={p.checkIn}
-                          title="Check-in desta acomodação"
-                          onChange={(e) => patchRoom(rq.room.id, { checkIn: e.target.value })}
+                          title={roomQuotes.length > 1 ? "Check-in desta acomodação" : "Check-in da cotação"}
+                          onChange={(e) => patchPeriod(rq.room, "checkIn", e.target.value)}
                           style={{
                             ...S.input, width: 132, padding: "5px 8px", fontSize: 11,
                             borderColor: custom ? T.g1Border : T.border2,
@@ -1481,8 +1527,8 @@ export function NewQuoteWizard({
                           }} />
                         <span style={{ fontSize: 11, color: T.muted2 }}>→</span>
                         <input type="date" value={p.checkOut}
-                          title="Check-out desta acomodação"
-                          onChange={(e) => patchRoom(rq.room.id, { checkOut: e.target.value })}
+                          title={roomQuotes.length > 1 ? "Check-out desta acomodação" : "Check-out da cotação"}
+                          onChange={(e) => patchPeriod(rq.room, "checkOut", e.target.value)}
                           style={{
                             ...S.input, width: 132, padding: "5px 8px", fontSize: 11,
                             borderColor: custom ? T.g1Border : T.border2,
@@ -1599,7 +1645,7 @@ export function NewQuoteWizard({
         </div>
 
         {/* Footer */}
-        <div style={{ padding: "14px 22px", borderTop: `1px solid ${T.border}`, display: "flex", gap: 8, flexShrink: 0, alignItems: "center" }}>
+        <div className="ak-dialog__footer" style={{ display: "flex", flexDirection: "row", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           {step === 1 && (<>
             <button onClick={requestClose} style={S.ghostBtn}>Cancelar</button>
             <button onClick={goNext} disabled={checking}
@@ -1644,6 +1690,37 @@ export function NewQuoteWizard({
           </>)}
         </div>
       </div>
-    </div>
+
+      {/* Cópia manual — o orçamento já está salvo; falta só a mensagem sair. */}
+      <Dialog open={manualMsg !== null} onClose={() => setManualMsg(null)} presentation="auto" size="md" title="Copie a mensagem">
+        {manualMsg !== null && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <p style={{ fontSize: 11.5, color: T.muted, margin: 0, lineHeight: 1.5 }}>
+              O navegador recusou a cópia automática — quase sempre é a janela ter
+              perdido o foco enquanto o orçamento salvava. Ele JÁ está no funil:
+              falta só levar o texto para o WhatsApp.
+            </p>
+            <textarea readOnly autoFocus rows={10} value={manualMsg}
+              onFocus={(e) => e.currentTarget.select()}
+              style={{ ...S.input, resize: "vertical", fontSize: 12, lineHeight: 1.45 }} />
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button onClick={() => setManualMsg(null)} style={S.ghostBtn}>Fechar</button>
+              <button style={{ ...S.gradBtn, marginLeft: "auto" }}
+                onClick={async () => {
+                  if (!(await copyText(manualMsg))) {
+                    toast.error("Selecione o texto acima e use Ctrl+C.");
+                    return;
+                  }
+                  toast.success("Cotação copiada — com o link da proposta.");
+                  setManualMsg(null);
+                  setAskSent(true);
+                }}>
+                <Copy size={14} /> Copiar de novo
+              </button>
+            </div>
+          </div>
+        )}
+      </Dialog>
+    </Dialog>
   );
 }

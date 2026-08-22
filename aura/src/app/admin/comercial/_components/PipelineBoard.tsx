@@ -5,11 +5,12 @@
 // onDropLead e o FunnelPage decide (mover / ganhar / abrir modal de perda).
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { BadgeCheck, CalendarDays, CircleDollarSign, Heart, Phone, Tag, CalendarClock, StickyNote } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
 import { CrmAlarm, CrmChannel, CrmLead } from "@/types/aura";
 import { ACTIVE_STAGES, StageDef, fmtBR, leadAlert, money, pillS, todayIso } from "./shared";
+import { FilterChips, useIsMobile } from "@/components/aura";
 
 /** Idade do lead em dias — envelhecimento é métrica clássica de pipeline. */
 function ageDays(createdAt: string, today: string): number {
@@ -34,6 +35,11 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen, onDropL
   const t = todayIso();
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [overStage, setOverStage] = useState<string | null>(null);
+  // Celular: uma coluna por vez (chips de etapa com contagem).
+  const isMobile = useIsMobile();
+  const [mobileStage, setMobileStage] = useState<string>(stages[0]?.id ?? "");
+  useEffect(() => { if (!stages.some((s) => s.id === mobileStage)) setMobileStage(stages[0]?.id ?? ""); }, [stages, mobileStage]);
+  const visibleStages = isMobile ? stages.filter((s) => s.id === mobileStage) : stages;
 
   const channelLabel = (slug?: string | null) =>
     slug ? channels.find((c) => c.id === slug)?.label ?? slug : null;
@@ -41,8 +47,12 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen, onDropL
     alarms.find((a) => a.entityId === l.id && a.kind === "payment" && a.dueAt <= t);
 
   return (
-    <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
-      {stages.map((stage) => {
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    {isMobile && (
+      <FilterChips items={stages.map((s) => ({ id: s.id, label: s.label, count: leads.filter((l) => l.stage === s.id).length }))} value={mobileStage} onChange={setMobileStage} ariaLabel="Etapa do funil" />
+    )}
+    <div data-no-ptr style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8, alignItems: "flex-start" }}>
+      {visibleStages.map((stage) => {
         // Mais urgente em cima: follow-up mais próximo primeiro, sem prazo por último.
         const rows = leads
           .filter((l) => l.stage === stage.id)
@@ -50,7 +60,7 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen, onDropL
         const total = rows.reduce((s, l) => s + l.value, 0);
         const isOver = overStage === stage.id;
         return (
-          <div key={stage.id} style={{ width: 248, flexShrink: 0 }}>
+          <div key={stage.id} style={{ width: isMobile ? "100%" : 248, flexShrink: 0, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 4px", marginBottom: 8 }}>
               <span style={{ width: 8, height: 8, borderRadius: 999, background: stage.dot, flexShrink: 0 }} />
               <span style={{ fontSize: 13, fontWeight: 800, color: T.text }}>{stage.label}</span>
@@ -73,7 +83,7 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen, onDropL
               }}
               style={{
                 display: "flex", flexDirection: "column", gap: 8, minHeight: 90,
-                background: isOver ? T.glass2 : "rgba(255,255,255,0.03)",
+                background: isOver ? T.glass2 : T.glass,
                 border: `1px dashed ${isOver ? T.g1Border : "transparent"}`,
                 borderRadius: 14, padding: 8, transition: "background .15s, border-color .15s",
               }}>
@@ -96,13 +106,12 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen, onDropL
                     onKeyDown={(e) => e.key === "Enter" && onOpen(l)}
                     style={{
                       background: T.card, border: `1px solid ${T.border}`, borderRadius: 12,
-                      padding: 12, cursor: dragDisabled ? "pointer" : "grab",
+                      padding: 12, cursor: dragDisabled ? "pointer" : "grab", boxShadow: "none",
                       display: "flex", flexDirection: "column", gap: 6,
                       transition: "border-color .15s, opacity .15s",
                       opacity: draggingId === l.id ? 0.4 : 1,
                     }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.3)"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = T.border; }}>
+                    className="ak-card ak-press">
                     <div style={{ fontSize: 13, fontWeight: 700, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {l.title}
                     </div>
@@ -116,7 +125,7 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen, onDropL
                             style={{
                               marginLeft: "auto", fontSize: 9, fontWeight: 800,
                               borderRadius: 999, padding: "1px 6px",
-                              background: age > 14 ? "rgba(248,113,113,0.12)" : age > 7 ? "rgba(245,158,11,0.12)" : T.glass2,
+                              background: age > 14 ? T.redBg : age > 7 ? T.amberBg : T.glass2,
                               color: age > 14 ? T.red : age > 7 ? T.amber : T.muted,
                             }}>
                             {age}d
@@ -133,7 +142,7 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen, onDropL
                       {src && (
                         <span style={{
                           fontSize: 10, background: T.glass2, border: `1px solid ${T.border}`,
-                          borderRadius: 999, padding: "2px 8px", color: "rgba(238,240,248,0.6)",
+                          borderRadius: 999, padding: "2px 8px", color: T.muted,
                           display: "inline-flex", alignItems: "center", gap: 4,
                         }}>
                           <Tag size={9} /> {src}
@@ -147,9 +156,9 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen, onDropL
                       )}
                       {alert && (
                         <span style={pillS(
-                          alert === "expired" ? "rgba(248,113,113,0.12)" : "rgba(245,158,11,0.12)",
+                          alert === "expired" ? T.redBg : T.amberBg,
                           alert === "expired" ? T.red : T.amber,
-                          alert === "expired" ? "rgba(248,113,113,0.3)" : "rgba(245,158,11,0.3)"
+                          alert === "expired" ? T.redBorder : T.amberBorder
                         )}>
                           <CalendarClock size={9} /> {alert === "expired" ? "prazo vencido" : "follow-up"}
                         </span>
@@ -167,7 +176,7 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen, onDropL
                       )}
                       {l.lostReason && l.stage === "lost" && (
                         <span style={{
-                          fontSize: 10, color: "rgba(238,240,248,0.35)",
+                          fontSize: 10, color: T.muted2,
                           display: "inline-flex", alignItems: "center", gap: 4,
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%",
                         }}>
@@ -207,6 +216,7 @@ export function PipelineBoard({ stages, leads, channels, alarms, onOpen, onDropL
           </div>
         );
       })}
+    </div>
     </div>
   );
 }

@@ -5,17 +5,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { useTabParam } from "@/lib/settings-deeplink";
 import {
   BellRing, CalendarClock, CalendarDays, ExternalLink, Eye, EyeOff, Handshake,
-  Heart, Hourglass, KanbanSquare, LayoutList, Loader2, Plus, RefreshCw, Search,
-  TrendingDown, TrendingUp,
+  Heart, Hourglass, KanbanSquare, LayoutList, Plus, RefreshCw,
+  TrendingDown, TrendingUp, type LucideIcon,
 } from "lucide-react";
-import { T } from "@/lib/admin-tokens";
+import { T, type Tone } from "@/lib/admin-tokens";
+import { PageShell, PageHeader, SegmentedTabs, KpiGrid, KpiCard, Loadable, SkeletonKanban, SearchInput, Button, IconButton, useConfirm } from "@/components/aura";
 import type { RateBundle } from "@/services/rate-service";
 import { CrmAlarm, CrmChannel, CrmEntityType, CrmLead, Guest, RateQuoteRecord, WaitlistEntry } from "@/types/aura";
 import { PipelineBoard } from "./PipelineBoard";
@@ -27,22 +27,20 @@ import { LeadDrawer } from "./LeadDrawer";
 import { MarkLostModal } from "./MarkLostModal";
 import { NewQuoteWizard, type QuoteSeed } from "./NewQuoteWizard";
 import type { PromotePayload } from "./PromoteGuestModal";
-import { S, QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, leadAlert, money, todayIso } from "./shared";
+import { QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, leadAlert, money, todayIso } from "./shared";
 
 type TabId = "pipeline" | "alarmes" | "espera";
 
 const FUNNEL_CFG: Record<CrmEntityType, {
-  title: string; subtitle: string; icon: React.ReactNode;
+  title: string; subtitle: string;
 }> = {
   quote: {
     title: "Pipeline Estadias",
     subtitle: "Orçamentos de reserva — do primeiro contato ao pagamento.",
-    icon: <CalendarDays size={22} color="#9b6dff" />,
   },
   wedding: {
     title: "Pipeline Casamentos",
     subtitle: "Leads de casamento — da visita ao contrato assinado.",
-    icon: <Heart size={22} color="#fb7185" />,
   },
 };
 
@@ -50,6 +48,7 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
   const { currentProperty: property } = useProperty();
   const { userData } = useAuth();
   const router = useRouter();
+  const confirm = useConfirm();
   const cfg = FUNNEL_CFG[funnel];
   const stages = funnel === "quote" ? QUOTE_STAGES : WEDDING_STAGES;
 
@@ -100,6 +99,8 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
   const [showLost, setShowLost] = useState(false);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<CrmLead | null>(null);
+  const [lastSelected, setLastSelected] = useState<CrmLead | null>(null);
+  useEffect(() => { if (selected) setLastSelected(selected); }, [selected]);
   const [losing, setLosing] = useState<CrmLead | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -366,7 +367,7 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
     await reload();
     setSelected(null);
     toast.success("Ganhou! Hóspede garantido.");
-    if (confirm("Criar a estadia agora, já pré-preenchida?")) {
+    if (await confirm({ title: "Criar a estadia agora?", description: "Já pré-preenchida com os dados do orçamento.", confirmLabel: "Criar estadia" })) {
       const params = new URLSearchParams({
         checkIn: data.checkIn, checkOut: data.checkOut, quoteId: lead.id,
         // O pax vem do orçamento: a estadia não pode nascer com 2 adultos
@@ -470,7 +471,7 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
   };
 
   const alarmDelete = async (a: CrmAlarm) => {
-    if (!confirm(`Excluir o alarme "${a.title}"?`)) return;
+    if (!(await confirm({ title: "Excluir alarme?", description: `"${a.title}" será removido.`, confirmLabel: "Excluir", tone: "danger" }))) return;
     setAlarmBusyId(a.id);
     try {
       const res = await fetch(
@@ -514,213 +515,103 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
 
   if (!property) return null;
 
-  const kpiCards = [
-    {
-      icon: Handshake, label: "Em negociação",
-      value: `R$ ${money(kpis.activeValue)}`, color: T.text,
-      sub: `${kpis.activeCount} lead${kpis.activeCount !== 1 ? "s" : ""} ativo${kpis.activeCount !== 1 ? "s" : ""}`,
-    },
-    {
-      icon: CalendarClock, label: "Follow-ups vencidos",
-      value: String(kpis.overdueCount), color: kpis.overdueCount > 0 ? T.red : T.emerald,
-      sub: kpis.overdueCount > 0 ? "precisam de contato" : "fila em dia",
-    },
-    {
-      icon: TrendingUp, label: "Fechados (60d)",
-      value: `R$ ${money(kpis.wonValue)}`, color: T.emerald,
-      sub: funnel === "wedding" ? "contratos confirmados" : "reservas ganhas",
-    },
-    {
-      icon: TrendingDown, label: "Perdidos (60d)",
-      value: `R$ ${money(kpis.lostValue)}`, color: T.red,
-      sub: "arquivados com motivo",
-    },
+  const kpiCards: { icon: LucideIcon; label: string; value: string; tone: Tone; sub: string }[] = [
+    { icon: Handshake, label: "Em negociação", value: `R$ ${money(kpis.activeValue)}`, tone: "brand", sub: `${kpis.activeCount} lead${kpis.activeCount !== 1 ? "s" : ""} ativo${kpis.activeCount !== 1 ? "s" : ""}` },
+    { icon: CalendarClock, label: "Follow-ups vencidos", value: String(kpis.overdueCount), tone: kpis.overdueCount > 0 ? "red" : "emerald", sub: kpis.overdueCount > 0 ? "precisam de contato" : "fila em dia" },
+    { icon: TrendingUp, label: "Fechados (60d)", value: `R$ ${money(kpis.wonValue)}`, tone: "emerald", sub: funnel === "wedding" ? "contratos confirmados" : "reservas ganhas" },
+    { icon: TrendingDown, label: "Perdidos (60d)", value: `R$ ${money(kpis.lostValue)}`, tone: "red", sub: "arquivados com motivo" },
   ];
 
-  const segTab = (activeSeg: boolean): React.CSSProperties => ({
-    display: "flex", alignItems: "center", gap: 6, padding: "8px 12px",
-    borderRadius: 9, border: "none", cursor: "pointer", fontFamily: "inherit",
-    fontSize: 12.5, fontWeight: 700, transition: "all .15s",
-    background: activeSeg ? T.card : "transparent",
-    color: activeSeg ? T.text : T.muted,
-  });
+  // Follow-ups não é mais aba: virou a "Fila de hoje" fixa no topo do pipeline.
+  const tabItems = [
+    { id: "pipeline" as TabId, label: "Pipeline", icon: KanbanSquare },
+    { id: "alarmes" as TabId, label: "Alarmes", icon: BellRing, count: dueAlarmCount || undefined },
+    // Espera é conceito de reservas; contador neutro (não é urgência)
+    ...(funnel === "quote" ? [{ id: "espera" as TabId, label: "Espera", icon: Hourglass, count: waitingCount || undefined }] : []),
+  ];
+
+  // O drawer guarda o último lead para a animação de saída não desmontar o conteúdo.
+  const drawerLead = selected ?? lastSelected;
 
   return (
-    <div style={{ padding: 24, maxWidth: 1400, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 900, letterSpacing: "-.02em", color: T.text, display: "flex", alignItems: "center", gap: 10 }}>
-            {cfg.icon} {cfg.title}
-          </h1>
-          <p style={{ margin: "4px 0 0", fontSize: 13, color: T.muted }}>{cfg.subtitle}</p>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {funnel === "quote" && (
-            <button onClick={() => openWizard()} style={S.gradBtn}>
-              <Plus size={14} /> Nova cotação
-            </button>
-          )}
-          {funnel === "wedding" && (
-            <Link href="/admin/casamentos" style={{ ...S.ghostBtn, textDecoration: "none" }}>
-              <ExternalLink size={13} /> Gestão do evento
-            </Link>
-          )}
-          <div style={{ display: "flex", gap: 4, background: T.glass, borderRadius: 12, padding: 4, border: `1px solid ${T.border}` }}>
-            {([
-              // Follow-ups não é mais aba: virou a "Fila de hoje" fixa no
-              // topo do pipeline (UI do projeto de design).
-              { id: "pipeline" as TabId, label: "Pipeline", icon: KanbanSquare, badge: 0, count: 0 },
-              { id: "alarmes" as TabId, label: "Alarmes", icon: BellRing, badge: dueAlarmCount, count: 0 },
-              // Espera é conceito de reservas; contador neutro (não é urgência)
-              ...(funnel === "quote"
-                ? [{ id: "espera" as TabId, label: "Espera", icon: Hourglass, badge: 0, count: waitingCount }]
-                : []),
-            ]).map(({ id, label, icon: Icon, badge, count }) => (
-              <button key={id} onClick={() => setTab(id)} style={segTab(tab === id)}>
-                <Icon size={15} />
-                <span>{label}</span>
-                {badge > 0 && (
-                  <span style={{
-                    minWidth: 16, height: 16, borderRadius: 999, padding: "0 4px",
-                    background: T.grad, color: "#fff", fontSize: 9, fontWeight: 900,
-                    display: "inline-flex", alignItems: "center", justifyContent: "center",
-                  }}>
-                    {badge}
-                  </span>
-                )}
-                {count > 0 && (
-                  <span style={{ fontSize: 10, fontWeight: 700, color: T.muted }}>({count})</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+    <PageShell maxWidth="xl">
+      <PageHeader
+        icon={funnel === "quote" ? CalendarDays : Heart}
+        iconTone={funnel === "quote" ? "brand" : "rose"}
+        title={cfg.title}
+        subtitle={cfg.subtitle}
+        primaryAction={funnel === "quote" ? { label: "Nova cotação", icon: Plus, onClick: () => openWizard() } : undefined}
+        actions={funnel === "wedding" ? <Button variant="secondary" icon={ExternalLink} href="/admin/casamentos">Gestão do evento</Button> : undefined}
+        tabs={<SegmentedTabs<TabId> items={tabItems} value={tab} onChange={setTab} ariaLabel="Seções do funil" />}
+      />
 
       {/* KPIs do funil */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
-        {kpiCards.map((k) => {
-          const Icon = k.icon;
-          return (
-            <div key={k.label} style={{ ...S.card, padding: "14px 18px", position: "relative", overflow: "hidden" }}>
-              <div style={{
-                position: "absolute", top: -20, right: -20, width: 70, height: 70, borderRadius: "50%",
-                background: `radial-gradient(circle,${k.color === T.text ? T.g1 : k.color}18 0%,transparent 70%)`,
-                pointerEvents: "none",
-              }} />
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: T.muted }}>
-                <Icon size={11} /> {k.label}
+      <KpiGrid cols={4}>
+        {kpiCards.map((k) => <KpiCard key={k.label} compact icon={k.icon} label={k.label} value={k.value} sub={k.sub} tone={k.tone} />)}
+      </KpiGrid>
+
+      <Loadable loading={loading} skeleton={<SkeletonKanban cols={3} cards={3} />}>
+        {tab === "pipeline" ? (
+          <>
+            {/* Fila de hoje — follow-ups + cobranças, sempre visível */}
+            <TodayQueue leads={leads} alarms={alarms}
+              busyId={busyId} alarmBusyId={alarmBusyId}
+              onOpenLead={setSelected} onOpenAlarm={openAlarmLead}
+              onContact={(l) => followUp(l, "")} onAlarmDone={alarmDone} />
+
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <SearchInput value={search} onChange={setSearch} placeholder="Buscar por nome, telefone, e-mail…" wrapStyle={{ flex: "1 1 200px", maxWidth: 320 }} />
+              <span style={{ fontSize: 11, color: T.muted2, whiteSpace: "nowrap" }}>
+                {visibleLeads.length} lead{visibleLeads.length !== 1 ? "s" : ""} no funil
+              </span>
+              <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <Button variant={showLost ? "secondary" : "ghost"} size="sm" icon={showLost ? Eye : EyeOff} onClick={() => setShowLost((v) => !v)} title={showLost ? "Ocultar perdidos" : "Mostrar perdidos"}>perdidos</Button>
+                <SegmentedTabs<"kanban" | "lista"> items={[{ id: "kanban", label: "Kanban", icon: KanbanSquare }, { id: "lista", label: "Lista", icon: LayoutList }]} value={view} onChange={setView} size="sm" iconOnlyOnMobile ariaLabel="Visualização" />
+                <IconButton icon={RefreshCw} label="Atualizar" variant="secondary" onClick={() => { setLoading(true); load(); }} disabled={loading} />
               </div>
-              <div style={{ fontSize: 20, fontWeight: 900, marginTop: 6, color: k.color, letterSpacing: "-.5px" }}>{k.value}</div>
-              <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{k.sub}</div>
             </div>
-          );
-        })}
-      </div>
 
-      {loading ? (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "96px 0", gap: 10, color: T.muted }}>
-          <Loader2 className="animate-spin" size={20} color={T.g1} /> Carregando pipeline…
-        </div>
-      ) : tab === "pipeline" ? (
-        <>
-          {/* Fila de hoje — follow-ups + cobranças, sempre visível (design) */}
-          <TodayQueue leads={leads} alarms={alarms}
-            busyId={busyId} alarmBusyId={alarmBusyId}
-            onOpenLead={setSelected} onOpenAlarm={openAlarmLead}
-            onContact={(l) => followUp(l, "")} onAlarmDone={alarmDone} />
+            {view === "kanban" ? (
+              <PipelineBoard stages={visibleStages} leads={visibleLeads}
+                channels={channels} alarms={alarms} onOpen={setSelected}
+                onDropLead={handleDropLead} dragDisabled={busyId !== null}
+                onAddNew={funnel === "quote" ? () => openWizard() : undefined} />
+            ) : (
+              <LeadListView stages={visibleStages} leads={visibleLeads}
+                channels={channels} onOpen={setSelected} />
+            )}
+          </>
+        ) : tab === "alarmes" ? (
+          <AlarmsQueue alarms={alarms} busyId={alarmBusyId}
+            onDone={alarmDone} onDelete={alarmDelete} onOpen={openAlarmLead} />
+        ) : (
+          <WaitlistTab propertyId={property.id} entries={waitlist} onChanged={loadWaitlist}
+            onConvert={convertWaitlistEntry} />
+        )}
+      </Loadable>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <div style={{
-              display: "flex", alignItems: "center", gap: 8, background: T.glass,
-              border: `1px solid ${T.border2}`, borderRadius: 10, padding: "7px 12px",
-              flex: 1, minWidth: 220, maxWidth: 300,
-            }}>
-              <Search size={13} color={T.muted} />
-              <input value={search} onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar por nome, telefone, e-mail…"
-                autoComplete="off"
-                style={{ background: "none", border: "none", outline: "none", color: T.text, fontFamily: "inherit", fontSize: 13, flex: 1 }} />
-            </div>
-            <span style={{ fontSize: 11, color: T.muted2 }}>
-              {visibleLeads.length} lead{visibleLeads.length !== 1 ? "s" : ""} no funil
-            </span>
-            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-              <button onClick={() => setShowLost((v) => !v)}
-                title={showLost ? "Ocultar perdidos" : "Mostrar perdidos"}
-                style={{
-                  display: "flex", alignItems: "center", gap: 6, padding: "7px 11px",
-                  borderRadius: 9, cursor: "pointer", fontFamily: "inherit",
-                  fontSize: 11, fontWeight: 800,
-                  background: showLost ? T.glass2 : "transparent",
-                  border: `1px solid ${showLost ? T.border2 : "transparent"}`,
-                  color: showLost ? T.text : T.muted,
-                }}>
-                {showLost ? <Eye size={12} /> : <EyeOff size={12} />} perdidos
-              </button>
-              <div style={{ display: "flex", gap: 2, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 9, padding: 3 }}>
-                {([
-                  { id: "kanban" as const, label: "Kanban", icon: KanbanSquare },
-                  { id: "lista" as const, label: "Lista", icon: LayoutList },
-                ]).map(({ id, label, icon: Icon }) => (
-                  <button key={id} onClick={() => setView(id)}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 5, padding: "6px 10px",
-                      borderRadius: 7, border: "none", cursor: "pointer", fontFamily: "inherit",
-                      fontSize: 11, fontWeight: 800, transition: "all .15s",
-                      background: view === id ? T.card : "transparent",
-                      color: view === id ? T.text : T.muted,
-                    }}>
-                    <Icon size={12} /> {label}
-                  </button>
-                ))}
-              </div>
-              <button onClick={() => { setLoading(true); load(); }} disabled={loading}
-                style={{ ...S.ghostBtn, opacity: loading ? 0.5 : 1 }}>
-                <RefreshCw size={13} /> Atualizar
-              </button>
-            </div>
-          </div>
-
-          {view === "kanban" ? (
-            <PipelineBoard stages={visibleStages} leads={visibleLeads}
-              channels={channels} alarms={alarms} onOpen={setSelected}
-              onDropLead={handleDropLead} dragDisabled={busyId !== null}
-              onAddNew={funnel === "quote" ? () => openWizard() : undefined} />
-          ) : (
-            <LeadListView stages={visibleStages} leads={visibleLeads}
-              channels={channels} onOpen={setSelected} />
-          )}
-        </>
-      ) : tab === "alarmes" ? (
-        <AlarmsQueue alarms={alarms} busyId={alarmBusyId}
-          onDone={alarmDone} onDelete={alarmDelete} onOpen={openAlarmLead} />
-      ) : (
-        <WaitlistTab propertyId={property.id} entries={waitlist} onChanged={loadWaitlist}
-          onConvert={convertWaitlistEntry} />
-      )}
-
-      {selected && (
+      {drawerLead && (
         <LeadDrawer
+          open={!!selected}
           propertyId={property.id}
-          lead={selected}
+          lead={drawerLead}
           channels={channels}
-          busy={busyId === selected.id}
+          busy={busyId === drawerLead.id}
           onClose={() => setSelected(null)}
-          onFollowUp={(note) => followUp(selected, note)}
-          onAddNote={(note) => addNote(selected, note)}
-          onMoveStage={(stage) => moveStage(selected, stage)}
-          onMarkLost={() => setLosing(selected)}
-          onWin={() => win(selected)}
-          onOpenOrigin={() => openOrigin(selected)}
-          onPatch={(patch) => patchLead(selected, patch)}
-          onPromoteGuest={(payload) => promoteGuest(selected, payload)}
+          onFollowUp={(note) => followUp(drawerLead, note)}
+          onAddNote={(note) => addNote(drawerLead, note)}
+          onMoveStage={(stage) => moveStage(drawerLead, stage)}
+          onMarkLost={() => setLosing(drawerLead)}
+          onWin={() => win(drawerLead)}
+          onOpenOrigin={() => openOrigin(drawerLead)}
+          onPatch={(patch) => patchLead(drawerLead, patch)}
+          onPromoteGuest={(payload) => promoteGuest(drawerLead, payload)}
           onAlarmsChanged={loadAlarms}
-          onQuoteChanged={() => reload(selected.id)}
+          onQuoteChanged={() => reload(drawerLead.id)}
           onDeleted={() => { setSelected(null); reload(); }}
           onEditQuote={(q) => openWizard(seedFromQuote(q, true))}
           onDuplicateQuote={(q) => openWizard(seedFromQuote(q, false))}
-          proposalUrl={selected.entityType === "quote" ? `${proposalBase}/cotacao/${selected.id}` : null}
+          proposalUrl={drawerLead.entityType === "quote" ? `${proposalBase}/cotacao/${drawerLead.id}` : null}
         />
       )}
 
@@ -747,6 +638,6 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
           seed={wizardSeed}
         />
       )}
-    </div>
+    </PageShell>
   );
 }

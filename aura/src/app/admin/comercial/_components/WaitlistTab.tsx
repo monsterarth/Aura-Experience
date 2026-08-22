@@ -14,10 +14,11 @@ import {
 import { T } from "@/lib/admin-tokens";
 import { WaitlistEntry, WaitlistStatus } from "@/types/aura";
 import { S, fmtBR, pillS } from "./shared";
+import { useConfirm } from "@/components/aura";
 
 const STATUS_CFG: Record<WaitlistStatus, { label: string; bg: string; fg: string; bd: string }> = {
-  waiting:   { label: "Aguardando", bg: "rgba(245,158,11,0.12)",  fg: T.amber,   bd: "rgba(245,158,11,0.3)" },
-  contacted: { label: "Contatado",  bg: "rgba(96,165,250,0.12)",  fg: T.blue,    bd: "rgba(96,165,250,0.3)" },
+  waiting:   { label: "Aguardando", bg: T.amberBg,  fg: T.amber,   bd: T.amberBorder },
+  contacted: { label: "Contatado",  bg: T.blueBg,  fg: T.blue,    bd: T.blueBorder },
   converted: { label: "Convertido", bg: T.emeraldBg,              fg: T.emerald, bd: T.emeraldBorder },
   archived:  { label: "Arquivado",  bg: T.glass2,                 fg: T.muted,   bd: T.border2 },
 };
@@ -34,6 +35,7 @@ export function WaitlistTab({
   onConvert: (entry: WaitlistEntry) => void;
 }) {
   const [form, setForm] = useState(EMPTY_FORM);
+  const confirm = useConfirm();
   const [showForm, setShowForm] = useState(false);
   const [showClosed, setShowClosed] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -88,7 +90,7 @@ export function WaitlistTab({
   };
 
   const remove = async (entry: WaitlistEntry) => {
-    if (!confirm(`Excluir ${entry.name} da lista de espera?`)) return;
+    if (!(await confirm({ title: "Excluir da lista de espera?", description: `${entry.name} sai da fila.`, confirmLabel: "Excluir", tone: "danger" }))) return;
     setBusyId(entry.id);
     try {
       const res = await fetch(`/api/admin/comercial/waitlist?propertyId=${propertyId}&id=${entry.id}`, { method: "DELETE" });
@@ -235,7 +237,7 @@ export function WaitlistTab({
                         {e.status === "waiting" && (
                           <button disabled={busy} onClick={() => setStatus(e, "contacted")}
                             title="Marcar como contatado"
-                            style={{ ...smallActionBtn(T.blue, "rgba(96,165,250,0.12)"), opacity: busy ? 0.5 : 1 }}>
+                            style={{ ...smallActionBtn(T.blue, T.blueBg), opacity: busy ? 0.5 : 1 }}>
                             <PhoneCall size={12} /> Contatado
                           </button>
                         )}

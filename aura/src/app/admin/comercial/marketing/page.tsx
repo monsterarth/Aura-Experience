@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
-  BadgePercent, ChartNoAxesCombined, Gift, Loader2, Megaphone, MessageSquareHeart,
+  BadgePercent, ChartNoAxesCombined, Gift, Megaphone, MessageSquareHeart,
   Plus, Radio, Save, Send, Star, Tag, Trash2, TrendingUp,
 } from "lucide-react";
 import { RoleGuard } from "@/components/auth/RoleGuard";
@@ -19,6 +19,7 @@ import {
   CrmChannel, CrmLead, RateDiscount, RatePromo, SurveyResponseWithStay,
 } from "@/types/aura";
 import { S, money, pillS } from "../_components/shared";
+import { PageShell, PageHeader, Button, PageSkeleton } from "@/components/aura";
 
 const sectionLabel: React.CSSProperties = {
   fontSize: 10, fontWeight: 900, letterSpacing: ".14em", textTransform: "uppercase",
@@ -231,35 +232,16 @@ function MarketingPage() {
   if (!property) return null;
 
   return (
-    <div style={{ padding: 24, maxWidth: 1400, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-        <div style={{
-          width: 44, height: 44, borderRadius: 14, background: T.gradSoft,
-          border: `1px solid ${T.g1Border}`, display: "flex", alignItems: "center", justifyContent: "center",
-        }}>
-          <Megaphone size={20} color={T.g1} />
-        </div>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 900, letterSpacing: "-.02em", color: T.text }}>
-            Marketing
-          </h1>
-          <p style={{ margin: "3px 0 0", fontSize: 13, color: T.muted }}>
-            Origem dos leads, política de descontos e a voz do hóspede.
-          </p>
-        </div>
-        {dirty && (
-          <button onClick={save} disabled={saving} style={{ ...S.gradBtn, opacity: saving ? 0.6 : 1 }}>
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            Salvar alterações
-          </button>
-        )}
-      </div>
+    <PageShell maxWidth="xl">
+      <PageHeader
+        icon={Megaphone}
+        title="Marketing"
+        subtitle="Origem dos leads, política de descontos e a voz do hóspede."
+        primaryAction={dirty ? { label: "Salvar alterações", icon: Save, onClick: save, loading: saving, mobile: "bar" } : undefined}
+      />
 
       {loading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-          <Loader2 className="animate-spin" color={T.muted} />
-        </div>
+        <PageSkeleton kpis={3} rows={4} />
       ) : (<>
         {/* KPIs — recorte honesto: pipeline de reservas, ativos + fechados 60d */}
         <div>
@@ -335,7 +317,7 @@ function MarketingPage() {
                   <p style={{ fontSize: 10.5, color: T.muted, fontWeight: 800, margin: "0 0 5px" }}>O que mais pedem para melhorar</p>
                   <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                     {surveyStats.topImprove.map(([label, n]) => (
-                      <span key={label} style={pillS("rgba(245,158,11,0.1)", T.amber, "rgba(245,158,11,0.28)")}>
+                      <span key={label} style={pillS(T.amberBg, T.amber, T.amberBorder)}>
                         {label} · {n}
                       </span>
                     ))}
@@ -443,7 +425,7 @@ function MarketingPage() {
             desc="Campanhas de WhatsApp para a base — pós-estadia, aniversário, datas especiais — com opt-out e teto de volume." />
         </div>
       </>)}
-    </div>
+    </PageShell>
   );
 }
 

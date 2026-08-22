@@ -167,7 +167,7 @@ export function ClientPanel({
               Recorrente · {ctx!.staysCount} estadia{ctx!.staysCount !== 1 ? "s" : ""}
             </span>
           ) : (
-            <span style={pillS("rgba(96,165,250,0.12)", T.blue, "rgba(96,165,250,0.3)")}>
+            <span style={pillS(T.blueBg, T.blue, T.blueBorder)}>
               Hóspede sem estadias ainda
             </span>
           )}
@@ -193,7 +193,7 @@ export function ClientPanel({
           {(ctx?.phoneMatches || []).map((g) => (
             <div key={g.id} style={{
               display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
-              background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)",
+              background: T.amberBg, border: `1px solid ${T.amberBorder}`,
               borderRadius: 12, padding: "8px 12px",
             }}>
               <p style={{ fontSize: 12, color: T.text, minWidth: 0, margin: 0 }}>
@@ -202,7 +202,7 @@ export function ClientPanel({
               <button disabled={busy} onClick={() => confirmPromotion({ guestId: g.id })}
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 9px",
-                  borderRadius: 9, border: "none", background: "rgba(245,158,11,0.18)",
+                  borderRadius: 9, border: "none", background: T.amberBg,
                   color: T.amber, fontSize: 11, fontWeight: 800, cursor: "pointer",
                   fontFamily: "inherit", flexShrink: 0, opacity: busy ? 0.5 : 1,
                 }}>

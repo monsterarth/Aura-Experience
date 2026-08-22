@@ -21,6 +21,7 @@ import type { PromotePayload } from "./PromoteGuestModal";
 import { InteractionTimeline } from "./InteractionTimeline";
 import { LeadAlarms } from "./LeadAlarms";
 import { S, QUOTE_STAGES, WEDDING_STAGES, ACTIVE_STAGES, fmtBR, money, pillS, todayIso } from "./shared";
+import { Dialog, IconButton, useIsMobile } from "@/components/aura";
 
 const drawerLabel: React.CSSProperties = {
   fontSize: 9, fontWeight: 900, letterSpacing: ".15em", textTransform: "uppercase",
@@ -367,10 +368,10 @@ function ContractCharges({ lead }: { lead: CrmLead }) {
 
   const t = todayIso();
   const statusOf = (i: WeddingInstallment) =>
-    i.paid ? { label: "paga", bg: "rgba(45,212,191,0.15)", fg: T.green }
-      : i.dueDate && i.dueDate < t ? { label: "vencida", bg: "rgba(248,113,113,0.15)", fg: T.red }
-      : i.dueDate ? { label: "pendente", bg: "rgba(245,158,11,0.15)", fg: T.amber }
-      : { label: "aguarda", bg: T.glass3, fg: "rgba(238,240,248,0.5)" };
+    i.paid ? { label: "paga", bg: T.greenBg, fg: T.green }
+      : i.dueDate && i.dueDate < t ? { label: "vencida", bg: T.redBg, fg: T.red }
+      : i.dueDate ? { label: "pendente", bg: T.amberBg, fg: T.amber }
+      : { label: "aguarda", bg: T.glass3, fg: T.muted };
 
   return (
     <div style={{ padding: 20, borderBottom: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -506,7 +507,7 @@ function NegotiationSection({
                   : "Definir valor"}
               </span>
               {lead.negotiatedValue != null && (
-                <span style={{ ...pillS("rgba(245,158,11,0.15)", T.amber, "rgba(245,158,11,0.3)"), flexShrink: 0, fontSize: 9 }}>
+                <span style={{ ...pillS(T.amberBg, T.amber, T.amberBorder), flexShrink: 0, fontSize: 9 }}>
                   negociado
                 </span>
               )}
@@ -655,7 +656,7 @@ function DeleteQuoteSection({ propertyId, lead, busy, onDeleted }: {
           <button onClick={doDelete} disabled={deleting}
             style={{
               padding: "5px 11px", borderRadius: 9, border: "none", cursor: "pointer",
-              background: "rgba(248,113,113,0.18)", color: T.red, fontSize: 11, fontWeight: 800,
+              background: T.redBg, color: T.red, fontSize: 11, fontWeight: 800,
               fontFamily: "inherit", display: "inline-flex", alignItems: "center", gap: 5,
             }}>
             {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
@@ -686,11 +687,13 @@ function DeleteQuoteSection({ propertyId, lead, busy, onDeleted }: {
 }
 
 export function LeadDrawer({
+  open = true,
   propertyId, lead, channels, busy,
   onClose, onFollowUp, onAddNote, onMoveStage, onMarkLost, onWin, onOpenOrigin, onPatch,
   onPromoteGuest, onAlarmsChanged, onEditQuote, onDuplicateQuote, onQuoteChanged,
   onDeleted, proposalUrl,
 }: {
+  open?: boolean;
   propertyId: string;
   lead: CrmLead;
   channels: CrmChannel[];
@@ -728,7 +731,9 @@ export function LeadDrawer({
   // Dados do cliente (ClientPanel) têm o próprio "Salvar" — fechar o drawer
   // com edição pendente ali precisa avisar, não descartar em silêncio.
   const [clientDirty, setClientDirty] = useState(false);
-  const { requestClose } = useCloseGuard(onClose, {
+  const isMobile = useIsMobile();
+  const { requestClose, guardProps } = useCloseGuard(onClose, {
+    open, escape: false,
     dirty: clientDirty,
     message: "Há alterações não salvas nos dados do cliente. Fechar mesmo assim?",
   });
@@ -777,20 +782,16 @@ export function LeadDrawer({
     textAlign: "center", padding: "7px 0", borderRadius: 9, border: "none",
     fontSize: 9, fontWeight: 900, letterSpacing: ".12em", textTransform: "uppercase",
     cursor: "pointer", fontFamily: "inherit",
-    background: activeSeg ? T.bg : "transparent",
-    color: activeSeg ? "#fff" : T.muted,
+    background: activeSeg ? T.card : "transparent", boxShadow: activeSeg ? "0 1px 2px rgba(0,0,0,.08)" : "none",
+    color: activeSeg ? T.text : T.muted,
   });
 
   return (
-    <div onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
-      style={{
-        position: "fixed", inset: 0, zIndex: 50, background: "rgba(0,0,0,0.6)",
-        backdropFilter: "blur(4px)", display: "flex", justifyContent: "flex-end",
-      }}>
+    <Dialog open={open} onClose={requestClose} presentation={isMobile ? "fullscreen" : "drawer"} size="lg" side="right" rawBody hideClose panelProps={guardProps} ariaLabel={lead.title}>
       {/* Duas colunas em tela larga: editar o orçamento pede espaço, e
           histórico/alarmes não precisam disputar scroll com o cliente. */}
       <style>{`
-        .crm-drawer-body { display:flex; flex-direction:column; flex:1; overflow-y:auto; }
+        .crm-drawer-body { display:flex; flex-direction:column; flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; }
         .crm-drawer-col-right { border-top: 1px solid ${T.border}; }
         @media (min-width: 1000px) {
           .crm-drawer-body { display:grid; grid-template-columns: 1fr 1fr; overflow:hidden; }
@@ -798,11 +799,7 @@ export function LeadDrawer({
           .crm-drawer-col-right { border-top:none; border-left: 1px solid ${T.border}; }
         }
       `}</style>
-      <div style={{
-        background: T.drawer, width: "100%", maxWidth: "min(66vw, 1040px)",
-        minWidth: "min(100vw, 460px)", height: "100%",
-        display: "flex", flexDirection: "column", borderLeft: `1px solid ${T.border2}`,
-      }}>
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
         {/* Header */}
         <div style={{ padding: 20, borderBottom: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 10, flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
@@ -817,13 +814,7 @@ export function LeadDrawer({
                 {lead.title}
               </h2>
             </div>
-            <button onClick={requestClose}
-              style={{
-                padding: 8, borderRadius: 11, background: "none", border: "none",
-                cursor: "pointer", color: T.muted, display: "flex", flexShrink: 0,
-              }}>
-              <X size={15} />
-            </button>
+            <IconButton icon={X} label="Fechar" variant="secondary" onClick={requestClose} />
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 12 }}>
             {stageDef && (
@@ -950,7 +941,7 @@ export function LeadDrawer({
                     style={{
                       padding: "6px 11px", borderRadius: 10, fontSize: 11, fontWeight: 800,
                       border: `1px solid ${T.border2}`, background: T.card,
-                      color: "rgba(238,240,248,0.6)", cursor: "pointer", fontFamily: "inherit",
+                      color: T.muted, cursor: "pointer", fontFamily: "inherit",
                       opacity: busy ? 0.5 : 1,
                     }}>
                     → {s.label}
@@ -960,7 +951,7 @@ export function LeadDrawer({
                   title={needsGuest ? "Promova o cliente a hóspede antes de fechar" : undefined}
                   style={{
                     padding: "6px 11px", borderRadius: 10, fontSize: 11, fontWeight: 800,
-                    border: "none", background: "rgba(52,211,153,0.15)", color: T.emerald,
+                    border: "none", background: T.emeraldBg, color: T.emerald,
                     cursor: needsGuest ? "not-allowed" : "pointer", fontFamily: "inherit",
                     opacity: busy || needsGuest ? 0.5 : 1,
                   }}>
@@ -969,7 +960,7 @@ export function LeadDrawer({
                 <button disabled={busy} onClick={onMarkLost}
                   style={{
                     padding: "6px 11px", borderRadius: 10, fontSize: 11, fontWeight: 800,
-                    border: "none", background: "rgba(248,113,113,0.1)", color: T.red,
+                    border: "none", background: T.redBg, color: T.red,
                     cursor: "pointer", fontFamily: "inherit",
                     display: "inline-flex", alignItems: "center", gap: 4, opacity: busy ? 0.5 : 1,
                   }}>
@@ -1022,6 +1013,6 @@ export function LeadDrawer({
           </div>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

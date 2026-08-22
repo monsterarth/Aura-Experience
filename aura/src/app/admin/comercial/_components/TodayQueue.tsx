@@ -29,9 +29,9 @@ type Row = {
 };
 
 const TILE: Record<Row["tile"], { bg: string; fg: string }> = {
-  red:    { bg: "rgba(248,113,113,0.12)", fg: T.red },
-  amber:  { bg: "rgba(245,158,11,0.12)",  fg: T.amber },
-  orange: { bg: "rgba(251,146,60,0.12)",  fg: T.orange },
+  red:    { bg: T.redBg, fg: T.red },
+  amber:  { bg: T.amberBg,  fg: T.amber },
+  orange: { bg: T.orangeBg,  fg: T.orange },
 };
 
 export function TodayQueue({
@@ -111,7 +111,7 @@ export function TodayQueue({
         {rows.length > 0 && (
           <span style={{
             minWidth: 18, height: 18, borderRadius: 999, padding: "0 6px",
-            background: "rgba(248,113,113,0.15)", border: "1px solid rgba(248,113,113,0.3)",
+            background: T.redBg, border: `1px solid ${T.redBorder}`,
             color: T.red, fontSize: 10, fontWeight: 900,
             display: "inline-flex", alignItems: "center", justifyContent: "center",
           }}>

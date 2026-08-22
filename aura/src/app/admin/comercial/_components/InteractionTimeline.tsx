@@ -63,14 +63,14 @@ export function InteractionTimeline({ propertyId, lead }: { propertyId: string; 
             <div style={{
               width: 30, height: 30, borderRadius: 10, background: T.glass2,
               border: `1px solid ${T.border}`, display: "flex", alignItems: "center",
-              justifyContent: "center", flexShrink: 0, color: "rgba(238,240,248,0.6)", marginTop: 2,
+              justifyContent: "center", flexShrink: 0, color: T.muted, marginTop: 2,
             }}>
               <Icon size={13} />
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
               <p style={{ fontSize: 12.5, fontWeight: 700, color: T.text, margin: 0 }}>{cfg.label(i)}</p>
               {i.note && (
-                <p style={{ fontSize: 11.5, color: "rgba(238,240,248,0.5)", whiteSpace: "pre-wrap", margin: "1px 0 0" }}>
+                <p style={{ fontSize: 11.5, color: T.muted, whiteSpace: "pre-wrap", margin: "1px 0 0" }}>
                   {i.note}
                 </p>
               )}
