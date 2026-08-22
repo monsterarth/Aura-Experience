@@ -1,6 +1,8 @@
 // src/app/admin/maintenance/page.tsx
 "use client";
 
+import { PageShell, PageHeader } from "@/components/aura";
+
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useProperty } from "@/context/PropertyContext";
@@ -120,21 +122,14 @@ export default function MaintenanceDashboardPage() {
   }
 
   return (
-    <div className="flex flex-col space-y-6">
+    <PageShell>
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Manutenção</h1>
-          <p className="text-sm text-muted-foreground mt-1">Visão geral das ordens de serviço em tempo real.</p>
-        </div>
-        <button
-          onClick={() => setIsManagerOpen(true)}
-          className="px-4 py-2 bg-primary text-primary-foreground font-bold text-xs uppercase tracking-widest rounded-xl hover:opacity-90 transition-opacity flex items-center gap-2 shadow-sm"
-        >
-          <Plus size={16} /> Nova OS
-        </button>
-      </div>
+      <PageHeader
+        icon={Wrench}
+        title="Manutenção"
+        subtitle="Visão geral das ordens de serviço em tempo real."
+        primaryAction={{ label: "Nova OS", icon: Plus, onClick: () => setIsManagerOpen(true) }}
+      />
 
       {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -267,6 +262,6 @@ export default function MaintenanceDashboardPage() {
         structures={structures}
         technicians={technicians}
       />
-    </div>
+    </PageShell>
   );
 }

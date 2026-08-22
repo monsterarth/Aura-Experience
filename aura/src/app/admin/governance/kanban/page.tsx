@@ -1,8 +1,9 @@
 // src/app/admin/governance/kanban/page.tsx
 "use client";
 
+import { PageShell, PageHeader, Dialog, useConfirm } from "@/components/aura";
+
 import React, { useState, useEffect } from "react";
-import Link from "next/link";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { HousekeepingService } from "@/services/housekeeping-service";
@@ -27,6 +28,7 @@ import { getTaskLabel, getTaskColorClass, showsMinibar, showsKeyLocation, canUpg
 
 export default function GovernanceKanbanPage() {
   const { currentProperty: property, loading: isLoading } = useProperty();
+  const confirm = useConfirm();
   const { userData, loading: authLoading } = useAuth();
 
   const [tasks, setTasks] = useState<HousekeepingTask[]>([]);
@@ -204,7 +206,7 @@ export default function GovernanceKanbanPage() {
 
   const handleBatchCancel = async () => {
     if (selectedIds.size === 0) return;
-    if (!confirm(`Cancelar ${selectedIds.size} tarefa(s) selecionada(s)?`)) return;
+    if (!(await confirm({ title: `Cancelar ${selectedIds.size} tarefa(s) selecionada(s)?`, confirmLabel: "Cancelar tarefas", tone: "danger" }))) return;
     setBatchLoading(true);
     try {
       const actorId = userData?.id || "unknown";
@@ -390,23 +392,13 @@ export default function GovernanceKanbanPage() {
   };
 
   return (
-    <div className="flex flex-col space-y-4 md:space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-3 min-w-0">
-          <Link
-            href="/admin/governance"
-            className="p-2 bg-secondary text-muted-foreground hover:text-foreground rounded-xl border border-border transition-colors shrink-0"
-          >
-            <ChevronLeft size={16} />
-          </Link>
-          <div className="min-w-0">
-            <h1 className="text-xl md:text-2xl font-bold tracking-tight truncate">Kanban de Governança</h1>
-            <p className="text-sm text-muted-foreground mt-0.5 hidden sm:block">Sincronizado em tempo real com a equipe de campo.</p>
-          </div>
-        </div>
-        <div className="flex gap-2 shrink-0">
-          {(userData?.role === 'super_admin' || userData?.role === 'admin' || userData?.role === 'governance' || userData?.role === 'manager') && (
+    <PageShell>
+      <PageHeader
+        title="Kanban de Governança"
+        subtitle="Sincronizado em tempo real com a equipe de campo."
+        back={{ href: "/admin/governance" }}
+        actions={(<>
+        {(userData?.role === 'super_admin' || userData?.role === 'admin' || userData?.role === 'governance' || userData?.role === 'manager') && (
             <>
               <button
                 onClick={() => setIsSettingsOpen(true)}
@@ -430,8 +422,8 @@ export default function GovernanceKanbanPage() {
           <button onClick={() => { setSelectedTask(null); setIsManagerOpen(true); }} className="px-3 md:px-4 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-bold uppercase hover:opacity-90 transition-all shadow-sm flex items-center gap-1.5">
             <Plus size={14} /> <span className="hidden sm:inline">Nova Tarefa</span><span className="sm:hidden">Nova</span>
           </button>
-        </div>
-      </div>
+      </>)}
+      />
 
       {/* Batch toolbar */}
       {selectedIds.size > 0 && (
@@ -699,8 +691,8 @@ export default function GovernanceKanbanPage() {
       />
 
       {isArchiveOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-          <div className="bg-card border border-border w-full max-w-3xl rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+        <Dialog open onClose={() => setIsArchiveOpen(false)} presentation="auto" size="lg" rawBody hideClose ariaLabel="Arquivo de Governança">
+          <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
             <header className="p-6 border-b border-border flex justify-between items-center shrink-0">
               <div>
                 <h2 className="text-xl font-black uppercase text-foreground tracking-tighter flex items-center gap-2">
@@ -757,8 +749,8 @@ export default function GovernanceKanbanPage() {
               <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Aura Engine • Auditoria</p>
             </footer>
           </div>
-        </div>
+        </Dialog>
       )}
-    </div>
+    </PageShell>
   );
 }

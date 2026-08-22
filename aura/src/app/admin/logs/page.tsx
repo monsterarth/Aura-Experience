@@ -607,13 +607,13 @@ export default function AuditLogsPage() {
                               <Link
                                 href={ENTITY_LINKS[log.entity]!}
                                 className="group inline-flex items-start gap-1.5 text-sm transition-colors"
-                                style={{ color: 'rgba(238,240,248,0.8)' }}
+                                style={{ color: T.text }}
                               >
                                 <span>{log.details}</span>
                                 <ExternalLink size={12} className="shrink-0 mt-0.5 opacity-0 group-hover:opacity-60 transition-opacity" />
                               </Link>
                             ) : (
-                              <p className="text-sm" style={{ color: 'rgba(238,240,248,0.8)' }}>{log.details}</p>
+                              <p className="text-sm" style={{ color: T.text }}>{log.details}</p>
                             )}
                           </td>
                         </tr>
@@ -635,7 +635,7 @@ export default function AuditLogsPage() {
                                     <span className="font-mono text-xs whitespace-nowrap mt-0.5" style={{ color: T.muted }}>
                                       {item.timestamp ? format(new Date(item.timestamp as unknown as string), "HH:mm", { locale: ptBR }) : "—"}
                                     </span>
-                                    <span style={{ color: 'rgba(238,240,248,0.75)' }}>{item.details}</span>
+                                    <span style={{ color: T.text }}>{item.details}</span>
                                   </div>
                                 ))}
                               </div>

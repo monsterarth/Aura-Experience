@@ -1,6 +1,8 @@
 // src/app/admin/maintenance/kanban/page.tsx
 "use client";
 
+import { PageShell, PageHeader, Dialog, useConfirm } from "@/components/aura";
+
 import React, { useState, useEffect } from "react";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
@@ -21,10 +23,10 @@ import {
 import { toast } from "sonner";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
-import Link from "next/link";
 
 export default function MaintenanceKanbanPage() {
     const { currentProperty: property, loading: isLoading } = useProperty();
+    const confirm = useConfirm();
     const { userData } = useAuth();
 
     const [tasks, setTasks] = useState<MaintenanceTask[]>([]);
@@ -176,7 +178,7 @@ export default function MaintenanceKanbanPage() {
 
     const handleBatchCancel = async () => {
         if (selectedIds.size === 0) return;
-        if (!confirm(`Cancelar ${selectedIds.size} tarefa(s) selecionada(s)?`)) return;
+        if (!(await confirm({ title: `Cancelar ${selectedIds.size} tarefa(s) selecionada(s)?`, confirmLabel: "Cancelar tarefas", tone: "danger" }))) return;
         setBatchLoading(true);
         try {
             const actorId = userData?.id || "unknown";
@@ -394,20 +396,13 @@ export default function MaintenanceKanbanPage() {
     const activeTabItems = activeTab === 'pending' ? pendingTasks : activeTab === 'in_progress' ? inProgressTasks : waitingTasks;
 
     return (
-        <div className="flex flex-col space-y-4">
-            {/* Header */}
-            <div className="flex flex-wrap items-center justify-between gap-2 mt-2 md:mt-0">
-                <div className="flex items-center gap-3 min-w-0">
-                    <Link href="/admin/maintenance" className="p-2 bg-secondary text-muted-foreground hover:text-foreground rounded-xl border border-border transition-colors shrink-0">
-                        <ChevronLeft size={16} />
-                    </Link>
-                    <div className="min-w-0">
-                        <h1 className="text-xl md:text-2xl font-bold tracking-tight truncate">Kanban de Manutenção</h1>
-                        <p className="text-sm text-muted-foreground mt-0.5 hidden sm:block">Ordens de serviço em tempo real.</p>
-                    </div>
-                </div>
-                <div className="flex gap-2 shrink-0">
-                    {isManager && (
+        <PageShell>
+            <PageHeader
+              title="Kanban de Manutenção"
+              subtitle="Ordens de serviço em tempo real."
+              back={{ href: "/admin/maintenance" }}
+              actions={(<>
+              {isManager && (
                         <button
                             onClick={() => setIsRulesOpen(true)}
                             className="p-2 md:px-4 md:py-2 bg-secondary text-foreground font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-accent transition-colors flex items-center gap-2 shadow-sm border border-border"
@@ -434,8 +429,8 @@ export default function MaintenanceKanbanPage() {
                     >
                         <Plus size={16} /> <span className="hidden sm:inline">Nova Tarefa</span><span className="sm:hidden">Nova</span>
                     </button>
-                </div>
-            </div>
+            </>)}
+            />
 
             {/* Batch toolbar */}
             {selectedIds.size > 0 && (
@@ -554,8 +549,8 @@ export default function MaintenanceKanbanPage() {
 
             {/* Histórico */}
             {isHistoryOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-                    <div className="bg-card border border-border w-full max-w-3xl rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+                <Dialog open onClose={() => setIsHistoryOpen(false)} presentation="auto" size="lg" rawBody hideClose ariaLabel="Histórico de Manutenção">
+                    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
                         <header className="p-6 border-b border-border flex justify-between items-center shrink-0">
                             <div>
                                 <h2 className="text-xl font-black uppercase text-foreground tracking-tighter flex items-center gap-2">
@@ -638,13 +633,13 @@ export default function MaintenanceKanbanPage() {
                             <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Aura Engine • Histórico de Manutenção</p>
                         </footer>
                     </div>
-                </div>
+                </Dialog>
             )}
 
             {/* Arquivo (últimos 7 dias) */}
             {isArchiveOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4">
-                    <div className="bg-card border border-border w-full max-w-3xl rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+                <Dialog open onClose={() => setIsArchiveOpen(false)} presentation="auto" size="lg" rawBody hideClose ariaLabel="Arquivo de Manutenção">
+                    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
                         <header className="p-6 border-b border-border flex justify-between items-center shrink-0">
                             <div>
                                 <h2 className="text-xl font-black uppercase text-foreground tracking-tighter flex items-center gap-2">
@@ -679,7 +674,7 @@ export default function MaintenanceKanbanPage() {
                         </div>
                         <footer className="p-6 border-t border-border shrink-0 text-center"><p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Aura Engine • Auditoria</p></footer>
                     </div>
-                </div>
+                </Dialog>
             )}
 
             {/* Lightbox */}
@@ -693,6 +688,6 @@ export default function MaintenanceKanbanPage() {
                     </div>
                 </div>
             )}
-        </div>
+        </PageShell>
     );
 }

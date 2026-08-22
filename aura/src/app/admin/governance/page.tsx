@@ -1,6 +1,8 @@
 // src/app/admin/governance/page.tsx
 "use client";
 
+import { PageShell, PageHeader } from "@/components/aura";
+
 import React, { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
@@ -698,15 +700,13 @@ export default function GovernancePage() {
   ).size;
 
   return (
-    <div className="flex flex-col space-y-4 md:space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Mapa da Pousada</h1>
-          <p className="text-sm text-muted-foreground mt-1">Visão geral das cabanas, limpeza e hóspedes em tempo real.</p>
-        </div>
-        <div className="flex items-center gap-1">
-          {reportLoading && (
+    <PageShell>
+      <PageHeader
+        icon={Sparkles}
+        title="Mapa da Pousada"
+        subtitle="Visão geral das cabanas, limpeza e hóspedes em tempo real."
+        actions={(<>
+        {reportLoading && (
             <div className="w-3.5 h-3.5 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin mr-1" />
           )}
           <button
@@ -724,8 +724,8 @@ export default function GovernancePage() {
           >
             Amanhã
           </button>
-        </div>
-      </div>
+      </>)}
+      />
 
       {/* PAINEL DE COMANDO */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -1009,6 +1009,6 @@ export default function GovernancePage() {
           onClose={() => setShowReport(false)}
         />
       )}
-    </div>
+    </PageShell>
   );
 }
