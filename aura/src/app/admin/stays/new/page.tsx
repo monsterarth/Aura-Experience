@@ -16,9 +16,9 @@ import {
 import { useNewStay, type Lang } from "./_components/useNewStay";
 
 const LANGS: { id: Lang; label: string }[] = [
-  { id: "pt", label: "🇧🇷 Português" },
-  { id: "en", label: "🇺🇸 English" },
-  { id: "es", label: "🇦🇷 Español" },
+  { id: "pt", label: "Português (PT)" },
+  { id: "en", label: "English (EN)" },
+  { id: "es", label: "Español (ES)" },
 ];
 
 function NewStayContent() {
@@ -115,6 +115,7 @@ function NewStayContent() {
                 items={s.availableCabins.map(c => ({ id: c.id, label: c.name }))}
                 values={s.cabinSelections.map(c => c.cabinId)}
                 onChange={ids => s.setSelectedCabinIds(ids)}
+                style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 6 }}
               />
             )}
             {s.availableCabins.length > 0 && s.cabinSelections.length === 0 && (
