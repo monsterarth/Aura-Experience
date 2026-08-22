@@ -1,5 +1,7 @@
 "use client";
 
+import { SkeletonList } from "@/components/aura";
+
 // src/app/admin/configuracoes/comercial/page.tsx
 // Config comercial do tarifário — o que muda RARAMENTE saiu da página
 // operacional: taxa de pet, presets de flutuação (as opções que o funil e a
@@ -15,7 +17,7 @@ import { toast } from "sonner";
 import { useProperty } from "@/context/PropertyContext";
 import { SaveBar } from "../_components/SaveBar";
 import { SectionCard } from "@/components/ui/SectionCard";
-import { CircleDollarSign, Loader2, MessageSquareText, PawPrint, Percent, Plus, Trash2 } from "lucide-react";
+import { CircleDollarSign, MessageSquareText, PawPrint, Percent, Plus, Trash2 } from "lucide-react";
 import { RateFluctuation, RateSettings } from "@/types/aura";
 import {
   DEFAULT_EVENT_TEMPLATE, DEFAULT_INCLUSIONS_TEXT, DEFAULT_MSG_SINGLE_TEMPLATE,
@@ -194,7 +196,7 @@ export default function ComercialConfigPage() {
   };
 
   if (!draft) {
-    return <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>;
+    return <SkeletonList rows={4} avatar={false} />;
   }
 
   const templateField = (

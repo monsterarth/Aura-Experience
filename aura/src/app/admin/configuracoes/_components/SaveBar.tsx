@@ -1,9 +1,12 @@
 "use client";
 
 // src/app/admin/configuracoes/_components/SaveBar.tsx
-// Barra fixa no rodapé da seção. Só aparece quando há alteração pendente — barra
+// Barra de salvar da seção. Só aparece quando há alteração pendente — barra
 // permanente vira paisagem e a pessoa deixa de reparar que não salvou.
-import { Loader2, Save, Undo2 } from "lucide-react";
+// No celular é a BottomActionBar do kit (fixa acima da tab bar); no desktop, uma linha no fim.
+import { Save, Undo2 } from "lucide-react";
+import { T } from "@/lib/admin-tokens";
+import { BottomActionBar, Button } from "@/components/aura";
 
 interface Props {
   dirty: boolean;
@@ -17,29 +20,17 @@ interface Props {
 export function SaveBar({ dirty, saving, onSave, onReset, warning }: Props) {
   if (!dirty) return null;
   return (
-    <div className="sticky bottom-4 z-20 mt-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap bg-card border border-border rounded-2xl shadow-lg px-4 py-3">
-        <div className="min-w-0">
-          <p className="text-sm font-bold text-foreground">Alterações não salvas</p>
-          {warning && <p className="text-[11px] text-amber-500 mt-0.5 leading-snug">{warning}</p>}
+    <BottomActionBar>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", width: "100%" }}>
+        <div style={{ minWidth: 0, flex: "1 1 160px" }}>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: T.text }}>Alterações não salvas</p>
+          {warning && <p style={{ margin: "2px 0 0", fontSize: 11, color: T.amber, lineHeight: 1.4 }}>{warning}</p>}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={onReset}
-            disabled={saving}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-muted-foreground hover:text-foreground disabled:opacity-50"
-          >
-            <Undo2 size={14} /> Descartar
-          </button>
-          <button
-            onClick={onSave}
-            disabled={saving}
-            className="flex items-center gap-1.5 px-5 py-2.5 text-sm font-bold rounded-xl bg-primary text-primary-foreground disabled:opacity-60"
-          >
-            {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />} Salvar
-          </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <Button variant="ghost" icon={Undo2} onClick={onReset} disabled={saving}>Descartar</Button>
+          <Button variant="primary" icon={Save} onClick={onSave} loading={saving} loadingText="Salvando…">Salvar</Button>
         </div>
       </div>
-    </div>
+    </BottomActionBar>
   );
 }

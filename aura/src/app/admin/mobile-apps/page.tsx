@@ -1,10 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Smartphone, ExternalLink, UtensilsCrossed, X, ArrowRight, Key } from "lucide-react";
+import { Smartphone, ExternalLink, ArrowRight, Key } from "lucide-react";
 import { RoleGuard } from "@/components/auth/RoleGuard";
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useCloseGuard } from "@/lib/use-discard-guard";
+import { T, alpha } from "@/lib/admin-tokens";
+import { PageShell, PageHeader, Card, Dialog, Input, Button } from "@/components/aura";
 
 const APPS = [
   { id: "diretoria",  label: "Diretoria",          description: "Dashboard estratégico para proprietários e diretores",    color: "#9b6dff", icon: "staff" },
@@ -17,14 +19,10 @@ const APPS = [
   { id: "hospede",    label: "Portal do Hóspede", description: "Visualize o portal do hóspede com um código de reserva", color: "#2dd4bf", icon: "guest" },
 ];
 
-function GuestCodeModal({ onConfirm, onClose }: { onConfirm: (code: string) => void; onClose: () => void }) {
+function GuestCodeDialog({ open, onConfirm, onClose }: { open: boolean; onConfirm: (code: string) => void; onClose: () => void }) {
   const [code, setCode] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-  const { requestClose } = useCloseGuard(onClose, { dirty: code.trim().length > 0 });
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+  const { requestClose, guardProps } = useCloseGuard(onClose, { open, dirty: code.trim().length > 0, escape: false });
+  useEffect(() => { if (open) setCode(""); }, [open]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,61 +30,21 @@ function GuestCodeModal({ onConfirm, onClose }: { onConfirm: (code: string) => v
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(6px)" }}
-      onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
-    >
-      <div
-        className="w-full max-w-sm rounded-2xl p-6 space-y-6 relative"
-        style={{ background: "#1c1c1c", border: "1px solid rgba(45,212,191,0.25)", boxShadow: "0 32px 64px rgba(0,0,0,0.5)" }}
-      >
-        <button
-          onClick={requestClose}
-          className="absolute top-4 right-4 p-1.5 rounded-lg transition-colors hover:bg-white/10"
-          style={{ color: "rgba(255,255,255,0.4)" }}
-        >
-          <X size={16} />
-        </button>
-
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "rgba(45,212,191,0.12)", border: "1px solid rgba(45,212,191,0.25)" }}>
-            <Key size={18} style={{ color: "#2dd4bf" }} />
-          </div>
-          <div>
-            <div className="text-sm font-bold text-white">Portal do Hóspede</div>
-            <div className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>Digite o código de acesso da reserva</div>
-          </div>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            ref={inputRef}
-            value={code}
-            onChange={(e) => setCode(e.target.value.toUpperCase())}
-            placeholder="Ex: A3KN7PQ2"
-            maxLength={8}
-            className="w-full rounded-xl px-4 py-3 text-center text-2xl font-black tracking-[0.3em] uppercase outline-none transition-all placeholder:text-base placeholder:font-medium placeholder:tracking-normal placeholder:normal-case"
-            style={{
-              background: "#111",
-              border: "1px solid rgba(255,255,255,0.12)",
-              color: "#fff",
-            }}
-            onFocus={(e) => (e.currentTarget.style.borderColor = "rgba(45,212,191,0.5)")}
-            onBlur={(e) => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)")}
-          />
-          <button
-            type="submit"
-            disabled={code.length < 5}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm uppercase tracking-wide transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ background: "rgba(45,212,191,0.15)", color: "#2dd4bf", border: "1px solid rgba(45,212,191,0.3)" }}
-          >
-            Abrir preview
-            <ArrowRight size={15} />
-          </button>
-        </form>
-      </div>
-    </div>
+    <Dialog open={open} onClose={requestClose} presentation="auto" size="sm" icon={Key} iconTone="green" title="Portal do Hóspede" subtitle="Digite o código de acesso da reserva" panelProps={guardProps}
+      footer={<Button type="submit" form="guest-code-form" variant="primary" fullWidth iconRight={ArrowRight} disabled={code.length < 5}>Abrir preview</Button>}>
+      <form id="guest-code-form" onSubmit={handleSubmit}>
+        <Input
+          autoFocus
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase())}
+          placeholder="Ex: A3KN7PQ2"
+          maxLength={8}
+          autoCapitalize="characters"
+          autoComplete="off"
+          style={{ textAlign: "center", fontSize: 24, fontWeight: 900, letterSpacing: ".3em", textTransform: "uppercase", height: 56 }}
+        />
+      </form>
+    </Dialog>
   );
 }
 
@@ -95,11 +53,8 @@ function MobileAppsContent() {
   const [showGuestModal, setShowGuestModal] = useState(false);
 
   const handleAppClick = (id: string) => {
-    if (id === "hospede") {
-      setShowGuestModal(true);
-    } else {
-      router.push(`/admin/mobile-apps/${id}`);
-    }
+    if (id === "hospede") setShowGuestModal(true);
+    else router.push(`/admin/mobile-apps/${id}`);
   };
 
   const handleGuestConfirm = (code: string) => {
@@ -108,58 +63,29 @@ function MobileAppsContent() {
   };
 
   return (
-    <>
-      <div className="space-y-8">
-        <div>
-          <h1 className="text-2xl font-semibold text-white">Apps Mobile</h1>
-          <p className="text-white/50 text-sm mt-1">
-            Visualize e teste os aplicativos móveis da equipe operacional.
-          </p>
-        </div>
+    <PageShell>
+      <PageHeader icon={Smartphone} title="Apps Mobile" subtitle="Visualize e teste os aplicativos móveis da equipe operacional." />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {APPS.map((app) => (
-            <button
-              key={app.id}
-              onClick={() => handleAppClick(app.id)}
-              className="text-left rounded-xl p-5 flex flex-col gap-4 transition-all hover:scale-[1.02] active:scale-[0.99]"
-              style={{
-                background: "var(--card, #1c1c1c)",
-                border: `1px solid ${app.color}33`,
-                cursor: "pointer",
-              }}
-            >
-              <div
-                className="w-11 h-11 rounded-xl flex items-center justify-center"
-                style={{ background: `${app.color}18` }}
-              >
-                {app.icon === "guest"
-                  ? <Key size={20} style={{ color: app.color }} />
-                  : <Smartphone size={20} style={{ color: app.color }} />}
-              </div>
-              <div>
-                <div className="text-sm font-bold text-white">{app.label}</div>
-                <div className="text-xs text-white/40 mt-1 leading-relaxed">{app.description}</div>
-              </div>
-              <div
-                className="flex items-center gap-1 text-xs font-semibold mt-auto"
-                style={{ color: app.color }}
-              >
-                <ExternalLink size={11} />
-                {app.id === "hospede" ? "Inserir código" : "Abrir preview"}
-              </div>
-            </button>
-          ))}
-        </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(260px, 100%), 1fr))", gap: 12 }}>
+        {APPS.map((app) => (
+          <Card key={app.id} interactive onClick={() => handleAppClick(app.id)} style={{ display: "flex", flexDirection: "column", gap: 14, borderColor: alpha(app.color, 25) }}>
+            <span style={{ width: 44, height: 44, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", background: alpha(app.color, 12), color: app.color }}>
+              {app.icon === "guest" ? <Key size={20} /> : <Smartphone size={20} />}
+            </span>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: T.text }}>{app.label}</div>
+              <div style={{ fontSize: 12, color: T.muted, marginTop: 4, lineHeight: 1.5 }}>{app.description}</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, marginTop: "auto", color: app.color }}>
+              <ExternalLink size={12} />
+              {app.id === "hospede" ? "Inserir código" : "Abrir preview"}
+            </div>
+          </Card>
+        ))}
       </div>
 
-      {showGuestModal && (
-        <GuestCodeModal
-          onConfirm={handleGuestConfirm}
-          onClose={() => setShowGuestModal(false)}
-        />
-      )}
-    </>
+      <GuestCodeDialog open={showGuestModal} onConfirm={handleGuestConfirm} onClose={() => setShowGuestModal(false)} />
+    </PageShell>
   );
 }
 

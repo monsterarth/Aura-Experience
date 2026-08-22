@@ -1,5 +1,7 @@
 "use client";
 
+import { SkeletonList } from "@/components/aura";
+
 // src/app/admin/configuracoes/politicas/page.tsx
 // Textos que o hóspede precisa aceitar ("Li e concordo") para fechar o check-in.
 // Por isso o editor trilíngue avisa o idioma sem texto: hóspede estrangeiro
@@ -11,7 +13,7 @@ import { SectionCard } from "@/components/ui/SectionCard";
 import { MultiLangField } from "@/components/admin/settings/MultiLangField";
 import { parseMultiLang } from "@/lib/multilang";
 import { MultiLangObj } from "@/types/aura";
-import { FileText, Loader2 } from "lucide-react";
+import { FileText } from "lucide-react";
 
 interface Draft {
   generalPolicyText: MultiLangObj;
@@ -29,7 +31,7 @@ export default function PoliticasPage() {
     };
   });
 
-  if (!draft) return <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>;
+  if (!draft) return <SkeletonList rows={4} avatar={false} />;
 
   return (
     <div className="max-w-3xl space-y-4">

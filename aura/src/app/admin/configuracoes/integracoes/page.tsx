@@ -1,5 +1,7 @@
 "use client";
 
+import { SkeletonList } from "@/components/aura";
+
 // src/app/admin/configuracoes/integracoes/page.tsx
 //
 // WhatsApp (Evolution), Chatwoot e o domínio próprio.
@@ -65,7 +67,7 @@ export default function IntegracoesPage() {
 
   useEffect(() => { loadSecrets(); }, [loadSecrets]);
 
-  if (!draft || !property) return <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>;
+  if (!draft || !property) return <SkeletonList rows={4} avatar={false} />;
 
   const onSave = () => save(
     (d) => ({ patch: changedOnly(d as any, baseline as any, ["whatsappEnabled", "whatsappNumber", "customDomain"]) }),

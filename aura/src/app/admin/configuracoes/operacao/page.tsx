@@ -1,5 +1,7 @@
 "use client";
 
+import { SkeletonList } from "@/components/aura";
+
 // src/app/admin/configuracoes/operacao/page.tsx
 // Horários da hospedagem e o que o hóspede lê no pré-check-in quando chega fora
 // da janela. Os avisos são trilíngues porque o portal é.
@@ -12,7 +14,7 @@ import { Toggle } from "@/components/ui/Toggle";
 import { MultiLangField } from "@/components/admin/settings/MultiLangField";
 import { parseMultiLang } from "@/lib/multilang";
 import { MultiLangObj } from "@/types/aura";
-import { Clock, Dog, MessageSquareWarning, Loader2 } from "lucide-react";
+import { Clock, Dog, MessageSquareWarning } from "lucide-react";
 
 interface Draft {
   checkInTime: string;
@@ -46,7 +48,7 @@ export default function OperacaoPage() {
     };
   });
 
-  if (!draft) return <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>;
+  if (!draft) return <SkeletonList rows={4} avatar={false} />;
 
   const time = (label: string, key: keyof Draft, hint?: string) => (
     <div>

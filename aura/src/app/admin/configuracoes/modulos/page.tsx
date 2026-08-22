@@ -1,5 +1,7 @@
 "use client";
 
+import { SkeletonList } from "@/components/aura";
+
 // src/app/admin/configuracoes/modulos/page.tsx
 // Blocos do sistema ligados nesta pousada. Só super_admin altera: é decisão de
 // plano/contrato, não preferência de operação. Os demais veem o estado.
@@ -10,7 +12,7 @@ import { SaveBar } from "../_components/SaveBar";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { SettingRow } from "@/components/ui/SettingRow";
 import { Toggle } from "@/components/ui/Toggle";
-import { Blocks, Boxes, Loader2 } from "lucide-react";
+import { Blocks, Boxes } from "lucide-react";
 
 interface Draft { hasStock: boolean }
 
@@ -21,7 +23,7 @@ export default function ModulosPage() {
     hasStock: (p.settings as { hasStock?: boolean })?.hasStock !== false,
   }));
 
-  if (!draft) return <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>;
+  if (!draft) return <SkeletonList rows={4} avatar={false} />;
 
   return (
     <div className="max-w-2xl space-y-4">

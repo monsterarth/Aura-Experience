@@ -1,6 +1,8 @@
 // src/app/admin/core/properties/page.tsx
 "use client";
 
+import { PageShell, PageHeader, SkeletonList } from "@/components/aura";
+
 import React, { useState, useEffect } from "react";
 import { PropertyService } from "@/services/property-service";
 import { Property, PropertyTheme } from "@/types/aura";
@@ -100,15 +102,8 @@ export default function CorePropertiesPage() {
   }
 
   return (
-    <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-4 md:space-y-10">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-4xl font-black tracking-tight flex items-center gap-3">
-            <Building2 className="text-primary" size={36} /> Aura Core
-          </h1>
-          <p className="text-muted-foreground">Gestão global de instâncias e multi-tenancy.</p>
-        </div>
-      </header>
+    <PageShell>
+      <PageHeader icon={Building2} title="Aura Core" subtitle="Gestão global de instâncias e multi-tenancy." />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Formulário de Criação */}
@@ -197,7 +192,7 @@ export default function CorePropertiesPage() {
           </h2>
           
           {loading ? (
-            <div className="flex justify-center p-12"><Loader2 className="animate-spin" /></div>
+            <SkeletonList rows={4} avatar={false} />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {properties.map(p => (
@@ -234,6 +229,6 @@ export default function CorePropertiesPage() {
           )}
         </section>
       </div>
-    </div>
+    </PageShell>
   );
 }

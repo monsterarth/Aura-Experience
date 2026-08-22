@@ -10,7 +10,6 @@
 // apontando para outra pousada, e o breadcrumb ainda exibia a outra. Sem id na URL,
 // a URL não tem como mentir.
 import React, { useEffect, useState } from "react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
@@ -18,8 +17,9 @@ import { PropertyService } from "@/services/property-service";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { visibleSections } from "./_lib/sections";
 import { Property, UserRole } from "@/types/aura";
-import { cn } from "@/lib/utils";
-import { Loader2, Settings, Building2 } from "lucide-react";
+import { Settings, Building2, LayoutGrid } from "lucide-react";
+import { T } from "@/lib/admin-tokens";
+import { PageShell, PageHeader, SegmentedTabs, PageSkeleton, EmptyState, Pill } from "@/components/aura";
 
 const HUB_ROLES: UserRole[] = [
   "super_admin", "admin", "manager", "reception", "kitchen", "compras", "governance",
@@ -36,22 +36,17 @@ function PropertyChip({ property }: { property: Property }) {
   }, [isSuperAdmin]);
 
   if (!isSuperAdmin || all.length <= 1) {
-    return (
-      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-secondary text-xs font-bold text-foreground">
-        <Building2 size={13} className="text-primary" />
-        Editando: {property.name}
-      </span>
-    );
+    return <Pill tone="brand" icon={Building2} label={`Editando: ${property.name}`} size="md" />;
   }
 
   return (
-    <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary text-xs font-bold text-foreground">
-      <Building2 size={13} className="text-primary" />
+    <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, fontSize: 12, fontWeight: 700, color: T.text }}>
+      <Building2 size={13} color={T.brandText} />
       Editando:
       <select
         value={property.id}
         onChange={(e) => setProperty(all.find((p) => p.id === e.target.value) ?? null)}
-        className="bg-transparent outline-none font-bold text-foreground cursor-pointer"
+        style={{ background: "transparent", border: "none", outline: "none", fontWeight: 700, color: T.text, cursor: "pointer", fontFamily: "inherit", fontSize: 13 }}
         aria-label="Trocar a propriedade que está sendo configurada"
       >
         {all.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -71,63 +66,32 @@ function ConfiguracoesLayout({ children }: { children: React.ReactNode }) {
     currentProperty,
   );
 
-  if (loading) {
-    return <div className="flex justify-center py-24"><Loader2 className="animate-spin text-primary" /></div>;
-  }
+  if (loading) return <PageShell><PageSkeleton kpis={0} rows={5} /></PageShell>;
   if (!currentProperty) {
     return (
-      <div className="p-8 max-w-2xl mx-auto text-center space-y-2">
-        <Settings size={28} className="mx-auto text-muted-foreground" />
-        <h1 className="text-lg font-bold text-foreground">Selecione uma propriedade</h1>
-        <p className="text-sm text-muted-foreground">
-          As configurações são por pousada. Escolha uma no seletor da barra lateral para continuar.
-        </p>
-      </div>
+      <PageShell>
+        <EmptyState icon={Settings} title="Selecione uma propriedade" description="As configurações são por pousada. Escolha uma no seletor da barra lateral para continuar." />
+      </PageShell>
     );
   }
 
+  const tabItems = [
+    { id: "hub", label: "Visão geral", icon: LayoutGrid, href: "/admin/configuracoes" },
+    ...sections.map(({ id, label, href, icon }) => ({ id, label, icon, href })),
+  ];
+  const active = pathname === "/admin/configuracoes" ? "hub" : (sections.find((s) => pathname.startsWith(s.href))?.id ?? "hub");
+
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            <Settings size={22} /> Configurações
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Tudo que se ajusta na pousada, num lugar só — inclusive o que se ajusta em outra tela.
-          </p>
-        </div>
-        <PropertyChip property={currentProperty} />
-      </header>
-
-      {sections.length > 0 && (
-        <nav className="flex gap-1 mb-6 bg-secondary/40 p-1 rounded-xl w-fit flex-wrap">
-          <Link
-            href="/admin/configuracoes"
-            className={cn(
-              "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors",
-              pathname === "/admin/configuracoes" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            Visão geral
-          </Link>
-          {sections.map(({ id, label, href, icon: Icon }) => (
-            <Link
-              key={id}
-              href={href}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-colors",
-                pathname.startsWith(href) ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Icon size={15} /> {label}
-            </Link>
-          ))}
-        </nav>
-      )}
-
+    <PageShell maxWidth="lg">
+      <PageHeader
+        icon={Settings}
+        title="Configurações"
+        subtitle="Tudo que se ajusta na pousada, num lugar só — inclusive o que se ajusta em outra tela."
+        badge={<PropertyChip property={currentProperty} />}
+        tabs={sections.length > 0 ? <SegmentedTabs items={tabItems} value={active} ariaLabel="Seções das configurações" /> : undefined}
+      />
       {children}
-    </div>
+    </PageShell>
   );
 }
 

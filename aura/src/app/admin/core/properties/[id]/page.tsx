@@ -1,5 +1,7 @@
 "use client";
 
+import { PageShell, PageSkeleton, Dialog, useConfirm } from "@/components/aura";
+
 // src/app/admin/core/properties/[id]/page.tsx
 //
 // PÁGINA DE PLATAFORMA — o que sobrou depois que a configuração da pousada saiu daqui.
@@ -49,6 +51,7 @@ const PURGE_TARGETS = [
 export default function PropertyPlatformPage() {
     const { id } = useParams();
     const router = useRouter();
+    const confirm = useConfirm();
     const tabParam = useSearchParams().get("tab");
     const { isSuperAdmin, userData, loading: authLoading } = useAuth();
     const { currentProperty, setProperty } = useProperty();
@@ -100,7 +103,7 @@ export default function PropertyPlatformPage() {
     }
 
     const doReset = async () => {
-        if (!window.confirm("Isso apaga automações, checklists e templates atuais desta propriedade e clona os padrões do sistema. Tem certeza?")) return;
+        if (!(await confirm({ title: "Restaurar padrões?", description: "Isso apaga automações, checklists e templates atuais desta propriedade e clona os padrões do sistema.", confirmLabel: "Restaurar", tone: "danger" }))) return;
         try { await manage("reset_defaults"); toast.success("Padrões restaurados."); }
         catch (e) { toast.error((e as Error).message || "Erro ao restaurar padrões."); }
     };
@@ -108,7 +111,7 @@ export default function PropertyPlatformPage() {
     const doPurge = async () => {
         if (purge.length === 0) return;
         const labels = PURGE_TARGETS.filter((t) => purge.includes(t.id)).map((t) => t.label).join(", ");
-        if (!window.confirm(`Apagar permanentemente: ${labels}?\n\nNão há como desfazer.`)) return;
+        if (!(await confirm({ title: "Apagar permanentemente?", description: `${labels}. Não há como desfazer.`, confirmLabel: "Apagar", tone: "danger" }))) return;
         try { await manage("purge", { targets: purge }); toast.success("Dados limpos."); setPurge([]); }
         catch (e) { toast.error((e as Error).message || "Erro ao limpar dados."); }
     };
@@ -126,7 +129,7 @@ export default function PropertyPlatformPage() {
     };
 
     if (loading || authLoading) {
-        return <div className="flex justify-center p-24"><Loader2 className="animate-spin text-primary" size={40} /></div>;
+        return <PageShell><PageSkeleton kpis={0} rows={5} /></PageShell>;
     }
     if (!isSuperAdmin) return null;   // o efeito acima já redirecionou
     if (!target) {
@@ -260,13 +263,8 @@ export default function PropertyPlatformPage() {
             </section>
 
             {showDelete && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-                    <div className="bg-card border border-red-500/30 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl">
-                        <div className="p-6 bg-red-500/10 border-b border-red-500/20 text-center space-y-2">
-                            <AlertTriangle size={28} className="mx-auto text-red-500" />
-                            <h3 className="text-lg font-black text-red-500 uppercase tracking-widest">Aviso crítico</h3>
-                        </div>
-                        <div className="p-6 space-y-4">
+                <Dialog open onClose={() => { if (!busy) { setShowDelete(false); setConfirmName(""); } }} presentation="auto" size="sm" icon={AlertTriangle} iconTone="red" title="Aviso crítico" subtitle="Excluir a propriedade é definitivo.">
+                        <div className="space-y-4">
                             <p className="text-sm text-muted-foreground text-center">
                                 Para confirmar, digite o nome exato da propriedade: <b className="text-foreground">{target.name}</b>
                             </p>
@@ -293,8 +291,7 @@ export default function PropertyPlatformPage() {
                                 </button>
                             </div>
                         </div>
-                    </div>
-                </div>
+                </Dialog>
             )}
         </div>
     );

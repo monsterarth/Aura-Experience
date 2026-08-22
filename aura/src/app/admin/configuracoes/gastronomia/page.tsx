@@ -1,5 +1,7 @@
 "use client";
 
+import { SkeletonList } from "@/components/aura";
+
 // src/app/admin/configuracoes/gastronomia/page.tsx
 //
 // Restaurante e café da manhã.
@@ -19,7 +21,7 @@ import { Toggle } from "@/components/ui/Toggle";
 import { StructureService } from "@/services/structure-service";
 import { FBSettings, Structure } from "@/types/aura";
 import { toast } from "sonner";
-import { Coffee, UtensilsCrossed, Loader2, ExternalLink } from "lucide-react";
+import { Coffee, UtensilsCrossed, ExternalLink } from "lucide-react";
 
 interface Draft {
   fbSettings: FBSettings;
@@ -68,7 +70,7 @@ export default function GastronomiaPage() {
 
   useEffect(() => { loadStructures(); }, [loadStructures]);
 
-  if (!draft || !property) return <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>;
+  if (!draft || !property) return <SkeletonList rows={4} avatar={false} />;
 
   const fb = draft.fbSettings;
   const breakfast = fb.breakfast as any;

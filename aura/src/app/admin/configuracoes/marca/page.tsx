@@ -1,5 +1,7 @@
 "use client";
 
+import { SkeletonList } from "@/components/aura";
+
 // src/app/admin/configuracoes/marca/page.tsx
 // Identidade visual: nome, slogan, logos, paleta e arredondamento.
 // Tudo aqui o hóspede enxerga no portal — daí o preview ao lado.
@@ -13,7 +15,7 @@ import { ColorInput } from "@/components/admin/settings/ColorInput";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import { PropertyTheme } from "@/types/aura";
 import { cn } from "@/lib/utils";
-import { Image as ImageIcon, Palette, Layout, Type, Loader2 } from "lucide-react";
+import { Image as ImageIcon, Palette, Layout, Type } from "lucide-react";
 
 const RADII = ["0rem", "0.25rem", "0.5rem", "1rem", "9999px"] as const;
 
@@ -36,7 +38,7 @@ export default function MarcaPage() {
   }));
 
   if (!draft || !currentProperty) {
-    return <div className="flex justify-center py-16"><Loader2 className="animate-spin text-primary" /></div>;
+    return <SkeletonList rows={4} avatar={false} />;
   }
 
   const setColor = (key: keyof PropertyTheme["colors"], v: string) =>
