@@ -24,6 +24,9 @@ import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import { sanitizeDocumentForFnrh } from "@/lib/utils-checkin";
 import { cn } from "@/lib/utils";
 import { useCloseGuard } from "@/lib/use-discard-guard";
+import { Dialog } from "@/components/aura/Dialog";
+import { useConfirm } from "@/components/aura/ConfirmDialog";
+import { Button } from "@/components/aura/Button";
 import { stayDisplayName } from "@/lib/stay-display";
 import { supabase } from "@/lib/supabase";
 import { extractTimeHHMM, combineDateAndTimeISO, DEFAULT_CHECK_IN_TIME, DEFAULT_CHECK_OUT_TIME } from "@/lib/stay-times";
@@ -124,6 +127,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const [savingRate, setSavingRate] = useState(false);
   // Esc fica de fora: este modal abre sub-modais (check-out, transferência).
   const { requestClose, confirmDiscard, guardProps, reset } = useCloseGuard(onClose, { open: isOpen, escape: false });
+  const confirm = useConfirm();
 
   useEffect(() => {
     if (isOpen && stay?.propertyId) {
@@ -293,7 +297,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   };
 
   const handleDeleteFolioItem = async (itemId: string, description: string) => {
-    if (!confirm(`Deseja realmente estornar o item "${description}"?`)) return;
+    if (!(await confirm({ title: "Estornar este lançamento?", description: "Remove “" + description + "” do fólio. O estorno fica registrado no histórico.", confirmLabel: "Estornar", tone: "danger" }))) return;
     setLoadingFolio(true);
     try {
       await StayService.deleteFolioItem(
@@ -378,7 +382,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     }, 300);
   }, [reassignSearch, stay?.propertyId, guest?.id]);
 
-  if (!isOpen || !stay) return null;
+  if (!stay) return null;
 
   const handleCancel = async () => {
     if (!(await confirmDiscard())) return;
@@ -487,7 +491,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   };
 
   const handleCheckIn = async () => {
-    if (!window.confirm("Confirma o Check-in deste hóspede?")) return;
+    if (!(await confirm({ title: "Confirmar check-in?", description: "O hóspede entra na acomodação agora e a cabana passa a ocupada.", confirmLabel: "Fazer check-in" }))) return;
     setLoading(true);
     try {
       await StayService.performCheckIn(stay.propertyId, stay.id, userData?.id || "ADMIN", userData?.fullName || "Recepção");
@@ -525,7 +529,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
   const handleUndoCheckOut = async () => {
     if (!stay.cabinId) { toast.error("Não é possível reativar uma estadia sem cabana atribuída."); return; }
-    if (!window.confirm("Reativar esta estadia e colocar a cabana como ocupada?")) return;
+    if (!(await confirm({ title: "Reativar esta estadia?", description: "A cabana volta a ficar ocupada por este hóspede.", confirmLabel: "Reativar" }))) return;
     setLoading(true);
     try {
       await StayService.undoCheckOut(stay.propertyId, stay.id, stay.cabinId, userData?.id || "ADMIN", userData?.fullName || "Recepção");
@@ -593,7 +597,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   };
 
   const handleReassignGuest = async (newGuest: Guest) => {
-    if (!window.confirm(`Alterar o titular desta reserva para ${newGuest.fullName}?`)) return;
+    if (!(await confirm({ title: "Alterar titular da reserva?", description: "A reserva passa a ser de " + newGuest.fullName + ".", confirmLabel: "Alterar titular" }))) return;
     setLoading(true);
     try {
       await StayService.reassignGuest(stay.propertyId, stay.id, newGuest.id, userData?.id || "ADMIN", userData?.fullName || "Recepção");
@@ -681,14 +685,10 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
   return (
     <>
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300"
-      onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
-    >
-      <div className="bg-card border border-border w-full max-w-5xl rounded-[32px] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-300" {...guardProps}>
+    <Dialog open={isOpen} onClose={requestClose} presentation="auto" size="xl" rawBody hideClose panelProps={guardProps} ariaLabel="Ficha da hospedagem">
 
-        <header className="p-6 border-b border-border bg-secondary/50 flex justify-between items-center shrink-0">
-          <div className="flex items-center gap-4">
+        <header className="p-4 md:p-6 border-b border-border bg-secondary/50 flex flex-wrap justify-between items-center gap-3 shrink-0">
+          <div className="flex items-center gap-3 md:gap-4 min-w-0">
             <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black text-xl border border-primary/20 shadow-sm">
               {stayDisplayName(stay, guest?.fullName).charAt(0) || "G"}
             </div>
@@ -708,7 +708,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {!isEditing ? (
               <>
                 {['pending', 'pre_checkin_done'].includes(stay.status) && (
@@ -752,7 +752,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar bg-background">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain custom-scrollbar bg-background">
 
           {/* Top row: 2-col grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
@@ -1099,56 +1099,32 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
           </div>
 
         </div>
-      </div>
-    </div>
+    </Dialog>
 
     {/* Transfer Cabin Dialog */}
-    {transferDialogOpen && (
-      <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-        <div className="bg-background w-full max-w-sm rounded-[24px] overflow-hidden shadow-2xl p-6 text-center animate-in zoom-in-95 duration-200">
-          <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Sparkles className="text-amber-500" size={32} />
-          </div>
-          <h2 className="text-xl font-bold text-foreground mb-2">Mudança de Acomodação</h2>
-          <p className="text-sm text-foreground/60 mb-6">
-            O hóspede já realizou check-in. A acomodação anterior precisa de limpeza de troca?
-          </p>
-          <div className="flex flex-col gap-3">
-            <button
-              onClick={async () => {
-                setTransferDialogOpen(false);
-                await doSave(pendingTransferCabinId, false, 'cleaning');
-                setPendingTransferCabinId(null);
-              }}
-              className="w-full py-3 px-4 bg-amber-500/10 border border-amber-500 text-amber-600 font-bold uppercase tracking-wider text-xs rounded-xl hover:bg-amber-500 hover:text-white transition-all"
-            >
-              Sim, Gerar Faxina
-            </button>
-            <button
-              onClick={async () => {
-                setTransferDialogOpen(false);
-                await doSave(pendingTransferCabinId, false, 'available');
-                setPendingTransferCabinId(null);
-              }}
-              className="w-full py-3 px-4 bg-secondary text-foreground font-bold uppercase tracking-wider text-xs rounded-xl hover:bg-muted border border-border transition-all"
-            >
-              Não, Apenas Liberar
-            </button>
-            <button
-              onClick={() => { setTransferDialogOpen(false); setPendingTransferCabinId(null); }}
-              className="w-full py-3 px-4 text-muted-foreground font-bold uppercase tracking-wider text-xs rounded-xl hover:bg-secondary/50 transition-all mt-2"
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
+    <Dialog
+      open={transferDialogOpen}
+      onClose={() => { setTransferDialogOpen(false); setPendingTransferCabinId(null); }}
+      presentation="auto"
+      size="sm"
+      icon={Sparkles}
+      iconTone="amber"
+      title="Mudança de acomodação"
+      subtitle="O hóspede já fez check-in. A acomodação anterior precisa de limpeza de troca?"
+      footer={(
+        <>
+          <Button variant="ghost" onClick={() => { setTransferDialogOpen(false); setPendingTransferCabinId(null); }}>Cancelar</Button>
+          <Button variant="secondary" onClick={async () => { setTransferDialogOpen(false); await doSave(pendingTransferCabinId, false, 'available'); setPendingTransferCabinId(null); }}>Só liberar</Button>
+          <Button variant="primary" tone="amber" onClick={async () => { setTransferDialogOpen(false); await doSave(pendingTransferCabinId, false, 'cleaning'); setPendingTransferCabinId(null); }}>Gerar faxina</Button>
+        </>
+      )}
+    >
+      <p className="text-sm text-muted-foreground m-0">Gerar faxina cria uma tarefa de limpeza para a governança; só liberar coloca a cabana como disponível na hora.</p>
+    </Dialog>
 
     {/* Modal de Check-out (2 steps: chave → objetos emprestados) */}
-    {checkOutModalOpen && (
-      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
-        <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-sm p-6 space-y-5 animate-in zoom-in-95 duration-200">
+    <Dialog open={checkOutModalOpen} onClose={() => setCheckOutModalOpen(false)} presentation="auto" size="sm" icon={LogOut} iconTone="orange" title="Check-out" subtitle="Duas etapas: chave e itens emprestados">
+        <div className="space-y-5">
 
           {/* Step indicators */}
           <div className="flex items-center gap-2 justify-center mb-1">
@@ -1256,8 +1232,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
           </>)}
 
         </div>
-      </div>
-    )}
+    </Dialog>
     </>
   );
 }

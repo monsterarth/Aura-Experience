@@ -189,9 +189,10 @@ export function DataList<T>(props: DataListProps<T>) {
   );
 }
 
-/** Até 2 ações com ícone viram botões; mais que isso, menu (popover no desktop, sheet no celular). */
+/** Até 3 ações com ícone viram botões (2 no celular); mais que isso, menu (popover no desktop, sheet no celular). */
 export function RowActions<T>({ row, actions, label = "Ações" }: { row: T; actions: RowAction<T>[]; label?: string }) {
-  const inline = actions.length <= 2 && actions.every(a => a.icon);
+  const isMobile = useIsMobile();
+  const inline = actions.length <= (isMobile ? 2 : 3) && actions.every(a => a.icon);
   if (inline) {
     return (
       <>

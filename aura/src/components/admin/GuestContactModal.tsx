@@ -6,19 +6,13 @@ import { supabase } from "@/lib/supabase";
 import { Guest, Stay, Cabin, MessageTemplate } from "@/types/aura";
 import { ContactService } from "@/services/contact-service";
 import { useAuth } from "@/context/AuthContext";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  MessageCircle,
-  Send,
-  X,
-  Loader2,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import { MessageCircle, Send, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
+import { toast } from "sonner";
 import { useCloseGuard } from "@/lib/use-discard-guard";
+import { T, alpha } from "@/lib/admin-tokens";
+import { Dialog } from "@/components/aura/Dialog";
+import { Button } from "@/components/aura/Button";
+import { Field, Textarea } from "@/components/aura/Field";
 
 interface GuestContactModalProps {
   propertyId: string;
@@ -26,6 +20,8 @@ interface GuestContactModalProps {
   stay: Stay;
   cabin?: Cabin | null;
   onClose: () => void;
+  /** Controlado pelo pai (anima a saída). Default true = aberto. */
+  open?: boolean;
 }
 
 function resolveVariables(body: string, guest: Guest, stay: Stay, cabin?: Cabin | null): string {
@@ -43,8 +39,8 @@ function resolveVariables(body: string, guest: Guest, stay: Stay, cabin?: Cabin 
       .replace(/{{wifi_password}}/g, cabin.wifi?.password || "");
   }
 
-  if (stay.checkIn) text = text.replace(/{{checkin_date}}/g, new Date(stay.checkIn).toLocaleDateString('pt-BR'));
-  if (stay.checkOut) text = text.replace(/{{checkout_date}}/g, new Date(stay.checkOut).toLocaleDateString('pt-BR'));
+  if (stay.checkIn) text = text.replace(/{{checkin_date}}/g, new Date(stay.checkIn).toLocaleDateString("pt-BR"));
+  if (stay.checkOut) text = text.replace(/{{checkout_date}}/g, new Date(stay.checkOut).toLocaleDateString("pt-BR"));
   if (stay.accessCode) text = text.replace(/{{access_code}}/g, stay.accessCode);
 
   const baseUrl = "https://aaura.app.br";
@@ -55,7 +51,8 @@ function resolveVariables(body: string, guest: Guest, stay: Stay, cabin?: Cabin 
   return text;
 }
 
-export function GuestContactModal({ propertyId, guest, stay, cabin, onClose }: GuestContactModalProps) {
+/** Contato rápido com o hóspede por WhatsApp (templates + envio pela fila). */
+export function GuestContactModal({ propertyId, guest, stay, cabin, onClose, open = true }: GuestContactModalProps) {
   const router = useRouter();
   const { userData: authUser } = useAuth();
   const [message, setMessage] = useState("");
@@ -66,10 +63,12 @@ export function GuestContactModal({ propertyId, guest, stay, cabin, onClose }: G
   const [chatwootContactUrl, setChatwootContactUrl] = useState<string | null>(null);
   // Mensagem digitada e ainda não enviada não pode sumir com um clique fora.
   const { requestClose, guardProps } = useCloseGuard(onClose, {
+    open,
     dirty: message.trim().length > 0 && !success,
+    escape: false,
   });
 
-  const cleanPhone = guest.phone.replace(/\D/g, '');
+  const cleanPhone = (guest.phone || "").replace(/\D/g, "");
 
   useEffect(() => {
     Promise.all([
@@ -85,24 +84,19 @@ export function GuestContactModal({ propertyId, guest, stay, cabin, onClose }: G
         .single(),
     ]).then(([tRes, pRes]) => {
       if (tRes.data) setTemplates(tRes.data as MessageTemplate[]);
-
       const wc = (pRes.data as any)?.settings?.whatsappConfig;
       if (wc?.chatwootUrl && wc?.chatwootAccountId) {
         const contactId = guest.chatwootContactId;
         const base = `${wc.chatwootUrl}/app/accounts/${wc.chatwootAccountId}`;
-        setChatwootContactUrl(
-          contactId
-            ? `${base}/contacts/${contactId}`
-            : `${base}/conversations`
-        );
+        setChatwootContactUrl(contactId ? `${base}/contacts/${contactId}` : `${base}/conversations`);
       }
     });
   }, [propertyId, guest.chatwootContactId]);
 
   const handleApplyTemplate = (template: MessageTemplate) => {
-    const body = (guest.preferredLanguage === 'en' && template.body_en)
+    const body = (guest.preferredLanguage === "en" && template.body_en)
       ? template.body_en
-      : (guest.preferredLanguage === 'es' && template.body_es)
+      : (guest.preferredLanguage === "es" && template.body_es)
         ? template.body_es
         : template.body;
     setMessage(resolveVariables(body, guest, stay, cabin));
@@ -110,17 +104,13 @@ export function GuestContactModal({ propertyId, guest, stay, cabin, onClose }: G
   };
 
   const handleGoToChat = () => {
-    if (chatwootContactUrl) {
-      window.open(chatwootContactUrl, "_blank", "noopener,noreferrer");
-    } else {
-      router.push("/admin/comunicacao");
-    }
+    if (chatwootContactUrl) window.open(chatwootContactUrl, "_blank", "noopener,noreferrer");
+    else router.push("/admin/comunicacao");
   };
 
   const handleSendMessage = async () => {
     if (!message.trim() || !cleanPhone) return;
     setSending(true);
-
     try {
       await ContactService.upsertContact(propertyId, guest.fullName, cleanPhone, true, guest.id, authUser?.id, authUser?.fullName);
 
@@ -128,135 +118,99 @@ export function GuestContactModal({ propertyId, guest, stay, cabin, onClose }: G
       const isoNow = new Date().toISOString();
 
       await supabase.from("messages").insert({
-        id: messageId,
-        propertyId,
-        contactId: cleanPhone,
-        stayId: stay.id,
-        to: cleanPhone,
-        body: message.trim(),
-        isAutomated: false,
-        status: 'pending',
-        direction: 'outbound',
-        createdAt: isoNow,
+        id: messageId, propertyId, contactId: cleanPhone, stayId: stay.id, to: cleanPhone,
+        body: message.trim(), isAutomated: false, status: "pending", direction: "outbound", createdAt: isoNow,
       });
 
-      await supabase.from('communications').upsert({
-        id: cleanPhone,
-        propertyId,
-        lastMessage: message.trim(),
-        updatedAt: isoNow,
-        archived: false
-      }, { onConflict: 'id' });
+      await supabase.from("communications").upsert({
+        id: cleanPhone, propertyId, lastMessage: message.trim(), updatedAt: isoNow, archived: false,
+      }, { onConflict: "id" });
 
-      const response = await fetch('/api/chat/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ propertyId, messageId, number: cleanPhone, message: message.trim() })
+      const response = await fetch("/api/chat/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ propertyId, messageId, number: cleanPhone, message: message.trim() }),
       });
-
       if (!response.ok) throw new Error("Falha na API");
 
       setSuccess(true);
-      setTimeout(() => { onClose(); setSuccess(false); setMessage(""); }, 2000);
+      setTimeout(() => { onClose(); setSuccess(false); setMessage(""); }, 1600);
     } catch {
-      alert("Erro ao enviar mensagem.");
+      toast.error("Erro ao enviar mensagem.", { description: "Tente de novo ou abra a conversa no chat." });
     } finally {
       setSending(false);
     }
   };
 
+  const initial = guest.fullName.charAt(0).toUpperCase();
+
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in"
-      onClick={(e) => { if (e.target === e.currentTarget && !sending) requestClose(); }}
+    <Dialog
+      open={open}
+      onClose={sending ? () => {} : requestClose}
+      presentation="auto"
+      size="sm"
+      icon={<span style={{ fontWeight: 900, fontSize: 15 }}>{initial}</span>}
+      iconTone="brand"
+      title={guest.fullName}
+      subtitle={cleanPhone ? `+${cleanPhone}` : "Sem telefone cadastrado"}
+      panelProps={guardProps}
+      footer={!success ? (
+        <>
+          <Button variant="secondary" icon={MessageCircle} onClick={handleGoToChat}>Ver conversa</Button>
+          <Button variant="primary" icon={Send} onClick={handleSendMessage} loading={sending} disabled={!message.trim() || !cleanPhone}>Enviar agora</Button>
+        </>
+      ) : undefined}
     >
-      <div className="bg-background rounded-xl w-full max-w-md shadow-xl overflow-hidden flex flex-col" {...guardProps}>
-
-        <div className="flex justify-between items-center p-4 border-b bg-muted/10">
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-              {guest.fullName.charAt(0).toUpperCase()}
-            </div>
-            <div>
-              <h2 className="text-sm font-bold leading-tight">{guest.fullName}</h2>
-              <p className="text-xs text-muted-foreground">+{cleanPhone}</p>
-            </div>
-          </div>
-          <Button variant="ghost" size="icon" onClick={requestClose} disabled={sending}><X className="w-5 h-5" /></Button>
+      {success ? (
+        <div className="ak-empty" data-compact style={{ padding: "24px 8px" }}>
+          <span className="ak-empty__icon" style={{ background: T.greenBg, borderColor: T.greenBorder, color: T.green }}><CheckCircle2 size={24} /></span>
+          <div className="ak-empty__title">Mensagem enviada!</div>
         </div>
-
-        <div className="p-5 space-y-4">
-          {success ? (
-            <div className="flex flex-col items-center justify-center py-6 text-emerald-600 animate-in zoom-in">
-              <CheckCircle2 className="w-12 h-12 mb-2" />
-              <p className="font-semibold">Mensagem enviada!</p>
-            </div>
-          ) : (
-            <>
-              {/* Templates */}
-              {templates.length > 0 && (
-                <div className="space-y-2">
-                  <button
-                    onClick={() => setShowTemplates(v => !v)}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
-                  >
-                    Usar template
-                    {showTemplates ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                  </button>
-
-                  {showTemplates && (
-                    <div className="flex flex-wrap gap-2 p-3 bg-muted/30 rounded-lg border border-border">
-                      {templates.map(t => (
-                        <button
-                          key={t.id}
-                          onClick={() => handleApplyTemplate(t)}
-                          className={cn(
-                            "px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-all",
-                            "bg-background border-border text-foreground hover:border-primary hover:text-primary"
-                          )}
-                        >
-                          {t.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {templates.length > 0 && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowTemplates(v => !v)}
+                className="ak-press ak-focus"
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700, color: T.brandText }}
+              >
+                Usar template {showTemplates ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+              {showTemplates && (
+                <div className="ak-fade-in" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10, padding: 10, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+                  {templates.map(t => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => handleApplyTemplate(t)}
+                      className="ak-chip ak-press ak-focus"
+                      style={{ background: alpha(T.g1, 8) }}
+                    >
+                      {t.name}
+                    </button>
+                  ))}
                 </div>
               )}
-
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Mensagem</label>
-                <Textarea
-                  placeholder={`Escreva uma mensagem para ${guest.fullName.split(' ')[0]}...`}
-                  className="min-h-[140px] resize-none text-sm"
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  disabled={sending}
-                />
-              </div>
-
-              <div className="flex items-center gap-3 pt-2">
-                <Button
-                  className="flex-1 gap-2"
-                  onClick={handleSendMessage}
-                  disabled={sending || !message.trim()}
-                >
-                  {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  Enviar Agora
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="flex-1 gap-2 border-primary/20 hover:bg-primary/5 text-primary"
-                  onClick={handleGoToChat}
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  Ver Conversa
-                </Button>
-              </div>
-            </>
+            </div>
           )}
+
+          <Field label="Mensagem">
+            <Textarea
+              placeholder={`Escreva uma mensagem para ${guest.fullName.split(" ")[0]}…`}
+              value={message}
+              onChange={e => setMessage(e.target.value)}
+              disabled={sending}
+              rows={5}
+              autoGrow
+              maxRows={10}
+            />
+          </Field>
+          {!cleanPhone && <p style={{ margin: 0, fontSize: 12, color: T.amber }}>Este hóspede não tem telefone cadastrado — cadastre na ficha para enviar.</p>}
         </div>
-      </div>
-    </div>
+      )}
+    </Dialog>
   );
 }

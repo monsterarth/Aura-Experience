@@ -2,917 +2,382 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import {
+  Archive, ArrowUpRight, Ban, CalendarClock, DollarSign, Home, LogIn,
+  MessageCircle, Plus, Receipt, SearchX, ShieldAlert, Star,
+} from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
+import { RoleGuard } from "@/components/auth/RoleGuard";
 import { StayService } from "@/services/stay-service";
 import { chatwootSyncOnCheckIn, chatwootSyncOnCancelled } from "@/app/actions/chatwoot-actions";
-import { supabase, safeRemoveChannel } from "@/lib/supabase";
-import { RoleGuard } from "@/components/auth/RoleGuard";
+import { T } from "@/lib/admin-tokens";
 import {
-  Calendar, Search, Loader2, AlertCircle,
-  Dog, Users, ArrowUpRight,
-  Building2, MapPin, Clock, MessageCircle,
-  Archive, Send, X, Star, ShieldAlert,
-  Copy, Ban, CheckCircle2, DollarSign, PackageSearch, Receipt, Image as ImageIcon
-} from "lucide-react";
-import { format, differenceInCalendarDays } from "date-fns";
-import { ptBR } from "date-fns/locale";
-import { cn } from "@/lib/utils";
-import Link from "next/link";
-import { toast } from "sonner";
-import { StayDetailsModal } from "@/components/admin/StayDetailsModal";
+  PageShell, PageHeader, SegmentedTabs, SearchInput, Loadable, SkeletonCards, SkeletonList,
+  EmptyState, DataList, Pill, useConfirm, useAlert, useTabParam,
+  type Column, type RowAction,
+} from "@/components/aura";
 import { GuestContactModal } from "@/components/admin/GuestContactModal";
-import { useRouter } from "next/navigation";
+import { StayCard } from "./_components/StayCard";
+import { PendingAccountCard } from "./_components/PendingAccountCard";
+import { useStaysLive } from "./_components/useStaysLive";
+import {
+  TABS, filterAndSort, fmtDay, hasPendingAccount, isUnknownGuest, npsInfo, shortName, titleCase,
+  type StayRow, type TabStatus,
+} from "./_components/stay-utils";
 
-type TabStatus = 'futuras' | 'ativas' | 'pendente' | 'encerradas';
+// Ficha completa (67K) só baixa quando alguém abre uma estadia.
+const StayDetailsModal = dynamic(
+  () => import("@/components/admin/StayDetailsModal").then(m => m.StayDetailsModal),
+  { ssr: false },
+);
+
+const TAB_ITEMS = [
+  { id: "ativas" as const, label: "Ativas", icon: Home },
+  { id: "futuras" as const, label: "Futuras", icon: CalendarClock },
+  { id: "pendente" as const, label: "Conta", icon: Receipt, tone: "orange" as const },
+  { id: "encerradas" as const, label: "Encerradas", icon: Archive },
+];
+
+const REASON_MAP: Record<string, string> = {
+  rule_inactive: "Automação de boas-vindas inativa nas configurações.",
+  template_missing: "Template de boas-vindas não encontrado.",
+  guest_no_phone: "Hóspede sem telefone cadastrado.",
+  queue_error: "Falha ao inserir mensagem na fila.",
+  exception: "Erro interno ao processar automação.",
+};
+const CABIN_STATUS_MAP: Record<string, string> = {
+  occupied: "ocupada por outra estadia",
+  cleaning: "em limpeza",
+  maintenance: "em manutenção",
+};
 
 export default function StaysPage() {
+  return (
+    <RoleGuard allowedRoles={["super_admin", "admin", "reception", "governance", "manager"]}>
+      <StaysPageInner />
+    </RoleGuard>
+  );
+}
+
+function StaysPageInner() {
   const router = useRouter();
   const { userData } = useAuth();
-  const { currentProperty: contextProperty } = useProperty();
+  const { currentProperty: property } = useProperty();
+  const confirm = useConfirm();
+  const alert = useAlert();
 
-  // States de Dados e UI
-  const [activeTab, setActiveTab] = useState<TabStatus>('ativas');
-  const [stays, setStays] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [tab, setTab] = useTabParam<TabStatus>("tab", "ativas", TABS);
+  const [search, setSearch] = useState("");
+  const { stays, setStays, loading, error, reload } = useStaysLive(property?.id, tab);
 
-  // States de Modais
-  const [selectedStay, setSelectedStay] = useState<any | null>(null);
-  const [selectedGuest, setSelectedGuest] = useState<any | null>(null);
-  const [selectedCabin, setSelectedCabin] = useState<any | null>(null);
-  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  // Seleção para os modais
+  const [selectedStay, setSelectedStay] = useState<StayRow | null>(null);
+  const [selectedGuest, setSelectedGuest] = useState<StayRow | null>(null);
+  const [selectedCabin, setSelectedCabin] = useState<StayRow | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
 
-  // State do Modal de WhatsApp (NOVO)
-  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  // Estados de progresso por cartão (o botão certo gira, não a página inteira)
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const [checkingInId, setCheckingInId] = useState<string | null>(null);
+  const [closingId, setClosingId] = useState<string | null>(null);
 
-  // States do Modal de Cancelamento
-  const [stayToCancel, setStayToCancel] = useState<string | null>(null);
+  const filtered = useMemo(() => filterAndSort(stays, tab, search), [stays, tab, search]);
+  const pendingCount = useMemo(() => stays.filter(hasPendingAccount).length, [stays]);
 
-  // --- Carregamento de Dados ---
-  const loadStays = useCallback(async (forTab?: TabStatus) => {
-    if (!contextProperty?.id) return;
-    setLoading(true);
-    const tab = forTab ?? activeTab;
+  // ---------- handlers ----------
+  const handleOpenFicha = async (s: StayRow) => {
+    if (!property?.id) return;
+    setOpeningId(s.id);
     try {
-      let statusFilter: string[] = [];
-      if (tab === 'futuras') statusFilter = ['pending', 'pre_checkin_done'];
-      if (tab === 'ativas') statusFilter = ['active'];
-      if (tab === 'pendente') statusFilter = ['finished'];
-      if (tab === 'encerradas') statusFilter = ['finished', 'cancelled'];
-
-      const params = new URLSearchParams({
-        propertyId: contextProperty.id,
-        status: statusFilter.join(','),
-      });
-      const res = await fetch(`/api/admin/stays?${params}`);
-      if (!res.ok) throw new Error('fetch-error');
-      const data = await res.json();
-      setStays(data ?? []);
-    } catch (error) {
-      toast.error("Erro ao carregar estadias.");
-    } finally {
-      setLoading(false);
-    }
-  }, [contextProperty?.id, activeTab]);
-
-  useEffect(() => {
-    if (contextProperty?.id) {
-      loadStays();
-    } else {
-      setStays([]);
-    }
-  }, [loadStays, contextProperty?.id]);
-
-  // Realtime: escuta mudanças na tabela stays
-  useEffect(() => {
-    if (!contextProperty?.id) return;
-
-    let subscribed = false;
-    const channel = supabase.channel(`stays_${contextProperty.id}`)
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'stays', filter: `propertyId=eq.${contextProperty.id}` },
-        () => loadStays()
-      )
-      .subscribe((status: string) => { if (status === 'SUBSCRIBED') subscribed = true; });
-
-    return () => { safeRemoveChannel(channel, subscribed); };
-  }, [contextProperty?.id, loadStays]);
-
-  // --- Handlers ---
-  const handleOpenFicha = async (stay: any) => {
-    if (!contextProperty?.id) return;
-    setLoading(true);
-    try {
-      const data = await StayService.getStayWithGuestAndCabinAdmin(contextProperty.id, stay.id);
+      const data = await StayService.getStayWithGuestAndCabinAdmin(property.id, s.id);
       if (data) {
         setSelectedStay({ ...data.stay, guestName: data.guest?.fullName, cabinName: data.cabin?.name });
         setSelectedGuest(data.guest);
-        setIsDetailsModalOpen(true);
+        setSelectedCabin(data.cabin ?? null);
+        setDetailsOpen(true);
       } else {
         toast.error("Ficha não encontrada para esta reserva.");
       }
-    } catch (error) {
-      console.error(error);
+    } catch (e) {
+      console.error(e);
       toast.error("Erro ao carregar ficha.");
     } finally {
-      setLoading(false);
+      setOpeningId(null);
     }
   };
 
-  // Abre o modal de Contato Rápido buscando os dados frescos do hóspede
-  const handleOpenWhatsapp = async (stay: any) => {
-    if (!contextProperty?.id) return;
-    setLoading(true);
+  const handleOpenWhatsapp = async (s: StayRow) => {
+    if (!property?.id) return;
     try {
-      const data = await StayService.getStayWithGuestAndCabinAdmin(contextProperty.id, stay.id);
-      if (data && data.guest) {
+      const data = await StayService.getStayWithGuestAndCabinAdmin(property.id, s.id);
+      if (data?.guest) {
         setSelectedStay(data.stay);
         setSelectedGuest(data.guest);
         setSelectedCabin(data.cabin ?? null);
-        setIsContactModalOpen(true);
+        setContactOpen(true);
       } else {
         toast.error("Hóspede não encontrado para esta reserva.");
       }
-    } catch (error) {
-      console.error(error);
+    } catch (e) {
+      console.error(e);
       toast.error("Erro ao preparar contato com o hóspede.");
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleCopyLink = (code: string) => {
     const link = `${window.location.origin}/check-in/login?code=${code}`;
     navigator.clipboard.writeText(link);
-    toast.success("Link de Check-in copiado!", {
-      description: "Envie para o hóspede acessar diretamente."
-    });
+    toast.success("Link de check-in copiado!", { description: "Envie para o hóspede acessar diretamente." });
   };
 
-  const handleCancelStay = async () => {
-    if (!stayToCancel || !contextProperty?.id || !userData?.id) return;
-
+  const handleCheckIn = async (s: StayRow) => {
+    if (!property?.id || !userData?.id) return;
+    const guestName = shortName(s.guestName);
+    if (isUnknownGuest(s)) {
+      await alert({ title: "Hóspede sem documento", description: "Solicite o documento antes de confirmar o check-in.", tone: "amber", icon: ShieldAlert });
+    }
+    const ok = await confirm({
+      title: `Confirmar entrada de ${guestName}?`,
+      description: `${s.cabinName || "Sem cabana definida"} · a cabana passa a ocupada e a mensagem de boas-vindas entra na fila.`,
+      confirmLabel: "Fazer check-in",
+      icon: LogIn,
+    });
+    if (!ok) return;
+    setCheckingInId(s.id);
     try {
-      await StayService.cancelStay(contextProperty.id, stayToCancel, userData.id, userData.fullName);
-      chatwootSyncOnCancelled(stayToCancel).catch(() => {});
-      toast.success("Reserva cancelada com sucesso.");
-      setStayToCancel(null);
-      loadStays();
-    } catch (error) {
-      console.error(error);
+      const result = await StayService.performCheckIn(property.id, s.id, userData.id, userData.fullName);
+      chatwootSyncOnCheckIn(s.id).catch(() => {});
+      void reload();
+      if (result?.messagedQueued) {
+        toast.success("Check-in realizado!", { description: "Mensagem de boas-vindas enfileirada." });
+      } else {
+        const desc = result?.messageQueueReason ? REASON_MAP[result.messageQueueReason] : undefined;
+        toast.warning("Check-in realizado, mas a mensagem não foi enfileirada.", { description: desc });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.startsWith("CABIN_NOT_AVAILABLE")) {
+        const cabinStatus = msg.split(":")[1] ?? "";
+        toast.error(`Check-in bloqueado: acomodação ${CABIN_STATUS_MAP[cabinStatus] ?? "indisponível"}.`, { description: "Verifique a cabana antes de prosseguir." });
+      } else if (msg.startsWith("CHECKIN_")) {
+        toast.error("Check-in não foi gravado. Nada foi alterado — tente novamente.");
+      } else {
+        toast.error("Erro ao realizar check-in.");
+      }
+    } finally {
+      setCheckingInId(null);
+    }
+  };
+
+  const handleCancel = async (s: StayRow) => {
+    if (!property?.id || !userData?.id) return;
+    const ok = await confirm({
+      title: "Cancelar esta reserva?",
+      description: `${shortName(s.guestName)} · ${s.cabinName || "sem cabana"}. Esta ação é irreversível e a cabana é liberada na hora.`,
+      confirmLabel: "Cancelar reserva",
+      cancelLabel: "Voltar",
+      tone: "danger",
+      icon: Ban,
+    });
+    if (!ok) return;
+    try {
+      await StayService.cancelStay(property.id, s.id, userData.id, userData.fullName);
+      chatwootSyncOnCancelled(s.id).catch(() => {});
+      toast.success("Reserva cancelada.");
+      void reload();
+    } catch (e) {
+      console.error(e);
       toast.error("Erro ao cancelar reserva.");
     }
   };
 
-  const handleCloseBill = async (stayId: string, guestName: string) => {
-    if (!contextProperty?.id || !userData?.id) return;
-    if (!confirm(`Encerrar a conta de ${guestName}? Todos os lançamentos pendentes serão marcados como pagos.`)) return;
+  const handleCloseBill = async (s: StayRow) => {
+    if (!property?.id || !userData?.id) return;
+    const ok = await confirm({
+      title: `Encerrar a conta de ${shortName(s.guestName)}?`,
+      description: "Todos os lançamentos pendentes serão marcados como pagos.",
+      confirmLabel: "Encerrar conta",
+      icon: Receipt,
+    });
+    if (!ok) return;
+    setClosingId(s.id);
     try {
-      await StayService.closeStayBill(contextProperty.id, stayId, userData.id, userData.fullName);
-      toast.success("Conta encerrada com sucesso.");
-      setActiveTab('encerradas');
-      loadStays('encerradas');
+      await StayService.closeStayBill(property.id, s.id, userData.id, userData.fullName);
+      toast.success("Conta encerrada.");
+      setTab("encerradas");
     } catch {
       toast.error("Erro ao encerrar conta.");
+    } finally {
+      setClosingId(null);
     }
   };
 
-  const handleArchive = async (stayId: string) => {
-    if (!contextProperty?.id || !userData?.id) return;
-    if (!confirm("Deseja arquivar esta estadia? Ela sairá desta lista e ficará guardada no histórico do Aura.")) return;
-
+  const handleArchive = async (s: StayRow) => {
+    if (!property?.id || !userData?.id) return;
+    const ok = await confirm({
+      title: "Arquivar esta estadia?",
+      description: "Ela sai desta lista e fica guardada no histórico do Aura.",
+      confirmLabel: "Arquivar",
+      tone: "danger",
+      icon: Archive,
+    });
+    if (!ok) return;
     try {
-      await StayService.archiveStay(contextProperty.id, stayId, userData.id, userData.fullName);
-      toast.success("Estadia arquivada com sucesso.");
-      setStays(prev => prev.filter(s => s.id !== stayId));
-    } catch (error) {
+      await StayService.archiveStay(property.id, s.id, userData.id, userData.fullName);
+      toast.success("Estadia arquivada.");
+      setStays(prev => prev.filter(x => x.id !== s.id));
+    } catch {
       toast.error("Erro ao arquivar.");
     }
   };
 
-  // --- Lógica de Renderização de Status ---
-  const getActiveStatusInfo = (checkOutDate: any) => {
-    if (!checkOutDate) return { label: "N/A", color: "text-foreground" };
+  // ---------- encerradas (DataList) ----------
+  const closedColumns: Column<StayRow>[] = useMemo(() => [
+    { id: "cabin", header: "Cabana", width: 200, mobile: "meta", cell: s => <Pill tone={s.cabinId ? "brand" : "amber"} size="md" label={s.cabinName || "Sem cabana"} /> },
+    {
+      id: "guest", header: "Hóspede", priority: 1, mobile: "title",
+      cell: s => (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 800, color: T.text }}>
+          {titleCase(s.guestName) || "Hóspede desconhecido"}
+          {s.status === "cancelled" && <Pill tone="red" label="Cancelada" />}
+        </span>
+      ),
+    },
+    { id: "period", header: "Período", nowrap: true, mobile: "subtitle", cell: s => <span style={{ color: T.muted, fontSize: 12, fontWeight: 600 }}>{fmtDay(s.checkIn, "dd/MM")} → {fmtDay(s.checkOut, "dd/MM")}</span> },
+    { id: "alerts", header: "Avisos", align: "center", priority: 3, mobile: "trailing", cell: s => (s.hasOpenFolio ? <Pill tone="orange" icon={DollarSign} label="Conta aberta" /> : null) },
+    {
+      id: "nps", header: "Avaliação", align: "center", priority: 2, mobile: "trailing",
+      cell: s => {
+        const n = npsInfo(s);
+        return n
+          ? <Pill tone={n.tone} icon={Star} label={n.label} />
+          : <span style={{ fontSize: 10, color: T.muted2, textTransform: "uppercase", letterSpacing: ".06em", fontWeight: 800 }}>Sem avaliação</span>;
+      },
+    },
+  ], []);
 
-    const today = new Date();
-    const end = new Date(checkOutDate);
-    const diff = differenceInCalendarDays(end, today);
+  const closedActions = (s: StayRow): RowAction<StayRow>[] => [
+    { id: "wa", label: "WhatsApp", icon: MessageCircle, onClick: handleOpenWhatsapp },
+    { id: "open", label: "Abrir ficha", icon: ArrowUpRight, onClick: handleOpenFicha },
+    { id: "archive", label: "Arquivar", icon: Archive, onClick: handleArchive, danger: true },
+  ];
 
-    if (diff < 0) return { label: "Check-out Atrasado", color: "text-red-500" };
-    if (diff === 0) return { label: "Check-out Hoje", color: "text-orange-500" };
-    if (diff === 1) return { label: "Check-out Amanhã", color: "text-yellow-500" };
-    return { label: "Hospedagem em Curso", color: "text-green-500" };
-  };
-
-  const getFutureStatusInfo = (checkInDate: any, expectedTime?: string) => {
-    if (!checkInDate) return "Aguardando";
-    const today = new Date();
-    const start = new Date(checkInDate);
-    const diff = differenceInCalendarDays(start, today);
-
-    const timeString = expectedTime ? ` às ${expectedTime}` : "";
-
-    if (diff < 0) {
-      const dateStr = format(start, "dd/MM", { locale: ptBR });
-      return `Atrasado · Previsto ${dateStr}${timeString}`;
-    }
-    if (diff === 0) return `Chegada Hoje${timeString}`;
-    if (diff === 1) return `Chegada Amanhã${timeString}`;
-    if (expectedTime) return `Chegada em ${diff} dias${timeString}`;
-    return `Chegada em ${diff} dias`;
-  };
-
-  const extractCabinNumber = (name: string) => {
-    const match = name?.match(/\d+/);
-    return match ? parseInt(match[0], 10) : Infinity;
-  };
-
-  const filteredStays = stays
-    .filter(s => {
-      // Aba pendente: folio pendente ou objetos esquecidos não encerrados
-      if (activeTab === 'pendente') {
-        const hasPending = (s.pendingFolioCount ?? 0) > 0 || !!s.lostItemsDescription;
-        if (!hasPending) return false;
-      }
-
-      const term = searchTerm.toLowerCase().trim();
-      if (!term) return true;
-
-      const guestMatch = (s.guestName || "").toLowerCase().includes(term);
-      const cabinMatch = (s.cabinName || "").toLowerCase().includes(term);
-
-      const checkInStr = s.checkIn ? format(new Date(s.checkIn), "dd/MM/yyyy", { locale: ptBR }) : "";
-      const checkOutStr = s.checkOut ? format(new Date(s.checkOut), "dd/MM/yyyy", { locale: ptBR }) : "";
-      const periodMatch = checkInStr.includes(term) || checkOutStr.includes(term);
-
-      const npsVal = s.nps !== undefined ? s.nps : s.npsScore;
-      const hasEval = npsVal !== undefined && npsVal !== null;
-      const evalMatch =
-        (term === "avaliado" && hasEval) ||
-        (term === "pendente" && !hasEval) ||
-        (term === "promotor" && hasEval && npsVal >= 9) ||
-        (term === "neutro" && hasEval && npsVal >= 7 && npsVal <= 8) ||
-        (term === "detrator" && hasEval && npsVal <= 6);
-
-      return guestMatch || cabinMatch || periodMatch || evalMatch;
-    })
-    .sort((a, b) => {
-      if (activeTab === 'encerradas') {
-        const dateA = a.checkOut ? new Date(a.checkOut).getTime() : 0;
-        const dateB = b.checkOut ? new Date(b.checkOut).getTime() : 0;
-        return dateB - dateA;
-      }
-      return extractCabinNumber(a.cabinName) - extractCabinNumber(b.cabinName);
-    });
+  // ---------- vazios ----------
+  const emptyState = search.trim() ? (
+    <EmptyState
+      icon={SearchX}
+      title={`Nada encontrado para “${search.trim()}”`}
+      description="Tente outro nome, cabana ou data (dd/mm/aaaa)."
+      action={{ label: "Limpar busca", onClick: () => setSearch("") }}
+    />
+  ) : tab === "ativas" ? (
+    <EmptyState icon={Home} title="Nenhuma estadia ativa" description="Quando um hóspede fizer check-in, ele aparece aqui." action={{ label: "Nova hospedagem", href: "/admin/stays/new", icon: Plus }} />
+  ) : tab === "futuras" ? (
+    <EmptyState icon={CalendarClock} title="Nenhuma chegada prevista" description="Reservas futuras aparecem aqui assim que forem criadas." action={{ label: "Nova hospedagem", href: "/admin/stays/new", icon: Plus }} />
+  ) : tab === "pendente" ? (
+    <EmptyState icon={Receipt} tone="green" title="Nenhuma conta pendente" description="Estadias encerradas com fólio em aberto ou objetos esquecidos aparecem aqui." />
+  ) : (
+    <EmptyState icon={Archive} title="Nenhuma estadia encerrada" description="O histórico de check-outs e cancelamentos aparece aqui." />
+  );
 
   return (
-    <RoleGuard allowedRoles={["super_admin", "admin", "reception", "governance", "manager"]}>
-      <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-4 md:space-y-8 animate-in fade-in duration-500">
+    <PageShell>
+      <PageHeader
+        title="Estadias"
+        icon={Home}
+        subtitle={property?.name}
+        primaryAction={{ label: "Nova hospedagem", icon: Plus, href: "/admin/stays/new" }}
+      />
 
-        {/* Header */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-1">
-            <h1 className="text-2xl md:text-4xl font-black tracking-tighter flex items-center gap-3 text-foreground">
-              <Calendar className="text-primary" size={36} /> Painel Operacional
-            </h1>
-            <div className="flex items-center gap-2">
-              <p className="font-medium flex items-center gap-2 opacity-70" style={{ color: "hsl(var(--foreground))" }}>
-                <MapPin size={14} />
-                {contextProperty?.name || "Carregando Propriedade..."}
-              </p>
-            </div>
-          </div>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
+        <SegmentedTabs
+          ariaLabel="Filtrar estadias"
+          items={TAB_ITEMS.map(t => (t.id === "pendente" && tab === "pendente" && pendingCount > 0 ? { ...t, count: pendingCount } : t))}
+          value={tab}
+          onChange={setTab}
+          style={{ maxWidth: "100%" }}
+        />
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Hóspede, cabana ou data…"
+          debounce={150}
+          wrapStyle={{ flex: "1 1 240px", maxWidth: 380 }}
+        />
+      </div>
 
-          <Link
-            href="/admin/stays/new"
-            className="bg-primary text-primary-foreground font-black px-8 py-4 rounded-2xl flex items-center gap-2 hover:shadow-[0_0_30px_rgba(var(--primary),0.4)] transition-all active:scale-95"
-          >
-            Nova Hospedagem <ArrowUpRight size={20} />
-          </Link>
-        </header>
-
-        {/* Filtros e Tabs */}
-        <div className="flex flex-col md:flex-row gap-6 items-center justify-between bg-card border border-white/5 p-2 rounded-[32px]">
-          <div className="flex gap-1 w-full md:w-auto">
-            {(['ativas', 'futuras', 'encerradas'] as TabStatus[]).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={cn(
-                  "flex-1 md:flex-none px-3 md:px-8 py-3 rounded-[20px] text-[10px] font-black uppercase tracking-[0.1em] md:tracking-[0.2em] transition-all",
-                  activeTab === tab
-                    ? "bg-white text-black shadow-xl"
-                    : "text-foreground/40 hover:text-foreground hover:bg-white/5"
-                )}
-              >
-                {tab}
-              </button>
+      <Loadable
+        loading={loading && stays.length === 0}
+        skeleton={tab === "encerradas" ? <SkeletonList rows={6} avatar={false} /> : <SkeletonCards n={6} minWidth={300} />}
+        error={error}
+        onRetry={() => void reload()}
+        isEmpty={filtered.length === 0}
+        empty={emptyState}
+      >
+        {tab === "encerradas" ? (
+          <DataList<StayRow>
+            rows={filtered}
+            columns={closedColumns}
+            rowKey={s => s.id}
+            onRowClick={handleOpenFicha}
+            rowActions={closedActions}
+            actionsLabel="Ações da estadia"
+          />
+        ) : tab === "pendente" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {filtered.map(s => (
+              <PendingAccountCard key={s.id} stay={s} onOpen={handleOpenFicha} onCloseBill={handleCloseBill} opening={openingId === s.id} closing={closingId === s.id} />
             ))}
-            {(() => {
-              const pendingCount = stays.filter(s => (s.pendingFolioCount ?? 0) > 0 || !!s.lostItemsDescription).length;
-              return (
-                <button
-                  onClick={() => setActiveTab('pendente')}
-                  className={cn(
-                    "flex-1 md:flex-none px-2 md:px-6 py-3 rounded-[20px] text-[10px] font-black uppercase tracking-[0.1em] md:tracking-[0.2em] transition-all flex items-center justify-center gap-1 md:gap-2",
-                    activeTab === 'pendente'
-                      ? "bg-orange-500 text-white shadow-xl"
-                      : "text-orange-400 hover:text-orange-300 hover:bg-orange-500/10"
-                  )}
-                >
-                  <Receipt size={12} />
-                  <span className="hidden sm:inline">Conta</span>
-                  {pendingCount > 0 && (
-                    <span className={cn(
-                      "text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center",
-                      activeTab === 'pendente' ? "bg-white/20 text-white" : "bg-orange-500/20 text-orange-400"
-                    )}>{pendingCount}</span>
-                  )}
-                </button>
-              );
-            })()}
-          </div>
-
-          <div className="relative w-full md:w-80 px-2">
-            <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-foreground/20" size={18} />
-            <input
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              placeholder="Buscar por hóspede ou cabana..."
-              className="w-full pl-12 p-4 bg-secondary border border-white/10 rounded-2xl outline-none focus:border-primary/50 text-sm transition-all"
-            />
-          </div>
-        </div>
-
-        {/* Listagem */}
-        {!contextProperty?.id ? (
-          <div className="text-center p-24 bg-card rounded-[40px] border border-dashed border-white/10">
-            <Building2 size={60} className="mx-auto text-foreground/10 mb-6" />
-            <h3 className="text-2xl font-black text-foreground">Carregando...</h3>
-          </div>
-        ) : loading ? (
-          <div className="flex flex-col items-center justify-center p-24 space-y-4">
-            <Loader2 className="animate-spin text-primary" size={48} />
-            <p className="text-xs font-bold uppercase tracking-widest text-foreground/20">Sincronizando Aura Cloud...</p>
-          </div>
-        ) : filteredStays.length === 0 && activeTab !== 'pendente' ? (
-          <div className="text-center p-24 bg-card rounded-[40px] border border-dashed border-white/10">
-            <AlertCircle size={48} className="mx-auto text-foreground/20 mb-4" />
-            <h3 className="text-xl font-bold text-foreground">Sem estadias {activeTab}</h3>
-            <p className="text-foreground/40">Não há registros para esta categoria no momento.</p>
           </div>
         ) : (
-          <>
-            {/* RENDERIZAÇÃO 1: CARDS GRANDES (Para Ativas e Futuras) */}
-            {activeTab !== 'encerradas' && activeTab !== 'pendente' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredStays.map((s) => {
-                  const activeInfo = getActiveStatusInfo(s.checkOut);
-                  const guestName = s.guestName || "Hóspede Desconhecido";
-
-                  const docNumber = s.guest?.document?.number || s.guestDocumentNumber || "";
-                  const hasValidDoc = docNumber && docNumber.length > 3 && docNumber !== "N/A";
-                  const isPreCheckinDone = s.status === 'pre_checkin_done';
-                  const isTempId = !s.guestId || s.guestId.toString().startsWith("GUEST");
-                  const isUnknownGuest = isTempId && !hasValidDoc && !isPreCheckinDone;
-
-                  return (
-                    <div
-                      key={s.id}
-                      className="group bg-card border border-white/5 rounded-[40px] overflow-hidden hover:border-primary/40 transition-all flex flex-col shadow-lg"
-                    >
-                      <div className="p-5 md:p-8 space-y-4 md:space-y-6 flex-1">
-                        {/* Topo do Card */}
-                        <div className="flex justify-between items-start">
-                          <div className={`px-4 py-1.5 rounded-full border ${!s.cabinId ? 'bg-amber-500/10 border-amber-500/30' : 'bg-primary/10 border-primary/20'}`}>
-                            <span className={`text-[10px] font-black uppercase tracking-widest ${!s.cabinId ? 'text-amber-600 dark:text-amber-400' : 'text-primary'}`}>{s.cabinName}</span>
-                          </div>
-                          <div className="flex gap-2">
-                            {isUnknownGuest && <div className="p-2 bg-red-500/10 rounded-lg animate-pulse" title="Documento Pendente"><ShieldAlert size={16} className="text-red-500" /></div>}
-                            {s.hasPet && <div className="p-2 bg-orange-500/10 rounded-lg" title="Pet"><Dog size={16} className="text-orange-500" /></div>}
-                            {s.groupId && <div className="p-2 bg-blue-500/10 rounded-lg" title="Grupo"><Users size={16} className="text-blue-500" /></div>}
-                          </div>
-                        </div>
-
-                        {/* Nome e Datas */}
-                        <div className="space-y-1">
-                          <h3
-                            onClick={() => handleOpenWhatsapp(s)}
-                            className="text-2xl font-black text-foreground tracking-tighter transition-colors flex items-center gap-2 cursor-pointer hover:text-primary group/name"
-                            title="Clique para enviar WhatsApp"
-                          >
-                            {guestName.split(' ')[0]} {guestName.split(' ').slice(-1)}
-                            <MessageCircle size={20} className="opacity-0 group-hover/name:opacity-100 transition-opacity text-primary" />
-                          </h3>
-                          {s.internalUse && (
-                            <span className="inline-block text-[9px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md">Uso da Casa</span>
-                          )}
-                          <div className="flex items-center gap-2 text-foreground/40 text-[10px] font-bold uppercase tracking-widest">
-                            <Clock size={12} />
-                            {s.checkIn ? format(new Date(s.checkIn), "dd MMM", { locale: ptBR }) : ''} —
-                            {s.checkOut ? format(new Date(s.checkOut), "dd MMM", { locale: ptBR }) : ''}
-                          </div>
-                        </div>
-
-                        {/* Grid de Informações Variável */}
-                        <div className="grid grid-cols-2 gap-3">
-                          {/* Status Futuro */}
-                          {activeTab === 'futuras' && (
-                            <div className="bg-secondary p-4 rounded-3xl border border-white/5">
-                              <p className="text-[9px] font-bold text-foreground/20 uppercase mb-1">Previsão</p>
-                              <p className={cn(
-                                "text-sm font-black tracking-wide",
-                                new Date(s.checkIn) < new Date() ? "text-red-400" : "text-foreground"
-                              )}>
-                                {getFutureStatusInfo(s.checkIn, s.expectedArrivalTime)}
-                              </p>
-                            </div>
-                          )}
-                          {/* Status Ativo */}
-                          {activeTab === 'ativas' && (
-                            <div className="bg-secondary p-4 rounded-3xl border border-white/5 col-span-2">
-                              <p className="text-[9px] font-bold text-foreground/20 uppercase mb-1">Status Atual</p>
-                              <div className="flex justify-between items-center">
-                                <p className={cn("text-lg font-black tracking-wide", activeInfo.color)}>
-                                  {activeInfo.label}
-                                </p>
-                                {isUnknownGuest && (
-                                  <span className="text-[10px] font-bold text-red-500 bg-red-500/10 px-2 py-1 rounded-lg uppercase">
-                                    Doc Pendente
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Pré Checkin */}
-                          {activeTab === 'futuras' && (
-                            <div className="bg-secondary p-4 rounded-3xl border border-white/5 group/copy relative">
-                              <div className="flex justify-between items-center mb-1">
-                                <p className="text-[9px] font-bold text-foreground/20 uppercase">Pré-Checkin</p>
-                                {s.status === 'pending' && (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); handleCopyLink(s.accessCode); }}
-                                    className="text-primary hover:text-foreground transition-colors"
-                                    title="Copiar Link Direto"
-                                  >
-                                    <Copy size={12} />
-                                  </button>
-                                )}
-                              </div>
-                              <p
-                                onClick={() => s.status === 'pending' && handleCopyLink(s.accessCode)}
-                                className={cn(
-                                  "text-xs font-black uppercase flex items-center gap-1",
-                                  s.status === 'pre_checkin_done' ? "text-green-500" : "text-yellow-500 cursor-pointer hover:underline"
-                                )}
-                              >
-                                {s.status === 'pre_checkin_done' ? "Pronto" : "Pendente"}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Footer de Ações */}
-                      <div className="p-6 bg-white/[0.02] border-t border-white/5 flex gap-3">
-                        <button
-                          onClick={() => handleOpenFicha(s)}
-                          className="flex-1 bg-white/5 hover:bg-white/10 text-foreground text-[10px] font-black uppercase py-4 rounded-2xl transition-all tracking-widest"
-                        >
-                          Ver Ficha
-                        </button>
-
-                        {activeTab === 'futuras' && (
-                          <>
-                            <button
-                              onClick={async () => {
-                                if (isUnknownGuest) {
-                                  alert("ATENÇÃO: Hóspede sem documento registrado. Solicite o documento antes de confirmar o check-in.");
-                                }
-                                if (confirm(`Confirmar entrada de ${guestName}?`) && contextProperty?.id && userData?.id) {
-                                  try {
-                                    const result = await StayService.performCheckIn(contextProperty.id, s.id, userData.id, userData.fullName);
-                                    chatwootSyncOnCheckIn(s.id).catch(() => {});
-                                    loadStays();
-                                    if (result?.messagedQueued) {
-                                      toast.success("Check-in realizado!", { description: "Mensagem de boas-vindas enfileirada." });
-                                    } else {
-                                      const reasonMap: Record<string, string> = {
-                                        rule_inactive: "Automação de boas-vindas inativa nas configurações.",
-                                        template_missing: "Template de boas-vindas não encontrado.",
-                                        guest_no_phone: "Hóspede sem telefone cadastrado.",
-                                        queue_error: "Falha ao inserir mensagem na fila.",
-                                        exception: "Erro interno ao processar automação.",
-                                      };
-                                      const desc = result?.messageQueueReason ? reasonMap[result.messageQueueReason] : undefined;
-                                      toast.warning("Check-in realizado, mas mensagem não foi enfileirada.", { description: desc });
-                                    }
-                                  } catch (err: any) {
-                                    const msg = err?.message ?? '';
-                                    if (msg.startsWith('CABIN_NOT_AVAILABLE')) {
-                                      const statusMap: Record<string, string> = {
-                                        occupied: 'ocupada por outra estadia',
-                                        cleaning: 'em limpeza',
-                                        maintenance: 'em manutenção',
-                                      };
-                                      const cabinStatus = msg.split(':')[1] ?? '';
-                                      toast.error(`Check-in bloqueado: acomodação ${statusMap[cabinStatus] ?? 'indisponível'}. Verifique antes de prosseguir.`);
-                                    } else if (msg.startsWith('CHECKIN_')) {
-                                      toast.error("Check-in não foi gravado. Nada foi alterado — tente novamente.");
-                                    } else {
-                                      toast.error("Erro ao realizar check-in.");
-                                    }
-                                  }
-                                }
-                              }}
-                              className="flex-1 bg-primary text-black text-[10px] font-black uppercase py-4 rounded-2xl hover:shadow-[0_0_20px_rgba(var(--primary),0.4)] transition-all tracking-widest"
-                            >
-                              Check-in
-                            </button>
-                            <button
-                              onClick={() => setStayToCancel(s.id)}
-                              className="p-4 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-2xl transition-all"
-                              title="Cancelar Reserva"
-                            >
-                              <Ban size={18} />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* RENDERIZAÇÃO 3: CONTA PENDENTE */}
-            {activeTab === 'pendente' && (
-              <div className="space-y-6">
-                {filteredStays.length === 0 ? (
-                  <div className="text-center p-24 bg-card rounded-[40px] border border-dashed border-white/10">
-                    <CheckCircle2 size={48} className="mx-auto text-green-500/40 mb-4" />
-                    <h3 className="text-xl font-bold text-foreground">Tudo encerrado!</h3>
-                    <p className="text-foreground/40">Nenhuma conta pendente no momento.</p>
-                  </div>
-                ) : filteredStays.map((s) => {
-                  const guestName = s.guestName || "Hóspede Desconhecido";
-                  const folioItems: any[] = s.folioItems ?? [];
-                  const pendingItems = folioItems.filter((f: any) => f.status === 'pending');
-                  const paidItems = folioItems.filter((f: any) => f.status !== 'pending');
-                  const totalPending = pendingItems.reduce((acc: number, f: any) => acc + (f.totalPrice ?? 0), 0);
-                  const totalPaid = paidItems.reduce((acc: number, f: any) => acc + (f.totalPrice ?? 0), 0);
-
-                  return (
-                    <div key={s.id} className="bg-card border border-orange-500/20 rounded-[32px] overflow-hidden shadow-lg">
-                      {/* Header do card */}
-                      <div className="p-6 flex items-center justify-between border-b border-white/5">
-                        <div className="flex items-center gap-4">
-                          <div className={`px-4 py-1.5 rounded-full border ${!s.cabinId ? 'bg-amber-500/10 border-amber-500/30' : 'bg-primary/10 border-primary/20'}`}>
-                            <span className={`text-[10px] font-black uppercase tracking-widest ${!s.cabinId ? 'text-amber-600 dark:text-amber-400' : 'text-primary'}`}>{s.cabinName}</span>
-                          </div>
-                          <div>
-                            <h3 className="font-black text-lg text-foreground">{guestName}</h3>
-                            <div className="flex items-center gap-2 text-foreground/40 text-[10px] font-bold uppercase tracking-widest mt-0.5">
-                              <Clock size={11} />
-                              {s.checkIn ? format(new Date(s.checkIn), "dd MMM", { locale: ptBR }) : ''} — {s.checkOut ? format(new Date(s.checkOut), "dd MMM", { locale: ptBR }) : ''}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          {totalPending > 0 && (
-                            <div className="text-right">
-                              <div className="text-[10px] font-bold text-orange-400/60 uppercase tracking-widest">Saldo Pendente</div>
-                              <div className="text-xl font-black text-orange-400">R$ {totalPending.toFixed(2)}</div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="p-6 grid md:grid-cols-2 gap-6">
-                        {/* Fólio */}
-                        <div>
-                          <div className="flex items-center gap-2 mb-3">
-                            <Receipt size={14} className="text-orange-400" />
-                            <span className="text-[10px] font-black uppercase tracking-widest text-orange-400">Lançamentos do Fólio</span>
-                          </div>
-                          {folioItems.length === 0 ? (
-                            <p className="text-foreground/30 text-sm italic">Nenhum lançamento registrado.</p>
-                          ) : (
-                            <div className="space-y-2">
-                              {folioItems.map((item: any) => (
-                                <div key={item.id} className={cn(
-                                  "flex items-center justify-between p-3 rounded-xl border text-sm",
-                                  item.status === 'pending'
-                                    ? "bg-orange-500/5 border-orange-500/20"
-                                    : "bg-green-500/5 border-green-500/10 opacity-60"
-                                )}>
-                                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                                    {item.status === 'pending'
-                                      ? <DollarSign size={13} className="text-orange-400 shrink-0" />
-                                      : <CheckCircle2 size={13} className="text-green-500 shrink-0" />}
-                                    <span className="font-medium text-foreground truncate">{item.description}</span>
-                                    <span className="text-foreground/40 text-[10px] shrink-0">×{item.quantity}</span>
-                                  </div>
-                                  <span className={cn(
-                                    "font-black text-sm ml-3 shrink-0",
-                                    item.status === 'pending' ? "text-orange-400" : "text-green-500"
-                                  )}>R$ {(item.totalPrice ?? 0).toFixed(2)}</span>
-                                </div>
-                              ))}
-                              {(paidItems.length > 0 || pendingItems.length > 0) && (
-                                <div className="pt-2 border-t border-white/5 flex justify-between text-[11px] font-black uppercase tracking-widest">
-                                  {paidItems.length > 0 && <span className="text-green-500">Pago: R$ {totalPaid.toFixed(2)}</span>}
-                                  {pendingItems.length > 0 && <span className="text-orange-400 ml-auto">Pendente: R$ {totalPending.toFixed(2)}</span>}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Objetos Esquecidos */}
-                        <div>
-                          <div className="flex items-center gap-2 mb-3">
-                            <PackageSearch size={14} className="text-blue-400" />
-                            <span className="text-[10px] font-black uppercase tracking-widest text-blue-400">Objetos Esquecidos</span>
-                          </div>
-                          {!s.lostItemsDescription ? (
-                            <p className="text-foreground/30 text-sm italic">Nenhum objeto reportado.</p>
-                          ) : (
-                            <div className="space-y-3">
-                              <div className="p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl">
-                                <p className="text-sm text-foreground leading-relaxed">{s.lostItemsDescription}</p>
-                                {s.lostItemsReportedAt && (
-                                  <p className="text-[10px] text-foreground/30 mt-2 font-bold uppercase tracking-widest">
-                                    Reportado em {format(new Date(s.lostItemsReportedAt), "dd/MM 'às' HH:mm", { locale: ptBR })}
-                                  </p>
-                                )}
-                              </div>
-                              {s.lostItemsPhoto && (
-                                <a href={s.lostItemsPhoto} target="_blank" rel="noopener noreferrer" className="block">
-                                  <div className="relative rounded-xl overflow-hidden border border-blue-500/20 group">
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img src={s.lostItemsPhoto} alt="Objetos esquecidos" className="w-full max-h-48 object-cover" />
-                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center">
-                                      <ImageIcon size={24} className="text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    </div>
-                                  </div>
-                                </a>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Footer de ações */}
-                      <div className="px-6 pb-6 flex gap-3">
-                        <button
-                          onClick={() => handleOpenFicha(s)}
-                          className="flex-1 bg-white/5 hover:bg-white/10 text-foreground text-[10px] font-black uppercase py-4 rounded-2xl transition-all tracking-widest"
-                        >
-                          Ver Ficha Completa
-                        </button>
-                        <button
-                          onClick={() => handleCloseBill(s.id, guestName)}
-                          className="flex-1 bg-orange-500 hover:bg-orange-400 text-white text-[10px] font-black uppercase py-4 rounded-2xl transition-all tracking-widest flex items-center justify-center gap-2"
-                        >
-                          <CheckCircle2 size={14} /> {pendingItems.length > 0 ? "Encerrar Conta" : "Marcar Encerrado"}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* RENDERIZAÇÃO 2: ENCERRADAS — cards no mobile, tabela no desktop */}
-            {activeTab === 'encerradas' && (
-              <>
-              {/* Mobile: lista de cards */}
-              <div className="md:hidden space-y-3">
-                {filteredStays.map((s) => {
-                  const guestName = s.guestName || "Hóspede Desconhecido";
-                  const npsVal = s.nps !== undefined ? s.nps : s.npsScore;
-                  const hasEval = npsVal !== undefined && npsVal !== null;
-                  const npsLabel = !hasEval ? null : npsVal >= 9 ? { text: `Promotor (${npsVal})`, cls: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" } : npsVal <= 6 ? { text: `Detrator (${npsVal})`, cls: "bg-red-500/10 text-red-500 border-red-500/20" } : { text: `Neutro (${npsVal})`, cls: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20" };
-                  return (
-                    <div key={s.id} className="bg-card border border-white/5 rounded-2xl p-4 space-y-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-lg border ${!s.cabinId ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-primary/10 text-primary border-primary/20'}`}>
-                          {s.cabinName}
-                        </span>
-                        {s.status === 'cancelled' && <span className="text-[8px] uppercase tracking-widest bg-red-500/10 text-red-500 px-2 py-0.5 rounded">Cancelada</span>}
-                        {s.hasOpenFolio && <span className="text-[8px] uppercase tracking-widest bg-orange-500/10 text-orange-400 px-2 py-0.5 rounded border border-orange-500/20">Conta aberta</span>}
-                      </div>
-                      <div>
-                        <p className="font-bold text-foreground">{guestName}</p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-widest">
-                          {s.checkIn ? format(new Date(s.checkIn), "dd/MM") : ''} → {s.checkOut ? format(new Date(s.checkOut), "dd/MM") : ''}
-                        </p>
-                      </div>
-                      {npsLabel && (
-                        <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md border ${npsLabel.cls}`}>
-                          <Star size={10} className="fill-current" />{npsLabel.text}
-                        </span>
-                      )}
-                      <div className="flex gap-2 pt-1">
-                        <button onClick={() => handleOpenWhatsapp(s)} className="flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest bg-white/5 hover:bg-white/10 text-foreground rounded-xl transition-colors flex items-center justify-center gap-1">
-                          <MessageCircle size={12} /> WhatsApp
-                        </button>
-                        <button onClick={() => handleOpenFicha(s)} className="flex-1 py-2.5 text-[10px] font-black uppercase tracking-widest bg-primary/10 hover:bg-primary/20 text-primary rounded-xl transition-colors flex items-center justify-center gap-1">
-                          <ArrowUpRight size={12} /> Ficha
-                        </button>
-                        <button onClick={() => handleArchive(s.id)} className="p-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl transition-colors" title="Arquivar">
-                          <Archive size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Desktop: tabela compacta */}
-              <div className="hidden md:block bg-card border border-white/5 rounded-3xl overflow-hidden shadow-sm overflow-x-auto">
-                <table className="w-full text-left min-w-[600px]">
-                  <thead className="bg-muted/50 border-b border-border">
-                    <tr>
-                      <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground w-32">Cabana</th>
-                      <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Hóspede</th>
-                      <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Período</th>
-                      <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-center">Avisos</th>
-                      <th className="p-4 text-[10px] font-black uppercase tracking-widest text-muted-foreground text-center">Avaliação</th>
-                      <th className="p-4 text-right"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border text-sm">
-                    {filteredStays.map((s) => {
-                      const guestName = s.guestName || "Hóspede Desconhecido";
-
-                      return (
-                        <tr key={s.id} className="hover:bg-muted/30 transition-colors group">
-                          {/* Coluna: Cabana */}
-                          <td className="p-4">
-                            <span className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-lg border ${!s.cabinId ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30' : 'bg-primary/10 text-primary border-primary/20'}`}>
-                              {s.cabinName}
-                            </span>
-                          </td>
-
-                          {/* Coluna: Nome */}
-                          <td className="p-4 font-bold text-foreground">
-                            <div className="flex items-center gap-2">
-                              {guestName}
-                              {s.status === 'cancelled' && <span className="text-[8px] uppercase tracking-widest bg-red-500/10 text-red-500 px-2 py-0.5 rounded">Cancelada</span>}
-                            </div>
-                          </td>
-
-                          {/* Coluna: Período */}
-                          <td className="p-4">
-                            <div className="flex items-center gap-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                              <Clock size={12} />
-                              {s.checkIn ? format(new Date(s.checkIn), "dd/MM") : ''} até {s.checkOut ? format(new Date(s.checkOut), "dd/MM") : ''}
-                            </div>
-                          </td>
-
-                          {/* Coluna: Alertas Financeiros e Operacionais */}
-                          <td className="p-4 text-center">
-                            <div className="flex items-center justify-center gap-2">
-                              {s.hasOpenFolio ? (
-                                <div className="p-1.5 bg-orange-500/10 text-orange-500 rounded-md border border-orange-500/20 group-hover:animate-pulse" title="Há itens de frigobar aguardando pagamento/baixa">
-                                  <DollarSign size={14} />
-                                </div>
-                              ) : (
-                                <div className="p-1.5 bg-background text-muted-foreground/30 rounded-md border border-border" title="Conta zerada/baixa completa">
-                                  <CheckCircle2 size={14} />
-                                </div>
-                              )}
-                            </div>
-                          </td>
-
-                          {/* Coluna: AVALIAÇÃO (NOVA) */}
-                          <td className="p-4 text-center">
-                            <div className="flex items-center justify-center">
-                              {(() => {
-                                const npsVal = s.nps !== undefined ? s.nps : s.npsScore;
-                                const hasEvaluated = npsVal !== undefined && npsVal !== null;
-
-                                if (!hasEvaluated && !s.hasSurvey) {
-                                  return (
-                                    <span className="text-[10px] font-bold text-muted-foreground/40 uppercase tracking-widest border border-dashed border-white/10 px-2 py-1 rounded-md" title="Pesquisa ainda não respondida">
-                                      Pendente
-                                    </span>
-                                  );
-                                }
-
-                                if (npsVal <= 6) {
-                                  return (
-                                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-500/10 text-red-500 rounded-md border border-red-500/20" title="Hóspede Detrator">
-                                      <Star size={12} className="fill-red-500" />
-                                      <span className="text-[10px] font-black uppercase tracking-wider">Detrator ({npsVal})</span>
-                                    </div>
-                                  );
-                                }
-
-                                if (npsVal >= 9) {
-                                  return (
-                                    <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 text-emerald-500 rounded-md border border-emerald-500/20" title="Hóspede Promotor">
-                                      <Star size={12} className="fill-emerald-500" />
-                                      <span className="text-[10px] font-black uppercase tracking-wider">Promotor ({npsVal})</span>
-                                    </div>
-                                  );
-                                }
-
-                                return (
-                                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-yellow-500/10 text-yellow-500 rounded-md border border-yellow-500/20" title="Hóspede Neutro">
-                                    <Star size={12} className="fill-yellow-500" />
-                                    <span className="text-[10px] font-black uppercase tracking-wider">Neutro ({npsVal})</span>
-                                  </div>
-                                );
-                              })()}
-                            </div>
-                          </td>
-
-                          {/* Coluna: Ações */}
-                          <td className="p-4 text-right">
-                            <div className="flex justify-end gap-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                              <button onClick={() => handleOpenWhatsapp(s)} className="p-2 text-muted-foreground hover:text-green-500 hover:bg-green-500/10 rounded-lg transition-colors" title="WhatsApp">
-                                <MessageCircle size={16} />
-                              </button>
-                              <button onClick={() => handleOpenFicha(s)} className="p-2 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-lg transition-colors" title="Ver Ficha & Extrato">
-                                <ArrowUpRight size={16} />
-                              </button>
-                              <button onClick={() => handleArchive(s.id)} className="p-2 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors" title="Arquivar Definitivamente">
-                                <Archive size={16} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              </>
-            )}
-          </>
-        )}
-
-        {/* selectedGuest pode ser null (uso da casa) — o modal tolera e mostra o rótulo interno */}
-        {selectedStay && (
-          <StayDetailsModal
-            isOpen={isDetailsModalOpen}
-            onClose={() => setIsDetailsModalOpen(false)}
-            stay={selectedStay}
-            guest={selectedGuest}
-            onViewGuest={(id) => router.push(`/admin/guests/${id}`)}
-            onUpdate={loadStays}
-          />
-        )}
-
-        {/* Modal de Confirmação de Cancelamento */}
-        {stayToCancel && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-card border border-white/10 w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 p-8 text-center space-y-6">
-              <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto text-red-500 border border-red-500/20">
-                <AlertCircle size={32} />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-foreground">Cancelar Reserva?</h3>
-                <p className="text-foreground/40 text-sm mt-2">
-                  Esta ação é irreversível. A cabana será liberada imediatamente.
-                </p>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setStayToCancel(null)}
-                  className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-foreground font-bold rounded-xl"
-                >
-                  Voltar
-                </button>
-                <button
-                  onClick={handleCancelStay}
-                  className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-foreground font-bold rounded-xl"
-                >
-                  Confirmar
-                </button>
-              </div>
-            </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(300px, 100%), 1fr))", gap: 12 }}>
+            {filtered.map(s => (
+              <StayCard
+                key={s.id}
+                stay={s}
+                mode={tab}
+                onOpen={handleOpenFicha}
+                onWhatsapp={handleOpenWhatsapp}
+                onCheckIn={tab === "futuras" ? handleCheckIn : undefined}
+                onCancel={tab === "futuras" ? handleCancel : undefined}
+                onCopyLink={handleCopyLink}
+                opening={openingId === s.id}
+                checkingIn={checkingInId === s.id}
+              />
+            ))}
           </div>
         )}
+      </Loadable>
 
-        {/* Modal Inteligente de Contato */}
-        {isContactModalOpen && selectedStay && selectedGuest && contextProperty?.id && (
-          <GuestContactModal
-            propertyId={contextProperty.id}
-            stay={selectedStay}
-            guest={selectedGuest}
-            cabin={selectedCabin}
-            onClose={() => setIsContactModalOpen(false)}
-          />
-        )}
+      {/* selectedGuest pode ser null (uso da casa) — a ficha tolera e mostra o rótulo interno */}
+      {selectedStay && (
+        <StayDetailsModal
+          isOpen={detailsOpen}
+          onClose={() => setDetailsOpen(false)}
+          stay={selectedStay}
+          guest={selectedGuest}
+          onViewGuest={(id: string) => router.push(`/admin/guests/${id}`)}
+          onUpdate={() => void reload()}
+        />
+      )}
 
-      </div>
-    </RoleGuard>
+      {selectedStay && selectedGuest && property?.id && (
+        <GuestContactModal
+          key={selectedGuest.id}
+          open={contactOpen}
+          propertyId={property.id}
+          stay={selectedStay}
+          guest={selectedGuest}
+          cabin={selectedCabin}
+          onClose={() => setContactOpen(false)}
+        />
+      )}
+    </PageShell>
   );
 }
