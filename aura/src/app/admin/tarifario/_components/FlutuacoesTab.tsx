@@ -8,6 +8,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Loader2, Percent, Plus, Trash2, X } from "lucide-react";
+import { Dialog } from "@/components/aura";
 import { T } from "@/lib/admin-tokens";
 import type { RateBundle } from "@/services/rate-service";
 import { formatDateBR } from "@/lib/rate-engine";
@@ -202,19 +203,8 @@ export function FlutuacoesTab({ propertyId, bundle, onRefresh }: {
       </div>
 
       {/* Conflito — mesmos modos das regras de calendário */}
-      {conflicts && (
-        <div style={{
-          position: "fixed", inset: 0, zIndex: 70, background: "rgba(0,0,0,0.6)",
-          backdropFilter: "blur(4px)", display: "flex", alignItems: "center",
-          justifyContent: "center", padding: 24,
-        }}>
-          <div style={{
-            width: "100%", maxWidth: 520, background: T.card, borderRadius: 20,
-            border: `1px solid ${T.border2}`, padding: 22,
-            display: "flex", flexDirection: "column", gap: 12,
-            boxShadow: "0 32px 80px rgba(0,0,0,.7)",
-          }}>
-            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 900, color: T.red }}>Período já tem flutuação</h3>
+      <Dialog open={!!conflicts} onClose={() => setConflicts(null)} presentation="auto" size="sm" title="Período já tem flutuação" iconTone="red">
+        {conflicts && (<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 5, maxHeight: 140, overflowY: "auto" }}>
               {conflicts.map((c, i) => (
                 <div key={i} style={{ ...S.row, padding: "7px 11px", fontSize: 12, color: T.text }}>
@@ -244,12 +234,8 @@ export function FlutuacoesTab({ propertyId, bundle, onRefresh }: {
                 </p>
               </button>
             </div>
-            <button onClick={() => setConflicts(null)} style={{ ...S.ghostBtn, justifyContent: "center" }}>
-              Cancelar operação
-            </button>
-          </div>
-        </div>
-      )}
+            $1          </div>)}
+      </Dialog>
     </div>
   );
 }

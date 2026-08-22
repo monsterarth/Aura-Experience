@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, Heart, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
 import { RatePeriod } from "@/types/aura";
+import { Dialog, useConfirm } from "@/components/aura";
 import type { RateBundle } from "@/services/rate-service";
 import { dateToIso, formatDateBR, isWeekendNight } from "@/lib/rate-engine";
 import { S, pillS } from "@/app/admin/comercial/_components/shared";
@@ -44,6 +45,7 @@ export function CalendarioTab({ propertyId, bundle, canManage, onRefresh }: {
 }) {
   const [form, setForm] = useState<PeriodForm>(EMPTY_FORM);
   const [formOpen, setFormOpen] = useState(false);
+  const confirm = useConfirm();
   const [saving, setSaving] = useState(false);
   const [conflicts, setConflicts] = useState<{ name: string; startDate: string; endDate: string }[] | null>(null);
   const [viewDate, setViewDate] = useState(() => new Date());
@@ -159,7 +161,7 @@ export function CalendarioTab({ propertyId, bundle, canManage, onRefresh }: {
   };
 
   const remove = async (p: RatePeriod) => {
-    if (!confirm(`Excluir a regra "${p.name}"? As noites dela ficam sem preço.`)) return;
+    if (!(await confirm({ title: "Excluir regra?", description: `A regra "${p.name}" será removida e as noites dela ficam sem preço.`, confirmLabel: "Excluir", tone: "danger" }))) return;
     try {
       const res = await fetch(
         `/api/admin/tarifario/periods?id=${p.id}&propertyId=${propertyId}`,
@@ -403,19 +405,8 @@ export function CalendarioTab({ propertyId, bundle, canManage, onRefresh }: {
       </div>
 
       {/* Modal de conflito (port do SIT) */}
-      {conflicts && (
-        <div style={{
-          position: "fixed", inset: 0, zIndex: 70, background: "rgba(0,0,0,0.6)",
-          backdropFilter: "blur(4px)", display: "flex", alignItems: "center",
-          justifyContent: "center", padding: 24,
-        }}>
-          <div style={{
-            width: "100%", maxWidth: 520, background: T.card, borderRadius: 20,
-            border: `1px solid ${T.border2}`, padding: 22,
-            display: "flex", flexDirection: "column", gap: 12,
-            boxShadow: "0 32px 80px rgba(0,0,0,.7)",
-          }}>
-            <h3 style={{ margin: 0, fontSize: 15, fontWeight: 900, color: T.red }}>Conflito de datas</h3>
+      <Dialog open={!!conflicts} onClose={() => setConflicts(null)} presentation="auto" size="sm" title="Conflito de datas" iconTone="red">
+        {conflicts && (<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <p style={{ fontSize: 12.5, color: T.muted, margin: 0 }}>
               Já existe{conflicts.length > 1 ? "m" : ""} {conflicts.length} regra{conflicts.length > 1 ? "s" : ""} nesse intervalo:
             </p>
@@ -448,12 +439,8 @@ export function CalendarioTab({ propertyId, bundle, canManage, onRefresh }: {
                 </p>
               </button>
             </div>
-            <button onClick={() => setConflicts(null)} style={{ ...S.ghostBtn, justifyContent: "center" }}>
-              Cancelar operação
-            </button>
-          </div>
-        </div>
-      )}
+            $1          </div>)}
+      </Dialog>
     </div>
   );
 }

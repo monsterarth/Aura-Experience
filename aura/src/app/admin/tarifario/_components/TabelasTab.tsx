@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Archive, Copy, FileSpreadsheet, Loader2, Plus, Save, Trash2, Upload } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
 import { CabinCategory, RateTable } from "@/types/aura";
+import { useConfirm } from "@/components/aura";
 import type { RateBundle } from "@/services/rate-service";
 import { S, pillS } from "@/app/admin/comercial/_components/shared";
 import { ExcelImportModal } from "./ExcelImportModal";
@@ -21,6 +22,7 @@ function TableCard({ propertyId, table, categories, canManage, onRefresh }: {
   onRefresh: () => Promise<void> | void;
 }) {
   const [name, setName] = useState(table.name);
+  const confirm = useConfirm();
   const [prices, setPrices] = useState<RateTable["prices"]>(table.prices || {});
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -120,7 +122,7 @@ function TableCard({ propertyId, table, categories, canManage, onRefresh }: {
   };
 
   const remove = async () => {
-    if (!confirm(`Excluir a tabela "${name}"? O último estado fica no arquivo, mas regras que a usam ficarão sem preço. Prefere arquivar?`)) return;
+    if (!(await confirm({ title: "Excluir tabela?", description: `"${name}" sai do tarifário. O último estado fica no arquivo, mas regras que a usam ficarão sem preço — prefere arquivar?`, confirmLabel: "Excluir", tone: "danger" }))) return;
     try {
       const res = await fetch(
         `/api/admin/tarifario/tables?id=${table.id}&propertyId=${propertyId}`,
@@ -197,6 +199,7 @@ export function TabelasTab({ propertyId, bundle, canManage, onRefresh }: {
   onRefresh: () => Promise<void> | void;
 }) {
   const [newName, setNewName] = useState("");
+  const confirm = useConfirm();
   const [creating, setCreating] = useState(false);
   const [excelOpen, setExcelOpen] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -286,10 +289,8 @@ export function TabelasTab({ propertyId, bundle, canManage, onRefresh }: {
             <FileSpreadsheet size={13} /> Colar do Excel
           </button>
           <button disabled={importing} style={{ ...S.ghostBtn, opacity: importing ? 0.6 : 1 }}
-            onClick={() => {
-              if (confirm(
-                "Importar backup do SIT?\n\nIsso SUBSTITUI todas as tabelas e regras de calendário atuais (as tabelas atuais ficam versionadas no arquivo) e mescla a configuração comercial."
-              )) fileRef.current?.click();
+            onClick={async () => {
+              if (await confirm({ title: "Importar backup do SIT?", description: "Isso SUBSTITUI todas as tabelas e regras de calendário atuais (as tabelas atuais ficam versionadas no arquivo) e mescla a configuração comercial.", confirmLabel: "Importar", tone: "danger" })) fileRef.current?.click();
             }}>
             {importing ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
             Backup SIT
