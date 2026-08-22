@@ -1,2088 +1,237 @@
 // src/app/admin/concierge/page.tsx
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import { useProperty } from "@/context/PropertyContext";
-import { useAuth } from "@/context/AuthContext";
-import { ConciergeService } from "@/services/concierge-service";
-import { StockClient } from "@/lib/stock-client";
-import { splitLocations } from "@/lib/stock-locations";
-import { ConciergeRequest, ConciergeItem, ConciergeCategory, ConciergeGroup, ConciergeStockComponent } from "@/types/aura";
-import { ImageUpload } from "@/components/admin/ImageUpload";
-import EmojiPicker from "emoji-picker-react";
+import React, { useMemo, useState } from "react";
+import { AlertTriangle, Archive, Building2, Calendar, CheckCircle2, ChevronLeft, ChevronRight, Clock, Edit2, Layers, ListOrdered, Plus, RotateCcw, ShoppingBag, Sparkles, Trash2 } from "lucide-react";
+import type { ConciergeGroup } from "@/types/aura";
+import { T, alpha, tone as toneOf } from "@/lib/admin-tokens";
 import {
-  ShoppingBag, Loader2, CheckCircle2, RotateCcw, XCircle,
-  Package, AlertTriangle, Clock, Pin, Eye, X, Save, Plus,
-  User, ChevronLeft, ChevronRight, TrendingUp,
-  Calendar, Search, Filter, Edit2, EyeOff, Sparkles,
-  Gift, ListOrdered, BookOpen, Layers, Trash2, Palette
-} from "lucide-react";
-import { toast } from "sonner";
-import { cn } from "@/lib/utils";
-import { useCloseGuard } from "@/lib/use-discard-guard";
-import Image from "next/image";
+  PageShell, PageHeader, KpiGrid, KpiCard, SegmentedTabs, SearchInput, FilterChips, Card, Pill, Button, IconButton,
+  SectionLabel, EmptyState, PageSkeleton, SkeletonCards, SkeletonList, useTabParam,
+} from "@/components/aura";
+import { useConcierge } from "./_components/useConcierge";
+import { PendingCard, DetailPanel, CatalogCard, ItemIcon } from "./_components/RequestCards";
+import { NewRequestModal } from "./_components/NewRequestModal";
+import { CatalogFormModal } from "./_components/CatalogFormModal";
+import { GroupFormModal } from "./_components/GroupFormModal";
+import { avatarFromName, categoryLabel, categoryTone, dayLabel, fmtBRL, formatDate, fullDayLabel, statusCfg, TABS, type EnrichedRequest, type Tab } from "./_components/concierge-utils";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type Tab = 'pending' | 'history' | 'catalog';
-type UrgencyLevel = 'urgent' | 'warning' | 'new';
-
-interface EnrichedRequest extends ConciergeRequest {
-  ageMin: number;
-  urgency: UrgencyLevel;
-}
-
-interface ItemForm {
-  name: string; name_en: string; name_es: string;
-  description: string; description_en: string; description_es: string;
-  category: ConciergeCategory;
-  price: string; loss_price: string; included_qty: string;
-  image_url: string; active: boolean;
-  availableForGuest: boolean; availableForMaid: boolean;
-  order: string;
-  groupId: string;
-  deductFromStock: boolean;                    // toggle "Baixar do estoque" (Fase 4)
-  stockComponents: ConciergeStockComponent[];  // ficha técnica
-}
-
-interface GroupForm {
-  name: string; icon: string; color: string; order: string;
-}
-
-const defaultForm: ItemForm = {
-  name: '', name_en: '', name_es: '',
-  description: '', description_en: '', description_es: '',
-  category: 'consumption',
-  price: '0', loss_price: '', included_qty: '0',
-  image_url: '', active: true,
-  availableForGuest: true, availableForMaid: false,
-  order: '0',
-  groupId: '',
-  deductFromStock: false,
-  stockComponents: [],
-};
-
-const defaultGroupForm: GroupForm = { name: '', icon: '📦', color: '#9b6dff', order: '0' };
-
-// ─── Emoji helpers ────────────────────────────────────────────────────────────
-
-const EMOJI_PREFIX = 'emoji:';
-function isEmojiUrl(url?: string) { return !!url && url.startsWith(EMOJI_PREFIX); }
-function emojiFromUrl(url?: string) { return url ? url.slice(EMOJI_PREFIX.length) : ''; }
-function emojiToUrl(em: string) { return `${EMOJI_PREFIX}${em}`; }
-
-// Returns { kind: 'emoji', value } | { kind: 'image', value } | { kind: 'none' }
-function resolveItemIcon(item: { image_url?: string; category: string }) {
-  if (isEmojiUrl(item.image_url)) return { kind: 'emoji' as const, value: emojiFromUrl(item.image_url) };
-  if (item.image_url) return { kind: 'image' as const, value: item.image_url };
-  return { kind: 'none' as const, value: '' };
-}
-
-// ─── Urgency helpers ──────────────────────────────────────────────────────────
-
-function getUrgency(ageMin: number): UrgencyLevel {
-  if (ageMin > 30) return 'urgent';
-  if (ageMin > 15) return 'warning';
-  return 'new';
-}
-
-const URGENCY = {
-  urgent:  { label: 'Urgente',  color: '#f87171', bg: 'rgba(248,113,113,0.08)',  border: 'rgba(248,113,113,0.22)',  tw: 'border-red-500/30',    textTw: 'text-red-400'    },
-  warning: { label: 'Atenção',  color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',   border: 'rgba(245,158,11,0.22)',   tw: 'border-amber-500/30',  textTw: 'text-amber-400'  },
-  new:     { label: 'Novo',     color: '#2dd4bf', bg: 'rgba(45,212,191,0.08)',   border: 'rgba(45,212,191,0.22)',   tw: 'border-teal-500/30',   textTw: 'text-teal-400'   },
-};
-
-function ageLabel(min: number): string {
-  if (min < 60) return `${min}min`;
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return m > 0 ? `${h}h ${m}min` : `${h}h`;
-}
-
-function avatarFromName(name: string): string {
-  return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-}
-
-function dayLabel(offset: number): string {
-  if (offset === 0) return 'Hoje';
-  if (offset === -1) return 'Ontem';
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
-  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-}
-
-function fullDayLabel(offset: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
-  return d.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
-}
-
-// ─── Status config ────────────────────────────────────────────────────────────
-
-const STATUS_CFG: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  delivered: { label: 'Entregue',   color: '#2dd4bf', bg: 'rgba(45,212,191,0.08)',  border: 'rgba(45,212,191,0.22)' },
-  returned:  { label: 'Devolvido',  color: '#60a5fa', bg: 'rgba(96,165,250,0.08)',  border: 'rgba(96,165,250,0.22)' },
-  lost:      { label: 'Extraviado', color: '#f87171', bg: 'rgba(248,113,113,0.08)', border: 'rgba(248,113,113,0.22)' },
-};
-
-// ─── Main component ───────────────────────────────────────────────────────────
+type CatFilter = "all" | "loan" | "consumption";
+type ReqByFilter = "all" | "guest" | "maid";
+type AccessFilter = "all" | "guest" | "maid" | "both";
 
 export default function AdminConciergePage() {
-  const { currentProperty: property, loading: propLoading } = useProperty();
-  const { userData } = useAuth();
-
-  const [tab, setTab] = useState<Tab>('pending');
-
-  // ── Open requests state ──
-  const [rawOpen, setRawOpen] = useState<ConciergeRequest[]>([]);
-  const [openRequests, setOpenRequests] = useState<EnrichedRequest[]>([]);
-  const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({});
-  const [filterCat, setFilterCat] = useState<'all' | 'loan' | 'consumption'>('all');
-  const [filterReqBy, setFilterReqBy] = useState<'all' | 'guest' | 'maid'>('all');
-  const [search, setSearch] = useState('');
+  const [tab, setTab] = useTabParam<Tab>("tab", "pending", TABS);
+  const s = useConcierge(tab);
+  const [filterCat, setFilterCat] = useState<CatFilter>("all");
+  const [filterReqBy, setFilterReqBy] = useState<ReqByFilter>("all");
+  const [search, setSearch] = useState("");
   const [detail, setDetail] = useState<EnrichedRequest | null>(null);
+  const [catalogAccess, setCatalogAccess] = useState<AccessFilter>("all");
 
-  const prevCountRef = useRef(0);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const ageIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // ── History state ──
-  const [history, setHistory] = useState<ConciergeRequest[]>([]);
-  const [historyOffset, setHistoryOffset] = useState(0);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-
-  // ── Catalog state ──
-  const [items, setItems] = useState<ConciergeItem[]>([]);
-  const [groups, setGroups] = useState<ConciergeGroup[]>([]);
-  const [loadingCatalog, setLoadingCatalog] = useState(false);
-  const [catalogAccess, setCatalogAccess] = useState<'all' | 'guest' | 'maid' | 'both'>('all');
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<ItemForm>(defaultForm);
-  const [stockProducts, setStockProducts] = useState<{ id: string; name: string; unit: string }[]>([]);
-  const [stockLocations, setStockLocations] = useState<{ id: string; name: string }[]>([]);
-  const stockEnabled = property?.settings?.hasStock !== false;
-  useEffect(() => {
-    if (!property?.id || !stockEnabled) { setStockProducts([]); setStockLocations([]); return; }
-    StockClient.products(property.id)
-      .then(ps => setStockProducts(ps.map(p => ({ id: p.id, name: p.name, unit: p.unit }))))
-      .catch(() => setStockProducts([]));
-    StockClient.locations(property.id)
-      // sem locais de cabana: a baixa de um item de concierge sai do estoque, não de uma cabana
-      .then(ls => setStockLocations(splitLocations(ls).flat.map(l => ({ id: l.id, name: l.name }))))
-      .catch(() => setStockLocations([]));
-  }, [property?.id, stockEnabled]);
-  const [saving, setSaving] = useState(false);
-
-  // ── Archive state ──
-  const [archivedItems, setArchivedItems] = useState<ConciergeItem[]>([]);
-  const [showArchive, setShowArchive] = useState(false);
-  const [loadingArchive, setLoadingArchive] = useState(false);
-
-  // ── Group management state ──
-  const [showGroupForm, setShowGroupForm] = useState(false);
-  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
-  const [groupForm, setGroupForm] = useState<GroupForm>(defaultGroupForm);
-  const [savingGroup, setSavingGroup] = useState(false);
-
-  // ── New request modal ──
-  const [showNew, setShowNew] = useState(false);
-  const [newItemPreset, setNewItemPreset] = useState<ConciergeItem | null>(null);
-
-  // ─── Age ticker ──────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    ageIntervalRef.current = setInterval(() => {
-      setOpenRequests(prev => prev.map(r => {
-        const ageMin = r.ageMin + 1;
-        return { ...r, ageMin, urgency: r.urgent ? 'urgent' : getUrgency(ageMin) };
-      }));
-    }, 60_000);
-    return () => { if (ageIntervalRef.current) clearInterval(ageIntervalRef.current); };
-  }, []);
-
-  // ─── Compute enriched requests with age ──────────────────────────────────
-
-  useEffect(() => {
-    const enriched: EnrichedRequest[] = rawOpen.map(r => {
-      const ageMin = Math.floor((Date.now() - new Date(r.createdAt).getTime()) / 60_000);
-      return { ...r, ageMin, urgency: r.urgent ? 'urgent' : getUrgency(ageMin) };
-    });
-    setOpenRequests(enriched);
-  }, [rawOpen]);
-
-  // ─── Realtime subscription ───────────────────────────────────────────────
-
-  useEffect(() => {
-    if (!property) return;
-    const unsub = ConciergeService.listenToPendingRequests(property.id, (reqs) => {
-      setRawOpen(reqs);
-    });
-    return unsub;
-  }, [property]);
-
-  // ─── Audio notification ──────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (openRequests.length > prevCountRef.current) {
-      try {
-        if (!audioRef.current) audioRef.current = new Audio('/notification.mp3');
-        audioRef.current.play().catch(() => {});
-      } catch { /* ignore */ }
-    }
-    prevCountRef.current = openRequests.length;
-  }, [openRequests.length]);
-
-  // ─── History loading ─────────────────────────────────────────────────────
-
-  const loadHistory = useCallback(async () => {
-    if (!property) return;
-    setLoadingHistory(true);
-    try {
-      const d = new Date();
-      d.setDate(d.getDate() + historyOffset);
-      const dateISO = d.toISOString().split('T')[0];
-      const params = new URLSearchParams({ propertyId: property.id, date: dateISO });
-      const res = await fetch(`/api/admin/concierge/history?${params}`);
-      if (!res.ok) throw new Error('fetch-error');
-      const data = await res.json();
-      setHistory(data.requests || []);
-    } finally {
-      setLoadingHistory(false);
-    }
-  }, [property, historyOffset]);
-
-  useEffect(() => {
-    if (tab === 'history' && property) loadHistory();
-  }, [tab, historyOffset, property, loadHistory]);
-
-  // ─── Catalog loading ─────────────────────────────────────────────────────
-
-  const loadCatalog = useCallback(async () => {
-    if (!property) return;
-    setLoadingCatalog(true);
-    try {
-      const params = new URLSearchParams({ propertyId: property.id });
-      const res = await fetch(`/api/admin/concierge/catalog?${params}`);
-      if (!res.ok) throw new Error('fetch-error');
-      const data = await res.json();
-      setItems((data.items || []) as ConciergeItem[]);
-      setGroups((data.groups || []) as ConciergeGroup[]);
-    } catch {
-      toast.error('Erro ao carregar catálogo.');
-    } finally {
-      setLoadingCatalog(false);
-    }
-  }, [property]);
-
-  useEffect(() => {
-    if (tab === 'catalog' && property) loadCatalog();
-  }, [tab, property, loadCatalog]);
-
-  // ─── Request actions ─────────────────────────────────────────────────────
-
-  const runAction = useCallback(async (requestId: string, action: 'deliver' | 'return' | 'lost') => {
-    if (!property || !userData) return;
-    setActionLoading(prev => ({ ...prev, [requestId]: true }));
-    try {
-      if (action === 'deliver') {
-        await ConciergeService.deliverRequest(property.id, requestId, userData.id, userData.fullName);
-        toast.success('Item entregue.');
-      } else if (action === 'return') {
-        await ConciergeService.returnRequest(property.id, requestId, userData.id, userData.fullName);
-        toast.success('Item retornado.');
-      } else {
-        await ConciergeService.markLost(property.id, requestId, userData.id, userData.fullName);
-        toast.success('Item marcado como extraviado.');
-      }
-    } catch (err: any) {
-      toast.error(err?.message || 'Erro ao processar ação.');
-    } finally {
-      setActionLoading(prev => ({ ...prev, [requestId]: false }));
-    }
-  }, [property, userData]);
-
-  // ─── Catalog CRUD ────────────────────────────────────────────────────────
-
-  const openNew = () => { setForm(defaultForm); setEditingId(null); setShowForm(true); };
-
-  const openEdit = (item: ConciergeItem) => {
-    setForm({
-      name: item.name, name_en: item.name_en || '', name_es: item.name_es || '',
-      description: item.description || '', description_en: item.description_en || '', description_es: item.description_es || '',
-      category: item.category,
-      price: String(item.price), loss_price: item.loss_price != null ? String(item.loss_price) : '',
-      included_qty: String(item.included_qty), image_url: item.image_url || '',
-      active: item.active, availableForGuest: item.availableForGuest ?? true,
-      availableForMaid: item.availableForMaid ?? false, order: String(item.order ?? 0),
-      groupId: item.groupId || '',
-      // Migra vínculo legado 1:1 (productId) para ficha técnica ao abrir o item.
-      deductFromStock: item.deductFromStock ?? (!!item.productId),
-      stockComponents: item.stockComponents?.length
-        ? item.stockComponents
-        : (item.productId ? [{ productId: item.productId, consumptionQty: 1 }] : []),
-    });
-    setEditingId(item.id);
-    setShowForm(true);
-  };
-
-  const openNewGroup = () => { setGroupForm(defaultGroupForm); setEditingGroupId(null); setShowGroupForm(true); };
-  const openEditGroup = (g: ConciergeGroup) => {
-    setGroupForm({ name: g.name, icon: g.icon || '📦', color: g.color || '#9b6dff', order: String(g.order ?? 0) });
-    setEditingGroupId(g.id);
-    setShowGroupForm(true);
-  };
-
-  const handleSaveGroup = async () => {
-    if (!property || !userData || !groupForm.name.trim()) { toast.error('Nome é obrigatório.'); return; }
-    setSavingGroup(true);
-    try {
-      const payload = { name: groupForm.name.trim(), icon: groupForm.icon, color: groupForm.color, order: parseInt(groupForm.order) || 0, active: true };
-      if (editingGroupId) {
-        await ConciergeService.updateGroup(property.id, editingGroupId, payload, userData.id, userData.fullName);
-        toast.success('Grupo atualizado.');
-      } else {
-        await ConciergeService.createGroup(property.id, payload, userData.id, userData.fullName);
-        toast.success('Grupo criado.');
-      }
-      setShowGroupForm(false); setEditingGroupId(null); await loadCatalog();
-    } catch (err: any) { toast.error(err?.message || 'Erro ao salvar grupo.'); }
-    finally { setSavingGroup(false); }
-  };
-
-  const handleDeleteGroup = async (groupId: string) => {
-    if (!property || !userData) return;
-    try {
-      await ConciergeService.deleteGroup(property.id, groupId, userData.id, userData.fullName);
-      toast.success('Grupo removido.');
-      await loadCatalog();
-    } catch { toast.error('Erro ao remover grupo.'); }
-  };
-
-  const handleSave = async () => {
-    if (!property || !userData) return;
-    if (!form.name.trim()) { toast.error('Nome é obrigatório.'); return; }
-    setSaving(true);
-    try {
-      const payload = {
-        name: form.name.trim(), name_en: form.name_en.trim() || undefined, name_es: form.name_es.trim() || undefined,
-        description: form.description.trim() || undefined, description_en: form.description_en.trim() || undefined, description_es: form.description_es.trim() || undefined,
-        category: form.category, price: parseFloat(form.price) || 0,
-        loss_price: form.loss_price ? parseFloat(form.loss_price) : undefined,
-        included_qty: parseInt(form.included_qty) || 0, image_url: form.image_url || undefined,
-        active: form.active, availableForGuest: form.availableForGuest, availableForMaid: form.availableForMaid,
-        order: parseInt(form.order) || 0,
-        groupId: form.groupId || undefined,
-        deductFromStock: form.deductFromStock,
-        // Sanitiza: só linhas com produto e quantidade > 0. Vazio se toggle off.
-        stockComponents: form.deductFromStock
-          ? form.stockComponents.filter(c => c.productId && c.consumptionQty > 0)
-          : [],
-        productId: null,   // legado deprecado — leitura agora usa stockComponents
-      };
-      if (editingId) {
-        await ConciergeService.updateItem(property.id, editingId, payload, userData.id, userData.fullName);
-        toast.success('Item atualizado.');
-      } else {
-        await ConciergeService.createItem(property.id, payload, userData.id, userData.fullName);
-        toast.success('Item criado.');
-      }
-      setShowForm(false); setEditingId(null); await loadCatalog();
-    } catch (err: any) {
-      toast.error(err?.message || 'Erro ao salvar item.');
-    } finally { setSaving(false); }
-  };
-
-  const handleToggleActive = async (item: ConciergeItem) => {
-    if (!property || !userData) return;
-    try {
-      await ConciergeService.updateItem(property.id, item.id, { active: !item.active }, userData.id, userData.fullName);
-      toast.success(item.active ? 'Item desativado.' : 'Item ativado.');
-      await loadCatalog();
-    } catch { toast.error('Erro ao atualizar item.'); }
-  };
-
-  const handleDeleteItem = async (item: ConciergeItem) => {
-    if (!property || !userData) return;
-    if (!confirm(`Arquivar "${item.name}"? O item ficará oculto mas pode ser restaurado.`)) return;
-    try {
-      await ConciergeService.deleteItem(property.id, item.id, userData.id, userData.fullName);
-      toast.success('Item arquivado.');
-      await loadCatalog();
-    } catch { toast.error('Erro ao arquivar item.'); }
-  };
-
-  const handleRestoreItem = async (item: ConciergeItem) => {
-    if (!property || !userData) return;
-    try {
-      await ConciergeService.restoreItem(property.id, item.id, userData.id, userData.fullName);
-      toast.success('Item restaurado.');
-      await loadArchive();
-      await loadCatalog();
-    } catch { toast.error('Erro ao restaurar item.'); }
-  };
-
-  const loadArchive = async () => {
-    if (!property) return;
-    setLoadingArchive(true);
-    try {
-      const data = await ConciergeService.getArchivedItems(property.id);
-      setArchivedItems(data);
-    } finally { setLoadingArchive(false); }
-  };
-
-  // ─── Guards ───────────────────────────────────────────────────────────────
-
-  if (propLoading) return (
-    <div className="flex items-center justify-center h-[60vh]">
-      <Loader2 className="w-6 h-6 animate-spin" style={{ color: 'var(--g1, #9b6dff)' }} />
-    </div>
-  );
-
-  if (!property) return (
-    <div className="flex items-center justify-center h-[60vh]">
-      <p className="text-sm" style={{ color: 'rgba(238,240,248,0.42)' }}>Selecione uma propriedade.</p>
-    </div>
-  );
-
-  // ─── Derived data ─────────────────────────────────────────────────────────
-
-  const filteredOpen = openRequests.filter(r => {
-    if (filterCat !== 'all' && r.item?.category !== filterCat) return false;
-    if (filterReqBy !== 'all' && r.requestedBy !== filterReqBy) return false;
+  const filteredOpen = useMemo(() => s.openRequests.filter(r => {
+    if (filterCat !== "all" && r.item?.category !== filterCat) return false;
+    if (filterReqBy !== "all" && r.requestedBy !== filterReqBy) return false;
     if (search) {
       const q = search.toLowerCase();
-      if (!((r.item?.name || '').toLowerCase().includes(q) || (r.cabinName || '').toLowerCase().includes(q))) return false;
+      if (!((r.item?.name || "").toLowerCase().includes(q) || (r.cabinName || "").toLowerCase().includes(q))) return false;
     }
     return true;
-  }).sort((a, b) => b.ageMin - a.ageMin);
+  }).sort((a, b) => b.ageMin - a.ageMin), [s.openRequests, filterCat, filterReqBy, search]);
 
-  const urgentCount = openRequests.filter(r => r.urgency === 'urgent').length;
-  const todayDeliveredRevenue = history.filter(r => r.status === 'delivered').reduce((s, r) => s + (r.total_price || 0), 0);
-  const todayDeliveredCount = history.filter(r => r.status === 'delivered').length;
-
-  const filteredItems = items.filter(item => {
-    if (catalogAccess === 'all') return true;
+  const filteredItems = useMemo(() => s.items.filter(item => {
+    if (catalogAccess === "all") return true;
     if (!item.active) return true;
-    if (catalogAccess === 'guest') return item.availableForGuest;
-    if (catalogAccess === 'maid') return item.availableForMaid;
+    if (catalogAccess === "guest") return item.availableForGuest;
+    if (catalogAccess === "maid") return item.availableForMaid;
     return item.availableForGuest && item.availableForMaid;
-  });
+  }), [s.items, catalogAccess]);
 
-  // Group items by concierge_groups; ungrouped items at the end
-  const itemsByGroup: Array<{ group: ConciergeGroup | null; items: ConciergeItem[] }> = [
-    ...groups.map(g => ({ group: g, items: filteredItems.filter(i => i.groupId === g.id) })).filter(s => s.items.length > 0),
-    ...(filteredItems.filter(i => !i.groupId).length > 0
-      ? [{ group: null, items: filteredItems.filter(i => !i.groupId) }]
-      : []),
-  ];
+  const itemsByGroup = useMemo(() => [
+    ...s.groups.map(g => ({ group: g as ConciergeGroup | null, items: filteredItems.filter(i => i.groupId === g.id) })).filter(x => x.items.length > 0),
+    ...(filteredItems.some(i => !i.groupId) ? [{ group: null, items: filteredItems.filter(i => !i.groupId) }] : []),
+  ], [s.groups, filteredItems]);
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  if (s.propLoading) return <PageShell><PageSkeleton kpis={4} rows={6} /></PageShell>;
+  if (!s.property) return <PageShell><EmptyState icon={Building2} title="Selecione uma propriedade" description="O concierge mostra os pedidos da propriedade ativa." /></PageShell>;
+
+  const historyDelivered = s.history.filter(r => r.status === "delivered");
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+    <PageShell>
+      <PageHeader
+        icon={ShoppingBag}
+        title="Concierge"
+        badge={<Pill tone="green" dot label="Tempo real" />}
+        subtitle={s.property.name}
+        actions={tab === "catalog" ? <Button variant="secondary" icon={Plus} onClick={s.openNew}>Novo item</Button> : undefined}
+        primaryAction={{ label: "Novo pedido", icon: Plus, onClick: () => { s.setNewItemPreset(null); s.setShowNew(true); } }}
+        tabs={(
+          <SegmentedTabs<Tab>
+            items={[
+              { id: "pending", label: "Pendentes", count: s.openRequests.length || undefined, tone: "amber" },
+              { id: "history", label: "Histórico" },
+              { id: "catalog", label: "Catálogo" },
+            ]}
+            value={tab} onChange={setTab} ariaLabel="Seções do concierge"
+          />
+        )}
+      />
 
-      {/* ── KPI Bar ─────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-[10px] mb-[14px]">
-        {[
-          { label: 'Pendentes',     value: openRequests.length, color: '#f59e0b', bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.22)',  Icon: Clock        },
-          { label: 'Urgentes',      value: urgentCount,         color: '#f87171', bg: 'rgba(248,113,113,0.08)', border: 'rgba(248,113,113,0.22)', Icon: AlertTriangle },
-          { label: 'Entregues hoje',value: tab === 'history' ? todayDeliveredCount : '—', color: '#2dd4bf', bg: 'rgba(45,212,191,0.08)',   border: 'rgba(45,212,191,0.22)',  Icon: CheckCircle2 },
-          { label: 'Faturado hoje', value: tab === 'history' ? `R$ ${todayDeliveredRevenue.toFixed(2)}` : '—', color: '#9b6dff', bg: 'rgba(155,109,255,0.08)', border: 'rgba(155,109,255,0.22)', Icon: Sparkles },
-        ].map((stat, i) => (
-          <div key={i} style={{ background: '#1c1c1c', border: `1px solid ${stat.border}`, borderRadius: 14, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: stat.bg, border: `1px solid ${stat.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <stat.Icon size={16} style={{ color: stat.color }} />
-            </div>
-            <div>
-              <div style={{ fontSize: 20, fontWeight: 900, color: stat.color, lineHeight: 1, letterSpacing: '-0.5px' }}>{stat.value}</div>
-              <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', marginTop: 3, fontWeight: 600 }}>{stat.label}</div>
-            </div>
+      <KpiGrid cols={4}>
+        <KpiCard label="Pendentes" value={s.openRequests.length} icon={Clock} tone="amber" compact />
+        <KpiCard label="Urgentes" value={s.urgentCount} icon={AlertTriangle} tone="red" compact />
+        <KpiCard label="Entregues hoje" value={tab === "history" ? s.todayDeliveredCount : "—"} icon={CheckCircle2} tone="green" compact sub={tab !== "history" ? "veja no histórico" : undefined} />
+        <KpiCard label="Faturado hoje" value={tab === "history" ? fmtBRL(s.todayDeliveredRevenue) : "—"} icon={Sparkles} tone="brand" compact sub={tab !== "history" ? "veja no histórico" : undefined} />
+      </KpiGrid>
+
+      {/* ── Pendentes ── */}
+      {tab === "pending" && (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <SearchInput value={search} onChange={setSearch} placeholder="Item ou cabana…" debounce={150} wrapStyle={{ flex: "1 1 220px", maxWidth: 320 }} />
+            <FilterChips<CatFilter> ariaLabel="Categoria" items={[{ id: "all", label: "Todos" }, { id: "loan", label: "Empréstimos" }, { id: "consumption", label: "Consumo" }]} value={filterCat} onChange={setFilterCat} />
+            <FilterChips<ReqByFilter> ariaLabel="Solicitante" items={[{ id: "all", label: "Todos" }, { id: "guest", label: "Hóspede" }, { id: "maid", label: "Camareira" }]} value={filterReqBy} onChange={setFilterReqBy} />
           </div>
-        ))}
-      </div>
-
-      {/* ── Tab bar + Toolbar ────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
-        {/* Tabs */}
-        <div style={{ display: 'flex', gap: 2, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: 3 }}>
-          {([
-            { id: 'pending' as Tab, label: 'Pendentes', badge: openRequests.length },
-            { id: 'history' as Tab, label: 'Histórico' },
-            { id: 'catalog' as Tab, label: 'Catálogo' },
-          ]).map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 9,
-              border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700,
-              transition: 'all .15s',
-              background: tab === t.id ? '#1c1c1c' : 'transparent',
-              color: tab === t.id ? '#eef0f8' : 'rgba(238,240,248,0.42)',
-              boxShadow: tab === t.id ? '0 1px 4px rgba(0,0,0,.3)' : 'none',
-            }}>
-              {t.label}
-              {(t.badge ?? 0) > 0 && (
-                <span style={{ minWidth: 18, height: 18, borderRadius: 999, padding: '0 4px', background: 'linear-gradient(135deg,#9b6dff,#4ec9d4)', color: '#fff', fontSize: 10, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {t.badge}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* Pending filters */}
-        {tab === 'pending' && <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '7px 12px', flex: '1 1 180px', maxWidth: 280 }}>
-            <Search size={13} style={{ color: 'rgba(238,240,248,0.42)', flexShrink: 0 }} />
-            <input
-              value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Item ou cabana…"
-              style={{ background: 'none', border: 'none', outline: 'none', color: '#eef0f8', fontFamily: 'inherit', fontSize: 13, flex: 1, minWidth: 0 }}
-            />
-          </div>
-          <div style={{ display: 'flex', gap: 5 }}>
-            {(['all', 'loan', 'consumption'] as const).map(f => (
-              <button key={f} onClick={() => setFilterCat(f)} style={{
-                padding: '7px 12px', borderRadius: 9, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700,
-                background: filterCat === f ? 'rgba(155,109,255,0.15)' : 'rgba(255,255,255,0.035)',
-                color: filterCat === f ? '#9b6dff' : 'rgba(238,240,248,0.42)',
-                border: `1px solid ${filterCat === f ? 'rgba(155,109,255,.28)' : 'rgba(255,255,255,0.07)'}`,
-                transition: 'all .15s',
-              }}>{f === 'all' ? 'Todos' : f === 'loan' ? 'Empréstimos' : 'Consumo'}</button>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 5 }}>
-            {(['all', 'guest', 'maid'] as const).map(f => (
-              <button key={f} onClick={() => setFilterReqBy(f)} style={{
-                padding: '7px 12px', borderRadius: 9, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700,
-                background: filterReqBy === f ? 'rgba(255,255,255,0.055)' : 'rgba(255,255,255,0.035)',
-                color: filterReqBy === f ? '#eef0f8' : 'rgba(238,240,248,0.42)',
-                border: `1px solid ${filterReqBy === f ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.07)'}`,
-                transition: 'all .15s',
-              }}>{f === 'all' ? 'Todos' : f === 'guest' ? 'Hóspede' : 'Camareira'}</button>
-            ))}
-          </div>
-        </>}
-
-        {/* Right actions */}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          {tab === 'catalog' && (
-            <button onClick={openNew} style={{
-              display: 'flex', alignItems: 'center', gap: 7, padding: '8px 14px', borderRadius: 10,
-              border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.055)',
-              cursor: 'pointer', color: '#eef0f8', fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
-            }}>
-              <Plus size={13} /> Novo Item
-            </button>
-          )}
-          <button onClick={() => { setNewItemPreset(null); setShowNew(true); }} style={{
-            display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 10, border: 'none',
-            background: 'linear-gradient(135deg,#9b6dff,#4ec9d4)', cursor: 'pointer', color: '#fff',
-            fontSize: 13, fontWeight: 800, fontFamily: 'inherit', boxShadow: '0 4px 14px rgba(155,109,255,.3)',
-          }}>
-            <Plus size={13} />Novo Pedido
-          </button>
-        </div>
-      </div>
-
-      {/* ── Main content ─────────────────────────────────────────────────── */}
-      <div>
-
-        {/* ── PENDING TAB ───────────────────────────────────────────── */}
-        {tab === 'pending' && (
-          filteredOpen.length === 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '50vh', gap: 12, color: 'rgba(238,240,248,0.42)' }}>
-              <div style={{ width: 56, height: 56, borderRadius: 18, background: 'rgba(45,212,191,0.08)', border: '1px solid rgba(45,212,191,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <CheckCircle2 size={24} style={{ color: '#2dd4bf' }} />
-              </div>
-              <div style={{ fontSize: 15, fontWeight: 800, color: '#eef0f8' }}>Tudo em ordem!</div>
-              <div style={{ fontSize: 13 }}>Nenhum pedido pendente no momento.</div>
-            </div>
+          {filteredOpen.length === 0 ? (
+            <EmptyState icon={CheckCircle2} tone="green" title={s.openRequests.length === 0 ? "Tudo em ordem!" : "Nenhum pedido com esses filtros"} description={s.openRequests.length === 0 ? "Nenhum pedido pendente no momento." : "Ajuste os filtros para ver os outros pedidos."} />
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 12 }}>
-              {filteredOpen.map(req => (
-                <PendingCard
-                  key={req.id}
-                  req={req}
-                  actioning={!!actionLoading[req.id]}
-                  onAction={runAction}
-                  onDetail={() => setDetail(req)}
-                />
-              ))}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(320px, 100%), 1fr))", gap: 12 }}>
+              {filteredOpen.map(req => <PendingCard key={req.id} req={req} actioning={!!s.actionLoading[req.id]} onAction={s.runAction} onDetail={() => setDetail(req)} />)}
             </div>
-          )
-        )}
-
-        {/* ── HISTORY TAB ───────────────────────────────────────────── */}
-        {tab === 'history' && (
-          <div style={{ maxWidth: 800, margin: '0 auto' }}>
-            {/* Day navigation */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '10px 14px' }}>
-              <button onClick={() => setHistoryOffset(o => o - 1)} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)', flexShrink: 0 }}>
-                <ChevronLeft size={14} />
-              </button>
-              <div style={{ flex: 1, textAlign: 'center' }}>
-                <div style={{ fontSize: 14, fontWeight: 900, color: historyOffset === 0 ? '#9b6dff' : '#eef0f8' }}>{dayLabel(historyOffset)}</div>
-                <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', marginTop: 2, textTransform: 'capitalize' }}>{fullDayLabel(historyOffset)}</div>
-              </div>
-              <button onClick={() => setHistoryOffset(o => Math.min(0, o + 1))} disabled={historyOffset === 0} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: historyOffset === 0 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)', flexShrink: 0, opacity: historyOffset === 0 ? 0.35 : 1 }}>
-                <ChevronRight size={14} />
-              </button>
-              <div style={{ display: 'flex', gap: 5, marginLeft: 8 }}>
-                {[0, -1, -2, -3].map(o => (
-                  <button key={o} onClick={() => setHistoryOffset(o)} style={{
-                    padding: '4px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, fontWeight: 800,
-                    background: historyOffset === o ? 'rgba(155,109,255,0.15)' : 'rgba(255,255,255,0.035)',
-                    color: historyOffset === o ? '#9b6dff' : 'rgba(238,240,248,0.42)',
-                    border: `1px solid ${historyOffset === o ? 'rgba(155,109,255,.28)' : 'rgba(255,255,255,0.07)'}`,
-                    transition: 'all .15s',
-                  }}>{dayLabel(o)}</button>
-                ))}
-              </div>
-            </div>
-
-            {/* Summary pills */}
-            {!loadingHistory && history.length > 0 && (
-              <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-                {[
-                  { label: 'Entregues',  count: history.filter(r => r.status === 'delivered').length, color: '#2dd4bf', bg: 'rgba(45,212,191,0.08)',  border: 'rgba(45,212,191,0.22)'  },
-                  { label: 'Devolvidos', count: history.filter(r => r.status === 'returned').length,  color: '#60a5fa', bg: 'rgba(96,165,250,0.08)',  border: 'rgba(96,165,250,0.22)'  },
-                  { label: 'Extraviados',count: history.filter(r => r.status === 'lost').length,      color: '#f87171', bg: 'rgba(248,113,113,0.08)', border: 'rgba(248,113,113,0.22)' },
-                ].map(s => (
-                  <div key={s.label} style={{ padding: '7px 14px', borderRadius: 10, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 700, color: '#eef0f8' }}>
-                    <span style={{ minWidth: 18, height: 18, borderRadius: 999, padding: '0 5px', background: s.bg, border: `1px solid ${s.border}`, color: s.color, fontSize: 10, fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{s.count}</span>
-                    {s.label}
-                  </div>
-                ))}
-                <div style={{ marginLeft: 'auto', padding: '7px 14px', borderRadius: 10, background: 'rgba(155,109,255,0.08)', border: '1px solid rgba(155,109,255,0.22)', fontSize: 13, fontWeight: 800, color: '#9b6dff' }}>
-                  Faturado: R$ {history.filter(r => r.status === 'delivered').reduce((s, r) => s + (r.total_price || 0), 0).toFixed(2)}
-                </div>
-              </div>
-            )}
-
-            {/* History list */}
-            {loadingHistory ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 0' }}>
-                <Loader2 size={20} className="animate-spin" style={{ color: 'rgba(238,240,248,0.42)' }} />
-              </div>
-            ) : history.length === 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '48px 0', gap: 10, color: 'rgba(238,240,248,0.42)' }}>
-                <Calendar size={32} style={{ opacity: 0.3 }} />
-                <div style={{ fontSize: 13, fontWeight: 700 }}>Nenhum pedido registrado neste dia</div>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {history.map(req => {
-                  const sc = STATUS_CFG[req.status] || STATUS_CFG.delivered;
-                  const isLoan = req.item?.category === 'loan';
-                  const av = avatarFromName(req.cabinName || '??');
-                  return (
-                    <div key={req.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', background: '#1c1c1c', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14 }}>
-                      <div style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 900, color: 'rgba(238,240,248,0.42)' }}>{av}</div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: '#eef0f8' }}>{req.quantity}× {req.item?.name || req.itemId}</div>
-                        <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', marginTop: 2 }}>{req.cabinName || '—'} · {formatDate(req.createdAt)}</div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                        {(req.total_price ?? 0) > 0 && <span style={{ fontSize: 12, fontWeight: 800, color: '#9b6dff' }}>R$ {req.total_price!.toFixed(2)}</span>}
-                        <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', background: isLoan ? 'rgba(96,165,250,0.08)' : 'rgba(155,109,255,0.08)', color: isLoan ? '#60a5fa' : '#9b6dff', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.22)' : 'rgba(155,109,255,0.22)'}` }}>{isLoan ? 'Empréstimo' : 'Consumo'}</span>
-                        <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', background: sc.bg, color: sc.color, border: `1px solid ${sc.border}` }}>{sc.label}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── CATALOG TAB ───────────────────────────────────────────── */}
-        {tab === 'catalog' && (
-          <div style={{ maxWidth: 960, margin: '0 auto' }}>
-            {/* Toolbar: access filter + group manager toggle */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase', color: 'rgba(238,240,248,0.42)', marginRight: 4 }}>Visível para:</span>
-              {([
-                { id: 'all', label: 'Todos' }, { id: 'guest', label: 'Só Hóspede' },
-                { id: 'maid', label: 'Só Camareira' }, { id: 'both', label: 'Ambos' },
-              ] as { id: typeof catalogAccess; label: string }[]).map(f => (
-                <button key={f.id} onClick={() => setCatalogAccess(f.id)} style={{
-                  padding: '6px 14px', borderRadius: 9, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700,
-                  background: catalogAccess === f.id ? 'rgba(155,109,255,0.15)' : 'rgba(255,255,255,0.035)',
-                  color: catalogAccess === f.id ? '#9b6dff' : 'rgba(238,240,248,0.42)',
-                  border: `1px solid ${catalogAccess === f.id ? 'rgba(155,109,255,.28)' : 'rgba(255,255,255,0.07)'}`,
-                  transition: 'all .15s',
-                }}>{f.label}</button>
-              ))}
-              <span style={{ marginLeft: 'auto', fontSize: 12, color: 'rgba(238,240,248,0.42)' }}>{filteredItems.length} itens</span>
-              <button onClick={openNewGroup} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 9, border: '1px solid rgba(155,109,255,0.22)', background: 'rgba(155,109,255,0.08)', cursor: 'pointer', color: '#9b6dff', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>
-                <Layers size={13} /> Novo Grupo
-              </button>
-              <button onClick={() => { setShowArchive(p => !p); if (!showArchive) loadArchive(); }} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 9, border: `1px solid ${showArchive ? 'rgba(248,113,113,0.35)' : 'rgba(248,113,113,0.15)'}`, background: showArchive ? 'rgba(248,113,113,0.1)' : 'rgba(248,113,113,0.04)', cursor: 'pointer', color: '#f87171', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>
-                <Trash2 size={13} /> Arquivo
-              </button>
-            </div>
-
-            {/* Groups strip */}
-            {groups.length > 0 && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
-                {groups.map(g => (
-                  <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px 5px 8px', borderRadius: 999, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.1)', fontSize: 12, fontWeight: 700, color: '#eef0f8' }}>
-                    <span style={{ fontSize: 15 }}>{g.icon}</span>
-                    <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.name}</span>
-                    <button onClick={() => openEditGroup(g)} style={{ width: 20, height: 20, borderRadius: 5, border: 'none', background: 'rgba(255,255,255,0.06)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)' }}>
-                      <Edit2 size={10} />
-                    </button>
-                    <button onClick={() => handleDeleteGroup(g.id)} style={{ width: 20, height: 20, borderRadius: 5, border: 'none', background: 'rgba(248,113,113,0.08)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f87171' }}>
-                      <Trash2 size={10} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {loadingCatalog ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 0' }}>
-                <Loader2 size={20} className="animate-spin" style={{ color: 'rgba(238,240,248,0.42)' }} />
-              </div>
-            ) : itemsByGroup.length === 0 ? (
-              <div style={{ padding: '48px 0', textAlign: 'center', color: 'rgba(238,240,248,0.42)', fontSize: 13 }}>Nenhum item cadastrado.</div>
-            ) : (
-              itemsByGroup.map(({ group, items: groupItems }) => (
-                <div key={group?.id ?? '__ungrouped'} style={{ marginBottom: 28 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                    <div style={{ width: 28, height: 28, borderRadius: 8, background: group?.color ? `${group.color}18` : 'rgba(255,255,255,0.05)', border: `1px solid ${group?.color ? `${group.color}35` : 'rgba(255,255,255,0.1)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15 }}>
-                      {group?.icon ?? <Layers size={13} style={{ color: 'rgba(238,240,248,0.42)' }} />}
-                    </div>
-                    <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: group?.color ?? 'rgba(238,240,248,0.42)' }}>
-                      {group?.name ?? 'Sem grupo'}
-                    </span>
-                    <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', background: 'rgba(255,255,255,0.04)', color: 'rgba(238,240,248,0.35)', border: '1px solid rgba(255,255,255,0.07)' }}>{groupItems.length} itens</span>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(210px,1fr))', gap: 10 }}>
-                    {groupItems.map(item => (
-                      <CatalogCard
-                        key={item.id}
-                        item={item}
-                        onEdit={() => openEdit(item)}
-                        onToggleActive={() => handleToggleActive(item)}
-                        onDelete={() => handleDeleteItem(item)}
-                        onRequest={() => { setNewItemPreset(item); setShowNew(true); }}
-                      />
-                    ))}
-                  </div>
-                </div>
-              ))
-            )}
-
-            {/* ── Arquivo ── */}
-            {showArchive && (
-              <div style={{ marginTop: 32, borderTop: '1px solid rgba(248,113,113,0.15)', paddingTop: 24 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.22)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Trash2 size={13} style={{ color: '#f87171' }} />
-                  </div>
-                  <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: '#f87171' }}>Arquivo</span>
-                  <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 800, background: 'rgba(248,113,113,0.08)', color: '#f87171', border: '1px solid rgba(248,113,113,0.22)' }}>{archivedItems.length} itens</span>
-                  <span style={{ fontSize: 11, color: 'rgba(238,240,248,0.3)', marginLeft: 4 }}>Itens arquivados ficam ocultos do catálogo e do portal</span>
-                </div>
-                {loadingArchive ? (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px 0' }}>
-                    <Loader2 size={18} className="animate-spin" style={{ color: 'rgba(238,240,248,0.3)' }} />
-                  </div>
-                ) : archivedItems.length === 0 ? (
-                  <div style={{ padding: '24px', borderRadius: 14, border: '1px dashed rgba(248,113,113,0.15)', textAlign: 'center', color: 'rgba(238,240,248,0.3)', fontSize: 13 }}>Nenhum item arquivado.</div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {archivedItems.map(item => {
-                      const icon = resolveItemIcon(item);
-                      return (
-                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: '#1c1c1c', border: '1px solid rgba(248,113,113,0.1)', borderRadius: 12, opacity: 0.7 }}>
-                          <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 20 }}>
-                            {icon.kind === 'emoji' ? icon.value : <Package size={16} style={{ color: 'rgba(238,240,248,0.3)' }} />}
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: 'rgba(238,240,248,0.55)', textDecoration: 'line-through' }}>{item.name}</div>
-                            <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.3)', marginTop: 2 }}>{item.group?.name ?? 'Sem grupo'} · {item.category === 'loan' ? 'Empréstimo' : 'Consumo'}</div>
-                          </div>
-                          <button onClick={() => handleRestoreItem(item)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 9, border: '1px solid rgba(45,212,191,0.25)', background: 'rgba(45,212,191,0.07)', cursor: 'pointer', color: '#2dd4bf', fontSize: 12, fontWeight: 700, fontFamily: 'inherit', flexShrink: 0 }}>
-                            <RotateCcw size={12} /> Restaurar
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ── Live indicator ───────────────────────────────────────────────── */}
-      <div style={{ position: 'fixed', bottom: 24, right: 28, display: 'flex', alignItems: 'center', gap: 8, padding: '7px 14px', background: '#1c1c1c', border: '1px solid rgba(0,212,255,0.25)', borderRadius: 999, pointerEvents: 'none', zIndex: 10 }}>
-        <div style={{ position: 'relative', width: 8, height: 8 }}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#00d4ff', animation: 'concierge-pulse 1.5s infinite' }} />
-          <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#00d4ff', opacity: 0.4, animation: 'concierge-ping 1.5s infinite' }} />
-        </div>
-        <span style={{ fontSize: 11, fontWeight: 700, color: '#00d4ff' }}>Tempo real</span>
-      </div>
-
-      <style>{`
-        @keyframes concierge-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-        @keyframes concierge-ping { 0%{transform:scale(1);opacity:1} 75%,100%{transform:scale(2.2);opacity:0} }
-        @keyframes concierge-slide-in { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)} }
-        @keyframes concierge-fade-in { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
-      `}</style>
-
-      {/* ── Detail panel ─────────────────────────────────────────────────── */}
-      {detail && <DetailPanel req={detail} onClose={() => setDetail(null)} onAction={runAction} />}
-
-      {/* ── New request modal ─────────────────────────────────────────────── */}
-      {showNew && <NewRequestModal preset={newItemPreset} onClose={() => { setShowNew(false); setNewItemPreset(null); }} />}
-
-      {/* ── Catalog form modal ────────────────────────────────────────────── */}
-      {showForm && (
-        <CatalogFormModal
-          form={form} setForm={setForm} editingId={editingId} saving={saving}
-          groups={groups} stockProducts={stockProducts} stockLocations={stockLocations} stockEnabled={stockEnabled}
-          onClose={() => { setShowForm(false); setEditingId(null); }}
-          onSave={handleSave}
-        />
+          )}
+        </>
       )}
 
-      {/* ── Group form modal ──────────────────────────────────────────────── */}
-      {showGroupForm && (
-        <GroupFormModal
-          form={groupForm} setForm={setGroupForm} editingId={editingGroupId} saving={savingGroup}
-          onClose={() => { setShowGroupForm(false); setEditingGroupId(null); }}
-          onSave={handleSaveGroup}
-        />
-      )}
-    </div>
-  );
-}
-
-// ─── PendingCard ──────────────────────────────────────────────────────────────
-
-function PendingCard({ req, actioning, onAction, onDetail }: {
-  req: EnrichedRequest;
-  actioning: boolean;
-  onAction: (id: string, action: 'deliver' | 'return' | 'lost') => void;
-  onDetail: () => void;
-}) {
-  const urg = URGENCY[req.urgency];
-  const isLoan = req.item?.category === 'loan';
-
-  return (
-    <div
-      style={{ background: '#1c1c1c', border: `1px solid ${urg.border}`, borderRadius: 18, overflow: 'hidden', cursor: 'pointer', transition: 'transform .15s', animation: 'concierge-fade-in .25s ease' }}
-      onClick={onDetail}
-    >
-      {/* Urgency accent bar */}
-      <div style={{ height: 3, background: urg.color, opacity: 0.7 }} />
-
-      <div style={{ padding: 16 }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 12, flexShrink: 0, background: `${urg.color}18`, border: `1px solid ${urg.color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 900, color: urg.color }}>
-            {avatarFromName(req.cabinName || req.itemId || '?')}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 900, color: '#eef0f8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{req.cabinName || '—'}</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3 }}>
-              <Pin size={10} style={{ color: 'rgba(238,240,248,0.22)', flexShrink: 0 }} />
-              <span style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', fontWeight: 600 }}>Cabana</span>
+      {/* ── Histórico ── */}
+      {tab === "history" && (
+        <div style={{ maxWidth: 820, margin: "0 auto", width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
+          <Card pad={12} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <IconButton icon={ChevronLeft} label="Dia anterior" variant="secondary" onClick={() => s.setHistoryOffset(o => o - 1)} />
+            <div style={{ flex: 1, textAlign: "center", minWidth: 120 }}>
+              <div style={{ fontSize: 14, fontWeight: 900, color: s.historyOffset === 0 ? T.brandText : T.text }}>{dayLabel(s.historyOffset)}</div>
+              <div style={{ fontSize: 11, color: T.muted, marginTop: 2, textTransform: "capitalize" }}>{fullDayLabel(s.historyOffset)}</div>
             </div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
-            <span style={{ padding: '2px 7px', borderRadius: 999, fontSize: 9, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', background: urg.bg, color: urg.color, border: `1px solid ${urg.border}` }}>{urg.label}</span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'rgba(238,240,248,0.42)', fontWeight: 600 }}>
-              <Clock size={10} />
-              {ageLabel(req.ageMin)}
+            <IconButton icon={ChevronRight} label="Próximo dia" variant="secondary" onClick={() => s.setHistoryOffset(o => Math.min(0, o + 1))} disabled={s.historyOffset === 0} />
+            <FilterChips<string> ariaLabel="Atalhos de dia" items={[0, -1, -2, -3].map(o => ({ id: String(o), label: dayLabel(o) }))} value={String(s.historyOffset)} onChange={v => s.setHistoryOffset(Number(v))} />
+          </Card>
+
+          {!s.loadingHistory && s.history.length > 0 && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <Pill tone="green" size="md" label={`${historyDelivered.length} entregues`} />
+              <Pill tone="blue" size="md" label={`${s.history.filter(r => r.status === "returned").length} devolvidos`} />
+              <Pill tone="red" size="md" label={`${s.history.filter(r => r.status === "lost").length} extraviados`} />
+              <Pill tone="brand" size="md" label={`Faturado: ${fmtBRL(historyDelivered.reduce((a, r) => a + (r.total_price || 0), 0))}`} style={{ marginLeft: "auto" }} />
             </div>
-          </div>
-        </div>
-
-        {/* Item row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, marginBottom: 12 }}>
-          {(() => {
-            const icon = resolveItemIcon({ image_url: req.item?.image_url, category: req.item?.category ?? 'consumption' });
-            if (icon.kind === 'emoji') return (
-              <div style={{ width: 32, height: 32, borderRadius: 9, background: isLoan ? 'rgba(96,165,250,0.06)' : 'rgba(155,109,255,0.06)', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.15)' : 'rgba(155,109,255,0.15)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 18 }}>
-                {icon.value}
-              </div>
-            );
-            return (
-              <div style={{ width: 32, height: 32, borderRadius: 9, background: isLoan ? 'rgba(96,165,250,0.08)' : 'rgba(155,109,255,0.08)', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.22)' : 'rgba(155,109,255,0.22)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                {isLoan ? <Package size={14} style={{ color: '#60a5fa' }} /> : <ShoppingBag size={14} style={{ color: '#9b6dff' }} />}
-              </div>
-            );
-          })()}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: '#eef0f8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{req.quantity}× {req.item?.name || req.itemId}</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 3, flexWrap: 'wrap' }}>
-              <span style={{ padding: '1px 6px', borderRadius: 999, fontSize: 8, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', background: isLoan ? 'rgba(96,165,250,0.08)' : 'rgba(155,109,255,0.08)', color: isLoan ? '#60a5fa' : '#9b6dff', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.2)' : 'rgba(155,109,255,0.2)'}` }}>{isLoan ? 'Empréstimo' : 'Consumo'}</span>
-              {req.requestedBy === 'maid' && <span style={{ padding: '1px 6px', borderRadius: 999, fontSize: 8, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', background: 'rgba(192,132,252,0.08)', color: '#c084fc', border: '1px solid rgba(192,132,252,0.22)' }}>Camareira</span>}
-            </div>
-          </div>
-        </div>
-
-        {req.notes && (
-          <div style={{ fontSize: 12, color: 'rgba(238,240,248,0.42)', fontStyle: 'italic', marginBottom: 12, paddingLeft: 10, borderLeft: '2px solid rgba(255,255,255,0.12)', lineHeight: 1.4 }}>&ldquo;{req.notes}&rdquo;</div>
-        )}
-
-        {/* Quick actions */}
-        <div style={{ display: 'flex', gap: 6 }} onClick={e => e.stopPropagation()}>
-          <button onClick={() => onAction(req.id, 'deliver')} disabled={actioning} style={{ flex: 1, padding: '8px', borderRadius: 10, border: '1px solid rgba(45,212,191,0.22)', background: 'rgba(45,212,191,0.08)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800, color: '#2dd4bf', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: actioning ? 0.5 : 1 }}>
-            {actioning ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={13} />}
-            Entregar
-          </button>
-          {isLoan && <>
-            <button onClick={() => onAction(req.id, 'return')} disabled={actioning} style={{ flex: 1, padding: '8px', borderRadius: 10, border: '1px solid rgba(96,165,250,0.22)', background: 'rgba(96,165,250,0.08)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 800, color: '#60a5fa', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: actioning ? 0.5 : 1 }}>
-              <RotateCcw size={12} />Devolvido
-            </button>
-            <button onClick={() => onAction(req.id, 'lost')} disabled={actioning} style={{ width: 34, borderRadius: 10, border: '1px solid rgba(248,113,113,0.22)', background: 'rgba(248,113,113,0.08)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: actioning ? 0.5 : 1 }}>
-              <XCircle size={14} style={{ color: '#f87171' }} />
-            </button>
-          </>}
-          <button onClick={onDetail} style={{ width: 34, borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.055)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)' }}>
-            <Eye size={14} />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── DetailPanel ──────────────────────────────────────────────────────────────
-
-function DetailPanel({ req, onClose, onAction }: {
-  req: EnrichedRequest;
-  onClose: () => void;
-  onAction: (id: string, action: 'deliver' | 'return' | 'lost') => void;
-}) {
-  const urg = URGENCY[req.urgency];
-  const isLoan = req.item?.category === 'loan';
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end' }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ width: 400, height: '100%', background: '#1c1c1c', borderLeft: '1px solid rgba(255,255,255,0.12)', display: 'flex', flexDirection: 'column', animation: 'concierge-slide-in .2s ease', boxShadow: '-20px 0 60px rgba(0,0,0,.5)' }}>
-        {/* Header */}
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: 'rgba(238,240,248,0.42)', marginBottom: 4 }}>Pedido · {req.cabinName || '—'}</div>
-            <div style={{ fontSize: 17, fontWeight: 900, color: '#eef0f8' }}>{req.item?.name || req.itemId}</div>
-          </div>
-          <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 9, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)' }}>
-            <X size={14} />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div style={{ flex: 1, padding: 24, display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.08) transparent' }}>
-          {/* Item card */}
-          <div style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 16, padding: 18 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              {(() => {
-                const icon = resolveItemIcon({ image_url: req.item?.image_url, category: req.item?.category ?? 'consumption' });
-                if (icon.kind === 'emoji') return (
-                  <div style={{ width: 48, height: 48, borderRadius: 14, background: isLoan ? 'rgba(96,165,250,0.06)' : 'rgba(155,109,255,0.06)', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.15)' : 'rgba(155,109,255,0.15)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 26 }}>
-                    {icon.value}
-                  </div>
-                );
-                return (
-                  <div style={{ width: 48, height: 48, borderRadius: 14, background: isLoan ? 'rgba(96,165,250,0.08)' : 'rgba(155,109,255,0.08)', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.22)' : 'rgba(155,109,255,0.22)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    {isLoan ? <Package size={22} style={{ color: '#60a5fa' }} /> : <ShoppingBag size={22} style={{ color: '#9b6dff' }} />}
-                  </div>
-                );
-              })()}
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 900, color: '#eef0f8' }}>{req.quantity}× {req.item?.name || req.itemId}</div>
-                <span style={{ display: 'inline-flex', marginTop: 4, padding: '2px 8px', borderRadius: 999, fontSize: 9, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', background: isLoan ? 'rgba(96,165,250,0.08)' : 'rgba(155,109,255,0.08)', color: isLoan ? '#60a5fa' : '#9b6dff', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.22)' : 'rgba(155,109,255,0.22)'}` }}>{isLoan ? 'Empréstimo' : 'Consumo'}</span>
-              </div>
-            </div>
-            {req.notes && (
-              <div style={{ marginTop: 14, padding: '10px 14px', background: '#242424', borderRadius: 10, border: '1px solid rgba(255,255,255,0.07)', fontSize: 13, color: 'rgba(238,240,248,0.42)', lineHeight: 1.5, fontStyle: 'italic' }}>&ldquo;{req.notes}&rdquo;</div>
-            )}
-          </div>
-
-          {/* Info grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            {[
-              { label: 'Cabana', value: req.cabinName || '—' },
-              { label: 'Tempo de espera', value: ageLabel(req.ageMin) },
-              { label: 'Solicitante', value: req.requestedBy === 'maid' ? 'Camareira' : 'Hóspede' },
-              { label: 'Valor estimado', value: req.item && req.item.price > 0 ? `R$ ${(req.item.price * req.quantity).toFixed(2)}` : 'Grátis' },
-            ].map(info => (
-              <div key={info.label} style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, padding: '12px 14px' }}>
-                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: 'rgba(238,240,248,0.42)', marginBottom: 4 }}>{info.label}</div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: '#eef0f8' }}>{info.value}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Urgency indicator */}
-          <div style={{ padding: '12px 16px', borderRadius: 12, background: urg.bg, border: `1px solid ${urg.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <AlertTriangle size={16} style={{ color: urg.color, flexShrink: 0 }} />
-            <div>
-              <div style={{ fontSize: 12, fontWeight: 800, color: urg.color }}>{urg.label}</div>
-              <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', marginTop: 1 }}>Aguardando há {ageLabel(req.ageMin)}</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div style={{ padding: 20, borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
-          <button onClick={() => { onAction(req.id, 'deliver'); onClose(); }} style={{ width: '100%', padding: '13px', borderRadius: 12, cursor: 'pointer', background: 'rgba(45,212,191,0.08)', color: '#2dd4bf', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, border: '1px solid rgba(45,212,191,0.22)' }}>
-            <CheckCircle2 size={15} />Confirmar Entrega
-          </button>
-          {isLoan && <>
-            <button onClick={() => { onAction(req.id, 'return'); onClose(); }} style={{ width: '100%', padding: '13px', borderRadius: 12, cursor: 'pointer', background: 'rgba(96,165,250,0.08)', color: '#60a5fa', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, border: '1px solid rgba(96,165,250,0.22)' }}>
-              <RotateCcw size={15} />Item Devolvido
-            </button>
-            <button onClick={() => { onAction(req.id, 'lost'); onClose(); }} style={{ width: '100%', padding: '13px', borderRadius: 12, cursor: 'pointer', background: 'rgba(248,113,113,0.08)', color: '#f87171', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, border: '1px solid rgba(248,113,113,0.22)' }}>
-              <XCircle size={15} />Marcar como Extraviado
-            </button>
-          </>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── CatalogCard ──────────────────────────────────────────────────────────────
-
-function CatalogCard({ item, onEdit, onToggleActive, onDelete, onRequest }: {
-  item: ConciergeItem;
-  onEdit: () => void;
-  onToggleActive: () => void;
-  onDelete: () => void;
-  onRequest: () => void;
-}) {
-  const isLoan = item.category === 'loan';
-  const accessLabel = item.availableForGuest && item.availableForMaid ? 'Ambos' : item.availableForGuest ? 'Só hóspede' : item.availableForMaid ? 'Só camareira' : 'Nenhum';
-  const accessColor = item.availableForGuest && item.availableForMaid ? 'rgba(238,240,248,0.42)' : item.availableForGuest ? '#2dd4bf' : '#c084fc';
-  const accessBg = item.availableForGuest && item.availableForMaid ? 'rgba(255,255,255,0.05)' : item.availableForGuest ? 'rgba(45,212,191,0.08)' : 'rgba(192,132,252,0.08)';
-  const accessBorder = item.availableForGuest && item.availableForMaid ? 'rgba(255,255,255,0.12)' : item.availableForGuest ? 'rgba(45,212,191,0.22)' : 'rgba(192,132,252,0.22)';
-
-  return (
-    <div style={{
-      background: '#1c1c1c',
-      border: item.active ? '1px solid rgba(255,255,255,0.07)' : '1px dashed rgba(255,255,255,0.1)',
-      borderRadius: 16, padding: 16, display: 'flex', flexDirection: 'column', gap: 12,
-      opacity: item.active ? 1 : 0.55,
-    }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-        {(() => {
-          const icon = resolveItemIcon(item);
-          if (icon.kind === 'emoji') return (
-            <div style={{ width: 40, height: 40, borderRadius: 12, background: isLoan ? 'rgba(96,165,250,0.06)' : 'rgba(155,109,255,0.06)', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.15)' : 'rgba(155,109,255,0.15)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 22, filter: item.active ? 'none' : 'grayscale(1) opacity(0.5)' }}>
-              {icon.value}
-            </div>
-          );
-          if (icon.kind === 'image') return (
-            <div style={{ width: 40, height: 40, borderRadius: 12, overflow: 'hidden', flexShrink: 0, position: 'relative', filter: item.active ? 'none' : 'grayscale(1)' }}>
-              <Image src={icon.value} alt={item.name} fill className="object-cover" />
-            </div>
-          );
-          return (
-            <div style={{ width: 40, height: 40, borderRadius: 12, background: isLoan ? 'rgba(96,165,250,0.08)' : 'rgba(155,109,255,0.08)', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.22)' : 'rgba(155,109,255,0.22)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              {isLoan ? <Package size={18} style={{ color: '#60a5fa' }} /> : <ShoppingBag size={18} style={{ color: '#9b6dff' }} />}
-            </div>
-          );
-        })()}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          {!item.active && (
-            <span style={{ padding: '2px 7px', borderRadius: 999, fontSize: 8, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', background: 'rgba(255,255,255,0.06)', color: 'rgba(238,240,248,0.35)', border: '1px solid rgba(255,255,255,0.1)' }}>
-              Desativado
-            </span>
           )}
-          <button
-            onClick={onToggleActive}
-            title={item.active ? 'Desativar' : 'Reativar'}
-            style={{ width: 28, height: 28, borderRadius: 7, border: item.active ? '1px solid rgba(255,255,255,0.07)' : '1px solid rgba(45,212,191,0.3)', background: item.active ? 'rgba(255,255,255,0.035)' : 'rgba(45,212,191,0.08)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: item.active ? 'rgba(238,240,248,0.42)' : '#2dd4bf' }}
-          >
-            {item.active ? <EyeOff size={13} /> : <Eye size={13} />}
-          </button>
-          <button onClick={onEdit} style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)' }}>
-            <Edit2 size={13} />
-          </button>
-          <button onClick={onDelete} title="Excluir item" style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid rgba(248,113,113,0.2)', background: 'rgba(248,113,113,0.06)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f87171' }}>
-            <Trash2 size={13} />
-          </button>
-        </div>
-      </div>
 
-      <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 13, fontWeight: 800, color: item.active ? '#eef0f8' : 'rgba(238,240,248,0.4)', lineHeight: 1.3 }}>{item.name}</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: item.price > 0 ? '#9b6dff' : '#2dd4bf' }}>{item.price > 0 ? `R$ ${item.price.toFixed(2)}` : 'Grátis'}</div>
-          {item.included_qty > 0 && <span style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)' }}>· {item.included_qty} incluso(s)</span>}
-          {item.stockAvailable === false && (
-            <span style={{ fontSize: 8, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', padding: '2px 7px', borderRadius: 999, background: 'rgba(248,113,113,0.1)', color: '#f87171', border: '1px solid rgba(248,113,113,0.28)' }}>Esgotado</span>
-          )}
-        </div>
-        {item.active && (
-          <span style={{ marginTop: 6, display: 'inline-flex', padding: '2px 7px', borderRadius: 999, fontSize: 8, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', background: accessBg, color: accessColor, border: `1px solid ${accessBorder}` }}>{accessLabel}</span>
-        )}
-      </div>
-
-      <button
-        onClick={item.active ? onRequest : undefined}
-        disabled={!item.active}
-        style={{ padding: '7px', borderRadius: 9, border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)', cursor: item.active ? 'pointer' : 'default', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, color: item.active ? 'rgba(238,240,248,0.42)' : 'rgba(238,240,248,0.18)', transition: 'all .15s', width: '100%' }}
-      >
-        {item.active ? '+ Registrar Pedido' : '— Item desativado'}
-      </button>
-    </div>
-  );
-}
-
-// ─── NewRequestModal ──────────────────────────────────────────────────────────
-
-interface CabinOption { id: string; name: string; stayId?: string; guestName?: string; }
-
-function NewRequestModal({ preset, onClose }: {
-  preset: ConciergeItem | null;
-  onClose: () => void;
-}) {
-  const { currentProperty: property } = useProperty();
-  const { userData } = useAuth();
-  const [catalogItems, setCatalogItems] = useState<ConciergeItem[]>([]);
-  const [itemId, setItemId] = useState(preset?.id || '');
-  const [qty, setQty] = useState(1);
-  const { requestClose, guardProps } = useCloseGuard(onClose);
-  const [notes, setNotes] = useState('');
-  const [urgent, setUrgent] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [cabins, setCabins] = useState<CabinOption[]>([]);
-  const [selectedCabinId, setSelectedCabinId] = useState('');
-  const [loading, setLoading] = useState(true);
-
-  const selectedItem = catalogItems.find(i => i.id === itemId);
-  const selectedCabin = cabins.find(c => c.id === selectedCabinId);
-  const isLoan = selectedItem?.category === 'loan';
-
-  useEffect(() => {
-    if (!property) return;
-    (async () => {
-      try {
-        const params = new URLSearchParams({ propertyId: property.id });
-        const res = await fetch(`/api/admin/concierge/new-request-data?${params}`);
-        if (!res.ok) throw new Error('fetch-error');
-        const data = await res.json();
-
-        const opts: CabinOption[] = data.cabins || [];
-        setCabins(opts);
-        const firstWithStay = opts.find((c: CabinOption) => !!c.stayId);
-        setSelectedCabinId(firstWithStay?.id || opts[0]?.id || '');
-
-        const items = (data.items || []) as ConciergeItem[];
-        setCatalogItems(items);
-        if (!preset?.id && items.length > 0) setItemId(items[0].id);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [property]); // eslint-disable-line
-
-  const handle = async () => {
-    if (!property || !userData || !itemId || !selectedCabinId) return;
-    setSaving(true);
-    try {
-      await ConciergeService.createRequest({
-        propertyId: property.id,
-        stayId: selectedCabin?.stayId,
-        cabinId: selectedCabinId,
-        itemId,
-        quantity: qty,
-        notes: notes.trim() || undefined,
-        requestedBy: 'guest',
-        urgent,
-      }, userData.id, userData.fullName);
-      toast.success('Pedido criado.');
-      onClose();
-    } catch (err: any) {
-      toast.error(err?.message || 'Erro ao criar pedido.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const inputSt: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid rgba(255,255,255,0.12)',
-    borderRadius: 10,
-    padding: '9px 12px',
-    color: '#eef0f8',
-    fontFamily: 'inherit',
-    fontSize: 13,
-    outline: 'none',
-    width: '100%',
-    transition: 'border-color .15s',
-  };
-
-  const sectionLabel: React.CSSProperties = {
-    fontSize: 10, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase',
-    color: 'rgba(238,240,248,0.35)', marginBottom: 10,
-  };
-
-  const canSubmit = !!itemId && !!selectedCabinId && !saving;
-
-  return (
-    <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', backdropFilter: 'blur(8px)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-      onClick={requestClose}
-    >
-      <div
-        onClick={e => e.stopPropagation()} {...guardProps}
-        style={{ background: '#0b0e18', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 24, width: 500, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 32px 100px rgba(0,0,0,.8)', animation: 'concierge-fade-in .2s ease' }}
-      >
-        {/* ── Header ── */}
-        <div style={{ padding: '22px 24px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 38, height: 38, borderRadius: 11, background: 'rgba(155,109,255,0.12)', border: '1px solid rgba(155,109,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <ShoppingBag size={17} style={{ color: '#9b6dff' }} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 16, fontWeight: 900, color: '#eef0f8' }}>Novo Pedido</div>
-              <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', marginTop: 2 }}>Registrar solicitação manualmente</div>
-            </div>
-            <button onClick={requestClose} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)', flexShrink: 0 }}>
-              <X size={13} />
-            </button>
-          </div>
-        </div>
-
-        {/* ── Body ── */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 22, scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.08) transparent' }}>
-
-          {/* ── Cabana ── */}
-          <div>
-            <div style={sectionLabel}>Cabana</div>
-            {loading ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'rgba(238,240,248,0.42)', fontSize: 13, padding: '10px 0' }}>
-                <Loader2 size={14} className="animate-spin" /> Carregando cabanas…
-              </div>
-            ) : cabins.length === 0 ? (
-              <div style={{ fontSize: 13, color: 'rgba(238,240,248,0.42)', padding: '10px 0' }}>Nenhuma cabana cadastrada.</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#161824', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '9px 12px' }}>
-                  <Pin size={13} style={{ color: 'rgba(238,240,248,0.42)', flexShrink: 0 }} />
-                  <select
-                    value={selectedCabinId}
-                    onChange={e => setSelectedCabinId(e.target.value)}
-                    style={{ background: 'transparent', border: 'none', color: '#eef0f8', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, outline: 'none', width: '100%', cursor: 'pointer' }}
-                  >
-                    {cabins.map(c => (
-                      <option key={c.id} value={c.id} style={{ background: '#161824', color: '#eef0f8' }}>
-                        {c.name}{c.stayId ? ` — ${c.guestName}` : ' — Sem estadia'}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {selectedCabin && !selectedCabin.stayId && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 10px', borderRadius: 9, background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.2)', fontSize: 11, color: '#f59e0b' }}>
-                    <AlertTriangle size={11} />
-                    Cabana sem estadia ativa — pedido será criado sem vínculo com hóspede.
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* ── Item ── */}
-          <div>
-            <div style={sectionLabel}>Item do Catálogo</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#161824', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '9px 12px' }}>
-              <Package size={13} style={{ color: 'rgba(238,240,248,0.42)', flexShrink: 0 }} />
-              <select
-                value={itemId}
-                onChange={e => setItemId(e.target.value)}
-                style={{ background: 'transparent', border: 'none', color: '#eef0f8', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, outline: 'none', width: '100%', cursor: 'pointer' }}
-              >
-                {(['loan', 'consumption'] as ConciergeCategory[]).map(cat => {
-                  const catItems = catalogItems.filter(i => i.category === cat);
-                  if (catItems.length === 0) return null;
-                  return [
-                    <option key={`sep-${cat}`} disabled style={{ background: '#0f1120', color: 'rgba(238,240,248,0.35)', fontSize: 10, fontWeight: 800, letterSpacing: '0.06em' }}>
-                      {'── ' + (cat === 'loan' ? 'EMPRÉSTIMOS' : 'CONSUMO')}
-                    </option>,
-                    ...catItems.map(i => (
-                      <option key={i.id} value={i.id} style={{ background: '#161824', color: '#eef0f8' }}>
-                        {i.name}{i.price > 0 ? ` · R$${i.price.toFixed(2)}` : ''}
-                      </option>
-                    )),
-                  ];
-                })}
-              </select>
-            </div>
-            {selectedItem && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, padding: '8px 12px', background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10 }}>
-                <div style={{ width: 28, height: 28, borderRadius: 8, background: isLoan ? 'rgba(96,165,250,0.08)' : 'rgba(155,109,255,0.08)', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.2)' : 'rgba(155,109,255,0.2)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 15 }}>
-                  {isEmojiUrl(selectedItem.image_url) ? emojiFromUrl(selectedItem.image_url) : (isLoan ? <Package size={13} style={{ color: '#60a5fa' }} /> : <ShoppingBag size={13} style={{ color: '#9b6dff' }} />)}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: '#eef0f8' }}>{selectedItem.name}</div>
-                  <div style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)', marginTop: 1 }}>{isLoan ? 'Empréstimo' : 'Consumo'}</div>
-                </div>
-                {selectedItem.price > 0 && (
-                  <div style={{ fontSize: 13, fontWeight: 900, color: '#9b6dff', flexShrink: 0 }}>R$ {(selectedItem.price * qty).toFixed(2)}</div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* ── Quantidade ── */}
-          <div>
-            <div style={sectionLabel}>Quantidade</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button
-                onClick={() => setQty(q => Math.max(1, q - 1))}
-                style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontSize: 20, color: '#eef0f8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-              >−</button>
-              <span style={{ fontSize: 20, fontWeight: 900, minWidth: 36, textAlign: 'center', color: '#eef0f8' }}>{qty}</span>
-              <button
-                onClick={() => setQty(q => q + 1)}
-                style={{ width: 36, height: 36, borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontSize: 20, color: '#eef0f8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-              >+</button>
-            </div>
-          </div>
-
-          {/* ── Urgente + Observações ── */}
-          <div>
-            <div style={sectionLabel}>Opções</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {/* Urgente toggle */}
-              <button
-                onClick={() => setUrgent(u => !u)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 12, cursor: 'pointer',
-                  background: urgent ? 'rgba(248,113,113,0.08)' : 'rgba(255,255,255,0.035)',
-                  border: `1px solid ${urgent ? 'rgba(248,113,113,0.35)' : 'rgba(255,255,255,0.07)'}`,
-                  transition: 'all .15s', textAlign: 'left', fontFamily: 'inherit',
-                }}
-              >
-                <div style={{
-                  width: 20, height: 20, borderRadius: 6, border: `2px solid ${urgent ? '#f87171' : 'rgba(255,255,255,0.2)'}`,
-                  background: urgent ? '#f87171' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0, transition: 'all .15s',
-                }}>
-                  {urgent && <div style={{ width: 8, height: 8, borderRadius: 2, background: '#fff' }} />}
-                </div>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: urgent ? '#f87171' : '#eef0f8' }}>Marcar como Urgente</div>
-                  <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', marginTop: 1 }}>Pedido aparece destacado na fila de pendentes</div>
-                </div>
-                {urgent && (
-                  <AlertTriangle size={15} style={{ color: '#f87171', marginLeft: 'auto', flexShrink: 0 }} />
-                )}
-              </button>
-
-              {/* Observações */}
-              <input
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                placeholder="Observações (opcional) — Ex: gelado, sem açúcar…"
-                style={inputSt}
-                onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')}
-                onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* ── Footer ── */}
-        <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8, flexShrink: 0 }}>
-          <button
-            onClick={requestClose}
-            style={{ flex: 1, padding: '12px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: 'rgba(238,240,248,0.42)' }}
-          >Cancelar</button>
-          <button
-            onClick={handle}
-            disabled={!canSubmit}
-            style={{
-              flex: 2, padding: '12px', borderRadius: 12, border: 'none',
-              background: urgent ? 'linear-gradient(135deg,#f87171,#f59e0b)' : 'linear-gradient(135deg,#9b6dff,#4ec9d4)',
-              cursor: canSubmit ? 'pointer' : 'not-allowed', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, color: '#fff',
-              boxShadow: urgent ? '0 4px 14px rgba(248,113,113,.3)' : '0 4px 14px rgba(155,109,255,.35)',
-              opacity: canSubmit ? 1 : 0.5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              transition: 'all .15s',
-            }}
-          >
-            {saving ? <Loader2 size={13} className="animate-spin" /> : urgent ? <AlertTriangle size={13} /> : null}
-            {urgent ? 'Criar Pedido Urgente' : 'Criar Pedido'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── CatalogFormModal ─────────────────────────────────────────────────────────
-
-type LangTab = 'pt' | 'en' | 'es';
-
-function CatalogFormModal({ form, setForm, editingId, saving, groups, stockProducts, stockLocations, stockEnabled, onClose, onSave }: {
-  form: ItemForm;
-  setForm: React.Dispatch<React.SetStateAction<ItemForm>>;
-  editingId: string | null;
-  saving: boolean;
-  groups: ConciergeGroup[];
-  stockProducts: { id: string; name: string; unit: string }[];
-  stockLocations: { id: string; name: string }[];
-  stockEnabled: boolean;
-  onClose: () => void;
-  onSave: () => void;
-}) {
-  const [lang, setLang] = useState<LangTab>('pt');
-  const initialEmoji = isEmojiUrl(form.image_url) ? emojiFromUrl(form.image_url) : '💧';
-  const [imageType, setImageType] = useState<'emoji' | 'url'>(isEmojiUrl(form.image_url) || !form.image_url ? 'emoji' : 'url');
-  const [emoji, setEmoji] = useState(initialEmoji);
-  const [emojiOpen, setEmojiOpen] = useState(false);
-  const emojiPickerRef = React.useRef<HTMLDivElement>(null);
-  const { requestClose, guardProps } = useCloseGuard(onClose);
-
-  const isLoan = form.category === 'loan';
-  // active is derived: at least one audience must be selected
-  const isActive = form.availableForGuest || form.availableForMaid;
-  const canSave = form.name.trim().length > 0;
-
-  // Keep image_url in sync with emoji picker / imageType
-  React.useEffect(() => {
-    if (imageType === 'emoji') {
-      setForm(prev => ({ ...prev, image_url: emojiToUrl(emoji) }));
-    }
-    // when imageType === 'url', user edits the input directly — don't overwrite
-  }, [emoji, imageType]); // eslint-disable-line
-
-  // Sync active field with availability selection
-  React.useEffect(() => {
-    setForm(prev => ({ ...prev, active: prev.availableForGuest || prev.availableForMaid }));
-  }, [form.availableForGuest, form.availableForMaid]); // eslint-disable-line
-
-  // Close emoji picker on outside click
-  React.useEffect(() => {
-    if (!emojiOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
-        setEmojiOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [emojiOpen]);
-
-  const set = <K extends keyof ItemForm>(k: K, v: ItemForm[K]) =>
-    setForm(prev => ({ ...prev, [k]: v }));
-
-  // ── Ficha técnica (estoque) ──
-  const addComp = () => set('stockComponents', [...form.stockComponents, { productId: '', consumptionQty: 1 }]);
-  const removeComp = (idx: number) => set('stockComponents', form.stockComponents.filter((_, i) => i !== idx));
-  const updateComp = (idx: number, patch: Partial<ConciergeStockComponent>) =>
-    set('stockComponents', form.stockComponents.map((c, i) => (i === idx ? { ...c, ...patch } : c)));
-  const unitOf = (productId: string) => stockProducts.find(p => p.id === productId)?.unit || '';
-
-  const LANGS: { id: LangTab; flag: string; label: string }[] = [
-    { id: 'pt', flag: '🇧🇷', label: 'PT' },
-    { id: 'en', flag: '🇺🇸', label: 'EN' },
-    { id: 'es', flag: '🇪🇸', label: 'ES' },
-  ];
-
-  const inputSt: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.035)',
-    border: '1px solid rgba(255,255,255,0.12)',
-    borderRadius: 10,
-    padding: '9px 12px',
-    color: '#eef0f8',
-    fontFamily: 'inherit',
-    fontSize: 13,
-    outline: 'none',
-    width: '100%',
-    transition: 'border-color .15s',
-  };
-  const labelSt: React.CSSProperties = {
-    fontSize: 10, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase',
-    color: 'rgba(238,240,248,0.42)', marginBottom: 5, display: 'block',
-  };
-  const sectionLabel: React.CSSProperties = {
-    fontSize: 11, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase',
-    color: 'rgba(238,240,248,0.42)', marginBottom: 12,
-  };
-
-  return (
-    <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', backdropFilter: 'blur(8px)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
-      onClick={requestClose}
-    >
-      <div
-        onClick={e => e.stopPropagation()} {...guardProps}
-        style={{ background: '#0b0e18', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 24, width: 560, maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 32px 100px rgba(0,0,0,.8)', animation: 'concierge-fade-in .2s ease' }}
-      >
-        {/* ── Header ── */}
-        <div style={{ padding: '22px 24px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 38, height: 38, borderRadius: 11, background: 'rgba(155,109,255,0.12)', border: '1px solid rgba(155,109,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <ListOrdered size={17} style={{ color: '#9b6dff' }} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 16, fontWeight: 900, color: '#eef0f8' }}>{editingId ? 'Editar Item do Catálogo' : 'Novo Item do Catálogo'}</div>
-              <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', marginTop: 2 }}>Preencha os dados do item em todos os idiomas</div>
-            </div>
-            <button onClick={requestClose} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)', flexShrink: 0 }}>
-              <X size={13} />
-            </button>
-          </div>
-        </div>
-
-        {/* ── Body ── */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 22, scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.08) transparent' }}>
-
-          {/* ── Identidade Visual ── */}
-          <div>
-            <div style={sectionLabel}>Identidade Visual</div>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-              {/* Preview */}
-              <div
-                style={{ width: 72, height: 72, borderRadius: 18, flexShrink: 0, background: 'rgba(155,109,255,0.12)', border: '2px solid rgba(155,109,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 34, cursor: 'pointer', transition: 'border-color .15s' }}
-                onClick={() => setEmojiOpen(p => !p)}
-              >
-                {imageType === 'emoji' ? emoji : (form.image_url ? '🖼️' : '📦')}
-              </div>
-
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {/* Type toggle */}
-                <div style={{ display: 'flex', gap: 5 }}>
-                  {([{ id: 'emoji', label: 'Emoji' }, { id: 'url', label: 'URL / Upload' }] as { id: 'emoji' | 'url'; label: string }[]).map(t => (
-                    <button key={t.id} onClick={() => setImageType(t.id)} style={{
-                      padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700,
-                      background: imageType === t.id ? 'rgba(155,109,255,0.12)' : 'rgba(255,255,255,0.035)',
-                      color: imageType === t.id ? '#9b6dff' : 'rgba(238,240,248,0.42)',
-                      border: `1px solid ${imageType === t.id ? 'rgba(155,109,255,.28)' : 'rgba(255,255,255,0.07)'}`,
-                    }}>{t.label}</button>
-                  ))}
-                </div>
-
-                {imageType === 'url' ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <input
-                      value={form.image_url} onChange={e => set('image_url', e.target.value)}
-                      placeholder="https://…"
-                      style={inputSt}
-                      onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')}
-                      onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')}
-                    />
-                    <div style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)' }}>Ou use o componente de upload abaixo</div>
-                    <ImageUpload value={form.image_url} onUploadSuccess={url => set('image_url', url)} path="concierge-items" />
-                  </div>
-                ) : (
-                  <div ref={emojiPickerRef} style={{ position: 'relative' }}>
-                    <button onClick={() => setEmojiOpen(p => !p)} style={{
-                      width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)',
-                      background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13,
-                      color: 'rgba(238,240,248,0.42)', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8,
-                    }}>
-                      <span style={{ fontSize: 20 }}>{emoji}</span>
-                      <span style={{ fontSize: 13, fontWeight: 600 }}>Clique para trocar emoji</span>
-                    </button>
-                    {emojiOpen && (
-                      <div style={{
-                        position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 80,
-                        animation: 'concierge-fade-in .15s ease',
-                        /* constrain width so it never overflows the 560px modal */
-                        maxWidth: 'min(340px, calc(560px - 48px - 84px))',
-                      }}>
-                        <EmojiPicker
-                          onEmojiClick={(data) => { setEmoji(data.emoji); setEmojiOpen(false); }}
-                          theme={'dark' as any}
-                          skinTonesDisabled
-                          searchPlaceholder="Buscar emoji…"
-                          width="100%"
-                          height={360}
-                          previewConfig={{ showPreview: false }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* ── Nome & Descrição por idioma ── */}
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <div style={sectionLabel}>Nome & Descrição</div>
-              {/* Lang tabs */}
-              <div style={{ display: 'flex', gap: 3, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 9, padding: 3 }}>
-                {LANGS.map(l => (
-                  <button key={l.id} onClick={() => setLang(l.id)} style={{
-                    padding: '4px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit',
-                    fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 4,
-                    background: lang === l.id ? '#0b0e18' : 'transparent',
-                    color: lang === l.id ? '#eef0f8' : 'rgba(238,240,248,0.42)',
-                    boxShadow: lang === l.id ? '0 1px 4px rgba(0,0,0,.3)' : 'none',
-                    border: 'none', transition: 'all .15s',
-                  }}>
-                    <span>{l.flag}</span>{l.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* PT */}
-            {lang === 'pt' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, animation: 'concierge-fade-in .15s ease' }}>
-                <div>
-                  <label style={labelSt}>Nome em Português <span style={{ color: '#f87171' }}>*</span></label>
-                  <input value={form.name} onChange={e => set('name', e.target.value)} placeholder="Ex: Água Mineral (500ml)" style={inputSt}
-                    onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
-                </div>
-                <div>
-                  <label style={labelSt}>Descrição em Português</label>
-                  <textarea value={form.description} onChange={e => set('description', e.target.value)} placeholder="Ex: Água mineral sem gás, garrafa individual de 500ml." rows={3}
-                    style={{ ...inputSt, resize: 'vertical', lineHeight: 1.5 }}
-                    onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
-                </div>
-              </div>
-            )}
-            {/* EN */}
-            {lang === 'en' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, animation: 'concierge-fade-in .15s ease' }}>
-                <div>
-                  <label style={labelSt}>Name in English</label>
-                  <input value={form.name_en} onChange={e => set('name_en', e.target.value)} placeholder="e.g. Still Water (500ml)" style={inputSt}
-                    onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
-                </div>
-                <div>
-                  <label style={labelSt}>Description in English</label>
-                  <textarea value={form.description_en} onChange={e => set('description_en', e.target.value)} placeholder="e.g. Still mineral water, individual 500ml bottle." rows={3}
-                    style={{ ...inputSt, resize: 'vertical', lineHeight: 1.5 }}
-                    onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
-                </div>
-              </div>
-            )}
-            {/* ES */}
-            {lang === 'es' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, animation: 'concierge-fade-in .15s ease' }}>
-                <div>
-                  <label style={labelSt}>Nombre en Español</label>
-                  <input value={form.name_es} onChange={e => set('name_es', e.target.value)} placeholder="Ej: Agua Mineral (500ml)" style={inputSt}
-                    onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
-                </div>
-                <div>
-                  <label style={labelSt}>Descripción en Español</label>
-                  <textarea value={form.description_es} onChange={e => set('description_es', e.target.value)} placeholder="Ej: Agua mineral sin gas, botella individual de 500ml." rows={3}
-                    style={{ ...inputSt, resize: 'vertical', lineHeight: 1.5 }}
-                    onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
-                </div>
-              </div>
-            )}
-
-            {/* Completeness indicator */}
-            <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
-              <span style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)', fontWeight: 700 }}>Preenchimento:</span>
-              {[
-                { flag: '🇧🇷', label: 'PT', filled: !!form.name.trim() },
-                { flag: '🇺🇸', label: 'EN', filled: !!form.name_en.trim() },
-                { flag: '🇪🇸', label: 'ES', filled: !!form.name_es.trim() },
-              ].map(l => (
-                <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: l.filled ? '#2dd4bf' : 'rgba(255,255,255,0.12)' }} />
-                  <span style={{ fontSize: 10, color: l.filled ? '#2dd4bf' : 'rgba(238,240,248,0.22)', fontWeight: 700 }}>{l.flag} {l.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* ── Tipo de Item ── */}
-          <div>
-            <div style={sectionLabel}>Tipo de Item</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              {([
-                { id: 'consumption' as ConciergeCategory, label: 'Consumo', desc: 'Item entregue e cobrado. Ex: bebida, kit amenities.', Icon: ShoppingBag, color: '#9b6dff', bg: 'rgba(155,109,255,0.12)', border: 'rgba(155,109,255,0.3)' },
-                { id: 'loan' as ConciergeCategory, label: 'Empréstimo', desc: 'Item cedido e devolvido. Ex: guarda-chuva, cadeira.', Icon: Package, color: '#60a5fa', bg: 'rgba(96,165,250,0.08)', border: 'rgba(96,165,250,0.22)' },
-              ]).map(cat => (
-                <button key={cat.id} onClick={() => set('category', cat.id)} style={{
-                  padding: 14, borderRadius: 14, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-                  background: form.category === cat.id ? cat.bg : 'rgba(255,255,255,0.035)',
-                  border: `2px solid ${form.category === cat.id ? cat.border : 'rgba(255,255,255,0.07)'}`,
-                  transition: 'all .15s',
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <div style={{ width: 28, height: 28, borderRadius: 8, background: form.category === cat.id ? cat.bg : 'rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <cat.Icon size={14} style={{ color: form.category === cat.id ? cat.color : 'rgba(238,240,248,0.42)' }} />
-                    </div>
-                    <span style={{ fontSize: 13, fontWeight: 900, color: form.category === cat.id ? cat.color : '#eef0f8' }}>{cat.label}</span>
-                    {form.category === cat.id && <div style={{ width: 7, height: 7, borderRadius: '50%', background: cat.color, marginLeft: 'auto', boxShadow: `0 0 8px ${cat.color}` }} />}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', lineHeight: 1.4 }}>{cat.desc}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* ── Preço & Quantidade ── */}
-          <div>
-            <div style={sectionLabel}>Preço & Quantidade</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div>
-                <label style={labelSt}>{isLoan ? 'Preço de entrega (opcional)' : 'Preço unitário (R$)'}</label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 12, fontWeight: 700, color: 'rgba(238,240,248,0.42)', pointerEvents: 'none' }}>R$</span>
-                  <input type="number" min="0" step="0.01" value={form.price} onChange={e => set('price', e.target.value)}
-                    placeholder="0,00" style={{ ...inputSt, paddingLeft: 34 }}
-                    onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
-                </div>
-                <div style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)', marginTop: 4, lineHeight: 1.4 }}>
-                  {isLoan ? 'Cobrado na entrega, se aplicável.' : 'Valor cobrado por unidade consumida.'}
-                </div>
-              </div>
-              <div>
-                <label style={labelSt}>Qtde inclusa na hospedagem</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <button onClick={() => set('included_qty', String(Math.max(0, parseInt(form.included_qty || '0') - 1)))}
-                    style={{ width: 34, height: 37, borderRadius: 9, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontSize: 18, color: '#eef0f8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>−</button>
-                  <input type="number" min="0" value={form.included_qty} onChange={e => set('included_qty', e.target.value)}
-                    style={{ ...inputSt, textAlign: 'center', padding: '9px 4px' }}
-                    onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
-                  <button onClick={() => set('included_qty', String(parseInt(form.included_qty || '0') + 1))}
-                    style={{ width: 34, height: 37, borderRadius: 9, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontSize: 18, color: '#eef0f8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>+</button>
-                </div>
-                <div style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)', marginTop: 4, lineHeight: 1.4 }}>Unidades gratuitas por estadia.</div>
-              </div>
-            </div>
-
-            {/* Loss price — loan only */}
-            {isLoan && (
-              <div style={{ marginTop: 10 }}>
-                <label style={{ ...labelSt, color: 'rgba(248,113,113,0.7)' }}>Preço de extravio (R$)</label>
-                <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 12, fontWeight: 700, color: '#f87171', pointerEvents: 'none' }}>R$</span>
-                  <input type="number" min="0" step="0.01" value={form.loss_price} onChange={e => set('loss_price', e.target.value)}
-                    placeholder="0,00" style={{ ...inputSt, paddingLeft: 34, borderColor: 'rgba(248,113,113,0.3)' }}
-                    onFocus={e => (e.target.style.borderColor = '#f87171')} onBlur={e => (e.target.style.borderColor = 'rgba(248,113,113,0.3)')} />
-                </div>
-                <div style={{ fontSize: 10, color: 'rgba(248,113,113,0.6)', marginTop: 4 }}>Cobrado automaticamente se o item for marcado como extraviado.</div>
-              </div>
-            )}
-
-            {/* Order */}
-            <div style={{ marginTop: 10 }}>
-              <label style={labelSt}>Ordem de exibição</label>
-              <input type="number" min="0" value={form.order} onChange={e => set('order', e.target.value)}
-                style={inputSt}
-                onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
-            </div>
-          </div>
-
-          {/* ── Disponibilidade ── */}
-          {/* A reposição da camareira saiu do Concierge (virou produto do estoque com
-              "Solicitável pela camareira") — o toggle Camareira foi aposentado; a
-              coluna availableForMaid fica no banco como resquício inofensivo. */}
-          <div>
-            <div style={{ ...sectionLabel, marginBottom: 6 }}>Disponibilidade</div>
-            <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.35)', marginBottom: 12 }}>
-              Item do cardápio do hóspede. Reposição da camareira agora é configurada em Estoque → Produtos.
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
-              {([
-                { key: 'availableForGuest' as const, label: 'Hóspede', desc: 'Visível no app do hóspede.', Icon: User, color: '#2dd4bf', bg: 'rgba(45,212,191,0.08)', border: 'rgba(45,212,191,0.22)' },
-              ]).map(opt => {
-                const on = form[opt.key];
+          {s.loadingHistory ? <SkeletonList rows={6} /> : s.history.length === 0 ? (
+            <EmptyState icon={Calendar} title="Nenhum pedido registrado neste dia" />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {s.history.map(req => {
+                const sc = statusCfg(req.status);
                 return (
-                  <button key={opt.key} onClick={() => set(opt.key, !on)} style={{
-                    padding: 14, borderRadius: 14, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-                    background: on ? opt.bg : 'rgba(255,255,255,0.035)',
-                    border: `2px solid ${on ? opt.border : 'rgba(255,255,255,0.07)'}`,
-                    transition: 'all .15s',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                      <div style={{ width: 28, height: 28, borderRadius: 8, background: on ? opt.bg : 'rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <opt.Icon size={14} style={{ color: on ? opt.color : 'rgba(238,240,248,0.42)' }} />
-                      </div>
-                      <span style={{ fontSize: 13, fontWeight: 900, color: on ? opt.color : '#eef0f8' }}>{opt.label}</span>
-                      {/* checkmark */}
-                      <div style={{
-                        marginLeft: 'auto', width: 18, height: 18, borderRadius: 5,
-                        background: on ? opt.color : 'transparent',
-                        border: `2px solid ${on ? opt.color : 'rgba(255,255,255,0.2)'}`,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        transition: 'all .15s', flexShrink: 0,
-                      }}>
-                        {on && <CheckCircle2 size={11} style={{ color: '#fff', strokeWidth: 3 }} />}
-                      </div>
+                  <Card key={req.id} pad={12} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0, background: T.glass2, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, color: T.muted }}>{avatarFromName(req.cabinName || "??")}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{req.quantity}× {req.item?.name || req.itemId}</div>
+                      <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{req.cabinName || "—"} · {formatDate(req.createdAt)}</div>
                     </div>
-                    <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', lineHeight: 1.4 }}>{opt.desc}</div>
-                  </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      {(req.total_price ?? 0) > 0 && <span style={{ fontSize: 12, fontWeight: 800, color: T.brandText }}>{fmtBRL(req.total_price!)}</span>}
+                      <Pill tone={categoryTone(req.item?.category)} label={categoryLabel(req.item?.category)} />
+                      <Pill tone={sc.tone} label={sc.label} />
+                    </div>
+                  </Card>
                 );
               })}
             </div>
-
-            {/* Status indicator — derived from selection */}
-            {!isActive && (
-              <div style={{ marginTop: 10, padding: '10px 14px', borderRadius: 10, background: 'rgba(248,113,113,0.06)', border: '1px solid rgba(248,113,113,0.2)', display: 'flex', alignItems: 'center', gap: 8, animation: 'concierge-fade-in .2s ease' }}>
-                <XCircle size={14} style={{ color: '#f87171', flexShrink: 0 }} />
-                <span style={{ fontSize: 12, color: 'rgba(248,113,113,0.8)', fontWeight: 600 }}>Nenhum público selecionado — o item ficará inativo e oculto do catálogo.</span>
-              </div>
-            )}
-          </div>
-
-          {/* ── Grupo ── */}
-          {groups.length > 0 && (
-            <div>
-              <div style={sectionLabel}>Grupo</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '9px 12px' }}>
-                <Layers size={13} style={{ color: 'rgba(238,240,248,0.42)', flexShrink: 0 }} />
-                <select
-                  value={form.groupId}
-                  onChange={e => setForm(prev => ({ ...prev, groupId: e.target.value }))}
-                  style={{ background: 'transparent', border: 'none', color: '#eef0f8', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, outline: 'none', width: '100%', cursor: 'pointer' }}
-                >
-                  <option value="" style={{ background: '#161824', color: 'rgba(238,240,248,0.5)' }}>— Sem grupo —</option>
-                  {groups.map(g => (
-                    <option key={g.id} value={g.id} style={{ background: '#161824', color: '#eef0f8' }}>
-                      {g.icon} {g.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
           )}
-
-          {/* ── Estoque · Ficha técnica (integração) ── */}
-          {stockEnabled && (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <div style={{ ...sectionLabel, marginBottom: 0 }}>Estoque · Baixar do estoque</div>
-                <button
-                  type="button"
-                  onClick={() => set('deductFromStock', !form.deductFromStock)}
-                  aria-pressed={form.deductFromStock}
-                  title="Baixar do estoque"
-                  style={{
-                    position: 'relative', width: 46, height: 25, borderRadius: 999, border: 'none', cursor: 'pointer', flexShrink: 0,
-                    background: form.deductFromStock ? 'linear-gradient(135deg,#9b6dff,#4ec9d4)' : 'rgba(255,255,255,0.12)',
-                    transition: 'background .2s',
-                  }}
-                >
-                  <span style={{
-                    position: 'absolute', top: 2.5, left: 2.5, width: 20, height: 20, borderRadius: '50%', background: '#fff',
-                    transform: form.deductFromStock ? 'translateX(21px)' : 'translateX(0)', transition: 'transform .2s',
-                    boxShadow: '0 2px 6px rgba(0,0,0,.4)',
-                  }} />
-                </button>
-              </div>
-
-              <div style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)', marginBottom: form.deductFromStock ? 12 : 0, lineHeight: 1.4 }}>
-                {form.deductFromStock
-                  ? (form.category === 'loan'
-                      ? 'Ao marcar como perdido, baixa a ficha técnica abaixo do estoque.'
-                      : 'A cada entrega, baixa a ficha técnica do estoque. Sem insumo suficiente, o item fica indisponível para pedido (hóspede e camareira).')
-                  : 'Desligado: o item não controla estoque.'}
-              </div>
-
-              {form.deductFromStock && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {form.stockComponents.length === 0 && (
-                    <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', padding: '2px 0' }}>
-                      Nenhum produto na ficha. Adicione ao menos um.
-                    </div>
-                  )}
-                  {form.stockComponents.map((c, idx) => (
-                    <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 8, borderRadius: 11, border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.02)' }}>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <select
-                          value={c.productId}
-                          onChange={e => updateComp(idx, { productId: e.target.value, unit: unitOf(e.target.value), name: stockProducts.find(p => p.id === e.target.value)?.name })}
-                          style={{ ...inputSt, flex: 1 }}
-                        >
-                          <option value="">Selecione o produto…</option>
-                          {stockProducts.map(p => <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>)}
-                        </select>
-                        <div style={{ position: 'relative', width: 104, flexShrink: 0 }}>
-                          <input
-                            type="number" min={0} step="any" value={c.consumptionQty}
-                            onChange={e => updateComp(idx, { consumptionQty: parseFloat(e.target.value) || 0 })}
-                            style={{ ...inputSt, paddingRight: unitOf(c.productId) ? 36 : 12, textAlign: 'right' }}
-                          />
-                          {unitOf(c.productId) && (
-                            <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: 'rgba(238,240,248,0.42)', pointerEvents: 'none' }}>{unitOf(c.productId)}</span>
-                          )}
-                        </div>
-                        <button type="button" onClick={() => removeComp(idx)} title="Remover"
-                          style={{ width: 34, height: 34, flexShrink: 0, borderRadius: 9, border: '1px solid rgba(248,113,113,0.25)', background: 'rgba(248,113,113,0.08)', color: '#f87171', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                      {stockLocations.length > 0 && (
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingLeft: 2 }}>
-                          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', color: 'rgba(238,240,248,0.42)', flexShrink: 0 }}>Baixar de</span>
-                          <select
-                            value={c.locationId || ''}
-                            onChange={e => updateComp(idx, { locationId: e.target.value || null })}
-                            style={{ ...inputSt, flex: 1, padding: '6px 10px', fontSize: 12 }}
-                          >
-                            <option value="">Padrão (local de consumo)</option>
-                            {stockLocations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                          </select>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  <button type="button" onClick={addComp}
-                    style={{ alignSelf: 'flex-start', marginTop: 2, padding: '7px 12px', borderRadius: 9, border: '1px dashed rgba(155,109,255,0.4)', background: 'rgba(155,109,255,0.06)', color: '#9b6dff', fontWeight: 700, fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
-                    <Plus size={13} /> Adicionar produto
-                  </button>
-                  <div style={{ fontSize: 10, color: 'rgba(238,240,248,0.42)', marginTop: 2, lineHeight: 1.4 }}>
-                    Quantidade consumida por unidade entregue.
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
         </div>
+      )}
 
-        {/* ── Footer ── */}
-        <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8, flexShrink: 0, alignItems: 'center' }}>
-          {/* Live preview pill */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 12px', borderRadius: 999, background: 'rgba(255,255,255,0.035)', border: `1px solid ${isActive ? 'rgba(255,255,255,0.12)' : 'rgba(248,113,113,0.2)'}`, fontSize: 12, fontWeight: 700, flexShrink: 0, maxWidth: 220, overflow: 'hidden', transition: 'border-color .2s' }}>
-            <span style={{ fontSize: 16, flexShrink: 0, opacity: isActive ? 1 : 0.4 }}>{imageType === 'emoji' ? emoji : '📦'}</span>
-            <span style={{ color: form.name.trim() ? (isActive ? '#eef0f8' : 'rgba(238,240,248,0.35)') : 'rgba(238,240,248,0.42)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{form.name.trim() || 'Nome do item'}</span>
-            <span style={{ flexShrink: 0, padding: '1px 6px', borderRadius: 999, fontSize: 8, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', background: isLoan ? 'rgba(96,165,250,0.08)' : 'rgba(155,109,255,0.08)', color: isLoan ? '#60a5fa' : '#9b6dff', border: `1px solid ${isLoan ? 'rgba(96,165,250,0.22)' : 'rgba(155,109,255,0.22)'}` }}>
-              {isLoan ? 'Empréstimo' : 'Consumo'}
+      {/* ── Catálogo ── */}
+      {tab === "catalog" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <SectionLabel>Visível para</SectionLabel>
+            <FilterChips<AccessFilter> ariaLabel="Visível para" items={[{ id: "all", label: "Todos" }, { id: "guest", label: "Só hóspede" }, { id: "maid", label: "Só camareira" }, { id: "both", label: "Ambos" }]} value={catalogAccess} onChange={setCatalogAccess} />
+            <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12, color: T.muted }}>{filteredItems.length} itens</span>
+              <Button variant="soft" size="sm" icon={Layers} onClick={s.openNewGroup}>Novo grupo</Button>
+              <Button variant={s.showArchive ? "soft" : "outline"} tone="red" size="sm" icon={Archive} onClick={s.toggleArchive}>Arquivo</Button>
             </span>
-            {!isActive && <span style={{ flexShrink: 0, padding: '1px 6px', borderRadius: 999, fontSize: 8, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', background: 'rgba(248,113,113,0.08)', color: '#f87171', border: '1px solid rgba(248,113,113,0.22)' }}>inativo</span>}
           </div>
-          <div style={{ flex: 1 }} />
-          <button onClick={requestClose} style={{ padding: '10px 18px', borderRadius: 11, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: 'rgba(238,240,248,0.42)' }}>
-            Cancelar
-          </button>
-          <button onClick={onSave} disabled={!canSave || saving} style={{
-            padding: '10px 22px', borderRadius: 11, border: 'none', cursor: canSave && !saving ? 'pointer' : 'default',
-            fontFamily: 'inherit', fontSize: 13, fontWeight: 800, color: '#fff',
-            background: canSave ? 'linear-gradient(135deg,#9b6dff,#4ec9d4)' : 'rgba(155,109,255,0.3)',
-            boxShadow: canSave && !saving ? '0 4px 14px rgba(155,109,255,.3)' : 'none',
-            transition: 'all .2s', display: 'flex', alignItems: 'center', gap: 7, opacity: saving ? 0.7 : 1,
-          }}>
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {editingId ? 'Salvar Alterações' : 'Criar Item'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-// ─── GroupFormModal ───────────────────────────────────────────────────────────
+          {s.groups.length > 0 && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {s.groups.map(g => (
+                <span key={g.id} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 4px 3px 10px", borderRadius: 999, background: T.glass, border: `1px solid ${T.border2}`, fontSize: 12, fontWeight: 700, color: T.text }}>
+                  <span style={{ fontSize: 15 }}>{g.icon}</span>
+                  <span style={{ maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.name}</span>
+                  <IconButton icon={Edit2} label={`Editar grupo ${g.name}`} size="sm" onClick={() => s.openEditGroup(g)} />
+                  <IconButton icon={Trash2} label={`Remover grupo ${g.name}`} size="sm" tone="red" onClick={() => void s.handleDeleteGroup(g)} />
+                </span>
+              ))}
+            </div>
+          )}
 
-function GroupFormModal({ form, setForm, editingId, saving, onClose, onSave }: {
-  form: GroupForm;
-  setForm: React.Dispatch<React.SetStateAction<GroupForm>>;
-  editingId: string | null;
-  saving: boolean;
-  onClose: () => void;
-  onSave: () => void;
-}) {
-  const [emojiOpen, setEmojiOpen] = useState(false);
-  const emojiRef = React.useRef<HTMLDivElement>(null);
-  const { requestClose, guardProps } = useCloseGuard(onClose);
+          {s.loadingCatalog ? <SkeletonCards n={8} minWidth={210} /> : itemsByGroup.length === 0 ? (
+            <EmptyState icon={ListOrdered} title="Nenhum item cadastrado" description="Crie o primeiro item do catálogo do concierge." action={{ label: "Novo item", icon: Plus, onClick: s.openNew }} />
+          ) : itemsByGroup.map(({ group, items: groupItems }) => {
+            const gc = group?.color;
+            return (
+              <section key={group?.id ?? "__ungrouped"}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <span style={{ width: 28, height: 28, borderRadius: 8, background: gc ? alpha(gc, 10) : T.glass2, border: `1px solid ${gc ? alpha(gc, 25) : T.border}`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 15 }}>
+                    {group?.icon ?? <Layers size={13} color={T.muted} />}
+                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", color: gc ?? T.muted }}>{group?.name ?? "Sem grupo"}</span>
+                  <Pill tone="neutral" label={`${groupItems.length} itens`} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(210px, 100%), 1fr))", gap: 10 }}>
+                  {groupItems.map(item => (
+                    <CatalogCard key={item.id} item={item} onEdit={() => s.openEdit(item)} onToggleActive={() => void s.handleToggleActive(item)} onDelete={() => void s.handleDeleteItem(item)} onRequest={() => { s.setNewItemPreset(item); s.setShowNew(true); }} />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
 
-  React.useEffect(() => {
-    if (!emojiOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (emojiRef.current && !emojiRef.current.contains(e.target as Node)) setEmojiOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [emojiOpen]);
-
-  const inputSt: React.CSSProperties = {
-    background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.12)',
-    borderRadius: 10, padding: '9px 12px', color: '#eef0f8', fontFamily: 'inherit',
-    fontSize: 13, outline: 'none', width: '100%', transition: 'border-color .15s',
-  };
-  const canSave = form.name.trim().length > 0;
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.65)', backdropFilter: 'blur(8px)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={requestClose}>
-      <div onClick={e => e.stopPropagation()} {...guardProps} style={{ background: '#0b0e18', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 24, width: 420, display: 'flex', flexDirection: 'column', boxShadow: '0 32px 100px rgba(0,0,0,.8)', animation: 'concierge-fade-in .2s ease' }}>
-        {/* Header */}
-        <div style={{ padding: '22px 24px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 38, height: 38, borderRadius: 11, background: 'rgba(155,109,255,0.12)', border: '1px solid rgba(155,109,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Layers size={17} style={{ color: '#9b6dff' }} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 16, fontWeight: 900, color: '#eef0f8' }}>{editingId ? 'Editar Grupo' : 'Novo Grupo'}</div>
-            <div style={{ fontSize: 11, color: 'rgba(238,240,248,0.42)', marginTop: 2 }}>Grupos organizam os itens do catálogo</div>
-          </div>
-          <button onClick={requestClose} style={{ width: 30, height: 30, borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(238,240,248,0.42)' }}>
-            <X size={13} />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Emoji + Nome */}
-          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-            <div ref={emojiRef} style={{ position: 'relative', flexShrink: 0 }}>
-              <button onClick={() => setEmojiOpen(p => !p)} style={{ width: 56, height: 56, borderRadius: 16, background: 'rgba(155,109,255,0.1)', border: '2px solid rgba(155,109,255,0.25)', cursor: 'pointer', fontSize: 28, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {form.icon}
-              </button>
-              {emojiOpen && (
-                <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 90, animation: 'concierge-fade-in .15s ease' }}>
-                  <EmojiPicker onEmojiClick={d => { setForm(prev => ({ ...prev, icon: d.emoji })); setEmojiOpen(false); }} theme={'dark' as any} skinTonesDisabled searchPlaceholder="Buscar…" width={300} height={340} previewConfig={{ showPreview: false }} />
+          {s.showArchive && (
+            <section style={{ borderTop: `1px solid ${T.redBorder}`, paddingTop: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+                <span style={{ width: 28, height: 28, borderRadius: 8, background: T.redBg, border: `1px solid ${T.redBorder}`, display: "inline-flex", alignItems: "center", justifyContent: "center", color: T.red }}><Archive size={13} /></span>
+                <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", color: T.red }}>Arquivo</span>
+                <Pill tone="red" label={`${s.archivedItems.length} itens`} />
+                <span style={{ fontSize: 11, color: T.muted2 }}>Itens arquivados ficam ocultos do catálogo e do portal</span>
+              </div>
+              {s.loadingArchive ? <SkeletonList rows={3} /> : s.archivedItems.length === 0 ? (
+                <EmptyState compact icon={Archive} title="Nenhum item arquivado" />
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {s.archivedItems.map(item => (
+                    <Card key={item.id} pad={12} style={{ display: "flex", alignItems: "center", gap: 12, opacity: .8 }}>
+                      <ItemIcon item={item} size={36} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: T.muted, textDecoration: "line-through" }}>{item.name}</div>
+                        <div style={{ fontSize: 11, color: T.muted2, marginTop: 2 }}>{item.group?.name ?? "Sem grupo"} · {categoryLabel(item.category)}</div>
+                      </div>
+                      <Button variant="soft" tone="green" size="sm" icon={RotateCcw} onClick={() => void s.handleRestoreItem(item)}>Restaurar</Button>
+                    </Card>
+                  ))}
                 </div>
               )}
-            </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase' as const, color: 'rgba(238,240,248,0.42)', marginBottom: 5, display: 'block' }}>Nome do Grupo <span style={{ color: '#f87171' }}>*</span></label>
-              <input value={form.name} onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))} placeholder="Ex: Lavanderia" style={inputSt} onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
-            </div>
-          </div>
-
-          {/* Cor + Ordem */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
-              <label style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase' as const, color: 'rgba(238,240,248,0.42)', marginBottom: 5, display: 'block' }}>Cor do grupo</label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '7px 12px' }}>
-                <Palette size={13} style={{ color: 'rgba(238,240,248,0.42)', flexShrink: 0 }} />
-                <input type="color" value={form.color} onChange={e => setForm(prev => ({ ...prev, color: e.target.value }))} style={{ width: 28, height: 28, border: 'none', background: 'none', cursor: 'pointer', padding: 0, borderRadius: 6 }} />
-                <span style={{ fontSize: 12, color: 'rgba(238,240,248,0.55)', fontFamily: 'monospace' }}>{form.color}</span>
-              </div>
-            </div>
-            <div>
-              <label style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase' as const, color: 'rgba(238,240,248,0.42)', marginBottom: 5, display: 'block' }}>Ordem</label>
-              <input type="number" min="0" value={form.order} onChange={e => setForm(prev => ({ ...prev, order: e.target.value }))} style={inputSt} onFocus={e => (e.target.style.borderColor = 'rgba(155,109,255,.5)')} onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.12)')} />
-            </div>
-          </div>
-
-          {/* Preview */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, background: form.color ? `${form.color}12` : 'rgba(255,255,255,0.035)', border: `1px solid ${form.color ? `${form.color}30` : 'rgba(255,255,255,0.07)'}` }}>
-            <span style={{ fontSize: 18 }}>{form.icon}</span>
-            <span style={{ fontSize: 13, fontWeight: 800, color: form.color || '#eef0f8' }}>{form.name || 'Nome do grupo'}</span>
-          </div>
+            </section>
+          )}
         </div>
+      )}
 
-        {/* Footer */}
-        <div style={{ padding: '14px 24px', borderTop: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 8 }}>
-          <button onClick={requestClose} style={{ flex: 1, padding: '10px', borderRadius: 11, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.035)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: 'rgba(238,240,248,0.42)' }}>Cancelar</button>
-          <button onClick={onSave} disabled={!canSave || saving} style={{ flex: 2, padding: '10px', borderRadius: 11, border: 'none', cursor: canSave && !saving ? 'pointer' : 'default', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, color: '#fff', background: canSave ? 'linear-gradient(135deg,#9b6dff,#4ec9d4)' : 'rgba(155,109,255,0.3)', opacity: saving ? 0.7 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {editingId ? 'Salvar' : 'Criar Grupo'}
-          </button>
-        </div>
-      </div>
-    </div>
+      <DetailPanel req={detail} open={!!detail} onClose={() => setDetail(null)} onAction={s.runAction} />
+      <NewRequestModal open={s.showNew} preset={s.newItemPreset} onClose={() => { s.setShowNew(false); s.setNewItemPreset(null); }} />
+      <CatalogFormModal open={s.showForm} form={s.form} setForm={s.setForm} editingId={s.editingId} saving={s.saving} groups={s.groups} stockProducts={s.stockProducts} stockLocations={s.stockLocations} stockEnabled={s.stockEnabled} onClose={() => { s.setShowForm(false); s.setEditingId(null); }} onSave={() => void s.handleSave()} />
+      <GroupFormModal open={s.showGroupForm} form={s.groupForm} setForm={s.setGroupForm} editingId={s.editingGroupId} saving={s.savingGroup} onClose={() => { s.setShowGroupForm(false); s.setEditingGroupId(null); }} onSave={() => void s.handleSaveGroup()} />
+    </PageShell>
   );
 }
