@@ -35,9 +35,6 @@ const TAB_ICONS: Record<RoleTabIcon, LucideIcon> = {
   stock: Warehouse, products: Package, purchases: ShoppingCart, movements: ArrowLeftRight, cabins: Building,
 };
 
-type Palette = "warm" | "cool";
-const PALETTE_KEY = "aura-light-palette";
-export const PALETTE_EVENT = "aura-palette-change";
 
 function AdminLayoutInner({ children, initialTheme }: { children: React.ReactNode; initialTheme: "dark" | "light" }) {
   const pathname = usePathname();
@@ -49,14 +46,6 @@ function AdminLayoutInner({ children, initialTheme }: { children: React.ReactNod
 
   const theme: "dark" | "light" = (userData?.uiTheme ?? initialTheme) === "light" ? "light" : "dark";
 
-  // Paleta clara alternativa (quente × fria) — só para comparar no piloto.
-  const [palette, setPalette] = useState<Palette>("warm");
-  useEffect(() => {
-    const read = () => setPalette(localStorage.getItem(PALETTE_KEY) === "cool" ? "cool" : "warm");
-    read();
-    window.addEventListener(PALETTE_EVENT, read);
-    return () => window.removeEventListener(PALETTE_EVENT, read);
-  }, []);
 
   // Web Push no desktop do balcão: mesmo com a aba fechada, pedido de concierge chega.
   // Restrito aos cargos do canal interruptivo (hoje: recepção).
@@ -78,7 +67,6 @@ function AdminLayoutInner({ children, initialTheme }: { children: React.ReactNod
     <div
       className="aura-admin-root aura-shell"
       data-theme={theme}
-      data-palette={theme === "light" && palette === "cool" ? "cool" : undefined}
       data-impersonating={impersonating ? "true" : undefined}
     >
       <AuraMotionProvider>
