@@ -1,5 +1,8 @@
 "use client";
 
+import { PageShell, PageHeader, SkeletonList, useConfirm, Dialog } from "@/components/aura";
+import { toast } from "sonner";
+
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useProperty } from "@/context/PropertyContext";
@@ -25,6 +28,7 @@ import {
 export default function SurveysManagementPage() {
   const router = useRouter();
   const { currentProperty: property } = useProperty();
+  const confirm = useConfirm();
   
   // Estados das Pesquisas
   const [templates, setTemplates] = useState<SurveyTemplate[]>([]);
@@ -60,7 +64,7 @@ export default function SurveysManagementPage() {
     
     const success = await SurveyService.setDefaultTemplate(property.id, templateId);
     if (success) await fetchData(); 
-    else alert("Erro ao definir como padrão.");
+    else toast.error("Erro ao definir como padrão.");
     
     setActionLoading(null);
   };
@@ -68,16 +72,16 @@ export default function SurveysManagementPage() {
   const handleDelete = async (templateId: string, isDefault: boolean) => {
     if (!property?.id) return;
     if (isDefault) {
-      alert("Você não pode excluir a pesquisa padrão atual. Defina outra como padrão primeiro.");
+      toast.error("Você não pode excluir a pesquisa padrão atual. Defina outra como padrão primeiro.");
       return;
     }
-    if (!confirm("Tem certeza que deseja excluir esta pesquisa?")) return;
+    if (!(await confirm({ title: "Tem certeza que deseja excluir esta pesquisa?", confirmLabel: "Confirmar", tone: "danger" }))) return;
 
     setActionLoading(`delete-${templateId}`);
     const success = await SurveyService.deleteTemplate(property.id, templateId);
     
     if (success) setTemplates(templates.filter(t => t.id !== templateId));
-    else alert("Erro ao excluir pesquisa.");
+    else toast.error("Erro ao excluir pesquisa.");
     
     setActionLoading(null);
   };
@@ -103,26 +107,20 @@ export default function SurveysManagementPage() {
 
   const handleDeleteCategory = async (id: string) => {
     if (!property?.id) return;
-    if (!confirm("Tem certeza que deseja excluir esta categoria?")) return;
+    if (!(await confirm({ title: "Tem certeza que deseja excluir esta categoria?", confirmLabel: "Confirmar", tone: "danger" }))) return;
 
     const success = await SurveyService.deleteCategory(property.id, id);
     if (success) setCategories(categories.filter(c => c.id !== id));
   };
 
   return (
-    <div className="flex flex-col h-full bg-muted/20 pb-20">
+    <PageShell>
       {/* Topbar */}
-      <header className="flex items-center justify-between px-6 py-5 bg-background border-b sticky top-0 z-10 shadow-sm">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Star className="w-6 h-6 text-primary" />
-            Pesquisas de Satisfação (NPS)
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Gerencie os formulários de feedback enviados aos hóspedes
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
+      <PageHeader
+        icon={Star}
+        title="Pesquisas de Satisfação (NPS)"
+        subtitle="Gerencie os formulários de feedback enviados aos hóspedes"
+        actions={(<><div className="flex items-center gap-3">
           <Button variant="outline" onClick={() => router.push('/admin/surveys/area-reviews')} className="gap-2 shadow-sm">
             <Star className="w-4 h-4" /> Avaliações de áreas
           </Button>
@@ -135,15 +133,12 @@ export default function SurveysManagementPage() {
           <Button onClick={() => router.push('/admin/surveys/curated/new')} className="gap-2 shadow-sm">
             <Plus className="w-4 h-4" /> Nova (moderna)
           </Button>
-        </div>
-      </header>
+        </div></>)}
+      />
 
-      <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
+      <div >
         {loading ? (
-          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-            <Loader2 className="w-8 h-8 animate-spin text-primary mb-4" />
-            <p>Carregando pesquisas...</p>
-          </div>
+          <SkeletonList rows={4} avatar={false} />
         ) : templates.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-96 bg-background border border-dashed rounded-2xl shadow-sm text-center p-6 animate-in fade-in">
             <div className="w-16 h-16 bg-primary/10 text-primary rounded-full flex items-center justify-center mb-4">
@@ -240,22 +235,12 @@ export default function SurveysManagementPage() {
             ))}
           </div>
         )}
-      </main>
+      </div>
 
       {/* MODAL DE GERENCIAMENTO DE CATEGORIAS */}
       {isCategoryModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-background rounded-xl p-6 w-full max-w-md shadow-xl flex flex-col max-h-[80vh]">
-            <div className="flex justify-between items-center mb-5 border-b pb-3">
-              <h2 className="text-lg font-bold text-foreground">Categorias (Métricas)</h2>
-              <Button variant="ghost" size="icon" onClick={() => {
-                setIsCategoryModalOpen(false);
-                setEditingCategoryId(null);
-                setCategoryInput("");
-              }}>
-                <X className="w-5 h-5" />
-              </Button>
-            </div>
+        <Dialog open onClose={() => { setIsCategoryModalOpen(false); setEditingCategoryId(null); setCategoryInput(""); }} presentation="auto" size="sm" title="Categorias (Métricas)">
+          <div>
 
             <div className="flex-1 overflow-y-auto pr-2 space-y-2 mb-6">
               {categories.map(cat => (
@@ -290,8 +275,8 @@ export default function SurveysManagementPage() {
               </Button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
-    </div>
+    </PageShell>
   );
 }

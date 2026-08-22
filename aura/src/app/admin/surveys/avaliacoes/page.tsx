@@ -4,6 +4,9 @@
 // O painel (/admin/surveys/responses) resume; aqui se trabalha os dados linha a linha.
 "use client";
 
+import { PageShell, PageHeader, SkeletonList, useConfirm, Dialog } from "@/components/aura";
+import { toast } from "sonner";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useProperty } from "@/context/PropertyContext";
@@ -75,6 +78,7 @@ const dayEnd = (v: string) => { const d = new Date(`${v}T23:59:59.999`); return 
 function ReviewsExplorer() {
     const router = useRouter();
     const { currentProperty: property } = useProperty();
+  const confirm = useConfirm();
     const { isSuperAdmin } = useAuth();
 
     const [responses, setResponses] = useState<SurveyResponseWithStay[]>([]);
@@ -230,7 +234,7 @@ function ReviewsExplorer() {
             setAreaReviews(rs => rs.map(a => (a.id === row.area!.id ? { ...a, status } : a)));
             setSelected(s => (s && s.id === row.id ? { ...s, status } : s));
         } catch {
-            alert("Falha ao moderar a avaliação.");
+            toast.error("Falha ao moderar a avaliação.");
         } finally {
             setBusyId(null);
         }
@@ -238,7 +242,7 @@ function ReviewsExplorer() {
 
     const removeSurvey = async (row: Row) => {
         if (!row.survey) return;
-        if (!confirm("Excluir esta avaliação? Isso libera a estadia para responder de novo.")) return;
+        if (!(await confirm({ title: "Excluir esta avaliação?", description: "Isso libera a estadia para responder de novo.", confirmLabel: "Confirmar", tone: "danger" }))) return;
         setBusyId(row.id);
         try {
             const res = await fetch(`/api/admin/survey-responses?id=${row.survey.id}`, { method: "DELETE" });
@@ -246,7 +250,7 @@ function ReviewsExplorer() {
             setResponses(rs => rs.filter(r => r.id !== row.survey!.id));
             setSelected(s => (s && s.id === row.id ? null : s));
         } catch {
-            alert("Falha ao excluir a avaliação.");
+            toast.error("Falha ao excluir a avaliação.");
         } finally {
             setBusyId(null);
         }
@@ -282,21 +286,18 @@ function ReviewsExplorer() {
     );
 
     return (
-        <div className="flex flex-col h-full bg-muted/20 overflow-y-auto custom-scrollbar pb-20">
-            <header className="px-6 py-5 bg-background border-b sticky top-0 z-20 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                    <Button variant="ghost" size="icon" onClick={() => router.push("/admin/surveys/responses")}><ArrowLeft className="w-5 h-5" /></Button>
-                    <div>
-                        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><Star className="w-6 h-6 text-primary" /> Todas as avaliações</h1>
-                        <p className="text-sm text-muted-foreground mt-1">Pesquisas de check-out e avaliações de área — filtre, ordene e exporte.</p>
-                    </div>
-                </div>
-                <Button variant="outline" className="gap-2 shadow-sm" onClick={exportCsv} disabled={!filtered.length}>
+        <PageShell>
+            <PageHeader
+              icon={Star}
+              title="Todas as avaliações"
+              subtitle="Pesquisas de check-out e avaliações de área — filtre, ordene e exporte."
+              back={{ onClick: () => router.push("/admin/surveys/responses") }}
+              actions={(<><Button variant="outline" className="gap-2 shadow-sm" onClick={exportCsv} disabled={!filtered.length}>
                     <Download className="w-4 h-4" /> Exportar CSV ({filtered.length})
-                </Button>
-            </header>
+                </Button></>)}
+            />
 
-            <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-5">
+            <div className="space-y-5">
                 {/* Filtros */}
                 <section className="bg-background border rounded-2xl p-5 shadow-sm space-y-4">
                     <div className="flex items-center justify-between gap-3">
@@ -422,7 +423,7 @@ function ReviewsExplorer() {
 
                 {/* Lista */}
                 {loading ? (
-                    <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
+                    <SkeletonList rows={4} avatar={false} />
                 ) : filtered.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 bg-background border border-dashed rounded-2xl text-center">
                         <Inbox className="w-10 h-10 text-muted-foreground/40 mb-3" />
@@ -500,29 +501,17 @@ function ReviewsExplorer() {
                         ))}
                     </div>
                 )}
-            </main>
+            </div>
 
             {/* Ficha */}
             {selected && (
-                <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-                    <div className="bg-background rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl border overflow-hidden">
-                        <div className="flex justify-between items-start p-6 bg-muted/30 border-b gap-3">
-                            <div className="min-w-0">
-                                <h2 className="text-lg font-black text-foreground truncate">{selected.origin}</h2>
-                                <p className="text-sm text-muted-foreground">
-                                    {KIND_LABEL[selected.kind]} · {selected.kind === "survey" ? "saída" : "avaliada"} {selected.dateLabel || "—"}
-                                    {selected.guestName ? ` · ${selected.guestName}` : ""}
-                                </p>
-                                {selected.survey?.checkIn && selected.survey?.checkOut && (
+                <Dialog open onClose={() => setSelected(null)} presentation="auto" size="lg" title={<>{selected.origin}</>} subtitle={<>{KIND_LABEL[selected.kind]} · {selected.kind === "survey" ? "saída" : "avaliada"} {selected.dateLabel || "—"}
+                                    {selected.guestName ? ` · ${selected.guestName}` : ""}{selected.survey?.checkIn && selected.survey?.checkOut && (
                                     <p className="text-xs text-muted-foreground mt-0.5">
                                         Estadia {fmtDate(selected.survey.checkIn as string)} → {fmtDate(selected.survey.checkOut as string)}
                                     </p>
-                                )}
-                            </div>
-                            <Button variant="ghost" size="icon" onClick={() => setSelected(null)} className="rounded-full hover:bg-muted shrink-0"><X className="w-5 h-5" /></Button>
-                        </div>
-
-                        <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
+                                )}</>}>
+                    <div className="space-y-6">
                             <div className="grid grid-cols-3 gap-3">
                                 <div className="bg-muted/50 rounded-xl p-4 text-center">
                                     <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Impressão</p>
@@ -605,10 +594,9 @@ function ReviewsExplorer() {
                                 <Button onClick={() => setSelected(null)} className="h-9 px-6">Fechar</Button>
                             </div>
                         </div>
-                    </div>
-                </div>
+                </Dialog>
             )}
-        </div>
+        </PageShell>
     );
 }
 

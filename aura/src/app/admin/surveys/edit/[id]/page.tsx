@@ -1,5 +1,8 @@
 "use client";
 
+import { PageShell, PageHeader, SkeletonList, PageSkeleton, Dialog } from "@/components/aura";
+import { toast } from "sonner";
+
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useProperty } from "@/context/PropertyContext";
@@ -159,22 +162,21 @@ export default function EditSurveyTemplatePage() {
       title, title_en: titleEn || undefined, title_es: titleEs || undefined,
       isDefault, questions, reward
     });
-    if (result.success) router.push("/admin/surveys"); else { alert(result.error); setSaving(false); }
+    if (result.success) router.push("/admin/surveys"); else { toast.error(result.error); setSaving(false); }
   };
 
-  if (initialLoading) return <div className="flex h-full items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+  if (initialLoading) return <PageShell><PageSkeleton kpis={0} rows={5} /></PageShell>;
 
   return (
-    <div className="flex flex-col h-full bg-muted/20 pb-20 relative">
-      <header className="flex items-center justify-between px-6 py-4 bg-background border-b sticky top-0 z-10 shadow-sm">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.back()}><ArrowLeft className="w-5 h-5" /></Button>
-          <div><h1 className="text-xl font-bold tracking-tight text-foreground">Editar Pesquisa</h1><p className="text-sm text-muted-foreground">{title}</p></div>
-        </div>
-        <Button onClick={handleSave} disabled={saving} className="gap-2">{saving ? "Salvando..." : <><Save className="w-4 h-4" /> Atualizar</>}</Button>
-      </header>
+    <PageShell>
+      <PageHeader
+        title="Editar Pesquisa"
+        subtitle={<>{title}</>}
+        back={{ onClick: () => router.back() }}
+        actions={(<><Button onClick={handleSave} disabled={saving} className="gap-2">{saving ? "Salvando..." : <><Save className="w-4 h-4" /> Atualizar</>}</Button></>)}
+      />
 
-      <main className="flex-1 p-6 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold flex items-center gap-2"><ListOrdered className="w-5 h-5 text-primary" /> Perguntas</h2>
@@ -333,17 +335,16 @@ export default function EditSurveyTemplatePage() {
             )}
           </div>
         </div>
-      </main>
+      </div>
 
       {isQuickCreateModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-background rounded-xl p-6 w-full max-w-sm">
-            <div className="flex justify-between items-center mb-5 border-b pb-2"><h2 className="text-lg font-bold">Nova Categoria</h2><Button variant="ghost" size="icon" onClick={() => setIsQuickCreateModalOpen(false)}><X className="w-5 h-5" /></Button></div>
+        <Dialog open onClose={() => setIsQuickCreateModalOpen(false)} presentation="auto" size="sm" title="Nova Categoria">
+          <div>
             <input type="text" autoFocus className="flex h-10 w-full rounded-md border border-input px-3 py-2 text-sm mb-4" value={newCategoryName} onChange={(e) => setNewCategoryName(e.target.value)} placeholder="Nome..." />
             <Button onClick={handleQuickCreateCategory} disabled={!newCategoryName.trim()} className="w-full">Criar e Selecionar</Button>
           </div>
-        </div>
+        </Dialog>
       )}
-    </div>
+    </PageShell>
   );
 }

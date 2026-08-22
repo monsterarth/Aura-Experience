@@ -1,5 +1,7 @@
 "use client";
 
+import { PageShell, PageHeader, SkeletonList } from "@/components/aura";
+
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useProperty } from "@/context/PropertyContext";
@@ -91,18 +93,15 @@ export default function AreaReviewsModerationPage() {
     );
 
     return (
-        <div className="flex flex-col h-full bg-muted/20 pb-20">
-            <header className="flex items-center justify-between px-6 py-5 bg-background border-b sticky top-0 z-10 shadow-sm">
-                <div className="flex items-center gap-3">
-                    <Button variant="ghost" size="icon" onClick={() => router.push("/admin/surveys")}><ArrowLeft className="w-5 h-5" /></Button>
-                    <div>
-                        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><Star className="w-5 h-5 text-primary" />Avaliações de áreas</h1>
-                        <p className="text-sm text-muted-foreground mt-1">Modere as avaliações que os hóspedes deixam nas áreas do mapa.</p>
-                    </div>
-                </div>
-            </header>
+        <PageShell>
+            <PageHeader
+              icon={Star}
+              title="Avaliações de áreas"
+              subtitle="Modere as avaliações que os hóspedes deixam nas áreas do mapa."
+              back={{ onClick: () => router.push("/admin/surveys") }}
+            />
 
-            <main className="flex-1 p-6 max-w-4xl mx-auto w-full space-y-6">
+            <div className="space-y-6">
                 {/* Visibilidade pública */}
                 <div className="bg-background border rounded-xl p-5 shadow-sm flex items-center justify-between gap-4">
                     <div className="flex items-start gap-3">
@@ -122,7 +121,7 @@ export default function AreaReviewsModerationPage() {
                 </div>
 
                 {loading ? (
-                    <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
+                    <SkeletonList rows={4} avatar={false} />
                 ) : reviews.length === 0 ? (
                     <div className="text-center py-16 text-muted-foreground"><Star className="w-10 h-10 mx-auto mb-3 opacity-30" /><p>Nenhuma avaliação de área ainda.</p></div>
                 ) : (
@@ -141,7 +140,7 @@ export default function AreaReviewsModerationPage() {
                         )}
                     </>
                 )}
-            </main>
-        </div>
+            </div>
+        </PageShell>
     );
 }

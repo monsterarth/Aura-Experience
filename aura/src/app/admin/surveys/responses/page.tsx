@@ -1,6 +1,9 @@
 // src/app/admin/surveys/responses/page.tsx
 "use client";
 
+import { PageShell, PageHeader, useConfirm, Dialog } from "@/components/aura";
+import { toast } from "sonner";
+
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useProperty } from "@/context/PropertyContext";
@@ -28,6 +31,7 @@ const HL_GROUPS = [
 export default function SurveysDashboardPage() {
     const router = useRouter();
     const { currentProperty: property } = useProperty();
+  const confirm = useConfirm();
     const { isSuperAdmin } = useAuth();
 
     const [responses, setResponses] = useState<SurveyResponseWithStay[]>([]);
@@ -66,7 +70,7 @@ export default function SurveysDashboardPage() {
     }, [property?.id]);
 
     const handleDelete = async (id: string) => {
-        if (!confirm("Excluir esta avaliação? Isso libera a estadia para responder de novo.")) return;
+        if (!(await confirm({ title: "Excluir esta avaliação?", description: "Isso libera a estadia para responder de novo.", confirmLabel: "Confirmar", tone: "danger" }))) return;
         setDeletingId(id);
         try {
             const res = await fetch(`/api/admin/survey-responses?id=${id}`, { method: "DELETE" });
@@ -74,7 +78,7 @@ export default function SurveysDashboardPage() {
             setResponses(prev => prev.filter(r => r.id !== id));
             setSelected(prev => (prev?.id === id ? null : prev));
         } catch {
-            alert("Falha ao excluir a avaliação.");
+            toast.error("Falha ao excluir a avaliação.");
         } finally {
             setDeletingId(null);
         }
@@ -153,7 +157,7 @@ export default function SurveysDashboardPage() {
     }, [responses, areaReviews]);
 
     const handleAskAI = async () => {
-        if (!askStartDate || !askEndDate || !askPrompt.trim()) { alert("Preencha as datas e a pergunta."); return; }
+        if (!askStartDate || !askEndDate || !askPrompt.trim()) { toast.error("Preencha as datas e a pergunta."); return; }
         setAskLoading(true); setAskAnswer(null);
         const start = new Date(askStartDate); start.setHours(0, 0, 0, 0);
         const end = new Date(askEndDate); end.setHours(23, 59, 59, 999);
@@ -188,25 +192,22 @@ export default function SurveysDashboardPage() {
     const empty = !d && !area;
 
     return (
-        <div className="flex flex-col h-full bg-muted/20 pb-20 overflow-y-auto custom-scrollbar">
-            <header className="px-6 py-6 bg-background border-b sticky top-0 z-10 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-                        <TrendingUp className="w-6 h-6 text-primary" /> Indicadores de Experiência
-                    </h1>
-                    <p className="text-sm text-muted-foreground mt-1">Pesquisas de satisfação + avaliações de áreas, unificadas</p>
-                </div>
-                <div className="flex items-center gap-2">
+        <PageShell>
+            <PageHeader
+              icon={TrendingUp}
+              title="Indicadores de Experiência"
+              subtitle="Pesquisas de satisfação + avaliações de áreas, unificadas"
+              actions={(<><div className="flex items-center gap-2">
                     <Button className="gap-2 shadow-sm" onClick={() => router.push("/admin/surveys/avaliacoes")}>
                         <ListFilter className="w-4 h-4" /> Todas as avaliações
                     </Button>
                     <Button variant="outline" className="gap-2 shadow-sm" onClick={() => router.push("/admin/surveys/area-reviews")}>
                         <Settings2 className="w-4 h-4" /> Moderar áreas
                     </Button>
-                </div>
-            </header>
+                </div></>)}
+            />
 
-            <main className="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
+            <div className="space-y-6">
                 {empty ? (
                     <div className="flex flex-col items-center justify-center h-96 bg-background border border-dashed rounded-2xl shadow-sm text-center p-6">
                         <div className="w-16 h-16 bg-primary/10 text-primary rounded-full flex items-center justify-center mb-4"><Inbox className="w-8 h-8" /></div>
@@ -437,27 +438,17 @@ export default function SurveysDashboardPage() {
                         </div>
                     </>
                 )}
-            </main>
+            </div>
 
             {/* Modal de pesquisa */}
             {selected && (() => {
                 const rec = recommendOf(selected), ov = overallOf(selected), hls = splitHighlights(selected, polarity), comment = commentOf(selected);
                 const cats = selected.metrics?.categoryRatings ? Object.entries(selected.metrics.categoryRatings) : [];
                 return (
-                    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
-                        <div className="bg-background rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl border overflow-hidden">
-                            <div className="flex justify-between items-center p-6 bg-muted/30 border-b">
-                                <div>
-                                    <h2 className="text-lg font-black text-foreground">Ficha de avaliação</h2>
-                                    <p className="text-sm text-muted-foreground">
-                                        {selected.cabinName || "Cabana não informada"}
+                    <Dialog open onClose={() => setSelected(null)} presentation="auto" size="lg" title={<>Ficha de avaliação</>} subtitle={<>{selected.cabinName || "Cabana não informada"}
                                         {selected.checkIn && selected.checkOut ? ` · ${fmtDate(selected.checkIn as string)} → ${fmtDate(selected.checkOut as string)}` : ""}
-                                        {selected.guestName ? ` · ${selected.guestName}` : ""}
-                                    </p>
-                                </div>
-                                <Button variant="ghost" size="icon" onClick={() => setSelected(null)} className="rounded-full hover:bg-muted"><X className="w-5 h-5" /></Button>
-                            </div>
-                            <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
+                                        {selected.guestName ? ` · ${selected.guestName}` : ""}</>}>
+                        <div className="space-y-6">
                                 <div className="grid grid-cols-3 gap-3">
                                     <div className="bg-muted/50 rounded-xl p-4 text-center"><p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Impressão</p><span className="text-3xl">{ov > 0 ? FACES[ov] : "—"}</span></div>
                                     <div className="bg-muted/50 rounded-xl p-4 text-center"><p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Recomenda</p><span className={`text-sm font-black ${rec ? RECO[rec].text : "text-muted-foreground"}`}>{rec ? RECO[rec].label : "—"}</span></div>
@@ -490,10 +481,9 @@ export default function SurveysDashboardPage() {
                                     <Button onClick={() => setSelected(null)} className="h-9 px-6">Fechar</Button>
                                 </div>
                             </div>
-                        </div>
-                    </div>
+                    </Dialog>
                 );
             })()}
-        </div>
+        </PageShell>
     );
 }
