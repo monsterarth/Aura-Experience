@@ -1,0 +1,191 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Aura · tokens da identidade do admin (dark + claro)
+   Importado SÓ por src/app/admin/layout.tsx (entra apenas em /admin/*).
+   O objeto `T` em src/lib/admin-tokens.ts aponta para estas variáveis — páginas
+   e kit leem `var(--t-*)`; a paleta certa vem de `data-theme` no `.aura-admin-root`.
+   Regra: nunca concatenar alpha num token (`${T.green}18` quebra com var());
+   usar `alpha()` (color-mix) de src/lib/admin-tokens.ts.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.aura-admin-root {
+  /* superfícies / texto (dark = padrão) */
+  --t-bg: #141414;
+  --t-bg-2: #111111;
+  --t-card: #1c1c1c;
+  --t-drawer: #171717;
+  --t-elev: #222222;
+  --t-glass: rgba(255, 255, 255, 0.035);
+  --t-glass-2: rgba(255, 255, 255, 0.055);
+  --t-glass-3: rgba(255, 255, 255, 0.08);
+  --t-border: rgba(255, 255, 255, 0.07);
+  --t-border-2: rgba(255, 255, 255, 0.12);
+  --t-text: #eef0f8;
+  --t-muted: rgba(238, 240, 248, 0.5);
+  --t-muted-2: rgba(238, 240, 248, 0.28);
+  --t-overlay: rgba(0, 0, 0, 0.55);
+  --t-ring: rgba(155, 109, 255, 0.55);
+  /* marca — literal nos dois temas (fills/gradientes); brand-text é o roxo legível como texto */
+  --t-g1: #9b6dff;
+  --t-g2: #4ec9d4;
+  --t-brand-text: #9b6dff;
+  /* semânticos: cor · fundo .08 · borda .22 */
+  --t-green: #2dd4bf;   --t-green-bg: rgba(45, 212, 191, 0.08);   --t-green-border: rgba(45, 212, 191, 0.22);
+  --t-amber: #f59e0b;   --t-amber-bg: rgba(245, 158, 11, 0.08);   --t-amber-border: rgba(245, 158, 11, 0.22);
+  --t-blue: #60a5fa;    --t-blue-bg: rgba(96, 165, 250, 0.08);    --t-blue-border: rgba(96, 165, 250, 0.22);
+  --t-red: #f87171;     --t-red-bg: rgba(248, 113, 113, 0.08);    --t-red-border: rgba(248, 113, 113, 0.22);
+  --t-violet: #c084fc;  --t-violet-bg: rgba(192, 132, 252, 0.08); --t-violet-border: rgba(192, 132, 252, 0.22);
+  --t-rose: #fb7185;    --t-rose-bg: rgba(251, 113, 133, 0.08);   --t-rose-border: rgba(251, 113, 133, 0.22);
+  --t-emerald: #34d399; --t-emerald-bg: rgba(52, 211, 153, 0.12); --t-emerald-border: rgba(52, 211, 153, 0.25);
+  --t-orange: #fb923c;  --t-orange-bg: rgba(251, 146, 60, 0.1);   --t-orange-border: rgba(251, 146, 60, 0.25);
+
+  /* motion — durações / distâncias / curvas (ver plano: Emil 1º, Jakub 2º) */
+  --dur-1: 120ms;      /* micro: cor, press, troca de ícone */
+  --dur-2: 180ms;      /* padrão: entrada de conteúdo, chips, tabs */
+  --dur-3: 260ms;      /* superfícies grandes: sheet/drawer entrando */
+  --dur-exit: 140ms;   /* saídas sempre mais curtas que entradas */
+  --dist-y: 8px;
+  --dist-x: 24px;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-std: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* camadas */
+  --z-topbar: 30;
+  --z-tabbar: 35;
+  --z-sidebar: 40;
+  --z-overlay: 60;
+  --z-toast: 80;
+  --z-impersonate: 90;
+
+  /* layout do shell */
+  --page-pad: 16px;
+  --topbar-h: calc(48px + env(safe-area-inset-top, 0px));
+  --tabbar-h: calc(56px + env(safe-area-inset-bottom, 0px));
+
+  color-scheme: dark;
+  font-family: var(--font-dm-sans), "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-optical-sizing: auto;
+}
+
+@media (min-width: 768px) {
+  .aura-admin-root { --page-pad: 24px; }
+}
+@media (min-width: 1024px) {
+  .aura-admin-root { --page-pad: 32px; --tabbar-h: 0px; }
+}
+
+/* ── Tema claro (padrão quente/areia — continuidade com o claro atual) ── */
+.aura-admin-root[data-theme="light"] {
+  --t-bg: #ede9e4;
+  --t-bg-2: #e4dfd8;
+  --t-card: #ffffff;
+  --t-drawer: #f8f6f3;
+  --t-elev: #ffffff;
+  --t-glass: rgba(30, 37, 48, 0.04);
+  --t-glass-2: rgba(30, 37, 48, 0.07);
+  --t-glass-3: rgba(30, 37, 48, 0.11);
+  --t-border: rgba(30, 37, 48, 0.1);
+  --t-border-2: rgba(30, 37, 48, 0.17);
+  --t-text: #1e2530;
+  --t-muted: rgba(30, 37, 48, 0.6);
+  --t-muted-2: rgba(30, 37, 48, 0.4);
+  --t-overlay: rgba(30, 37, 48, 0.4);
+  --t-ring: rgba(122, 78, 230, 0.45);
+  --t-brand-text: #7a4ee6;
+  /* semânticos mais escuros: todos ≥ 4.7:1 sobre branco */
+  --t-green: #0f766e;   --t-green-bg: rgba(15, 118, 110, 0.1);   --t-green-border: rgba(15, 118, 110, 0.26);
+  --t-amber: #b45309;   --t-amber-bg: rgba(180, 83, 9, 0.1);     --t-amber-border: rgba(180, 83, 9, 0.26);
+  --t-blue: #2563eb;    --t-blue-bg: rgba(37, 99, 235, 0.1);     --t-blue-border: rgba(37, 99, 235, 0.26);
+  --t-red: #dc2626;     --t-red-bg: rgba(220, 38, 38, 0.1);      --t-red-border: rgba(220, 38, 38, 0.26);
+  --t-violet: #7c3aed;  --t-violet-bg: rgba(124, 58, 237, 0.1);  --t-violet-border: rgba(124, 58, 237, 0.26);
+  --t-rose: #e11d48;    --t-rose-bg: rgba(225, 29, 72, 0.1);     --t-rose-border: rgba(225, 29, 72, 0.26);
+  --t-emerald: #047857; --t-emerald-bg: rgba(4, 120, 87, 0.1);   --t-emerald-border: rgba(4, 120, 87, 0.26);
+  --t-orange: #c2410c;  --t-orange-bg: rgba(194, 65, 12, 0.1);   --t-orange-border: rgba(194, 65, 12, 0.26);
+  color-scheme: light;
+}
+
+/* Alternativa fria — só para comparar no piloto (toggle temporário); uma das duas será fixada. */
+.aura-admin-root[data-theme="light"][data-palette="cool"] {
+  --t-bg: #f4f5f7;
+  --t-bg-2: #eceef2;
+  --t-drawer: #f9fafb;
+  --t-glass: rgba(15, 23, 42, 0.04);
+  --t-glass-2: rgba(15, 23, 42, 0.07);
+  --t-glass-3: rgba(15, 23, 42, 0.11);
+  --t-border: rgba(15, 23, 42, 0.1);
+  --t-border-2: rgba(15, 23, 42, 0.17);
+  --t-text: #111827;
+  --t-muted: rgba(17, 24, 39, 0.6);
+  --t-muted-2: rgba(17, 24, 39, 0.4);
+  --t-overlay: rgba(17, 24, 39, 0.4);
+}
+
+/* ── Reduced motion: zera deslocamentos e durações de movimento; mantém --dur-1 (fade de cor) ── */
+@media (prefers-reduced-motion: reduce) {
+  .aura-admin-root {
+    --dur-2: 0ms;
+    --dur-3: 0ms;
+    --dur-exit: 0ms;
+    --dist-y: 0px;
+    --dist-x: 0px;
+  }
+}
+
+/* Scrollbar do admin segue o tema (a global é branca e sumia no claro). */
+.aura-admin-root ::-webkit-scrollbar-thumb { background: var(--t-border-2); }
+.aura-admin-root ::-webkit-scrollbar-thumb:hover { background: var(--t-muted-2); }
+
+/* ── Ponte shadcn: as classes genéricas (bg-card, text-muted-foreground, border-border,
+   .field-input, Button do shadcn…) passam a ler a MESMA paleta dos tokens T, sem
+   !important — declaração descendente vence a var herdada do <html> que o
+   PropertyContext injeta para o portal. Roxo no lugar do ciano antigo. ── */
+.aura-admin-root {
+  --background: 0 0% 8%;
+  --foreground: 228 42% 95%;
+  --card: 0 0% 11%;
+  --card-foreground: 228 42% 95%;
+  --popover: 0 0% 11%;
+  --popover-foreground: 228 42% 95%;
+  --primary: 258 100% 71%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 16%;
+  --secondary-foreground: 228 42% 95%;
+  --muted: 0 0% 16%;
+  --muted-foreground: 0 0% 60%;
+  --accent: 0 0% 18%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 0 0% 17%;
+  --input: 0 0% 19%;
+  --ring: 258 100% 71%;
+  --radius: 1rem;
+}
+.aura-admin-root[data-theme="light"] {
+  --background: 30 15% 92%;
+  --foreground: 216 23% 15%;
+  --card: 0 0% 100%;
+  --card-foreground: 216 23% 15%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 216 23% 15%;
+  --primary: 258 72% 60%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 30 10% 91%;
+  --secondary-foreground: 216 23% 15%;
+  --muted: 30 10% 91%;
+  --muted-foreground: 216 10% 42%;
+  --accent: 30 10% 89%;
+  --accent-foreground: 216 23% 15%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 216 12% 86%;
+  --input: 216 12% 84%;
+  --ring: 258 72% 60%;
+}
+.aura-admin-root[data-theme="light"][data-palette="cool"] {
+  --background: 220 14% 96%;
+  --secondary: 220 10% 92%;
+  --muted: 220 10% 92%;
+  --accent: 220 10% 90%;
+}

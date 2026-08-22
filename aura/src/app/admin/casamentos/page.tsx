@@ -9,7 +9,7 @@ import { RoleGuard } from "@/components/auth/RoleGuard";
 import { useConfigDeepLink } from "@/lib/settings-deeplink";
 import { toast } from "sonner";
 import { Heart, Shield, Clock, Sparkles, Search, Grid3X3, List, ChevronRight, Plus, Bed, Users, Loader2 } from "lucide-react";
-import { T, fmt, todayIso, daysUntil, nightsBetween, fmtMoney, STATUS_CFG, Pill, leadState, installmentSummary } from "./_components/lib";
+import { T, alpha, fmt, todayIso, daysUntil, nightsBetween, fmtMoney, STATUS_CFG, Pill, leadState, installmentSummary } from "./_components/lib";
 import { WeddingFormModal } from "./_components/WeddingFormModal";
 import { DetailDrawer } from "./_components/DetailDrawer";
 import { LeadSettingsModal } from "./_components/LeadSettingsModal";
@@ -382,7 +382,7 @@ function CasamentosPageInner() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-[10px] mb-[14px]">
         {kpis.map((k, i) => (
           <div key={i} style={{ background: T.card, border: `1px solid ${k.border}`, borderRadius: 14, padding: "14px 18px", display: "flex", alignItems: "center", gap: 12, animation: `wedding-fade-in .3s ease ${i * .07}s both`, position: "relative", overflow: "hidden" }}>
-            <div style={{ position: "absolute", top: -20, right: -20, width: 70, height: 70, borderRadius: "50%", background: `radial-gradient(circle,${k.color}18 0%,transparent 70%)`, pointerEvents: "none" }} />
+            <div style={{ position: "absolute", top: -20, right: -20, width: 70, height: 70, borderRadius: "50%", background: `radial-gradient(circle,${alpha(k.color, 10)} 0%,transparent 70%)`, pointerEvents: "none" }} />
             <div style={{ width: 36, height: 36, borderRadius: 10, background: k.bg, border: `1px solid ${k.border}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <k.icon size={16} color={k.color} />
             </div>

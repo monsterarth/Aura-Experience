@@ -8,38 +8,54 @@ Back-office. Each module is `src/app/admin/<module>/page.tsx`, a `"use client"` 
 - Identity/property: `useAuth()` (`userData`, `isAdmin`, `isSuperAdmin`) and `useProperty()`
   (`property`, `theme`).
 - Gate UI with `<RoleGuard allowedRoles={[...]}>` (`@/components/auth/RoleGuard`).
-- Forms: use the `.field-label` / `.field-input` utilities (defined in `globals.css`).
 - Realtime: `supabase.channel(...).on('postgres_changes', ...)` in a `useEffect`; tear down
   with `safeRemoveChannel` (both from `@/lib/supabase`).
-- Register the route in the nav: `src/components/admin/Sidebar.tsx` (`operacaoItems` or
-  `setupItems`).
+- Register the route in the nav: `src/components/admin/Sidebar.tsx` (`NAV_GROUPS` — one entry
+  per group; `PAINEL_CHILDREN` for the Painel dropdown). Mobile tab bar destinations per role
+  live in `ROLE_TABS` (`src/lib/role-routes.ts`).
 - Component-local types (props, form state) may live in the page file; shared/domain types go
   in `@/types/aura`.
 
-## Visual identity (MANDATORY for new pages)
+## Visual identity + kit (MANDATORY — revamp 08/2026)
 
-Every NEW admin page is born in the consolidated visual identity. Reference
-implementations: `concierge/page.tsx`, `casamentos/page.tsx` (+ the `T` token
-object in `casamentos/_components/lib.tsx`) and `hr/page.tsx`. Do NOT build
-these screens on the generic theme classes (`bg-card`/`text-muted-foreground`)
-as the primary language — they don't produce this look.
+Every admin page is built with the **Aura kit** (`src/components/aura`, barrel
+`import { … } from "@/components/aura"`) on the theme-aware tokens `T`
+(`src/lib/admin-tokens.ts` → `var(--t-*)`, palettes in `src/styles/aura-tokens.css`).
+Dark and light themes are both first-class: **never hardcode `#1c1c1c` / `rgba(255,255,255,…)`**
+— use `T.card`, `T.glass`, `T.border`, `T.text`, `T.muted`, semantic trios
+(`T.green/greenBg/greenBorder`…), `T.brandText` for purple text, `alpha(T.x, pct)` for tints
+(never `${hex}18` string math — breaks with var()). Brand gradient `T.grad` is literal.
 
-The language, in short:
-- Fixed dark surfaces: cards `#1c1c1c` (`T.card`), "glass" fills
-  `rgba(255,255,255,.035/.055/.08)`, hairline borders `rgba(255,255,255,.07/.13)`.
-- Brand gradient purple→teal (`#9b6dff → #4ec9d4`) for primary actions and
-  highlights (`T.grad`/`T.gradSoft`); semantic accents as color/bg`.08`/border`.22`
-  trios (green/amber/blue/red/violet/rose/orange).
-- Typography: 900-weight titles with negative letter-spacing; section labels
-  9–10px, weight 800, uppercase, wide letter-spacing; pills radius 999.
-- Radii 10–20px; KPI cards with icon tile + radial glow; `fade-in` entry
-  animations; hover via border-color/glass shifts.
-- Implemented with inline styles + a token object (the exemplar pattern).
+Reference pages: `stays` (pilot), then `hr`, `reception`, `concierge` as they migrate; legacy
+exemplars `casamentos`, `comercial/*`, `tarifario` are on T (inline styles) but predate the kit.
 
-The token object lives in `src/lib/admin-tokens.ts` (`T` — casamentos' lib
-re-exports it; the claude.ai/design "aura-design-system" mirrors it). The
-`/admin/comercial/*` pages are fully on this identity and are good copy
-sources alongside the exemplars. Restyling remaining OLD pages is a gradual
-effort — no rush, done page by page when touched; new pages start compliant.
+The recipe for every page (see the approved plan, "Receita por página"):
+1. Root in `<PageShell>`; no page-level padding/max-width (the shell frames with `--page-pad`).
+2. `<PageHeader title icon primaryAction={{ label, icon, onClick }} actions tabs>` — primary action
+   becomes a FAB on phones (list pages) or use `<BottomActionBar>` on detail/form pages.
+3. KPIs → `<KpiGrid cols><KpiCard …/></KpiGrid>` (the only stagger allowed on a page).
+4. Filters/search/tabs → `<Toolbar search filters chips>` + `<SearchInput>` + `<FilterChips>` +
+   `<SegmentedTabs>` (`useTabParam` for URL sync).
+5. Tables → `<DataList columns rows …>` (cards on phones, table on desktop — declare `mobile`
+   roles on columns); comparison matrices → `<ScrollMatrix>`; kanbans → one column at a time on
+   mobile (column chips).
+6. Modals/drawers/sheets → `<Dialog open onClose presentation="auto" size title footer>`
+   (sheet on phones for sm/md, fullscreen for lg/xl; modal or drawer (`side`) on desktop).
+   With forms: `useCloseGuard(onClose, { open, escape: false })` and `panelProps={guardProps}`.
+   Heavy modals → `next/dynamic` with `DialogSkeleton`.
+7. Loading → `<Loadable loading skeleton={<SkeletonList/>}>` / `Skeleton*` (never a full-area
+   spinner); buttons use `loading`; writes use `toast.promise`.
+8. Empty/error → `<EmptyState>` / `<ErrorState onRetry>`.
+9. Native `confirm/alert/prompt` are forbidden → `useConfirm()` / `usePrompt()` / `useAlert()`.
+10. Hover via CSS (`.ak-press`, `(hover:hover)`), not `onMouseEnter` style mutation.
+11. `dvh` not `vh`; no bare `grid-cols-N` without a responsive sibling; inputs ≥16px on phones
+    (kit `Field`/`Input` or `.field-input`); every tappable ≥44px; one overlay at a time.
+12. Verify at 390 / 768 / 1440, dark + light (cookie `aura-ui-theme`), `prefers-reduced-motion`,
+    keyboard (Tab / Esc), realtime in a second tab, `pnpm build`.
+
+Motion rules (Emil primary · Jakub secondary): ≤300ms, content enters once (`.ak-page`),
+exits subtler than enters, nothing animates on keyboard/high-frequency actions (tabs, filters,
+typing), no infinite pulses, no stagger outside KpiGrid, `prefers-reduced-motion` respected by
+the tokens. Kit motion uses `m.*` from `motion/react` under `AuraMotionProvider` (strict LazyMotion).
 
 Full module catalog: `../../../docs/MODULES.md`. Add-a-module recipe: root `CLAUDE.md`.

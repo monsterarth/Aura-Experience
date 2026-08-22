@@ -51,9 +51,10 @@ export function SettingsView({ userData, onRefresh }: Props) {
   const toggleTheme = async () => {
     const newTheme = isLight ? "dark" : "light";
     setSavingTheme(true);
+    document.querySelector(".aura-admin-root")?.setAttribute("data-theme", newTheme);
+    document.cookie = `aura-ui-theme=${newTheme}; path=/; max-age=31536000; SameSite=Lax`;
     try {
       await StaffService.updateStaff(userData.id, { uiTheme: newTheme });
-      document.cookie = `aura-ui-theme=${newTheme}; path=/; max-age=31536000; SameSite=Lax`;
       await onRefresh();
       router.refresh();
     } catch {

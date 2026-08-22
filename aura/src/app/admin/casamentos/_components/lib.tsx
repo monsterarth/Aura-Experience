@@ -7,8 +7,8 @@ import { Shield, Camera, Music, Mic, Flower2, Coffee, Star, Truck, Sun } from "l
 // ─── Design tokens ────────────────────────────────────────────────────────────
 // Promovidos a módulo compartilhado (identidade oficial do admin) — o objeto
 // continua exportado daqui para não quebrar os imports do módulo.
-import { T } from "@/lib/admin-tokens";
-export { T };
+import { T, alpha, tone } from "@/lib/admin-tokens";
+export { T, alpha, tone };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

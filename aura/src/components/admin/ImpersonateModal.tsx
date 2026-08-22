@@ -2,11 +2,17 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { X, Search, UserCircle2 } from "lucide-react";
+import { UserCircle2 } from "lucide-react";
+import Image from "next/image";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import { Staff, UserRole } from "@/types/aura";
-import Image from "next/image";
+import { T, alpha } from "@/lib/admin-tokens";
+import { Dialog } from "@/components/aura/Dialog";
+import { SearchInput } from "@/components/aura/SearchInput";
+import { SkeletonList } from "@/components/aura/Skeleton";
+import { EmptyState } from "@/components/aura/EmptyState";
+import { Pill } from "@/components/aura/Pill";
 
 // Cargos que existem apenas no mobile — mapeados para o app correspondente
 const ROLE_TO_MOBILE_APP: Partial<Record<UserRole, string>> = {
@@ -37,23 +43,25 @@ const ROLE_RANK: Record<UserRole, number> = {
 };
 
 const ROLE_META: Record<string, { label: string; color: string; badgeBg: string; badgeBorder: string }> = {
-  super_admin: { label: "Super Admin",      color: "#9b6dff", badgeBg: "rgba(155,109,255,0.12)", badgeBorder: "rgba(155,109,255,0.28)" },
-  admin:       { label: "Administrador",    color: "#4ec9d4", badgeBg: "rgba(78,201,212,0.12)",  badgeBorder: "rgba(78,201,212,0.28)"  },
-  hr:          { label: "Gestão",           color: "#60a5fa", badgeBg: "rgba(96,165,250,0.08)",  badgeBorder: "rgba(96,165,250,0.22)"  },
-  reception:   { label: "Recepção",         color: "#2dd4bf", badgeBg: "rgba(45,212,191,0.08)",  badgeBorder: "rgba(45,212,191,0.22)"  },
-  governance:  { label: "Governança",       color: "#c084fc", badgeBg: "rgba(192,132,252,0.08)", badgeBorder: "rgba(192,132,252,0.22)" },
-  kitchen:     { label: "Cozinha",          color: "#fb923c", badgeBg: "rgba(251,146,60,0.08)",  badgeBorder: "rgba(251,146,60,0.25)"  },
-  maintenance: { label: "Coord. Manutenção", color: "#f59e0b", badgeBg: "rgba(245,158,11,0.08)",  badgeBorder: "rgba(245,158,11,0.22)"  },
-  marketing:   { label: "Marketing",        color: "#a3e635", badgeBg: "rgba(163,230,53,0.08)",  badgeBorder: "rgba(163,230,53,0.22)"  },
-  maid:        { label: "Camareira",        color: "#4ec9d4", badgeBg: "rgba(78,201,212,0.08)",  badgeBorder: "rgba(78,201,212,0.22)"  },
-  technician:  { label: "Manutenção",        color: "#f59e0b", badgeBg: "rgba(245,158,11,0.08)",  badgeBorder: "rgba(245,158,11,0.22)"  },
-  waiter:      { label: "Garçom",           color: "#60a5fa", badgeBg: "rgba(96,165,250,0.08)",  badgeBorder: "rgba(96,165,250,0.22)"  },
-  porter:      { label: "Porter",           color: "#fb923c", badgeBg: "rgba(251,146,60,0.08)",  badgeBorder: "rgba(251,146,60,0.25)"  },
-  houseman:    { label: "Mensageiro",        color: "#fb923c", badgeBg: "rgba(251,146,60,0.08)",  badgeBorder: "rgba(251,146,60,0.25)"  },
+  super_admin: { label: "Super Admin",      color: T.brandText, badgeBg: "rgba(155,109,255,0.12)", badgeBorder: "rgba(155,109,255,0.28)" },
+  admin:       { label: "Administrador",    color: T.g2,        badgeBg: "rgba(78,201,212,0.12)",  badgeBorder: "rgba(78,201,212,0.28)"  },
+  hr:          { label: "Gestão",           color: T.blue,      badgeBg: T.blueBg,   badgeBorder: T.blueBorder   },
+  manager:     { label: "Gestão",           color: T.blue,      badgeBg: T.blueBg,   badgeBorder: T.blueBorder   },
+  reception:   { label: "Recepção",         color: T.green,     badgeBg: T.greenBg,  badgeBorder: T.greenBorder  },
+  governance:  { label: "Governança",       color: T.violet,    badgeBg: T.violetBg, badgeBorder: T.violetBorder },
+  kitchen:     { label: "Cozinha",          color: T.orange,    badgeBg: T.orangeBg, badgeBorder: T.orangeBorder },
+  maintenance: { label: "Coord. Manutenção", color: T.amber,    badgeBg: T.amberBg,  badgeBorder: T.amberBorder  },
+  marketing:   { label: "Marketing",        color: T.emerald,   badgeBg: T.emeraldBg, badgeBorder: T.emeraldBorder },
+  compras:     { label: "Compras",          color: T.emerald,   badgeBg: T.emeraldBg, badgeBorder: T.emeraldBorder },
+  maid:        { label: "Camareira",        color: T.g2,        badgeBg: "rgba(78,201,212,0.08)",  badgeBorder: "rgba(78,201,212,0.22)"  },
+  technician:  { label: "Manutenção",       color: T.amber,     badgeBg: T.amberBg,  badgeBorder: T.amberBorder  },
+  waiter:      { label: "Garçom",           color: T.blue,      badgeBg: T.blueBg,   badgeBorder: T.blueBorder   },
+  porter:      { label: "Porter",           color: T.orange,    badgeBg: T.orangeBg, badgeBorder: T.orangeBorder },
+  houseman:    { label: "Mensageiro",       color: T.orange,    badgeBg: T.orangeBg, badgeBorder: T.orangeBorder },
 };
 
 function getRoleMeta(role: string) {
-  return ROLE_META[role] ?? { label: role, color: "#4ec9d4", badgeBg: "rgba(78,201,212,0.08)", badgeBorder: "rgba(78,201,212,0.22)" };
+  return ROLE_META[role] ?? { label: role, color: T.g2, badgeBg: "rgba(78,201,212,0.08)", badgeBorder: "rgba(78,201,212,0.22)" };
 }
 
 interface Props {
@@ -62,7 +70,7 @@ interface Props {
 }
 
 export function ImpersonateModal({ open, onClose }: Props) {
-  const { userData, startImpersonation, impersonating } = useAuth();
+  const { userData, startImpersonation } = useAuth();
   const { currentProperty: property } = useProperty();
   const router = useRouter();
 
@@ -90,8 +98,6 @@ export function ImpersonateModal({ open, onClose }: Props) {
     }
   }, [open, fetchStaff]);
 
-  if (!open) return null;
-
   const myRank = ROLE_RANK[userData?.role as UserRole] ?? 0;
 
   const filtered = staffList.filter(s => {
@@ -116,155 +122,60 @@ export function ImpersonateModal({ open, onClose }: Props) {
   }
 
   return (
-    <div
-      style={{
-        position: "fixed", inset: 0, zIndex: 9000,
-        background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-      }}
-      onClick={onClose}
+    <Dialog
+      open={open}
+      onClose={onClose}
+      presentation="auto"
+      size="sm"
+      title="Impersonar funcionário"
+      subtitle="Você verá a interface como o funcionário vê; nada afeta dados reais."
+      icon={UserCircle2}
+      iconTone="violet"
+      bodyPad={12}
     >
-      <div
-        style={{
-          background: "#181818", border: "1px solid rgba(255,255,255,0.1)",
-          borderRadius: 18, width: 420, maxHeight: "80vh",
-          display: "flex", flexDirection: "column",
-          boxShadow: "0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.05)",
-        }}
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "18px 20px 14px",
-          borderBottom: "1px solid rgba(255,255,255,0.07)",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <UserCircle2 size={18} color="#c084fc" />
-            <span style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>
-              Impersonar funcionário
-            </span>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: "none", border: "none", cursor: "pointer",
-              color: "rgba(255,255,255,0.4)", padding: 4, borderRadius: 8,
-              display: "flex", transition: "color .15s",
-            }}
-            onMouseEnter={e => (e.currentTarget.style.color = "#fff")}
-            onMouseLeave={e => (e.currentTarget.style.color = "rgba(255,255,255,0.4)")}
-          >
-            <X size={17} />
-          </button>
-        </div>
-
-        {/* Aviso */}
-        <div style={{
-          margin: "12px 16px 0",
-          padding: "8px 12px",
-          background: "rgba(192,132,252,0.07)",
-          border: "1px solid rgba(192,132,252,0.2)",
-          borderRadius: 10,
-          color: "rgba(192,132,252,0.85)",
-          fontSize: 12,
-          lineHeight: 1.5,
-        }}>
-          Você verá a interface exatamente como o funcionário vê. Nenhuma ação afetará dados reais.
-        </div>
-
-        {/* Search */}
-        <div style={{ padding: "12px 16px 8px", position: "relative" }}>
-          <Search size={14} color="rgba(255,255,255,0.3)" style={{ position: "absolute", left: 28, top: "50%", transform: "translateY(-50%)" }} />
-          <input
-            autoFocus
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar por nome ou cargo..."
-            style={{
-              width: "100%", boxSizing: "border-box",
-              background: "rgba(255,255,255,0.05)",
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: 10, padding: "9px 12px 9px 34px",
-              color: "#fff", fontSize: 13, fontFamily: "inherit",
-              outline: "none",
-            }}
-          />
-        </div>
-
-        {/* List */}
-        <div style={{ overflowY: "auto", flex: 1, padding: "4px 8px 12px" }}>
-          {loading ? (
-            <div style={{ textAlign: "center", padding: 32, color: "rgba(255,255,255,0.3)", fontSize: 13 }}>
-              Carregando...
-            </div>
-          ) : filtered.length === 0 ? (
-            <div style={{ textAlign: "center", padding: 32, color: "rgba(255,255,255,0.3)", fontSize: 13 }}>
-              Nenhum funcionário encontrado.
-            </div>
-          ) : (
-            filtered.map(staff => {
-              const meta = getRoleMeta(staff.role);
-              const isMobile = !!ROLE_TO_MOBILE_APP[staff.role as UserRole];
-              return (
-                <button
-                  key={staff.id}
-                  onClick={() => handleSelect(staff)}
-                  style={{
-                    width: "100%", display: "flex", alignItems: "center", gap: 12,
-                    padding: "10px 12px", borderRadius: 12, cursor: "pointer",
-                    background: "none", border: "none", fontFamily: "inherit",
-                    transition: "background .12s", textAlign: "left",
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.05)")}
-                  onMouseLeave={e => (e.currentTarget.style.background = "none")}
-                >
-                  {/* Avatar */}
-                  <div style={{
-                    width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
-                    background: "rgba(255,255,255,0.07)",
-                    border: `2px solid ${meta.color}44`,
-                    overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center",
-                  }}>
-                    {staff.profilePictureUrl ? (
-                      <Image src={staff.profilePictureUrl} alt={staff.fullName} width={38} height={38} style={{ objectFit: "cover" }} />
-                    ) : (
-                      <span style={{ color: meta.color, fontWeight: 700, fontSize: 14 }}>
-                        {staff.fullName.charAt(0).toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ color: "#fff", fontWeight: 600, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {staff.fullName}
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 3 }}>
-                      <span style={{
-                        fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 99,
-                        color: meta.color, background: meta.badgeBg, border: `1px solid ${meta.badgeBorder}`,
-                        letterSpacing: ".02em",
-                      }}>
-                        {meta.label}
-                      </span>
-                      {isMobile && (
-                        <span style={{
-                          fontSize: 10, fontWeight: 600, padding: "2px 6px", borderRadius: 99,
-                          color: "rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.06)",
-                          border: "1px solid rgba(255,255,255,0.1)",
-                        }}>
-                          Mobile
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </button>
-              );
-            })
-          )}
-        </div>
+      <div style={{ marginBottom: 10 }}>
+        <SearchInput value={search} onChange={setSearch} placeholder="Buscar por nome ou cargo…" fullWidth autoFocus />
       </div>
-    </div>
+      {loading ? (
+        <SkeletonList rows={5} card={false} />
+      ) : filtered.length === 0 ? (
+        <EmptyState compact title="Nenhum funcionário encontrado" description={search ? "Tente outro nome ou cargo." : undefined} />
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {filtered.map(staff => {
+            const meta = getRoleMeta(staff.role);
+            const isMobileRole = !!ROLE_TO_MOBILE_APP[staff.role as UserRole];
+            return (
+              <button
+                key={staff.id}
+                type="button"
+                onClick={() => handleSelect(staff)}
+                className="ak-press ak-focus ak-menu__item"
+                style={{ padding: "10px 12px", borderRadius: 12, gap: 12, minHeight: 52 }}
+              >
+                <span style={{
+                  width: 38, height: 38, borderRadius: "50%", flexShrink: 0,
+                  background: T.glass2, border: `2px solid ${alpha(meta.color, 30)}`,
+                  overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {staff.profilePictureUrl ? (
+                    <Image src={staff.profilePictureUrl} alt={staff.fullName} width={38} height={38} style={{ objectFit: "cover" }} />
+                  ) : (
+                    <span style={{ color: meta.color, fontWeight: 800, fontSize: 14 }}>{staff.fullName.charAt(0).toUpperCase()}</span>
+                  )}
+                </span>
+                <span style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+                  <span style={{ color: T.text, fontWeight: 700, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{staff.fullName}</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <Pill size="md" color={meta.color} bg={meta.badgeBg} border={meta.badgeBorder} label={meta.label} />
+                    {isMobileRole && <Pill size="md" tone="neutral" label="Mobile" />}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </Dialog>
   );
 }

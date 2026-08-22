@@ -9,6 +9,9 @@ import { ChevronRight, Search, X, Menu, Settings2 } from "lucide-react";
 import { NotificationCenter } from "@/components/admin/NotificationCenter";
 import { filterDomains } from "@/app/admin/configuracoes/_lib/catalog";
 import { UserRole } from "@/types/aura";
+import { T } from "@/lib/admin-tokens";
+import { IconButton } from "@/components/aura/Button";
+import { Dialog } from "@/components/aura/Dialog";
 
 // ─── Route label map ──────────────────────────────────────────────────────────
 const ROUTE_LABELS: Record<string, string> = {
@@ -47,6 +50,26 @@ const ROUTE_LABELS: Record<string, string> = {
   "logs":             "Logs",
   "contacts":         "Contatos",
   "houseman":         "Mensageiro",
+  "hr":               "Painel",
+  "estoque":          "Estoque",
+  "produtos":         "Produtos",
+  "movimentacoes":    "Movimentações",
+  "historico":        "Histórico",
+  "compras":          "Compras",
+  "fornecedores":     "Fornecedores",
+  "inventario":       "Inventário",
+  "perdas":           "Perdas",
+  "relatorios":       "Relatórios",
+  "patrimonio":       "Patrimônio",
+  "casamentos":       "Casamentos",
+  "comercial":        "Comercial",
+  "reservas":         "Pipeline",
+  "tarifario":        "Tarifário",
+  "configuracoes":    "Configurações",
+  "perfil":           "Perfil",
+  "estruturas":       "Estruturas",
+  "changelog":        "Changelog",
+  "marketing":        "Marketing",
 };
 
 function isUuid(s: string) {
@@ -59,15 +82,15 @@ function segmentLabel(seg: string): string {
 }
 
 // ─── Breadcrumb ───────────────────────────────────────────────────────────────
+// No celular só o último nível aparece (os anteriores e o nome da propriedade
+// somem via CSS) — antes 4 níveis estouravam 375px e empurravam o sino.
 function Breadcrumb() {
   const pathname = usePathname();
   const { currentProperty: property } = useProperty();
 
-  // Strip /admin prefix, split into segments
   const stripped = pathname.replace(/^\/admin\/?/, "");
   const segments = stripped ? stripped.split("/") : [];
 
-  // Build cumulative href list
   const crumbs: { label: string; href: string }[] = [];
   let acc = "/admin";
   for (const seg of segments) {
@@ -79,32 +102,20 @@ function Breadcrumb() {
 
   return (
     <div className="flex items-center gap-1 text-sm min-w-0 flex-1">
-      {/* Property root */}
-      <span
-        className="font-semibold shrink-0"
-        style={{ color: "var(--foreground)" }}
-      >
+      <span className="font-semibold shrink-0 hidden sm:inline" style={{ color: T.text }}>
         {propertyName}
       </span>
-
       {crumbs.map((crumb, i) => {
         const isLast = i === crumbs.length - 1;
         return (
           <React.Fragment key={crumb.href}>
-            <ChevronRight size={13} style={{ color: "var(--muted-foreground)", opacity: 0.4, flexShrink: 0 }} />
+            <ChevronRight size={13} className={isLast ? "hidden sm:block" : "hidden sm:block"} style={{ color: T.muted2, flexShrink: 0 }} />
             {isLast ? (
-              <span
-                className="truncate font-medium"
-                style={{ color: "var(--muted-foreground)" }}
-              >
+              <span className="truncate font-semibold" style={{ color: isLast && crumbs.length === 1 ? T.text : T.muted }}>
                 {crumb.label}
               </span>
             ) : (
-              <Link
-                href={crumb.href}
-                className="shrink-0 font-medium"
-                style={{ color: "var(--muted-foreground)", opacity: 0.7 }}
-              >
+              <Link href={crumb.href} className="shrink-0 font-medium hidden sm:inline" style={{ color: T.muted2 }}>
                 {crumb.label}
               </Link>
             )}
@@ -117,19 +128,14 @@ function Breadcrumb() {
 
 // ─── Search box ───────────────────────────────────────────────────────────────
 //
-// A busca casava o texto digitado só contra o RÓTULO de 27 rotas fixas. Quem
-// procurava "prazo", "frete" ou "chave do WhatsApp" não achava nada — o rótulo
-// da página nunca contém a palavra que a pessoa tem na cabeça.
-//
-// Agora ela busca em duas fontes: as PÁGINAS (com sinônimos) e o CATÁLOGO DE
-// CONFIGURAÇÕES, que já carrega palavras-chave e o caminho até o controle. Assim
-// "prazo" cai em "Prazos de casamento · Casamentos › Prazos", e não em nada.
+// Busca em duas fontes: as PÁGINAS (com sinônimos) e o CATÁLOGO DE CONFIGURAÇÕES
+// (palavras-chave + caminho até o controle). "prazo" cai em "Prazos de casamento ·
+// Casamentos › Prazos". `inline` = versão do sheet do celular (lista embaixo,
+// largura total) em vez do dropdown absoluto do desktop.
 interface SearchItem {
   label: string;
   href: string;
-  /** Sinônimos e o nome que a pessoa usaria falando, não o nome da tela. */
   keywords?: string[];
-  /** Linha de baixo do resultado: onde aquilo mora. */
   context?: string;
 }
 
@@ -167,7 +173,7 @@ const SEARCH_ROUTES: SearchItem[] = [
   { label: "Logs de Auditoria", href: "/admin/logs", keywords: ["log", "auditoria", "histórico", "quem fez"] },
   { label: "Configurações",     href: "/admin/configuracoes", keywords: ["configuração", "ajuste", "setup", "parâmetro"] },
   { label: "Propriedades",      href: "/admin/core/properties", keywords: ["propriedade", "pousada", "workspace"] },
-  { label: "RH / Dashboard",    href: "/admin/hr", keywords: ["rh", "gerência", "pessoas"] },
+  { label: "RH / Dashboard",    href: "/admin/hr", keywords: ["rh", "gerência", "pessoas", "painel"] },
 ];
 
 /** Todo termo digitado precisa aparecer em algum campo: "prazo casamento" acha, "prazo pizza" não. */
@@ -176,7 +182,7 @@ function matchesQuery(item: SearchItem, query: string): boolean {
   return query.toLowerCase().split(/\s+/).filter(Boolean).every(t => haystack.includes(t));
 }
 
-function SearchBox() {
+function SearchBox({ inline = false, onNavigate }: { inline?: boolean; onNavigate?: () => void }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [cursor, setCursor] = useState(0);
@@ -186,8 +192,6 @@ function SearchBox() {
   const { userData } = useAuth();
   const { currentProperty } = useProperty();
 
-  // Configurações entram na busca com as mesmas palavras-chave do hub, já
-  // filtradas por cargo e por módulo ligado.
   const settingsItems: SearchItem[] = useMemo(() => {
     if (!userData) return [];
     return filterDomains({
@@ -211,18 +215,17 @@ function SearchBox() {
 
   useEffect(() => { setCursor(0); }, [query]);
 
-  // Close on outside click
+  // Fecha ao clicar fora (só no dropdown do desktop)
   useEffect(() => {
+    if (inline) return;
     const handler = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, []);
+  }, [inline]);
 
-  // Cmd/Ctrl+K abre; setas e Enter percorrem — sem isso o ⌘K obriga a pegar o mouse.
+  // Cmd/Ctrl+K abre; setas e Enter percorrem.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -231,118 +234,99 @@ function SearchBox() {
         setOpen(true);
         return;
       }
-      if (e.key === "Escape") { setOpen(false); return; }
-      if (!open || results.length === 0) return;
+      if (e.key === "Escape" && !inline) { setOpen(false); return; }
+      if ((!open && !inline) || results.length === 0) return;
       if (e.key === "ArrowDown") { e.preventDefault(); setCursor(c => (c + 1) % results.length); }
       if (e.key === "ArrowUp") { e.preventDefault(); setCursor(c => (c - 1 + results.length) % results.length); }
-      if (e.key === "Enter") { e.preventDefault(); navigate(results[cursor].href); }
+      if (e.key === "Enter" && document.activeElement === inputRef.current) { e.preventDefault(); navigate(results[cursor].href); }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, results, cursor]);
+  }, [open, results, cursor, inline]);
+
+  useEffect(() => { if (inline) inputRef.current?.focus(); }, [inline]);
 
   const navigate = (href: string) => {
     router.push(href);
     setQuery("");
     setOpen(false);
+    onNavigate?.();
   };
 
+  const list = (
+    <>
+      {results.map((r, i) => (
+        <button
+          key={r.href + i}
+          onClick={() => navigate(r.href)}
+          onMouseEnter={() => setCursor(i)}
+          className="ak-press"
+          style={{
+            display: "flex", alignItems: "flex-start", gap: 10, width: "100%",
+            padding: inline ? "12px 14px" : "9px 14px",
+            background: i === cursor ? T.glass2 : "none",
+            border: "none", cursor: "pointer", textAlign: "left",
+            color: T.text, fontSize: inline ? 14 : 12, fontFamily: "inherit", fontWeight: 500,
+            borderRadius: inline ? 10 : 0,
+          }}
+        >
+          {r.context
+            ? <Settings2 size={13} style={{ color: T.muted, flexShrink: 0, marginTop: 2 }} />
+            : <ChevronRight size={13} style={{ color: T.muted, flexShrink: 0, marginTop: 2 }} />}
+          <span style={{ minWidth: 0 }}>
+            {r.label}
+            {r.context && (
+              <span style={{ display: "block", fontSize: inline ? 12 : 10, fontWeight: 400, color: T.muted, marginTop: 1 }}>
+                {r.context}
+              </span>
+            )}
+          </span>
+        </button>
+      ))}
+    </>
+  );
+
   return (
-    <div ref={wrapRef} style={{ position: "relative" }}>
+    <div ref={wrapRef} style={{ position: "relative", width: inline ? "100%" : undefined }}>
       <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          background: "var(--muted)",
-          border: "1px solid var(--border)",
-          borderRadius: 10,
-          padding: "6px 12px",
-          width: open ? 220 : 160,
-          transition: "width .2s ease",
-        }}
+        className="ak-search"
+        data-full={inline || undefined}
+        style={!inline ? { width: open ? 240 : 170, transition: "width .2s var(--ease-std)", height: 34, flex: "none" } : undefined}
       >
-        <Search size={13} style={{ color: "var(--muted-foreground)", flexShrink: 0 }} />
+        <Search size={13} style={{ color: T.muted, flexShrink: 0 }} />
         <input
           ref={inputRef}
           value={query}
           onChange={e => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
-          placeholder="Buscar… ⌘K"
-          style={{
-            background: "none",
-            border: "none",
-            outline: "none",
-            color: "var(--foreground)",
-            fontSize: 12,
-            fontFamily: "inherit",
-            flex: 1,
-            minWidth: 0,
-          }}
+          placeholder={inline ? "Buscar páginas e configurações…" : "Buscar… ⌘K"}
+          className="ak-search__input"
+          style={!inline ? { fontSize: 12 } : undefined}
         />
         {query && (
           <button
             onClick={() => { setQuery(""); inputRef.current?.focus(); }}
-            style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", color: "var(--muted-foreground)" }}
+            aria-label="Limpar"
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 4, display: "flex", color: T.muted }}
           >
             <X size={12} />
           </button>
         )}
       </div>
 
-      {open && results.length > 0 && (
+      {inline && query.trim() && (
+        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 2 }}>
+          {results.length > 0 ? list : <div style={{ padding: "20px 8px", fontSize: 13, color: T.muted, textAlign: "center" }}>Nada encontrado para “{query}”.</div>}
+        </div>
+      )}
+
+      {!inline && open && results.length > 0 && (
         <div
-          style={{
-            position: "absolute",
-            top: "calc(100% + 6px)",
-            right: 0,
-            width: 320,
-            background: "var(--card)",
-            border: "1px solid var(--border)",
-            borderRadius: 12,
-            overflow: "hidden",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.15)",
-            zIndex: 100,
-          }}
+          className="ak-menu"
+          style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: 320, padding: 4, animation: "none" }}
         >
-          {results.map((r, i) => (
-            <button
-              key={r.href + i}
-              onClick={() => navigate(r.href)}
-              onMouseEnter={() => setCursor(i)}
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 10,
-                width: "100%",
-                padding: "9px 14px",
-                background: i === cursor ? "var(--muted)" : "none",
-                border: "none",
-                cursor: "pointer",
-                textAlign: "left",
-                color: "var(--foreground)",
-                fontSize: 12,
-                fontFamily: "inherit",
-                fontWeight: 500,
-                transition: "background .12s",
-              }}
-            >
-              {r.context
-                ? <Settings2 size={12} style={{ color: "var(--muted-foreground)", flexShrink: 0, marginTop: 2 }} />
-                : <ChevronRight size={12} style={{ color: "var(--muted-foreground)", flexShrink: 0, marginTop: 2 }} />}
-              <span style={{ minWidth: 0 }}>
-                {r.label}
-                {/* Sem esta linha o resultado de configuração vira só um nome solto:
-                    o valor está em dizer ONDE aquilo mora. */}
-                {r.context && (
-                  <span style={{ display: "block", fontSize: 10, fontWeight: 400, color: "var(--muted-foreground)", marginTop: 1 }}>
-                    {r.context}
-                  </span>
-                )}
-              </span>
-            </button>
-          ))}
+          {list}
         </div>
       )}
     </div>
@@ -351,42 +335,45 @@ function SearchBox() {
 
 // ─── AdminTopbar ──────────────────────────────────────────────────────────────
 export function AdminTopbar({ onMenuClick }: { onMenuClick?: () => void }) {
+  const [searchOpen, setSearchOpen] = useState(false);
   return (
     <header
-      className="px-3 sm:px-5"
+      className="px-2 sm:px-4"
       style={{
-        height: 48,
+        minHeight: 48,
         flexShrink: 0,
         display: "flex",
         alignItems: "center",
-        gap: 12,
-        background: "color-mix(in srgb, var(--card) 85%, transparent)",
+        gap: 8,
+        paddingTop: "env(safe-area-inset-top, 0px)",
+        background: `color-mix(in srgb, ${T.card} 85%, transparent)`,
         backdropFilter: "blur(12px)",
-        borderBottom: "1px solid var(--border)",
-        position: "sticky",
-        top: 0,
-        zIndex: 30,
+        WebkitBackdropFilter: "blur(12px)",
+        borderBottom: `1px solid ${T.border}`,
+        position: "relative",
+        zIndex: "var(--z-topbar)" as unknown as number,
       }}
     >
-      {/* Mobile menu trigger — opens the sidebar drawer */}
-      <button
-        onClick={onMenuClick}
-        aria-label="Abrir menu"
-        className="lg:hidden flex items-center justify-center -ml-1 mr-1 p-1.5 rounded-lg shrink-0"
-        style={{ color: "var(--foreground)" }}
-      >
-        <Menu size={20} />
-      </button>
+      {/* Hambúrguer (44px) — abre o drawer da sidebar abaixo de lg */}
+      <span className="inline-flex lg:hidden">
+        <IconButton icon={Menu} label="Abrir menu" size="lg" onClick={onMenuClick} />
+      </span>
 
       <Breadcrumb />
 
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-        {/* Quick-nav search — hidden on phones to leave room for the bell */}
+      <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
         <div className="hidden sm:block">
           <SearchBox />
         </div>
+        <span className="inline-flex sm:hidden">
+          <IconButton icon={Search} label="Buscar" size="lg" onClick={() => setSearchOpen(true)} />
+        </span>
         <NotificationCenter />
       </div>
+
+      <Dialog open={searchOpen} onClose={() => setSearchOpen(false)} presentation="sheet" size="md" title="Buscar" bodyPad={12}>
+        <SearchBox inline onNavigate={() => setSearchOpen(false)} />
+      </Dialog>
     </header>
   );
 }

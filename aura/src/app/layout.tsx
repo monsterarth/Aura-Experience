@@ -1,9 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Inter, DM_Sans } from "next/font/google";
 import "./globals.css";
 import AppShell from "@/components/AppShell";
 
-const inter = Inter({ subsets: ["latin"] });
+// Inter continua sendo a fonte do corpo fora do admin (landing, login antigo…).
+// DM Sans é a fonte da identidade Aura: o admin (`.aura-admin-root`) e os apps
+// de campo leem `var(--font-dm-sans)` — antes os apps baixavam a fonte por
+// @import em <style> (bloqueava render e falhava offline no PWA).
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+const dmSans = DM_Sans({ subsets: ["latin"], axes: ["opsz"], variable: "--font-dm-sans", display: "swap" });
 
 const description =
   "Software white-label para pousadas e hotéis boutique. Gestão de estadias, comunicação, concierge e experiência do hóspede em uma plataforma.";
@@ -36,12 +41,17 @@ export const metadata: Metadata = {
   },
 };
 
+// viewportFit: cover — sem isso todo env(safe-area-inset-*) vale 0 e os apps de
+// campo (que já usam) ficavam colados no notch/home indicator.
+// O bloqueio de zoom (maximumScale/userScalable) sai junto com os inputs ≥16px
+// no celular (Onda 0d do revamp) — o zoom automático do iOS vem do input pequeno,
+// não da falta do bloqueio.
 export const viewport: Viewport = {
   themeColor: "#9b6dff",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({
@@ -50,7 +60,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" className={`${inter.variable} ${dmSans.variable}`}>
       <body className={inter.className}>
         <AppShell>{children}</AppShell>
       </body>

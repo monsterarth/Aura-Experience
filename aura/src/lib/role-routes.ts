@@ -55,3 +55,74 @@ export function roleHome(role?: string | null): string {
 export function isMobileOnlyRole(role?: string | null): boolean {
   return !!role && MOBILE_ONLY_ROLES.includes(role);
 }
+
+// ── Tab bar inferior do celular (revamp 08/2026) ───────────────────────────────
+// 4 destinos por cargo + "Mais" (abre o menu completo). Ícones são NOMES (este
+// módulo roda no middleware/edge — nada de importar lucide aqui); o shell mapeia.
+export type RoleTabIcon =
+  | 'panel' | 'stays' | 'governance' | 'concierge' | 'reception' | 'guests'
+  | 'maintenance' | 'kds' | 'orders' | 'menu' | 'cafe' | 'reviews' | 'surveys'
+  | 'marketing' | 'messages' | 'stock' | 'products' | 'purchases' | 'movements' | 'cabins';
+
+export interface RoleTab {
+  id: string;
+  label: string;
+  href: string;
+  icon: RoleTabIcon;
+  /** Ativo só no caminho exato (hubs que têm subrotas em outras abas). */
+  exact?: boolean;
+}
+
+const MGMT_TABS: RoleTab[] = [
+  { id: 'panel',      label: 'Painel',     href: '/admin/hr',                icon: 'panel' },
+  { id: 'stays',      label: 'Estadias',   href: '/admin/stays',             icon: 'stays' },
+  { id: 'governance', label: 'Governança', href: '/admin/governance/kanban', icon: 'governance' },
+  { id: 'concierge',  label: 'Concierge',  href: '/admin/concierge',         icon: 'concierge' },
+];
+
+export const ROLE_TABS: Record<string, RoleTab[]> = {
+  super_admin: MGMT_TABS,
+  admin:       MGMT_TABS,
+  manager:     MGMT_TABS,
+  reception: [
+    { id: 'reception', label: 'Recepção',  href: '/admin/reception', icon: 'reception' },
+    { id: 'stays',     label: 'Estadias',  href: '/admin/stays',     icon: 'stays' },
+    { id: 'guests',    label: 'Hóspedes',  href: '/admin/guests',    icon: 'guests' },
+    { id: 'concierge', label: 'Concierge', href: '/admin/concierge', icon: 'concierge' },
+  ],
+  governance: [
+    { id: 'governance', label: 'Governança', href: '/admin/governance/kanban', icon: 'governance' },
+    { id: 'stays',      label: 'Estadias',   href: '/admin/stays',             icon: 'stays' },
+    { id: 'cabins',     label: 'Cabanas',    href: '/admin/cabins',            icon: 'cabins' },
+    { id: 'concierge',  label: 'Concierge',  href: '/admin/concierge',         icon: 'concierge' },
+  ],
+  maintenance: [
+    { id: 'kanban',    label: 'Manutenção', href: '/admin/maintenance/kanban', icon: 'maintenance' },
+    { id: 'panel',     label: 'Painel',     href: '/admin/maintenance',        icon: 'panel', exact: true },
+    { id: 'stays',     label: 'Estadias',   href: '/admin/stays',              icon: 'stays' },
+    { id: 'concierge', label: 'Concierge',  href: '/admin/concierge',          icon: 'concierge' },
+  ],
+  kitchen: [
+    { id: 'kds',    label: 'KDS',      href: '/admin/cafe-salao/kds',            icon: 'kds' },
+    { id: 'orders', label: 'Pedidos',  href: '/admin/food-and-beverage/orders',  icon: 'orders' },
+    { id: 'menu',   label: 'Cardápio', href: '/admin/food-and-beverage/menu',    icon: 'menu' },
+    { id: 'cafe',   label: 'Café',     href: '/admin/cafe-salao',                icon: 'cafe', exact: true },
+  ],
+  marketing: [
+    { id: 'reviews',   label: 'Avaliações',  href: '/admin/surveys/responses',   icon: 'reviews' },
+    { id: 'surveys',   label: 'Pesquisas',   href: '/admin/surveys',             icon: 'surveys', exact: true },
+    { id: 'marketing', label: 'Marketing',   href: '/admin/comercial/marketing', icon: 'marketing' },
+    { id: 'messages',  label: 'Comunicação', href: '/admin/comunicacao',         icon: 'messages' },
+  ],
+  compras: [
+    { id: 'stock',     label: 'Estoque',  href: '/admin/estoque',               icon: 'stock', exact: true },
+    { id: 'products',  label: 'Produtos', href: '/admin/estoque/produtos',      icon: 'products' },
+    { id: 'purchases', label: 'Compras',  href: '/admin/estoque/compras',       icon: 'purchases' },
+    { id: 'movements', label: 'Movim.',   href: '/admin/estoque/movimentacoes', icon: 'movements' },
+  ],
+};
+
+/** Abas do celular para um cargo (recepção como fallback seguro). */
+export function roleTabs(role?: string | null): RoleTab[] {
+  return (role && ROLE_TABS[role]) || ROLE_TABS.reception;
+}

@@ -8,17 +8,25 @@
 //
 //  • useCloseGuard(close, opts)    — quando o estado está espalhado em vários
 //    useState (a maioria dos modais). Marca "sujo" pela interação do usuário:
-//    basta espalhar `guardProps` no painel do modal para que qualquer digitação
+//    basta espalhar guardProps no painel do modal para que qualquer digitação
 //    em inputs/selects/textareas descendentes conte como edição.
 //
 // Em ambos, requestClose() é o que deve ser ligado ao X, ao "Cancelar" e ao
 // clique fora. O onClose() cru continua sendo usado depois de salvar.
+//
+// A confirmação usa o ConfirmDialog do kit (na identidade) quando há
+// ConfirmProvider (admin); sem provider (portal, apps) cai no window.confirm.
+// Por isso confirmDiscard é assíncrono: if (!(await confirmDiscard())) return;
+// Com o Dialog do kit, passe escape: false — a pilha de overlays já cuida do Esc.
 import { useEffect, useRef, useCallback, useState } from "react";
+import { useConfirm } from "@/components/aura/ConfirmDialog";
 
 const DEFAULT_MESSAGE = "Descartar alterações não salvas?";
+const DISCARD_DESC = "O que você digitou será perdido.";
 
 export function useDiscardGuard<T>(form: T | null, close: () => void): () => void {
   const snapshot = useRef<string>("");
+  const confirm = useConfirm();
 
   // Captura o estado inicial no momento da abertura; limpa ao fechar.
   useEffect(() => {
@@ -28,8 +36,10 @@ export function useDiscardGuard<T>(form: T | null, close: () => void): () => voi
 
   const requestClose = useCallback(() => {
     const dirty = !!form && JSON.stringify(form) !== snapshot.current;
-    if (!dirty || window.confirm(DEFAULT_MESSAGE)) close();
-  }, [form, close]);
+    if (!dirty) { close(); return; }
+    void confirm({ title: DEFAULT_MESSAGE, description: DISCARD_DESC, confirmLabel: "Descartar", cancelLabel: "Continuar editando", tone: "danger" })
+      .then(ok => { if (ok) close(); });
+  }, [form, close, confirm]);
 
   // Esc fecha (com a mesma guarda) quando o modal está aberto.
   useEffect(() => {
@@ -52,7 +62,7 @@ interface CloseGuardOptions {
   dirty?: boolean;
   /** Texto do confirm. */
   message?: string;
-  /** Tratar Esc como pedido de fechar (com guarda). Default: true. */
+  /** Tratar Esc como pedido de fechar (com guarda). Default: true. Com o Dialog do kit use false. */
   escape?: boolean;
 }
 
@@ -61,9 +71,9 @@ interface CloseGuard {
   requestClose: () => void;
   /**
    * Para outros pontos que descartam edição sem fechar o modal (ex.: cancelar
-   * o formulário interno de uma lista). Retorna true quando pode seguir.
+   * o formulário interno de uma lista). Resolve true quando pode seguir.
    */
-  confirmDiscard: () => boolean;
+  confirmDiscard: () => Promise<boolean>;
   /** Espalhar no painel do modal: capta digitação de qualquer campo dentro. */
   guardProps: {
     onInput: () => void;
@@ -81,6 +91,7 @@ export function useCloseGuard(close: () => void, options: CloseGuardOptions = {}
   const { open = true, dirty: externalDirty = false, message = DEFAULT_MESSAGE, escape = true } = options;
   const [touched, setTouched] = useState(false);
   const isDirty = open && (touched || externalDirty);
+  const confirm = useConfirm();
 
   // Cada abertura começa limpa.
   useEffect(() => {
@@ -90,14 +101,17 @@ export function useCloseGuard(close: () => void, options: CloseGuardOptions = {}
   const markDirty = useCallback(() => setTouched(true), []);
   const reset = useCallback(() => setTouched(false), []);
 
-  const confirmDiscard = useCallback(() => {
-    if (isDirty && !window.confirm(message)) return false;
+  const confirmDiscard = useCallback(async () => {
+    if (isDirty) {
+      const ok = await confirm({ title: message, description: DISCARD_DESC, confirmLabel: "Descartar", cancelLabel: "Continuar editando", tone: "danger" });
+      if (!ok) return false;
+    }
     setTouched(false);
     return true;
-  }, [isDirty, message]);
+  }, [isDirty, message, confirm]);
 
   const requestClose = useCallback(() => {
-    if (confirmDiscard()) close();
+    void confirmDiscard().then(ok => { if (ok) close(); });
   }, [confirmDiscard, close]);
 
   useEffect(() => {
