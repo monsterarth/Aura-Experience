@@ -8,6 +8,7 @@ import { Wedding, WeddingInstallment, WeddingStatus } from "@/types/aura";
 import { Heart, Shield, Clock, X, Plus, Users, Globe, Star, Check, DollarSign, Calendar, Trash2, CheckCircle2, Archive, Loader2, Pencil, Copy, RefreshCw, Power, ExternalLink } from "lucide-react";
 import { T, fmt, todayIso, daysUntil, nightsBetween, fmtMoney, STATUS_CFG, VENDOR_ICONS, Pill, CabinMap, leadState, installmentSummary } from "./lib";
 import { LostReasonModal } from "./LostReasonModal";
+import { Dialog, SegmentedTabs, Button, IconButton, useConfirm, useIsMobile } from "@/components/aura";
 
 type DrawerTab = 'evento' | 'hospedagem' | 'fornecedores' | 'site' | 'financeiro';
 
@@ -28,6 +29,7 @@ function InstallmentsPanel({ wedding, onDataChanged }: {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [form, setForm] = useState<InstallmentForm | null>(null);
   const [saving, setSaving] = useState(false);
+  const confirm = useConfirm();
 
   useEffect(() => { setRows(null); setForm(null); }, [wedding.id]);
 
@@ -57,7 +59,7 @@ function InstallmentsPanel({ wedding, onDataChanged }: {
   };
 
   const remove = async (inst: WeddingInstallment) => {
-    if (!confirm(`Excluir a parcela "${inst.label}"?`)) return;
+    if (!(await confirm({ title: "Excluir parcela?", description: `A parcela "${inst.label}" será removida.`, confirmLabel: "Excluir", tone: "danger" }))) return;
     setBusyId(inst.id);
     try {
       await mutate({ method: "DELETE" }, `?installmentId=${inst.id}`);
@@ -257,6 +259,7 @@ function SitePanel({ wedding, onDataChanged }: { wedding: Wedding; onDataChanged
   const [preReservations, setPreReservations] = useState<SitePreReservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const confirm = useConfirm();
 
   const load = React.useCallback(async () => {
     try {
@@ -340,7 +343,7 @@ function SitePanel({ wedding, onDataChanged }: { wedding: Wedding; onDataChanged
             <Copy size={12} />
           </button>
           <button title="Regenerar código (o antigo morre na hora)" disabled={busy}
-            onClick={() => { if (confirm("Regenerar este código? Quem tiver o antigo perde o acesso — inclusive convites já impressos.")) act({ action: "regenerate", which }); }}
+            onClick={async () => { if (await confirm({ title: "Regenerar este código?", description: "Quem tiver o antigo perde o acesso — inclusive convites já impressos.", confirmLabel: "Regenerar", tone: "danger" })) act({ action: "regenerate", which }); }}
             style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${T.amberBorder}`, background: T.amberBg, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <RefreshCw size={12} color={T.amber} />
           </button>
@@ -384,7 +387,7 @@ function SitePanel({ wedding, onDataChanged }: { wedding: Wedding; onDataChanged
         <button disabled={busy || (!site.enabled && !ready)}
           onClick={async () => {
             if (site.enabled) {
-              if (confirm("Desligar o site? Os códigos continuam válidos para quando reativar.")) {
+              if (await confirm({ title: "Desligar o site?", description: "Os códigos continuam válidos para quando reativar.", confirmLabel: "Desligar" })) {
                 await act({ action: "deactivate" });
               }
             } else if (await act({ action: "activate" })) {
@@ -453,20 +456,35 @@ function SitePanel({ wedding, onDataChanged }: { wedding: Wedding; onDataChanged
   );
 }
 
-export function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onEdit, onDelete, onStatusChange, onMarkLost, onFollowUp, onDataChanged }: {
+type DrawerProps = {
   wedding: Wedding | null; cabinsTotal: number; onClose: () => void; showFinancial: boolean;
   onEdit: (w: Wedding) => void; onDelete: (w: Wedding) => void;
   onStatusChange: (w: Wedding, status: WeddingStatus) => Promise<void>;
   onMarkLost: (w: Wedding, reason: string) => Promise<void>;
   onFollowUp: (w: Wedding) => Promise<void>;
   onDataChanged?: () => void;
-}) {
+};
+
+/** Painel do casamento — drawer à direita no desktop, tela cheia no celular (kit Dialog). */
+export function DetailDrawer(props: DrawerProps) {
+  const isMobile = useIsMobile();
+  // Guarda o último casamento para a animação de saída não desmontar o conteúdo.
+  const [last, setLast] = useState<Wedding | null>(props.wedding);
+  useEffect(() => { if (props.wedding) setLast(props.wedding); }, [props.wedding]);
+  const w = props.wedding ?? last;
+  return (
+    <Dialog open={!!props.wedding} onClose={props.onClose} presentation={isMobile ? "fullscreen" : "drawer"} size="md" side="right" rawBody hideClose ariaLabel="Detalhes do casamento">
+      {w && <DrawerInner {...props} wedding={w} />}
+    </Dialog>
+  );
+}
+
+function DrawerInner({ wedding, cabinsTotal, onClose, showFinancial, onEdit, onDelete, onStatusChange, onMarkLost, onFollowUp, onDataChanged }: Omit<DrawerProps, "wedding"> & { wedding: Wedding }) {
   const [tab, setTab] = useState<DrawerTab>("evento");
   const [lostOpen, setLostOpen] = useState(false);
 
-  useEffect(() => { if (wedding) { setTab("evento"); setLostOpen(false); } }, [wedding]);
-
-  if (!wedding) return null;
+  // Reseta só ao trocar de casamento (não a cada recarga do mesmo registro).
+  useEffect(() => { setTab("evento"); setLostOpen(false); }, [wedding.id]);
 
   const sc = STATUS_CFG[wedding.status];
   const nights = nightsBetween(wedding.checkin, wedding.checkout);
@@ -498,10 +516,10 @@ export function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onE
   );
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "stretch", justifyContent: "flex-end" }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ width: "min(520px, 100vw)", background: T.card, borderLeft: `1px solid ${T.border2}`, display: "flex", flexDirection: "column", animation: "wedding-slide-in .22s ease", boxShadow: "-24px 0 80px rgba(0,0,0,.6)" }}>
+    <>
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
         {/* Header */}
-        <div style={{ padding: "20px 24px 0", borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
+        <div style={{ padding: "16px 20px 0", borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 16 }}>
             <div style={{ display: "flex", flexShrink: 0 }}>
               <div style={{ width: 44, height: 44, borderRadius: 13, background: T.gradSoft, border: "2px solid rgba(155,109,255,0.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900, color: T.g1, zIndex: 2, position: "relative" }}>
@@ -523,19 +541,13 @@ export function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onE
                 )}
               </div>
             </div>
-            <button onClick={onClose} style={{ width: 32, height: 32, borderRadius: 9, border: `1px solid ${T.border2}`, background: T.glass, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: T.muted, flexShrink: 0 }}>
-              <X size={14} />
-            </button>
+            <IconButton icon={X} label="Fechar" variant="secondary" onClick={onClose} />
           </div>
-          <div style={{ display: "flex", gap: 0 }}>
-            {tabs.map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "9px 14px", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 700, background: "transparent", color: tab === t.id ? T.text : T.muted, borderBottom: `2px solid ${tab === t.id ? T.g1 : "transparent"}`, transition: "all .15s" }}>{t.label}</button>
-            ))}
-          </div>
+          <SegmentedTabs<DrawerTab> items={tabs} value={tab} onChange={setTab} size="sm" ariaLabel="Seções do casamento" style={{ marginBottom: 12 }} />
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 20, overscrollBehavior: "contain" }}>
 
           {tab === "evento" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -696,51 +708,36 @@ export function DetailDrawer({ wedding, cabinsTotal, onClose, showFinancial, onE
         </div>
 
         {/* Footer */}
-        <div style={{ padding: "14px 24px", borderTop: `1px solid ${T.border}`, display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+        <div className="ak-dialog__footer" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {/* Contato registrado renova a validade — impede o lead ativo de expirar */}
           {wedding.status === "tentative" && (
-            <button onClick={() => onFollowUp(wedding)}
-              style={{ flexBasis: "100%", padding: 10, borderRadius: 11, border: `1px solid ${T.amberBorder}`, background: T.amberBg, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 800, color: T.amber, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
-              <Clock size={14} /> Registrar follow-up
-            </button>
+            <Button variant="soft" tone="amber" icon={Clock} fullWidth onClick={() => onFollowUp(wedding)}>Registrar follow-up</Button>
           )}
           {/* Negociação que não frutificou sai da lista ativa com motivo registrado */}
           {(wedding.status === "tentative" || wedding.status === "confirmed") && (
-            <button onClick={() => setLostOpen(true)}
-              style={{ flexBasis: "100%", padding: 10, borderRadius: 11, border: `1px solid ${T.border2}`, background: T.glass, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 700, color: T.muted, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
-              <Archive size={14} /> Arquivar como negociação perdida
-            </button>
+            <Button variant="secondary" icon={Archive} fullWidth onClick={() => setLostOpen(true)}>Arquivar como negociação perdida</Button>
           )}
           {/* Atalho direto: grava só o status, sem passar pelo formulário completo */}
           {wedding.status !== "completed" && wedding.status !== "cancelled" && wedding.status !== "lost" && days < 0 && (
-            <button onClick={() => onStatusChange(wedding, "completed")}
-              style={{ flexBasis: "100%", padding: 10, borderRadius: 11, border: `1px solid ${T.greenBorder}`, background: T.greenBg, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 800, color: T.green, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
-              <CheckCircle2 size={14} /> Marcar como realizado
-            </button>
+            <Button variant="soft" tone="green" icon={CheckCircle2} fullWidth onClick={() => onStatusChange(wedding, "completed")}>Marcar como realizado</Button>
           )}
-          <button onClick={() => onDelete(wedding)} style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${T.redBorder}`, background: T.redBg, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <Trash2 size={14} color={T.red} />
-          </button>
-          <button onClick={() => onEdit(wedding)} style={{ flex: 1, padding: 10, borderRadius: 11, border: `1px solid ${T.border2}`, background: T.glass, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 700, color: T.muted }}>
-            Editar
-          </button>
+          <IconButton icon={Trash2} label="Excluir casamento" variant="danger" onClick={() => onDelete(wedding)} />
+          <Button variant="secondary" style={{ flex: 1 }} onClick={() => onEdit(wedding)}>Editar</Button>
           {/* Só aparece com WhatsApp do casal cadastrado (antes era um botão morto) */}
           {wedding.couplePhone && (
-            <a href={`https://wa.me/${wedding.couplePhone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer"
-              style={{ flex: 2, padding: 10, borderRadius: 11, border: "none", background: T.grad, cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 800, color: "#fff", boxShadow: "0 4px 14px rgba(155,109,255,.3)", display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>
-              Falar com o casal
+            <a className="ak-btn ak-press" data-variant="primary" data-size="md" href={`https://wa.me/${wedding.couplePhone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" style={{ flex: 2, textDecoration: "none" }}>
+              <span className="ak-btn__content"><span className="ak-btn__label">Falar com o casal</span></span>
             </a>
           )}
         </div>
       </div>
 
-      {lostOpen && (
-        <LostReasonModal
-          wedding={wedding}
-          onCancel={() => setLostOpen(false)}
-          onConfirm={async (reason) => { await onMarkLost(wedding, reason); setLostOpen(false); }}
-        />
-      )}
-    </div>
+      <LostReasonModal
+        open={lostOpen}
+        wedding={wedding}
+        onCancel={() => setLostOpen(false)}
+        onConfirm={async (reason) => { await onMarkLost(wedding, reason); setLostOpen(false); }}
+      />
+    </>
   );
 }

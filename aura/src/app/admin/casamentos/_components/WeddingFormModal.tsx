@@ -5,7 +5,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { useCloseGuard } from "@/lib/use-discard-guard";
 import { toast } from "sonner";
 import { Wedding, WeddingStatus, CrmChannel } from "@/types/aura";
-import { X, Loader2, Save } from "lucide-react";
+import { X, Save } from "lucide-react";
+import { Dialog, SegmentedTabs, Button, IconButton, Textarea } from "@/components/aura";
 import { T, FInput, FSelect, FRow, FField, FToggle } from "./lib";
 
 // ─── Wedding form modal ───────────────────────────────────────────────────────
@@ -150,36 +151,28 @@ export function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }
     }
   };
 
-  if (!open) return null;
-
   const formTabs: { id: FormTab; label: string }[] = [
     { id: 'casal', label: 'Casal' }, { id: 'evento', label: 'Evento' },
     { id: 'hospedagem', label: 'Hospedagem' }, { id: 'financeiro', label: 'Financeiro' },
   ];
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(0,0,0,.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={requestClose}>
-      <div onClick={e => e.stopPropagation()} {...guardProps} style={{ width: '100%', maxWidth: 580, background: T.card, borderRadius: 20, border: `1px solid ${T.border2}`, display: 'flex', flexDirection: 'column', maxHeight: '90vh', animation: 'wedding-fade-in .2s ease', boxShadow: '0 32px 80px rgba(0,0,0,.7)' }}>
+    <Dialog open={open} onClose={requestClose} presentation="auto" size="lg" rawBody hideClose panelProps={guardProps} ariaLabel={initial ? 'Editar casamento' : 'Novo casamento'}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
         {/* Header */}
-        <div style={{ padding: '20px 24px 0', borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
+        <div style={{ padding: '16px 20px 0', borderBottom: `1px solid ${T.border}`, flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
             <div>
               <div style={{ fontSize: 16, fontWeight: 900 }}>{initial ? 'Editar casamento' : 'Novo casamento'}</div>
               {initial && <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>{initial.bride} ♥ {initial.groom}</div>}
             </div>
-            <button onClick={requestClose} style={{ width: 32, height: 32, borderRadius: 9, border: `1px solid ${T.border2}`, background: T.glass, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.muted }}>
-              <X size={14} />
-            </button>
+            <IconButton icon={X} label="Fechar" variant="secondary" onClick={requestClose} />
           </div>
-          <div style={{ display: 'flex', gap: 0 }}>
-            {formTabs.map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: '9px 14px', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, background: 'transparent', color: tab === t.id ? T.text : T.muted, borderBottom: `2px solid ${tab === t.id ? T.g1 : 'transparent'}`, transition: 'all .15s' }}>{t.label}</button>
-            ))}
-          </div>
+          <SegmentedTabs<FormTab> items={formTabs} value={tab} onChange={setTab} size="sm" ariaLabel="Seções do formulário" style={{ marginBottom: 12 }} />
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 14, overscrollBehavior: 'contain' }}>
           {tab === 'casal' && (<>
             <FRow><FField label="Nome da noiva *"><FInput value={form.bride} onChange={set('bride')} placeholder="Ex: Ana Carolina" /></FField>
               <FField label="Abreviação (iniciais)"><FInput value={form.brideShort} onChange={set('brideShort')} placeholder="AC" /></FField></FRow>
@@ -209,8 +202,7 @@ export function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }
             <FField label="Detalhes da cerimônia"><FInput value={form.ceremonyDetails} onChange={set('ceremonyDetails')} placeholder="18h00 · Jardim das Oliveiras" /></FField>
             <FField label="Detalhes da recepção"><FInput value={form.receptionDetails} onChange={set('receptionDetails')} placeholder="20h00 · Salão principal" /></FField>
             <FField label="Observações">
-              <textarea value={form.notes} onChange={e => set('notes')(e.target.value)} placeholder="Observações internas…" rows={3}
-                style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 10, border: `1px solid ${T.border2}`, background: T.glass, color: T.text, fontFamily: 'inherit', fontSize: 13, outline: 'none', resize: 'vertical' }} />
+              <Textarea value={form.notes} onChange={e => set('notes')(e.target.value)} placeholder="Observações internas…" rows={3} autoGrow />
             </FField>
           </>)}
 
@@ -258,16 +250,11 @@ export function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '14px 24px', borderTop: `1px solid ${T.border}`, display: 'flex', gap: 8, flexShrink: 0 }}>
-          <button onClick={requestClose} style={{ flex: 1, padding: 10, borderRadius: 11, border: `1px solid ${T.border2}`, background: T.glass, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 700, color: T.muted }}>
-            Cancelar
-          </button>
-          <button onClick={handleSave} disabled={saving} style={{ flex: 2, padding: 10, borderRadius: 11, border: 'none', background: T.grad, cursor: saving ? 'default' : 'pointer', fontFamily: 'inherit', fontSize: 13, fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, opacity: saving ? .7 : 1, boxShadow: '0 4px 14px rgba(155,109,255,.3)' }}>
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            {saving ? 'Salvando…' : (initial ? 'Salvar alterações' : 'Criar casamento')}
-          </button>
+        <div className="ak-dialog__footer" style={{ display: 'flex', gap: 8 }}>
+          <Button variant="secondary" style={{ flex: 1 }} onClick={requestClose}>Cancelar</Button>
+          <Button variant="primary" style={{ flex: 2 }} icon={Save} loading={saving} loadingText="Salvando…" onClick={handleSave}>{initial ? 'Salvar alterações' : 'Criar casamento'}</Button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

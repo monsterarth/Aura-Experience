@@ -3,6 +3,7 @@
 import React from "react";
 import { Wedding, WeddingStatus, WeddingCabinAssignment, WeddingInstallment } from "@/types/aura";
 import { Shield, Camera, Music, Mic, Flower2, Coffee, Star, Truck, Sun } from "lucide-react";
+import { Field, FieldRow, Input, Select, Switch } from "@/components/aura";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 // Promovidos a módulo compartilhado (identidade oficial do admin) — o objeto
@@ -129,52 +130,39 @@ export function CabinMap({ occupied, total, assignments = [] }: {
   );
 }
 
+// Primitivas de formulário — finas sobre o kit (Field/Input/Select/FieldRow/Switch):
+// os modais do módulo sobem de identidade e responsividade sem mudar de assinatura.
 export const FLabel = ({ children }: { children: React.ReactNode }) => (
-  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.05em', textTransform: 'uppercase' as const, color: T.muted, marginBottom: 5 }}>{children}</div>
+  <div className="ak-field__label" style={{ marginBottom: 6 }}>{children}</div>
 );
 
-export const FInput = ({ value, onChange, placeholder, type = 'text', style }: {
+export const FInput = ({ value, onChange, placeholder, type = "text", style }: {
   value: string; onChange: (v: string) => void; placeholder?: string; type?: string; style?: React.CSSProperties;
 }) => (
-  <input
-    type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-    style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 10, border: `1px solid ${T.border2}`, background: T.glass, color: T.text, fontFamily: 'inherit', fontSize: 13, outline: 'none', ...style }}
-  />
+  <Input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={style} />
 );
 
 export const FSelect = ({ value, onChange, options }: {
   value: string; onChange: (v: string) => void; options: { value: string; label: string }[];
 }) => (
-  <select
-    value={value} onChange={e => onChange(e.target.value)}
-    style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 10, border: `1px solid ${T.border2}`, background: T.card, color: T.text, fontFamily: 'inherit', fontSize: 13, outline: 'none' }}
-  >
+  <Select value={value} onChange={e => onChange(e.target.value)}>
     {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-  </select>
+  </Select>
 );
 
 export const FRow = ({ children, cols = 2 }: { children: React.ReactNode; cols?: number }) => (
-  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols},1fr)`, gap: 12 }}>{children}</div>
+  <FieldRow cols={cols === 3 ? 3 : cols === 4 ? 4 : 2}>{children}</FieldRow>
 );
 
 export const FField = ({ label, children }: { label: string; children: React.ReactNode }) => (
-  <div><FLabel>{label}</FLabel>{children}</div>
+  <Field label={label}>{children}</Field>
 );
 
 export const FToggle = ({ label, sub, checked, onChange }: {
   label: string; sub?: string; checked: boolean; onChange: (v: boolean) => void;
 }) => (
-  <div
-    onClick={() => onChange(!checked)}
-    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 12, border: `1px solid ${checked ? T.violetBorder : T.border}`, background: checked ? T.violetBg : T.glass, cursor: 'pointer', userSelect: 'none' as const }}
-  >
-    <div style={{ width: 36, height: 20, borderRadius: 999, background: checked ? T.violet : T.glass3, border: `1px solid ${checked ? T.violet : T.border2}`, position: 'relative', flexShrink: 0, transition: 'all .2s' }}>
-      <div style={{ position: 'absolute', top: 2, left: checked ? 18 : 2, width: 14, height: 14, borderRadius: '50%', background: checked ? '#fff' : T.muted2, transition: 'left .2s' }} />
-    </div>
-    <div>
-      <div style={{ fontSize: 13, fontWeight: 800, color: checked ? T.violet : T.text }}>{label}</div>
-      {sub && <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{sub}</div>}
-    </div>
+  <div style={{ padding: "10px 14px", borderRadius: 12, border: `1px solid ${checked ? T.violetBorder : T.border}`, background: checked ? T.violetBg : T.glass }}>
+    <Switch checked={checked} onChange={onChange} label={label} hint={sub} />
   </div>
 );
 
