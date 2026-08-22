@@ -1,572 +1,154 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { format, addDays, subDays } from "date-fns";
+import React from "react";
+import { format, addDays, subDays, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Calendar, Check, X, Clock, MapPin, User, Plus, Info, Wrench, Lock, Unlock } from "lucide-react";
-import { toast } from "sonner";
+import { ChevronLeft, ChevronRight, CalendarDays, MapPin, Plus, Info, Wrench, Lock, Unlock, User, X, Building2 } from "lucide-react";
 import { StructureService } from "@/services/structure-service";
-import { useProperty } from "@/context/PropertyContext";
-import { useAuth } from "@/context/AuthContext";
-import { Structure, StructureBooking, TimeSlot, Stay } from "@/types/aura";
-import { supabase, safeRemoveChannel } from "@/lib/supabase";
-import { cn } from "@/lib/utils";
-
-type ModalState = {
-    structureId: string;
-    unitId?: string;
-    isFreeTime?: boolean;
-    slot?: TimeSlot;
-};
+import { T, tone as toneOf } from "@/lib/admin-tokens";
+import { PageShell, PageHeader, Card, Button, IconButton, Pill, Loadable, SkeletonList, EmptyState, ErrorState } from "@/components/aura";
+import { useBookings } from "./_components/useBookings";
+import { CreateBookingDialog, CancelBookingDialog, SlotActionsDialog } from "./_components/BookingDialogs";
+import { STATUS_LABEL, STATUS_TONE, bookingDisplayName } from "./_components/bookings-utils";
 
 export default function StructureBookingsPage() {
-    const { currentProperty } = useProperty();
-    const { userData } = useAuth();
+  const bk = useBookings();
+  const dateStr = format(bk.currentDate, "yyyy-MM-dd");
 
-    const [currentDate, setCurrentDate] = useState(new Date());
+  if (!bk.currentProperty) return <PageShell><EmptyState icon={Building2} title="Selecione uma propriedade" /></PageShell>;
 
-    const [structures, setStructures] = useState<Structure[]>([]);
-    const [bookings, setBookings] = useState<StructureBooking[]>([]);
-    const [activeStays, setActiveStays] = useState<(Stay & { guestName?: string, cabinName?: string })[]>([]);
-    const [loading, setLoading] = useState(true);
-
-    // Modal State
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [selectedConfig, setSelectedConfig] = useState<ModalState | null>(null);
-
-    const [bookingType, setBookingType] = useState<'booking' | 'maintenance_block'>('booking');
-    const [guestName, setGuestName] = useState("");
-    const [maintenanceNotes, setMaintenanceNotes] = useState("");
-    const [freeTimeStart, setFreeTimeStart] = useState("");
-    const [freeTimeEnd, setFreeTimeEnd] = useState("");
-
-    // Cancel Modal State
-    const [cancelModal, setCancelModal] = useState<{ booking: StructureBooking; structureId: string; requiresTurnover: boolean } | null>(null);
-    const [cancelReason, setCancelReason] = useState("");
-
-    const fetchData = useCallback(async () => {
-        if (!currentProperty) return;
-        setLoading(true);
-        try {
-            const dateStr = format(currentDate, "yyyy-MM-dd");
-
-            // Busca via rota server-side (supabaseAdmin, sem navigator.locks) — evita o
-            // congelamento no F5 que o browser client causava ao disputar o lock de sessão.
-            const params = new URLSearchParams({ propertyId: currentProperty.id, date: dateStr });
-            const res = await fetch(`/api/admin/structures/bookings?${params}`);
-            if (!res.ok) throw new Error('fetch-error');
-            const { structures: allStructures, bookings: allBookings, activeStays: allActiveStays } = await res.json();
-
-            const validStaysForDate = (allActiveStays ?? []).filter((s: any) => {
-                const checkInDate = s.checkIn ? new Date(s.checkIn) : new Date();
-                const checkOutDate = s.checkOut ? new Date(s.checkOut) : new Date();
-
-                checkInDate.setHours(0, 0, 0, 0);
-                checkOutDate.setHours(23, 59, 59, 999);
-
-                return currentDate >= checkInDate && currentDate <= checkOutDate;
-            });
-
-            setStructures(allStructures ?? []);
-            setBookings(allBookings ?? []);
-            setActiveStays(validStaysForDate);
-        } catch (error) {
-            toast.error("Erro ao carregar agenda.");
-        } finally {
-            setLoading(false);
-        }
-    }, [currentProperty, currentDate]);
-
-    useEffect(() => {
-        if (currentProperty) fetchData();
-    }, [fetchData]);
-
-    // Realtime: escuta mudanças na tabela structure_bookings
-    useEffect(() => {
-        if (!currentProperty) return;
-
-        let subscribed = false;
-        const channel = supabase.channel(`bookings_${currentProperty.id}`)
-            .on('postgres_changes',
-                { event: '*', schema: 'public', table: 'structure_bookings', filter: `propertyId=eq.${currentProperty.id}` },
-                () => fetchData()
-            )
-            .subscribe((status: string) => { if (status === 'SUBSCRIBED') subscribed = true; });
-
-        return () => { safeRemoveChannel(channel, subscribed); };
-    }, [currentProperty, fetchData]);
-
-    // fetchData is now defined above as a useCallback
-
-    const handleStatusChange = async (booking: StructureBooking, newStatus: StructureBooking['status'], structureRequiresTurnover: boolean, cancellationReason?: string) => {
-        if (!currentProperty || !userData) return;
-        try {
-            await StructureService.updateBookingStatus(
-                currentProperty.id,
-                booking.id,
-                newStatus,
-                userData.id,
-                userData.fullName,
-                structureRequiresTurnover,
-                booking.structureId,
-                cancellationReason
-            );
-            toast.success(`Reserva ${newStatus === 'approved' ? 'Aprovada' : newStatus === 'rejected' ? 'Rejeitada' : newStatus === 'completed' ? 'Finalizada' : 'Cancelada'}`);
-            fetchData();
-        } catch (error) {
-            toast.error("Erro ao atualizar reserva.");
-        }
-    };
-
-    const handleToggleRelease = async (structure: Structure, release: boolean) => {
-        if (!currentProperty || !userData) return;
-        const dateStr = format(currentDate, "yyyy-MM-dd");
-        try {
-            await StructureService.setDailyRelease(
-                currentProperty.id,
-                structure.id,
-                release ? dateStr : null,
-                userData.id,
-                userData.fullName,
-                structure.name
-            );
-            // Atualização otimista — o realtime de structures não está assinado nesta página
-            setStructures(prev => prev.map(s =>
-                s.id === structure.id ? { ...s, releasedForDate: release ? dateStr : undefined } : s
-            ));
-            toast.success(release ? `${structure.name} liberada para uso.` : `${structure.name} bloqueada.`);
-        } catch (error) {
-            toast.error("Erro ao atualizar liberação.");
-        }
-    };
-
-    const openCancelModal = (booking: StructureBooking, structureId: string, requiresTurnover: boolean) => {
-        setCancelModal({ booking, structureId, requiresTurnover });
-        setCancelReason("");
-    };
-
-    const confirmCancel = async () => {
-        if (!cancelModal || !cancelReason.trim()) {
-            toast.error("Informe o motivo do cancelamento.");
-            return;
-        }
-        await handleStatusChange(cancelModal.booking, 'cancelled', cancelModal.requiresTurnover, cancelReason.trim());
-        setCancelModal(null);
-        setCancelReason("");
-    };
-
-    const handleCreateBooking = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!currentProperty || !userData || !selectedConfig) return;
-
-        let startTime = selectedConfig.slot?.startTime;
-        let endTime = selectedConfig.slot?.endTime;
-
-        if (bookingType === 'booking' && !guestName) {
-            return toast.error("Selecione o hóspede titular válido da lista.");
-        }
-        if (bookingType === 'maintenance_block' && !maintenanceNotes) {
-            return toast.error("Preencha as observações de manutenção.");
-        }
-
-        if (selectedConfig.isFreeTime) {
-            if (!freeTimeStart || !freeTimeEnd) return toast.error("Preencha os horários.");
-            const hasOverlap = StructureService.checkOverlap(
-                freeTimeStart, freeTimeEnd,
-                bookings.filter(b => b.structureId === selectedConfig.structureId),
-                selectedConfig.unitId
-            );
-            if (hasOverlap) return toast.error("Este horário coincide com outra reserva ou bloqueio.");
-
-            startTime = freeTimeStart;
-            endTime = freeTimeEnd;
-        }
-
-        try {
-            await StructureService.createBooking(
-                currentProperty.id,
-                {
-                    structureId: selectedConfig.structureId,
-                    propertyId: currentProperty.id,
-                    unitId: selectedConfig.unitId,
-                    type: bookingType,
-                    date: format(currentDate, "yyyy-MM-dd"),
-                    startTime: startTime!,
-                    endTime: endTime!,
-                    status: 'approved',
-                    source: 'admin',
-                    stayId: bookingType === 'booking' && guestName ? guestName : undefined,
-                    guestName: bookingType === 'booking' ? (activeStays.find(s => s.id === guestName)?.guestName || "Hóspede") : "Manutenção",
-                    notes: bookingType === 'maintenance_block' ? maintenanceNotes : "Reserva Manual Adm"
-                },
-                userData.id,
-                userData.fullName
-            );
-            toast.success("Horário agendado com sucesso!");
-            setIsModalOpen(false);
-            setGuestName("");
-            setMaintenanceNotes("");
-            setFreeTimeStart("");
-            setFreeTimeEnd("");
-            fetchData();
-        } catch (error) {
-            console.error("DEBUG Erro onSubmit booking:", error);
-            toast.error("Erro ao criar agendamento.");
-        }
-    };
-
-    const openModal = (structureId: string, unitId?: string, isFreeTime: boolean = false, slot?: TimeSlot) => {
-        setSelectedConfig({ structureId, unitId, isFreeTime, slot });
-        setBookingType('booking');
-        setGuestName("");
-        setMaintenanceNotes("");
-        setFreeTimeStart("");
-        setFreeTimeEnd("");
-        setIsModalOpen(true);
-    };
-
-    const statusColors: any = {
-        pending: "bg-orange-500/20 text-orange-600 border-orange-500/30",
-        approved: "bg-blue-500/20 text-blue-600 border-blue-500/30",
-        completed: "bg-green-500/20 text-green-600 border-green-500/30",
-        rejected: "bg-red-500/20 text-red-600 border-red-500/30",
-        cancelled: "bg-zinc-500/20 text-zinc-500 border-zinc-500/30",
-        expired: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
-    };
-
-    const statusLabels: any = {
-        pending: "Aprovação Pendente",
-        approved: "Agendado",
-        completed: "Finalizado",
-        rejected: "Rejeitado",
-        cancelled: "Cancelado",
-        expired: "Expirado sem resposta",
-    };
-
-    return (
-        <div className="max-w-7xl mx-auto space-y-4 md:space-y-8 animate-in fade-in duration-500">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h1 className="text-xl md:text-3xl font-black text-foreground tracking-tight">Agenda de Estruturas</h1>
-                    <p className="text-muted-foreground mt-1">Gerencie os horários de spas, quadras e demais utilidades.</p>
-                </div>
-
-                <div className="flex items-center bg-secondary/80 border border-border rounded-xl p-1 shadow-inner">
-                    <button onClick={() => setCurrentDate(subDays(currentDate, 1))} className="p-2 hover:bg-background rounded-lg text-muted-foreground hover:text-foreground transition-all"><ChevronLeft size={20} /></button>
-                    <div className="px-6 py-2 min-w-[200px] text-center font-bold text-sm text-foreground flex items-center justify-center gap-2">
-                        <Calendar size={16} className="text-primary" />
-                        {format(currentDate, "dd 'de' MMMM, yyyy", { locale: ptBR })}
-                    </div>
-                    <button onClick={() => setCurrentDate(addDays(currentDate, 1))} className="p-2 hover:bg-background rounded-lg text-muted-foreground hover:text-foreground transition-all"><ChevronRight size={20} /></button>
-                </div>
+  return (
+    <PageShell>
+      <PageHeader
+        icon={CalendarDays}
+        title="Agenda de Estruturas"
+        subtitle="Spas, quadras e demais utilidades — horários do dia"
+        actions={(
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <IconButton icon={ChevronLeft} label="Dia anterior" variant="secondary" onClick={() => bk.setCurrentDate(subDays(bk.currentDate, 1))} />
+            <div style={{ minWidth: 150, textAlign: "center", fontSize: 13, fontWeight: 800, color: T.text }}>
+              {(() => { const s = format(bk.currentDate, "EEE, dd 'de' MMM", { locale: ptBR }); return s.charAt(0).toUpperCase() + s.slice(1); })()}
             </div>
+            <IconButton icon={ChevronRight} label="Próximo dia" variant="secondary" onClick={() => bk.setCurrentDate(addDays(bk.currentDate, 1))} />
+            {!isToday(bk.currentDate) && <Button variant="ghost" size="sm" onClick={() => bk.setCurrentDate(new Date())}>Hoje</Button>}
+          </div>
+        )}
+      />
 
-            {loading ? (
-                <div className="text-center py-12 text-muted-foreground text-sm font-medium animate-pulse">Carregando horários...</div>
-            ) : structures.length === 0 ? (
-                <div className="text-center py-20 bg-secondary/30 rounded-3xl border border-dashed border-border">
-                    <p className="text-muted-foreground">Você ainda não tem estruturas cadastradas na propriedade.</p>
+      <Loadable loading={bk.loading} skeleton={<SkeletonList rows={4} avatar={false} />} error={bk.error} onRetry={() => void bk.reload()}>
+        {bk.structures.length === 0 ? (
+          <EmptyState icon={MapPin} title="Nenhuma estrutura cadastrada" description="Cadastre spas, quadras e salas em Estruturas para agendar horários." action={{ label: "Ir para Estruturas", href: "/admin/estruturas" }} />
+        ) : bk.structures.map(structure => {
+          const hasUnits = !!(structure.units && structure.units.length > 0);
+          const items = hasUnits
+            ? structure.units!.map(u => ({ unitId: u.id as string | undefined, unitName: u.name, imageUrl: u.imageUrl }))
+            : [{ unitId: undefined as string | undefined, unitName: structure.name, imageUrl: structure.imageUrl }];
+          const releasedToday = structure.releasedForDate === dateStr;
+          const structBookings = bk.bookings.filter(b => b.structureId === structure.id);
+
+          return (
+            <Card key={structure.id} pad={0} style={{ overflow: "hidden" }}>
+              <div style={{ padding: "14px 16px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", background: T.glass }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                  <span style={{ width: 36, height: 36, borderRadius: 11, background: toneOf("brand").bg, border: `1px solid ${toneOf("brand").border}`, display: "flex", alignItems: "center", justifyContent: "center", color: T.brandText, flexShrink: 0 }}><MapPin size={16} /></span>
+                  <div style={{ minWidth: 0 }}>
+                    <h2 style={{ margin: 0, fontSize: 15, fontWeight: 900, color: T.text }}>{structure.name}</h2>
+                    <p style={{ margin: 0, fontSize: 10, color: T.muted, textTransform: "uppercase", letterSpacing: ".1em", fontWeight: 800 }}>
+                      {structure.bookingType === "free_time" ? "Horário livre" : `${structure.operatingHours.slotDurationMinutes} min / uso`}
+                    </p>
+                  </div>
                 </div>
-            ) : (
-                <div className="space-y-8">
-                    {structures.map(structure => {
-                        const hasUnits = structure.units && structure.units.length > 0;
-                        const itemsToRender = hasUnits
-                            ? structure.units!.map(u => ({ unitId: u.id, unitName: u.name, imageUrl: u.imageUrl }))
-                            : [{ unitId: undefined, unitName: structure.name, imageUrl: structure.imageUrl }];
+                {structure.requiresDailyRelease && (
+                  releasedToday
+                    ? <Button variant="soft" tone="green" size="sm" icon={Unlock} onClick={() => bk.handleToggleRelease(structure, false)} title="Clique para bloquear novamente">Liberada para uso</Button>
+                    : <Button variant="soft" tone="orange" size="sm" icon={Lock} onClick={() => bk.handleToggleRelease(structure, true)} title="Bloqueada até a recepção liberar">Liberar para uso</Button>
+                )}
+              </div>
 
-                        return (
-                            <div key={structure.id} className="bg-card border border-border rounded-3xl overflow-hidden shadow-sm">
-                                <header className="px-6 py-4 bg-secondary/50 border-b border-border flex justify-between items-center gap-4">
-                                    <div className="flex items-center gap-3">
-                                        <MapPin size={24} className="text-primary" />
-                                        <div>
-                                            <h2 className="font-bold text-lg text-foreground">{structure.name}</h2>
-                                            <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">
-                                                {structure.bookingType === 'free_time' ? 'Horário Livre' : `${structure.operatingHours.slotDurationMinutes} min / uso`}
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    {/* Liberação diária — botão Liberar/Bloquear (só para estruturas que exigem) */}
-                                    {structure.requiresDailyRelease && (() => {
-                                        const dateStr = format(currentDate, "yyyy-MM-dd");
-                                        const releasedToday = structure.releasedForDate === dateStr;
-                                        return releasedToday ? (
-                                            <button
-                                                onClick={() => handleToggleRelease(structure, false)}
-                                                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-green-500/40 bg-green-500/10 text-green-600 font-bold text-xs uppercase tracking-wider hover:bg-green-500/20 transition-all"
-                                                title="Clique para bloquear novamente"
-                                            >
-                                                <Unlock size={15} /> Liberada para uso
-                                            </button>
-                                        ) : (
-                                            <button
-                                                onClick={() => handleToggleRelease(structure, true)}
-                                                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-orange-500/40 bg-orange-500/10 text-orange-600 font-bold text-xs uppercase tracking-wider hover:bg-orange-500/20 transition-all"
-                                                title="Bloqueada até a recepção liberar"
-                                            >
-                                                <Lock size={15} /> Liberar para uso
-                                            </button>
-                                        );
-                                    })()}
-                                </header>
-
-                                <div className="divide-y divide-border">
-                                    {itemsToRender.map((item, idx) => {
-                                        const itemBookings = bookings.filter(b => b.structureId === structure.id && (item.unitId ? b.unitId === item.unitId : !b.unitId));
-
-                                        const slots = structure.bookingType === 'fixed_slots'
-                                            ? StructureService.generateTimeSlots(structure, bookings.filter(b => b.structureId === structure.id), item.unitId)
-                                            : [];
-
-                                        return (
-                                            <div key={item.unitId || idx} className="p-6">
-                                                {/* Header da Unidade (Se houver múltiplas) */}
-                                                {hasUnits && (
-                                                    <div className="flex items-center gap-3 mb-6 bg-secondary/30 p-3 rounded-2xl border border-border w-fit pl-2">
-                                                        {item.imageUrl ? (
-                                                            <img src={item.imageUrl} alt={item.unitName} className="w-10 h-10 rounded-xl object-cover" />
-                                                        ) : (
-                                                            <div className="w-10 h-10 rounded-xl bg-background border border-border flex items-center justify-center">
-                                                                <MapPin size={16} className="text-muted-foreground" />
-                                                            </div>
-                                                        )}
-                                                        <div className="pr-4">
-                                                            <h3 className="font-bold text-sm text-foreground">{item.unitName}</h3>
-                                                            <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Unidade</p>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {/* MODO FREE_TIME */}
-                                                {structure.bookingType === 'free_time' ? (
-                                                    <div className="flex justify-start">
-                                                        <button onClick={() => openModal(structure.id, item.unitId, true)} className="flex items-center gap-2 px-6 py-4 border border-dashed border-primary/50 rounded-2xl text-primary font-bold hover:bg-primary/5 transition-colors">
-                                                            <Plus size={18} /> Cadastrar Nova Reserva Manual
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    /* MODO FIXED_SLOTS */
-                                                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
-                                                        {slots.map((slot, sIdx) => {
-                                                            const booking = slot.bookingId ? itemBookings.find(b => b.id === slot.bookingId) : null;
-
-                                                            if (slot.available) {
-                                                                return (
-                                                                    <button key={sIdx} onClick={() => openModal(structure.id, item.unitId, false, slot)} className="p-3 bg-secondary/30 border border-border rounded-xl text-center hover:bg-primary/10 hover:border-primary/50 transition-all group flex flex-col items-center justify-center gap-1">
-                                                                        <div className="font-mono text-sm font-bold text-foreground group-hover:text-primary transition-colors">{slot.startTime}</div>
-                                                                        <div className="text-[9px] uppercase font-black text-muted-foreground tracking-widest">Livre</div>
-                                                                    </button>
-                                                                );
-                                                            }
-
-                                                            if (booking) {
-                                                                const bStay = booking.stayId ? activeStays.find(s => s.id === booking.stayId) : null;
-                                                                const bFirstName = (bStay?.guestName || booking.guestName || "Ocupado").split(" ")[0];
-                                                                const slotLabel = booking.type === 'maintenance_block' ? null : bStay?.cabinName ? `${bStay.cabinName.match(/\d+/)?.[0] ?? bStay.cabinName} - ${bFirstName}` : (booking.guestName || "Ocupado");
-                                                                return (
-                                                                    <div key={sIdx} className={cn("p-3 border rounded-xl flex flex-col items-center justify-center gap-1 relative group cursor-default", booking.type === 'maintenance_block' ? "bg-red-500/10 text-red-600 border-red-500/30" : (statusColors[booking.status] || "bg-secondary text-foreground border-border"))}>
-                                                                        <div className="font-mono text-xs font-bold">{booking.startTime}</div>
-                                                                        {booking.type === 'maintenance_block' ? (
-                                                                            <div className="text-[10px] font-black w-full text-center flex items-center justify-center gap-1"><Wrench size={10} /> Bloqueio</div>
-                                                                        ) : (
-                                                                            <div className="text-[10px] font-black truncate w-full text-center" title={slotLabel!}>{slotLabel}</div>
-                                                                        )}
-
-                                                                        {/* Hover actions */}
-                                                                        <div className="absolute inset-0 bg-background/95 backdrop-blur-md rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 border border-border pointer-events-none group-hover:pointer-events-auto">
-                                                                            {booking.status === 'pending' && (
-                                                                                <div className="flex gap-2">
-                                                                                    <button onClick={() => handleStatusChange(booking, 'approved', structure.requiresTurnover)} className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center shadow-lg hover:scale-110 transition-transform" title="Aprovar"><Check size={14} /></button>
-                                                                                    <button onClick={() => handleStatusChange(booking, 'rejected', structure.requiresTurnover)} className="w-8 h-8 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg hover:scale-110 transition-transform" title="Rejeitar"><X size={14} /></button>
-                                                                                </div>
-                                                                            )}
-                                                                            {(booking.status === 'approved' || booking.type === 'maintenance_block') && (
-                                                                                <div className="flex gap-2">
-                                                                                    {booking.type !== 'maintenance_block' && (
-                                                                                        <button onClick={() => handleStatusChange(booking, 'completed', structure.requiresTurnover)} className="w-8 h-8 rounded-full bg-green-500 text-white flex items-center justify-center shadow-lg hover:scale-110 transition-transform" title="Concluir Uso"><Check size={14} /></button>
-                                                                                    )}
-                                                                                    <button onClick={() => openCancelModal(booking, structure.id, structure.requiresTurnover)} className="w-8 h-8 rounded-full bg-zinc-500 text-white flex items-center justify-center shadow-lg hover:scale-110 transition-transform" title="Remover / Cancelar"><X size={14} /></button>
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-                                                                );
-                                                            }
-                                                            return null;
-                                                        })}
-                                                    </div>
-                                                )}
-
-                                                {/* LISTA DE RESERVAS PENDENTES OU DO DIA DESTA UNIDADE */}
-                                                {itemBookings.length > 0 && (
-                                                    <div className="mt-6 pt-6 border-t border-border">
-                                                        <h3 className="text-xs font-black uppercase text-foreground/50 tracking-widest mb-4">Agenda do Dia ({itemBookings.length})</h3>
-                                                        <div className="space-y-2">
-                                                            {itemBookings.map(b => {
-                                                                const bStay = b.stayId ? activeStays.find(s => s.id === b.stayId) : null;
-                                                                const bFirstName = (bStay?.guestName || b.guestName || "Hóspede").split(" ")[0];
-                                                                const displayName = b.type === 'maintenance_block'
-                                                                    ? (b.guestName || "Manutenção/Bloqueio")
-                                                                    : bStay?.cabinName ? `${bStay.cabinName.match(/\d+/)?.[0] ?? bStay.cabinName} - ${bFirstName}` : (b.guestName || "Hóspede");
-                                                                return (
-                                                                <div key={b.id} className={cn("flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-xl gap-4", b.type === 'maintenance_block' ? "bg-red-500/5 border-red-500/30" : "bg-secondary/30 border-border")}>
-                                                                    <div className="flex items-center gap-4 flex-wrap">
-                                                                        <div className={cn("px-2.5 py-1 text-[10px] uppercase font-black tracking-widest rounded-lg border", b.type === 'maintenance_block' ? "bg-red-500 text-white border-transparent" : statusColors[b.status])}>
-                                                                            {b.type === 'maintenance_block' ? 'Manutenção' : statusLabels[b.status]}
-                                                                        </div>
-                                                                        <div className="font-mono text-sm font-bold text-foreground">
-                                                                            {b.startTime} - {b.endTime}
-                                                                        </div>
-                                                                        <div className="text-sm font-medium text-foreground flex items-center gap-2">
-                                                                            {b.type === 'maintenance_block' ? <Wrench size={14} className="text-red-500" /> : <User size={14} className="text-muted-foreground" />}
-                                                                            {displayName}
-                                                                        </div>
-                                                                        {b.notes && (
-                                                                            <div className="text-xs text-muted-foreground flex items-center gap-1 ml-4 border-l border-border pl-4">
-                                                                                <Info size={12} /> {b.notes}
-                                                                            </div>
-                                                                        )}
-                                                                        {b.source === 'guest' && (
-                                                                            <div className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded uppercase font-bold tracking-wider">App Hóspede</div>
-                                                                        )}
-
-                                                                        {/* Ações na lista se for free_time e aprovado (só pra poder cancelar/excluir) */}
-                                                                        {structure.bookingType === 'free_time' && (b.status === 'approved' || b.type === 'maintenance_block') && (
-                                                                            <button onClick={() => openCancelModal(b, structure.id, structure.requiresTurnover)} className="p-1.5 text-red-500 hover:bg-red-500/10 rounded-lg ml-auto transition-colors" title="Cancelar"><X size={16} /></button>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                            })}
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-
-            {/* Modal Nova Reserva Manual / Bloqueio */}
-            {isModalOpen && selectedConfig && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
-                    <div className="bg-card w-full max-w-md rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-border animate-in zoom-in-95 duration-300">
-                        <header className="p-6 border-b border-border bg-secondary/50 flex justify-between items-center">
-                            <div>
-                                <h2 className="text-xl font-bold text-foreground">Criar Agendamento</h2>
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                    {format(currentDate, "dd/MM/yyyy")} {selectedConfig.slot ? `• ${selectedConfig.slot.startTime} às ${selectedConfig.slot.endTime}` : ''}
-                                </p>
-                            </div>
-                            <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-destructive/10 hover:text-destructive text-muted-foreground rounded-xl transition-all"><X size={20} /></button>
-                        </header>
-
-                        <div className="p-6 space-y-6">
-                            <div className="flex bg-secondary p-1 rounded-xl">
-                                <button type="button" onClick={() => setBookingType('booking')} className={cn("flex-1 py-2 text-xs font-bold uppercase rounded-lg transition-all", bookingType === 'booking' ? "bg-background shadow-sm text-primary" : "text-muted-foreground hover:text-foreground")}>Hóspede Reserva</button>
-                                <button type="button" onClick={() => setBookingType('maintenance_block')} className={cn("flex-1 py-2 text-xs font-bold uppercase rounded-lg transition-all", bookingType === 'maintenance_block' ? "bg-red-500 shadow-sm text-white" : "text-muted-foreground hover:text-foreground")}>Bloqueio Manutenção</button>
-                            </div>
-
-                            <form id="bookingForm" onSubmit={handleCreateBooking} className="space-y-4">
-                                {selectedConfig.isFreeTime && (
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Início</label>
-                                            <input type="time" required value={freeTimeStart} onChange={e => setFreeTimeStart(e.target.value)} className="w-full bg-background border border-border p-3 rounded-xl text-sm font-mono text-center outline-none focus:border-primary text-foreground" />
-                                        </div>
-                                        <div>
-                                            <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Término</label>
-                                            <input type="time" required value={freeTimeEnd} onChange={e => setFreeTimeEnd(e.target.value)} className="w-full bg-background border border-border p-3 rounded-xl text-sm font-mono text-center outline-none focus:border-primary text-foreground" />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {bookingType === 'booking' ? (
-                                    <div>
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Hóspede Titular da Reserva</label>
-                                        <select
-                                            value={guestName}
-                                            onChange={e => setGuestName(e.target.value)}
-                                            className="w-full bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-primary text-foreground appearance-none"
-                                            required
-                                        >
-                                            <option value="" disabled>Selecione a Estadia Hospedada...</option>
-                                            {[...activeStays].sort((a, b) => {
-                                                const numA = (a.cabinName?.match(/\d+/) ?? [])[0];
-                                                const numB = (b.cabinName?.match(/\d+/) ?? [])[0];
-                                                if (numA && numB) return parseInt(numA) - parseInt(numB);
-                                                return (a.cabinName || "").localeCompare(b.cabinName || "");
-                                            }).map(stay => (
-                                                <option key={stay.id} value={stay.id}>
-                                                    {stay.guestName} - {stay.cabinName} (Res: {stay.id.slice(0, 6).toUpperCase()})
-                                                </option>
-                                            ))}
-                                        </select>
-                                        {activeStays.length === 0 && (
-                                            <p className="text-[10px] text-orange-500 font-medium mt-1">Nenhuma estadia ativa encontrada para o decorrer do dia.</p>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div>
-                                        <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Nota de Bloqueio</label>
-                                        <input required value={maintenanceNotes} onChange={e => setMaintenanceNotes(e.target.value)} className="w-full bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-red-500 text-foreground" placeholder="Motivo do bloqueio..." />
-                                    </div>
-                                )}
-                            </form>
+              <div>
+                {items.map((item, idx) => {
+                  const itemBookings = structBookings.filter(b => (item.unitId ? b.unitId === item.unitId : !b.unitId));
+                  const slots = structure.bookingType === "fixed_slots" ? StructureService.generateTimeSlots(structure, structBookings, item.unitId) : [];
+                  return (
+                    <div key={item.unitId || idx} style={{ padding: 16, borderTop: idx > 0 ? `1px solid ${T.border}` : undefined, display: "flex", flexDirection: "column", gap: 14 }}>
+                      {hasUnits && (
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 10, alignSelf: "flex-start", padding: "6px 12px 6px 6px", borderRadius: 14, background: T.glass, border: `1px solid ${T.border}` }}>
+                          {item.imageUrl ? (
+                            <img src={item.imageUrl} alt="" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "cover" }} />
+                          ) : (
+                            <span style={{ width: 36, height: 36, borderRadius: 10, background: T.card, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", color: T.muted }}><MapPin size={14} /></span>
+                          )}
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: T.text }}>{item.unitName}</div>
+                            <div style={{ fontSize: 10, color: T.muted, textTransform: "uppercase", letterSpacing: ".1em" }}>Unidade</div>
+                          </div>
                         </div>
+                      )}
 
-                        <footer className="p-4 border-t border-border bg-secondary/30 flex justify-end gap-3">
-                            <button onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 hover:bg-accent rounded-xl text-muted-foreground font-bold text-xs uppercase tracking-wider transition-all">Cancelar</button>
-                            <button type="submit" form="bookingForm" className="px-6 py-2.5 bg-primary text-primary-foreground font-bold rounded-xl text-xs uppercase tracking-wider hover:opacity-90 transition-all">
-                                Confirmar {bookingType === 'booking' ? 'Agendamento' : 'Bloqueio'}
-                            </button>
-                        </footer>
-                    </div>
-                </div>
-            )}
-
-            {/* Modal Cancelamento */}
-            {cancelModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300">
-                    <div className="bg-card w-full max-w-md rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-border animate-in zoom-in-95 duration-300">
-                        <header className="p-6 border-b border-border bg-secondary/50 flex justify-between items-center">
-                            <div>
-                                <h2 className="text-xl font-bold text-foreground">Cancelar Agendamento</h2>
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                    {cancelModal.booking.guestName} • {cancelModal.booking.startTime} - {cancelModal.booking.endTime}
-                                </p>
-                            </div>
-                            <button onClick={() => setCancelModal(null)} className="p-2 hover:bg-destructive/10 hover:text-destructive text-muted-foreground rounded-xl transition-all"><X size={20} /></button>
-                        </header>
-                        <div className="p-6 space-y-4">
-                            <p className="text-sm text-muted-foreground">Informe o motivo do cancelamento. Se configurado, o hóspede receberá uma mensagem no WhatsApp.</p>
-                            <div>
-                                <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Motivo do Cancelamento</label>
-                                <textarea
-                                    value={cancelReason}
-                                    onChange={e => setCancelReason(e.target.value)}
-                                    className="w-full bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-destructive text-foreground min-h-[100px]"
-                                    placeholder="Ex: Condições climáticas adversas, manutenção emergencial..."
-                                    autoFocus
-                                />
-                            </div>
+                      {structure.bookingType === "free_time" ? (
+                        <Button variant="outline" icon={Plus} onClick={() => bk.openCreate(structure.id, item.unitId, true)} style={{ alignSelf: "flex-start" }}>Nova reserva manual</Button>
+                      ) : (
+                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 xl:grid-cols-8 gap-2">
+                          {slots.map((slot, sIdx) => {
+                            const booking = slot.bookingId ? itemBookings.find(b => b.id === slot.bookingId) : null;
+                            if (slot.available) {
+                              return (
+                                <button key={sIdx} type="button" className="ak-press ak-focus" onClick={() => bk.openCreate(structure.id, item.unitId, false, slot)}
+                                  style={{ minHeight: 56, padding: 8, borderRadius: 12, border: `1px dashed ${T.border2}`, background: T.glass, cursor: "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
+                                  <span style={{ fontSize: 13, fontWeight: 800, color: T.text, fontVariantNumeric: "tabular-nums" }}>{slot.startTime}</span>
+                                  <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: T.muted }}>Livre</span>
+                                </button>
+                              );
+                            }
+                            if (!booking) return null;
+                            const isBlock = booking.type === "maintenance_block";
+                            const tn = toneOf(isBlock ? "red" : STATUS_TONE[booking.status] ?? "neutral");
+                            return (
+                              <button key={sIdx} type="button" className="ak-press ak-focus" onClick={() => bk.setSlotTarget({ booking, structure })} aria-label={`${booking.startTime} ${bookingDisplayName(booking, bk.activeStays, true)}`}
+                                style={{ minHeight: 56, padding: 8, borderRadius: 12, border: `1px solid ${tn.border}`, background: tn.bg, color: tn.color, cursor: "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, minWidth: 0 }}>
+                                <span style={{ fontSize: 12, fontWeight: 800, fontVariantNumeric: "tabular-nums" }}>{booking.startTime}</span>
+                                <span style={{ fontSize: 10, fontWeight: 800, width: "100%", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                                  {isBlock && <Wrench size={10} />}{bookingDisplayName(booking, bk.activeStays, true)}
+                                </span>
+                              </button>
+                            );
+                          })}
                         </div>
-                        <footer className="p-4 border-t border-border bg-secondary/30 flex justify-end gap-3">
-                            <button onClick={() => setCancelModal(null)} className="px-5 py-2.5 hover:bg-accent rounded-xl text-muted-foreground font-bold text-xs uppercase tracking-wider transition-all">Voltar</button>
-                            <button onClick={confirmCancel} disabled={!cancelReason.trim()} className="px-6 py-2.5 bg-red-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider hover:opacity-90 transition-all disabled:opacity-40 flex items-center gap-2">
-                                <X size={16} /> Confirmar Cancelamento
-                            </button>
-                        </footer>
+                      )}
+
+                      {itemBookings.length > 0 && (
+                        <div style={{ paddingTop: 14, borderTop: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 8 }}>
+                          <h3 style={{ margin: 0, fontSize: 11, fontWeight: 900, textTransform: "uppercase", letterSpacing: ".1em", color: T.muted }}>Agenda do dia ({itemBookings.length})</h3>
+                          {itemBookings.map(b => {
+                            const isBlock = b.type === "maintenance_block";
+                            const canCancel = structure.bookingType === "free_time" && (b.status === "approved" || isBlock);
+                            return (
+                              <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "10px 12px", borderRadius: 12, border: `1px solid ${isBlock ? T.redBorder : T.border}`, background: isBlock ? T.redBg : T.glass }}>
+                                <Pill tone={isBlock ? "red" : STATUS_TONE[b.status] ?? "neutral"} label={isBlock ? "Manutenção" : STATUS_LABEL[b.status] ?? b.status} />
+                                <span style={{ fontSize: 13, fontWeight: 800, color: T.text, fontVariantNumeric: "tabular-nums" }}>{b.startTime} – {b.endTime}</span>
+                                <span style={{ fontSize: 13, color: T.text, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                  {isBlock ? <Wrench size={13} color={T.red} /> : <User size={13} color={T.muted} />}{bookingDisplayName(b, bk.activeStays)}
+                                </span>
+                                {b.notes && <span style={{ fontSize: 12, color: T.muted, display: "inline-flex", alignItems: "center", gap: 4 }}><Info size={12} /> {b.notes}</span>}
+                                {b.source === "guest" && <Pill tone="brand" label="App hóspede" />}
+                                {canCancel && <IconButton icon={X} label="Cancelar" variant="ghost" tone="red" size="sm" onClick={() => bk.openCancel(b, structure.id, structure.requiresTurnover)} style={{ marginLeft: "auto" }} />}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                </div>
-            )}
-        </div>
-    );
+                  );
+                })}
+              </div>
+            </Card>
+          );
+        })}
+      </Loadable>
+
+      <CreateBookingDialog bk={bk} />
+      <CancelBookingDialog bk={bk} />
+      <SlotActionsDialog bk={bk} />
+    </PageShell>
+  );
 }
