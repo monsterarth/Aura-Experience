@@ -390,6 +390,7 @@
 .ak-fab[data-icon-only] { padding: 0; width: 56px; }
 @media (min-width: 1024px) { .ak-fab { display: none; } }
 .ak-fab[data-hidden] { display: none; }
+.ak-fab[data-disabled] { opacity: .45; box-shadow: none; cursor: not-allowed; pointer-events: none; }
 .ak-actionbar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
 .ak-actionbar__note { font-size: 12px; color: var(--t-muted); margin-right: auto; min-width: 0; }
 @media (max-width: 1023px) {

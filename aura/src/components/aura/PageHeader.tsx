@@ -84,7 +84,7 @@ export function PageHeader({ title, titleAccent, subtitle, icon, iconTone = "bra
       </div>
       {tabs}
       {children}
-      {showFab && <FAB icon={primaryAction!.icon ?? Plus} label={primaryAction!.label} onClick={primaryAction!.onClick} href={primaryAction!.href} />}
+      {showFab && <FAB icon={primaryAction!.icon ?? Plus} label={primaryAction!.label} onClick={primaryAction!.onClick} href={primaryAction!.href} disabled={primaryAction!.disabled || primaryAction!.loading} />}
     </header>
   );
 }
