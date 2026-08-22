@@ -1,647 +1,76 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
-import {
-    Users, LogIn, LogOut, Clock, Calendar,
-    Coffee, MessageCircleWarning, AlertTriangle,
-    Sparkles, CheckCircle2, Timer, BellRing,
-    Home, Utensils, Info, Check, X, Megaphone, CheckCircle, Star,
-    ExternalLink
-} from "lucide-react";
-import { Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useAuth } from "@/context/AuthContext";
+import React from "react";
+import { Building2, Clock, Home, LogIn, LogOut, Users } from "lucide-react";
 import { useProperty } from "@/context/PropertyContext";
-import { supabase, safeRemoveChannel } from "@/lib/supabase";
-import { HousekeepingService } from "@/services/housekeeping-service";
-import { ConciergeService } from "@/services/concierge-service";
-import { fbService } from "@/services/fb-service";
-import { HousekeepingTask, ConciergeRequest, FBOrder, StructureBooking, Structure, Cabin } from "@/types/aura";
 import { MaintenanceReportButton } from "@/components/field/MaintenanceReportSheet";
-import { toast } from "sonner";
+import { T } from "@/lib/admin-tokens";
+import { PageShell, PageHeader, KpiGrid, KpiCard, Loadable, PageSkeleton, EmptyState, Pill } from "@/components/aura";
+import { useReceptionLive } from "./_components/useReceptionLive";
+import { AlertsCard, BreakfastCard, GovernanceCard, GuestRequestsCard, StructuresAgendaCard } from "./_components/ReceptionCards";
 
 export default function ReceptionDashboard() {
-    const { userData } = useAuth();
-    const { currentProperty: property, setProperty, loading: propLoading } = useProperty();
-    const router = useRouter();
+  const { loading: propLoading } = useProperty();
+  const r = useReceptionLive();
+  const { stats, property } = r;
 
-    const [currentTime, setCurrentTime] = useState(new Date());
-    const [breakfastMode, setBreakfastMode] = useState<"buffet" | "delivery">("delivery");
-    const [loading, setLoading] = useState(true);
-
-    // Stats
-    const [stats, setStats] = useState({ checkinsDone: 0, checkinsTotal: 0, checkoutsDone: 0, checkoutsTotal: 0, occupiedCabins: 0, totalCabins: 0, walkIns: 0 });
-
-    // Staff (para nomes na governança)
-    const [staffMap, setStaffMap] = useState<Record<string, string>>({});
-
-    // Governança
-    const [hkTasks, setHkTasks] = useState<HousekeepingTask[]>([]);
-    const [cabins, setCabins] = useState<Cabin[]>([]);
-
-    // Estruturas
-    const [structures, setStructures] = useState<Structure[]>([]);
-    const [structureBookings, setStructureBookings] = useState<(StructureBooking & { bookingCabinName?: string | null })[]>([]);
-
-    // Alertas
-    const [detractors, setDetractors] = useState<any[]>([]);
-    const [msgFailures, setMsgFailures] = useState<any[]>([]);
-
-    // Chegadas do dia — usadas para notificar quando a governanta libera uma cabana
-    type TodayArrival = { cabinId: string; cabinName: string; guestName: string };
-    const [todayArrivals, setTodayArrivals] = useState<TodayArrival[]>([]);
-    // Ref espelha o state para ser acessível dentro do callback Realtime sem stale closure
-    const todayArrivalsRef = useRef<TodayArrival[]>([]);
-
-    // Concierge (realtime)
-    const [pendingRequests, setPendingRequests] = useState<ConciergeRequest[]>([]);
-
-    // F&B — cabinName já embutido no objeto pelo API route
-    const [breakfastOrders, setBreakfastOrders] = useState<(FBOrder & { cabinName?: string })[]>([]);
-
-    // Clock
-    useEffect(() => {
-        const timer = setInterval(() => setCurrentTime(new Date()), 60000);
-        return () => clearInterval(timer);
-    }, []);
-
-    // Sincronizar switch de café com valor persistido
-    useEffect(() => {
-        const saved = property?.settings?.fbSettings?.breakfast?.dailyMode;
-        if (saved) setBreakfastMode(saved);
-    }, [property?.id]);
-
-    // ==========================================
-    // HELPERS
-    // ==========================================
-
-    function formatTimeAgo(iso: string): string {
-        const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-        if (mins < 60) return `Há ${mins} min`;
-        const h = Math.floor(mins / 60);
-        return `Há ${h} hora${h > 1 ? 's' : ''}`;
-    }
-
-    function getElapsed(task: HousekeepingTask): string {
-        if (!task.startedAt) return 'Aguardando';
-        const mins = Math.round((Date.now() - new Date(task.startedAt as string).getTime()) / 60000);
-        return `${mins} min`;
-    }
-
-    function getTaskLocationName(task: HousekeepingTask): string {
-        if (task.cabinId) return cabins.find(c => c.id === task.cabinId)?.name ?? '—';
-        return structures.find(s => s.id === task.structureId)?.name ?? '—';
-    }
-
-    function formatOrderItems(items: any[]): string {
-        return items.filter(i => i.menuItemId !== 'guest_observations')
-            .map(i => `${i.quantity}x ${i.name}`).join(', ');
-    }
-
-    // ==========================================
-    // DATA LOADER — single API call, sem queries diretas no browser
-    // ==========================================
-
-    async function handleBreakfastModeToggle(mode: 'delivery' | 'buffet') {
-        const previous = breakfastMode;
-        setBreakfastMode(mode);
-        try {
-            // A Property fresca volta da rota: sem alimentar o contexto, o efeito de
-            // sincronização reverteria o switch para o valor velho no próximo render.
-            const fresh = await fbService.setDailyBreakfastMode(property!.id, mode);
-            if (fresh) setProperty(fresh);
-            toast.success(mode === 'delivery' ? 'Café de hoje: Cesta Delivery.' : 'Café de hoje: Buffet Salão.');
-        } catch (e) {
-            setBreakfastMode(previous);
-            toast.error((e as Error).message || 'Erro ao salvar modalidade do café.');
-        }
-    }
-
-    async function loadDashboard(silent = false) {
-        if (!property?.id) return;
-        if (!silent) setLoading(true);
-        try {
-            const params = new URLSearchParams({ propertyId: property.id });
-            const res = await fetch(`/api/admin/reception/dashboard?${params}`);
-            if (!res.ok) throw new Error('fetch-error');
-            const data = await res.json();
-
-            setStats(data.stats);
-            setCabins(data.cabins ?? []);
-            const map: Record<string, string> = {};
-            (data.staff ?? []).forEach((s: any) => { map[s.id] = s.fullName; });
-            setStaffMap(map);
-            setStructures(data.structures ?? []);
-            setStructureBookings(data.structureBookings ?? []);
-            setDetractors(data.detractors ?? []);
-            setMsgFailures(data.msgFailures ?? []);
-            setBreakfastOrders(data.breakfastOrders ?? []);
-            const arrivals: TodayArrival[] = data.todayArrivals ?? [];
-            setTodayArrivals(arrivals);
-            todayArrivalsRef.current = arrivals;
-        } catch {
-            toast.error('Erro ao carregar dados da recepção.');
-        } finally {
-            if (!silent) setLoading(false);
-        }
-    }
-
-    useEffect(() => {
-        if (!property?.id) return;
-        loadDashboard();
-
-        const unsubHK = HousekeepingService.listenToActiveTasks(property.id, setHkTasks);
-        const unsubConcierge = ConciergeService.listenToPendingRequests(property.id, setPendingRequests);
-
-        // Realtime: stays mudam → recarrega stats + lista de chegadas do dia silenciosamente
-        let staysSubscribed = false;
-        const staysChannel = supabase.channel(`reception_stays_${property.id}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'stays',
-                filter: `propertyId=eq.${property.id}` }, () => loadDashboard(true))
-            .subscribe((status: string) => { if (status === 'SUBSCRIBED') staysSubscribed = true; });
-
-        // Realtime: cabanas mudam status → notifica recepção quando governanta libera
-        // uma cabana que tem check-in hoje
-        let cabinsSubscribed = false;
-        const cabinsChannel = supabase.channel(`reception_cabins_${property.id}`)
-            .on('postgres_changes',
-                { event: 'UPDATE', schema: 'public', table: 'cabins', filter: `propertyId=eq.${property.id}` },
-                (payload: any) => {
-                    const updated = payload.new as Cabin;
-                    if (updated.status !== 'available') return;
-                    const arrival = todayArrivalsRef.current.find(a => a.cabinId === updated.id);
-                    if (!arrival) return;
-                    toast.success(`${arrival.cabinName} liberada pela governanta 🛎️`, {
-                        description: `${arrival.guestName} pode fazer check-in agora.`,
-                        duration: 12000,
-                    });
-                }
-            )
-            .subscribe((status: string) => { if (status === 'SUBSCRIBED') cabinsSubscribed = true; });
-
-        return () => {
-            unsubHK();
-            unsubConcierge();
-            safeRemoveChannel(staysChannel, staysSubscribed);
-            safeRemoveChannel(cabinsChannel, cabinsSubscribed);
-        };
-    }, [property?.id]);
-
-    // ==========================================
-    // DERIVED VALUES
-    // ==========================================
-
-    const activeTasks = hkTasks.filter(t => ['pending', 'in_progress', 'waiting_conference'].includes(t.status));
-
-    const recentlyReleasedCabins = hkTasks
-        .filter(t => t.status === 'completed' && t.cabinId && t.finishedAt &&
-            Date.now() - new Date(t.finishedAt as string).getTime() < 4 * 60 * 60 * 1000)
-        .map(t => cabins.find(c => c.id === t.cabinId)?.name ?? t.cabinId!);
-
-    const nowHHMM = currentTime.toTimeString().slice(0, 5);
-    const structureAgenda = structureBookings.map(b => {
-        const structure = structures.find(s => s.id === b.structureId);
-        const guestLabel = b.bookingCabinName || b.guestName || '—';
-        let displayStatus: 'in_use' | 'upcoming' | 'freed';
-        if (b.status === 'completed') displayStatus = 'freed';
-        else if (b.startTime <= nowHHMM && nowHHMM < b.endTime) displayStatus = 'in_use';
-        else displayStatus = 'upcoming';
-        const [eh, em] = b.endTime.split(':').map(Number);
-        const endMins = eh * 60 + em;
-        const nowMins = currentTime.getHours() * 60 + currentTime.getMinutes();
-        const freeMins = Math.max(0, nowMins - endMins);
-        return {
-            id: b.id, name: structure?.name ?? '—', status: displayStatus,
-            by: guestLabel, until: b.endTime, at: b.startTime,
-            time: `Há ${freeMins} min`, needCleaning: displayStatus === 'freed' && structure?.requiresTurnover,
-        };
-    });
-
-    const alertItems = [
-        ...detractors.map(r => {
-            const parts: string[] = [];
-            if (r.metrics?.npsScore != null) parts.push(`NPS: ${r.metrics.npsScore}/10`);
-            if (r.metrics?.averageRating != null) parts.push(`Avaliação: ${r.metrics.averageRating}/5 estrelas`);
-            return {
-                type: 'review' as const,
-                title: 'Avaliação Negativa (Detrator)',
-                desc: `${r.cabinName} — ${parts.length ? parts.join(' · ') : 'sem nota registrada'}.`,
-                time: formatTimeAgo(r.createdAt),
-            };
-        }),
-        // Nem toda falha é do robô: disparo em massa e conversa manual caem na mesma
-        // tabela. Chamar tudo de "automática" mandava a recepção procurar a falha na
-        // fila de automações, onde ela não estava.
-        ...msgFailures.map(m => {
-            const origin = m.isAutomated
-                ? `automação: ${m.triggerEvent || 'gatilho'}`
-                : m.scheduledFor ? 'disparo em massa' : 'mensagem manual';
-            return {
-                type: 'message_error' as const,
-                title: m.isAutomated ? 'Falha: Mensagem Automática' : 'Falha no Envio de WhatsApp',
-                desc: `Não foi possível enviar (${origin}) para ${m.to || 'hóspede'}.`,
-                time: formatTimeAgo(m.createdAt),
-            };
-        }),
-    ].slice(0, 5);
-
-    // ==========================================
-    // GUARDS
-    // ==========================================
-
-    if (propLoading) return (
-        <div className="flex items-center justify-center h-64">
-            <Loader2 className="animate-spin w-8 h-8 text-primary" />
-        </div>
-    );
-    if (!property) return (
-        <div className="p-8 text-center text-muted-foreground">
-            Selecione uma propriedade para ver a recepção.
-        </div>
-    );
-
+  if (!propLoading && !property) {
     return (
-        <div className="space-y-6 lg:space-y-8 animate-in fade-in duration-500">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl lg:text-3xl font-black tracking-tight flex items-center gap-3">
-                        <span className="bg-gradient-to-r from-primary to-primary/50 text-transparent bg-clip-text">
-                            Recepção
-                        </span>
-                        <span className="text-sm font-medium px-2 py-1 bg-muted border border-border rounded-md text-muted-foreground flex items-center gap-2">
-                            <span className="relative flex h-2 w-2">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ backgroundColor: '#B0E0E6' }}></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2" style={{ backgroundColor: '#B0E0E6' }}></span>
-                            </span>
-                            Funcional · Sistema ativo
-                        </span>
-                    </h1>
-                    <p className="text-sm text-muted-foreground mt-1">
-                        Visão geral da operação, status das cabanas, pedidos e alertas.
-                    </p>
-                </div>
-
-                <div className="flex items-center gap-3">
-                    <MaintenanceReportButton variant="admin" />
-                    <div className="flex items-center gap-4 bg-muted border border-border px-4 py-2 rounded-2xl">
-                        <Clock className="w-5 h-5 text-primary" />
-                        <div className="text-right">
-                            <p className="font-bold text-lg leading-none">
-                                {currentTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                            </p>
-                            <p className="text-[10px] text-muted-foreground uppercase tracking-widest">
-                                {currentTime.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'long' })}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* TOP STATS GRID */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard
-                    icon={Users}
-                    label="Ocupação"
-                    value={`${stats.occupiedCabins}/${stats.totalCabins}`}
-                    sub={stats.totalCabins > 0 ? `${Math.round(stats.occupiedCabins / stats.totalCabins * 100)}%` : '—'}
-                    note="*Apenas cabanas consideradas na ocupação"
-                    color="text-emerald-400"
-                    bg="bg-emerald-400/10"
-                />
-                <StatCard
-                    icon={LogIn}
-                    label="Check-ins Hoje"
-                    value={`${stats.checkinsDone}/${stats.checkinsTotal}`}
-                    sub={stats.checkinsTotal > 0 && stats.checkinsDone === stats.checkinsTotal ? 'Concluídos' : undefined}
-                    color="text-blue-400"
-                    bg="bg-blue-400/10"
-                />
-                <StatCard
-                    icon={LogOut}
-                    label="Check-outs Hoje"
-                    value={`${stats.checkoutsDone}/${stats.checkoutsTotal}`}
-                    sub={stats.checkoutsTotal > 0 && stats.checkoutsDone === stats.checkoutsTotal ? 'Concluídos' : undefined}
-                    color="text-orange-400"
-                    bg="bg-orange-400/10"
-                />
-                <StatCard
-                    icon={Home}
-                    label="Disponíveis Walk-in"
-                    value={stats.walkIns}
-                    color="text-purple-400"
-                    bg="bg-purple-400/10"
-                    highlight
-                />
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-                {/* COLUNA 1: Operação de Limpeza e Estruturas */}
-                <div className="space-y-6">
-                    {/* FAXINAS */}
-                    <div className="bg-card border border-border rounded-3xl p-5 shadow-lg relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none" />
-                        <div className="flex items-center justify-between mb-5">
-                            <h2 className="font-bold flex items-center gap-2">
-                                <Sparkles className="w-5 h-5 text-primary" />
-                                Governança
-                            </h2>
-                        </div>
-
-                        <div className="space-y-4">
-                            {activeTasks.length === 0 && (
-                                <p className="text-xs text-muted-foreground text-center py-4">Nenhuma tarefa ativa.</p>
-                            )}
-                            {activeTasks.map(task => {
-                                const assigneeNames = (task.assignedTo ?? [])
-                                    .map(id => staffMap[id] ?? '—')
-                                    .join(', ') || '—';
-                                const statusLabel =
-                                    task.status === 'pending' ? 'Aguardando' :
-                                    task.status === 'in_progress' ? 'Em andamento' :
-                                    task.status === 'waiting_conference' ? 'Aguardando conferência' : task.status;
-                                const statusColor =
-                                    task.status === 'in_progress' ? 'text-amber-400 bg-amber-400/10 border-amber-400/20' :
-                                    task.status === 'waiting_conference' ? 'text-blue-400 bg-blue-400/10 border-blue-400/20' :
-                                    'text-muted-foreground bg-muted border-border';
-                                return (
-                                    <div key={task.id} className="bg-muted border border-border rounded-2xl p-3 flex flex-col gap-2">
-                                        <div className="flex justify-between items-center gap-2">
-                                            <span className="font-bold text-sm truncate">{getTaskLocationName(task)}</span>
-                                            <span className="text-[10px] uppercase font-bold text-primary tracking-wider bg-primary/10 px-2 py-0.5 rounded-full shrink-0">
-                                                {task.type === 'turnover' ? 'Faxina' : task.type === 'daily' ? 'Diária' : 'Avulsa'}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center justify-between text-xs gap-2">
-                                            <span className="text-muted-foreground truncate">{assigneeNames}</span>
-                                            <span className={cn("shrink-0 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wide", statusColor)}>
-                                                {statusLabel}
-                                            </span>
-                                        </div>
-                                        {task.startedAt && (
-                                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                                <Timer size={11} />
-                                                <span>{getElapsed(task)}</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-
-                            {recentlyReleasedCabins.length > 0 && (
-                                <div className="pt-3 border-t border-border">
-                                    <p className="text-xs text-muted-foreground mb-2">Recém liberadas:</p>
-                                    <div className="flex flex-wrap gap-2">
-                                        {recentlyReleasedCabins.map(name => (
-                                            <span key={name} className="bg-emerald-500/10 text-emerald-400 text-xs font-semibold px-2 py-1 rounded-lg border border-emerald-500/20 flex items-center gap-1">
-                                                <CheckCircle2 size={12} /> {name}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* ESTRUTURAS */}
-                    <div className="bg-card border border-border rounded-3xl p-5 shadow-lg">
-                        <h2 className="font-bold flex items-center gap-2 mb-5">
-                            <Calendar className="w-5 h-5 text-purple-400" />
-                            Agenda das Estruturas
-                        </h2>
-                        <div className="space-y-3">
-                            {structureAgenda.length === 0 && (
-                                <p className="text-xs text-muted-foreground text-center py-4">Nenhuma reserva hoje.</p>
-                            )}
-                            {structureAgenda.map(est => (
-                                <div key={est.id} className="flex items-center justify-between p-3 rounded-2xl bg-muted border border-border">
-                                    <div className="flex items-center gap-3">
-                                        <div className={cn(
-                                            "w-2 h-2 rounded-full",
-                                            est.status === 'in_use' && "bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.5)]",
-                                            est.status === 'upcoming' && "bg-blue-500",
-                                            est.status === 'freed' && "bg-emerald-500"
-                                        )} />
-                                        <div>
-                                            <p className="font-semibold text-sm leading-none">{est.name}</p>
-                                            <p className="text-xs text-muted-foreground mt-1">
-                                                {est.status === 'in_use' && `Uso por ${est.by} até ${est.until}`}
-                                                {est.status === 'upcoming' && `Reserva ${est.by} às ${est.at}`}
-                                                {est.status === 'freed' && `Liberada ${est.time}`}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    {est.needCleaning && (
-                                        <span className="text-[10px] bg-red-500/20 text-red-300 px-2 py-0.5 rounded border border-red-500/30">
-                                            Limpar
-                                        </span>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                {/* COLUNA 2: Alertas e Pedidos */}
-                <div className="space-y-6">
-                    {/* ALERTAS CRÍTICOS (Detratores e Erros) */}
-                    <div className="bg-red-500/5 border border-red-500/20 rounded-3xl p-5 shadow-lg relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/10 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none" />
-                        <h2 className="font-bold text-red-400 flex items-center gap-2 mb-4">
-                            <AlertTriangle className="w-5 h-5" />
-                            Atenção Requerida (48h)
-                        </h2>
-                        <div className="space-y-3">
-                            {alertItems.length === 0 && (
-                                <p className="text-xs text-muted-foreground text-center py-4">Nenhum alerta nas últimas 48h.</p>
-                            )}
-                            {alertItems.map((alert, i) => (
-                                <div key={i} className="bg-black/20 border border-red-500/10 rounded-2xl p-3 flex gap-3">
-                                    <div className="shrink-0 mt-0.5">
-                                        {alert.type === 'review' ? (
-                                            <Star className="text-yellow-500 w-4 h-4 fill-yellow-500" />
-                                        ) : (
-                                            <MessageCircleWarning className="text-red-400 w-4 h-4" />
-                                        )}
-                                    </div>
-                                    <div>
-                                        <h3 className="font-bold text-sm text-red-200">{alert.title}</h3>
-                                        <p className="text-xs text-muted-foreground mt-1 leading-snug">{alert.desc}</p>
-                                        <p className="text-[10px] text-red-500/60 mt-2 font-mono">{alert.time}</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* PEDIDOS E SERVIÇOS */}
-                    <div className="bg-card border border-border rounded-3xl p-5 shadow-lg">
-                        <div className="flex items-center justify-between mb-5">
-                            <h2 className="font-bold flex items-center gap-2">
-                                <BellRing className="w-5 h-5 text-blue-400" />
-                                Pedidos dos Hóspedes
-                            </h2>
-                        </div>
-
-                        <div className="space-y-3">
-                            {pendingRequests.length === 0 && (
-                                <p className="text-xs text-muted-foreground text-center py-4">Nenhum pedido pendente.</p>
-                            )}
-                            {pendingRequests.map(p => (
-                                <div key={p.id} className="bg-muted border border-border rounded-2xl p-3 flex justify-between items-center">
-                                    <div>
-                                        <span className="text-[10px] uppercase font-bold text-blue-400 tracking-wider">
-                                            {p.item?.category === 'loan' ? 'Empréstimo' : 'Concierge'}
-                                        </span>
-                                        <p className="font-bold text-sm mt-0.5">{p.item?.name ?? p.itemId}</p>
-                                        <p className="text-xs text-muted-foreground">{p.cabinName ?? '—'}</p>
-                                    </div>
-                                    <div className="text-right flex flex-col items-end gap-1">
-                                        <span className="text-xs font-medium px-2 py-0.5 rounded-full border bg-orange-500/10 text-orange-400 border-orange-500/20">
-                                            Aguardando
-                                        </span>
-                                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                            <Timer size={12} /> {formatTimeAgo(p.createdAt)}
-                                        </span>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                {/* COLUNA 3: F&B (Café da Manhã) */}
-                <div className="space-y-6">
-                    <div className="bg-card border border-border rounded-3xl p-5 shadow-lg h-full flex flex-col">
-                        <h2 className="font-bold flex items-center gap-2 mb-5">
-                            <Coffee className="w-5 h-5 text-amber-500" />
-                            Café da Manhã & F&B
-                        </h2>
-
-                        {/* SWITCH MODALIDADE — visível apenas para propriedades com modality 'both' */}
-                        {property.settings?.fbSettings?.breakfast?.modality === 'both' && (
-                        <div className="bg-muted border border-border rounded-2xl p-1 flex relative mb-6">
-                            <div className={cn(
-                                "absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-xl bg-primary transition-all duration-300 shadow-md",
-                                breakfastMode === 'delivery' ? "left-1" : "left-[calc(50%+3px)]"
-                            )} />
-
-                            <button
-                                onClick={() => handleBreakfastModeToggle('delivery')}
-                                className={cn(
-                                    "relative z-10 flex-1 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors",
-                                    breakfastMode === 'delivery' ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                                )}
-                            >
-                                Cesta Delivery
-                            </button>
-                            <button
-                                onClick={() => handleBreakfastModeToggle('buffet')}
-                                className={cn(
-                                    "relative z-10 flex-1 py-2.5 text-xs font-bold uppercase tracking-widest rounded-xl transition-colors",
-                                    breakfastMode === 'buffet' ? "text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                                )}
-                            >
-                                Buffet Salão
-                            </button>
-                        </div>
-                        )}
-
-                        <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-sm font-semibold text-foreground/80">
-                                Pedidos Hoje + Amanhã
-                            </h3>
-                            <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full font-mono">
-                                {breakfastOrders.length}
-                            </span>
-                        </div>
-
-                        <div className="space-y-3 flex-1">
-                            {breakfastOrders.length === 0 && (
-                                <p className="text-xs text-muted-foreground text-center py-4">Nenhum pedido de café da manhã.</p>
-                            )}
-                            {breakfastOrders.map(order => {
-                                const today = new Date().toISOString().split('T')[0];
-                                const isToday = !order.deliveryDate || order.deliveryDate === today;
-                                return (
-                                <div key={order.id} className="bg-muted border border-border rounded-2xl p-3 flex flex-col gap-2">
-                                    <div className="flex justify-between items-center">
-                                        <span className="font-bold text-sm text-amber-100">
-                                            {order.cabinName ?? 'Cabana'}
-                                        </span>
-                                        <div className="flex items-center gap-2">
-                                            {!isToday && (
-                                                <span className="text-[10px] uppercase font-bold bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded-md">Amanhã</span>
-                                            )}
-                                            <span className="text-xs bg-muted px-2 py-0.5 rounded-full flex items-center gap-1 font-mono text-muted-foreground">
-                                                <Clock size={10} /> {order.deliveryTime ?? '—'}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <p className="text-xs text-muted-foreground italic">&quot;{formatOrderItems(order.items as any[])}&quot;</p>
-                                    <div className="flex justify-end mt-1">
-                                        {order.status === 'preparing' ? (
-                                            <span className="text-[10px] uppercase font-bold text-amber-400 flex items-center gap-1">
-                                                <Utensils size={12} /> Preparando
-                                            </span>
-                                        ) : (
-                                            <span className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1">
-                                                Aguardando
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                                );
-                            })}
-
-                            {breakfastMode === 'buffet' && (
-                                <div className="mt-6 p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex gap-3 text-amber-200">
-                                    <Info className="shrink-0 w-5 h-5 text-amber-400" />
-                                    <p className="text-xs leading-relaxed">
-                                        A modalidade está configurada como <strong>Buffet Salão</strong>. Os pedidos acima são de estadias que solicitaram café no quarto como serviço à parte.
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-
-                        <button
-                            onClick={() => router.push('/admin/food-and-beverage/orders')}
-                            className="w-full mt-4 py-3 bg-muted hover:bg-muted/80 text-xs font-bold uppercase tracking-widest rounded-xl border border-border transition-colors flex items-center justify-center gap-2"
-                        >
-                            <ExternalLink size={14} />
-                            Ver todos / Imprimir pedidos
-                        </button>
-                    </div>
-                </div>
-
-            </div>
-        </div>
+      <PageShell>
+        <EmptyState icon={Building2} title="Selecione uma propriedade" description="A recepção mostra a operação da propriedade ativa." />
+      </PageShell>
     );
-}
+  }
 
-function StatCard({ icon: Icon, label, value, sub, note, color, bg, highlight = false }: any) {
-    return (
-        <div className={cn(
-            "bg-card border p-4 lg:p-5 rounded-3xl relative overflow-hidden group transition-all duration-300",
-            highlight ? "border-primary/30 shadow-[0_0_15px_rgba(var(--primary),0.1)]" : "border-border shadow-sm"
-        )}>
-            <div className={cn(
-                "absolute -right-4 -top-4 w-24 h-24 rounded-full blur-3xl opacity-50 transition-opacity group-hover:opacity-100",
-                bg
-            )} />
-            <div className={cn("w-10 h-10 rounded-2xl flex items-center justify-center mb-4 relative z-10", bg, color)}>
-                <Icon size={20} />
-            </div>
-            <div className="relative z-10">
-                <div className="flex items-baseline gap-2 mb-1">
-                    <p className="text-2xl lg:text-3xl font-black">{value}</p>
-                    {sub && <span className={cn("text-xs font-bold", color)}>{sub}</span>}
-                </div>
-                <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">{label}</p>
-                {note && <p className="text-[9px] text-muted-foreground/60 font-medium mt-1 leading-tight">{note}</p>}
-            </div>
+  const occupancyPct = stats.totalCabins > 0 ? Math.round((stats.occupiedCabins / stats.totalCabins) * 100) : null;
+  const timeLabel = r.currentTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const dateLabel = r.currentTime.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "long" });
+
+  return (
+    <PageShell>
+      <PageHeader
+        title="Recepção"
+        icon={Home}
+        badge={<Pill tone="green" dot label="Ao vivo" />}
+        subtitle={<span style={{ textTransform: "capitalize" }}>{dateLabel} · {timeLabel}</span>}
+        actions={(
+          <>
+            <MaintenanceReportButton variant="admin" />
+            <span className="ak-hide-mobile" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 12px", borderRadius: 10, background: T.glass, border: `1px solid ${T.border}`, color: T.text, fontWeight: 800, fontSize: 15, fontVariantNumeric: "tabular-nums" }}>
+              <Clock size={15} color={T.brandText} /> {timeLabel}
+            </span>
+          </>
+        )}
+      />
+
+      <Loadable loading={propLoading || r.loading} skeleton={<PageSkeleton kpis={4} rows={4} />} error={r.error} onRetry={r.reload}>
+        <KpiGrid cols={4}>
+          <KpiCard label="Ocupação" value={`${stats.occupiedCabins}/${stats.totalCabins}`} sub={occupancyPct !== null ? `${occupancyPct}% das cabanas` : "—"} icon={Users} tone="emerald" title="Apenas cabanas consideradas na ocupação" href="/admin/reservation-map" />
+          <KpiCard label="Check-ins hoje" value={`${stats.checkinsDone}/${stats.checkinsTotal}`} sub={stats.checkinsTotal > 0 && stats.checkinsDone === stats.checkinsTotal ? "todos concluídos" : "feitos / previstos"} icon={LogIn} tone="blue" href="/admin/stays?tab=futuras" />
+          <KpiCard label="Check-outs hoje" value={`${stats.checkoutsDone}/${stats.checkoutsTotal}`} sub={stats.checkoutsTotal > 0 && stats.checkoutsDone === stats.checkoutsTotal ? "todos concluídos" : "feitos / previstos"} icon={LogOut} tone="orange" href="/admin/stays?tab=ativas" />
+          <KpiCard label="Disponíveis walk-in" value={stats.walkIns} sub="cabanas livres agora" icon={Home} tone="brand" href="/admin/stays/new" />
+        </KpiGrid>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="flex flex-col gap-4 min-w-0">
+            <GovernanceCard tasks={r.activeTasks} recentlyReleased={r.recentlyReleasedCabins} />
+            <StructuresAgendaCard items={r.structureAgenda} />
+          </div>
+          <div className="flex flex-col gap-4 min-w-0">
+            <AlertsCard items={r.alertItems} />
+            <GuestRequestsCard requests={r.pendingRequests} />
+          </div>
+          <div className="flex flex-col gap-4 min-w-0">
+            <BreakfastCard
+              orders={r.breakfastOrders}
+              mode={r.breakfastMode}
+              onMode={m => { void r.setBreakfastMode(m); }}
+              saving={r.savingMode}
+              showModeSwitch={property?.settings?.fbSettings?.breakfast?.modality === "both"}
+            />
+          </div>
         </div>
-    );
+      </Loadable>
+    </PageShell>
+  );
 }
