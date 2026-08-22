@@ -1,14 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Staff } from "@/types/aura";
 import { StaffService } from "@/services/staff-service";
 import {
   Moon, Sun, PanelLeftClose, PanelLeft,
   Loader2, Lock, Eye, EyeOff, Check, ArrowLeft,
-  ShieldCheck,
-} from "lucide-react";
+  ShieldCheck, Palette } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { Toggle } from "@/components/ui/Toggle";
@@ -39,6 +38,17 @@ export function SettingsView({ userData, onRefresh }: Props) {
   const [savingSidebar, setSavingSidebar] = useState(false);
   const isLight = userData.uiTheme === "light";
   const sidebarCollapsed = userData.sidebarDefaultCollapsed ?? false;
+
+  // Paleta do tema claro (piloto do revamp): quente/areia (padrão) × fria (cinza/branco).
+  // Guardada no navegador; o shell (AdminLayoutClient) escuta o evento e troca o data-palette na hora.
+  const [palette, setPalette] = useState<"warm" | "cool">("warm");
+  useEffect(() => { setPalette(localStorage.getItem("aura-light-palette") === "cool" ? "cool" : "warm"); }, []);
+  const togglePalette = () => {
+    const next = palette === "cool" ? "warm" : "cool";
+    setPalette(next);
+    localStorage.setItem("aura-light-palette", next);
+    window.dispatchEvent(new Event("aura-palette-change"));
+  };
 
   // Password
   const [currentPw, setCurrentPw] = useState("");
@@ -239,6 +249,25 @@ export function SettingsView({ userData, onRefresh }: Props) {
             </div>
             <ToggleSwitch active={isLight} loading={savingTheme} />
           </button>
+
+          {/* Paleta clara (comparação do piloto) — só aparece no tema claro */}
+          {isLight && (
+            <button
+              onClick={togglePalette}
+              className="flex items-center justify-between w-full px-4 py-3 bg-muted border border-border rounded-xl cursor-pointer gap-3 text-left hover:opacity-80 transition-opacity"
+            >
+              <div className="flex items-center gap-3">
+                <Palette size={18} className="text-purple-400 flex-shrink-0" />
+                <div>
+                  <p className="text-[13px] font-bold text-foreground leading-tight">
+                    Paleta clara: {palette === "cool" ? "fria (cinza/branco)" : "quente (areia)"}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Comparação temporária do piloto — toque para alternar</p>
+                </div>
+              </div>
+              <ToggleSwitch active={palette === "cool"} loading={false} />
+            </button>
+          )}
 
           {/* Sidebar */}
           <button
