@@ -3,16 +3,20 @@
 import React from "react";
 import { AlertTriangle, X } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { T, alpha } from "@/lib/admin-tokens";
+import { Button } from "@/components/aura/Button";
 
 const ROLE_LABELS: Record<string, string> = {
   super_admin: "Super Admin",
   admin:       "Administrador",
   hr:          "Gestão",
+  manager:     "Gestão",
   reception:   "Recepção",
   governance:  "Governança",
   kitchen:     "Cozinha",
   maintenance: "Coordenador de Manutenção",
   marketing:   "Marketing",
+  compras:     "Compras",
   maid:        "Camareira",
   technician:  "Manutenção",
   waiter:      "Garçom",
@@ -20,6 +24,7 @@ const ROLE_LABELS: Record<string, string> = {
   houseman:    "Mensageiro",
 };
 
+/** Faixa de impersonação — in-flow no topo do <main> (não é mais fixed; nada de paddingTop mágico). */
 export function ImpersonateBanner() {
   const { impersonating, stopImpersonation } = useAuth();
 
@@ -29,48 +34,27 @@ export function ImpersonateBanner() {
   const roleLabel = ROLE_LABELS[staff.role] ?? staff.role;
 
   return (
-    <div style={{
-      position: "fixed", top: 0, left: 0, right: 0, zIndex: 8000,
-      background: "rgba(192,132,252,0.13)",
-      backdropFilter: "blur(8px)",
-      borderBottom: "1px solid rgba(192,132,252,0.3)",
-      display: "flex", alignItems: "center", justifyContent: "space-between",
-      padding: "0 20px",
-      height: 42,
-      gap: 12,
-    }}>
-      {/* Left: warning + label */}
+    <div
+      role="status"
+      style={{
+        flexShrink: 0,
+        minHeight: 38,
+        background: alpha(T.violet, 12),
+        borderBottom: `1px solid ${T.violetBorder}`,
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "4px var(--page-pad)",
+        gap: 12,
+        paddingTop: "calc(4px + env(safe-area-inset-top, 0px))",
+      }}
+    >
       <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-        <AlertTriangle size={15} color="#c084fc" style={{ flexShrink: 0 }} />
-        <span style={{
-          color: "rgba(255,255,255,0.9)", fontSize: 13, fontWeight: 600,
-          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-        }}>
-          Visualizando como{" "}
-          <span style={{ color: "#c084fc" }}>{staff.fullName}</span>
-          {" "}
-          <span style={{ color: "rgba(255,255,255,0.5)", fontWeight: 400 }}>({roleLabel})</span>
+        <AlertTriangle size={15} color={T.violet} style={{ flexShrink: 0 }} />
+        <span style={{ color: T.text, fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          Visualizando como <span style={{ color: T.violet }}>{staff.fullName}</span>{" "}
+          <span style={{ color: T.muted, fontWeight: 400 }}>({roleLabel})</span>
         </span>
       </div>
-
-      {/* Right: end button */}
-      <button
-        onClick={stopImpersonation}
-        style={{
-          display: "flex", alignItems: "center", gap: 6,
-          padding: "5px 12px", borderRadius: 8, cursor: "pointer",
-          background: "rgba(192,132,252,0.15)",
-          border: "1px solid rgba(192,132,252,0.35)",
-          color: "#c084fc", fontSize: 12, fontWeight: 700,
-          fontFamily: "inherit", flexShrink: 0,
-          transition: "background .15s",
-        }}
-        onMouseEnter={e => (e.currentTarget.style.background = "rgba(192,132,252,0.25)")}
-        onMouseLeave={e => (e.currentTarget.style.background = "rgba(192,132,252,0.15)")}
-      >
-        <X size={12} />
-        Encerrar modo
-      </button>
+      <Button variant="soft" tone="violet" size="sm" icon={X} onClick={stopImpersonation}>Encerrar</Button>
     </div>
   );
 }

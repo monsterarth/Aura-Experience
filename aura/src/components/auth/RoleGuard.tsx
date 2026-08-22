@@ -14,6 +14,18 @@ interface RoleGuardProps {
   redirectTo?: string;
 }
 
+// Loader neutro: herda o fundo do tema em vez de pintar a tela de preto
+// (no tema claro isso era um flash preto a cada navegação com RoleGuard).
+function Centered({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ minHeight: "60dvh", width: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, textAlign: "center" }}>{children}</div>
+    </div>
+  );
+}
+
+const capsStyle: React.CSSProperties = { fontSize: 11, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", opacity: 0.4 };
+
 export const RoleGuard = ({ children, allowedRoles, redirectTo = "/admin/login" }: RoleGuardProps) => {
   const { userData, loading } = useAuth();
   const router = useRouter();
@@ -36,31 +48,31 @@ export const RoleGuard = ({ children, allowedRoles, redirectTo = "/admin/login" 
   if (loading || !userData) {
     if (stuckTooLong) {
       return (
-        <div className="flex h-screen w-full items-center justify-center bg-[#0a0a0a]">
-          <div className="flex flex-col items-center gap-4 text-center">
-            <RefreshCw className="h-8 w-8 text-muted-foreground" />
-            <p className="text-sm font-bold text-foreground/60">Não foi possível carregar a sessão.</p>
-            <div className="flex gap-3">
-              <button onClick={() => window.location.reload()}
-                className="px-5 py-2 bg-primary text-primary-foreground font-bold text-xs uppercase rounded-xl hover:opacity-90">
-                Recarregar
-              </button>
-              <a href="/admin/login"
-                className="px-5 py-2 bg-white/5 hover:bg-white/10 text-foreground font-bold text-xs uppercase rounded-xl">
-                Ir para Login
-              </a>
-            </div>
+        <Centered>
+          <RefreshCw className="h-8 w-8" style={{ opacity: 0.5 }} />
+          <p style={{ fontSize: 13, fontWeight: 700, opacity: 0.7 }}>Não foi possível carregar a sessão.</p>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              onClick={() => window.location.reload()}
+              style={{ padding: "10px 16px", borderRadius: 10, border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 800, textTransform: "uppercase", background: "linear-gradient(135deg,#9b6dff,#4ec9d4)", color: "#fff" }}
+            >
+              Recarregar
+            </button>
+            <a
+              href="/admin/login"
+              style={{ padding: "10px 16px", borderRadius: 10, border: "1px solid rgba(128,128,128,0.35)", fontSize: 12, fontWeight: 800, textTransform: "uppercase", textDecoration: "none", color: "inherit" }}
+            >
+              Ir para Login
+            </a>
           </div>
-        </div>
+        </Centered>
       );
     }
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-[#0a0a0a]">
-        <div className="flex flex-col items-center gap-4">
-           <Loader2 className="h-10 w-10 animate-spin text-primary" />
-           <p className="text-xs font-bold uppercase tracking-widest text-foreground/20">Verificando Permissões...</p>
-        </div>
-      </div>
+      <Centered>
+        <Loader2 className="h-8 w-8 animate-spin" style={{ color: "#9b6dff" }} />
+        <p style={capsStyle}>Verificando permissões…</p>
+      </Centered>
     );
   }
 
@@ -73,12 +85,10 @@ export const RoleGuard = ({ children, allowedRoles, redirectTo = "/admin/login" 
   if (!hasAccess) {
     router.replace(redirectTo);
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-[#0a0a0a]">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="h-10 w-10 animate-spin text-primary" />
-          <p className="text-xs font-bold uppercase tracking-widest text-foreground/20">Redirecionando...</p>
-        </div>
-      </div>
+      <Centered>
+        <Loader2 className="h-8 w-8 animate-spin" style={{ color: "#9b6dff" }} />
+        <p style={capsStyle}>Redirecionando…</p>
+      </Centered>
     );
   }
 

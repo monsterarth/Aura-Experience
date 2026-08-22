@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Staff } from "@/types/aura";
 import { StaffService } from "@/services/staff-service";
-import { Moon, Sun, PanelLeftClose, PanelLeft, Loader2 } from "lucide-react";
+import { Moon, Sun, PanelLeftClose, PanelLeft, Loader2, Palette } from "lucide-react";
 import { toast } from "sonner";
 
 interface Props {
@@ -42,6 +42,15 @@ export function PreferencesCard({ userData, onRefresh }: Props) {
   const router = useRouter();
   const [savingTheme, setSavingTheme] = useState(false);
   const [savingSidebar, setSavingSidebar] = useState(false);
+  // Piloto: comparar paleta clara quente × fria (temporário — uma será fixada).
+  const [palette, setPalette] = useState<"warm" | "cool">("warm");
+  useEffect(() => { setPalette(localStorage.getItem("aura-light-palette") === "cool" ? "cool" : "warm"); }, []);
+  const togglePalette = () => {
+    const next = palette === "cool" ? "warm" : "cool";
+    setPalette(next);
+    localStorage.setItem("aura-light-palette", next);
+    window.dispatchEvent(new Event("aura-palette-change"));
+  };
 
   const isLight = userData.uiTheme === "light";
   const sidebarCollapsed = userData.sidebarDefaultCollapsed ?? false;
@@ -49,9 +58,11 @@ export function PreferencesCard({ userData, onRefresh }: Props) {
   const toggleTheme = async () => {
     const newTheme = isLight ? "dark" : "light";
     setSavingTheme(true);
+    // Troca na hora (o shell lê data-theme); o cookie/servidor acompanham.
+    document.querySelector(".aura-admin-root")?.setAttribute("data-theme", newTheme);
+    document.cookie = `aura-ui-theme=${newTheme}; path=/; max-age=31536000; SameSite=Lax`;
     try {
       await StaffService.updateStaff(userData.id, { uiTheme: newTheme });
-      document.cookie = `aura-ui-theme=${newTheme}; path=/; max-age=31536000; SameSite=Lax`;
       await onRefresh();
       router.refresh();
     } catch {
@@ -104,6 +115,25 @@ export function PreferencesCard({ userData, onRefresh }: Props) {
           </div>
           <ToggleSwitch active={isLight} loading={savingTheme} />
         </button>
+
+        {/* Paleta clara (piloto) — só aparece no tema claro */}
+        {isLight && (
+          <button
+            onClick={togglePalette}
+            className="flex items-center justify-between w-full px-4 py-3 bg-muted border border-border rounded-xl cursor-pointer gap-3 text-left transition-opacity hover:opacity-80"
+          >
+            <div className="flex items-center gap-3">
+              <Palette size={18} className="text-purple-400 flex-shrink-0" />
+              <div>
+                <p className="text-[13px] font-bold text-foreground leading-tight">
+                  Paleta clara: {palette === "cool" ? "fria (cinza/branco)" : "quente (areia)"}
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Comparação temporária do piloto — toque para alternar</p>
+              </div>
+            </div>
+            <ToggleSwitch active={palette === "cool"} loading={false} />
+          </button>
+        )}
 
         {/* Sidebar toggle */}
         <button

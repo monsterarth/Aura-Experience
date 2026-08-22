@@ -4,6 +4,12 @@ import { RefreshCw } from "lucide-react";
 
 const THRESHOLD = 72;
 
+/**
+ * Puxar-para-atualizar do PWA instalado. Só dispara quando o container de scroll
+ * em que o toque começou está no topo — o admin rola num container interno
+ * (`[data-scroll-root]`), não no documento — e nunca com overlay aberto nem
+ * dentro de áreas marcadas `data-no-ptr` (kanbans, mapas, scroll horizontal).
+ */
 export default function PullToRefresh({ children }: { children: React.ReactNode }) {
   const [pullDistance, setPullDistance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -13,14 +19,25 @@ export default function PullToRefresh({ children }: { children: React.ReactNode 
   useEffect(() => {
     const isStandalone =
       window.matchMedia("(display-mode: standalone)").matches ||
-      !!(window.navigator as any).standalone;
+      !!(window.navigator as unknown as { standalone?: boolean }).standalone;
     if (!isStandalone) return;
 
+    const scrollTopAt = (target: EventTarget | null): number => {
+      const el = target instanceof Element ? target : null;
+      const root = el?.closest<HTMLElement>("[data-scroll-root]");
+      if (root) return root.scrollTop;
+      return document.documentElement.scrollTop || document.body.scrollTop;
+    };
+
+    const blocked = (target: EventTarget | null): boolean => {
+      if (document.querySelector("[data-overlay-open]")) return true;
+      const el = target instanceof Element ? target : null;
+      return !!el?.closest("[data-no-ptr], [role=dialog], .ak-layer");
+    };
+
     const onTouchStart = (e: TouchEvent) => {
-      const scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
-      if (scrollTop === 0) {
-        startYRef.current = e.touches[0].clientY;
-      }
+      if (blocked(e.target)) { startYRef.current = null; return; }
+      if (scrollTopAt(e.target) === 0) startYRef.current = e.touches[0].clientY;
     };
 
     const onTouchMove = (e: TouchEvent) => {
@@ -66,17 +83,17 @@ export default function PullToRefresh({ children }: { children: React.ReactNode 
           style={{
             transform: `translateX(-50%) translateY(${indicatorY}px)`,
             transition: pullDistance === 0 ? "transform 0.25s ease" : "none",
+            paddingTop: "env(safe-area-inset-top, 0px)",
           }}
         >
           <div
-            className={`bg-[#1a1a2e] border rounded-full p-2.5 shadow-xl transition-colors duration-150 ${
-              ready ? "border-[#9b6dff]" : "border-white/10"
-            }`}
+            className="rounded-full p-2.5 shadow-xl transition-colors duration-150"
+            style={{ background: "#1c1c1c", border: `1px solid ${ready ? "#9b6dff" : "rgba(255,255,255,0.12)"}` }}
           >
             <RefreshCw
               size={18}
-              className={`transition-colors duration-150 ${ready ? "text-[#9b6dff]" : "text-white/40"} ${refreshing ? "animate-spin" : ""}`}
-              style={!refreshing ? { transform: `rotate(${progress * 320}deg)` } : undefined}
+              className={`transition-colors duration-150 ${refreshing ? "animate-spin" : ""}`}
+              style={{ color: ready ? "#9b6dff" : "rgba(255,255,255,0.45)", ...(!refreshing ? { transform: `rotate(${progress * 320}deg)` } : {}) }}
             />
           </div>
         </div>

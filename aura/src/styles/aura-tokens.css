@@ -135,3 +135,57 @@
 /* Scrollbar do admin segue o tema (a global é branca e sumia no claro). */
 .aura-admin-root ::-webkit-scrollbar-thumb { background: var(--t-border-2); }
 .aura-admin-root ::-webkit-scrollbar-thumb:hover { background: var(--t-muted-2); }
+
+/* ── Ponte shadcn: as classes genéricas (bg-card, text-muted-foreground, border-border,
+   .field-input, Button do shadcn…) passam a ler a MESMA paleta dos tokens T, sem
+   !important — declaração descendente vence a var herdada do <html> que o
+   PropertyContext injeta para o portal. Roxo no lugar do ciano antigo. ── */
+.aura-admin-root {
+  --background: 0 0% 8%;
+  --foreground: 228 42% 95%;
+  --card: 0 0% 11%;
+  --card-foreground: 228 42% 95%;
+  --popover: 0 0% 11%;
+  --popover-foreground: 228 42% 95%;
+  --primary: 258 100% 71%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 0% 16%;
+  --secondary-foreground: 228 42% 95%;
+  --muted: 0 0% 16%;
+  --muted-foreground: 0 0% 60%;
+  --accent: 0 0% 18%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 0 0% 17%;
+  --input: 0 0% 19%;
+  --ring: 258 100% 71%;
+  --radius: 1rem;
+}
+.aura-admin-root[data-theme="light"] {
+  --background: 30 15% 92%;
+  --foreground: 216 23% 15%;
+  --card: 0 0% 100%;
+  --card-foreground: 216 23% 15%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 216 23% 15%;
+  --primary: 258 72% 60%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 30 10% 91%;
+  --secondary-foreground: 216 23% 15%;
+  --muted: 30 10% 91%;
+  --muted-foreground: 216 10% 42%;
+  --accent: 30 10% 89%;
+  --accent-foreground: 216 23% 15%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 216 12% 86%;
+  --input: 216 12% 84%;
+  --ring: 258 72% 60%;
+}
+.aura-admin-root[data-theme="light"][data-palette="cool"] {
+  --background: 220 14% 96%;
+  --secondary: 220 10% 92%;
+  --muted: 220 10% 92%;
+  --accent: 220 10% 90%;
+}

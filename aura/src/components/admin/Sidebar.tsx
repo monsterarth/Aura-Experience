@@ -25,60 +25,20 @@ import {
   CircleDollarSign, Handshake, Hourglass, Megaphone,
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
+import { T as SharedT } from "@/lib/admin-tokens";
+import { useMediaQuery } from "@/components/aura/hooks";
+import { useOverlay } from "@/components/aura/OverlayProvider";
 import Image from "next/image";
 import { ImpersonateModal } from "@/components/admin/ImpersonateModal";
 import { StaffService } from "@/services/staff-service";
 import { useNotifications } from "@/context/NotificationContext";
 
-// ─── Design tokens — harmonizados com AdminLayoutClient ───────────────────────
-// bg/bg2 alinhados com --background (#141414) e --card (#1c1c1c) do admin
+// ─── Design tokens — os do admin (src/lib/admin-tokens.ts), já com tema ──────
 const T = {
-  bg:    "#141414",
-  bg2:   "#111111",
-  bg3:   "#1c1c1c",
-  glass:   "rgba(255,255,255,0.035)",
-  glass2:  "rgba(255,255,255,0.055)",
-  border:  "rgba(255,255,255,0.08)",
-  border2: "rgba(255,255,255,0.13)",
-  text:    "#ffffff",
-  muted:   "rgba(255,255,255,0.42)",
-  muted2:  "rgba(255,255,255,0.22)",
-  // Gradiente purple→teal — identidade do nav ativo (aprovada no redesign)
-  g1:    "#9b6dff",
-  g2:    "#4ec9d4",
-  grad:  "linear-gradient(135deg,#9b6dff 0%,#4ec9d4 100%)",
-  gradSoft: "linear-gradient(135deg,rgba(155,109,255,0.15) 0%,rgba(78,201,212,0.15) 100%)",
-  // Cores semânticas
-  violet:       "#c084fc",
-  violetBg:     "rgba(192,132,252,0.08)",
-  violetBorder: "rgba(192,132,252,0.22)",
-  amber:        "#f59e0b",
-  amberBg:      "rgba(245,158,11,0.08)",
-  amberBorder:  "rgba(245,158,11,0.22)",
-  blue:         "#60a5fa",
-  blueBg:       "rgba(96,165,250,0.08)",
-  blueBorder:   "rgba(96,165,250,0.22)",
-  green:        "#2dd4bf",
-  greenBg:      "rgba(45,212,191,0.08)",
-  greenBorder:  "rgba(45,212,191,0.22)",
-  orange:       "#fb923c",
-  orangeBg:     "rgba(251,146,60,0.08)",
-  red:          "#f87171",
-  sidebarW:   256,
+  ...SharedT,
+  bg3: SharedT.card,
+  sidebarW: 256,
   collapsedW: 64,
-};
-
-const T_LIGHT_OVERRIDE = {
-  bg:    '#ede9e4',
-  bg2:   '#e0dbd4',
-  bg3:   '#ffffff',
-  glass:   'rgba(0,0,0,0.03)',
-  glass2:  'rgba(0,0,0,0.06)',
-  border:  'rgba(0,0,0,0.09)',
-  border2: 'rgba(0,0,0,0.14)',
-  text:    '#1e2530',
-  muted:   'rgba(30,37,48,0.52)',
-  muted2:  'rgba(30,37,48,0.30)',
 };
 
 // ─── Role meta ────────────────────────────────────────────────────────────────
@@ -354,7 +314,6 @@ function NavItemRow({
   isSubItem?: boolean;
   TT?: typeof T;
 }) {
-  const [hovered, setHovered] = useState(false);
   const Icon = "icon" in item ? item.icon : null;
 
   const style: React.CSSProperties = {
@@ -368,8 +327,8 @@ function NavItemRow({
     cursor: "pointer",
     borderRadius: 10,
     fontFamily: "inherit",
-    background: isActive ? TT.gradSoft : hovered ? TT.glass2 : "transparent",
-    color: isActive ? TT.g1 : hovered ? TT.text : TT.muted,
+    background: isActive ? TT.gradSoft : "transparent",
+    color: isActive ? TT.brandText : TT.muted,
     fontSize: isSubItem ? 12 : 13,
     fontWeight: isActive ? 700 : 500,
     transition: "background .15s, color .15s",
@@ -387,7 +346,7 @@ function NavItemRow({
       )}
       {Icon && !isSubItem && (
         <span style={{ flexShrink: 0, opacity: isActive ? 1 : 0.75 }}>
-          <Icon size={16} style={{ color: isActive ? TT.g1 : "currentColor", strokeWidth: isActive ? 2.2 : 1.7 }} />
+          <Icon size={16} style={{ color: isActive ? TT.brandText : "currentColor", strokeWidth: isActive ? 2.2 : 1.7 }} />
         </span>
       )}
       {!collapsed && (
@@ -416,8 +375,8 @@ function NavItemRow({
       href={item.href}
       title={collapsed ? item.label : undefined}
       style={style}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      className="ak-nav-item"
+      data-active={isActive || undefined}
       onClick={onClick}
     >
       {inner}
@@ -438,7 +397,6 @@ function PainelNavItem({
   TT?: typeof T;
 }) {
   const [open, setOpen] = useState(false);
-  const [hovered, setHovered] = useState(false);
 
   const visibleChildren = (item.children ?? []).filter(c =>
     role === "super_admin" || c.roles.includes(role ?? "")
@@ -461,8 +419,8 @@ function PainelNavItem({
     justifyContent: collapsed ? "center" : "flex-start",
     width: "100%", border: "none", cursor: "pointer",
     borderRadius: 10, fontFamily: "inherit",
-    background: (isActive || isChildActive) ? TT.gradSoft : hovered ? TT.glass2 : "transparent",
-    color: (isActive || isChildActive) ? TT.g1 : hovered ? TT.text : TT.muted,
+    background: (isActive || isChildActive) ? TT.gradSoft : "transparent",
+    color: (isActive || isChildActive) ? TT.brandText : TT.muted,
     fontSize: 13, fontWeight: (isActive || isChildActive) ? 700 : 500,
     transition: "background .15s, color .15s",
     position: "relative" as const,
@@ -477,14 +435,14 @@ function PainelNavItem({
         <Link
           href={item.href}
           style={{ ...mainStyle, flex: 1 }}
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
+          className="ak-nav-item"
+          data-active={(isActive || isChildActive) || undefined}
           onClick={onClick}
           title={collapsed ? item.label : undefined}
         >
           {(isActive || isChildActive) && !collapsed && <div style={S.activeAccent} />}
           <span style={{ flexShrink: 0, opacity: (isActive || isChildActive) ? 1 : 0.75 }}>
-            <Icon size={16} style={{ color: (isActive || isChildActive) ? TT.g1 : "currentColor", strokeWidth: (isActive || isChildActive) ? 2.2 : 1.7 }} />
+            <Icon size={16} style={{ color: (isActive || isChildActive) ? TT.brandText : "currentColor", strokeWidth: (isActive || isChildActive) ? 2.2 : 1.7 }} />
           </span>
           {!collapsed && (
             <span style={{ flex: 1, textAlign: "left", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -502,7 +460,7 @@ function PainelNavItem({
             style={{
               background: "none", border: "none", cursor: "pointer",
               padding: "6px 6px", borderRadius: 8,
-              color: (isActive || isChildActive) ? TT.g1 : TT.muted2,
+              color: (isActive || isChildActive) ? TT.brandText : TT.muted2,
               display: "flex", alignItems: "center", justifyContent: "center",
               transition: "color .15s",
               flexShrink: 0,
@@ -559,13 +517,17 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
   const [wideOverride, setWideOverride] = useState<boolean | null>(null);
   useEffect(() => { setWideOverride(null); }, [pathname]);
   /** O que o render usa: forçado nas páginas largas, preferência no resto. */
-  const collapsed = forceCollapsed ? (wideOverride ?? true) : isCollapsed;
+  // Só o desktop recolhe; no celular o drawer abre sempre expandido (antes a
+  // preferência "recolhido" salva abria um drawer de 64px só com ícones).
+  const isDesktop = useMediaQuery("(min-width: 1024px)", true);
+  const collapsed = isDesktop ? (forceCollapsed ? (wideOverride ?? true) : isCollapsed) : false;
+  // Drawer aberto entra na pilha de overlays: Esc fecha, scroll trava, pull-to-refresh ignora.
+  useOverlay({ open: isOpen && !isDesktop, onClose: () => setIsOpen(false) });
   const [collapsibleOpen, setCollapsibleOpen] = useState<Record<string, boolean>>({ setup: true, gerencia: true });
   const [showImpersonateModal, setShowImpersonateModal] = useState(false);
   const savePreferenceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const isLightTheme = userData?.uiTheme === 'light';
-  const TT = isLightTheme ? { ...T, ...T_LIGHT_OVERRIDE } : T;
+  const TT = T;
 
   const commitHash = process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || "dev";
   const shortHash = commitHash.substring(0, 7);
@@ -658,17 +620,12 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
   return (
     <>
       {/* Mobile overlay */}
-      {isOpen && (
-        <div
-          className="lg:hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-40"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
+      <div className="ak-drawer-overlay" data-open={isOpen || undefined} onClick={() => setIsOpen(false)} aria-hidden />
 
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed lg:static top-0 left-0 z-50 transition-transform duration-300 lg:translate-x-0",
+          "fixed lg:static top-0 left-0 z-50 transition-transform duration-[240ms] ease-[cubic-bezier(.22,1,.36,1)] lg:translate-x-0",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
         style={{
@@ -682,7 +639,9 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
           overflow: "hidden",
           height: "100dvh",
           flexShrink: 0,
+          paddingTop: "env(safe-area-inset-top, 0px)",
         }}
+        {...((!isDesktop && !isOpen) ? ({ inert: "" } as object) : {})}
       >
         {/* Logo */}
         <div style={{
@@ -945,7 +904,7 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
                 onMouseEnter={(e) => (e.currentTarget.style.color = TT.red)}
                 onMouseLeave={(e) => (e.currentTarget.style.color = TT.muted)}
               >
-                {isLoggingOut ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite", color: TT.red }} /> : <LogOut size={16} />}
+                {isLoggingOut ? <Loader2 size={16} className="ak-spin" style={{ color: TT.red }} /> : <LogOut size={16} />}
               </button>
             </div>
           ) : (
@@ -962,7 +921,7 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
                   color: TT.muted,
                 }}
               >
-                {isLoggingOut ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite", color: TT.red }} /> : <LogOut size={15} />}
+                {isLoggingOut ? <Loader2 size={14} className="ak-spin" style={{ color: TT.red }} /> : <LogOut size={15} />}
               </button>
               <button onClick={toggleCollapse} title="Expandir" style={{
                 width: 36, height: 36, borderRadius: 10,
@@ -984,11 +943,10 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
           style={{ background: "rgba(20,20,20,0.92)" }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 24 }}>
             <div style={{ position: "relative" }}>
-              <div style={{
+              <div className="ak-spin" style={{
                 width: 72, height: 72, borderRadius: "50%",
                 border: `4px solid rgba(155,109,255,0.1)`,
                 borderTop: `4px solid ${T.g1}`,
-                animation: "spin 1s linear infinite",
                 boxShadow: `0 0 30px rgba(155,109,255,0.2)`,
               }} />
               <LogOut style={{
@@ -1008,7 +966,6 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
         </div>
       )}
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </>
   );
 };

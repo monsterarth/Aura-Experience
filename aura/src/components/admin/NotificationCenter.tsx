@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { Dialog } from "@/components/aura/Dialog";
+import { useIsMobile } from "@/components/aura/hooks";
 import { useRouter } from "next/navigation";
 import { Bell, MessageSquare, ShoppingBag, Calendar, X, ChevronRight } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
@@ -105,6 +107,7 @@ export function NotificationCenter() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const [open, setOpen] = useState(false);
+  const isMobile = useIsMobile();
   const [whatsapp, setWhatsapp] = useState<WhatsAppNotif[]>([]);
   const [concierge, setConcierge] = useState<ConciergeNotif[]>([]);
   const [bookings, setBookings] = useState<BookingNotif[]>([]);
@@ -655,62 +658,8 @@ export function NotificationCenter() {
 
   if (!propertyId || !canSeeBell) return null;
 
-  return (
-    <div className="relative" ref={panelRef}>
-      {/* Bell button */}
-      <button
-        onClick={handleOpen}
-        className={cn(
-          "relative flex items-center justify-center w-9 h-9 rounded-xl transition-all",
-          open
-            ? "bg-primary/20 text-primary"
-            : "text-foreground/40 hover:text-foreground hover:bg-white/5"
-        )}
-        title="Notificações"
-      >
-        <Bell size={18} className={cn(total > 0 && !open && "animate-[wiggle_1s_ease-in-out_infinite]")} />
-        {total > 0 && (
-          <>
-            {/* Ping ring — laranja quando há concierge esperando (prioridade do balcão) */}
-            <span className="absolute -top-1 -right-1 flex h-[18px] w-[18px]">
-              <span className={cn(
-                "animate-ping absolute inline-flex h-full w-full rounded-full opacity-60",
-                concierge.length > 0 ? "bg-orange-500" : "bg-red-500"
-              )} />
-              <span className={cn(
-                "relative inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-white text-[10px] font-black rounded-full leading-none",
-                concierge.length > 0 ? "bg-orange-500" : "bg-red-500"
-              )}>
-                {total > 99 ? '99+' : total}
-              </span>
-            </span>
-          </>
-        )}
-      </button>
-
-      {/* Panel */}
-      {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 bg-card border border-border rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-          {/* Panel header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <span className="text-sm font-black tracking-tight">Notificações</span>
-            <div className="flex items-center gap-2">
-              {waCount > 0 && (
-                <button
-                  onClick={markAllRead}
-                  disabled={clearingWa}
-                  className="text-[10px] font-bold text-muted-foreground hover:text-foreground transition-colors uppercase tracking-wide disabled:opacity-50"
-                >
-                  {clearingWa ? 'Limpando…' : 'Limpar mensagens'}
-                </button>
-              )}
-              <button onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground transition-colors">
-                <X size={16} />
-              </button>
-            </div>
-          </div>
-
-          <div className="max-h-[480px] overflow-y-auto">
+  const panelBody = (
+          <div className={isMobile ? "" : "max-h-[480px] overflow-y-auto"}>
             {total === 0 ? (
               <div className="py-10 text-center text-muted-foreground text-sm">
                 <Bell size={28} className="mx-auto mb-2 opacity-30" />
@@ -779,8 +728,83 @@ export function NotificationCenter() {
               </>
             )}
           </div>
+  );
+
+  return (
+    <div className="relative" ref={panelRef}>
+      {/* Bell button */}
+      <button
+        onClick={handleOpen}
+        className={cn(
+          "relative flex items-center justify-center w-9 h-9 rounded-xl transition-all",
+          open
+            ? "bg-primary/20 text-primary"
+            : "text-foreground/40 hover:text-foreground hover:bg-white/5"
+        )}
+        title="Notificações"
+      >
+        <Bell size={18} className={cn(total > 0 && !open && "animate-[wiggle_1s_ease-in-out_infinite]")} />
+        {total > 0 && (
+          <>
+            {/* Ping ring — laranja quando há concierge esperando (prioridade do balcão) */}
+            <span className="absolute -top-1 -right-1 flex h-[18px] w-[18px]">
+              <span className={cn(
+                "animate-ping absolute inline-flex h-full w-full rounded-full opacity-60",
+                concierge.length > 0 ? "bg-orange-500" : "bg-red-500"
+              )} />
+              <span className={cn(
+                "relative inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-white text-[10px] font-black rounded-full leading-none",
+                concierge.length > 0 ? "bg-orange-500" : "bg-red-500"
+              )}>
+                {total > 99 ? '99+' : total}
+              </span>
+            </span>
+          </>
+        )}
+      </button>
+
+      {/* Panel */}
+      {open && !isMobile && (
+        <div className="absolute right-0 top-full mt-2 w-80 bg-card border border-border rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+          {/* Panel header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+            <span className="text-sm font-black tracking-tight">Notificações</span>
+            <div className="flex items-center gap-2">
+              {waCount > 0 && (
+                <button
+                  onClick={markAllRead}
+                  disabled={clearingWa}
+                  className="text-[10px] font-bold text-muted-foreground hover:text-foreground transition-colors uppercase tracking-wide disabled:opacity-50"
+                >
+                  {clearingWa ? 'Limpando…' : 'Limpar mensagens'}
+                </button>
+              )}
+              <button onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+
+          {panelBody}
         </div>
       )}
+
+      {/* Celular: mesmo conteúdo num sheet de baixo (o dropdown de 320px não cabe) */}
+      <Dialog
+        open={open && isMobile}
+        onClose={() => setOpen(false)}
+        presentation="sheet"
+        size="md"
+        title="Notificações"
+        bodyPad={0}
+        headerActions={waCount > 0 ? (
+          <button onClick={markAllRead} disabled={clearingWa} className="ak-press" style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--t-brand-text)', padding: '6px 8px' }}>
+            {clearingWa ? 'Limpando…' : 'Limpar mensagens'}
+          </button>
+        ) : undefined}
+      >
+        {panelBody}
+      </Dialog>
     </div>
   );
 }

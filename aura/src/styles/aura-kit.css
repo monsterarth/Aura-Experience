@@ -420,3 +420,25 @@
 .ak-toast-title { font-weight: 700 !important; font-size: 13px !important; }
 .ak-toast-desc { color: var(--t-muted) !important; font-size: 12px !important; }
 .ak-toast-action { background: linear-gradient(135deg, #9b6dff, #4ec9d4) !important; color: #fff !important; font-weight: 800 !important; border-radius: 8px !important; }
+
+/* ── Sidebar nav (hover por CSS; o estilo ativo é inline) ──────────────────── */
+.ak-nav-item { -webkit-tap-highlight-color: transparent; }
+@media (hover: hover) {
+  .ak-nav-item:not([data-active]):hover { background: var(--t-glass-2) !important; color: var(--t-text) !important; }
+}
+@media (pointer: coarse) { .ak-nav-item { min-height: 42px; } }
+
+/* ── Toasts por tipo (sonner) ───────────────────────────────────────────────── */
+.ak-toast[data-type="success"] { border-color: var(--t-green-border) !important; }
+.ak-toast[data-type="error"] { border-color: var(--t-red-border) !important; }
+.ak-toast[data-type="warning"] { border-color: var(--t-amber-border) !important; }
+.ak-toast[data-type="info"] { border-color: var(--t-blue-border) !important; }
+.ak-toast [data-icon] { color: var(--t-brand-text); }
+.ak-toast[data-type="success"] [data-icon] { color: var(--t-green); }
+.ak-toast[data-type="error"] [data-icon] { color: var(--t-red); }
+.ak-toast[data-type="warning"] [data-icon] { color: var(--t-amber); }
+.ak-toast[data-type="info"] [data-icon] { color: var(--t-blue); }
+
+/* ── Utilitários responsivos para páginas com inline style ──────────────────── */
+@media (max-width: 767px) { .ak-hide-mobile { display: none !important; } }
+@media (min-width: 768px) { .ak-only-mobile { display: none !important; } }
