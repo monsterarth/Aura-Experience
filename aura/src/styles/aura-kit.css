@@ -393,10 +393,12 @@
 .ak-actionbar { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
 .ak-actionbar__note { font-size: 12px; color: var(--t-muted); margin-right: auto; min-width: 0; }
 @media (max-width: 1023px) {
-  .ak-actionbar { position: sticky; bottom: calc(-1 * (var(--page-pad) + 88px)); margin: 12px calc(-1 * var(--page-pad)) 0; padding: 10px var(--page-pad) calc(10px + var(--tabbar-h)); background: color-mix(in srgb, var(--t-bg) 88%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--t-border); z-index: 5; flex-wrap: wrap; }
+  .ak-actionbar { position: fixed; left: 0; right: 0; bottom: var(--tabbar-h); z-index: calc(var(--z-tabbar) + 1); margin: 0; padding: 10px var(--page-pad); background: color-mix(in srgb, var(--t-bg) 90%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-top: 1px solid var(--t-border); flex-wrap: wrap; }
   .ak-actionbar > .ak-btn { flex: 1 1 0; }
   .ak-actionbar__note { flex-basis: 100%; order: -1; margin-right: 0; }
+  .ak-actionbar__spacer { display: block; height: 72px; }
 }
+.ak-actionbar__spacer { display: none; }
 
 /* ── BottomTabBar ───────────────────────────────────────────────────────────── */
 .ak-tabbar { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; flex-shrink: 0; background: color-mix(in srgb, var(--t-bg-2) 94%, transparent); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--t-border); padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px)); position: relative; z-index: var(--z-tabbar); }
