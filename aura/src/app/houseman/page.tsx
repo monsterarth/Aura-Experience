@@ -50,9 +50,8 @@ const T = {
 };
 
 const STYLE = `
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800;9..40,900&display=swap');
 .hm-shell*{box-sizing:border-box;}
-.hm-shell{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;}
+.hm-shell{font-family:var(--font-dm-sans),'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;}
 .hm-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
 .hm-scroll::-webkit-scrollbar{display:none;}
 @keyframes hm-pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.4;transform:scale(.8);}}

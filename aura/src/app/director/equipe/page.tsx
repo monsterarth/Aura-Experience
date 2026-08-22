@@ -12,9 +12,8 @@ import { ArrowLeft, Users, Clock, Cake } from "lucide-react";
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const STYLE = `
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800;9..40,900&display=swap');
 .dir-shell *  { box-sizing: border-box; }
-.dir-shell    { font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif; }
+.dir-shell    { font-family:var(--font-dm-sans),'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif; }
 .dir-scroll   { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
 .dir-scroll::-webkit-scrollbar { display: none; }
 @keyframes dir-spin { to { transform: rotate(360deg) } }

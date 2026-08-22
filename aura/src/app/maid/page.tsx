@@ -24,9 +24,8 @@ import { useRouter } from "next/navigation";
 // ─── CSS injected once ────────────────────────────────────────────────────────
 
 const STYLE = `
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800;9..40,900&display=swap');
 .maid-shell*{box-sizing:border-box;}
-.maid-shell{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;}
+.maid-shell{font-family:var(--font-dm-sans),'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;}
 .maid-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
 .maid-scroll::-webkit-scrollbar{display:none;}
 .maid-sheet-body{overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex:1;}

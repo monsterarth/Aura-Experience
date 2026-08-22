@@ -69,7 +69,8 @@ function AdminLayoutInner({ children, initialTheme }: { children: React.ReactNod
 
   return (
     <div
-      className={`aura-admin-root flex min-[100dvh] w-full font-sans overflow-hidden ${isLight ? 'bg-[#f5f3f0] text-[#262d38]' : 'bg-[#141414] text-white'}`}
+      data-theme={isLight ? "light" : "dark"}
+      className={`aura-admin-root flex min-h-[100dvh] w-full overflow-hidden ${isLight ? 'bg-[#f5f3f0] text-[#262d38]' : 'bg-[#141414] text-white'}`}
     >
       <style>{`.aura-admin-root { ${isLight ? LIGHT_VARS : DARK_VARS} }`}</style>
 

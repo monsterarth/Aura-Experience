@@ -22,9 +22,8 @@ import { ScrapWall } from "@/components/admin/profile/ScrapWall";
 // ─── CSS ──────────────────────────────────────────────────────────────────────
 
 const STYLE = `
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700;9..40,800;9..40,900&display=swap');
 .gov-shell *{box-sizing:border-box;}
-.gov-shell{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;}
+.gov-shell{font-family:var(--font-dm-sans),'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;}
 .gov-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
 .gov-scroll::-webkit-scrollbar{display:none;}
 .gov-sheet-body{overflow-y:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex:1;}
