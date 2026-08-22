@@ -28,11 +28,14 @@ export function BottomActionBar({ primary, secondary, note, children, className,
   primary?: React.ReactNode; secondary?: React.ReactNode; note?: React.ReactNode; children?: React.ReactNode; className?: string; style?: React.CSSProperties;
 }) {
   return (
-    <div className={`ak-actionbar${className ? ` ${className}` : ""}`} style={style}>
-      {note && <span className="ak-actionbar__note">{note}</span>}
-      {secondary}
-      {primary}
-      {children}
-    </div>
+    <>
+      <div className="ak-actionbar__spacer" aria-hidden />
+      <div className={`ak-actionbar${className ? ` ${className}` : ""}`} style={style}>
+        {note && <span className="ak-actionbar__note">{note}</span>}
+        {secondary}
+        {primary}
+        {children}
+      </div>
+    </>
   );
 }

@@ -1,707 +1,210 @@
 // src/app/admin/stays/new/page.tsx
 "use client";
 
-import React, { useState, useEffect, useRef, Suspense } from "react";
-import { useAuth } from "@/context/AuthContext";
-import { useProperty } from "@/context/PropertyContext";
-import { GuestService } from "@/services/guest-service";
-import { StayService } from "@/services/stay-service";
-import { CabinService } from "@/services/cabin-service";
-import { ContactService } from "@/services/contact-service"; // NOVO: Para já inserir na agenda
-import { chatwootSyncOnStayCreated } from "@/app/actions/chatwoot-actions";
-import { validateCPF } from "@/lib/utils-checkin";
-import { defaultCountryForLang, splitPhone, joinPhone, isLocalNumberValid } from "@/lib/phone";
-import { Cabin, Guest } from "@/types/aura";
-import { RoleGuard } from "@/components/auth/RoleGuard";
-import {
-  UserSearch,
-  Home,
-  Users,
-  Loader2,
-  Search,
-  PlusCircle,
-  Building2,
-  Trash2,
-  Key,
-  ArrowLeft,
-  Calendar as CalendarIcon,
-  Map
-} from "lucide-react";
-import { toast } from "sonner";
-import { cn } from "@/lib/utils";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-
-// Importações do Calendário
-import { addDays, format } from "date-fns";
+import React, { Suspense } from "react";
+import { Calendar as CalendarIcon, Check, Home, Key, Map, PlusCircle, Search, Trash2, Users, UserSearch } from "lucide-react";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { DateRange } from "react-day-picker";
+import { RoleGuard } from "@/components/auth/RoleGuard";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { T } from "@/lib/admin-tokens";
+import {
+  PageShell, PageHeader, Card, Field, FieldRow, Input, Select, Button, IconButton, Switch, Pill, FilterChips,
+  SectionLabel, EmptyState, Dialog, BottomActionBar, PageSkeleton, Skeleton,
+} from "@/components/aura";
+import { useNewStay, type Lang } from "./_components/useNewStay";
 
-interface CabinSelection {
-  cabinId: string;
-  name: string;
-  adults: number;
-  children: number;
-  babies: number;
-}
+const LANGS: { id: Lang; label: string }[] = [
+  { id: "pt", label: "Português (PT)" },
+  { id: "en", label: "English (EN)" },
+  { id: "es", label: "Español (ES)" },
+];
 
-/**
- * Busca o hóspede pelo documento via rota de servidor (service-role).
- *
- * Antes chamava GuestService.findByDocument direto do browser: essa query passa pelo lock de
- * auth do client e, quando o lock está frio, a promise nunca resolve — o spinner do campo de
- * CPF girava pra sempre. O AbortController de 10s é a segunda trava: mesmo que a rota demore,
- * a promise sempre termina e o spinner sempre para.
- */
-async function lookupGuestByDoc(propertyId: string, doc: string): Promise<Guest | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10000);
-  try {
-    const res = await fetch(
-      `/api/admin/guests/lookup?propertyId=${encodeURIComponent(propertyId)}&doc=${encodeURIComponent(doc)}`,
-      { signal: controller.signal }
-    );
-    if (!res.ok) throw new Error(`Falha na consulta do documento (${res.status})`);
-    const json = await res.json();
-    return (json?.guest ?? null) as Guest | null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function NewStayPageContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const { userData } = useAuth();
-  const { currentProperty: contextProperty } = useProperty();
-
-  // Query params from reservation map drag-to-create, guests page and sales funnel
-  const prefilledCabinId = searchParams.get('cabinId');
-  const prefilledCheckIn = searchParams.get('checkIn');
-  const prefilledCheckOut = searchParams.get('checkOut');
-  const prefilledGuestId = searchParams.get('guestId');
-  const prefilledQuoteId = searchParams.get('quoteId');
-  /** Composição fechada no funil — sem ela a estadia nasceria sempre com 2 adultos. */
-  const seedPax = {
-    adults: Math.max(1, parseInt(searchParams.get('adults') || '') || 2),
-    children: Math.max(0, parseInt(searchParams.get('children') || '') || 0),
-    babies: Math.max(0, parseInt(searchParams.get('babies') || '') || 0),
-  };
-
-  const [loading, setLoading] = useState(false);
-  const [searchingGuest, setSearchingGuest] = useState(false);
-  const searchInFlight = useRef(false);
-  const [availableCabins, setAvailableCabins] = useState<Cabin[]>([]);
-
-  const [docType, setDocType] = useState("CPF");
-  const [docNumber, setDocNumber] = useState("");
-  const [guestData, setGuestData] = useState({
-    fullName: "",
-    email: "",
-    phone: "", // número LOCAL (sem DDI); o DDI vive em phoneCountry
-    preferredLanguage: "pt" as "pt" | "en" | "es"
-  });
-  // DDI separado: pt nasce "55" e editável; en/es nasce vazio e obrigatório.
-  const [phoneCountry, setPhoneCountry] = useState("55");
-  // Marca edição manual do DDI para a troca de idioma não sobrescrever.
-  const countryTouched = useRef(false);
-
-  const [cabinSelections, setCabinSelections] = useState<CabinSelection[]>([]);
-
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
-    if (prefilledCheckIn && prefilledCheckOut) {
-      return {
-        from: new Date(prefilledCheckIn + 'T12:00:00'),
-        to: new Date(prefilledCheckOut + 'T12:00:00'),
-      };
-    }
-    return { from: addDays(new Date(), 1), to: addDays(new Date(), 3) };
-  });
-
-  const [sendAutomations, setSendAutomations] = useState(true);
-  const [internalUse, setInternalUse] = useState(false);
-  const [internalLabel, setInternalLabel] = useState("");
-  const [createdInfo, setCreatedInfo] = useState<{ code: string } | null>(null);
-
-  // Reserva de uso da casa nasce sem comunicação automática (toggle de automações desligado)
-  const toggleInternalUse = (checked: boolean) => {
-    setInternalUse(checked);
-    if (checked) setSendAutomations(false);
-  };
-
-  // Troca de idioma reposiciona o DDI padrão — só enquanto o operador não
-  // tiver mexido no campo (aí respeita o que ele digitou).
-  useEffect(() => {
-    if (countryTouched.current) return;
-    setPhoneCountry(defaultCountryForLang(guestData.preferredLanguage));
-  }, [guestData.preferredLanguage]);
-
-  useEffect(() => {
-    if (!contextProperty?.id) return;
-
-    CabinService.getCabinsByProperty(contextProperty.id).then((cabinsData) => {
-      setAvailableCabins(cabinsData);
-      if (prefilledCabinId && cabinSelections.length === 0) {
-        const match = cabinsData.find(c => c.id === prefilledCabinId);
-        if (match) {
-          setCabinSelections([{ cabinId: match.id, name: match.name, ...seedPax }]);
-        }
-      }
-    });
-
-    // Pre-fill guest from guestId query param (comes from /admin/guests)
-    if (prefilledGuestId) {
-      lookupGuestByDoc(contextProperty.id, prefilledGuestId).then(guest => {
-        if (guest) {
-          setDocNumber(guest.id);
-          const gl = (guest.preferredLanguage as "pt" | "en" | "es") || "pt";
-          const { country, number, hadCountry } = splitPhone(guest.phone, gl);
-          if (hadCountry) countryTouched.current = true; // só quando o DDI veio do número salvo
-          setPhoneCountry(country);
-          setGuestData({ fullName: guest.fullName, email: guest.email || "", phone: number, preferredLanguage: gl });
-        }
-      }).catch(() => { /* pré-preenchimento é best-effort; usuário digita os dados */ });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contextProperty?.id]);
-
-  const handleSearchGuest = async () => {
-    if (!docNumber || !contextProperty?.id) return;
-    // onBlur do campo + clique na lupa disparam a busca em sequência; o state ainda não
-    // atualizou no segundo disparo, então o guard tem que ser por ref.
-    if (searchInFlight.current) return;
-    searchInFlight.current = true;
-    setSearchingGuest(true);
-    try {
-      const guest = await lookupGuestByDoc(contextProperty.id, docNumber);
-      if (guest) {
-        const gl = (guest.preferredLanguage as "pt" | "en" | "es") || "pt";
-        const { country, number, hadCountry } = splitPhone(guest.phone, gl);
-        if (hadCountry) countryTouched.current = true; // só quando o DDI veio do número salvo
-        setPhoneCountry(country);
-        setGuestData({ fullName: guest.fullName, email: guest.email || "", phone: number, preferredLanguage: gl });
-        toast.info("Hóspede encontrado!");
-      } else {
-        toast.info("Hóspede novo. Preencha os dados.");
-      }
-    } catch {
-      toast.error("Não foi possível consultar o documento. Preencha os dados manualmente.");
-    } finally {
-      searchInFlight.current = false;
-      setSearchingGuest(false);
-    }
-  };
-
-  const toggleCabin = (cabin: Cabin) => {
-    setCabinSelections(prev => {
-      const exists = prev.find(s => s.cabinId === cabin.id);
-      if (exists) return prev.filter(s => s.cabinId !== cabin.id);
-      // A PRIMEIRA cabana herda a composição fechada no funil; as seguintes
-      // são acréscimo do operador e começam no padrão.
-      const pax = prev.length === 0 ? seedPax : { adults: 2, children: 0, babies: 0 };
-      return [...prev, { cabinId: cabin.id, name: cabin.name, ...pax }];
-    });
-  };
-
-  const updateCabinACF = (idx: number, field: string, val: number) => {
-    const newSels = [...cabinSelections];
-    (newSels[idx] as any)[field] = val;
-    setCabinSelections(newSels);
-  };
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!contextProperty?.id || !userData?.id) return;
-
-    if (!dateRange?.from || !dateRange?.to) {
-      return toast.error("Período completo é obrigatório.");
-    }
-
-    // Em reserva de uso da casa o hóspede é opcional; nas demais, o nome é obrigatório
-    if (!internalUse && !guestData.fullName) {
-      return toast.error("Nome do hóspede é obrigatório.");
-    }
-
-    if (docType === "CPF" && docNumber && !validateCPF(docNumber)) {
-      return toast.error("CPF inválido. Verifique o número digitado.");
-    }
-
-    // Junta DDI + número — é o que vai para o banco (o `to` do WhatsApp).
-    const cleanedCountry = phoneCountry.replace(/\D/g, '');
-    const cleanedLocal = guestData.phone.replace(/\D/g, '');
-    const cleanedPhone = joinPhone(cleanedCountry, cleanedLocal);
-
-    // Telefone só é obrigatório quando há comunicação prevista (reserva normal)
-    if (!internalUse) {
-      if (!cleanedCountry) {
-        return toast.error("Informe o código do país (DDI) do WhatsApp.");
-      }
-      if (!isLocalNumberValid(cleanedCountry, cleanedLocal)) {
-        return toast.error("O número de WhatsApp digitado é muito curto.");
-      }
-    }
-
-    setLoading(true);
-    const toastId = toast.loading(internalUse ? "Criando reserva de uso da casa..." : "Validando número na Meta (WhatsApp)...");
-
-    try {
-      // Reserva de uso da casa: hóspede opcional. Só cria/valida hóspede quando há nome preenchido.
-      const hasGuest = !!guestData.fullName;
-      let savedGuestId: string | null = null;
-
-      if (hasGuest) {
-        // Validação Meta + checagem de contato apenas para reservas normais (uso da casa não comunica)
-        if (!internalUse && cleanedPhone.length >= 10) {
-          const whatsRes = await fetch('/api/whatsapp/check-number', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ number: cleanedPhone, propertyId: contextProperty.id })
-          });
-          const whatsData = await whatsRes.json();
-          if (!whatsRes.ok || !whatsData.exists) {
-            // Avisa mas não bloqueia — falsos negativos ocorrem com DDIs internacionais (ex: Uruguai +598)
-            toast.warning("WhatsApp não confirmado pela API, mas prosseguindo com a reserva.", { id: toastId });
-          } else {
-            toast.success("WhatsApp Validado! Criando registros...", { id: toastId });
-          }
-
-          // Verifica se o número já pertence a outro hóspede
-          const existingContact = await ContactService.findByPhone(contextProperty.id, cleanedPhone);
-          if (existingContact?.isGuest && existingContact.guestId) {
-            const cleanDocCheck = docNumber.replace(/\D/g, '');
-            const isConflict = cleanDocCheck
-              ? existingContact.guestId !== cleanDocCheck
-              : existingContact.name.toLowerCase() !== guestData.fullName.toLowerCase();
-            if (isConflict) {
-              toast.warning(
-                `Atenção: este número já está cadastrado para "${existingContact.name}". Prosseguindo com a reserva.`,
-                { duration: 6000 }
-              );
-            }
-          }
-        }
-
-        // Cria/atualiza o hóspede físico
-        const cleanDoc = docNumber.replace(/\D/g, '');
-        const initialGuestId = cleanDoc.length > 0 ? cleanDoc : `GUEST-${Date.now()}`;
-
-        savedGuestId = await GuestService.upsertGuest(contextProperty.id, {
-          id: initialGuestId,
-          propertyId: contextProperty.id,
-          fullName: guestData.fullName,
-          email: guestData.email,
-          phone: cleanedPhone,
-          nationality: 'Brasil',
-          document: { type: docType, number: docNumber || 'N/A' },
-          preferredLanguage: guestData.preferredLanguage,
-          birthDate: "", gender: "Outro", occupation: "", allergies: [],
-          address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", country: "Brasil" }
-        }, userData?.id, userData?.fullName);
-
-        // Injeta na agenda (Central de Comunicação) quando há telefone
-        if (cleanedPhone.length >= 10) {
-          await ContactService.upsertContact(
-            contextProperty.id,
-            guestData.fullName,
-            cleanedPhone,
-            true, // isGuest
-            savedGuestId,
-            userData.id,
-            userData.fullName
-          );
-        }
-      }
-
-      // CRIA A ESTADIA
-      const cabinConfigs = cabinSelections.length > 0
-        ? cabinSelections
-        : [{ cabinId: null, name: internalUse ? (internalLabel.trim() || 'Uso da Casa') : 'Sem Cabana', ...seedPax }];
-
-      const result = await StayService.createStayRecord({
-        propertyId: contextProperty.id,
-        guestId: savedGuestId,
-        cabinConfigs,
-        checkIn: dateRange.from,
-        checkOut: dateRange.to,
-        checkInTime: contextProperty.settings?.checkInTime,
-        checkOutTime: contextProperty.settings?.checkOutTime,
-        sendAutomations,
-        internalUse,
-        internalLabel: internalUse ? (internalLabel.trim() || undefined) : undefined,
-        actorId: userData.id,
-        actorName: userData.fullName
-      });
-
-      if (savedGuestId) chatwootSyncOnStayCreated(contextProperty.id, savedGuestId, result.stayId).catch(() => {});
-
-      // Veio do funil de vendas: fecha o ciclo orçamento → estadia (stayId no
-      // funil + preço congelado vira diária; o cron lança as noites no fólio).
-      if (prefilledQuoteId) {
-        try {
-          const linkRes = await fetch('/api/admin/tarifario/quotes/link-stay', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              propertyId: contextProperty.id,
-              quoteId: prefilledQuoteId,
-              stayId: result.stayId,
-            }),
-          });
-          if (linkRes.ok) {
-            const link = await linkRes.json().catch(() => null);
-            toast.success(
-              link?.nightlyRate
-                ? `Orçamento vinculado — diária de R$ ${Number(link.nightlyRate).toFixed(2)} programada no fólio.`
-                : 'Orçamento vinculado à estadia.'
-            );
-          } else {
-            toast.warning('Estadia criada, mas não consegui vincular o orçamento (faça pelo Funil).');
-          }
-        } catch {
-          toast.warning('Estadia criada, mas não consegui vincular o orçamento (faça pelo Funil).');
-        }
-      }
-
-      setCreatedInfo({ code: result.accessCode });
-    } catch (error: any) {
-      console.error(error);
-      if (error?.message?.startsWith('CABIN_OVERLAP:')) {
-        const conflictingCabinId = error.message.split(':')[1];
-        const sel = cabinSelections.find(s => s.cabinId === conflictingCabinId);
-        const cabinName = sel?.name || conflictingCabinId;
-        toast.error(`Conflito de datas: ${cabinName} já possui uma reserva neste período.`, { id: toastId, duration: 6000 });
-      } else {
-        toast.error("Erro interno ao processar hospedagem.", { id: toastId });
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+function NewStayContent() {
+  const s = useNewStay();
+  const { property, internalUse, guestData, setGuestData } = s;
+  const nights = s.dateRange?.from && s.dateRange?.to ? Math.max(0, Math.round((s.dateRange.to.getTime() - s.dateRange.from.getTime()) / 86400000)) : 0;
+  const submit = <Button variant="primary" size="lg" icon={Check} onClick={() => void s.handleCreate()} loading={s.loading} loadingText="Criando…" disabled={!property?.id} fullWidth>Confirmar reserva</Button>;
 
   return (
-    <RoleGuard allowedRoles={["super_admin", "admin", "reception", "manager"]}>
-      <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-4 md:space-y-8 pb-20 animate-in fade-in duration-500">
+    <PageShell>
+      <PageHeader
+        back={{ href: "/admin/stays", label: "Estadias" }}
+        icon={PlusCircle}
+        title="Nova hospedagem"
+        subtitle={property?.name ?? "Carregando…"}
+      />
 
-        {/* Header */}
-        <header className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-          <div className="space-y-1">
-            <Link href="/admin/stays" className="text-muted-foreground hover:text-foreground flex items-center gap-2 text-xs font-bold uppercase tracking-widest transition-colors mb-2">
-              <ArrowLeft size={14} /> Voltar
-            </Link>
-            <h1 className="text-3xl font-black flex items-center gap-3 text-foreground">
-              <PlusCircle className="text-primary" size={32} /> Nova Hospedagem
-            </h1>
-          </div>
-
-          <div className="flex items-center gap-3 bg-card border border-border px-6 py-3 rounded-2xl">
-            <div className="p-2 bg-secondary rounded-full">
-              <Building2 size={16} className="text-primary" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">Propriedade Ativa</span>
-              <span className="text-sm font-bold text-foreground">{contextProperty?.name || "Carregando..."}</span>
-            </div>
-          </div>
-        </header>
-
-        <form onSubmit={handleCreate} className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-
-            {/* Seção de Hóspede */}
-            <div className="bg-card border border-border p-6 rounded-[24px] space-y-6">
-              <h2 className="flex items-center gap-2 font-bold text-foreground border-b border-border pb-4">
-                <UserSearch size={18} className="text-primary" /> Identificação
-              </h2>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1 md:col-span-2">
-                  <label className="text-[10px] font-bold uppercase text-muted-foreground">Documento (Opcional)</label>
-                  <div className="flex gap-2">
-                    <select
-                      value={docType}
-                      onChange={e => setDocType(e.target.value)}
-                      className="p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors text-sm w-32 shrink-0"
-                    >
-                      <option value="CPF">CPF</option>
-                      <option value="PASSAPORTE">Passaporte</option>
-                      <option value="RG">RG</option>
-                      <option value="CNH">CNH</option>
-                      <option value="OUTRO">Outro</option>
-                    </select>
-                    <input
-                      value={docNumber}
-                      onChange={e => setDocNumber(e.target.value)}
-                      onBlur={handleSearchGuest}
-                      className="flex-1 p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors"
-                      placeholder="Nº do documento..."
-                    />
-                    <button type="button" onClick={handleSearchGuest} className="p-3 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-colors shrink-0">
-                      {searchingGuest ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
-                    </button>
+      <form onSubmit={e => void s.handleCreate(e)} className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+        <div className="lg:col-span-2 flex flex-col gap-4 min-w-0">
+          {/* Identificação */}
+          <Card header={{ icon: UserSearch, tone: "brand", title: "Identificação", sub: internalUse ? "uso da casa: hóspede opcional" : "titular da reserva" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <Field label="Documento" hint="Opcional — ao sair do campo buscamos o cadastro">
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Select value={s.docType} onChange={e => s.setDocType(e.target.value)} wrapStyle={{ width: 130, flexShrink: 0 }}>
+                    <option value="CPF">CPF</option>
+                    <option value="PASSAPORTE">Passaporte</option>
+                    <option value="RG">RG</option>
+                    <option value="CNH">CNH</option>
+                    <option value="OUTRO">Outro</option>
+                  </Select>
+                  <Input value={s.docNumber} onChange={e => s.setDocNumber(e.target.value)} onBlur={() => void s.handleSearchGuest()} placeholder="Nº do documento…" inputMode="numeric" />
+                  <IconButton icon={Search} label="Buscar cadastro" variant="soft" tone="brand" onClick={() => void s.handleSearchGuest()} loading={s.searchingGuest} />
+                </div>
+              </Field>
+              <FieldRow cols={2}>
+                <Field label={`Nome do titular${internalUse ? " (opcional)" : ""}`} required={!internalUse}>
+                  <Input required={!internalUse} value={guestData.fullName} onChange={e => setGuestData({ ...guestData, fullName: e.target.value.toUpperCase() })} placeholder="NOME COMPLETO" autoComplete="off" />
+                </Field>
+                <Field label={`WhatsApp${internalUse ? " (opcional)" : ""}`} required={!internalUse} hint="DDI + DDD + número (Brasil = 55)">
+                  <div style={{ display: "flex", alignItems: "stretch" }}>
+                    <span style={{ display: "flex", alignItems: "center", padding: "0 0 0 12px", borderRadius: "10px 0 0 10px", border: `1px solid ${T.border2}`, borderRight: "none", background: T.glass2, color: T.muted, fontWeight: 800, fontSize: 14 }}>+</span>
+                    <Input type="tel" inputMode="numeric" aria-label="Código do país (DDI)" required={!internalUse} value={s.phoneCountry.replace(/\D/g, "")} onChange={e => s.setPhoneCountry(e.target.value.replace(/\D/g, "").slice(0, 3))} placeholder="55" title="Código do país (DDI). Brasil = 55." style={{ width: 64, borderRadius: 0, textAlign: "center", fontVariantNumeric: "tabular-nums" }} />
+                    <Input type="tel" inputMode="tel" autoComplete="tel" aria-label="Número do WhatsApp (com DDD)" required={!internalUse} value={(guestData.phone ?? "").replace(/\D/g, "")} onChange={e => setGuestData({ ...guestData, phone: e.target.value.replace(/\D/g, "") })} placeholder="53 98116-9216" style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeft: "none", fontVariantNumeric: "tabular-nums" }} />
                   </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase text-muted-foreground">Nome do Titular {internalUse ? "(opcional)" : "*"}</label>
-                  <input required={!internalUse} value={guestData.fullName} onChange={e => setGuestData({ ...guestData, fullName: e.target.value.toUpperCase() })} className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase text-muted-foreground">WhatsApp {internalUse ? "(opcional)" : "*"}</label>
-                  <div className="flex">
-                    <span className="flex items-center pl-3 pr-1 bg-secondary border border-r-0 border-border rounded-l-xl text-sm font-bold text-muted-foreground">+</span>
-                    <input
-                      type="tel"
-                      inputMode="numeric"
-                      aria-label="Código do país (DDI)"
-                      required={!internalUse}
-                      value={phoneCountry.replace(/\D/g, "")}
-                      onChange={e => { countryTouched.current = true; setPhoneCountry(e.target.value.replace(/\D/g, "").slice(0, 3)); }}
-                      placeholder="55"
-                      title="Código do país (DDI). Brasil = 55."
-                      className="w-14 p-3 bg-secondary border border-border text-foreground font-mono outline-none focus:border-primary/50 transition-colors text-center"
-                    />
-                    <input
-                      required={!internalUse}
-                      type="tel"
-                      autoComplete="tel"
-                      aria-label="Número do WhatsApp (com DDD)"
-                      value={(guestData.phone ?? "").replace(/\D/g, "")}
-                      onChange={e => setGuestData({ ...guestData, phone: e.target.value.replace(/\D/g, "") })}
-                      placeholder="53 98116-9216"
-                      className="flex-1 p-3 bg-secondary border border-l-0 border-border rounded-r-xl text-foreground font-mono outline-none focus:border-primary/50 transition-colors"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase text-muted-foreground">E-mail (Opcional)</label>
-                  <input type="email" value={guestData.email} onChange={e => setGuestData({ ...guestData, email: e.target.value })} className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase text-muted-foreground">Idioma de Comunicação</label>
-                  <select
-                    value={guestData.preferredLanguage}
-                    onChange={e => setGuestData({ ...guestData, preferredLanguage: e.target.value as "pt" | "en" | "es" })}
-                    className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors"
-                  >
-                    <option value="pt">🇧🇷 Português</option>
-                    <option value="en">🇺🇸 English</option>
-                    <option value="es">🇦🇷 Español</option>
-                  </select>
-                </div>
-              </div>
+                </Field>
+                <Field label="E-mail (opcional)">
+                  <Input type="email" inputMode="email" value={guestData.email} onChange={e => setGuestData({ ...guestData, email: e.target.value })} autoComplete="off" />
+                </Field>
+                <Field label="Idioma de comunicação">
+                  <Select value={guestData.preferredLanguage} onChange={e => setGuestData({ ...guestData, preferredLanguage: e.target.value as Lang })}>
+                    {LANGS.map(l => <option key={l.id} value={l.id}>{l.label}</option>)}
+                  </Select>
+                </Field>
+              </FieldRow>
             </div>
+          </Card>
 
-            {/* Configuração das Cabanas */}
-            {cabinSelections.length > 0 && (
-              <div className="bg-card border border-border p-6 rounded-[24px] space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-                <h2 className="flex items-center gap-2 font-bold text-foreground border-b border-border pb-4">
-                  <Users size={18} className="text-primary" /> Configuração ACF (Por Cabana)
-                </h2>
-                <div className="space-y-4">
-                  {cabinSelections.map((sel, idx) => (
-                    <div key={sel.cabinId} className="flex flex-col md:flex-row items-center gap-4 bg-secondary border border-border p-4 rounded-2xl">
-                      <div className="flex-1 font-bold text-foreground text-lg">{sel.name}</div>
-                      <div className="flex gap-4 bg-background border border-border p-2 rounded-xl">
-                        <div className="text-center px-2">
-                          <p className="text-[9px] font-bold uppercase text-muted-foreground mb-1">Adultos</p>
-                          <input type="number" min={1} value={sel.adults} onChange={e => updateCabinACF(idx, 'adults', parseInt(e.target.value))} className="w-12 bg-transparent text-center font-bold text-primary outline-none border-b border-primary/20 focus:border-primary" />
-                        </div>
-                        <div className="text-center border-x border-border px-4">
-                          <p className="text-[9px] font-bold uppercase text-muted-foreground mb-1">Crianças</p>
-                          <input type="number" min={0} value={sel.children} onChange={e => updateCabinACF(idx, 'children', parseInt(e.target.value))} className="w-12 bg-transparent text-center font-bold text-foreground outline-none border-b border-border focus:border-primary/50" />
-                        </div>
-                        <div className="text-center px-2">
-                          <p className="text-[9px] font-bold uppercase text-muted-foreground mb-1">Bebês</p>
-                          <input type="number" min={0} value={sel.babies} onChange={e => updateCabinACF(idx, 'babies', parseInt(e.target.value))} className="w-12 bg-transparent text-center font-bold text-foreground outline-none border-b border-border focus:border-primary/50" />
-                        </div>
-                      </div>
-                      <button type="button" onClick={() => toggleCabin({ id: sel.cabinId, name: sel.name } as any)} className="text-destructive p-3 hover:bg-destructive/10 rounded-xl transition-colors">
-                        <Trash2 size={20} />
-                      </button>
+          {/* ACF por cabana */}
+          {s.cabinSelections.length > 0 && (
+            <Card header={{ icon: Users, tone: "blue", title: "Configuração ACF", sub: "adultos, crianças e bebês por cabana", aside: <Pill tone="blue" label={`${s.cabinSelections.length} cabana${s.cabinSelections.length > 1 ? "s" : ""}`} /> }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {s.cabinSelections.map((sel, idx) => (
+                  <div key={sel.cabinId} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", padding: "10px 12px", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+                    <span style={{ flex: "1 1 140px", minWidth: 0, fontSize: 14, fontWeight: 800, color: T.text }}>{sel.name}</span>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      {([["adults", "Adultos", 1], ["children", "Crianças", 0], ["babies", "Bebês", 0]] as ["adults" | "children" | "babies", string, number][]).map(([key, lbl, min]) => (
+                        <label key={key} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".06em", color: T.muted }}>
+                          <Input type="number" min={min} inputMode="numeric" value={sel[key]} onChange={e => s.updateCabinACF(idx, key, Math.max(min, parseInt(e.target.value) || min))} fieldSize="sm" style={{ width: 60, textAlign: "center", fontWeight: 800, color: key === "adults" ? T.brandText : T.text }} />
+                          {lbl}
+                        </label>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                    <IconButton icon={Trash2} label={`Remover ${sel.name}`} variant="ghost" tone="red" onClick={() => s.toggleCabin({ id: sel.cabinId, name: sel.name })} />
+                  </div>
+                ))}
               </div>
+            </Card>
+          )}
+        </div>
+
+        <aside className="flex flex-col gap-4 min-w-0">
+          {/* Cabanas */}
+          <Card header={{ icon: Home, tone: "green", title: "Unidades", sub: "toque para selecionar uma ou mais" }}>
+            {s.loadingCabins ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} w={96} h={34} radius={9} />)}</div>
+            ) : s.availableCabins.length === 0 ? (
+              <EmptyState compact icon={Home} title="Nenhuma cabana nesta propriedade" />
+            ) : (
+              <FilterChips
+                multiple
+                scroll={false}
+                ariaLabel="Cabanas"
+                items={s.availableCabins.map(c => ({ id: c.id, label: c.name }))}
+                values={s.cabinSelections.map(c => c.cabinId)}
+                onChange={ids => s.setSelectedCabinIds(ids)}
+                style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 6 }}
+              />
             )}
-          </div>
+            {s.availableCabins.length > 0 && s.cabinSelections.length === 0 && (
+              <p style={{ margin: "12px 0 0", fontSize: 12, color: T.amber, background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 10, padding: "8px 10px", lineHeight: 1.45 }}>
+                Nenhuma cabana selecionada: a reserva nasce sem acomodação e pode ser atribuída depois no mapa.
+              </p>
+            )}
+          </Card>
 
-          <aside className="space-y-6">
-            {/* Seletor de Cabanas */}
-            <div className="bg-card border border-border p-6 rounded-[24px] space-y-4">
-              <h2 className="flex items-center gap-2 font-bold text-foreground border-b border-border pb-4">
-                <Home size={18} className="text-primary" /> Unidades Disponíveis
-              </h2>
-              {availableCabins.length === 0 ? (
-                <p className="text-center text-muted-foreground text-xs py-8">Nenhuma cabana encontrada nesta propriedade.</p>
-              ) : (
-                <div className="grid grid-cols-2 gap-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                  {availableCabins.map(cabin => (
-                    <button
-                      key={cabin.id}
-                      type="button"
-                      onClick={() => toggleCabin(cabin)}
-                      className={cn(
-                        "p-3 rounded-xl border text-[10px] font-bold uppercase transition-all hover:scale-[1.02]",
-                        cabinSelections.find(s => s.cabinId === cabin.id)
-                          ? "border-primary bg-primary/10 text-primary shadow-[0_0_15px_rgba(var(--primary),0.2)]"
-                          : "border-border bg-secondary text-muted-foreground hover:bg-accent hover:text-foreground"
-                      )}
-                    >
-                      {cabin.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {availableCabins.length > 0 && cabinSelections.length === 0 && (
-                <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2">
-                  Nenhuma cabana selecionada. A reserva será criada sem acomodação atribuída e poderá ser atribuída depois no mapa.
-                </p>
-              )}
-            </div>
-
-            {/* Controle de Datas */}
-            <div className="bg-card border border-border p-6 rounded-[24px] space-y-4 sticky top-6">
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase text-muted-foreground">Período da Hospedagem *</label>
-
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      className={cn(
-                        "w-full flex items-center gap-4 p-3 bg-secondary border border-border rounded-xl hover:border-primary/50 focus:border-primary/50 transition-colors text-left",
-                        !dateRange && "text-muted-foreground",
-                        dateRange ? "text-foreground" : ""
-                      )}
-                    >
-                      <CalendarIcon className="text-primary shrink-0 ml-1" size={24} />
-                      <div className="flex flex-col flex-1 gap-1">
-                        {dateRange?.from ? (
-                          <>
-                            <div className="text-sm font-bold flex items-center gap-1">
-                              <span className="text-muted-foreground font-normal uppercase text-[10px] w-14">Entrada:</span>
-                              {format(dateRange.from, "dd/MM/yy", { locale: ptBR })}
-                            </div>
-                            <div className="text-sm font-bold flex items-center gap-1">
-                              <span className="text-muted-foreground font-normal uppercase text-[10px] w-14">Saída:</span>
-                              {dateRange.to ? format(dateRange.to, "dd/MM/yy", { locale: ptBR }) : "--/--/--"}
-                            </div>
-                          </>
-                        ) : (
-                          <span className="text-sm font-medium text-muted-foreground">Selecione o período</span>
-                        )}
-                      </div>
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0 border-border bg-card shadow-2xl rounded-2xl" align="center">
-                    <Calendar
-                      initialFocus
-                      mode="range"
-                      defaultMonth={dateRange?.from || new Date()}
-                      selected={dateRange}
-                      onSelect={setDateRange}
-                      numberOfMonths={1}
-                      locale={ptBR}
-                      disabled={(date: Date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
-                      className="bg-card text-foreground"
-                    />
-                  </PopoverContent>
-                </Popover>
-
-              </div>
-
-              <label className={cn(
-                "flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors mt-4",
-                internalUse ? "bg-amber-500/10 border-amber-500/30" : "bg-secondary border-border hover:bg-accent"
-              )}>
-                <input type="checkbox" checked={internalUse} onChange={e => toggleInternalUse(e.target.checked)} className="accent-amber-500 w-4 h-4" />
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-black text-foreground uppercase tracking-tighter">Reserva de uso da casa (interno)</span>
-                  <span className="text-[9px] text-muted-foreground">Ocupação interna — não é cliente, hóspede opcional, sem comunicação automática</span>
-                </div>
-              </label>
-
-              {internalUse && (
-                <div className="space-y-1 mt-2">
-                  <label className="text-[10px] font-bold uppercase text-muted-foreground">Identificação interna (opcional)</label>
-                  <input
-                    value={internalLabel}
-                    onChange={e => setInternalLabel(e.target.value)}
-                    placeholder="Ex: Manutenção cabana 5, Família, Bloqueio"
-                    className="w-full p-3 bg-secondary border border-border rounded-xl text-foreground outline-none focus:border-primary/50 transition-colors"
+          {/* Período e opções */}
+          <Card header={{ icon: CalendarIcon, tone: "brand", title: "Período", sub: nights > 0 ? `${nights} noite${nights > 1 ? "s" : ""}` : "selecione entrada e saída", aside: undefined }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button type="button" className="ak-press ak-focus" style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 12, border: `1px solid ${T.border2}`, background: T.glass, color: T.text, cursor: "pointer", fontFamily: "inherit", textAlign: "left" }}>
+                    <CalendarIcon size={20} color={T.brandText} style={{ flexShrink: 0 }} />
+                    <span style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+                      <span style={{ fontSize: 13, fontWeight: 800 }}><span style={{ display: "inline-block", width: 60, fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: T.muted }}>Entrada</span>{s.dateRange?.from ? format(s.dateRange.from, "dd/MM/yy", { locale: ptBR }) : "—"}</span>
+                      <span style={{ fontSize: 13, fontWeight: 800 }}><span style={{ display: "inline-block", width: 60, fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: T.muted }}>Saída</span>{s.dateRange?.to ? format(s.dateRange.to, "dd/MM/yy", { locale: ptBR }) : "—"}</span>
+                    </span>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="center" style={{ background: T.elev, borderColor: T.border2, borderRadius: 16 }}>
+                  <Calendar
+                    initialFocus mode="range" numberOfMonths={1} locale={ptBR}
+                    defaultMonth={s.dateRange?.from || new Date()} selected={s.dateRange} onSelect={s.setDateRange}
+                    disabled={(date: Date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
                   />
-                </div>
-              )}
+                </PopoverContent>
+              </Popover>
 
-              <label className="flex items-center gap-3 cursor-pointer p-3 bg-secondary rounded-xl border border-border hover:bg-accent transition-colors mt-2">
-                <input type="checkbox" checked={sendAutomations} onChange={e => setSendAutomations(e.target.checked)} className="accent-primary w-4 h-4" />
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-foreground uppercase tracking-tighter">Comunicação automática de WhatsApp</span>
-                  <span className="text-[9px] text-muted-foreground">Interruptor mestre — desligado, nenhuma mensagem automática é enviada</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 12px", borderRadius: 12, background: internalUse ? T.amberBg : T.glass, border: `1px solid ${internalUse ? T.amberBorder : T.border}` }}>
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 12, fontWeight: 800, color: T.text }}>Reserva de uso da casa</span>
+                    <span style={{ display: "block", fontSize: 10, color: T.muted, lineHeight: 1.4 }}>Ocupação interna — não é cliente, hóspede opcional, sem comunicação automática</span>
+                  </span>
+                  <Switch checked={internalUse} onChange={s.toggleInternalUse} label="Reserva de uso da casa" />
                 </div>
-              </label>
+                {internalUse && (
+                  <Field label="Identificação interna (opcional)">
+                    <Input value={s.internalLabel} onChange={e => s.setInternalLabel(e.target.value)} placeholder="Ex.: manutenção cabana 5, família, bloqueio" />
+                  </Field>
+                )}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "10px 12px", borderRadius: 12, background: T.glass, border: `1px solid ${T.border}` }}>
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 12, fontWeight: 800, color: T.text }}>Comunicação automática de WhatsApp</span>
+                    <span style={{ display: "block", fontSize: 10, color: T.muted, lineHeight: 1.4 }}>Interruptor mestre — desligado, nenhuma mensagem automática é enviada</span>
+                  </span>
+                  <Switch checked={s.sendAutomations} onChange={s.setSendAutomations} label="Comunicação automática" />
+                </div>
+              </div>
 
-              <button
-                type="submit"
-                disabled={loading || !contextProperty?.id}
-                className="w-full py-4 bg-primary text-primary-foreground font-black text-lg uppercase tracking-wider rounded-[20px] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-all active:scale-95 mt-4"
-              >
-                {loading ? <Loader2 className="animate-spin" /> : "Confirmar Reserva"}
-              </button>
+              <div className="ak-hide-mobile">{submit}</div>
             </div>
-          </aside>
-        </form>
+          </Card>
+        </aside>
+        <div className="ak-only-mobile"><BottomActionBar note={nights > 0 ? `${nights} noite${nights > 1 ? "s" : ""} · ${s.cabinSelections.length} cabana${s.cabinSelections.length === 1 ? "" : "s"}` : undefined}>{submit}</BottomActionBar></div>
+      </form>
 
-        {/* Modal de Sucesso */}
-        {createdInfo && (
-          <div className="fixed inset-0 bg-background/90 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-300">
-            <div className="bg-card border border-border p-10 rounded-[40px] max-w-sm w-full text-center space-y-8 shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary to-transparent opacity-50"></div>
-
-              <div className="w-24 h-24 bg-primary/10 text-primary rounded-full flex items-center justify-center mx-auto border border-primary/20 shadow-[0_0_30px_rgba(var(--primary),0.2)]">
-                <Key size={48} />
-              </div>
-
-              <div>
-                <h3 className="text-3xl font-black text-foreground tracking-tighter">Reserva Criada!</h3>
-                <p className="text-muted-foreground mt-2 text-sm font-medium">Hospedagem registrada com sucesso no sistema Aura.</p>
-              </div>
-
-              <div className="bg-secondary p-8 rounded-3xl border border-border relative group">
-                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.3em]">Aura Access Code</span>
-                <div className="text-5xl font-black text-primary tracking-tighter mt-2 group-hover:scale-110 transition-transform duration-300">
-                  {createdInfo.code}
-                </div>
-              </div>
-
-              <div className="flex gap-3 w-full">
-                <button
-                  onClick={() => router.push("/admin/stays")}
-                  className="flex-1 py-4 bg-foreground text-background font-black uppercase tracking-widest rounded-2xl hover:opacity-90 transition-colors text-sm"
-                >
-                  Estadias
-                </button>
-                <button
-                  onClick={() => router.push("/admin/reservation-map")}
-                  className="flex-1 py-4 bg-primary text-primary-foreground font-black uppercase tracking-widest rounded-2xl hover:opacity-90 transition-colors text-sm flex items-center justify-center gap-2"
-                >
-                  <Map size={18} /> Mapa
-                </button>
-              </div>
-            </div>
-          </div>
+      {/* Sucesso */}
+      <Dialog open={!!s.createdInfo} onClose={() => s.router.push("/admin/stays")} presentation="auto" size="sm" hideClose dismissible={false} closeOnEscape={false} ariaLabel="Reserva criada"
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => s.router.push("/admin/stays")}>Estadias</Button>
+            <Button variant="primary" icon={Map} onClick={() => s.router.push("/admin/reservation-map")}>Mapa</Button>
+          </>
         )}
-      </div>
-    </RoleGuard>
+      >
+        <div className="ak-empty" data-compact style={{ padding: "12px 0 4px" }}>
+          <span className="ak-empty__icon" style={{ width: 64, height: 64, background: T.greenBg, borderColor: T.greenBorder, color: T.green }}><Key size={28} /></span>
+          <div className="ak-empty__title" style={{ fontSize: 20 }}>Reserva criada!</div>
+          <div className="ak-empty__desc">Hospedagem registrada no Aura. Este é o código de acesso do hóspede:</div>
+          <div style={{ marginTop: 14, padding: "16px 24px", borderRadius: 16, background: T.glass, border: `1px solid ${T.border}`, width: "100%" }}>
+            <SectionLabel style={{ textAlign: "center", letterSpacing: ".3em" }}>Aura access code</SectionLabel>
+            <div style={{ fontSize: 40, fontWeight: 900, color: T.brandText, letterSpacing: "-.02em", textAlign: "center", marginTop: 6, fontVariantNumeric: "tabular-nums" }}>{s.createdInfo?.code}</div>
+          </div>
+        </div>
+      </Dialog>
+    </PageShell>
   );
 }
 
 export default function NewStayPage() {
   return (
-    <Suspense fallback={<div className="p-8 flex items-center justify-center"><span className="text-muted-foreground">Carregando...</span></div>}>
-      <NewStayPageContent />
-    </Suspense>
+    <RoleGuard allowedRoles={["super_admin", "admin", "reception", "manager"]}>
+      <Suspense fallback={<PageShell><PageSkeleton kpis={0} rows={4} /></PageShell>}>
+        <NewStayContent />
+      </Suspense>
+    </RoleGuard>
   );
 }
