@@ -9,6 +9,7 @@ import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
 import { ImageUpload } from "./ImageUpload";
 import { useCloseGuard } from "@/lib/use-discard-guard";
+import { Dialog, IconButton } from "@/components/aura";
 
 interface StaffEditModalProps {
   staff: Staff;
@@ -58,7 +59,7 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
   // --- Delete tab ---
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleting, setDeleting] = useState(false);
-  const { requestClose, guardProps, markDirty } = useCloseGuard(onClose);
+  const { requestClose, guardProps, markDirty } = useCloseGuard(onClose, { escape: false });
 
   const isSelf = userData?.id === staff.id;
   const canDelete =
@@ -179,11 +180,8 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
   ];
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
-      onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
-    >
-      <div className="bg-card w-full max-w-2xl rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh]" {...guardProps}>
+    <Dialog open onClose={requestClose} presentation="auto" size="lg" rawBody hideClose panelProps={guardProps} ariaLabel={staff.fullName}>
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
 
         {/* Header */}
         <div className="p-4 border-b border-border flex justify-between items-center bg-muted/30 shrink-0">
@@ -200,9 +198,7 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
               <p className="text-xs text-muted-foreground">{roleLabels[staff.role] || staff.role}</p>
             </div>
           </div>
-          <button onClick={requestClose} className="p-2 hover:bg-muted rounded-full transition-colors">
-            <X size={18} />
-          </button>
+          <IconButton icon={X} label="Fechar" variant="secondary" onClick={requestClose} />
         </div>
 
         {/* Tabs */}
@@ -225,7 +221,7 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
         </div>
 
         {/* Body */}
-        <div className="overflow-y-auto custom-scrollbar flex-1">
+        <div className="overflow-y-auto custom-scrollbar flex-1 min-h-0">
 
           {/* ── TAB: Perfil ── */}
           {tab === "profile" && (
@@ -252,7 +248,7 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-xs font-bold uppercase text-muted-foreground">Telemóvel</label>
                       <input
@@ -274,7 +270,7 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-xs font-bold uppercase text-muted-foreground">Contratação</label>
                       <input
@@ -337,7 +333,7 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
                 <div className="space-y-2">
                   <label className="text-xs font-bold uppercase text-muted-foreground">Acessos Adicionais</label>
                   <p className="text-xs text-muted-foreground">Permitem ao funcionário acessar outras áreas além do cargo principal.</p>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {(["maid", "governance", "technician", "waiter", "porter", "houseman"] as UserRole[])
                       .filter(r => r !== formData.role)
                       .map(r => {
@@ -575,6 +571,6 @@ export function StaffEditModal({ staff, onClose, onSave }: StaffEditModalProps) 
 
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

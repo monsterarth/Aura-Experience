@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, Save, Clock, Users, Activity, ImagePlus, Trash2, Plus, Calendar, Bot, MapPin, Globe } from "lucide-react";
+import { Save, Clock, Users, Activity, ImagePlus, Trash2, Plus, Calendar, Bot, MapPin, Globe } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
@@ -9,6 +9,7 @@ import { Structure, MessageTemplate } from "@/types/aura";
 import { cn } from "@/lib/utils";
 import { useCloseGuard } from "@/lib/use-discard-guard";
 import { v4 as uuidv4 } from "uuid";
+import { Dialog, Button } from "@/components/aura";
 
 interface StructureEditModalProps {
     isOpen: boolean;
@@ -54,7 +55,7 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
         if (currentProperty?.id && isOpen) AutomationService.getTemplates(currentProperty.id).then(setTemplates);
     }, [currentProperty?.id, isOpen]);
 
-    if (!isOpen || !currentProperty) return null;
+    if (!currentProperty) return null;
 
     const isMapOnly = formData.visibility === "map_only";
     const isBookable = !isMapOnly;
@@ -120,29 +121,29 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
         setFormData(p => ({ ...p, operatingHours: { ...p.operatingHours!, [field]: value } }));
 
     return (
-        <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300"
-            onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
+        <Dialog
+            open={isOpen}
+            onClose={requestClose}
+            presentation="auto"
+            size="lg"
+            title={structure ? "Editar estrutura" : "Nova estrutura"}
+            subtitle={isMapOnly ? "Local informativo — aparece no mapa sem agendamento." : "Configure as regras de operação e agendamentos."}
+            panelProps={guardProps}
+            footerRow
+            footer={(
+                <>
+                    <Button variant="ghost" type="button" onClick={requestClose}>Cancelar</Button>
+                    <Button variant="primary" type="submit" form="structureForm" icon={Save} loading={loading} loadingText="Salvando…">Salvar estrutura</Button>
+                </>
+            )}
         >
-            <div className="bg-card w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden border border-border animate-in zoom-in-95 duration-300" {...guardProps}>
-
-                <header className="p-6 border-b border-border bg-secondary/50 flex justify-between items-center shrink-0">
-                    <div>
-                        <h2 className="text-xl font-bold text-foreground">{structure ? "Editar Estrutura" : "Nova Estrutura"}</h2>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                            {isMapOnly ? "Local informativo — aparece no mapa sem agendamento." : "Configure as regras de operação e agendamentos."}
-                        </p>
-                    </div>
-                    <button onClick={requestClose} className="p-2 hover:bg-destructive/10 hover:text-destructive text-muted-foreground rounded-xl transition-all"><X size={20} /></button>
-                </header>
-
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-background">
+                <div>
                     <form id="structureForm" onSubmit={handleSubmit} className="space-y-8">
 
                         {/* ── Informações Básicas ──────────────────────────── */}
                         <div className="space-y-4">
                             <h3 className="text-xs font-black uppercase text-foreground/50 tracking-widest border-b border-border pb-2">Informações Básicas</h3>
-                            <div className="flex gap-6 items-start">
+                            <div className="flex flex-col sm:flex-row gap-6 items-start">
                                 <div className="shrink-0">
                                     <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Foto Principal</label>
                                     <div className="relative group w-32 h-32 rounded-2xl border-2 border-dashed border-border flex items-center justify-center bg-secondary/30 overflow-hidden hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer">
@@ -152,24 +153,24 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
                                     </div>
                                 </div>
 
-                                <div className="flex-1 grid grid-cols-2 gap-4">
-                                    <div className="col-span-2">
+                                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="sm:col-span-2">
                                         <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Nome</label>
                                         <input required value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} className="w-full bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-primary text-foreground" placeholder="Ex: Restaurante Principal" />
                                     </div>
-                                    <div className="col-span-2">
+                                    <div className="sm:col-span-2">
                                         <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Descrição {isMapOnly ? "(visível ao hóspede no mapa)" : "(Portal Hóspede)"}</label>
                                         <textarea value={formData.description ?? ""} onChange={e => setFormData({ ...formData, description: e.target.value })} className="w-full bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-primary text-foreground min-h-[80px]" placeholder={isMapOnly ? "Descreva o local, o que oferece, como chegar…" : "Descreva os equipamentos, regras e detalhes visíveis ao hóspede."} />
                                     </div>
 
                                     {/* Traduções (i18n inline) — opcionais; vazio cai no PT */}
-                                    <div className="col-span-2">
+                                    <div className="sm:col-span-2">
                                         <details className="group rounded-xl border border-border bg-background/50">
                                             <summary className="flex items-center gap-2 cursor-pointer select-none p-3 text-[10px] font-bold uppercase text-muted-foreground">
                                                 <Globe size={12} /> Traduções (EN / ES) — opcional
                                             </summary>
                                             <div className="p-3 pt-0 space-y-4">
-                                                <div className="grid grid-cols-2 gap-3">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                                     <div>
                                                         <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Nome (EN)</label>
                                                         <input value={formData.name_en ?? ""} onChange={e => setFormData({ ...formData, name_en: e.target.value })} className="w-full bg-background border border-border p-2.5 rounded-xl text-sm outline-none focus:border-primary text-foreground" placeholder="e.g. Main Restaurant" />
@@ -193,7 +194,7 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 flex items-center gap-1.5"><Activity size={12} /> Categoria</label>
                                     <select required value={formData.category} onChange={e => setFormData({ ...formData, category: e.target.value })} className="w-full bg-background border border-border p-3 rounded-xl text-sm outline-none focus:border-primary text-foreground appearance-none">
@@ -337,7 +338,7 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
                                 </label>
 
                                 {!is24h && (
-                                    <div className="grid grid-cols-2 gap-4 pt-1">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                                         <div>
                                             <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Abre às</label>
                                             <input type="time" value={formData.operatingHours?.openTime ?? ""} onChange={e => handleOperatingHoursChange("openTime", e.target.value)} className="w-full bg-background border border-border p-3 rounded-xl text-sm font-mono text-center outline-none focus:border-primary text-foreground" />
@@ -351,7 +352,7 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
 
                                 {/* Slots — apenas para fixed_slots bookable */}
                                 {isBookable && !is24h && formData.bookingType === "fixed_slots" && (
-                                    <div className="grid grid-cols-2 gap-4 pt-1">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                                         <div>
                                             <label className="text-[10px] font-bold uppercase text-muted-foreground mb-1 block">Duração do Uso (min)</label>
                                             <input type="number" step="5" min="5" required value={formData.operatingHours?.slotDurationMinutes ?? ""} onChange={e => handleOperatingHoursChange("slotDurationMinutes", Number(e.target.value))} className="w-full bg-background border border-border p-3 rounded-xl text-sm text-center outline-none focus:border-primary text-foreground font-mono" />
@@ -428,14 +429,6 @@ export function StructureEditModal({ isOpen, onClose, structure, onSaved }: Stru
 
                     </form>
                 </div>
-
-                <footer className="p-4 border-t border-border bg-secondary/30 flex justify-end gap-3 shrink-0">
-                    <button type="button" onClick={requestClose} className="px-5 py-2.5 hover:bg-accent rounded-xl text-muted-foreground font-bold text-xs uppercase tracking-wider transition-all">Cancelar</button>
-                    <button type="submit" form="structureForm" disabled={loading} className="px-6 py-2.5 bg-primary text-primary-foreground font-bold rounded-xl text-xs uppercase tracking-wider hover:opacity-90 transition-all flex items-center gap-2">
-                        {loading ? "Salvando…" : <><Save size={16} /> Salvar Estrutura</>}
-                    </button>
-                </footer>
-            </div>
-        </div>
+        </Dialog>
     );
 }

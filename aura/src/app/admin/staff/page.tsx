@@ -8,19 +8,13 @@ import { StaffService } from "@/services/staff-service";
 import { Staff, UserRole } from "@/types/aura";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
-import {
-  Users,
-  Plus,
-  Mail,
-  User,
-  ShieldCheck,
-  Loader2,
-  Key,
-  Copy
-} from "lucide-react";
+import { Users, Plus, ShieldCheck, Key, Copy } from "lucide-react";
 import { toast } from "sonner";
+import { T } from "@/lib/admin-tokens";
+import { copyText } from "@/lib/clipboard";
+import { PageShell, PageHeader, Card, Field, Input, Select, Button, Pill, DataList, Dialog, type Column } from "@/components/aura";
 
-// Mapa para exibir os cargos de forma amigável na tabela
+// Mapa para exibir os cargos de forma amigável na lista
 const roleLabels: Record<string, string> = {
   super_admin: "Super Admin",
   admin: "Administrador",
@@ -36,7 +30,7 @@ const roleLabels: Record<string, string> = {
   porter: "Porteiro (Mobile)",
   houseman: "Mensageiro (Mobile)",
   marketing: "Marketing",
-  compras: "Compras"
+  compras: "Compras",
 };
 
 export default function StaffManagementPage() {
@@ -45,15 +39,9 @@ export default function StaffManagementPage() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
-  const [showCreatedModal, setShowCreatedModal] = useState<{ pw: string, email: string } | null>(null);
+  const [created, setCreated] = useState<{ pw: string; email: string } | null>(null);
   const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
-
-  // Form State
-  const [formData, setFormData] = useState({
-    fullName: "",
-    email: "",
-    role: "reception" as UserRole,
-  });
+  const [formData, setFormData] = useState({ fullName: "", email: "", role: "reception" as UserRole });
 
   const loadStaff = useCallback(async () => {
     try {
@@ -61,34 +49,25 @@ export default function StaffManagementPage() {
       if (!pId) return;
       const data = await StaffService.getStaffByProperty(pId);
       setStaffList(data);
-    } catch (error) {
-      toast.error("Erro ao carregar equipa.");
+    } catch {
+      toast.error("Erro ao carregar equipe.");
     } finally {
       setLoading(false);
     }
   }, [userData?.propertyId, property?.id]);
 
   useEffect(() => {
-    if (userData?.propertyId || property?.id) {
-      loadStaff();
-    }
+    if (userData?.propertyId || property?.id) loadStaff();
   }, [userData, property, loadStaff]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userData || !property) return;
-
     setIsCreating(true);
     try {
-      const result = await StaffService.createStaffMember({
-        ...formData,
-        propertyId: property.id,
-        actorId: userData.id,
-        actorName: userData.fullName
-      });
-
-      toast.success("Membro da equipa criado!");
-      setShowCreatedModal({ pw: result.password, email: formData.email });
+      const result = await StaffService.createStaffMember({ ...formData, propertyId: property.id, actorId: userData.id, actorName: userData.fullName });
+      toast.success("Membro da equipe criado!");
+      setCreated({ pw: result.password, email: formData.email });
       setFormData({ fullName: "", email: "", role: "reception" });
       loadStaff();
     } catch (error: any) {
@@ -98,62 +77,43 @@ export default function StaffManagementPage() {
     }
   };
 
+  const columns: Column<Staff>[] = [
+    {
+      id: "member", header: "Membro", mobile: "title", priority: 1,
+      cell: (m) => (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          {m.profilePictureUrl ? (
+            <img src={m.profilePictureUrl} alt="" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", border: `1px solid ${T.border}`, flexShrink: 0 }} />
+          ) : (
+            <span style={{ width: 36, height: 36, borderRadius: "50%", background: T.gradSoft, color: T.brandText, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, flexShrink: 0 }}>{m.fullName.charAt(0).toUpperCase()}</span>
+          )}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 800, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.fullName}</div>
+            <div style={{ fontSize: 12, color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.email}</div>
+          </div>
+        </div>
+      ),
+    },
+    { id: "role", header: "Cargo", mobile: "meta", priority: 2, cell: (m) => <Pill tone="brand" label={roleLabels[m.role] || m.role} /> },
+    { id: "status", header: "Status", mobile: "trailing", priority: 2, cell: (m) => m.active ? <Pill tone="green" icon={ShieldCheck} label="Ativo" /> : <Pill tone="red" label="Inativo" /> },
+  ];
+
   return (
     <RoleGuard allowedRoles={["super_admin", "admin", "manager"]}>
-      <div className="max-w-7xl mx-auto space-y-4 md:space-y-8">
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl md:text-3xl font-black tracking-tight flex items-center gap-2">
-              <Users className="text-primary" /> Equipa Aura
-            </h1>
-            <p className="text-muted-foreground">Gira os acessos e permissões da propriedade.</p>
-          </div>
-        </header>
+      <PageShell>
+        <PageHeader icon={Users} title="Equipe Aura" subtitle="Acessos e permissões da propriedade" />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Formulário lateral */}
-          <aside className="bg-card border border-border p-6 rounded-2xl shadow-sm h-fit space-y-6">
-            <h2 className="font-bold flex items-center gap-2 text-lg">
-              <Plus size={20} className="text-primary" /> Adicionar Funcionário
-            </h2>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold uppercase text-muted-foreground">Nome Completo</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-2.5 text-muted-foreground" size={18} />
-                  <input
-                    required
-                    value={formData.fullName}
-                    onChange={e => setFormData({ ...formData, fullName: e.target.value })}
-                    placeholder="Ex: Ana Souza"
-                    className="w-full pl-10 p-2 bg-background border rounded-lg outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold uppercase text-muted-foreground">E-mail de Acesso</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-2.5 text-muted-foreground" size={18} />
-                  <input
-                    required
-                    type="email"
-                    value={formData.email}
-                    onChange={e => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="ana@aura.com"
-                    className="w-full pl-10 p-2 bg-background border rounded-lg outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-bold uppercase text-muted-foreground">Cargo / Permissão</label>
-                <select
-                  value={formData.role}
-                  onChange={e => setFormData({ ...formData, role: e.target.value as UserRole })}
-                  className="w-full p-2 bg-background border rounded-lg outline-none focus:ring-2 focus:ring-primary/20"
-                >
+        <div className="grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] gap-4 items-start">
+          <Card header={{ title: "Adicionar funcionário", icon: Plus, tone: "brand" }}>
+            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <Field label="Nome completo" required>
+                <Input required value={formData.fullName} onChange={e => setFormData({ ...formData, fullName: e.target.value })} placeholder="Ex: Ana Souza" autoComplete="off" />
+              </Field>
+              <Field label="E-mail de acesso" required>
+                <Input required type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} placeholder="ana@aura.com" autoComplete="off" inputMode="email" />
+              </Field>
+              <Field label="Cargo / permissão">
+                <Select value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value as UserRole })}>
                   <optgroup label="Administrativo e Recepção">
                     <option value="admin">Administrador</option>
                     <option value="director">Diretor</option>
@@ -176,133 +136,47 @@ export default function StaffManagementPage() {
                     <option value="waiter">Garçom (Mobile)</option>
                     <option value="porter">Porteiro (Mobile)</option>
                   </optgroup>
-                </select>
-              </div>
-
-              <button
-                disabled={isCreating}
-                className="w-full py-3 bg-primary text-primary-foreground font-bold rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-all disabled:opacity-50"
-              >
-                {isCreating ? <Loader2 className="animate-spin" /> : "Criar Utilizador"}
-              </button>
+                </Select>
+              </Field>
+              <Button type="submit" variant="primary" fullWidth loading={isCreating} loadingText="Criando…">Criar usuário</Button>
             </form>
-          </aside>
+          </Card>
 
-          {/* Lista de Membros */}
-          <main className="lg:col-span-2 bg-card border border-border rounded-2xl overflow-hidden">
-            <div className="overflow-x-auto">
-            <table className="w-full text-left min-w-[480px]">
-              <thead className="bg-muted/50 border-b border-border">
-                <tr>
-                  <th className="p-4 text-xs font-bold uppercase text-muted-foreground">Membro</th>
-                  <th className="p-4 text-xs font-bold uppercase text-muted-foreground">Cargo</th>
-                  <th className="p-4 text-xs font-bold uppercase text-muted-foreground">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {loading ? (
-                  <tr><td colSpan={3} className="p-12 text-center"><Loader2 className="animate-spin mx-auto" /></td></tr>
-                ) : staffList.length === 0 ? (
-                  <tr><td colSpan={3} className="p-12 text-center text-muted-foreground">Nenhum funcionário registado.</td></tr>
-                ) : (
-                  staffList.map((m) => (
-                    <tr key={m.id} className="hover:bg-muted/50 transition-colors cursor-pointer" onClick={() => setEditingStaff(m)}>
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          {m.profilePictureUrl ? (
-                            <img src={m.profilePictureUrl} alt={m.fullName} className="w-10 h-10 rounded-full object-cover border border-border" />
-                          ) : (
-                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">
-                              {m.fullName.charAt(0).toUpperCase()}
-                            </div>
-                          )}
-                          <div>
-                            <div className="font-bold">{m.fullName}</div>
-                            <div className="text-xs text-muted-foreground">{m.email}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <span className="px-2 py-1 bg-primary/10 text-primary text-[10px] font-bold uppercase rounded-md">
-                          {roleLabels[m.role] || m.role}
-                        </span>
-                      </td>
-                      <td className="p-4">
-                        {m.active ? (
-                          <span className="flex items-center gap-1 text-green-600 text-xs font-bold">
-                            <ShieldCheck size={14} /> Ativo
-                          </span>
-                        ) : (
-                          <span className="text-destructive text-xs font-bold">Inativo</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-            </div>
-          </main>
+          <DataList<Staff>
+            rows={staffList}
+            columns={columns}
+            rowKey={(m) => m.id}
+            onRowClick={(m) => setEditingStaff(m)}
+            loading={loading}
+            skeletonRows={6}
+            empty={<p style={{ textAlign: "center", color: T.muted, padding: "32px 0", margin: 0, fontSize: 13 }}>Nenhum funcionário registrado.</p>}
+          />
         </div>
 
-        {/* Modal de Sucesso com Password Provisória */}
-        {showCreatedModal && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-card border border-border p-8 rounded-3xl max-w-md w-full shadow-2xl space-y-6 animate-in zoom-in duration-200">
-              <div className="text-center space-y-2">
-                <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto">
-                  <Key size={32} />
-                </div>
-                <h3 className="text-2xl font-bold">Conta Criada!</h3>
-                <p className="text-sm text-muted-foreground">Copie as credenciais abaixo e envie ao funcionário. Esta senha não será mostrada novamente.</p>
+        {/* Senha provisória — só aparece uma vez */}
+        <Dialog open={!!created} onClose={() => setCreated(null)} presentation="auto" size="sm" icon={Key} iconTone="green" title="Conta criada!" subtitle="Copie as credenciais abaixo e envie ao funcionário. Esta senha não será mostrada novamente."
+          footer={<Button variant="primary" fullWidth onClick={() => setCreated(null)}>Concluir</Button>}>
+          {created && (
+            <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 10, fontFamily: "ui-monospace, monospace", fontSize: 13 }}>
+              <div>
+                <span className="ak-field__label">E-mail</span>
+                <div style={{ color: T.text }}>{created.email}</div>
               </div>
-
-              <div className="bg-muted p-4 rounded-xl space-y-3 font-mono text-sm">
-                <div>
-                  <span className="text-xs font-bold block text-muted-foreground uppercase">E-mail</span>
-                  <div className="flex justify-between">
-                    <span>{showCreatedModal.email}</span>
-                  </div>
-                </div>
-                <div className="pt-2 border-t border-border">
-                  <span className="text-xs font-bold block text-muted-foreground uppercase">Senha Provisória</span>
-                  <div className="flex justify-between items-center text-primary font-bold">
-                    <span>{showCreatedModal.pw}</span>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(`Email: ${showCreatedModal.email}\nSenha: ${showCreatedModal.pw}`);
-                        toast.success("Copiado!");
-                      }}
-                      className="p-2 hover:bg-primary/10 rounded-lg"
-                    >
-                      <Copy size={16} />
-                    </button>
-                  </div>
+              <div style={{ paddingTop: 8, borderTop: `1px solid ${T.border}` }}>
+                <span className="ak-field__label">Senha provisória</span>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, color: T.brandText, fontWeight: 800 }}>
+                  <span style={{ wordBreak: "break-all" }}>{created.pw}</span>
+                  <Button variant="secondary" size="sm" icon={Copy} onClick={async () => { if (await copyText(`Email: ${created.email}\nSenha: ${created.pw}`)) toast.success("Copiado!"); else toast.error("Não foi possível copiar — selecione e use Ctrl+C."); }}>Copiar</Button>
                 </div>
               </div>
-
-              <button
-                onClick={() => setShowCreatedModal(null)}
-                className="w-full py-3 bg-foreground text-background font-bold rounded-xl"
-              >
-                Concluir
-              </button>
             </div>
-          </div>
-        )}
+          )}
+        </Dialog>
 
-        {/* Modal de Edição */}
         {editingStaff && (
-          <StaffEditModal
-            staff={editingStaff}
-            onClose={() => setEditingStaff(null)}
-            onSave={() => {
-              setEditingStaff(null);
-              loadStaff();
-            }}
-          />
+          <StaffEditModal staff={editingStaff} onClose={() => setEditingStaff(null)} onSave={() => { setEditingStaff(null); loadStaff(); }} />
         )}
-      </div>
+      </PageShell>
     </RoleGuard>
   );
 }
