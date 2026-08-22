@@ -708,7 +708,7 @@ function DrawerInner({ wedding, cabinsTotal, onClose, showFinancial, onEdit, onD
         </div>
 
         {/* Footer */}
-        <div className="ak-dialog__footer" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <div className="ak-dialog__footer" style={{ display: "flex", flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
           {/* Contato registrado renova a validade — impede o lead ativo de expirar */}
           {wedding.status === "tentative" && (
             <Button variant="soft" tone="amber" icon={Clock} fullWidth onClick={() => onFollowUp(wedding)}>Registrar follow-up</Button>
@@ -722,7 +722,7 @@ function DrawerInner({ wedding, cabinsTotal, onClose, showFinancial, onEdit, onD
             <Button variant="soft" tone="green" icon={CheckCircle2} fullWidth onClick={() => onStatusChange(wedding, "completed")}>Marcar como realizado</Button>
           )}
           <IconButton icon={Trash2} label="Excluir casamento" variant="danger" onClick={() => onDelete(wedding)} />
-          <Button variant="secondary" style={{ flex: 1 }} onClick={() => onEdit(wedding)}>Editar</Button>
+          <Button variant="secondary" style={{ flex: "1 1 120px" }} onClick={() => onEdit(wedding)}>Editar</Button>
           {/* Só aparece com WhatsApp do casal cadastrado (antes era um botão morto) */}
           {wedding.couplePhone && (
             <a className="ak-btn ak-press" data-variant="primary" data-size="md" href={`https://wa.me/${wedding.couplePhone.replace(/\D/g, "")}`} target="_blank" rel="noreferrer" style={{ flex: 2, textDecoration: "none" }}>

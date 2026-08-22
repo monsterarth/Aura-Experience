@@ -250,7 +250,7 @@ export function WeddingFormModal({ open, initial, propertyId, onClose, onSaved }
         </div>
 
         {/* Footer */}
-        <div className="ak-dialog__footer" style={{ display: 'flex', gap: 8 }}>
+        <div className="ak-dialog__footer" style={{ display: 'flex', flexDirection: 'row', gap: 8 }}>
           <Button variant="secondary" style={{ flex: 1 }} onClick={requestClose}>Cancelar</Button>
           <Button variant="primary" style={{ flex: 2 }} icon={Save} loading={saving} loadingText="Salvando…" onClick={handleSave}>{initial ? 'Salvar alterações' : 'Criar casamento'}</Button>
         </div>
