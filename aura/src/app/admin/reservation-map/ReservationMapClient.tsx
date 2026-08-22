@@ -23,6 +23,8 @@ import { format, addDays, differenceInCalendarDays, startOfDay, isSameDay, isWit
 import { ptBR } from "date-fns/locale";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { T } from "@/lib/admin-tokens";
+import { PageShell, PageHeader, Button, IconButton, Dialog, PageSkeleton } from "@/components/aura";
 
 // ==========================================
 // TYPES
@@ -651,107 +653,45 @@ export default function ReservationMapClient() {
 
     return (
         <RoleGuard allowedRoles={["super_admin", "admin", "reception", "manager"]}>
-            <div className="p-6 max-w-[100vw] space-y-6 animate-in fade-in duration-500">
+            <PageShell maxWidth="full">
 
-                {/* Header */}
-                <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="space-y-1">
-                        <h1 className="text-3xl font-black tracking-tighter flex items-center gap-3 text-foreground">
-                            <CalendarDays className="text-primary" size={32} /> Mapa de Reservas
-                        </h1>
-                        <div className="flex items-center gap-2">
-                            <p className="font-medium flex items-center gap-2 opacity-70 text-sm" style={{ color: "hsl(var(--foreground))" }}>
-                                <MapPin size={14} />
-                                {contextProperty?.name || "Carregando Propriedade..."}
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                        {/* Action Mode Buttons */}
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={() => setSelectionMode(prev => prev === 'reservation' ? null : 'reservation')}
-                                className={cn(
-                                    "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border",
-                                    selectionMode === 'reservation'
-                                        ? "bg-primary text-primary-foreground border-primary shadow-[0_0_16px_rgba(var(--primary),0.4)] animate-pulse"
-                                        : "bg-card border-white/10 text-foreground/60 hover:text-foreground hover:border-primary/40"
-                                )}
-                            >
-                                <PlusCircle size={14} />
-                                {selectionMode === 'reservation' ? "Arraste para reservar..." : "Criar Reserva"}
-                            </button>
-                            <button
-                                onClick={() => setSelectionMode(prev => prev === 'maintenance' ? null : 'maintenance')}
-                                className={cn(
-                                    "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border",
-                                    selectionMode === 'maintenance'
-                                        ? "bg-neutral-700 text-white border-neutral-500 shadow-[0_0_16px_rgba(100,100,100,0.4)] animate-pulse"
-                                        : "bg-card border-white/10 text-foreground/60 hover:text-foreground hover:border-neutral-400/40"
-                                )}
-                            >
-                                <Lock size={14} />
-                                {selectionMode === 'maintenance' ? "Arraste para bloquear..." : "Bloquear"}
-                            </button>
-                        </div>
-
-                        {/* Density Toggle */}
-                        <button
-                            onClick={() => setCompact(prev => !prev)}
-                            title={compact ? "Visualização normal" : "Visualização compacta"}
-                            className="p-2.5 bg-card border border-white/5 rounded-xl hover:bg-white/5 transition-colors text-foreground/40 hover:text-foreground"
-                        >
-                            {compact ? <AlignJustify size={16} /> : <LayoutList size={16} />}
-                        </button>
-
-                        {/* Timeline Navigation */}
-                        <div className="flex items-center gap-2 bg-card border border-white/5 p-1.5 rounded-2xl">
-                            <button
-                                onClick={goToPreviousWeek}
-                                className="p-2.5 hover:bg-white/5 rounded-xl transition-colors text-foreground/60 hover:text-foreground"
-                            >
-                                <ChevronLeft size={18} />
-                            </button>
-                            <button
-                                onClick={goToToday}
-                                className="px-5 py-2 bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-primary/20 transition-colors"
-                            >
-                                Hoje
-                            </button>
-                            <button
-                                onClick={goToNextWeek}
-                                className="p-2.5 hover:bg-white/5 rounded-xl transition-colors text-foreground/60 hover:text-foreground"
-                            >
-                                <ChevronRight size={18} />
-                            </button>
-                            <div className="hidden md:block px-3 text-xs font-bold text-foreground/40 uppercase tracking-widest">
-                                {startDate ? `${format(startDate, "dd MMM", { locale: ptBR })} — ${format(addDays(startDate, VISIBLE_DAYS - 1), "dd MMM yyyy", { locale: ptBR })}` : ""}
-                            </div>
-                        </div>
-                    </div>
-                </header>
+                <PageHeader
+                    icon={CalendarDays}
+                    title="Mapa de reservas"
+                    subtitle={contextProperty?.name || "Carregando propriedade…"}
+                    actions={(
+                        <>
+                            <Button variant={selectionMode === 'reservation' ? 'primary' : 'secondary'} icon={PlusCircle} onClick={() => setSelectionMode(prev => prev === 'reservation' ? null : 'reservation')}>
+                                {selectionMode === 'reservation' ? "Arraste para reservar…" : "Criar reserva"}
+                            </Button>
+                            <Button variant={selectionMode === 'maintenance' ? 'primary' : 'secondary'} icon={Lock} onClick={() => setSelectionMode(prev => prev === 'maintenance' ? null : 'maintenance')}>
+                                {selectionMode === 'maintenance' ? "Arraste para bloquear…" : "Bloquear"}
+                            </Button>
+                            <IconButton icon={compact ? AlignJustify : LayoutList} label={compact ? "Visualização normal" : "Visualização compacta"} variant="secondary" active={compact} onClick={() => setCompact(prev => !prev)} />
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: 4, borderRadius: 12, background: T.glass, border: `1px solid ${T.border}` }}>
+                                <IconButton icon={ChevronLeft} label="Semana anterior" onClick={goToPreviousWeek} />
+                                <Button size="sm" variant="soft" onClick={goToToday}>Hoje</Button>
+                                <IconButton icon={ChevronRight} label="Próxima semana" onClick={goToNextWeek} />
+                                <span className="ak-hide-mobile" style={{ padding: "0 10px", fontSize: 11, fontWeight: 800, color: T.muted, textTransform: "uppercase", letterSpacing: ".06em", whiteSpace: "nowrap" }}>
+                                    {startDate ? `${format(startDate, "dd MMM", { locale: ptBR })} — ${format(addDays(startDate, VISIBLE_DAYS - 1), "dd MMM yyyy", { locale: ptBR })}` : ""}
+                                </span>
+                            </span>
+                        </>
+                    )}
+                />
 
                 {/* Map Container */}
-                {!contextProperty?.id ? (
-                    <div className="text-center p-24 bg-card rounded-[40px] border border-dashed border-white/10">
-                        <Building2 size={60} className="mx-auto text-foreground/10 mb-6" />
-                        <h3 className="text-2xl font-black text-foreground">Carregando...</h3>
-                    </div>
-                ) : loading ? (
-                    <div className="flex flex-col items-center justify-center p-24 space-y-4">
-                        <Loader2 className="animate-spin text-primary" size={48} />
-                        <p className="text-xs font-bold uppercase tracking-widest text-foreground/20">Carregando Mapa...</p>
-                    </div>
+                {!contextProperty?.id || loading ? (
+                    <PageSkeleton kpis={0} rows={8} />
                 ) : (
-                    <div className="bg-card border border-white/5 rounded-3xl overflow-hidden shadow-xl">
+                    <div className="ak-card" data-pad="0" style={{ overflow: "hidden" }}>
                         <div className="flex">
 
                             {/* Fixed Cabin Column */}
-                            <div className="shrink-0 border-r border-white/5 z-10 bg-card" style={{ width: CABIN_COL_WIDTH }}>
+                            <div className="shrink-0 border-r border-border z-10 bg-card" style={{ width: CABIN_COL_WIDTH }}>
                                 {/* Header cell */}
                                 <div
-                                    className="flex items-center justify-center text-[10px] font-black uppercase tracking-widest text-foreground/30 border-b border-white/5 bg-secondary/50"
+                                    className="flex items-center justify-center text-[10px] font-black uppercase tracking-widest text-foreground/30 border-b border-border bg-secondary/50"
                                     style={{ height: ROW_HEIGHT }}
                                 >
                                     Acomodação
@@ -777,7 +717,7 @@ export default function ReservationMapClient() {
                                     <div
                                         key={cabin.id}
                                         className={cn(
-                                            "flex items-center gap-3 px-4 border-b border-white/5 transition-colors",
+                                            "flex items-center gap-3 px-4 border-b border-border transition-colors",
                                             cabin.status === "cleaning" && "cursor-pointer hover:bg-amber-500/5"
                                         )}
                                         style={{ height: ROW_HEIGHT }}
@@ -1019,7 +959,7 @@ export default function ReservationMapClient() {
                         </div>
 
                         {/* Legend */}
-                        <div className="flex items-center justify-center gap-6 p-4 border-t border-white/5 bg-secondary/30">
+                        <div className="flex items-center justify-center gap-6 p-4 border-t border-border bg-secondary/30">
                             <div className="flex items-center gap-2">
                                 <div className="w-4 h-3 rounded-sm bg-gradient-to-r from-blue-500 to-blue-600" />
                                 <span className="text-[10px] font-bold text-foreground/40 uppercase tracking-widest">Prevista</span>
@@ -1102,113 +1042,34 @@ export default function ReservationMapClient() {
 
                 {/* --- New Action Dialogs --- */}
 
-                {/* Selection Action Dialog */}
-                {isSelectionActionModalOpen && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-                        <div className="bg-background w-full max-w-sm rounded-[24px] overflow-hidden shadow-2xl p-6 text-center animate-in zoom-in-95 duration-200">
-                            <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <CalendarDays className="text-primary" size={32} />
-                            </div>
-                            <h2 className="text-xl font-bold text-foreground mb-2">Bloqueio de Período</h2>
-                            <p className="text-sm text-foreground/60 mb-6">
-                                Você selecionou um período. O que deseja fazer com esse bloqueio?
-                            </p>
-                            <div className="flex flex-col gap-3">
-                                <button
-                                    onClick={() => handleSelectionAction('reservation')}
-                                    className="w-full py-3 px-4 bg-primary text-primary-foreground font-black uppercase tracking-wider text-xs rounded-xl hover:bg-primary/90 transition-all shadow-md"
-                                >
-                                    Nova Reserva
-                                </button>
-                                <button
-                                    onClick={() => handleSelectionAction('maintenance')}
-                                    className="w-full py-3 px-4 bg-secondary text-foreground font-bold uppercase tracking-wider text-xs rounded-xl hover:bg-muted border border-border transition-all"
-                                >
-                                    Bloqueio de Manutenção
-                                </button>
-                                <button
-                                    onClick={() => { setIsSelectionActionModalOpen(false); setSelectionData(null); }}
-                                    className="w-full py-3 px-4 text-muted-foreground font-bold uppercase tracking-wider text-xs rounded-xl hover:bg-secondary/50 transition-all mt-2"
-                                >
-                                    Cancelar
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <Dialog open={isSelectionActionModalOpen} onClose={() => { setIsSelectionActionModalOpen(false); setSelectionData(null); }} presentation="auto" size="sm" icon={CalendarDays} iconTone="brand" title="Bloqueio de período" subtitle="Você selecionou um período. O que deseja fazer?"
+                    footer={(<>
+                        <Button variant="ghost" onClick={() => { setIsSelectionActionModalOpen(false); setSelectionData(null); }}>Cancelar</Button>
+                        <Button variant="secondary" icon={Lock} onClick={() => handleSelectionAction('maintenance')}>Bloqueio de manutenção</Button>
+                        <Button variant="primary" icon={PlusCircle} onClick={() => handleSelectionAction('reservation')}>Nova reserva</Button>
+                    </>)}>
+                    <p style={{ margin: 0, fontSize: 13, color: T.muted, lineHeight: 1.5 }}>Nova reserva abre o formulário de hospedagem com datas e cabana preenchidas; o bloqueio cria uma ordem de manutenção que trava a cabana no período.</p>
+                </Dialog>
 
-                {/* Quick Housekeeping Action Dialog */}
-                {isHkActionModalOpen && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-                        <div className="bg-background w-full max-w-sm rounded-[24px] overflow-hidden shadow-2xl p-6 text-center animate-in zoom-in-95 duration-200">
-                            <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <Sparkles className="text-amber-500" size={32} />
-                            </div>
-                            <h2 className="text-xl font-bold text-foreground mb-2">Acomodação Suja</h2>
-                            <p className="text-sm text-foreground/60 mb-6 flex flex-col items-center">
-                                <span className="font-bold text-foreground bg-muted px-2 py-0.5 rounded text-xs mb-2 block">{actionCabin?.name}</span>
-                                Como deseja lidar com o status desta acomodação?
-                            </p>
-                            <div className="flex flex-col gap-3">
-                                <button
-                                    onClick={() => handleHkAlternativeAction('skip')}
-                                    className="w-full py-3 px-4 bg-emerald-500/10 border border-emerald-500 text-emerald-600 font-bold uppercase tracking-wider text-xs rounded-xl hover:bg-emerald-500 hover:text-white transition-all"
-                                >
-                                    Marcar como Limpa
-                                </button>
-                                <button
-                                    onClick={() => handleHkAlternativeAction('open_os')}
-                                    className="w-full py-3 px-4 bg-secondary text-foreground font-bold uppercase tracking-wider text-xs rounded-xl hover:bg-muted border border-border transition-all"
-                                >
-                                    Abrir Ordem de Serviço
-                                </button>
-                                <button
-                                    onClick={() => { setIsHkActionModalOpen(false); setActionCabin(null); }}
-                                    className="w-full py-3 px-4 text-muted-foreground font-bold uppercase tracking-wider text-xs rounded-xl hover:bg-secondary/50 transition-all mt-2"
-                                >
-                                    Cancelar
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <Dialog open={isHkActionModalOpen} onClose={() => { setIsHkActionModalOpen(false); setActionCabin(null); }} presentation="auto" size="sm" icon={Sparkles} iconTone="amber" title="Acomodação suja" subtitle={actionCabin?.name}
+                    footer={(<>
+                        <Button variant="ghost" onClick={() => { setIsHkActionModalOpen(false); setActionCabin(null); }}>Cancelar</Button>
+                        <Button variant="secondary" onClick={() => handleHkAlternativeAction('open_os')}>Abrir ordem de serviço</Button>
+                        <Button variant="primary" tone="green" icon={Sparkles} onClick={() => handleHkAlternativeAction('skip')}>Marcar como limpa</Button>
+                    </>)}>
+                    <p style={{ margin: 0, fontSize: 13, color: T.muted, lineHeight: 1.5 }}>Como deseja lidar com o status desta acomodação?</p>
+                </Dialog>
 
-                {/* DnD Active Stay Action Dialog */}
-                {isDnDActionModalOpen && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-                        <div className="bg-background w-full max-w-sm rounded-[24px] overflow-hidden shadow-2xl p-6 text-center animate-in zoom-in-95 duration-200">
-                            <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <Home className="text-red-500" size={32} />
-                            </div>
-                            <h2 className="text-xl font-bold text-foreground mb-2">Mudança de Acomodação</h2>
-                            <p className="text-sm text-foreground/60 mb-6">
-                                O hóspede <strong>já realizou o check-in</strong>. Ao mover para uma nova acomodação, a antiga precisará de limpeza?
-                            </p>
-                            <div className="flex flex-col gap-3">
-                                <button
-                                    onClick={() => handleDnDAction(true)}
-                                    className="w-full py-3 px-4 bg-amber-500/10 border border-amber-500 text-amber-600 font-bold uppercase tracking-wider text-xs rounded-xl hover:bg-amber-500 hover:text-white transition-all"
-                                >
-                                    Sim, Gerar Faxina
-                                </button>
-                                <button
-                                    onClick={() => handleDnDAction(false)}
-                                    className="w-full py-3 px-4 bg-secondary text-foreground font-bold uppercase tracking-wider text-xs rounded-xl hover:bg-muted border border-border transition-all"
-                                >
-                                    Não, Apenas Mover
-                                </button>
-                                <button
-                                    onClick={() => { setIsDnDActionModalOpen(false); setDnDData(null); }}
-                                    className="w-full py-3 px-4 text-muted-foreground font-bold uppercase tracking-wider text-xs rounded-xl hover:bg-secondary/50 transition-all mt-2"
-                                >
-                                    Cancelar Movimentação
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <Dialog open={isDnDActionModalOpen} onClose={() => { setIsDnDActionModalOpen(false); setDnDData(null); }} presentation="auto" size="sm" icon={Home} iconTone="red" title="Mudança de acomodação" subtitle="O hóspede já fez check-in"
+                    footer={(<>
+                        <Button variant="ghost" onClick={() => { setIsDnDActionModalOpen(false); setDnDData(null); }}>Cancelar movimentação</Button>
+                        <Button variant="secondary" onClick={() => handleDnDAction(false)}>Só mover</Button>
+                        <Button variant="primary" tone="amber" icon={Sparkles} onClick={() => handleDnDAction(true)}>Gerar faxina</Button>
+                    </>)}>
+                    <p style={{ margin: 0, fontSize: 13, color: T.muted, lineHeight: 1.5 }}>Ao mover para a nova acomodação, a antiga precisa de limpeza de troca?</p>
+                </Dialog>
 
-            </div>
+            </PageShell>
         </RoleGuard>
     );
 }
