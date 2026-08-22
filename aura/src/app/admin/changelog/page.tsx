@@ -1,5 +1,7 @@
 "use client";
 
+import { Dialog, IconButton, SkeletonList } from "@/components/aura";
+
 import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { RoleGuard } from "@/components/auth/RoleGuard";
@@ -40,9 +42,9 @@ const ENTRY_TYPES: {
   bg:    string;
   border: string;
 }[] = [
-  { value: "feature",     label: "Novo",     icon: Sparkles,   color: "#00BFFF", bg: "rgba(0,191,255,0.12)",   border: "rgba(0,191,255,0.3)"   },
-  { value: "improvement", label: "Melhoria", icon: TrendingUp, color: "#a78bfa", bg: "rgba(167,139,250,0.12)", border: "rgba(167,139,250,0.3)" },
-  { value: "fix",         label: "Correção", icon: Wrench,     color: "#10b981", bg: "rgba(16,185,129,0.12)",  border: "rgba(16,185,129,0.3)"  },
+  { value: "feature",     label: "Novo",     icon: Sparkles,   color: "var(--t-blue)", bg: "var(--t-blue-bg)",   border: "var(--t-blue-border)"   },
+  { value: "improvement", label: "Melhoria", icon: TrendingUp, color: "var(--t-violet)", bg: "var(--t-violet-bg)", border: "var(--t-violet-border)" },
+  { value: "fix",         label: "Correção", icon: Wrench,     color: "var(--t-emerald)", bg: "var(--t-emerald-bg)",  border: "var(--t-emerald-border)"  },
 ];
 
 const TYPE_CYCLE: Record<ChangelogEntryType, ChangelogEntryType> = {
@@ -158,11 +160,11 @@ function TypePill({
 
 function StatusBadge({ status }: { status: "draft" | "published" }) {
   return status === "published" ? (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-[#10b981]/15 text-[#10b981] border border-[#10b981]/30">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">
       <Globe size={8} /> Publicado
     </span>
   ) : (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-[#f59e0b]/12 text-[#f59e0b] border border-[#f59e0b]/25">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/12 text-amber-500 border border-amber-500/25">
       <EyeOff size={8} /> Rascunho
     </span>
   );
@@ -268,19 +270,16 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
   const includedCount = parsed?.entries.filter(e => e.include).length ?? 0;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-      onClick={e => { if (e.target === e.currentTarget) requestClose(); }}
-    >
-      <div className="w-full max-w-5xl max-h-[90vh] flex flex-col rounded-2xl border border-white/10 bg-[#1a1a1a] overflow-hidden shadow-2xl" {...guardProps}>
+    <Dialog open onClose={requestClose} presentation="auto" size="xl" rawBody hideClose panelProps={guardProps} ariaLabel="Importar do Markdown">
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
 
         {/* header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <div className="flex items-center gap-2">
-            <FileText size={16} className="text-[#00BFFF]" />
-            <span className="text-sm font-bold text-white">Importar do Markdown</span>
+            <FileText size={16} className="text-primary" />
+            <span className="text-sm font-bold text-foreground">Importar do Markdown</span>
             {step === "review" && parsed && (
-              <span className="text-xs text-gray-500 ml-2">
+              <span className="text-xs text-muted-foreground ml-2">
                 {includedCount} de {parsed.entries.length} entradas selecionadas
               </span>
             )}
@@ -289,28 +288,26 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
             {step === "review" && (
               <button
                 onClick={() => setStep("paste")}
-                className="flex items-center gap-1 text-xs text-gray-500 hover:text-white transition-colors"
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 <RotateCcw size={11} /> Reeditar
               </button>
             )}
-            <button onClick={requestClose} className="p-1 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors">
-              <X size={16} />
-            </button>
+            <IconButton icon={X} label="Fechar" variant="secondary" size="sm" onClick={requestClose} />
           </div>
         </div>
 
         {/* steps indicator */}
-        <div className="flex items-center gap-1 px-6 py-3 border-b border-white/5 shrink-0">
+        <div className="flex items-center gap-1 px-6 py-3 border-b border-border shrink-0">
           {(["paste", "review"] as const).map((s, i) => (
             <React.Fragment key={s}>
-              <div className={`flex items-center gap-1.5 text-xs font-medium ${step === s ? "text-[#00BFFF]" : step === "review" && i === 0 ? "text-[#10b981]" : "text-gray-600"}`}>
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold border ${step === s ? "bg-[#00BFFF]/15 border-[#00BFFF]/40 text-[#00BFFF]" : step === "review" && i === 0 ? "bg-[#10b981]/15 border-[#10b981]/40 text-[#10b981]" : "border-white/10 text-gray-600"}`}>
+              <div className={`flex items-center gap-1.5 text-xs font-medium ${step === s ? "text-primary" : step === "review" && i === 0 ? "text-emerald-500" : "text-muted-foreground/70"}`}>
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold border ${step === s ? "bg-primary/15 border-primary/40 text-primary" : step === "review" && i === 0 ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-500" : "border-border text-muted-foreground/70"}`}>
                   {step === "review" && i === 0 ? <Check size={9} /> : i + 1}
                 </div>
                 {s === "paste" ? "Colar Markdown" : "Revisar & Importar"}
               </div>
-              {i === 0 && <ChevronRight size={12} className="text-gray-700 mx-1" />}
+              {i === 0 && <ChevronRight size={12} className="text-muted-foreground/60 mx-1" />}
             </React.Fragment>
           ))}
         </div>
@@ -323,8 +320,8 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
             <div className="flex-1 flex flex-col p-6 gap-4">
               <div>
                 <label className="field-label">Cole o markdown do changelog aqui</label>
-                <p className="text-xs text-gray-600 mb-3">
-                  Suporta <code className="text-gray-500"># Título</code>, <code className="text-gray-500">## Seção</code>, <code className="text-gray-500">### Sub-seção</code> e bullets <code className="text-gray-500">* item</code>. Emojis e negrito são detectados automaticamente.
+                <p className="text-xs text-muted-foreground/70 mb-3">
+                  Suporta <code className="text-muted-foreground"># Título</code>, <code className="text-muted-foreground">## Seção</code>, <code className="text-muted-foreground">### Sub-seção</code> e bullets <code className="text-muted-foreground">* item</code>. Emojis e negrito são detectados automaticamente.
                 </p>
                 <textarea
                   value={mdText}
@@ -336,13 +333,13 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
                 />
               </div>
               <div className="flex justify-end gap-3">
-                <button onClick={requestClose} className="px-4 py-2 text-sm text-gray-500 hover:text-white transition-colors">
+                <button onClick={requestClose} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
                   Cancelar
                 </button>
                 <button
                   onClick={handleParse}
                   disabled={!mdText.trim()}
-                  className="flex items-center gap-2 px-5 py-2 rounded-xl bg-[#00BFFF]/15 text-[#00BFFF] border border-[#00BFFF]/30 hover:bg-[#00BFFF]/25 text-sm font-semibold transition-colors disabled:opacity-40"
+                  className="flex items-center gap-2 px-5 py-2 rounded-xl bg-primary/15 text-primary border border-primary/30 hover:bg-primary/25 text-sm font-semibold transition-colors disabled:opacity-40"
                 >
                   Analisar <ChevronRight size={14} />
                 </button>
@@ -355,7 +352,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
             <div className="flex-1 flex overflow-hidden">
 
               {/* left: version fields */}
-              <div className="w-64 shrink-0 border-r border-white/5 p-5 flex flex-col gap-4 overflow-y-auto">
+              <div className="w-64 shrink-0 border-r border-border p-5 flex flex-col gap-4 overflow-y-auto">
                 <div>
                   <label className="field-label">Versão detectada</label>
                   <input
@@ -383,7 +380,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
                   />
                 </div>
                 <div>
-                  <label className="field-label">Badge <span className="normal-case text-gray-600">(opcional)</span></label>
+                  <label className="field-label">Badge <span className="normal-case text-muted-foreground/70">(opcional)</span></label>
                   <input
                     value={highlight}
                     onChange={e => setHighlight(e.target.value)}
@@ -392,9 +389,9 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
                   />
                 </div>
 
-                <div className="mt-auto pt-4 border-t border-white/5 space-y-2">
-                  <div className="text-xs text-gray-500">
-                    <span className="text-white font-semibold">{includedCount}</span> de {parsed.entries.length} entradas
+                <div className="mt-auto pt-4 border-t border-border space-y-2">
+                  <div className="text-xs text-muted-foreground">
+                    <span className="text-foreground font-semibold">{includedCount}</span> de {parsed.entries.length} entradas
                   </div>
                   <div className="flex gap-1 flex-wrap">
                     {ENTRY_TYPES.map(({ value, label: tLabel, color }) => {
@@ -409,7 +406,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
                   <button
                     onClick={handleImport}
                     disabled={importing || includedCount === 0 || !version.trim()}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#00BFFF]/15 text-[#00BFFF] border border-[#00BFFF]/30 hover:bg-[#00BFFF]/25 text-sm font-semibold transition-colors disabled:opacity-40"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary/15 text-primary border border-primary/30 hover:bg-primary/25 text-sm font-semibold transition-colors disabled:opacity-40"
                   >
                     {importing
                       ? <><Loader2 size={13} className="animate-spin" /> Importando...</>
@@ -429,20 +426,20 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
                     <div key={section || "__root"}>
                       {/* section header */}
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                           {section || "Geral"}
                         </span>
-                        <div className="flex-1 h-px bg-white/5" />
+                        <div className="flex-1 h-px bg-secondary/60" />
                         <button
                           onClick={() => toggleSection(section, !allIncluded)}
-                          className="text-[9px] text-gray-600 hover:text-gray-400 transition-colors"
+                          className="text-[9px] text-muted-foreground/70 hover:text-muted-foreground transition-colors"
                         >
                           {allIncluded ? "Desmarcar todos" : noneIncluded ? "Marcar todos" : "Marcar todos"}
                         </button>
                       </div>
 
                       {/* entries */}
-                      <div className="rounded-xl border border-white/5 bg-[#141414] divide-y divide-white/5 overflow-hidden">
+                      <div className="rounded-xl border border-border bg-background divide-y divide-white/5 overflow-hidden">
                         {sectionEntries.map(entry => (
                           <div
                             key={entry._i}
@@ -451,9 +448,9 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
                             {/* include toggle */}
                             <button
                               onClick={() => toggleEntry(entry._i)}
-                              className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all ${entry.include ? "bg-[#00BFFF]/20 border-[#00BFFF]/50" : "bg-transparent border-white/15"}`}
+                              className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-all ${entry.include ? "bg-primary/20 border-primary/50" : "bg-transparent border-border"}`}
                             >
-                              {entry.include && <Check size={9} className="text-[#00BFFF]" />}
+                              {entry.include && <Check size={9} className="text-primary" />}
                             </button>
 
                             {/* type badge (clickable to cycle) */}
@@ -464,7 +461,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
                             />
 
                             {/* text */}
-                            <p className="text-xs text-gray-300 font-light leading-relaxed flex-1 min-w-0">
+                            <p className="text-xs text-foreground/80 font-light leading-relaxed flex-1 min-w-0">
                               {entry.text}
                             </p>
                           </div>
@@ -478,7 +475,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
           )}
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }
 
@@ -643,19 +640,19 @@ export default function ChangelogAdminPage() {
         />
       )}
 
-      <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-[#141414]">
+      <div className="flex flex-col lg:flex-row lg:h-[calc(100dvh-var(--topbar-h,48px)-2*var(--page-pad,16px))] overflow-hidden bg-card border border-border rounded-2xl">
 
         {/* ── LEFT: list ── */}
-        <div className="w-72 shrink-0 border-r border-white/5 flex flex-col bg-[#111111]">
-          <div className="px-4 py-4 border-b border-white/5 space-y-2">
+        <div className="w-full lg:w-72 shrink-0 border-b lg:border-b-0 lg:border-r border-border flex flex-col bg-card max-h-[45dvh] lg:max-h-none">
+          <div className="px-4 py-4 border-b border-border space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <History size={15} className="text-[#00BFFF]" />
-                <span className="text-sm font-bold text-white">Changelog</span>
+                <History size={15} className="text-primary" />
+                <span className="text-sm font-bold text-foreground">Changelog</span>
               </div>
               <button
                 onClick={() => { setSelected(null); setShowNew(true); setForm({ version: "", label: "", date: new Date().toISOString().slice(0,10), status: "draft", highlight: "" }); }}
-                className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-[#00BFFF]/15 text-[#00BFFF] border border-[#00BFFF]/25 hover:bg-[#00BFFF]/25 transition-colors"
+                className="flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-primary/15 text-primary border border-primary/25 hover:bg-primary/25 transition-colors"
               >
                 <Plus size={11} /> Nova
               </button>
@@ -663,7 +660,7 @@ export default function ChangelogAdminPage() {
             {/* import button */}
             <button
               onClick={() => setShowImport(true)}
-              className="w-full flex items-center justify-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg bg-white/5 border border-white/8 hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+              className="w-full flex items-center justify-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg bg-secondary/60 border border-border hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
             >
               <FileText size={11} /> Importar do Markdown
             </button>
@@ -671,11 +668,9 @@ export default function ChangelogAdminPage() {
 
           <div className="flex-1 overflow-y-auto py-2">
             {loading ? (
-              <div className="flex items-center justify-center h-24">
-                <Loader2 size={16} className="animate-spin text-gray-600" />
-              </div>
+              <div className="px-4 py-3"><SkeletonList rows={3} avatar={false} /></div>
             ) : changelogs.length === 0 ? (
-              <div className="px-4 py-8 text-center text-xs text-gray-600">
+              <div className="px-4 py-8 text-center text-xs text-muted-foreground/70">
                 Nenhuma versão ainda.
               </div>
             ) : (
@@ -683,14 +678,14 @@ export default function ChangelogAdminPage() {
                 <button
                   key={c.id}
                   onClick={() => selectChangelog(c)}
-                  className={`w-full text-left px-4 py-3 border-b border-white/3 hover:bg-white/3 transition-colors ${selected?.id === c.id ? "bg-white/5 border-l-2 border-l-[#00BFFF]" : ""}`}
+                  className={`w-full text-left px-4 py-3 border-b border-border hover:bg-secondary/40 transition-colors ${selected?.id === c.id ? "bg-secondary/60 border-l-2 border-l-primary" : ""}`}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold text-white font-mono">{c.version}</span>
+                    <span className="text-xs font-bold text-foreground font-mono">{c.version}</span>
                     <StatusBadge status={c.status} />
                   </div>
-                  <p className="text-[11px] text-gray-400 truncate">{c.label}</p>
-                  <p className="text-[10px] text-gray-600 mt-0.5 font-mono">{c.date.slice(0, 10)} · {c.entries?.length ?? 0} entradas</p>
+                  <p className="text-[11px] text-muted-foreground truncate">{c.label}</p>
+                  <p className="text-[10px] text-muted-foreground/70 mt-0.5 font-mono">{c.date.slice(0, 10)} · {c.entries?.length ?? 0} entradas</p>
                 </button>
               ))
             )}
@@ -701,13 +696,13 @@ export default function ChangelogAdminPage() {
         <div className="flex-1 overflow-y-auto">
           {!showNew && !selected ? (
             <div className="h-full flex flex-col items-center justify-center text-center px-8">
-              <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/8 flex items-center justify-center mb-4">
-                <History size={22} className="text-gray-600" />
+              <div className="w-14 h-14 rounded-2xl bg-secondary/60 border border-border flex items-center justify-center mb-4">
+                <History size={22} className="text-muted-foreground/70" />
               </div>
-              <p className="text-sm font-semibold text-gray-400 mb-1">Selecione uma versão</p>
-              <p className="text-xs text-gray-600 max-w-xs">
+              <p className="text-sm font-semibold text-muted-foreground mb-1">Selecione uma versão</p>
+              <p className="text-xs text-muted-foreground/70 max-w-xs">
                 Escolha uma versão na lista, crie manualmente ou use{" "}
-                <button onClick={() => setShowImport(true)} className="text-[#00BFFF] hover:underline">
+                <button onClick={() => setShowImport(true)} className="text-primary hover:underline">
                   Importar do Markdown
                 </button>
                 .
@@ -716,14 +711,14 @@ export default function ChangelogAdminPage() {
           ) : (
             <div className="max-w-2xl mx-auto px-6 py-6 space-y-6">
               <div className="flex items-center justify-between">
-                <h2 className="text-base font-bold text-white">
+                <h2 className="text-base font-bold text-foreground">
                   {showNew ? "Nova Versão" : `Editando ${selected?.version}`}
                 </h2>
                 {selected && <StatusBadge status={selected.status} />}
               </div>
 
               {/* version fields */}
-              <div className="rounded-2xl border border-white/8 bg-[#1a1a1a] p-5 space-y-4">
+              <div className="rounded-2xl border border-border bg-card p-5 space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="field-label">Versão</label>
@@ -739,15 +734,15 @@ export default function ChangelogAdminPage() {
                   <input value={form.label} onChange={e => setForm(p => ({ ...p, label: e.target.value }))} placeholder="Portal do Hóspede Multilíngue" className="field-input w-full" />
                 </div>
                 <div>
-                  <label className="field-label">Badge de destaque <span className="normal-case text-gray-600">(opcional)</span></label>
+                  <label className="field-label">Badge de destaque <span className="normal-case text-muted-foreground/70">(opcional)</span></label>
                   <input value={form.highlight} onChange={e => setForm(p => ({ ...p, highlight: e.target.value }))} placeholder='"Mais recente"' className="field-input w-full" />
                 </div>
 
-                <div className="flex items-center gap-3 pt-2 border-t border-white/5">
+                <div className="flex items-center gap-3 pt-2 border-t border-border">
                   <button
                     onClick={showNew ? handleCreate : handleSave}
                     disabled={saving}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#00BFFF]/15 text-[#00BFFF] border border-[#00BFFF]/25 hover:bg-[#00BFFF]/25 text-xs font-semibold transition-colors disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary/15 text-primary border border-primary/25 hover:bg-primary/25 text-xs font-semibold transition-colors disabled:opacity-50"
                   >
                     {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
                     {showNew ? "Criar" : "Salvar"}
@@ -758,7 +753,7 @@ export default function ChangelogAdminPage() {
                       <button
                         onClick={handleTogglePublish}
                         disabled={saving}
-                        className={`flex items-center gap-1.5 px-4 py-2 rounded-lg border text-xs font-semibold transition-colors disabled:opacity-50 ${selected.status === "published" ? "bg-[#f59e0b]/10 text-[#f59e0b] border-[#f59e0b]/25 hover:bg-[#f59e0b]/20" : "bg-[#10b981]/10 text-[#10b981] border-[#10b981]/25 hover:bg-[#10b981]/20"}`}
+                        className={`flex items-center gap-1.5 px-4 py-2 rounded-lg border text-xs font-semibold transition-colors disabled:opacity-50 ${selected.status === "published" ? "bg-amber-500/10 text-amber-500 border-amber-500/25 hover:bg-amber-500/20" : "bg-emerald-500/10 text-emerald-500 border-emerald-500/25 hover:bg-emerald-500/20"}`}
                       >
                         {selected.status === "published"
                           ? <><EyeOff size={12} /> Despublicar</>
@@ -775,30 +770,30 @@ export default function ChangelogAdminPage() {
               {/* entries */}
               {!showNew && selected && (
                 <div className="space-y-3">
-                  <h3 className="text-xs font-bold text-gray-300 uppercase tracking-wider">
+                  <h3 className="text-xs font-bold text-foreground/80 uppercase tracking-wider">
                     Entradas ({selected.entries?.length ?? 0})
                   </h3>
 
                   {(selected.entries ?? []).length > 0 ? (
-                    <div className="rounded-2xl border border-white/8 bg-[#1a1a1a] divide-y divide-white/5 overflow-hidden">
+                    <div className="rounded-2xl border border-border bg-card divide-y divide-white/5 overflow-hidden">
                       {(selected.entries ?? []).map(entry => (
                         <div key={entry.id} className="flex items-start gap-3 px-4 py-3 group">
                           <TypePill type={entry.type} />
-                          <p className="flex-1 text-sm text-gray-300 font-light leading-relaxed min-w-0">{entry.text}</p>
-                          <button onClick={() => handleRemoveEntry(entry.id)} className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-red-500/15 text-gray-600 hover:text-red-400 transition-all shrink-0">
+                          <p className="flex-1 text-sm text-foreground/80 font-light leading-relaxed min-w-0">{entry.text}</p>
+                          <button onClick={() => handleRemoveEntry(entry.id)} className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-red-500/15 text-muted-foreground/70 hover:text-red-400 transition-all shrink-0">
                             <X size={12} />
                           </button>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="rounded-2xl border border-dashed border-white/10 bg-[#1a1a1a] px-4 py-6 text-center">
-                      <p className="text-xs text-gray-600">Nenhuma entrada ainda.</p>
+                    <div className="rounded-2xl border border-dashed border-border bg-card px-4 py-6 text-center">
+                      <p className="text-xs text-muted-foreground/70">Nenhuma entrada ainda.</p>
                     </div>
                   )}
 
                   {/* add entry */}
-                  <div className="rounded-2xl border border-white/8 bg-[#1a1a1a] p-4 space-y-3">
+                  <div className="rounded-2xl border border-border bg-card p-4 space-y-3">
                     <label className="field-label">Adicionar entrada</label>
                     <div className="flex gap-2">
                       {ENTRY_TYPES.map(t => {
@@ -811,7 +806,7 @@ export default function ChangelogAdminPage() {
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all"
                             style={active
                               ? { backgroundColor: t.bg, borderColor: t.border, color: t.color }
-                              : { backgroundColor: "transparent", borderColor: "rgba(255,255,255,0.08)", color: "#6b7280" }}
+                              : { backgroundColor: "transparent", borderColor: "var(--t-border)", color: "var(--t-muted)" }}
                           >
                             <Icon size={11} /> {t.label}
                           </button>
@@ -829,12 +824,12 @@ export default function ChangelogAdminPage() {
                       <button
                         onClick={handleAddEntry}
                         disabled={!entryText.trim() || addingEntry}
-                        className="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-colors disabled:opacity-40"
+                        className="px-3 py-2 rounded-xl bg-secondary/60 border border-border text-foreground hover:bg-secondary transition-colors disabled:opacity-40"
                       >
                         {addingEntry ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
                       </button>
                     </div>
-                    <p className="text-[10px] text-gray-600">Enter para adicionar rapidamente.</p>
+                    <p className="text-[10px] text-muted-foreground/70">Enter para adicionar rapidamente.</p>
                   </div>
                 </div>
               )}

@@ -1,5 +1,7 @@
 "use client";
 
+import { PageShell, PageHeader, Button } from "@/components/aura";
+
 import React, { useState, useEffect, useCallback } from "react";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { AuditService } from "@/services/audit-service";
@@ -55,14 +57,14 @@ function actionBadgeClass(action: string): string {
   if (action.includes("DELETE") || action.includes("LOST"))
     return "bg-red-500/10 text-red-400 border-red-500/20";
   if (action.includes("UPDATE") || action.includes("STATUS_CHANGED") || action.includes("RETURNED"))
-    return "bg-[#B0E0E6]/10 text-[#B0E0E6] border-[#B0E0E6]/20";
+    return "bg-primary/10 text-primary border-primary/20";
   if (action.includes("MESSAGE"))
     return "bg-orange-500/10 text-orange-400 border-orange-500/20";
   if (action.includes("BOOKING") || action === "CHECKIN" || action === "CHECKOUT")
-    return "bg-[#E6E6FA]/10 text-[#E6E6FA] border-[#E6E6FA]/20";
+    return "bg-primary/10 text-primary border-primary/20";
   if (action.includes("CONCIERGE"))
     return "bg-orange-500/10 text-orange-400 border-orange-500/20";
-  return "bg-[#E0FFFF]/10 text-[#E0FFFF] border-[#E0FFFF]/20";
+  return "bg-primary/10 text-primary border-primary/20";
 }
 
 // -------------------------------------------------------
@@ -80,7 +82,7 @@ interface StatCardProps {
 
 function StatCard({ title, value, sub, icon: Icon, accent, loading }: StatCardProps) {
   return (
-    <div className="bg-[#1c1c1c] rounded-[24px] p-6 border border-white/5 shadow-[0_8px_30px_rgba(0,0,0,0.5)] relative overflow-hidden group">
+    <div className="bg-card rounded-[24px] p-6 border border-border shadow-[0_8px_30px_rgba(0,0,0,0.5)] relative overflow-hidden group">
       <div className="absolute inset-0 opacity-[0.015] bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px]" />
       <div className="relative z-10 flex flex-col gap-4">
         <div className="flex items-center justify-between">
@@ -90,13 +92,13 @@ function StatCard({ title, value, sub, icon: Icon, accent, loading }: StatCardPr
           >
             <Icon size={16} style={{ color: accent }} />
           </div>
-          <p className="text-[10px] text-white/40 tracking-widest uppercase text-right w-24 leading-tight">{title}</p>
+          <p className="text-[10px] text-muted-foreground tracking-widest uppercase text-right w-24 leading-tight">{title}</p>
         </div>
         {loading ? (
-          <div className="h-8 w-16 bg-white/5 rounded animate-pulse" />
+          <div className="h-8 w-16 bg-secondary/60 rounded animate-pulse" />
         ) : (
           <div>
-            <p className="text-[32px] font-bold text-white tracking-tight leading-none">{value}</p>
+            <p className="text-[32px] font-bold text-foreground tracking-tight leading-none">{value}</p>
             {sub && <p className="text-[11px] mt-1" style={{ color: accent }}>{sub}</p>}
           </div>
         )}
@@ -171,29 +173,15 @@ export default function SuperAdminDashboard() {
 
   return (
     <RoleGuard allowedRoles={["super_admin"]}>
-      <div className="max-w-[1400px] mx-auto space-y-6 md:space-y-10 relative z-10 w-full mb-8">
+      <PageShell maxWidth="xl">
 
         {/* Header */}
-        <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-white/5 pb-8">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 font-bold uppercase tracking-widest text-[10px]" style={{ color: '#B0E0E6' }}>
-              <Layers size={14} style={{ color: '#B0E0E6' }} /> Aura Central Command
-            </div>
-            <h1 className="text-3xl lg:text-4xl font-sans tracking-wide text-white font-bold uppercase">
-              Gestão da Plataforma
-            </h1>
-            <p className="text-white/40 text-sm tracking-wide">
-              Monitoramento global de métricas e integridade de dados.
-            </p>
-          </div>
-          <button
-            onClick={fetchInitialData}
-            className="flex items-center gap-2 px-5 py-2.5 bg-white/5 hover:bg-white/10 rounded-full text-xs font-bold text-white transition-all shadow-inner border border-white/5 uppercase tracking-wider"
-          >
-            <RefreshCw size={14} className={loading ? "animate-spin" : ""} style={{ color: '#B0E0E6' }} />
-            Atualizar
-          </button>
-        </header>
+        <PageHeader
+          icon={Layers}
+          title="Gestão da Plataforma"
+          subtitle="Aura Central Command — monitoramento global de métricas e integridade de dados."
+          actions={<Button variant="secondary" icon={RefreshCw} onClick={fetchInitialData} loading={loading}>Atualizar</Button>}
+        />
 
         {/* Stats Grid */}
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
@@ -201,7 +189,7 @@ export default function SuperAdminDashboard() {
             title="Propriedades ativas"
             value={stats?.totalProperties ?? "—"}
             icon={Building2}
-            accent="#B0E0E6"
+            accent="var(--t-brand-text)"
             loading={loading}
           />
           <StatCard
@@ -230,30 +218,30 @@ export default function SuperAdminDashboard() {
         </section>
 
         {/* Log de Auditoria */}
-        <section className="bg-[#1c1c1c] rounded-[32px] p-6 lg:p-8 border border-white/5 shadow-[0_10px_40px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col gap-6">
+        <section className="bg-card rounded-[32px] p-6 lg:p-8 border border-border shadow-[0_10px_40px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col gap-6">
 
           <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-            <h2 className="text-lg font-normal text-white/90 flex items-center gap-3">
-              <Clock style={{ color: '#B0E0E6' }} size={20} /> Log de Atividades Global
+            <h2 className="text-lg font-normal text-foreground/90 flex items-center gap-3">
+              <Clock style={{ color: "var(--t-brand-text)" }} size={20} /> Log de Atividades Global
             </h2>
 
             <div className="flex flex-wrap items-center gap-3">
               <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" size={14} />
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground/70" size={14} />
                 <input
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
                   placeholder="Buscar no log..."
-                  className="bg-[#141414] border border-white/10 rounded-full py-2.5 pl-10 pr-4 text-xs text-white/80 outline-none focus:border-[#B0E0E6]/30 w-full sm:w-56 transition-all shadow-inner placeholder:text-white/30"
+                  className="bg-[#141414] border border-border rounded-full py-2.5 pl-10 pr-4 text-xs text-foreground outline-none focus:border-primary/30 w-full sm:w-56 transition-all shadow-inner placeholder:text-muted-foreground/70"
                 />
               </div>
 
-              <div className="flex items-center gap-2 bg-[#141414] border border-white/10 p-1.5 rounded-full px-4 shadow-inner">
-                <Filter size={14} className="text-white/40" />
+              <div className="flex items-center gap-2 bg-[#141414] border border-border p-1.5 rounded-full px-4 shadow-inner">
+                <Filter size={14} className="text-muted-foreground" />
                 <select
                   value={filterProperty}
                   onChange={e => setFilterProperty(e.target.value)}
-                  className="bg-transparent text-xs text-white/80 font-medium py-1 outline-none uppercase tracking-wider appearance-none focus:ring-0 max-w-[150px] truncate"
+                  className="bg-transparent text-xs text-foreground font-medium py-1 outline-none uppercase tracking-wider appearance-none focus:ring-0 max-w-[150px] truncate"
                 >
                   <option value="all" className="bg-[#222]">Todas Propriedades</option>
                   {properties.map(p => (
@@ -263,12 +251,12 @@ export default function SuperAdminDashboard() {
                 </select>
               </div>
 
-              <div className="flex items-center gap-2 bg-[#141414] border border-white/10 p-1.5 rounded-full px-4 shadow-inner">
-                <Tag size={14} className="text-white/40" />
+              <div className="flex items-center gap-2 bg-[#141414] border border-border p-1.5 rounded-full px-4 shadow-inner">
+                <Tag size={14} className="text-muted-foreground" />
                 <select
                   value={filterEntity}
                   onChange={e => setFilterEntity(e.target.value)}
-                  className="bg-transparent text-xs text-white/80 font-medium py-1 outline-none uppercase tracking-wider appearance-none focus:ring-0 max-w-[130px]"
+                  className="bg-transparent text-xs text-foreground font-medium py-1 outline-none uppercase tracking-wider appearance-none focus:ring-0 max-w-[130px]"
                 >
                   <option value="all" className="bg-[#222]">Todas Entidades</option>
                   <option value="STAY" className="bg-[#222]">Estadias</option>
@@ -288,32 +276,32 @@ export default function SuperAdminDashboard() {
               <thead>
                 <tr>
                   {["Timestamp", "Autor", "Ação", "Propriedade", "Detalhes"].map(h => (
-                    <th key={h} className="pb-4 pt-2 text-[10px] font-semibold tracking-widest text-white/30 uppercase border-b border-white/5 px-4">
+                    <th key={h} className="pb-4 pt-2 text-[10px] font-semibold tracking-widest text-muted-foreground/70 uppercase border-b border-border px-4">
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="text-[12px] divide-y divide-white/5">
+              <tbody className="text-[12px] divide-y divide-border">
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="p-12 text-center text-white/40 italic">
-                      <RefreshCw className="animate-spin mx-auto mb-2" style={{ color: '#B0E0E6' }} />
+                    <td colSpan={5} className="p-12 text-center text-muted-foreground italic">
+                      <RefreshCw className="animate-spin mx-auto mb-2" style={{ color: "var(--t-brand-text)" }} />
                       Sincronizando Aura Engine...
                     </td>
                   </tr>
                 ) : filteredLogs.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="p-12 text-center text-white/40">
+                    <td colSpan={5} className="p-12 text-center text-muted-foreground">
                       Nenhuma atividade encontrada com estes filtros.
                     </td>
                   </tr>
                 ) : (
                   filteredLogs.map(log => (
-                    <tr key={log.id} className="hover:bg-white/[0.02] transition-colors group">
+                    <tr key={log.id} className="hover:bg-secondary/40 transition-colors group">
                       <td className="p-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2 font-mono text-white/50">
-                          <Calendar size={12} style={{ color: '#B0E0E6', opacity: 0.5 }} />
+                        <div className="flex items-center gap-2 font-mono text-muted-foreground">
+                          <Calendar size={12} style={{ color: "var(--t-brand-text)", opacity: 0.5 }} />
                           {log.timestamp
                             ? format(new Date(log.timestamp), "dd/MM HH:mm:ss", { locale: ptBR })
                             : "---"}
@@ -321,10 +309,10 @@ export default function SuperAdminDashboard() {
                       </td>
                       <td className="p-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-7 h-7 rounded-full bg-[#111] flex items-center justify-center text-[10px] font-bold text-[#E6E6FA] border border-white/10 uppercase shadow-inner">
+                          <div className="w-7 h-7 rounded-full bg-card flex items-center justify-center text-[10px] font-bold text-primary border border-border uppercase shadow-inner">
                             {log.userName.charAt(0)}
                           </div>
-                          <span className="font-medium text-white/80 group-hover:text-white transition-colors">
+                          <span className="font-medium text-foreground group-hover:text-foreground transition-colors">
                             {log.userName}
                           </span>
                         </div>
@@ -338,14 +326,14 @@ export default function SuperAdminDashboard() {
                         </span>
                       </td>
                       <td className="p-4">
-                        <span className="text-[10px] font-medium bg-[#111] text-white/60 px-3 py-1 rounded-full border border-white/5">
+                        <span className="text-[10px] font-medium bg-card text-muted-foreground px-3 py-1 rounded-full border border-border">
                           {log.propertyId === "SYSTEM"
                             ? "Aura Core"
                             : (properties.find(p => p.id === log.propertyId)?.name || log.propertyId)}
                         </span>
                       </td>
                       <td className="p-4 max-w-xs">
-                        <p className="text-white/50 truncate group-hover:whitespace-normal group-hover:overflow-visible transition-all">
+                        <p className="text-muted-foreground truncate group-hover:whitespace-normal group-hover:overflow-visible transition-all">
                           {log.details}
                         </p>
                       </td>
@@ -358,10 +346,10 @@ export default function SuperAdminDashboard() {
         </section>
 
         {/* Bottom bar */}
-        <div className="h-14 w-full bg-[#1A1A1A] border border-white/5 rounded-[20px] flex items-center justify-between px-6 lg:px-10 text-sm shadow-[0_10px_30px_rgba(0,0,0,0.5)] mt-8">
-          <div className="hidden lg:flex items-center gap-10 text-white/40">
+        <div className="h-14 w-full bg-[#1A1A1A] border border-border rounded-[20px] flex items-center justify-between px-6 lg:px-10 text-sm shadow-[0_10px_30px_rgba(0,0,0,0.5)] mt-8">
+          <div className="hidden lg:flex items-center gap-10 text-muted-foreground">
             <div className="flex items-center gap-2">
-              <Infinity size={14} style={{ color: '#B0E0E6', opacity: 0.5 }} />
+              <Infinity size={14} style={{ color: "var(--t-brand-text)", opacity: 0.5 }} />
               <span className="font-semibold tracking-widest text-[10px] uppercase">Flexibility</span>
             </div>
             <div className="flex items-center gap-2">
@@ -369,30 +357,30 @@ export default function SuperAdminDashboard() {
               <span className="font-semibold tracking-widest text-[10px] uppercase">Fibonacci</span>
             </div>
             <div className="flex items-center gap-2">
-              <Circle size={12} style={{ color: '#E6E6FA', opacity: 0.5 }} />
+              <Circle size={12} style={{ color: "var(--t-brand-text)", opacity: 0.5 }} />
               <span className="font-semibold tracking-widest text-[10px] uppercase">Golden Geometry</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full" style={{ background: "linear-gradient(45deg, #222, #B0E0E6, #222)" }} />
+              <div className="w-3 h-3 rounded-full" style={{ background: "linear-gradient(45deg, var(--t-border), var(--t-brand-text), var(--t-border))" }} />
               <span className="font-semibold tracking-widest text-[10px] uppercase">Arctic Materials</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 lg:border-l lg:border-white/10 lg:pl-10 ml-auto">
-            <div className="w-[6px] h-[6px] rounded-full animate-pulse" style={{ backgroundColor: '#B0E0E6', boxShadow: '0 0 12px #B0E0E6' }} />
-            <Wifi size={14} style={{ color: '#B0E0E6' }} />
+          <div className="flex items-center gap-3 lg:border-l lg:border-border lg:pl-10 ml-auto">
+            <div className="w-[6px] h-[6px] rounded-full animate-pulse" style={{ backgroundColor: "var(--t-brand-text)", boxShadow: '0 0 12px var(--t-brand-text)' }} />
+            <Wifi size={14} style={{ color: "var(--t-brand-text)" }} />
             <div className="flex flex-col ml-1">
-              <span className="font-bold text-[10px] tracking-widest uppercase" style={{ color: '#E0FFFF' }}>
+              <span className="font-bold text-[10px] tracking-widest uppercase" style={{ color: "var(--t-text)" }}>
                 Sistema Online
               </span>
-              <span className="text-[8px] text-white/30 tracking-wider">
+              <span className="text-[8px] text-muted-foreground/70 tracking-wider">
                 Aura Engine {stats ? "v1.0.0-beta" : "loading..."}
               </span>
             </div>
           </div>
         </div>
 
-      </div>
+      </PageShell>
     </RoleGuard>
   );
 }

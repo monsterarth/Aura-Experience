@@ -1,11 +1,12 @@
 "use client";
 
+import { PageShell, PageHeader, PageSkeleton, EmptyState, Pill } from "@/components/aura";
+
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ExternalLink, RotateCcw, Key } from "lucide-react";
+import { ExternalLink, RotateCcw, Key, Smartphone } from "lucide-react";
 import { useRef, useState, Suspense } from "react";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { useAuth } from "@/context/AuthContext";
-import Link from "next/link";
 
 const APP_META: Record<string, { label: string; path: string; color: string }> = {
   diretoria:  { label: "Diretoria",          path: "/director",     color: "#9b6dff" },
@@ -95,10 +96,7 @@ function AppPreviewContent({ appId }: { appId: string }) {
 
   if (!meta) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-white/40">
-        <p>App não encontrado.</p>
-        <Link href="/admin/mobile-apps" className="text-sm underline">Voltar</Link>
-      </div>
+      <PageShell><EmptyState icon={Smartphone} title="App não encontrado" action={{ label: "Voltar", href: "/admin/mobile-apps" }} /></PageShell>
     );
   }
 
@@ -111,11 +109,7 @@ function AppPreviewContent({ appId }: { appId: string }) {
     const code = searchParams.get("code");
     if (!code) {
       return (
-        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-white/40">
-          <Key size={32} style={{ color: "#2dd4bf", opacity: 0.5 }} />
-          <p>Código de acesso não informado.</p>
-          <Link href="/admin/mobile-apps" className="text-sm underline text-teal-400">Voltar e inserir código</Link>
-        </div>
+        <PageShell><EmptyState icon={Key} title="Código de acesso não informado" action={{ label: "Voltar e inserir código", href: "/admin/mobile-apps" }} /></PageShell>
       );
     }
     iframeSrc = `${origin}/check-in/${code}`;
@@ -126,49 +120,29 @@ function AppPreviewContent({ appId }: { appId: string }) {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <button
-          onClick={() => router.push("/admin/mobile-apps")}
-          className="flex items-center gap-2 text-sm text-white/50 hover:text-white transition-colors"
-        >
-          <ArrowLeft size={15} />
-          Apps Mobile
-        </button>
-        <span className="text-white/20">/</span>
-        <span className="text-sm font-semibold text-white">{meta.label}</span>
-        {appId === "hospede" && searchParams.get("code") && (
-          <>
-            <span className="text-white/20">/</span>
-            <span className="text-xs font-mono px-2 py-0.5 rounded-md" style={{ background: "rgba(45,212,191,0.1)", color: "#2dd4bf", border: "1px solid rgba(45,212,191,0.2)" }}>
-              {searchParams.get("code")}
-            </span>
-          </>
+    <PageShell>
+      <PageHeader
+        back={{ onClick: () => router.push("/admin/mobile-apps"), label: "Apps Mobile" }}
+        title={meta.label}
+        badge={appId === "hospede" && searchParams.get("code") ? <Pill tone="green" label={searchParams.get("code") ?? ""} /> : undefined}
+        actions={(
+          <a href={externalHref} target="_blank" rel="noopener noreferrer" className="ak-btn ak-press" data-variant="secondary" data-size="md" style={{ textDecoration: "none" }}>
+            <span className="ak-btn__content"><span className="ak-btn__icon"><ExternalLink size={14} /></span><span className="ak-btn__label">Abrir em tela cheia</span></span>
+          </a>
         )}
-        <a
-          href={externalHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="ml-auto flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
-          style={{ color: meta.color, background: `${meta.color}14`, border: `1px solid ${meta.color}33` }}
-        >
-          <ExternalLink size={11} />
-          Abrir em tela cheia
-        </a>
-      </div>
+      />
 
       {/* Phone preview */}
       <div className="flex justify-center pt-2">
         <PhoneMockup src={iframeSrc} color={meta.color} />
       </div>
-    </div>
+    </PageShell>
   );
 }
 
 function AppPreviewWithSuspense({ appId }: { appId: string }) {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh] text-white/30 text-sm">Carregando…</div>}>
+    <Suspense fallback={<PageShell><PageSkeleton kpis={0} rows={4} /></PageShell>}>
       <AppPreviewContent appId={appId} />
     </Suspense>
   );

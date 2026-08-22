@@ -4,6 +4,8 @@
 // com "ver detalhes" — nada se perde, o banco continua granular.
 "use client";
 
+import { PageShell, PageHeader, Button } from "@/components/aura";
+
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { RoleGuard } from "@/components/auth/RoleGuard";
@@ -409,33 +411,15 @@ export default function AuditLogsPage() {
 
   return (
     <RoleGuard allowedRoles={["super_admin", "admin", "manager"]}>
-      <div className="max-w-[1400px] mx-auto space-y-6 animate-in fade-in duration-500" style={{ color: T.text }}>
+      <PageShell maxWidth="xl">
 
         {/* Header */}
-        <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-6" style={{ borderBottom: `1px solid ${T.border}` }}>
-          <div className="flex items-center gap-4">
-            <div
-              className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
-              style={{ background: T.gradSoft, border: `1px solid ${T.g1Border}` }}
-            >
-              <FileText size={20} style={{ color: T.g1 }} />
-            </div>
-            <div className="space-y-0.5">
-              <div style={{ color: T.g2, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.14em', fontSize: 10 }}>
-                Auditoria
-              </div>
-              <h1 style={{ fontWeight: 900, letterSpacing: '-0.03em' }} className="text-3xl">Logs de Auditoria</h1>
-              <p style={{ color: T.muted }} className="text-sm">Histórico de ações realizadas na propriedade.</p>
-            </div>
-          </div>
-          <button
-            onClick={fetchLogs}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all self-start"
-            style={{ background: T.glass2, border: `1px solid ${T.border2}`, color: T.text }}
-          >
-            <RefreshCw size={15} className={loading ? "animate-spin" : ""} /> Atualizar
-          </button>
-        </header>
+        <PageHeader
+          icon={FileText}
+          title="Logs de Auditoria"
+          subtitle="Histórico de ações realizadas na propriedade."
+          actions={<Button variant="secondary" icon={RefreshCw} onClick={fetchLogs} loading={loading}>Atualizar</Button>}
+        />
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-3">
@@ -685,7 +669,7 @@ export default function AuditLogsPage() {
             </div>
           )}
         </div>
-      </div>
+      </PageShell>
     </RoleGuard>
   );
 }

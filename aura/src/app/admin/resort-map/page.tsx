@@ -1,5 +1,7 @@
 "use client";
 
+import { PageShell, PageHeader, PageSkeleton, EmptyState, useConfirm } from "@/components/aura";
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import {
@@ -102,6 +104,7 @@ const CABIN_PIN_COLOR   = "#f59e0b"; // âmbar — diferencia visualmente das es
 
 export default function ResortMapAdminPage() {
     const { currentProperty } = useProperty();
+    const confirm = useConfirm();
     const { userData } = useAuth();
 
     const [structures, setStructures] = useState<Structure[]>([]);
@@ -179,7 +182,7 @@ export default function ResortMapAdminPage() {
     };
 
     const handleDeletePoi = async (id: string) => {
-        if (!confirm("Remover este ponto de interesse?")) return;
+        if (!(await confirm({ title: "Remover ponto de interesse?", confirmLabel: "Remover", tone: "danger" }))) return;
         try {
             const res = await fetch(`/api/admin/map-pois?id=${id}`, { method: "DELETE" });
             if (!res.ok) { toast.error("Erro ao remover ponto de interesse."); return; }
@@ -304,36 +307,21 @@ export default function ResortMapAdminPage() {
 
     if (!currentProperty) {
         return (
-            <div className="max-w-3xl mx-auto py-20 text-center text-muted-foreground">
-                <MapPinned className="mx-auto mb-4 opacity-40" size={40} />
-                Selecione uma propriedade para configurar o mapa.
-            </div>
+            <PageShell><EmptyState icon={MapPinned} title="Selecione uma propriedade" description="O mapa é configurado por propriedade." /></PageShell>
         );
     }
 
     return (
-        <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in duration-500">
-            {/* Header */}
-            <div className="flex flex-wrap justify-between items-center gap-4">
-                <div>
-                    <h1 className="text-xl md:text-3xl font-black text-foreground tracking-tight flex items-center gap-3">
-                        <MapPinned className="text-primary" /> Mapa do Resort
-                    </h1>
-                    <p className="text-muted-foreground mt-1">
-                        Configure a imagem ilustrada, posicione as áreas e calibre o GPS para o portal do hóspede.
-                    </p>
-                </div>
-                <button
-                    onClick={handleSave} disabled={saving}
-                    className="bg-primary text-primary-foreground px-6 py-3 rounded-xl font-bold uppercase text-xs tracking-wider hover:opacity-90 transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
-                >
-                    {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                    Salvar
-                </button>
-            </div>
+        <PageShell maxWidth="xl">
+            <PageHeader
+                icon={MapPinned}
+                title="Mapa do Resort"
+                subtitle="Configure a imagem ilustrada, posicione as áreas e calibre o GPS para o portal do hóspede."
+                primaryAction={{ label: "Salvar", icon: Save, onClick: handleSave, loading: saving, mobile: "bar" }}
+            />
 
             {loading ? (
-                <div className="text-center py-20 text-muted-foreground animate-pulse">Carregando…</div>
+                <PageSkeleton kpis={0} rows={6} />
             ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
                     {/* ── Coluna esquerda: imagem + calibração ─────────────────────── */}
@@ -785,6 +773,6 @@ export default function ResortMapAdminPage() {
                     </div>
                 </div>
             )}
-        </div>
+        </PageShell>
     );
 }

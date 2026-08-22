@@ -1,5 +1,7 @@
 "use client";
 
+import { PageShell, PageHeader, PageSkeleton, EmptyState } from "@/components/aura";
+
 import { useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
@@ -10,7 +12,7 @@ import { toast } from "sonner";
 import {
   Search, Trash2, Pencil, X, Save, User, Phone,
   Loader2, MessageCircle, ExternalLink, UserCheck, Tag
-} from "lucide-react";
+, BookUser } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function ContactsPage() {
@@ -115,30 +117,23 @@ export default function ContactsPage() {
 
   if (propLoading) {
     return (
-      <div className="flex h-[80vh] items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-      </div>
+      <PageShell><PageSkeleton kpis={0} rows={6} /></PageShell>
     );
   }
 
   if (!property) {
     return (
-      <div className="flex h-[80vh] flex-col items-center justify-center text-center">
-        <h2 className="text-xl font-semibold mb-2">Nenhuma propriedade selecionada</h2>
-        <p className="text-sm text-muted-foreground">Selecione uma propriedade no menu lateral.</p>
-      </div>
+      <PageShell><EmptyState icon={BookUser} title="Nenhuma propriedade selecionada" description="Selecione uma propriedade no menu lateral." /></PageShell>
     );
   }
 
   return (
-    <div className="space-y-6 px-2 md:px-0">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Contatos</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Agenda de contatos de <strong className="text-foreground">{property.name}</strong> &mdash; {contacts.length} contatos ({guestCount} hospedes, {otherCount} avulsos)
-        </p>
-      </div>
+    <PageShell>
+      <PageHeader
+        icon={BookUser}
+        title="Contatos"
+        subtitle={<>Agenda de contatos de <strong className="text-foreground">{property.name}</strong> &mdash; {contacts.length} contatos ({guestCount} hóspedes, {otherCount} avulsos)</>}
+      />
 
       {/* Barra de busca + filtros */}
       <div className="flex flex-col sm:flex-row gap-3">
@@ -291,6 +286,6 @@ export default function ContactsPage() {
           })}
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }
