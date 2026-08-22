@@ -103,29 +103,28 @@
   .field-label {
     @apply text-[10px] font-black uppercase tracking-widest text-muted-foreground block mb-1.5;
   }
-  /* border-border (token) e nao border-white/10: no tema claro a borda branca sumia. */
+  /* Mesmo desenho dos campos do kit (src/components/aura/Field): glass + hairline,
+     raio 10, anel roxo no foco. Só o admin usa estas classes. */
   .field-input {
-    @apply bg-secondary border border-border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-primary/50 transition-all text-foreground placeholder:text-muted-foreground/50;
+    @apply border rounded-[10px] px-3 py-2.5 text-[13.5px] focus:outline-none transition-all text-foreground placeholder:text-muted-foreground/50;
+    background: var(--t-glass, hsl(var(--secondary)));
+    border-color: var(--t-border-2, hsl(var(--border)));
+    min-height: 38px;
   }
+  .field-input:focus {
+    border-color: var(--t-ring, hsl(var(--ring)));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--t-ring, hsl(var(--ring))) 35%, transparent);
+  }
+}
+
+/* Celular: 16px evita o zoom automático do iOS no foco; 44px de alvo. */
+@media (max-width: 767px) {
+  .aura-admin-root .field-input { font-size: 16px; min-height: 44px; }
 }
 
 @keyframes marquee {
   from { transform: translateX(0); }
   to   { transform: translateX(-50%); }
-}
-
-/* ── Mobile sheet / modal animations ── */
-@keyframes sheet-fadein {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-@keyframes sheet-slideup {
-  from { transform: translateY(100%); }
-  to   { transform: translateY(0); }
-}
-@keyframes sheet-zoomin {
-  from { opacity: 0; transform: scale(0.96); }
-  to   { opacity: 1; transform: scale(1); }
 }
 
 /* ── Portal do Hóspede (redesign "camaleão") animations ── */

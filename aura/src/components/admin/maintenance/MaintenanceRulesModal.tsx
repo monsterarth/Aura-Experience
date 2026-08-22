@@ -96,8 +96,8 @@ export function MaintenanceRulesModal({ isOpen, onClose, propertyId, cabins, str
     };
 
     // Botão "Cancelar" do formulário — confirma se houve edição.
-    const cancelForm = () => {
-        if (confirmDiscard()) closeForm();
+    const cancelForm = async () => {
+        if (await confirmDiscard()) closeForm();
     };
 
     const handleSave = async () => {

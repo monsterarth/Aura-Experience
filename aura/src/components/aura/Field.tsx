@@ -97,7 +97,10 @@ export function Switch({ checked, onChange, disabled, loading, label, size = "md
   const autoId = useId();
   const sid = id ?? autoId;
   const interactive = !!onChange && !disabled && !loading;
-  const control = (
+  const knob = <span className="ak-switch__knob">{loading ? <Spinner size={10} color="#9b6dff" /> : checked && size === "md" ? <Check size={11} strokeWidth={3} /> : null}</span>;
+  // Sem onChange é decorativo (quem controla o clique é a linha inteira — SettingRow):
+  // vira <span>, não <button>, para não aninhar botão em botão.
+  const control = onChange ? (
     <button
       type="button"
       role="switch"
@@ -106,13 +109,17 @@ export function Switch({ checked, onChange, disabled, loading, label, size = "md
       aria-label={children ? undefined : label}
       aria-busy={loading || undefined}
       disabled={!interactive}
-      onClick={() => onChange?.(!checked)}
+      onClick={() => onChange(!checked)}
       className="ak-switch"
       data-on={checked || undefined}
       data-size={size}
     >
-      <span className="ak-switch__knob">{loading ? <Spinner size={10} color="#9b6dff" /> : checked && size === "md" ? <Check size={11} strokeWidth={3} /> : null}</span>
+      {knob}
     </button>
+  ) : (
+    <span role="switch" aria-checked={checked} aria-label={label} aria-busy={loading || undefined} className="ak-switch" data-on={checked || undefined} data-size={size} style={disabled ? { opacity: 0.55 } : undefined}>
+      {knob}
+    </span>
   );
   if (!children) return control;
   return (

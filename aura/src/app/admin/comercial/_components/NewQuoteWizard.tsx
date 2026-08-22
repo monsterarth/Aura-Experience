@@ -880,7 +880,7 @@ export function NewQuoteWizard({
             style={{ ...S.ghostBtn, padding: "8px 13px", fontSize: 12 }}>
             São pedidos diferentes — criar outro
           </button>
-          <button onClick={() => { if (confirmDiscard()) onOpenExisting(q.id); }}
+          <button onClick={() => { confirmDiscard().then(ok => { if (ok) onOpenExisting(q.id); }); }}
             title="Fecha o wizard e abre a ficha (descarta o que foi preenchido)"
             style={{
               ...S.ghostBtn, padding: "8px 11px", fontSize: 11,

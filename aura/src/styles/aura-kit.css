@@ -442,3 +442,7 @@
 /* ── Utilitários responsivos para páginas com inline style ──────────────────── */
 @media (max-width: 767px) { .ak-hide-mobile { display: none !important; } }
 @media (min-width: 768px) { .ak-only-mobile { display: none !important; } }
+.ak-btn--icon { width: 38px; padding: 0; }
+.ak-btn--icon[data-size="sm"] { width: 32px; }
+.ak-btn--icon[data-size="lg"] { width: 44px; }
+@media (pointer: coarse) { .ak-btn--icon { width: 44px; } }

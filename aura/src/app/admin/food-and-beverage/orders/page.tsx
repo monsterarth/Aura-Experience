@@ -691,7 +691,7 @@ function OrderDetailModal({
                         /* ── Botões modo edição ── */
                         <div className="flex gap-2">
                             <button
-                                onClick={() => { if (confirmDiscard()) setEditing(false); }}
+                                onClick={() => { confirmDiscard().then(ok => { if (ok) setEditing(false); }); }}
                                 className="flex-1 py-3 rounded-xl font-bold text-sm border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
                             >
                                 Cancelar

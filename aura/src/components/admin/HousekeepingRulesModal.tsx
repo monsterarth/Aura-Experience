@@ -194,8 +194,8 @@ export function HousekeepingRulesModal({ isOpen, onClose, propertyId, cabins, st
     setCustomLocationInput('');
   };
 
-  const cancelForm = () => {
-    if (!confirmDiscard()) return;
+  const cancelForm = async () => {
+    if (!(await confirmDiscard())) return;
     closeForm();
   };
 

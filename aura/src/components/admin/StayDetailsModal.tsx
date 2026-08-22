@@ -380,8 +380,8 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
   if (!isOpen || !stay) return null;
 
-  const handleCancel = () => {
-    if (!confirmDiscard()) return;
+  const handleCancel = async () => {
+    if (!(await confirmDiscard())) return;
     initData();
     setIsEditing(false);
     setShowReassign(false);
