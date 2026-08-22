@@ -355,7 +355,7 @@ export function AdminTopbar({ onMenuClick }: { onMenuClick?: () => void }) {
       }}
     >
       {/* Hambúrguer (44px) — abre o drawer da sidebar abaixo de lg */}
-      <span className="lg:hidden" style={{ display: "inline-flex" }}>
+      <span className="inline-flex lg:hidden">
         <IconButton icon={Menu} label="Abrir menu" size="lg" onClick={onMenuClick} />
       </span>
 
@@ -365,7 +365,7 @@ export function AdminTopbar({ onMenuClick }: { onMenuClick?: () => void }) {
         <div className="hidden sm:block">
           <SearchBox />
         </div>
-        <span className="sm:hidden" style={{ display: "inline-flex" }}>
+        <span className="inline-flex sm:hidden">
           <IconButton icon={Search} label="Buscar" size="lg" onClick={() => setSearchOpen(true)} />
         </span>
         <NotificationCenter />

@@ -668,10 +668,10 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
                 </span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <button className="lg:hidden" onClick={() => setIsOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: TT.muted, padding: 6, display: "flex", borderRadius: 6, transition: "color .15s" }}>
+                <button className="flex lg:hidden" onClick={() => setIsOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: TT.muted, padding: 6, borderRadius: 6, transition: "color .15s" }}>
                   <X size={16} />
                 </button>
-                <button onClick={toggleCollapse} style={{ background: "none", border: "none", cursor: "pointer", color: TT.muted, padding: 4, display: "flex", borderRadius: 6, transition: "color .15s" }} className="hidden lg:flex">
+                <button onClick={toggleCollapse} style={{ background: "none", border: "none", cursor: "pointer", color: TT.muted, padding: 4, borderRadius: 6, transition: "color .15s" }} className="hidden lg:flex">
                   <ChevronLeft size={15} />
                 </button>
               </div>
