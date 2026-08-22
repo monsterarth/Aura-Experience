@@ -1,5 +1,7 @@
 "use client";
 
+import { PageShell, PageHeader, Dialog, SkeletonTable, EmptyState } from "@/components/aura";
+
 import React, { useState, useEffect, useCallback } from "react";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { useAuth } from "@/context/AuthContext";
@@ -11,7 +13,6 @@ import {
 import { resolveEffectiveDaySchedule } from "@/lib/schedule-calculator";
 import { ChevronLeft, ChevronRight, Loader2, AlertCircle, CalendarDays, X, Save } from "lucide-react";
 import { toast } from "sonner";
-import Link from "next/link";
 
 const MONTH_NAMES = [
   "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
@@ -114,8 +115,8 @@ function getCellData(
 
   return {
     label: timeStr,
-    bg: isAltTime ? "#854d0e" : "#1c1c1c",
-    color: isAltTime ? "#fef08a" : "#d1d5db",
+    bg: isAltTime ? "var(--t-amber-bg)" : "var(--t-glass)",
+    color: isAltTime ? "var(--t-amber)" : "var(--t-text)",
     bold: false,
     reason: resolved.reason,
   };
@@ -284,22 +285,19 @@ export default function EscalasMensalPage() {
 
   return (
     <RoleGuard allowedRoles={["super_admin", "admin", "manager"]}>
-      <div className="space-y-5 max-w-full mx-auto">
+      <PageShell maxWidth="full">
 
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <CalendarDays size={26} className="text-[#E0FFFF]" />
-            <div>
-              <h1 className="text-xl font-black text-white uppercase tracking-widest">Escala Mensal</h1>
-              <p className="text-xs text-white/40">Visão completa · {MONTH_NAMES[month]} {year}</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
+        <PageHeader
+          icon={CalendarDays}
+          title="Escala mensal"
+          subtitle={<>Visão completa · {MONTH_NAMES[month]} {year}</>}
+          back={{ href: "/admin/escalas", label: "Semana" }}
+          actions={(<>
             <select
               value={filterRole}
               onChange={e => setFilterRole(e.target.value)}
-              className="bg-[#111] border border-white/10 text-white/70 text-xs font-bold rounded-xl px-3 py-2 outline-none"
+              className="field-input"
+              style={{ width: "auto", minWidth: 180 }}
             >
               <option value="all">Todos os cargos</option>
               <optgroup label="Setores">
@@ -312,51 +310,40 @@ export default function EscalasMensalPage() {
                 ))}
               </optgroup>
             </select>
-            <Link
-              href="/admin/escalas"
-              className="text-[10px] font-black text-[#00BFFF] uppercase tracking-widest hover:opacity-70 transition-opacity px-3 py-2 border border-[#00BFFF]/20 rounded-xl"
-            >
-              ← Semana
-            </Link>
-          </div>
-        </div>
+          </>)}
+        />
 
         {/* Navegação de mês */}
-        <div className="flex items-center gap-3 bg-[#111] border border-white/10 rounded-2xl px-4 py-2.5 w-fit">
-          <button onClick={prevMonth} className="p-1 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-all">
+        <div className="flex items-center gap-3 bg-card border border-border rounded-2xl px-4 py-2.5 w-fit">
+          <button onClick={prevMonth} className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
             <ChevronLeft size={16} />
           </button>
-          <span className="text-sm font-black text-white tracking-wide min-w-[150px] text-center">
+          <span className="text-sm font-black text-foreground tracking-wide min-w-[150px] text-center">
             {MONTH_NAMES[month].toUpperCase()} {year}
           </span>
-          <button onClick={nextMonth} className="p-1 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-all">
+          <button onClick={nextMonth} className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all">
             <ChevronRight size={16} />
           </button>
           <button
             onClick={() => { setYear(today.getFullYear()); setMonth(today.getMonth()); }}
-            className="text-[9px] font-black text-[#00BFFF] uppercase tracking-widest hover:opacity-70 ml-1"
+            className="text-[9px] font-black text-primary uppercase tracking-widest hover:opacity-70 ml-1"
           >
             Hoje
           </button>
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center py-24">
-            <Loader2 size={28} className="animate-spin text-[#E0FFFF]/40" />
-          </div>
+          <SkeletonTable rows={10} cols={6} />
         ) : filteredStaff.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-white/30 gap-2">
-            <AlertCircle size={28} />
-            <p className="text-sm font-bold uppercase tracking-widest">Nenhum funcionário</p>
-          </div>
+          <EmptyState icon={AlertCircle} title="Nenhum funcionário" description="Ajuste o filtro de cargo ou cadastre a equipe." />
         ) : (
-          <div className="overflow-auto rounded-2xl border border-white/10 shadow-2xl" style={{ maxHeight: "80vh" }}>
+          <div className="overflow-auto rounded-2xl border border-border shadow-2xl" style={{ maxHeight: "80vh" }}>
             <table className="border-collapse text-[10px]" style={{ minWidth: `${120 + filteredStaff.length * 100}px` }}>
               <thead className="sticky top-0 z-20">
                 <tr style={{ background: "#0a0a0a" }}>
                   {/* Dia header */}
                   <th
-                    className="sticky left-0 z-30 px-3 py-2 text-left border-b border-r border-white/10 font-black text-white/30 uppercase tracking-widest text-[9px]"
+                    className="sticky left-0 z-30 px-3 py-2 text-left border-b border-r border-border font-black text-muted-foreground/70 uppercase tracking-widest text-[9px]"
                     style={{ background: "#0a0a0a", minWidth: 80 }}
                   >
                     Dia
@@ -365,11 +352,11 @@ export default function EscalasMensalPage() {
                   {filteredStaff.map(staff => (
                     <th
                       key={staff.id}
-                      className="px-2 py-2 text-center border-b border-l border-white/10 font-black text-white/80 text-[9px] uppercase tracking-wide"
+                      className="px-2 py-2 text-center border-b border-l border-border font-black text-foreground text-[9px] uppercase tracking-wide"
                       style={{ minWidth: 90, maxWidth: 110 }}
                     >
                       <div className="truncate">{staff.fullName.split(" ")[0]}</div>
-                      <div className="font-normal text-white/30 text-[8px] normal-case tracking-normal mt-0.5">
+                      <div className="font-normal text-muted-foreground/70 text-[8px] normal-case tracking-normal mt-0.5">
                         {ROLE_LABELS[staff.role] || staff.role}
                       </div>
                     </th>
@@ -383,23 +370,23 @@ export default function EscalasMensalPage() {
                   const isToday = ymd === todayYMD;
                   const isWeekend = dow === 0 || dow === 6;
                   const rowBg = isToday
-                    ? "rgba(0,191,255,0.06)"
+                    ? "var(--t-blue-bg)"
                     : isWeekend
-                    ? "rgba(255,255,255,0.015)"
+                    ? "var(--t-glass)"
                     : "transparent";
 
                   return (
                     <tr
                       key={ymd}
                       style={{ background: rowBg }}
-                      className="border-b border-white/5 hover:bg-white/[0.02] transition-colors"
+                      className="border-b border-border hover:bg-secondary/40 transition-colors"
                     >
                       {/* Day label — sticky */}
                       <td
-                        className="sticky left-0 z-10 px-3 py-1 border-r border-white/10 font-bold"
-                        style={{ background: isToday ? "#0d2033" : isWeekend ? "#111" : "#0e0e0e" }}
+                        className="sticky left-0 z-10 px-3 py-1 border-r border-border font-bold"
+                        style={{ background: isToday ? "var(--t-blue-bg)" : "var(--t-card)" }}
                       >
-                        <div className={`flex items-center gap-2 ${isToday ? "text-[#00BFFF]" : isWeekend ? "text-white/50" : "text-white/60"}`}>
+                        <div className={`flex items-center gap-2 ${isToday ? "text-primary" : isWeekend ? "text-muted-foreground" : "text-muted-foreground"}`}>
                           <span className="font-black text-[12px] w-5 text-right">{day.getDate()}</span>
                           <span className="text-[9px] font-bold uppercase tracking-wide opacity-60">{DOW_PT[dow]}</span>
                         </div>
@@ -414,7 +401,7 @@ export default function EscalasMensalPage() {
                         return (
                           <td
                             key={staff.id}
-                            className="border-l border-white/5 px-1 py-0.5 text-center cursor-pointer transition-opacity hover:opacity-70 relative group"
+                            className="border-l border-border px-1 py-0.5 text-center cursor-pointer transition-opacity hover:opacity-70 relative group"
                             onClick={() => openOverrideModal(staff, day)}
                             style={{
                               background: cell.bg !== "transparent" ? cell.bg : undefined,
@@ -436,7 +423,7 @@ export default function EscalasMensalPage() {
                                 {cell.label}
                               </span>
                             ) : (
-                              <span className="block text-white/10 text-[8px]">·</span>
+                              <span className="block text-muted-foreground/40 text-[8px]">·</span>
                             )}
                           </td>
                         );
@@ -450,13 +437,13 @@ export default function EscalasMensalPage() {
         )}
 
         {/* Legenda */}
-        <div className="flex flex-wrap items-center gap-4 text-[9px] font-bold uppercase tracking-widest text-white/40">
+        <div className="flex flex-wrap items-center gap-4 text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
           <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded inline-block" style={{ background: "#1c1c1c", border: "1px solid rgba(255,255,255,0.1)" }} />
+            <span className="w-3 h-3 rounded inline-block" style={{ background: "var(--t-glass)", border: "1px solid var(--t-border)" }} />
             Trabalho
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded inline-block" style={{ background: "#854d0e" }} />
+            <span className="w-3 h-3 rounded inline-block" style={{ background: "var(--t-amber-bg)", border: "1px solid var(--t-amber-border)" }} />
             Horário diferenciado
           </span>
           <span className="flex items-center gap-1.5">
@@ -472,45 +459,34 @@ export default function EscalasMensalPage() {
             Override pontual
           </span>
         </div>
-      </div>
+      </PageShell>
 
       {/* Modal de edição de dia */}
       {modal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#111] border border-white/10 rounded-2xl p-6 w-full max-w-sm space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold">
-                  {modal.date ? `${DOW_PT[modal.dayOfWeek!]} ${modal.date ? new Date(modal.date + 'T00:00:00').toLocaleDateString('pt-BR') : ''}` : ''}
-                </p>
-                <p className="text-white font-bold text-sm mt-0.5">{modal.staffName}</p>
-              </div>
-              <button onClick={() => setModal(null)} className="p-2 text-white/30 hover:text-white rounded-xl hover:bg-white/5">
-                <X size={18} />
-              </button>
-            </div>
+        <Dialog open onClose={() => setModal(null)} presentation="auto" size="sm" title={modal.staffName} subtitle={<>{modal.date ? `${DOW_PT[modal.dayOfWeek!]} ${modal.date ? new Date(modal.date + 'T00:00:00').toLocaleDateString('pt-BR') : ''}` : ''}</>}>
+          <div className="space-y-5">
 
             {modal.date && (
               <div className="space-y-4">
                 <label className="flex items-center gap-3 cursor-pointer">
                   <div
                     onClick={() => setModalIsFolga(f => !f)}
-                    className={`w-10 h-5 rounded-full transition-colors relative ${modalIsFolga ? 'bg-red-500' : 'bg-white/10'}`}
+                    className={`w-10 h-5 rounded-full transition-colors relative ${modalIsFolga ? 'bg-red-500' : 'bg-secondary'}`}
                   >
                     <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${modalIsFolga ? 'left-5' : 'left-0.5'}`} />
                   </div>
-                  <span className="text-sm font-bold text-white/70">Marcar como folga</span>
+                  <span className="text-sm font-bold text-foreground/80">Marcar como folga</span>
                 </label>
 
                 {modalIsFolga && (
                   <label className="flex items-center gap-3 cursor-pointer">
                     <div
                       onClick={() => setModalReason(r => r === "Banco de horas" ? "" : "Banco de horas")}
-                      className={`w-10 h-5 rounded-full transition-colors relative ${modalReason === "Banco de horas" ? 'bg-yellow-500' : 'bg-white/10'}`}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${modalReason === "Banco de horas" ? 'bg-yellow-500' : 'bg-secondary'}`}
                     >
                       <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${modalReason === "Banco de horas" ? 'left-5' : 'left-0.5'}`} />
                     </div>
-                    <span className="text-sm font-bold text-white/70">Banco de horas</span>
+                    <span className="text-sm font-bold text-foreground/80">Banco de horas</span>
                   </label>
                 )}
               </div>
@@ -555,14 +531,14 @@ export default function EscalasMensalPage() {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#E0FFFF]/10 border border-[#E0FFFF]/20 text-[#E0FFFF] text-xs font-bold uppercase tracking-wide hover:bg-[#E0FFFF]/20 transition-all disabled:opacity-50"
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary/10 border border-primary/30 text-primary text-xs font-bold uppercase tracking-wide hover:bg-primary/20 transition-all disabled:opacity-50"
               >
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 Salvar
               </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
     </RoleGuard>
   );

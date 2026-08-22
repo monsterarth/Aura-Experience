@@ -1,5 +1,7 @@
 "use client";
 
+import { PageShell, PageHeader, Button, Dialog, SkeletonTable, EmptyState } from "@/components/aura";
+
 import React, { useState, useEffect, useCallback } from "react";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { useAuth } from "@/context/AuthContext";
@@ -12,7 +14,7 @@ import {
 import { resolveEffectiveDaySchedule, calculateScheduleForDate } from "@/lib/schedule-calculator";
 import {
   ChevronLeft, ChevronRight, X, Save, Loader2,
-  ClipboardCheck, AlertCircle, Settings, Plus, Trash2,
+  ClipboardCheck, AlertCircle, Settings, Plus, Trash2, CalendarDays,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -453,28 +455,19 @@ export default function EscalasPage() {
 
   return (
     <RoleGuard allowedRoles={["super_admin", "admin", "manager"]}>
-      <div className="space-y-6 max-w-[1400px] mx-auto">
+      <PageShell maxWidth="full">
 
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <ClipboardCheck size={28} className="text-[#E0FFFF]" />
-            <div>
-              <h1 className="text-2xl font-black text-white uppercase tracking-widest">Escalas</h1>
-              <p className="text-xs text-white/40 tracking-wide">Gestão de turnos e folgas da equipe</p>
-            </div>
-          </div>
-          <Link
-            href="/admin/escalas/mensal"
-            className="text-[10px] font-black text-[#00BFFF] uppercase tracking-widest hover:opacity-70 transition-opacity px-3 py-2.5 border border-[#00BFFF]/20 rounded-xl"
-          >
-            Ver mês
-          </Link>
-
+        <PageHeader
+          icon={ClipboardCheck}
+          title="Escalas"
+          subtitle="Gestão de turnos e folgas da equipe"
+          actions={(<>
+          <Button variant="secondary" icon={CalendarDays} href="/admin/escalas/mensal">Ver mês</Button>
           <select
             value={filterRole}
             onChange={e => setFilterRole(e.target.value)}
-            className="bg-[#111] border border-white/10 text-white/80 text-xs font-bold rounded-xl px-4 py-2.5 outline-none uppercase tracking-wide"
+            className="field-input"
+            style={{ width: "auto", minWidth: 180 }}
           >
             <option value="all">Todos os cargos</option>
             <optgroup label="Setores">
@@ -487,28 +480,29 @@ export default function EscalasPage() {
               ))}
             </optgroup>
           </select>
-        </div>
+          </>)}
+        />
 
         {/* Navegação de semana */}
-        <div className="flex items-center gap-4 bg-[#111] border border-white/10 rounded-2xl px-4 py-3 w-fit">
+        <div className="flex items-center gap-4 bg-card border border-border rounded-2xl px-4 py-3 w-fit">
           <button
             onClick={() => setWeekStart(w => addDays(w, -7))}
-            className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-all"
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
           >
             <ChevronLeft size={18} />
           </button>
-          <span className="text-sm font-bold text-white/80 tracking-wide">
+          <span className="text-sm font-bold text-foreground tracking-wide">
             {formatDate(weekStart)} — {formatDate(addDays(weekStart, 6))}
           </span>
           <button
             onClick={() => setWeekStart(w => addDays(w, 7))}
-            className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/10 transition-all"
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
           >
             <ChevronRight size={18} />
           </button>
           <button
             onClick={() => setWeekStart(getMonday(new Date()))}
-            className="text-[10px] font-black text-[#00BFFF] uppercase tracking-widest hover:opacity-70 transition-opacity ml-2"
+            className="text-[10px] font-black text-primary uppercase tracking-widest hover:opacity-70 transition-opacity ml-2"
           >
             Hoje
           </button>
@@ -516,28 +510,23 @@ export default function EscalasPage() {
 
         {/* Grade de escalas */}
         {loading ? (
-          <div className="flex items-center justify-center py-24">
-            <Loader2 size={32} className="animate-spin text-[#E0FFFF]/40" />
-          </div>
+          <SkeletonTable rows={6} cols={8} />
         ) : filteredStaff.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-white/30 gap-2">
-            <AlertCircle size={32} />
-            <p className="text-sm font-bold uppercase tracking-widest">Nenhum funcionário encontrado</p>
-          </div>
+          <EmptyState icon={AlertCircle} title="Nenhum funcionário encontrado" description="Ajuste o filtro de cargo ou cadastre a equipe." />
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-white/10">
+          <div className="overflow-x-auto rounded-2xl border border-border">
             <table className="w-full text-xs border-collapse">
               <thead>
-                <tr className="bg-[#0e0e0e]">
-                  <th className="text-left px-4 py-3 text-white/40 font-black uppercase tracking-widest text-[10px] border-b border-white/5 min-w-[150px] sticky left-0 z-10 bg-[#0e0e0e]">
+                <tr className="bg-card">
+                  <th className="text-left px-4 py-3 text-muted-foreground font-black uppercase tracking-widest text-[10px] border-b border-border min-w-[150px] sticky left-0 z-10 bg-card">
                     Funcionário
                   </th>
                   {weekDays.map((day, i) => {
                     const isToday = toLocalYMD(day) === toLocalYMD(new Date());
                     return (
-                      <th key={i} className={`px-3 py-3 font-black uppercase tracking-widest text-[10px] border-b border-l border-white/5 text-center ${isToday ? 'text-[#00BFFF]' : 'text-white/40'}`}>
+                      <th key={i} className={`px-3 py-3 font-black uppercase tracking-widest text-[10px] border-b border-l border-border text-center ${isToday ? 'text-primary' : 'text-muted-foreground'}`}>
                         <div>{DAY_LABELS[day.getDay()]}</div>
-                        <div className={`text-[9px] font-bold mt-0.5 ${isToday ? 'text-[#00BFFF]/70' : 'text-white/20'}`}>{formatDate(day)}</div>
+                        <div className={`text-[9px] font-bold mt-0.5 ${isToday ? 'text-primary/70' : 'text-muted-foreground/50'}`}>{formatDate(day)}</div>
                       </th>
                     );
                   })}
@@ -547,25 +536,25 @@ export default function EscalasPage() {
                 {filteredStaff.map((staff) => {
                   const staffCheckpoints = checkpoints.filter(c => c.staffId === staff.id);
                   return (
-                    <tr key={staff.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                    <tr key={staff.id} className="border-b border-border hover:bg-secondary/40 transition-colors">
                       {/* Funcionário */}
-                      <td className="px-4 py-3 sticky left-0 z-10 bg-[#111] border-r border-white/5">
+                      <td className="px-4 py-3 sticky left-0 z-10 bg-card border-r border-border">
                         <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-[#1c1c1c] border border-white/10 flex items-center justify-center text-[10px] font-black text-[#E0FFFF] shrink-0 overflow-hidden">
+                          <div className="w-7 h-7 rounded-full bg-card border border-border flex items-center justify-center text-[10px] font-black text-primary shrink-0 overflow-hidden">
                             {staff.profilePictureUrl
                               ? <img src={staff.profilePictureUrl} alt="" className="w-full h-full object-cover" />
                               : staff.fullName.charAt(0)
                             }
                           </div>
                           <div className="min-w-0">
-                            <p className="font-bold text-white/80 truncate text-[11px]">{staff.fullName}</p>
-                            <p className="text-white/30 text-[9px] uppercase tracking-wide">{ROLE_LABELS[staff.role] || staff.role}</p>
+                            <p className="font-bold text-foreground truncate text-[11px]">{staff.fullName}</p>
+                            <p className="text-muted-foreground/70 text-[9px] uppercase tracking-wide">{ROLE_LABELS[staff.role] || staff.role}</p>
                             {staff.scheduleType ? (
-                              <p className="text-[#00BFFF]/60 text-[8px] font-black uppercase tracking-wide">
+                              <p className="text-primary/60 text-[8px] font-black uppercase tracking-wide">
                                 {SCHEDULE_TYPE_LABELS[staff.scheduleType]}
                               </p>
                             ) : (
-                              <p className="text-white/20 text-[8px] uppercase tracking-wide">Sem escala</p>
+                              <p className="text-muted-foreground/50 text-[8px] uppercase tracking-wide">Sem escala</p>
                             )}
                           </div>
                         </div>
@@ -613,26 +602,26 @@ export default function EscalasPage() {
                           }
                         } else if (resolved.source === 'not-configured') {
                           cellContent = (
-                            <span className="text-white/15 text-[9px]">—</span>
+                            <span className="text-foreground/15 text-[9px]">—</span>
                           );
                         } else if (resolved.isWork) {
-                          cellStyle = "bg-[#111]";
+                          cellStyle = "bg-card";
                           cellContent = (
-                            <span className="text-white/50 font-bold text-[9px]">
+                            <span className="text-muted-foreground font-bold text-[9px]">
                               {resolved.startTime}–{resolved.endTime}
                             </span>
                           );
                         } else {
-                          cellStyle = "bg-white/[0.03]";
+                          cellStyle = "bg-secondary/40";
                           cellContent = (
-                            <span className="text-white/20 text-[9px]">Folga</span>
+                            <span className="text-muted-foreground/50 text-[9px]">Folga</span>
                           );
                         }
 
                         return (
                           <td
                             key={i}
-                            className={`border-l border-white/5 px-2 py-2 text-center cursor-pointer transition-all hover:opacity-80 ${isToday ? 'ring-1 ring-inset ring-[#00BFFF]/20' : ''}`}
+                            className={`border-l border-border px-2 py-2 text-center cursor-pointer transition-all hover:opacity-80 ${isToday ? 'ring-1 ring-inset ring-primary/20' : ''}`}
                             onClick={() => openOverrideModal(staff, day)}
                             title={resolved.reason ? `${resolved.reason}` : `Editar ${DAY_LABELS_FULL[day.getDay()]} ${formatDate(day)}`}
                           >
@@ -655,43 +644,43 @@ export default function EscalasPage() {
 
         {/* Legenda */}
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pt-2">
-          <div className="flex items-center gap-4 text-[10px] font-bold uppercase tracking-widest text-white/40">
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[#111] border border-white/10 inline-block" />Trabalho</span>
+          <div className="flex items-center gap-4 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-card border border-border inline-block" />Trabalho</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-950/50 border border-blue-900/30 inline-block" />Override</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-950/30 border border-red-900/30 inline-block" />Folga (override)</span>
-            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-white/[0.03] border border-white/10 inline-block" />Folga (calculada)</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-secondary/40 border border-border inline-block" />Folga (calculada)</span>
           </div>
-          <p className="text-[10px] text-white/30">Clique em uma célula para ajustar o dia.</p>
+          <p className="text-[10px] text-muted-foreground/70">Clique em uma célula para ajustar o dia.</p>
         </div>
 
         {/* Cards de configuração por funcionário */}
         {filteredStaff.length > 0 && (
           <div className="space-y-2">
-            <h2 className="text-[10px] font-black uppercase tracking-widest text-white/40 pt-4 border-t border-white/5">
+            <h2 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground pt-4 border-t border-border">
               Configuração de Escalas
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {filteredStaff.map(staff => {
                 const staffCheckpoints = checkpoints.filter(c => c.staffId === staff.id);
                 return (
-                  <div key={staff.id} className="bg-[#111] border border-white/10 rounded-2xl p-4 space-y-3">
+                  <div key={staff.id} className="bg-card border border-border rounded-2xl p-4 space-y-3">
                     {/* Header do card */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-[#1c1c1c] border border-white/10 flex items-center justify-center text-[10px] font-black text-[#E0FFFF] shrink-0 overflow-hidden">
+                        <div className="w-7 h-7 rounded-full bg-card border border-border flex items-center justify-center text-[10px] font-black text-primary shrink-0 overflow-hidden">
                           {staff.profilePictureUrl
                             ? <img src={staff.profilePictureUrl} alt="" className="w-full h-full object-cover" />
                             : staff.fullName.charAt(0)
                           }
                         </div>
                         <div>
-                          <p className="font-bold text-white/80 text-[11px]">{staff.fullName}</p>
-                          <p className="text-white/30 text-[9px] uppercase tracking-wide">{ROLE_LABELS[staff.role] || staff.role}</p>
+                          <p className="font-bold text-foreground text-[11px]">{staff.fullName}</p>
+                          <p className="text-muted-foreground/70 text-[9px] uppercase tracking-wide">{ROLE_LABELS[staff.role] || staff.role}</p>
                         </div>
                       </div>
                       <button
                         onClick={() => openConfigModal(staff)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 text-white/40 hover:text-white/80 hover:border-white/20 text-[9px] font-black uppercase tracking-wide transition-all"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground/80 hover:border-border text-[9px] font-black uppercase tracking-wide transition-all"
                       >
                         <Settings size={10} />
                         Tipo
@@ -707,16 +696,16 @@ export default function EscalasPage() {
                             <button
                               key={dow}
                               onClick={() => openBaseModal(staff, dow)}
-                              className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border transition-all hover:opacity-80 ${sched ? 'bg-[#1a1a1a] border-white/10' : 'border-dashed border-white/10 hover:border-white/20'}`}
+                              className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border transition-all hover:opacity-80 ${sched ? 'bg-[#1a1a1a] border-border' : 'border-dashed border-border hover:border-border'}`}
                               title={DAY_LABELS_FULL[dow]}
                             >
-                              <span className="text-[8px] font-black uppercase text-white/40">{label}</span>
+                              <span className="text-[8px] font-black uppercase text-muted-foreground">{label}</span>
                               {sched ? (
-                                <span className="text-[7px] text-white/50 font-bold leading-tight text-center">
+                                <span className="text-[7px] text-muted-foreground font-bold leading-tight text-center">
                                   {sched.startTime.slice(0, 5)}<br />{sched.endTime.slice(0, 5)}
                                 </span>
                               ) : (
-                                <span className="text-white/15 text-[8px]">+</span>
+                                <span className="text-foreground/15 text-[8px]">+</span>
                               )}
                             </button>
                           );
@@ -738,19 +727,19 @@ export default function EscalasPage() {
                                   isFixedOff
                                     ? 'border-dashed border-amber-900/30 bg-amber-950/20'
                                     : isWork
-                                    ? 'bg-[#1a1a1a] border-white/10'
-                                    : 'border-dashed border-white/5'
+                                    ? 'bg-[#1a1a1a] border-border'
+                                    : 'border-dashed border-border'
                                 }`}
                               >
-                                <span className="text-[8px] font-black uppercase text-white/40">{label}</span>
+                                <span className="text-[8px] font-black uppercase text-muted-foreground">{label}</span>
                                 {isFixedOff ? (
                                   <span className="text-amber-600/60 text-[7px] font-bold">Folga</span>
                                 ) : isWork ? (
-                                  <span className="text-[7px] text-white/50 font-bold leading-tight text-center">
+                                  <span className="text-[7px] text-muted-foreground font-bold leading-tight text-center">
                                     {cfg.startTime}<br />{cfg.endTime}
                                   </span>
                                 ) : (
-                                  <span className="text-white/15 text-[8px]">—</span>
+                                  <span className="text-foreground/15 text-[8px]">—</span>
                                 )}
                               </div>
                             );
@@ -761,7 +750,7 @@ export default function EscalasPage() {
 
                     {(staff.scheduleType === '12x36' || staff.scheduleType === '6x1') && staff.scheduleConfig && (
                       <div className="space-y-1">
-                        <p className="text-[9px] text-white/30 font-bold uppercase tracking-wide">
+                        <p className="text-[9px] text-muted-foreground/70 font-bold uppercase tracking-wide">
                           Ciclo desta semana
                         </p>
                         <div className="grid grid-cols-7 gap-1">
@@ -772,22 +761,22 @@ export default function EscalasPage() {
                             return (
                               <div
                                 key={i}
-                                className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border ${result.isWork ? 'bg-[#1a1a1a] border-white/10' : 'border-dashed border-white/5'}`}
+                                className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border ${result.isWork ? 'bg-[#1a1a1a] border-border' : 'border-dashed border-border'}`}
                               >
-                                <span className="text-[8px] font-black uppercase text-white/40">{label}</span>
+                                <span className="text-[8px] font-black uppercase text-muted-foreground">{label}</span>
                                 {result.isWork ? (
-                                  <span className="text-[7px] text-white/50 font-bold leading-tight text-center">
+                                  <span className="text-[7px] text-muted-foreground font-bold leading-tight text-center">
                                     {result.startTime}<br />{result.endTime}
                                   </span>
                                 ) : (
-                                  <span className="text-white/15 text-[8px]">—</span>
+                                  <span className="text-foreground/15 text-[8px]">—</span>
                                 )}
                               </div>
                             );
                           })}
                         </div>
                         {staffCheckpoints.length > 0 && (
-                          <p className="text-[8px] text-white/20">
+                          <p className="text-[8px] text-muted-foreground/50">
                             {staffCheckpoints.length} checkpoint{staffCheckpoints.length > 1 ? 's' : ''} de ciclo
                           </p>
                         )}
@@ -799,48 +788,37 @@ export default function EscalasPage() {
             </div>
           </div>
         )}
-      </div>
+      </PageShell>
 
       {/* Modal de edição de dia */}
       {modal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#111] border border-white/10 rounded-2xl p-6 w-full max-w-sm space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold">
-                  {modal.date
+        <Dialog open onClose={() => setModal(null)} presentation="auto" size="sm" title={modal.staffName} subtitle={<>{modal.date
                     ? `${DAY_LABELS_FULL[modal.dayOfWeek!]} ${modal.date ? new Date(modal.date + 'T00:00:00').toLocaleDateString('pt-BR') : ''}`
                     : `Escala base — ${DAY_LABELS_FULL[modal.dayOfWeek!]}`
-                  }
-                </p>
-                <p className="text-white font-bold text-sm mt-0.5">{modal.staffName}</p>
-              </div>
-              <button onClick={() => setModal(null)} className="p-2 text-white/30 hover:text-white rounded-xl hover:bg-white/5">
-                <X size={18} />
-              </button>
-            </div>
+                  }</>}>
+          <div className="space-y-5">
 
             {modal.date && (
               <div className="space-y-4">
                 <label className="flex items-center gap-3 cursor-pointer">
                   <div
                     onClick={() => setModalIsFolga(f => !f)}
-                    className={`w-10 h-5 rounded-full transition-colors relative ${modalIsFolga ? 'bg-red-500' : 'bg-white/10'}`}
+                    className={`w-10 h-5 rounded-full transition-colors relative ${modalIsFolga ? 'bg-red-500' : 'bg-secondary'}`}
                   >
                     <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${modalIsFolga ? 'left-5' : 'left-0.5'}`} />
                   </div>
-                  <span className="text-sm font-bold text-white/70">Marcar como folga</span>
+                  <span className="text-sm font-bold text-foreground/80">Marcar como folga</span>
                 </label>
 
                 {modalIsFolga && (
                   <label className="flex items-center gap-3 cursor-pointer">
                     <div
                       onClick={() => setModalReason(r => r === "Banco de horas" ? "" : "Banco de horas")}
-                      className={`w-10 h-5 rounded-full transition-colors relative ${modalReason === "Banco de horas" ? 'bg-yellow-500' : 'bg-white/10'}`}
+                      className={`w-10 h-5 rounded-full transition-colors relative ${modalReason === "Banco de horas" ? 'bg-yellow-500' : 'bg-secondary'}`}
                     >
                       <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${modalReason === "Banco de horas" ? 'left-5' : 'left-0.5'}`} />
                     </div>
-                    <span className="text-sm font-bold text-white/70">Banco de horas</span>
+                    <span className="text-sm font-bold text-foreground/80">Banco de horas</span>
                   </label>
                 )}
               </div>
@@ -873,7 +851,7 @@ export default function EscalasPage() {
             )}
 
             {modal.date && modal.existingSchedule && (
-              <p className="text-[10px] text-white/30">
+              <p className="text-[10px] text-muted-foreground/70">
                 Escala base: {modal.existingSchedule.startTime.slice(0, 5)}–{modal.existingSchedule.endTime.slice(0, 5)}
               </p>
             )}
@@ -891,29 +869,20 @@ export default function EscalasPage() {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#E0FFFF]/10 border border-[#E0FFFF]/20 text-[#E0FFFF] text-xs font-bold uppercase tracking-wide hover:bg-[#E0FFFF]/20 transition-all disabled:opacity-50"
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary/10 border border-primary/30 text-primary text-xs font-bold uppercase tracking-wide hover:bg-primary/20 transition-all disabled:opacity-50"
               >
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 Salvar
               </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {/* Modal de configuração de tipo de escala */}
       {configModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#111] border border-white/10 rounded-2xl p-6 w-full max-w-md space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold">Tipo de Escala</p>
-                <p className="text-white font-bold text-sm mt-0.5">{configModal.staff.fullName}</p>
-              </div>
-              <button onClick={() => setConfigModal(null)} className="p-2 text-white/30 hover:text-white rounded-xl hover:bg-white/5">
-                <X size={18} />
-              </button>
-            </div>
+        <Dialog open onClose={() => setConfigModal(null)} presentation="auto" size="md" title={configModal.staff.fullName} subtitle="Tipo de escala">
+          <div className="space-y-5">
 
             <div className="space-y-1.5">
               <label className="field-label">Tipo de escala</label>
@@ -953,7 +922,7 @@ export default function EscalasPage() {
                   onChange={e => setConfigRefDate(e.target.value)}
                   className="field-input w-full"
                 />
-                <p className="text-[10px] text-white/30">
+                <p className="text-[10px] text-muted-foreground/70">
                   {configType === '12x36'
                     ? 'Data em que o funcionário TRABALHA. Os checkpoints abaixo sobrepõem esta referência quando necessário.'
                     : 'Primeiro dia de uma sequência de 6 dias de trabalho.'}
@@ -962,7 +931,7 @@ export default function EscalasPage() {
             )}
 
             {configType === 'custom' && (
-              <p className="text-[10px] text-white/30">
+              <p className="text-[10px] text-muted-foreground/70">
                 Configure os dias e horários individualmente nos botões da grade abaixo do card do funcionário.
               </p>
             )}
@@ -980,7 +949,7 @@ export default function EscalasPage() {
                     <option key={i} value={i}>{name}</option>
                   ))}
                 </select>
-                <p className="text-[10px] text-white/30">
+                <p className="text-[10px] text-muted-foreground/70">
                   Dia da semana que sempre será folga, independente do ciclo. Overrides pontuais têm prioridade.
                 </p>
               </div>
@@ -991,16 +960,16 @@ export default function EscalasPage() {
               // Para 5x2: dias 1-5; para 6x1/12x36: Dom-Sáb
               const dows = configType === '5x2' ? [1, 2, 3, 4, 5] : [0, 1, 2, 3, 4, 5, 6];
               return (
-                <div className="space-y-2 pt-2 border-t border-white/10">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-white/40">Horário por dia da semana</p>
-                  <p className="text-[10px] text-white/30">Clique <span className="font-bold">+</span> em um dia para definir um horário diferente. Deixe sem override para usar o padrão.</p>
+                <div className="space-y-2 pt-2 border-t border-border">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Horário por dia da semana</p>
+                  <p className="text-[10px] text-muted-foreground/70">Clique <span className="font-bold">+</span> em um dia para definir um horário diferente. Deixe sem override para usar o padrão.</p>
                   <div className={`grid gap-2 ${configType === '5x2' ? 'grid-cols-5' : 'grid-cols-7'}`}>
                     {dows.map(dow => {
                       const hasOverride = !!configWeekdayOverrides[dow];
                       return (
                         <div key={dow} className="space-y-1">
                           <div className="flex items-center justify-between">
-                            <span className="text-[9px] font-black uppercase text-white/50">{DAY_LABELS[dow]}</span>
+                            <span className="text-[9px] font-black uppercase text-muted-foreground">{DAY_LABELS[dow]}</span>
                             <button
                               type="button"
                               onClick={() => {
@@ -1011,7 +980,7 @@ export default function EscalasPage() {
                                   return next;
                                 });
                               }}
-                              className={`text-[8px] font-black px-1 py-0.5 rounded transition-colors ${hasOverride ? 'text-[#00BFFF] bg-[#00BFFF]/10' : 'text-white/20 hover:text-white/50'}`}
+                              className={`text-[8px] font-black px-1 py-0.5 rounded transition-colors ${hasOverride ? 'text-primary bg-primary/10' : 'text-muted-foreground/50 hover:text-foreground/50'}`}
                             >
                               {hasOverride ? '✓' : '+'}
                             </button>
@@ -1048,13 +1017,13 @@ export default function EscalasPage() {
 
             {/* Regra de domingo para 6x1 — ciclo 3 trabalha / 1 folga */}
             {configType === '6x1' && (
-              <div className="space-y-2 pt-2 border-t border-white/10">
-                <p className="text-[10px] font-black uppercase tracking-widest text-white/40">Regra de Domingo</p>
+              <div className="space-y-2 pt-2 border-t border-border">
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Regra de Domingo</p>
                 <label className="flex items-start gap-3 cursor-pointer group">
                   <div
                     onClick={() => setConfigSundayOffCycle(v => !v)}
                     className={`mt-0.5 w-9 h-5 rounded-full transition-colors relative flex-shrink-0 ${
-                      configSundayOffCycle ? 'bg-[#00BFFF]' : 'bg-white/10'
+                      configSundayOffCycle ? 'bg-primary' : 'bg-secondary'
                     }`}
                   >
                     <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${
@@ -1062,8 +1031,8 @@ export default function EscalasPage() {
                     }`} />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-white/70">Ciclo de domingo: trabalha 3, folga 1</p>
-                    <p className="text-[10px] text-white/30 mt-0.5">
+                    <p className="text-xs font-bold text-foreground/80">Ciclo de domingo: trabalha 3, folga 1</p>
+                    <p className="text-[10px] text-muted-foreground/70 mt-0.5">
                       O colaborador folga no 4º domingo de cada ciclo, contando a partir da data de referência inicial. Overrides pontuais têm prioridade.
                     </p>
                   </div>
@@ -1071,7 +1040,7 @@ export default function EscalasPage() {
               </div>
             )}
 
-            <div className="space-y-1.5 border-t border-white/10 pt-3">
+            <div className="space-y-1.5 border-t border-border pt-3">
               <label className="field-label">A partir de qual data esta regra vale?</label>
               <input
                 type="date"
@@ -1079,7 +1048,7 @@ export default function EscalasPage() {
                 onChange={e => setConfigEffectiveDate(e.target.value)}
                 className="field-input w-full"
               />
-              <p className="text-[10px] text-white/30">
+              <p className="text-[10px] text-muted-foreground/70">
                 Se a regra anterior já estava em uso, ela será guardada no histórico e manterá o cálculo passado correto.
               </p>
             </div>
@@ -1088,7 +1057,7 @@ export default function EscalasPage() {
               <button
                 onClick={handleSaveConfig}
                 disabled={configSaving}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#E0FFFF]/10 border border-[#E0FFFF]/20 text-[#E0FFFF] text-xs font-bold uppercase tracking-wide hover:bg-[#E0FFFF]/20 transition-all disabled:opacity-50"
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary/10 border border-primary/30 text-primary text-xs font-bold uppercase tracking-wide hover:bg-primary/20 transition-all disabled:opacity-50"
               >
                 {configSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 Salvar tipo
@@ -1097,9 +1066,9 @@ export default function EscalasPage() {
 
             {/* Seção de checkpoints — apenas para 12x36 e 6x1 */}
             {(configType === '12x36' || configType === '6x1') && (
-              <div className="space-y-3 pt-2 border-t border-white/10">
+              <div className="space-y-3 pt-2 border-t border-border">
                 <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-white/40">Histórico de Ciclo</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Histórico de Ciclo</p>
                   <div className="flex gap-2">
                     {configModal.staff.scheduleType && (configModal.staff.scheduleType === '12x36' || configModal.staff.scheduleType === '6x1') && (
                       <button
@@ -1111,7 +1080,7 @@ export default function EscalasPage() {
                     )}
                     <button
                       onClick={() => { setShowCheckpointForm(f => !f); setCpEffectiveDate(""); setCpReferenceDate(""); setCpNote(""); }}
-                      className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wide text-[#00BFFF]/70 hover:text-[#00BFFF] transition-colors px-2 py-1 rounded-lg border border-[#00BFFF]/20 hover:border-[#00BFFF]/40"
+                      className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wide text-primary/70 hover:text-primary transition-colors px-2 py-1 rounded-lg border border-primary/20 hover:border-primary/40"
                     >
                       <Plus size={10} />
                       Adicionar
@@ -1121,8 +1090,8 @@ export default function EscalasPage() {
 
                 {/* Form inline de novo checkpoint */}
                 {showCheckpointForm && (
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-4 space-y-3">
-                    <p className="text-[9px] font-black uppercase tracking-wide text-white/40">Novo checkpoint</p>
+                  <div className="bg-secondary/60 border border-border rounded-xl p-4 space-y-3">
+                    <p className="text-[9px] font-black uppercase tracking-wide text-muted-foreground">Novo checkpoint</p>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
                         <label className="field-label">A partir de</label>
@@ -1132,7 +1101,7 @@ export default function EscalasPage() {
                           onChange={e => setCpEffectiveDate(e.target.value)}
                           className="field-input w-full"
                         />
-                        <p className="text-[9px] text-white/25">Quando entra em vigor</p>
+                        <p className="text-[9px] text-foreground/25">Quando entra em vigor</p>
                       </div>
                       <div className="space-y-1">
                         <label className="field-label">Dia de referência</label>
@@ -1142,7 +1111,7 @@ export default function EscalasPage() {
                           onChange={e => setCpReferenceDate(e.target.value)}
                           className="field-input w-full"
                         />
-                        <p className="text-[9px] text-white/25">
+                        <p className="text-[9px] text-foreground/25">
                           {configType === '12x36' ? 'Dia que TRABALHA' : '1º dia do ciclo de 6'}
                         </p>
                       </div>
@@ -1160,14 +1129,14 @@ export default function EscalasPage() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => setShowCheckpointForm(false)}
-                        className="flex-1 py-2 rounded-xl border border-white/10 text-white/40 text-xs font-bold hover:bg-white/5 transition-all"
+                        className="flex-1 py-2 rounded-xl border border-border text-muted-foreground text-xs font-bold hover:bg-secondary/60 transition-all"
                       >
                         Cancelar
                       </button>
                       <button
                         onClick={handleSaveCheckpoint}
                         disabled={cpSaving}
-                        className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-[#E0FFFF]/10 border border-[#E0FFFF]/20 text-[#E0FFFF] text-xs font-bold hover:bg-[#E0FFFF]/20 transition-all disabled:opacity-50"
+                        className="flex-1 flex items-center justify-center gap-2 py-2 rounded-xl bg-primary/10 border border-primary/30 text-primary text-xs font-bold hover:bg-primary/20 transition-all disabled:opacity-50"
                       >
                         {cpSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
                         Salvar
@@ -1178,26 +1147,26 @@ export default function EscalasPage() {
 
                 {/* Lista de checkpoints existentes */}
                 {staffCheckpointsForModal.length === 0 ? (
-                  <p className="text-[10px] text-white/20 text-center py-3">
+                  <p className="text-[10px] text-muted-foreground/50 text-center py-3">
                     Nenhum checkpoint. A referência inicial do tipo é usada.
                   </p>
                 ) : (
                   <div className="space-y-2">
                     {staffCheckpointsForModal.map(cp => (
-                      <div key={cp.id} className="flex items-start justify-between gap-3 bg-white/[0.03] border border-white/[0.06] rounded-xl px-3 py-2.5">
+                      <div key={cp.id} className="flex items-start justify-between gap-3 bg-secondary/40 border border-border rounded-xl px-3 py-2.5">
                         <div className="space-y-0.5 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-black text-white/70">A partir de {formatDateFull(cp.effectiveDate)}</span>
+                            <span className="text-[10px] font-black text-foreground/80">A partir de {formatDateFull(cp.effectiveDate)}</span>
                             {cp.effectiveDate > toLocalYMD(new Date()) && (
-                              <span className="text-[8px] font-black uppercase tracking-wide text-[#00BFFF]/60 bg-[#00BFFF]/10 px-1.5 py-0.5 rounded-full">Futuro</span>
+                              <span className="text-[8px] font-black uppercase tracking-wide text-primary/60 bg-primary/10 px-1.5 py-0.5 rounded-full">Futuro</span>
                             )}
                           </div>
-                          <p className="text-[9px] text-white/40">Ref: {formatDateFull(cp.referenceDate)}</p>
-                          {cp.note && <p className="text-[9px] text-white/30 truncate">{cp.note}</p>}
+                          <p className="text-[9px] text-muted-foreground">Ref: {formatDateFull(cp.referenceDate)}</p>
+                          {cp.note && <p className="text-[9px] text-muted-foreground/70 truncate">{cp.note}</p>}
                         </div>
                         <button
                           onClick={() => handleDeleteCheckpoint(cp.id)}
-                          className="text-white/20 hover:text-red-400 transition-colors shrink-0 p-1"
+                          className="text-muted-foreground/50 hover:text-red-400 transition-colors shrink-0 p-1"
                         >
                           <Trash2 size={12} />
                         </button>
@@ -1208,7 +1177,7 @@ export default function EscalasPage() {
               </div>
             )}
           </div>
-        </div>
+        </Dialog>
       )}
     </RoleGuard>
   );
