@@ -71,3 +71,23 @@ this is mechanical and low-risk — a good first move.
 - Don't change behavior while splitting — pure extraction first, improvements later.
 - When moving logic into services, prefer extending an existing `*-service.ts` over creating
   parallel helpers.
+
+## Status (revamp de UI, 22/08/2026)
+
+Boa parte do split previsto aqui aconteceu junto com a migração do admin para o kit Aura
+(`src/components/aura`, ver `src/app/admin/CLAUDE.md`). Páginas que ganharam `_components/`
+(hook de dados/realtime + partes visuais + diálogos em arquivos próprios):
+
+- `stays` (piloto), `stays/[stayId]`, `stays/new`, `hr`, `reception`, `guests`,
+  `concierge` (2088 → ~230 linhas no page.tsx), `food-and-beverage/orders` e `menu`,
+  `cafe-salao`, `calendario`, `eventos`, `estruturas/bookings`, `casamentos` (já tinha).
+- Mega-modais: `StayDetailsModal`, `GuestContactModal`, `LeadDrawer`, `NewQuoteWizard` e todos os
+  modais de `src/components/admin/*` agora são cascas do `Dialog` do kit (conteúdo interno intacto).
+- Ainda monolíticas (só lift de tema/shell): `escalas` (+mensal), `cabins`, `logs`, `changelog`,
+  `resort-map`, `governance`, `maintenance/kanban`, `comercial/_components/NewQuoteWizard.tsx`
+  (1748 linhas — próximo candidato a split por etapa do wizard).
+- `src/types/aura.ts` continua um arquivo só (barrel ainda não feito).
+
+Sobras conhecidas de `fixed inset-0` fora do kit, de propósito: relatório de governança
+(impressão), `PrintReport` (impressão), lightbox de foto no kanban de manutenção e overlay de
+logout da Sidebar.
