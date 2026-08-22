@@ -6,6 +6,7 @@ import {
   Users, Clock, Cake, Palmtree, ArrowRight, Loader2,
   Download, Plus, Layers, Calendar, Settings, FileText,
 } from "lucide-react";
+import { T, alpha } from "@/lib/admin-tokens";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
@@ -60,23 +61,23 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const ROLE_COLORS: Record<string, { color: string; bg: string; border: string }> = {
-  governance:  { color: "#c084fc", bg: "rgba(192,132,252,0.1)",  border: "rgba(192,132,252,0.25)" },
-  reception:   { color: "#2dd4bf", bg: "rgba(45,212,191,0.1)",   border: "rgba(45,212,191,0.22)"  },
-  kitchen:     { color: "#fb923c", bg: "rgba(251,146,60,0.1)",   border: "rgba(251,146,60,0.22)"  },
-  maintenance: { color: "#f59e0b", bg: "rgba(245,158,11,0.1)",   border: "rgba(245,158,11,0.22)"  },
-  porter:      { color: "#60a5fa", bg: "rgba(96,165,250,0.1)",   border: "rgba(96,165,250,0.22)"  },
-  houseman:    { color: "#60a5fa", bg: "rgba(96,165,250,0.1)",   border: "rgba(96,165,250,0.22)"  },
-  technician:  { color: "#60a5fa", bg: "rgba(96,165,250,0.1)",   border: "rgba(96,165,250,0.22)"  },
-  marketing:   { color: "#f472b6", bg: "rgba(244,114,182,0.1)",  border: "rgba(244,114,182,0.22)" },
-  maid:        { color: "#9b6dff", bg: "rgba(155,109,255,0.1)",  border: "rgba(155,109,255,0.22)" },
-  waiter:      { color: "#4ec9d4", bg: "rgba(78,201,212,0.1)",   border: "rgba(78,201,212,0.22)"  },
-  hr:          { color: "#60a5fa", bg: "rgba(96,165,250,0.1)",   border: "rgba(96,165,250,0.22)"  },
-  admin:       { color: "#4ec9d4", bg: "rgba(78,201,212,0.1)",   border: "rgba(78,201,212,0.22)"  },
-  super_admin: { color: "#9b6dff", bg: "rgba(155,109,255,0.1)",  border: "rgba(155,109,255,0.22)" },
+  governance:  { color: T.violet, bg: T.violetBg,  border: T.violetBorder },
+  reception:   { color: T.green, bg: T.greenBg,   border: T.greenBorder  },
+  kitchen:     { color: T.orange, bg: T.orangeBg,   border: T.orangeBorder  },
+  maintenance: { color: T.amber, bg: T.amberBg,   border: T.amberBorder  },
+  porter:      { color: T.blue, bg: T.blueBg,   border: T.blueBorder  },
+  houseman:    { color: T.blue, bg: T.blueBg,   border: T.blueBorder  },
+  technician:  { color: T.blue, bg: T.blueBg,   border: T.blueBorder  },
+  marketing:   { color: T.rose, bg: T.roseBg,  border: T.roseBorder },
+  maid:        { color: T.brandText, bg: alpha(T.g1, 10),  border: alpha(T.g1, 22) },
+  waiter:      { color: T.green, bg: alpha(T.g2, 10),   border: alpha(T.g2, 22)  },
+  hr:          { color: T.blue, bg: T.blueBg,   border: T.blueBorder  },
+  admin:       { color: T.green, bg: alpha(T.g2, 10),   border: alpha(T.g2, 22)  },
+  super_admin: { color: T.brandText, bg: alpha(T.g1, 10),  border: alpha(T.g1, 22) },
 };
 
 function getRoleStyle(role: string) {
-  return ROLE_COLORS[role] ?? { color: "#9b6dff", bg: "rgba(155,109,255,0.1)", border: "rgba(155,109,255,0.22)" };
+  return ROLE_COLORS[role] ?? { color: T.brandText, bg: alpha(T.g1, 10), border: alpha(T.g1, 22) };
 }
 
 const DAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -85,7 +86,7 @@ const DAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 function Spinner() {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", minHeight: 300 }}>
-      <Loader2 size={28} style={{ color: "rgba(238,240,248,0.3)", animation: "spin 1s linear infinite" }} />
+      <Loader2 size={28} style={{ color: T.muted2, animation: "spin 1s linear infinite" }} />
     </div>
   );
 }
@@ -278,55 +279,55 @@ function HRDashboardContent() {
       value: String(activeCount),
       sub: "funcionários cadastrados",
       icon: Users,
-      color: "#9b6dff",
-      bg: "rgba(155,109,255,0.1)",
-      border: "rgba(155,109,255,0.22)",
+      color: T.brandText,
+      bg: alpha(T.g1, 10),
+      border: alpha(T.g1, 22),
     },
     {
       label: "Hoje em turno",
       value: String(todayWorking.length),
       sub: `de ${activeCount} escalados`,
       icon: Clock,
-      color: "#2dd4bf",
-      bg: "rgba(45,212,191,0.08)",
-      border: "rgba(45,212,191,0.22)",
+      color: T.green,
+      bg: T.greenBg,
+      border: T.greenBorder,
     },
     {
       label: "Aniversários",
       value: String(birthdayStaff.length),
       sub: "este mês",
       icon: Cake,
-      color: "#f472b6",
-      bg: "rgba(244,114,182,0.08)",
-      border: "rgba(244,114,182,0.22)",
+      color: T.rose,
+      bg: T.roseBg,
+      border: T.roseBorder,
     },
     {
       label: "Folgas hoje",
       value: String(folgaCount),
       sub: "registradas na semana",
       icon: Palmtree,
-      color: "#f59e0b",
-      bg: "rgba(245,158,11,0.08)",
-      border: "rgba(245,158,11,0.22)",
+      color: T.amber,
+      bg: T.amberBg,
+      border: T.amberBorder,
     },
   ];
 
   // ── Styles ───────────────────────────────────────────────────────────────
   const card: React.CSSProperties = {
-    background: "var(--card, #0b0e18)",
-    border: "1px solid rgba(255,255,255,0.07)",
+    background: T.card,
+    border: `1px solid ${T.border}`,
     borderRadius: 20,
   };
 
   const sectionHeader: React.CSSProperties = {
     fontSize: 13,
     fontWeight: 800,
-    color: "var(--foreground, #eef0f8)",
+    color: T.text,
   };
 
   const muted: React.CSSProperties = {
     fontSize: 11,
-    color: "rgba(238,240,248,0.42)",
+    color: T.muted,
   };
 
   if (loading) return <Spinner />;
@@ -344,7 +345,7 @@ function HRDashboardContent() {
         flexDirection: "column",
         gap: 22,
         scrollbarWidth: "thin",
-        scrollbarColor: "rgba(255,255,255,0.08) transparent",
+        scrollbarColor: `${T.glass3} transparent`,
       }}
     >
       {/* ── HEADER ── */}
@@ -355,16 +356,16 @@ function HRDashboardContent() {
               display: "inline-flex", alignItems: "center", gap: 3,
               fontSize: 10, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase",
               padding: "2px 8px", borderRadius: 999,
-              background: "rgba(96,165,250,0.08)", color: "#60a5fa",
-              border: "1px solid rgba(96,165,250,0.22)",
+              background: T.blueBg, color: T.blue,
+              border: `1px solid ${T.blueBorder}`,
             }}>
               RH · {currentProperty?.name ?? "Pousada"}
             </span>
           </div>
-          <h1 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-.4px", lineHeight: 1.1, color: "var(--foreground, #eef0f8)" }}>
+          <h1 style={{ fontSize: 22, fontWeight: 900, letterSpacing: "-.4px", lineHeight: 1.1, color: T.text }}>
             Dashboard{" "}
             <span style={{
-              background: "linear-gradient(135deg,#9b6dff 0%,#4ec9d4 100%)",
+              background: T.grad,
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
               backgroundClip: "text",
@@ -372,7 +373,7 @@ function HRDashboardContent() {
               Gestão
             </span>
           </h1>
-          <p style={{ fontSize: 13, color: "rgba(238,240,248,0.42)", marginTop: 5, fontWeight: 500, textTransform: "capitalize" }}>
+          <p style={{ fontSize: 13, color: T.muted, marginTop: 5, fontWeight: 500, textTransform: "capitalize" }}>
             {todayLabel} · {weekLabel}
           </p>
         </div>
@@ -382,13 +383,13 @@ function HRDashboardContent() {
             style={{
               display: "flex", alignItems: "center", gap: 7,
               padding: "9px 16px", borderRadius: 11,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(255,255,255,0.055)",
-              color: "var(--foreground, #eef0f8)", fontSize: 13, fontWeight: 700,
+              border: `1px solid ${T.border2}`,
+              background: T.glass2,
+              color: T.text, fontSize: 13, fontWeight: 700,
               textDecoration: "none",
             }}
           >
-            <Download size={14} style={{ color: "rgba(238,240,248,0.42)" }} />
+            <Download size={14} style={{ color: T.muted }} />
             Relatório
           </a>
           <a
@@ -396,7 +397,7 @@ function HRDashboardContent() {
             style={{
               display: "flex", alignItems: "center", gap: 7,
               padding: "9px 16px", borderRadius: 11, border: "none",
-              background: "linear-gradient(135deg,#9b6dff 0%,#4ec9d4 100%)",
+              background: T.grad,
               color: "#fff", fontSize: 13, fontWeight: 800,
               textDecoration: "none",
               boxShadow: "0 4px 16px rgba(155,109,255,0.35)",
@@ -431,12 +432,12 @@ function HRDashboardContent() {
                 }}>
                   <Icon size={17} style={{ color: k.color }} strokeWidth={1.8} />
                 </div>
-                <ArrowRight size={13} style={{ color: "rgba(238,240,248,0.22)" }} />
+                <ArrowRight size={13} style={{ color: T.muted2 }} />
               </div>
               <div>
                 <div style={{ fontSize: 30, fontWeight: 900, color: k.color, lineHeight: 1, letterSpacing: "-1px" }}>{k.value}</div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "var(--foreground, #eef0f8)", marginTop: 4 }}>{k.label}</div>
-                <div style={{ fontSize: 11, color: "rgba(238,240,248,0.42)", marginTop: 2 }}>{k.sub}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginTop: 4 }}>{k.label}</div>
+                <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>{k.sub}</div>
               </div>
             </div>
           );
@@ -449,16 +450,16 @@ function HRDashboardContent() {
         {/* LEFT — Equipe Hoje */}
         <div style={{ ...card, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           <div style={{
-            padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.07)",
+            padding: "16px 20px", borderBottom: `1px solid ${T.border}`,
             display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0,
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{
                 width: 32, height: 32, borderRadius: 9,
-                background: "rgba(45,212,191,0.08)", border: "1px solid rgba(45,212,191,0.22)",
+                background: T.greenBg, border: `1px solid ${T.greenBorder}`,
                 display: "flex", alignItems: "center", justifyContent: "center",
               }}>
-                <Users size={15} style={{ color: "#2dd4bf" }} />
+                <Users size={15} style={{ color: T.green }} />
               </div>
               <div>
                 <div style={sectionHeader}>Equipe Hoje</div>
@@ -475,9 +476,9 @@ function HRDashboardContent() {
                   style={{
                     padding: "5px 11px", borderRadius: 8, cursor: "pointer",
                     fontFamily: "inherit", fontSize: 11, fontWeight: 700, textTransform: "capitalize",
-                    background: shiftFilter === f ? "linear-gradient(135deg,rgba(155,109,255,0.15),rgba(78,201,212,0.15))" : "rgba(255,255,255,0.035)",
-                    color: shiftFilter === f ? "#9b6dff" : "rgba(238,240,248,0.42)",
-                    border: `1px solid ${shiftFilter === f ? "rgba(155,109,255,0.28)" : "rgba(255,255,255,0.07)"}`,
+                    background: shiftFilter === f ? `linear-gradient(135deg,${alpha(T.g1, 15)},${alpha(T.g2, 15)})` : T.glass,
+                    color: shiftFilter === f ? T.brandText : T.muted,
+                    border: `1px solid ${shiftFilter === f ? alpha(T.g1, 28) : T.border}`,
                     transition: "all .15s",
                   }}
                 >{f}</button>
@@ -485,9 +486,9 @@ function HRDashboardContent() {
             </div>
           </div>
 
-          <div style={{ overflowY: "auto", maxHeight: 340, scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.08) transparent" }}>
+          <div style={{ overflowY: "auto", maxHeight: 340, scrollbarWidth: "thin", scrollbarColor: `${T.glass3} transparent` }}>
             {filteredShifts.length === 0 ? (
-              <div style={{ padding: "32px 20px", textAlign: "center", color: "rgba(238,240,248,0.3)", fontSize: 13 }}>
+              <div style={{ padding: "32px 20px", textAlign: "center", color: T.muted2, fontSize: 13 }}>
                 Nenhum funcionário escalado para este turno
               </div>
             ) : filteredShifts.map(s => (
@@ -495,10 +496,10 @@ function HRDashboardContent() {
                 key={s.id}
                 style={{
                   display: "flex", alignItems: "center", gap: 14,
-                  padding: "12px 20px", borderBottom: "1px solid rgba(255,255,255,0.05)",
+                  padding: "12px 20px", borderBottom: `1px solid ${T.border}`,
                   cursor: "pointer", transition: "background .15s",
                 }}
-                onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.035)")}
+                onMouseEnter={e => (e.currentTarget.style.background = T.glass)}
                 onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
               >
                 <div style={{ flexShrink: 0, position: "relative" }}>
@@ -518,18 +519,18 @@ function HRDashboardContent() {
                   <div style={{
                     position: "absolute", bottom: 1, right: 1,
                     width: 9, height: 9, borderRadius: "50%",
-                    background: "#2dd4bf",
-                    border: "2px solid var(--card, #0b0e18)",
-                    boxShadow: "0 0 6px rgba(45,212,191,.5)",
+                    background: T.green,
+                    border: `2px solid ${T.card}`,
+                    boxShadow: `0 0 6px ${alpha(T.green, 50)}`,
                   }} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--foreground, #eef0f8)" }}>{s.name}</div>
-                  <div style={{ fontSize: 11, color: "rgba(238,240,248,0.42)", marginTop: 1 }}>{s.role}</div>
+                  <div style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: T.text }}>{s.name}</div>
+                  <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>{s.role}</div>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: "var(--foreground, #eef0f8)" }}>
-                    <Clock size={12} style={{ color: "rgba(238,240,248,0.42)" }} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, color: T.text }}>
+                    <Clock size={12} style={{ color: T.muted }} />
                     {s.start} – {s.end}
                   </div>
                   <span style={{
@@ -537,12 +538,12 @@ function HRDashboardContent() {
                     fontSize: 9, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase",
                     padding: "2px 7px", borderRadius: 999,
                     ...(s.turno === "manhã"
-                      ? { background: "rgba(245,158,11,0.08)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.22)" }
+                      ? { background: T.amberBg, color: T.amber, border: `1px solid ${T.amberBorder}` }
                       : s.turno === "tarde"
-                      ? { background: "rgba(96,165,250,0.08)", color: "#60a5fa", border: "1px solid rgba(96,165,250,0.22)" }
+                      ? { background: T.blueBg, color: T.blue, border: `1px solid ${T.blueBorder}` }
                       : s.turno === "noite"
-                      ? { background: "rgba(192,132,252,0.08)", color: "#c084fc", border: "1px solid rgba(192,132,252,0.22)" }
-                      : { background: "rgba(45,212,191,0.08)", color: "#2dd4bf", border: "1px solid rgba(45,212,191,0.22)" }),
+                      ? { background: T.violetBg, color: T.violet, border: `1px solid ${T.violetBorder}` }
+                      : { background: T.greenBg, color: T.green, border: `1px solid ${T.greenBorder}` }),
                   }}>
                     {s.turno}
                   </span>
@@ -552,13 +553,13 @@ function HRDashboardContent() {
           </div>
 
           <div style={{
-            padding: "12px 20px", borderTop: "1px solid rgba(255,255,255,0.07)",
+            padding: "12px 20px", borderTop: `1px solid ${T.border}`,
             display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0,
           }}>
             <span style={muted}>Mostrando {filteredShifts.length} escalas</span>
             <Link href="/admin/escalas" style={{
               display: "flex", alignItems: "center", gap: 5,
-              fontSize: 12, fontWeight: 700, color: "#9b6dff",
+              fontSize: 12, fontWeight: 700, color: T.brandText,
               background: "none", border: "none", cursor: "pointer",
               textDecoration: "none",
             }}>
@@ -575,10 +576,10 @@ function HRDashboardContent() {
             <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
               <div style={{
                 width: 30, height: 30, borderRadius: 9,
-                background: "rgba(244,114,182,0.08)", border: "1px solid rgba(244,114,182,0.22)",
+                background: T.roseBg, border: `1px solid ${T.roseBorder}`,
                 display: "flex", alignItems: "center", justifyContent: "center",
               }}>
-                <Cake size={14} style={{ color: "#f472b6" }} />
+                <Cake size={14} style={{ color: T.rose }} />
               </div>
               <div style={sectionHeader}>Aniversários</div>
               <span style={{
@@ -586,13 +587,13 @@ function HRDashboardContent() {
                 display: "inline-flex", alignItems: "center",
                 fontSize: 9, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase",
                 padding: "2px 8px", borderRadius: 999,
-                background: "rgba(244,114,182,0.08)", color: "#f472b6",
-                border: "1px solid rgba(244,114,182,0.22)",
+                background: T.roseBg, color: T.rose,
+                border: `1px solid ${T.roseBorder}`,
               }}>Este mês</span>
             </div>
 
             {birthdayList.length === 0 ? (
-              <div style={{ fontSize: 12, color: "rgba(238,240,248,0.3)", textAlign: "center", padding: "12px 0" }}>
+              <div style={{ fontSize: 12, color: T.muted2, textAlign: "center", padding: "12px 0" }}>
                 Nenhum aniversário este mês
               </div>
             ) : (
@@ -601,7 +602,7 @@ function HRDashboardContent() {
                   <div key={b.id} style={{
                     display: "flex", alignItems: "center", gap: 10,
                     padding: "9px 12px", borderRadius: 12,
-                    background: "rgba(255,255,255,0.035)", border: "1px solid rgba(255,255,255,0.07)",
+                    background: T.glass, border: `1px solid ${T.border}`,
                   }}>
                     <div style={{
                       width: 32, height: 32, borderRadius: 9, flexShrink: 0,
@@ -610,7 +611,7 @@ function HRDashboardContent() {
                       fontSize: 12, fontWeight: 900, color: b.color,
                     }}>{b.initials}</div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--foreground, #eef0f8)" }}>{b.name}</div>
+                      <div style={{ fontSize: 12, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: T.text }}>{b.name}</div>
                       <div style={muted}>{b.role} · {b.dateLabel}</div>
                     </div>
                     {b.daysLeft <= 7 ? (
@@ -619,8 +620,8 @@ function HRDashboardContent() {
                         display: "inline-flex", alignItems: "center",
                         fontSize: 9, fontWeight: 800, letterSpacing: "0.04em",
                         padding: "2px 7px", borderRadius: 999,
-                        background: "rgba(244,114,182,0.08)", color: "#f472b6",
-                        border: "1px solid rgba(244,114,182,0.22)",
+                        background: T.roseBg, color: T.rose,
+                        border: `1px solid ${T.roseBorder}`,
                       }}>em {b.daysLeft}d</span>
                     ) : (
                       <span style={{
@@ -628,8 +629,8 @@ function HRDashboardContent() {
                         display: "inline-flex", alignItems: "center",
                         fontSize: 9, fontWeight: 800, letterSpacing: "0.04em",
                         padding: "2px 7px", borderRadius: 999,
-                        background: "rgba(255,255,255,0.05)", color: "rgba(238,240,248,0.42)",
-                        border: "1px solid rgba(255,255,255,0.12)",
+                        background: T.border, color: T.muted,
+                        border: `1px solid ${T.border2}`,
                       }}>{b.daysLeft}d</span>
                     )}
                   </div>
@@ -643,10 +644,10 @@ function HRDashboardContent() {
             <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 14 }}>
               <div style={{
                 width: 30, height: 30, borderRadius: 9,
-                background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.22)",
+                background: T.amberBg, border: `1px solid ${T.amberBorder}`,
                 display: "flex", alignItems: "center", justifyContent: "center",
               }}>
-                <Palmtree size={14} style={{ color: "#f59e0b" }} />
+                <Palmtree size={14} style={{ color: T.amber }} />
               </div>
               <div style={sectionHeader}>Folgas Hoje</div>
               {folgaCount > 0 && (
@@ -655,14 +656,14 @@ function HRDashboardContent() {
                   display: "inline-flex", alignItems: "center",
                   fontSize: 9, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase",
                   padding: "2px 8px", borderRadius: 999,
-                  background: "rgba(245,158,11,0.08)", color: "#f59e0b",
-                  border: "1px solid rgba(245,158,11,0.22)",
+                  background: T.amberBg, color: T.amber,
+                  border: `1px solid ${T.amberBorder}`,
                 }}>{folgaCount} folgas</span>
               )}
             </div>
 
             {folgaCount === 0 ? (
-              <div style={{ fontSize: 12, color: "rgba(238,240,248,0.3)", textAlign: "center", padding: "12px 0" }}>
+              <div style={{ fontSize: 12, color: T.muted2, textAlign: "center", padding: "12px 0" }}>
                 Nenhuma folga hoje
               </div>
             ) : (
@@ -676,7 +677,7 @@ function HRDashboardContent() {
                       <div key={s.id} style={{
                         display: "flex", alignItems: "center", gap: 10,
                         padding: "9px 12px", borderRadius: 12,
-                        background: "rgba(255,255,255,0.035)", border: "1px solid rgba(255,255,255,0.07)",
+                        background: T.glass, border: `1px solid ${T.border}`,
                       }}>
                         <div style={{
                           width: 32, height: 32, borderRadius: 9, flexShrink: 0,
@@ -685,7 +686,7 @@ function HRDashboardContent() {
                           fontSize: 12, fontWeight: 900, color: rs.color,
                         }}>{initials}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "var(--foreground, #eef0f8)" }}>{s.fullName}</div>
+                          <div style={{ fontSize: 12, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: T.text }}>{s.fullName}</div>
                           <div style={muted}>{ROLE_LABELS[s.role] ?? s.role}</div>
                         </div>
                         <span style={{
@@ -693,8 +694,8 @@ function HRDashboardContent() {
                           display: "inline-flex", alignItems: "center",
                           fontSize: 9, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase",
                           padding: "2px 7px", borderRadius: 999,
-                          background: "rgba(245,158,11,0.08)", color: "#f59e0b",
-                          border: "1px solid rgba(245,158,11,0.22)",
+                          background: T.amberBg, color: T.amber,
+                          border: `1px solid ${T.amberBorder}`,
                         }}>Folga</span>
                       </div>
                     );
@@ -713,11 +714,11 @@ function HRDashboardContent() {
           <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 18 }}>
             <div style={{
               width: 30, height: 30, borderRadius: 9,
-              background: "linear-gradient(135deg,rgba(155,109,255,0.15),rgba(78,201,212,0.15))",
+              background: `linear-gradient(135deg,${alpha(T.g1, 15)},${alpha(T.g2, 15)})`,
               border: "1px solid rgba(155,109,255,0.25)",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>
-              <Layers size={14} style={{ color: "#9b6dff" }} />
+              <Layers size={14} style={{ color: T.brandText }} />
             </div>
             <div>
               <div style={sectionHeader}>Distribuição da Equipe</div>
@@ -726,7 +727,7 @@ function HRDashboardContent() {
           </div>
 
           {deptDist.length === 0 ? (
-            <div style={{ fontSize: 12, color: "rgba(238,240,248,0.3)", textAlign: "center", padding: "24px 0" }}>
+            <div style={{ fontSize: 12, color: T.muted2, textAlign: "center", padding: "24px 0" }}>
               Nenhum funcionário cadastrado
             </div>
           ) : (
@@ -736,11 +737,11 @@ function HRDashboardContent() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                       <div style={{ width: 7, height: 7, borderRadius: 2, background: d.color, flexShrink: 0 }} />
-                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--foreground, #eef0f8)" }}>{d.label}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{d.label}</span>
                     </div>
                     <span style={{ fontSize: 12, fontWeight: 800, color: d.color }}>{d.count}</span>
                   </div>
-                  <div style={{ height: 5, borderRadius: 999, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                  <div style={{ height: 5, borderRadius: 999, background: T.glass3, overflow: "hidden" }}>
                     <div style={{
                       height: "100%", borderRadius: 999, background: d.color,
                       width: filledBars ? `${(d.count / totalStaff) * 100}%` : "0%",
@@ -759,10 +760,10 @@ function HRDashboardContent() {
           <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 18 }}>
             <div style={{
               width: 30, height: 30, borderRadius: 9,
-              background: "rgba(96,165,250,0.08)", border: "1px solid rgba(96,165,250,0.22)",
+              background: T.blueBg, border: `1px solid ${T.blueBorder}`,
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>
-              <Calendar size={14} style={{ color: "#60a5fa" }} />
+              <Calendar size={14} style={{ color: T.blue }} />
             </div>
             <div>
               <div style={sectionHeader}>Escalas da Semana</div>
@@ -775,8 +776,8 @@ function HRDashboardContent() {
               display: "inline-flex", alignItems: "center",
               fontSize: 9, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase",
               padding: "2px 8px", borderRadius: 999,
-              background: "rgba(96,165,250,0.08)", color: "#60a5fa",
-              border: "1px solid rgba(96,165,250,0.22)",
+              background: T.blueBg, color: T.blue,
+              border: `1px solid ${T.blueBorder}`,
             }}>{weekLabel}</span>
           </div>
 
@@ -785,29 +786,29 @@ function HRDashboardContent() {
               const h = Math.round((d.shifts / maxShifts) * 80);
               return (
                 <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: d.isToday ? "#9b6dff" : "rgba(238,240,248,0.42)", marginBottom: 2 }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: d.isToday ? T.brandText : T.muted, marginBottom: 2 }}>
                     {d.shifts}
                   </div>
                   <div style={{
                     width: "100%", borderRadius: 6, overflow: "hidden",
                     display: "flex", flexDirection: "column", justifyContent: "flex-end",
-                    height: 64, background: "rgba(255,255,255,0.08)",
+                    height: 64, background: T.glass3,
                   }}>
                     <div style={{
                       width: "100%",
                       height: filledBars ? `${h}px` : "0px",
                       background: d.isToday
-                        ? "linear-gradient(135deg,#9b6dff 0%,#4ec9d4 100%)"
-                        : d.shifts > (maxShifts * 0.6) ? "rgba(96,165,250,0.4)" : "rgba(96,165,250,0.2)",
+                        ? T.grad
+                        : d.shifts > (maxShifts * 0.6) ? alpha(T.blue, 40) : T.blueBorder,
                       borderRadius: 6,
                       transition: "height .8s cubic-bezier(.4,0,.2,1)",
-                      border: d.isToday ? "1px solid rgba(155,109,255,0.3)" : "none",
-                      boxShadow: d.isToday ? "0 0 12px rgba(155,109,255,0.3)" : "none",
+                      border: d.isToday ? `1px solid ${alpha(T.g1, 30)}` : "none",
+                      boxShadow: d.isToday ? `0 0 12px ${alpha(T.g1, 30)}` : "none",
                     }} />
                   </div>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: d.isToday ? "#9b6dff" : "rgba(238,240,248,0.22)" }}>{d.day}</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: d.isToday ? T.brandText : T.muted2 }}>{d.day}</div>
                   {d.folgas > 0 && (
-                    <div style={{ fontSize: 9, color: "rgba(238,240,248,0.22)", fontWeight: 600 }}>{d.folgas}f</div>
+                    <div style={{ fontSize: 9, color: T.muted2, fontWeight: 600 }}>{d.folgas}f</div>
                   )}
                 </div>
               );
@@ -821,22 +822,22 @@ function HRDashboardContent() {
         {[
           {
             label: "Gerenciar Equipe", icon: Users,
-            color: "#9b6dff", bg: "rgba(155,109,255,0.1)", border: "rgba(155,109,255,0.22)",
+            color: T.brandText, bg: alpha(T.g1, 10), border: alpha(T.g1, 22),
             desc: "Adicionar e editar funcionários", href: "/admin/staff",
           },
           {
             label: "Ver Escalas", icon: Calendar,
-            color: "#60a5fa", bg: "rgba(96,165,250,0.08)", border: "rgba(96,165,250,0.22)",
+            color: T.blue, bg: T.blueBg, border: T.blueBorder,
             desc: "Gestão de turnos e folgas", href: "/admin/escalas",
           },
           {
             label: "Logs de Auditoria", icon: FileText,
-            color: "rgba(238,240,248,0.42)", bg: "rgba(255,255,255,0.035)", border: "rgba(255,255,255,0.12)",
+            color: T.muted, bg: T.glass, border: T.border2,
             desc: "Histórico de ações", href: "/admin/logs",
           },
           {
             label: "Configurações", icon: Settings,
-            color: "#2dd4bf", bg: "rgba(45,212,191,0.08)", border: "rgba(45,212,191,0.22)",
+            color: T.green, bg: T.greenBg, border: T.greenBorder,
             desc: "Ajustes da propriedade", href: "/admin/configuracoes",
           },
         ].map((a, i) => {
@@ -848,19 +849,19 @@ function HRDashboardContent() {
               style={{
                 display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 10,
                 padding: "16px 18px",
-                background: "var(--card, #0b0e18)",
-                border: "1px solid rgba(255,255,255,0.07)",
+                background: T.card,
+                border: `1px solid ${T.border}`,
                 borderRadius: 16, cursor: "pointer",
                 textDecoration: "none",
                 transition: "all .15s",
               }}
               onMouseEnter={e => {
-                (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.055)";
+                (e.currentTarget as HTMLElement).style.background = T.glass2;
                 (e.currentTarget as HTMLElement).style.borderColor = a.border;
               }}
               onMouseLeave={e => {
-                (e.currentTarget as HTMLElement).style.background = "var(--card, #0b0e18)";
-                (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.07)";
+                (e.currentTarget as HTMLElement).style.background = T.card;
+                (e.currentTarget as HTMLElement).style.borderColor = T.border;
               }}
             >
               <div style={{
@@ -871,8 +872,8 @@ function HRDashboardContent() {
                 <Icon size={15} style={{ color: a.color }} />
               </div>
               <div>
-                <div style={{ fontSize: 12, fontWeight: 800, color: "var(--foreground, #eef0f8)" }}>{a.label}</div>
-                <div style={{ fontSize: 11, color: "rgba(238,240,248,0.42)", marginTop: 2, lineHeight: 1.4 }}>{a.desc}</div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: T.text }}>{a.label}</div>
+                <div style={{ fontSize: 11, color: T.muted, marginTop: 2, lineHeight: 1.4 }}>{a.desc}</div>
               </div>
             </Link>
           );
