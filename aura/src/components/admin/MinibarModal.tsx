@@ -4,6 +4,8 @@
 // lançamento passa pelo pipeline do Concierge (folio + estoque + histórico).
 "use client";
 
+import { Dialog } from "@/components/aura";
+
 import React, { useState, useEffect } from "react";
 import { X, Save, Coffee, Plus, Minus, AlertCircle, ShoppingCart, Loader2, Settings } from "lucide-react";
 import { HousekeepingTask, ConciergeItem } from "@/types/aura";
@@ -98,11 +100,8 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
   };
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300"
-      onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
-    >
-      <div className="bg-card border border-border w-full max-w-md rounded-[32px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300">
+    <Dialog open onClose={requestClose} presentation="auto" size="md" rawBody hideClose ariaLabel="Reposição de Frigobar">
+      <div style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "100%", overflowY: "auto" }}>
 
         {/* HEADER */}
         <div className="p-6 border-b border-border bg-secondary/50 flex justify-between items-center">
@@ -209,6 +208,6 @@ export function MinibarModal({ isOpen, onClose, task, cabinName }: MinibarModalP
         </div>
 
       </div>
-    </div>
+    </Dialog>
   );
 }

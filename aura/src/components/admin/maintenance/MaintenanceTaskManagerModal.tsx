@@ -1,3 +1,5 @@
+
+import { Dialog } from "@/components/aura";
 import React, { useState, useEffect } from "react";
 import { X, Save, Plus, Trash2, Hammer } from "lucide-react";
 import { MaintenanceTask, Cabin, Structure, MaintenanceChecklistItem } from "@/types/aura";
@@ -129,11 +131,8 @@ export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task,
     const isEditing = !!task;
 
     return (
-        <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-            onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
-        >
-            <div className="bg-background w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]" {...guardProps}>
+        <Dialog open onClose={requestClose} presentation="auto" size="lg" rawBody hideClose panelProps={guardProps}>
+            <div style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "100%", overflowY: "auto" }}>
                 <div className="p-6 border-b border-border flex justify-between items-center bg-card">
                     <div>
                         <h2 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
@@ -355,6 +354,6 @@ export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task,
                     </button>
                 </div>
             </div>
-        </div>
+        </Dialog>
     );
 }

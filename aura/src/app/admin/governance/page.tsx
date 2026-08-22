@@ -1,7 +1,7 @@
 // src/app/admin/governance/page.tsx
 "use client";
 
-import { PageShell, PageHeader } from "@/components/aura";
+import { PageShell, PageHeader, Dialog } from "@/components/aura";
 
 import React, { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
@@ -390,12 +390,8 @@ function GovernanceReportModal({
       <div className="gv-no-print fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal */}
-      <div
-        id="gv-report-root"
-        className="fixed inset-0 z-50 overflow-y-auto"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="min-h-full flex flex-col">
+      <Dialog open onClose={onClose} presentation="auto" size="md" rawBody hideClose ariaLabel="Demais Cabanas — Disponíveis / Manutenção">
+        <div style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "100%", overflowY: "auto" }}>
           <div className="gv-no-print bg-background border-b border-border px-6 py-4 flex items-center justify-between sticky top-0 z-10">
             <div className="flex items-center gap-2 text-sm font-bold">
               <FileText size={16} className="text-primary" />
@@ -536,7 +532,7 @@ function GovernanceReportModal({
             </p>
           </div>
         </div>
-      </div>
+      </Dialog>
     </>
   );
 
@@ -929,11 +925,8 @@ export default function GovernancePage() {
           awaiting_checkout:  { label: "Ag. Checkout", className: "bg-amber-500/15 text-amber-400 border-amber-500/25"      },
         };
         return (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setHistoryTarget(null)}>
-            <div
-              className="w-full max-w-lg max-h-[80vh] flex flex-col rounded-2xl border border-border bg-card shadow-2xl overflow-hidden"
-              onClick={e => e.stopPropagation()}
-            >
+          <Dialog open onClose={() => setHistoryTarget(null)} presentation="auto" size="md" rawBody hideClose>
+            <div style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "100%", overflowY: "auto" }}>
               <div className="flex items-center gap-3 px-5 py-4 border-b border-border shrink-0">
                 <History size={16} className="text-primary" />
                 <div className="flex-1 min-w-0">
@@ -992,7 +985,7 @@ export default function GovernancePage() {
                 )}
               </div>
             </div>
-          </div>
+          </Dialog>
         );
       })()}
 

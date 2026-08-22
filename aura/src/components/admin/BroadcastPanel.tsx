@@ -1,5 +1,7 @@
 "use client";
 
+import { Dialog } from "@/components/aura";
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Megaphone, Users, Clock, CalendarClock, Loader2, AlertTriangle, X, ChevronRight } from "lucide-react";
@@ -322,8 +324,8 @@ export function BroadcastPanel({ propertyId, messengerName }: BroadcastPanelProp
 
       {/* Confirmation modal */}
       {showConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-card border rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
+        <Dialog open onClose={() => setShowConfirm(false)} presentation="auto" size="md" rawBody hideClose ariaLabel="Confirmar Comunicado">
+          <div style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "100%", overflowY: "auto" }}>
             <div className="flex items-center justify-between p-4 border-b">
               <h2 className="text-base font-semibold">Confirmar Comunicado</h2>
               <button onClick={() => setShowConfirm(false)} className="text-muted-foreground hover:text-foreground">
@@ -360,7 +362,7 @@ export function BroadcastPanel({ propertyId, messengerName }: BroadcastPanelProp
               </Button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
     </div>
   );

@@ -1,6 +1,8 @@
 // src/components/admin/HousekeepingChecklistModal.tsx
 "use client";
 
+import { Dialog } from "@/components/aura";
+
 import React, { useState, useEffect } from "react";
 import { X, CheckCircle2, Save, ClipboardCheck, AlertCircle } from "lucide-react";
 import { HousekeepingTask } from "@/types/aura";
@@ -121,11 +123,8 @@ export function HousekeepingChecklistModal({ isOpen, onClose, task, cabinName, o
   const allChecked = checklist.every(item => item.checked);
 
   return (
-    <div
-      className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300"
-      onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
-    >
-      <div className="bg-card border border-border w-full max-w-lg rounded-[32px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300" {...guardProps}>
+    <Dialog open onClose={requestClose} presentation="auto" size="md" rawBody hideClose panelProps={guardProps} ariaLabel="Finalizar Limpeza">
+      <div style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "100%", overflowY: "auto" }}>
 
         <div className="p-6 border-b border-border bg-secondary/50 flex justify-between items-center">
           <div>
@@ -217,6 +216,6 @@ export function HousekeepingChecklistModal({ isOpen, onClose, task, cabinName, o
         </div>
 
       </div>
-    </div>
+    </Dialog>
   );
 }

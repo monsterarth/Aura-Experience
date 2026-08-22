@@ -1,5 +1,7 @@
 "use client";
 
+import { useConfirm } from "@/components/aura";
+
 // src/app/admin/configuracoes/_components/WhatsAppSessionCard.tsx
 //
 // Estado da sessão de WhatsApp + reconexão por QR, sem abrir o manager da Evolution.
@@ -37,6 +39,7 @@ const LOOK: Record<WhatsAppSessionStatus, { label: string; cls: string; Icon: Re
 
 export function WhatsAppSessionCard({ propertyId, configured }: Props) {
   const [view, setView] = useState<WhatsAppSessionView | null>(null);
+  const confirm = useConfirm();
   const [checking, setChecking] = useState(false);
   const [acting, setActing] = useState<"reconnect" | "logout" | "restart" | null>(null);
   const [qr, setQr] = useState<string | null>(null);
@@ -62,10 +65,7 @@ export function WhatsAppSessionCard({ propertyId, configured }: Props) {
   }, [check]);
 
   const act = async (action: "reconnect" | "logout") => {
-    if (action === "logout" && !window.confirm(
-      "Encerrar a sessão derruba o WhatsApp desta propriedade e exige ler um QR novo. " +
-      "Só faça isso se ela já estiver caída ou zumbi. Continuar?",
-    )) return;
+    if (action === "logout" && !(await confirm({ title: "Encerrar a sessão do WhatsApp?", description: "Derruba o WhatsApp desta propriedade e exige ler um QR novo. Só faça isso se ela já estiver caída ou zumbi.", confirmLabel: "Encerrar sessão", tone: "danger" }))) return;
 
     setActing(action);
     setQr(null);
@@ -92,11 +92,7 @@ export function WhatsAppSessionCard({ propertyId, configured }: Props) {
 
   /** Recria o container via Coolify — o remédio quando o processo trava ou o logout não pega. */
   const restart = async () => {
-    if (!window.confirm(
-      "Reiniciar a Evolution recria o container no servidor (o mesmo Restart do Coolify) e " +
-      "derruba TODAS as instâncias por cerca de 1 minuto. Use quando estiver travada ou quando " +
-      "a sessão zumbi não desconectar. Continuar?",
-    )) return;
+    if (!(await confirm({ title: "Reiniciar a Evolution?", description: "Recria o container no servidor (o mesmo Restart do Coolify) e derruba TODAS as instâncias por cerca de 1 minuto. Use quando estiver travada ou quando a sessão zumbi não desconectar.", confirmLabel: "Reiniciar", tone: "danger" }))) return;
 
     setActing("restart");
     setQr(null);

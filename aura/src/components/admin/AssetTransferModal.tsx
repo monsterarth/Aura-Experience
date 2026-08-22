@@ -3,6 +3,8 @@
 // Gera uma linha em asset_movements — é o que responde "cadê a TV da cabana 7".
 "use client";
 
+import { Dialog } from "@/components/aura";
+
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Loader2, X, ArrowRightLeft } from "lucide-react";
@@ -65,8 +67,8 @@ export default function AssetTransferModal({ propertyId, asset, onClose, onDone 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={requestClose}>
-      <div className="bg-card border border-border w-full max-w-lg rounded-3xl shadow-2xl max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <Dialog open onClose={requestClose} presentation="auto" size="md" rawBody hideClose ariaLabel="Movimentar ativo">
+      <div style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "100%", overflowY: "auto" }}>
         <div className="p-5 border-b border-border flex justify-between items-center">
           <h2 className="text-lg font-bold text-foreground flex items-center gap-2"><ArrowRightLeft size={18} /> Movimentar ativo</h2>
           <button onClick={requestClose} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
@@ -124,6 +126,6 @@ export default function AssetTransferModal({ propertyId, asset, onClose, onDone 
           </button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

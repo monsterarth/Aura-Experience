@@ -1,6 +1,8 @@
 // src/components/admin/BatchMovementModal.tsx
 "use client";
 
+import { Dialog, useConfirm } from "@/components/aura";
+
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   BatchMovementResult, StockCabinOption, StockLocation, StockLossType,
@@ -44,6 +46,7 @@ export default function BatchMovementModal({
   propertyId, products, locations, cabins, staff, defaultResponsibleId, defaultLocationId = "", onClose, onSaved,
 }: Props) {
   const [type, setType] = useState<StockMovementType>("exit");
+  const confirm = useConfirm();
   const [from, setFrom] = useState({ locationId: "", cabinId: "" });
   const [to, setTo] = useState({ locationId: "", cabinId: "" });
   const [fromStaffId, setFromStaffId] = useState("");
@@ -164,11 +167,7 @@ export default function BatchMovementModal({
       if (res.preflight.length > 0) {
         const negatives = res.preflight.filter((e) => e.code === "NEGATIVE_STOCK");
         if (negatives.length > 0 && negatives.length === res.preflight.length) {
-          const ok = window.confirm(
-            `⚠️ ${negatives.length} linha(s) deixariam o estoque negativo:\n\n` +
-            negatives.map((n) => `• ${n.error}`).join("\n") +
-            `\n\nLançar mesmo assim?`
-          );
+          const ok = await confirm({ title: `${negatives.length} linha(s) deixariam o estoque negativo`, description: negatives.map((n) => `• ${n.error}`).join(" · "), confirmLabel: "Lançar assim mesmo", tone: "danger" });
           if (ok) { setSaving(false); return submit(true); }
         } else {
           toast.error(`${res.preflight.length} problema(s) — nada foi gravado.`);
@@ -190,8 +189,8 @@ export default function BatchMovementModal({
   const headerError = (result?.preflight ?? []).find((e) => e.index === -1);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={requestClose}>
-      <div className="bg-card border border-border w-full max-w-3xl rounded-3xl shadow-2xl max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()} {...guardProps}>
+    <Dialog open onClose={requestClose} presentation="auto" size="xl" rawBody hideClose panelProps={guardProps} ariaLabel="Lançamento em lote">
+      <div style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "100%", overflowY: "auto" }}>
         <div className="p-5 border-b border-border flex justify-between items-center shrink-0">
           <div>
             <h2 className="text-lg font-bold text-foreground">Lançamento em lote</h2>
@@ -348,6 +347,6 @@ export default function BatchMovementModal({
           </button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

@@ -1,5 +1,8 @@
 "use client";
 
+import { PageShell, PageHeader, SkeletonList, useConfirm } from "@/components/aura";
+import { toast } from "sonner";
+
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useProperty } from "@/context/PropertyContext";
@@ -13,6 +16,7 @@ import {
 
 export default function AutomationsQueuePage() {
   const { currentProperty: property } = useProperty();
+  const confirm = useConfirm();
   const [messages, setMessages] = useState<WhatsAppMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'pending' | 'sent' | 'failed' | 'cancelled'>('pending');
@@ -97,7 +101,7 @@ export default function AutomationsQueuePage() {
     if (!property?.id) return;
     setRetryingId(messageId);
     const success = await AutomationService.retryFailedMessage(property.id, messageId);
-    if (!success) alert("Não foi possível reenviar a mensagem. Verifique a conexão.");
+    if (!success) toast.error("Não foi possível reenviar a mensagem. Verifique a conexão.");
     setRetryingId(null);
   };
 
@@ -110,16 +114,16 @@ export default function AutomationsQueuePage() {
     }
     const success = await AutomationService.editAndRetryMessage(property.id, messageId, cleanedPhone);
     if (success) { setEditingId(null); setEditPhone(""); }
-    else alert("Não foi possível editar e reenviar a mensagem.");
+    else toast.error("Não foi possível editar e reenviar a mensagem.");
     setRetryingId(null);
   };
 
   const handleCancel = async (messageId: string) => {
     if (!property?.id) return;
-    if (!confirm("Tem certeza que deseja cancelar esta mensagem? Ela não será enviada ao hóspede.")) return;
+    if (!(await confirm({ title: "Tem certeza que deseja cancelar esta mensagem?", description: "Ela não será enviada ao hóspede.", confirmLabel: "Confirmar", tone: "danger" }))) return;
     setIsCancelling(messageId);
     const success = await AutomationService.cancelMessage(property.id, messageId);
-    if (!success) alert("Falha ao cancelar mensagem.");
+    if (!success) toast.error("Falha ao cancelar mensagem.");
     setIsCancelling(null);
   };
 
@@ -127,17 +131,17 @@ export default function AutomationsQueuePage() {
     if (!property?.id) return;
     setSendingNowId(messageId);
     const result = await AutomationService.sendNow(property.id, messageId);
-    if (!result.ok) alert(`Erro ao enviar: ${result.error}`);
+    if (!result.ok) toast.error(`Erro ao enviar: ${result.error}`);
     await fetchMessages();
     setSendingNowId(null);
   };
 
   const handleBatchCancel = async () => {
     if (!property?.id || selectedIds.size === 0) return;
-    if (!confirm(`Cancelar ${selectedIds.size} mensagem(ns) selecionada(s)? Elas não serão enviadas aos hóspedes.`)) return;
+    if (!(await confirm({ title: `Cancelar ${selectedIds.size} mensagem(ns) selecionada(s)?`, description: "Elas não serão enviadas aos hóspedes.", confirmLabel: "Cancelar mensagens", tone: "danger" }))) return;
     setIsBatchCancelling(true);
     const success = await AutomationService.cancelMessagesBatch(property.id, Array.from(selectedIds));
-    if (!success) alert("Falha ao cancelar mensagens em lote.");
+    if (!success) toast.error("Falha ao cancelar mensagens em lote.");
     setSelectedIds(new Set());
     setIsBatchCancelling(false);
   };
@@ -199,25 +203,22 @@ export default function AutomationsQueuePage() {
     msg.isAutomated ? translateTrigger(msg.triggerEvent) : 'Disparo em Massa';
 
   return (
-    <div className="flex flex-col h-full bg-muted/20 pb-20">
-      <header className="flex items-center justify-between px-6 py-5 bg-background border-b sticky top-0 z-10 shadow-sm">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Bot className="w-6 h-6 text-primary" /> Fila de Automações (Robô)
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">Monitorize o envio automático de mensagens</p>
-        </div>
-        {/* Quem olha a fila e vê que nada saiu precisa chegar aos gatilhos daqui —
+    <PageShell>
+      <PageHeader
+        icon={Bot}
+        title="Fila de Automações (Robô)"
+        subtitle="Monitorize o envio automático de mensagens"
+        actions={(<>{/* Quem olha a fila e vê que nada saiu precisa chegar aos gatilhos daqui —
             antes o único caminho era o item na barra lateral. */}
         <Link
           href="/admin/comunicacao/automations/settings"
           className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-wider rounded-xl bg-secondary text-foreground hover:bg-secondary/70 transition-colors shrink-0"
         >
           <Settings className="w-4 h-4" /> Gatilhos e textos
-        </Link>
-      </header>
+        </Link></>)}
+      />
 
-      <main className="flex-1 p-6 max-w-6xl mx-auto w-full">
+      <div >
         <div className="flex space-x-1 bg-muted/50 p-1 rounded-xl mb-6 w-full max-w-2xl overflow-x-auto">
           <button onClick={() => setActiveTab('pending')} className={`flex-1 min-w-[130px] flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg transition-all ${activeTab === 'pending' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}><Clock className="w-4 h-4" /> Agendadas ({pendingMessages.length})</button>
           <button onClick={() => setActiveTab('sent')} className={`flex-1 min-w-[130px] flex items-center justify-center gap-2 py-2.5 text-sm font-medium rounded-lg transition-all ${activeTab === 'sent' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}><CheckCircle2 className="w-4 h-4" /> Enviadas ({sentMessages.length})</button>
@@ -226,7 +227,7 @@ export default function AutomationsQueuePage() {
         </div>
 
         {loading ? (
-          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground"><Loader2 className="w-8 h-8 animate-spin text-primary mb-4" /><p>A carregar a fila de automação...</p></div>
+          <SkeletonList rows={4} avatar={false} />
         ) : visibleMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-80 bg-background border border-dashed rounded-2xl shadow-sm text-center p-6 animate-in fade-in"><div className="w-16 h-16 bg-muted text-muted-foreground rounded-full flex items-center justify-center mb-4"><Bot className="w-8 h-8 opacity-50" /></div><h2 className="text-xl font-bold text-foreground mb-2">Fila Vazia</h2><p className="text-muted-foreground max-w-md">Não há mensagens nesta categoria no histórico recente.</p></div>
         ) : (
@@ -323,7 +324,7 @@ export default function AutomationsQueuePage() {
             })}
           </div>
         )}
-      </main>
-    </div>
+      </div>
+    </PageShell>
   );
 }

@@ -2,6 +2,11 @@
 
 "use client";
 
+import { Dialog } from "@/components/aura";
+import { toast } from "sonner";
+
+import { PageShell, PageHeader, useConfirm } from "@/components/aura";
+
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -52,6 +57,7 @@ const TRIGGER_DETAILS: Record<string, { label: string, desc: string }> = {
 export default function AutomationSettingsPage() {
   const router = useRouter();
   const { currentProperty: property } = useProperty();
+  const confirm = useConfirm();
 
   const [activeTab, setActiveTab] = useState<'rules' | 'templates'>('rules');
   const [loading, setLoading] = useState(true);
@@ -132,7 +138,7 @@ export default function AutomationSettingsPage() {
 
   const handleSaveTemplate = async () => {
     if (!property?.id || !editingTemplate?.name?.trim() || !editingTemplate?.body?.trim()) {
-      alert("Preencha o nome e o texto da mensagem.");
+      toast.error("Preencha o nome e o texto da mensagem.");
       return;
     }
 
@@ -141,7 +147,7 @@ export default function AutomationSettingsPage() {
       await fetchData(); // Recarrega para obter o ID caso seja novo
       setIsTemplateModalOpen(false);
     } else {
-      alert("Erro ao salvar template.");
+      toast.error("Erro ao salvar template.");
     }
   };
 
@@ -150,36 +156,26 @@ export default function AutomationSettingsPage() {
     // Verifica se está em uso
     const inUse = rules.some(r => r.templateId === templateId);
     if (inUse) {
-      alert("Este template está sendo usado por uma regra ativa. Altere a regra antes de excluir.");
+      toast.error("Este template está sendo usado por uma regra ativa. Altere a regra antes de excluir.");
       return;
     }
 
-    if (!confirm("Excluir este template definitivamente?")) return;
+    if (!(await confirm({ title: "Excluir este template definitivamente?", confirmLabel: "Confirmar", tone: "danger" }))) return;
 
     const success = await AutomationService.deleteTemplate(property.id, templateId);
     if (success) setTemplates(templates.filter(t => t.id !== templateId));
   };
 
   return (
-    <div className="flex flex-col h-full bg-muted/20 pb-20">
-      <header className="flex items-center justify-between px-6 py-5 bg-background border-b sticky top-0 z-10 shadow-sm">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.back()}>
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              <Settings className="w-6 h-6 text-primary" />
-              Configurações de Automação
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Gatilhos e Textos Dinâmicos da Fazenda
-            </p>
-          </div>
-        </div>
-      </header>
+    <PageShell>
+      <PageHeader
+        icon={Settings}
+        title="Configurações de Automação"
+        subtitle="Gatilhos e Textos Dinâmicos da Fazenda"
+        back={{ onClick: () => router.back() }}
+      />
 
-      <main className="flex-1 p-6 max-w-6xl mx-auto w-full">
+      <div >
 
         {/* Navegação de Abas */}
         <div className="flex space-x-1 bg-muted/50 p-1 rounded-xl mb-8 w-full max-w-md">
@@ -350,12 +346,12 @@ export default function AutomationSettingsPage() {
             )}
           </div>
         )}
-      </main>
+      </div>
 
       {/* MODAL DE EDIÇÃO DE TEMPLATE */}
       {isTemplateModalOpen && editingTemplate && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-background rounded-xl w-full max-w-3xl shadow-xl flex flex-col max-h-[90vh] overflow-hidden">
+        <Dialog open onClose={() => setIsTemplateModalOpen(false)} presentation="auto" size="xl" rawBody hideClose ariaLabel="Construtor de Mensagem">
+          <div style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "100%", overflowY: "auto" }}>
 
             <div className="flex justify-between items-center p-5 border-b bg-muted/10">
               <div>
@@ -453,8 +449,8 @@ export default function AutomationSettingsPage() {
               </Button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
-    </div>
+    </PageShell>
   );
 }

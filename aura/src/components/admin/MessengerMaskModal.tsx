@@ -1,5 +1,7 @@
 "use client";
 
+import { Dialog } from "@/components/aura";
+
 import { useState } from "react";
 import { X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -55,11 +57,8 @@ export function MessengerMaskModal({ onClose, onSave }: MessengerMaskModalProps)
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget && !loading) requestClose(); }}
-    >
-      <div className="bg-card border rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden" {...guardProps}>
+    <Dialog open onClose={() => { if (!loading) requestClose(); }} presentation="auto" size="md" rawBody hideClose panelProps={guardProps} ariaLabel="Minha Máscara de Mensageiro">
+      <div style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "100%", overflowY: "auto" }}>
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
           <h2 className="text-base font-semibold">Minha Máscara de Mensageiro</h2>
@@ -132,6 +131,6 @@ export function MessengerMaskModal({ onClose, onSave }: MessengerMaskModalProps)
           </Button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

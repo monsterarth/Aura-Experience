@@ -1,3 +1,5 @@
+
+import { Dialog } from "@/components/aura";
 import React, { useState, useRef } from "react";
 import { X, Save, Camera, CheckSquare, XSquare, UploadCloud, MessageSquare, Trash2 } from "lucide-react";
 import { MaintenanceTask, Cabin, Structure } from "@/types/aura";
@@ -84,11 +86,8 @@ export function MaintenanceCompletionModal({ isOpen, onClose, task, cabins, stru
     };
 
     return (
-        <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-md"
-            onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
-        >
-            <div className="bg-background w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col" {...guardProps}>
+        <Dialog open onClose={requestClose} presentation="auto" size="md" rawBody hideClose panelProps={guardProps} ariaLabel="Relatório Técnico">
+            <div style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "100%", overflowY: "auto" }}>
                 <div className="flex justify-between items-center p-6 border-b border-border bg-card">
                     <div className="flex items-center gap-3">
                         <div className="h-10 w-10 bg-primary/10 text-primary rounded-full flex items-center justify-center">
@@ -189,6 +188,6 @@ export function MaintenanceCompletionModal({ isOpen, onClose, task, cabins, stru
                     </button>
                 </div>
             </div>
-        </div>
+        </Dialog>
     );
 }

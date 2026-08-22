@@ -8,6 +8,8 @@
 // A senha vive só no state deste componente e é descartada ao fechar.
 "use client";
 
+import { Dialog } from "@/components/aura";
+
 import { useState } from "react";
 import { Loader2, ShieldCheck, X } from "lucide-react";
 
@@ -39,11 +41,10 @@ export function ManagerApprovalModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
-      onClick={(e) => { if (e.target === e.currentTarget && !submitting) onCancel(); }}>
+    <Dialog open onClose={() => { if (!submitting) onCancel(); }} presentation="auto" size="md" rawBody hideClose>
       <form onSubmit={submit}
         className="bg-background border border-border w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
-        <div className="flex items-start justify-between gap-3 p-6 border-b border-border">
+        <div style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "100%", overflowY: "auto" }}>
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-2xl bg-amber-500/10 flex items-center justify-center shrink-0">
               <ShieldCheck className="text-amber-500" size={20} />
@@ -102,6 +103,6 @@ export function ManagerApprovalModal({
           </button>
         </div>
       </form>
-    </div>
+    </Dialog>
   );
 }

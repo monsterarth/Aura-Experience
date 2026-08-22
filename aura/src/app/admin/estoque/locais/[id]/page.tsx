@@ -1,6 +1,8 @@
 // src/app/admin/estoque/locais/[id]/page.tsx
 "use client";
 
+import { Dialog } from "@/components/aura";
+
 import React, { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
@@ -10,6 +12,7 @@ import { StockClient } from "@/lib/stock-client";
 import { StockCategory, StockLocationDetail, StockLocationPolicy, StockLocationType } from "@/types/aura";
 import ProductDetailModal from "@/components/admin/ProductDetailModal";
 import { toast } from "sonner";
+import { PageShell, PageHeader, SkeletonList, useConfirm } from "@/components/aura";
 import { cn } from "@/lib/utils";
 import {
   Loader2, ArrowLeft, Package, AlertTriangle, Save, X, Pencil, Trash2,
@@ -37,6 +40,7 @@ interface FixDraft { productId: string; name: string; current: number; unit: str
 
 export default function EstoqueLocalPage() {
   const { currentProperty: property } = useProperty();
+  const confirm = useConfirm();
   const { userData } = useAuth();
   const router = useRouter();
   const locationId = String(useParams()?.id ?? "");
@@ -98,7 +102,7 @@ export default function EstoqueLocalPage() {
 
   const removeLocation = async () => {
     if (!property?.id || !detail) return;
-    if (!confirm(`Excluir o local "${detail.location.name}"?`)) return;
+    if (!(await confirm({ title: `Excluir o local "${detail.location.name}"?`, confirmLabel: "Excluir", tone: "danger" }))) return;
     setSaving(true);
     try {
       await StockClient.deleteLocation(property.id, detail.location.id);
@@ -108,32 +112,26 @@ export default function EstoqueLocalPage() {
   };
 
   if (!property) return <div className="p-8 text-muted-foreground">Selecione uma propriedade.</div>;
-  if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-primary" /></div>;
+  if (loading) return <SkeletonList rows={5} avatar={false} />;
   if (!detail) return <div className="p-8 text-muted-foreground">Local não encontrado.</div>;
 
   const movementHref = (side: "from" | "to") =>
     `/admin/estoque/movimentacoes?${side}=${encodeURIComponent(locationId)}`;
 
   return (
-    <div className="max-w-5xl mx-auto">
+    <PageShell>
       <Link href="/admin/estoque/locais" className="inline-flex items-center gap-1.5 text-xs font-bold text-muted-foreground hover:text-foreground mb-4">
         <ArrowLeft size={14} /> Estoques
       </Link>
 
-      <header className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-            {isCabin ? <Home size={22} /> : <Package size={22} />} {detail.location.name}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {LOCATION_TYPES.find((t) => t.value === detail.location.type)?.label ?? detail.location.type}
+      <PageHeader
+        title={<>{isCabin ? <Home size={22} /> : <Package size={22} />} {detail.location.name}</>}
+        subtitle={<>{LOCATION_TYPES.find((t) => t.value === detail.location.type)?.label ?? detail.location.type}
             {detail.location.policy === "consume_all" && " · ponto de consumo"}
             {detail.location.policy === "consume_categories" && ` · ponto de consumo (${(detail.location.consumeCategoryIds ?? []).length} categoria(s))`}
             {isCabin && " · derivado do cadastro de cabanas"}
-            {!detail.location.active && " · inativo"}
-          </p>
-        </div>
-        <div className="flex gap-2">
+            {!detail.location.active && " · inativo"}</>}
+        actions={(<><div className="flex gap-2">
           <Link href={movementHref("from")}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg bg-secondary text-foreground hover:bg-secondary/70">
             <ArrowUpFromLine size={14} /> Dar saída daqui
@@ -149,8 +147,8 @@ export default function EstoqueLocalPage() {
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg bg-secondary text-foreground hover:bg-secondary/70">
             <Settings2 size={14} /> Gerir local
           </button>
-        </div>
-      </header>
+        </div></>)}
+      />
 
       <div className="grid grid-cols-3 gap-3 mb-6">
         <div className="bg-card border border-border rounded-2xl p-4">
@@ -355,8 +353,8 @@ export default function EstoqueLocalPage() {
 
       {/* Correção de saldo */}
       {fix && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={() => setFix(null)}>
-          <div className="bg-card border border-border w-full max-w-md rounded-3xl shadow-2xl max-h-[92dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <Dialog open onClose={() => setFix(null)} presentation="auto" size="md" rawBody hideClose ariaLabel="Corrigir saldo">
+          <div style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "100%", overflowY: "auto" }}>
             <div className="p-5 border-b border-border flex justify-between items-center">
               <div>
                 <h2 className="text-lg font-bold text-foreground">Corrigir saldo</h2>
@@ -398,13 +396,13 @@ export default function EstoqueLocalPage() {
               </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {/* Gerir local */}
       {manage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={() => setManage(null)}>
-          <div className="bg-card border border-border w-full max-w-md rounded-3xl shadow-2xl max-h-[92dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <Dialog open onClose={() => setManage(null)} presentation="auto" size="md" rawBody hideClose ariaLabel="Gerir local">
+          <div style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "100%", overflowY: "auto" }}>
             <div className="p-5 border-b border-border flex justify-between items-center">
               <h2 className="text-lg font-bold text-foreground">Gerir local</h2>
               <button onClick={() => setManage(null)} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
@@ -476,8 +474,8 @@ export default function EstoqueLocalPage() {
               </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
-    </div>
+    </PageShell>
   );
 }

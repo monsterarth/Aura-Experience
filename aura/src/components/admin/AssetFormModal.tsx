@@ -7,6 +7,8 @@
 //  • custodianId — quem responde pelo ativo.
 "use client";
 
+import { Dialog } from "@/components/aura";
+
 import React, { useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { Loader2, Save, X, ShieldCheck, FileText, Camera, Landmark, User } from "lucide-react";
@@ -94,8 +96,8 @@ export default function AssetFormModal({ propertyId, initial, onClose, onSaved }
   if (!form) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={requestClose}>
-      <div className="bg-card border border-border w-full max-w-2xl rounded-3xl shadow-2xl max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+    <Dialog open onClose={requestClose} presentation="auto" size="lg" rawBody hideClose>
+      <div style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "100%", overflowY: "auto" }}>
         <div className="p-5 border-b border-border flex justify-between items-center sticky top-0 bg-card z-10">
           <h2 className="text-lg font-bold text-foreground">{form.id ? "Editar ativo" : "Novo ativo"}</h2>
           <button onClick={requestClose} className="p-1.5 text-muted-foreground hover:text-foreground"><X size={18} /></button>
@@ -270,6 +272,6 @@ export default function AssetFormModal({ propertyId, initial, onClose, onSaved }
           </button>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Dialog, IconButton, SkeletonList } from "@/components/aura";
+import { Dialog, IconButton, SkeletonList, useConfirm } from "@/components/aura";
 
 import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/context/AuthContext";
@@ -482,6 +482,7 @@ function ImportModal({ onClose, onImported }: { onClose: () => void; onImported:
 /* ─── main page ──────────────────────────────────────────────── */
 
 export default function ChangelogAdminPage() {
+  const confirm = useConfirm();
   useAuth();
 
   const [changelogs, setChangelogs] = useState<Changelog[]>([]);
@@ -591,7 +592,7 @@ export default function ChangelogAdminPage() {
   /* ── delete changelog ── */
   async function handleDelete() {
     if (!selected) return;
-    if (!confirm(`Excluir versão ${selected.version}?`)) return;
+    if (!(await confirm({ title: `Excluir versão ${selected.version}?`, description: "As entradas desta versão somem do changelog público.", confirmLabel: "Excluir", tone: "danger" }))) return;
     setSaving(true);
     try {
       const res = await fetch(`/api/admin/changelog/${selected.id}`, { method: "DELETE" });

@@ -1,6 +1,8 @@
 // src/components/admin/HousekeepingTaskManagerModal.tsx
 "use client";
 
+import { Dialog, useConfirm } from "@/components/aura";
+
 import React, { useState, useEffect } from "react";
 import { X, Save, Trash2, Edit3, MessageSquare, Plus, UserPlus } from "lucide-react";
 import { HousekeepingTask, Cabin, Staff, Structure } from "@/types/aura";
@@ -25,6 +27,7 @@ type LocalType = 'cabin' | 'structure' | 'custom';
 export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task, cabins, structures, maids }: TaskManagerModalProps) {
   const { userData } = useAuth();
   const [loading, setLoading] = useState(false);
+  const confirm = useConfirm();
   const [customChecklist, setCustomChecklist] = useState<{ id: string; label: string; checked: boolean }[]>([]);
   const [localType, setLocalType] = useState<LocalType>('cabin');
   const [customLocationInput, setCustomLocationInput] = useState('');
@@ -134,7 +137,8 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
   };
 
   const handleDelete = async () => {
-    if (!task || !confirm("Tem certeza que deseja apagar esta tarefa do sistema?")) return;
+    if (!task) return;
+    if (!(await confirm({ title: "Apagar esta tarefa do sistema?", confirmLabel: "Apagar", tone: "danger" }))) return;
     setLoading(true);
     try {
       await HousekeepingService.deleteTask(propertyId, task.id, userData?.id || "admin", userData?.fullName || "Admin");
@@ -150,11 +154,8 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
   const isEditing = !!task;
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-300"
-      onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
-    >
-      <div className="bg-card border border-border w-full max-w-xl rounded-[32px] shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh]" {...guardProps}>
+    <Dialog open onClose={requestClose} presentation="auto" size="lg" rawBody hideClose panelProps={guardProps}>
+      <div style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "100%", overflowY: "auto" }}>
 
         <div className="p-6 border-b border-border bg-secondary/50 flex justify-between items-center shrink-0">
           <div>
@@ -385,6 +386,6 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
         </div>
 
       </div>
-    </div>
+    </Dialog>
   );
 }

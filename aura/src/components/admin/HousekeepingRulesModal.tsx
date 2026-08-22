@@ -1,5 +1,7 @@
 "use client";
 
+import { Dialog, useConfirm } from "@/components/aura";
+
 import React, { useState, useEffect } from "react";
 import { X, Plus, Edit3, Trash2, Zap, LogOut, Sun, Clock, RefreshCw, AlertTriangle, LogIn, CalendarCheck } from "lucide-react";
 import { HousekeepingRule, HousekeepingRuleTrigger, Cabin, Staff, Structure } from "@/types/aura";
@@ -137,6 +139,7 @@ function ruleDescription(rule: HousekeepingRule, cabins: Record<string, Cabin>, 
 export function HousekeepingRulesModal({ isOpen, onClose, propertyId, cabins, structures, maids }: Props) {
   const { userData } = useAuth();
   const [rules, setRules] = useState<HousekeepingRule[]>([]);
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -282,7 +285,7 @@ export function HousekeepingRulesModal({ isOpen, onClose, propertyId, cabins, st
   };
 
   const handleDelete = async (rule: HousekeepingRule) => {
-    if (!confirm(`Excluir esta regra de automação?`)) return;
+    if (!(await confirm({ title: "Excluir esta regra de automação?", confirmLabel: "Excluir", tone: "danger" }))) return;
     try {
       await HousekeepingService.deleteRule(propertyId, rule.id, userData?.id || "admin", userData?.fullName || "Admin");
       toast.success("Regra excluída.");
@@ -295,11 +298,8 @@ export function HousekeepingRulesModal({ isOpen, onClose, propertyId, cabins, st
   if (!isOpen) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
-      onClick={(e) => { if (e.target === e.currentTarget) requestClose(); }}
-    >
-      <div className="bg-card border border-border w-full max-w-2xl rounded-[32px] overflow-hidden shadow-2xl flex flex-col max-h-[90vh]" {...guardProps}>
+    <Dialog open onClose={requestClose} presentation="auto" size="lg" rawBody hideClose panelProps={guardProps} ariaLabel="Regras de Automação">
+      <div style={{ display: "flex", flexDirection: "column", minHeight: 0, maxHeight: "100%", overflowY: "auto" }}>
 
         <header className="p-6 border-b border-border flex justify-between items-center shrink-0">
           <div>
@@ -601,6 +601,6 @@ export function HousekeepingRulesModal({ isOpen, onClose, propertyId, cabins, st
           </p>
         </footer>
       </div>
-    </div>
+    </Dialog>
   );
 }
