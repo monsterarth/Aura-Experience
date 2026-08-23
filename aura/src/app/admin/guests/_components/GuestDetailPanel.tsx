@@ -89,18 +89,25 @@ export function GuestDetailPanel({ guest, propertyId, onBack, onUpdated, onMerge
       const oldPhone = guest.phone;
       const newPhone = formData.phone;
       const phoneChanged = !!oldPhone && !!newPhone && ContactService.formatPhoneId(newPhone) !== ContactService.formatPhoneId(oldPhone);
-      await GuestService.upsertGuest(propertyId, formData as any, actorId, actorName);
+      // O id pode MUDAR no salvamento: `guests.id` é o documento, e informar o documento
+      // numa ficha provisória promove a chave (ou a unifica com a ficha que já tinha esse
+      // documento). Daqui para baixo tudo usa o id devolvido — o da tela ficou velho.
+      const savedId = await GuestService.upsertGuest(propertyId, formData as any, actorId, actorName);
       if (phoneChanged) {
         const existing = await ContactService.findByPhone(propertyId, newPhone);
-        if (existing?.isGuest && existing.guestId && existing.guestId !== guest.id) {
+        if (existing?.isGuest && existing.guestId && existing.guestId !== savedId) {
           toast.warning(`Este número já está cadastrado para "${existing.name}". Ambos os hóspedes ficarão vinculados a este número.`, { duration: 6000 });
         }
-        await ContactService.migrateContactPhone(propertyId, oldPhone, newPhone, formData.fullName, guest.id);
+        await ContactService.migrateContactPhone(propertyId, oldPhone, newPhone, formData.fullName, savedId);
       }
       setIsEditing(false);
-      onUpdated(formData);
-      toast.success("Dados do hóspede atualizados.");
-      chatwootSyncOnStayCreated(propertyId, formData.id).catch(() => {});
+      onUpdated({ ...formData, id: savedId });
+      if (savedId !== guest.id) {
+        toast.success("Ficha atualizada e vinculada ao documento.", { description: "O cadastro provisório foi unificado; estadias e contatos acompanharam." });
+      } else {
+        toast.success("Dados do hóspede atualizados.");
+      }
+      chatwootSyncOnStayCreated(propertyId, savedId).catch(() => {});
     } catch {
       toast.error("Erro ao salvar.");
     } finally {

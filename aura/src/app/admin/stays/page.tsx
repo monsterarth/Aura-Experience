@@ -26,7 +26,7 @@ import { StayCard } from "./_components/StayCard";
 import { PendingAccountCard } from "./_components/PendingAccountCard";
 import { useStaysLive } from "./_components/useStaysLive";
 import {
-  TABS, filterAndSort, fmtDay, hasPendingAccount, isUnknownGuest, npsInfo, shortName, titleCase,
+  TABS, filterAndSort, fmtDay, hasPendingAccount, isDocPending, npsInfo, shortName, titleCase,
   type StayRow, type TabStatus,
 } from "./_components/stay-utils";
 
@@ -139,7 +139,7 @@ function StaysPageInner() {
   const handleCheckIn = async (s: StayRow) => {
     if (!property?.id || !userData?.id) return;
     const guestName = shortName(s.guestName);
-    if (isUnknownGuest(s)) {
+    if (isDocPending(s)) {
       await alert({ title: "Hóspede sem documento", description: "Solicite o documento antes de confirmar o check-in.", tone: "amber", icon: ShieldAlert });
     }
     const ok = await confirm({

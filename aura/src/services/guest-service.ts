@@ -2,10 +2,31 @@ import { db } from "@/lib/supabase";
 import { Guest } from "@/types/aura";
 import { postFieldAction } from "@/lib/field-api";
 import { AuditService } from "./audit-service";
+import { hasValidDocument, normalizeDocument } from "@/lib/guest-doc";
 
 export const GuestService = {
   normalizeDocument(docStr: string): string {
-    return docStr.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    return normalizeDocument(docStr);
+  },
+
+  /**
+   * Toda tabela que guarda um `guestId`. Não existe FK para `guests` no banco
+   * (113 FKs no schema, nenhuma aponta para cá): quem troca o id da ficha precisa
+   * repontuar esta lista na mão, ou sobram linhas apontando para ficha inexistente.
+   */
+  GUEST_REF_TABLES: ['stays', 'contacts', 'structure_bookings', 'structure_reviews', 'survey_responses', 'rate_quotes'] as const,
+
+  /** Move todas as referências de uma ficha para outra. Server-side. */
+  async _repointGuestRefs(fromId: string, toId: string): Promise<Record<string, number>> {
+    const moved: Record<string, number> = {};
+    // Sequencial de propósito: se uma tabela falhar, as anteriores já migraram e o
+    // erro sobe antes do delete da ficha — sobra duplicata, nunca órfã.
+    for (const table of this.GUEST_REF_TABLES) {
+      const { data, error } = await db().from(table).update({ guestId: toId }).eq('guestId', fromId).select('id');
+      if (error) throw new Error(`Falha ao migrar ${table}: ${error.message}`);
+      if (data?.length) moved[table] = data.length;
+    }
+    return moved;
   },
 
   async findByDocument(propertyId: string, docNumber: string): Promise<Guest | null> {
@@ -102,7 +123,9 @@ export const GuestService = {
         : `Hóspede ${payload.fullName ?? id} criado.`
     });
 
-    return id;
+    // A ficha pode ter acabado de ganhar documento estando num id provisório
+    // (FNRH, edição da ficha, modal da estadia). O id acompanha o documento.
+    return this.promoteGuestId(propertyId, id, actorId, actorName);
   },
 
   async listGuests(propertyId: string, search?: string): Promise<Guest[]> {
@@ -223,16 +246,10 @@ export const GuestService = {
 
     const stayCount = stays?.length ?? 0;
 
-    if (stayCount > 0) {
-      const { error } = await db()
-        .from('stays')
-        .update({ guestId: primaryId })
-        .eq('propertyId', propertyId)
-        .eq('guestId', secondaryId);
-      // Falha aqui NÃO pode seguir para o delete: apagaria a ficha deixando as
-      // estadias órfãs apontando para um hóspede inexistente.
-      if (error) throw error;
-    }
+    // Antes daqui só as estadias eram movidas — contatos, reservas de estrutura,
+    // pesquisas e orçamentos ficavam apontando para a ficha recém-apagada.
+    // Falha aqui NÃO pode seguir para o delete: apagaria a ficha deixando órfãos.
+    const moved = await this._repointGuestRefs(secondaryId, primaryId);
 
     const { error: delErr } = await db()
       .from('guests')
@@ -244,9 +261,106 @@ export const GuestService = {
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName,
       action: "UPDATE", entity: "GUEST", entityId: primaryId,
-      details: `Cadastros unificados: ${secondary?.fullName ?? secondaryId} → ${(primary as { fullName?: string }).fullName ?? primaryId}. ${stayCount} estadia(s) transferida(s).`
+      details: `Cadastros unificados: ${secondary?.fullName ?? secondaryId} → ${(primary as { fullName?: string }).fullName ?? primaryId}. ${stayCount} estadia(s) transferida(s).${
+        Object.keys(moved).filter(t => t !== 'stays').length
+          ? ` Também migrado: ${Object.entries(moved).filter(([t]) => t !== 'stays').map(([t, n]) => `${n} ${t}`).join(', ')}.`
+          : ''
+      }`
     });
 
     return stayCount;
+  },
+
+  /**
+   * Campos preenchidos na ficha secundária que estão vazios na principal.
+   * Nunca sobrescreve dado existente e nunca mexe em id/documento/propriedade.
+   */
+  _mergeBlankFields(primary: Record<string, any>, secondary: Record<string, any>): Record<string, any> {
+    const isBlank = (v: any): boolean => {
+      if (v === null || v === undefined) return true;
+      if (typeof v === 'string') return !v.trim();
+      if (Array.isArray(v)) return v.length === 0;
+      if (typeof v === 'object') return Object.values(v).every(isBlank);
+      return false;
+    };
+    const KEEP = new Set(['id', 'propertyId', 'document', 'createdAt', 'updatedAt']);
+    const patch: Record<string, any> = {};
+    for (const [k, v] of Object.entries(secondary)) {
+      if (KEEP.has(k)) continue;
+      if (!isBlank(v) && isBlank(primary[k])) patch[k] = v;
+    }
+    return patch;
+  },
+
+  /**
+   * Promove uma ficha de id provisório para o documento que ela agora tem.
+   *
+   * `guests.id` É o documento normalizado. Quando a recepção abre a reserva sem CPF,
+   * a ficha nasce com `GUEST-<timestamp>`; se o documento chegava depois (pré-check-in,
+   * FNRH, edição da ficha), só a coluna `document` era gravada e o id continuava
+   * provisório para sempre. Foi assim que 54 fichas ficaram penduradas, três delas
+   * duplicando um cadastro que já existia com o CPF.
+   *
+   * Cria a ficha definitiva (ou reaproveita a que já existe com esse documento),
+   * move as referências e só então apaga a provisória — nessa ordem, para nunca
+   * existir linha apontando para ficha inexistente.
+   *
+   * Devolve o id final; devolve o de entrada quando não há nada a promover. Nunca
+   * levanta exceção: é um acerto de bastidor, não pode derrubar o salvamento que a
+   * disparou.
+   */
+  async promoteGuestId(propertyId: string, currentId: string, actorId?: string, actorName?: string): Promise<string> {
+    if (!currentId || !currentId.toUpperCase().startsWith('GUEST')) return currentId;
+
+    try {
+      const { data: temp } = await db().from('guests').select('*').eq('id', currentId).maybeSingle();
+      if (!temp || temp.propertyId !== propertyId) return currentId;
+      if (!hasValidDocument(temp.document)) return currentId;
+
+      const newId = normalizeDocument(temp.document?.number);
+      if (!newId || newId === currentId) return currentId;
+
+      // Sem filtro de propriedade: `guests.id` é chave primária global, então um
+      // documento já usado em OUTRA propriedade faria o insert estourar. Melhor sair.
+      const { data: target } = await db().from('guests').select('*').eq('id', newId).maybeSingle();
+      if (target && target.propertyId !== propertyId) {
+        console.error(`[promoteGuestId] ${newId} já existe em outra propriedade — ficha ${currentId} mantida.`);
+        return currentId;
+      }
+
+      if (target) {
+        const patch = this._mergeBlankFields(target, temp);
+        if (Object.keys(patch).length > 0) {
+          await db().from('guests').update({ ...patch, updatedAt: new Date().toISOString() }).eq('id', newId);
+        }
+      } else {
+        const { error } = await db()
+          .from('guests')
+          .insert({ ...temp, id: newId, updatedAt: new Date().toISOString() });
+        if (error) throw error;
+      }
+
+      const moved = await this._repointGuestRefs(currentId, newId);
+      const { error: delErr } = await db().from('guests').delete().eq('id', currentId);
+      if (delErr) throw delErr;
+
+      const refs = Object.entries(moved).map(([t, n]) => `${n} ${t}`).join(', ') || 'nenhuma referência';
+      await AuditService.log({
+        propertyId,
+        userId: actorId || newId,
+        userName: actorName || temp.fullName || newId,
+        action: 'UPDATE',
+        entity: 'GUEST',
+        entityId: newId,
+        details: target
+          ? `Ficha provisória ${currentId} unificada na ficha ${newId} (documento informado depois da reserva). Migrado: ${refs}.`
+          : `Ficha ${temp.fullName ?? currentId} passou do id provisório ${currentId} para o documento ${newId}. Migrado: ${refs}.`,
+      });
+
+      return newId;
+    } catch (e) {
+      console.error(`[promoteGuestId] falha ao promover ${currentId}:`, e);
+      return currentId;
+    }
   },
 };

@@ -14,6 +14,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { stayDisplayName } from '@/lib/stay-display';
+import { hasValidDocument } from '@/lib/guest-doc';
 
 // Máximo de estadias encerradas retornadas (as mais recentes).
 // Evita que o histórico cresça indefinidamente e quebre a rota.
@@ -78,7 +79,7 @@ export async function GET(request: NextRequest) {
         // ── 3. Três queries batch em paralelo (antes eram N×3) ────────────────
         const [guestsRes, cabinsRes, folioRes] = await Promise.all([
             guestIds.length > 0
-                ? supabaseAdmin.from('guests').select('id, fullName').in('id', guestIds)
+                ? supabaseAdmin.from('guests').select('id, fullName, document').in('id', guestIds)
                 : Promise.resolve({ data: [] as any[], error: null }),
             cabinIds.length > 0
                 ? supabaseAdmin.from('cabins').select('id, name').in('id', cabinIds)
@@ -90,8 +91,10 @@ export async function GET(request: NextRequest) {
         ]);
 
         // ── 4. Mapas de lookup O(1) ───────────────────────────────────────────
-        const guestMap = new Map<string, string>(
-            (guestsRes.data ?? []).map((g: any) => [g.id, g.fullName])
+        // O documento NÃO vai para o browser — só o booleano derivado. A lista precisa
+        // saber se falta documento (alerta "Doc pendente"), não qual é o CPF.
+        const guestMap = new Map<string, { fullName: string; hasDoc: boolean }>(
+            (guestsRes.data ?? []).map((g: any) => [g.id, { fullName: g.fullName, hasDoc: hasValidDocument(g.document) }])
         );
         const cabinMap = new Map<string, string>(
             (cabinsRes.data ?? []).map((c: any) => [c.id, c.name])
@@ -108,9 +111,12 @@ export async function GET(request: NextRequest) {
         const enriched = stays.map((stay: any) => {
             const folioItems       = folioByStay.get(stay.id) ?? [];
             const pendingFolioCount = folioItems.filter((f: any) => f.status === 'pending').length;
+            const guest             = stay.guestId ? guestMap.get(stay.guestId) : undefined;
             return {
                 ...stay,
-                guestName:       stayDisplayName(stay, guestMap.get(stay.guestId), 'Hóspede desconhecido'),
+                guestName:       stayDisplayName(stay, guest?.fullName, 'Hóspede desconhecido'),
+                // Uso da casa não tem titular; fora isso, sem ficha ou sem documento = pendente.
+                docPending:      !stay.internalUse && !guest?.hasDoc,
                 cabinName:       cabinMap.get(stay.cabinId) ?? 'Sem Cabana',
                 folioItems,
                 pendingFolioCount,

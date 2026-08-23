@@ -6,6 +6,7 @@ import { Stay, Guest, Cabin, FolioItem, AutomationTriggerEvent, MessageTemplate 
 import { v4 as uuidv4 } from 'uuid';
 import { AuditService } from "./audit-service";
 import { AutomationService } from "./automation-service";
+import { GuestService } from "./guest-service";
 import { HousekeepingService } from "./housekeeping-service";
 import { applyTimeToDate, DEFAULT_CHECK_IN_TIME, DEFAULT_CHECK_OUT_TIME } from "@/lib/stay-times";
 
@@ -331,6 +332,12 @@ export const StayService = {
 
     if (stayRes.error) throw new Error(`Falha ao atualizar a estadia: ${stayRes.error.message}`);
     if (guestRes.error) throw new Error(`Falha ao atualizar os dados do hóspede: ${guestRes.error.message}`);
+
+    // O documento normalmente chega AQUI: a reserva foi aberta sem CPF e o hóspede
+    // preencheu no portal. Sem isto o id da ficha ficaria provisório para sempre e o
+    // cartão da estadia acenderia "Doc pendente" mesmo com o documento na mão.
+    // Só no envio final — no rascunho o campo ainda está sendo digitado.
+    await GuestService.promoteGuestId(propertyId, stay.guestId, stay.guestId, (guestUpdate.fullName as string) || "Hóspede");
 
     await AuditService.log({
       propertyId,

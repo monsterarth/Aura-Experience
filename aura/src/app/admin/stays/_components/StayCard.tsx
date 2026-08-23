@@ -5,7 +5,7 @@ import { Ban, Clock, Copy, Dog, LogIn, MessageCircle, ShieldAlert, Users } from 
 import { T, tone as toneOf, type Tone } from "@/lib/admin-tokens";
 import { Button, IconButton } from "@/components/aura/Button";
 import { Pill } from "@/components/aura/Pill";
-import { activeStatusInfo, futureStatusInfo, fmtDay, isUnknownGuest, shortName, type StayRow } from "./stay-utils";
+import { activeStatusInfo, futureStatusInfo, fmtDay, isDocPending, shortName, type StayRow } from "./stay-utils";
 
 export interface StayCardProps {
   stay: StayRow;
@@ -32,7 +32,7 @@ const labelStyle: React.CSSProperties = { fontSize: 9, fontWeight: 800, letterSp
 
 /** Cartão de estadia ativa/futura: cabana, hóspede (toque = WhatsApp), datas, status e ações. */
 export function StayCard({ stay: s, mode, onOpen, onWhatsapp, onCheckIn, onCancel, onCopyLink, opening, checkingIn }: StayCardProps) {
-  const unknown = isUnknownGuest(s);
+  const docPending = isDocPending(s);
   const status = mode === "ativas" ? activeStatusInfo(s.checkOut) : futureStatusInfo(s.checkIn, s.expectedArrivalTime);
   const st = toneOf(status.tone);
   const preDone = s.status === "pre_checkin_done";
@@ -42,7 +42,7 @@ export function StayCard({ stay: s, mode, onOpen, onWhatsapp, onCheckIn, onCance
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
         <Pill tone={s.cabinId ? "brand" : "amber"} size="md" label={s.cabinName || "Sem cabana"} style={{ maxWidth: "70%" }} />
         <div style={{ display: "flex", gap: 4 }}>
-          {unknown && <Flag title="Documento pendente" tone="red"><ShieldAlert size={14} /></Flag>}
+          {docPending && <Flag title="Documento pendente" tone="red"><ShieldAlert size={14} /></Flag>}
           {s.hasPet && <Flag title="Pet" tone="orange"><Dog size={14} /></Flag>}
           {s.groupId && <Flag title="Grupo" tone="blue"><Users size={14} /></Flag>}
         </div>
@@ -73,7 +73,7 @@ export function StayCard({ stay: s, mode, onOpen, onWhatsapp, onCheckIn, onCance
             <div style={labelStyle}>Status atual</div>
             <div style={{ fontSize: 14, fontWeight: 800, color: st.color, marginTop: 2 }}>{status.label}</div>
           </div>
-          {unknown && <Pill tone="red" label="Doc pendente" />}
+          {docPending && <Pill tone="red" label="Doc pendente" />}
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>

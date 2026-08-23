@@ -88,13 +88,16 @@ export function filterAndSort(stays: StayRow[], tab: TabStatus, searchTerm: stri
     });
 }
 
-/** Documento ausente em reserva com titular provisório (não pré-checkin). */
-export function isUnknownGuest(s: StayRow): boolean {
-  const docNumber = s.guest?.document?.number || s.guestDocumentNumber || "";
-  const hasValidDoc = !!docNumber && docNumber.length > 3 && docNumber !== "N/A";
-  const isPreCheckinDone = s.status === "pre_checkin_done";
-  const isTempId = !s.guestId || String(s.guestId).startsWith("GUEST");
-  return isTempId && !hasValidDoc && !isPreCheckinDone;
+/**
+ * Ficha do titular sem número de documento. Quem decide é a rota (`docPending`):
+ * a lista nunca recebe o documento em si.
+ *
+ * A regra anterior inferia isso do formato do `guestId` ("id provisório = sem documento")
+ * e ficava presa: o id nasce provisório quando a reserva é aberta sem CPF e nunca mudava,
+ * mesmo depois do documento chegar. Cartão de estadia ativa acendia para sempre.
+ */
+export function isDocPending(s: StayRow): boolean {
+  return s.docPending === true;
 }
 
 const PARTICLES = new Set(["de", "da", "do", "das", "dos", "e", "di", "del", "van", "von"]);

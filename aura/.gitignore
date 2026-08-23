@@ -45,3 +45,6 @@ tmp_*.txt
 temp_*.js
 schema_check.txt
 manual_api.txt
+
+# backups de migração (gerados por scripts/dev/*.mjs)
+/.backups/
