@@ -15,8 +15,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  AlertTriangle, ArrowLeft, ArrowRight, BadgeCheck, Copy, Heart, Loader2, Pencil,
-  Phone, Plus, Save, Trash2, X,
+  AlertTriangle, ArrowLeft, ArrowRight, BadgeCheck, ChevronDown, ChevronUp, Copy,
+  GripVertical, Heart, Loader2, Pencil, Phone, Plus, Save, Trash2, X,
 } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
 import { useCloseGuard } from "@/lib/use-discard-guard";
@@ -44,6 +44,12 @@ const fieldLabel: React.CSSProperties = {
   color: T.muted, marginBottom: 5, display: "block",
 };
 
+/** Botão-ícone discreto (duplicar/remover acomodação na calculadora). */
+const iconBtnS: React.CSSProperties = {
+  padding: 4, borderRadius: 7, background: "none", border: "none",
+  color: T.muted, cursor: "pointer", display: "flex", flexShrink: 0,
+};
+
 type MatchContext = {
   phoneMatches: Guest[];
   nameMatches: Guest[];
@@ -65,9 +71,16 @@ type DraftRoom = {
   overCapacityReason: string;
 };
 
-let draftSeq = 0;
+/** Id novo à prova de colisão. Já foi `r{seq}` com contador global de módulo:
+ *  ao EDITAR um orçamento salvo, o contador recomeçava do zero enquanto os ids
+ *  salvos ("r8"…) entravam pela semente — uma acomodação nova podia repetir um
+ *  id existente, e aí patch, checkboxes e React keys acertavam as DUAS. */
+const newRoomId = () =>
+  typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `r-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 const newDraftRoom = (over?: Partial<DraftRoom>): DraftRoom => ({
-  id: `r${++draftSeq}`, label: "",
+  id: newRoomId(), label: "",
   checkIn: "", checkOut: "",
   adults: "2", children: "0", babies: "0", pets: "0",
   selectedCategory: null, prices: {},
@@ -209,6 +222,9 @@ export function NewQuoteWizard({
   const [checkIn, setCheckIn] = useState(seed?.checkIn ?? todayIso());
   const [checkOut, setCheckOut] = useState(seed?.checkOut ?? addDays(todayIso(), 2));
   const [rooms, setRooms] = useState<DraftRoom[]>(() => seedRooms(seed));
+  /** Acomodações salvas cujo recorte de cabanas oferecidas ainda vai ser
+   *  aplicado ao `deselected` assim que o cálculo estiver de pé. */
+  const narrowSeedRef = useRef<RateQuoteRoom[] | null>(seed?.rooms ?? null);
   const [linkedGuest, setLinkedGuest] = useState<{ id: string; name: string } | null>(
     seed?.guestId ? { id: seed.guestId, name: seed.clientName || seed.guestId } : null
   );
@@ -220,17 +236,131 @@ export function NewQuoteWizard({
     markDirty();
     setRooms((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   };
-  const addRoom = () => { markDirty(); setRooms((prev) => [...prev, newDraftRoom()]); };
-  const duplicateRoom = (id: string) => { markDirty(); setRooms((prev) => {
-    const src = prev.find((r) => r.id === id);
-    if (!src) return prev;
-    return [...prev, newDraftRoom({
-      ...src, id: `r${++draftSeq}`, selectedCategory: null, prices: { ...src.prices },
-    })];
-  }); };
+  /** Leva a acomodação recém-criada para a tela — quem adiciona na calculadora
+   *  precisa VER as opções dela (foi não ver que gerou link com o parque inteiro). */
+  const scrollRoomIntoView = (id: string) =>
+    requestAnimationFrame(() => {
+      // window.document: o estado `document` (doc. do cliente) sombreia o global.
+      window.document.querySelector(`[data-room="${CSS.escape(id)}"]`)
+        ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+
+  const addRoom = (scroll?: boolean) => {
+    markDirty();
+    const id = newRoomId();
+    setRooms((prev) => [...prev, newDraftRoom({ id })]);
+    if (scroll) scrollRoomIntoView(id);
+  };
+  const duplicateRoom = (id: string, scroll?: boolean) => {
+    markDirty();
+    const newId = newRoomId();
+    setRooms((prev) => {
+      const i = prev.findIndex((r) => r.id === id);
+      if (i < 0) return prev;
+      const src = prev[i];
+      // A cópia entra LOGO ABAIXO da original — "mais uma igual" fica junto.
+      const next = [...prev];
+      next.splice(i + 1, 0, newDraftRoom({
+        ...src, id: newId, selectedCategory: null, prices: { ...src.prices },
+      }));
+      return next;
+    });
+    // Herda também as cabanas oferecidas: duplicar a acomodação "Eco Suíte"
+    // não pode nascer oferecendo o parque inteiro.
+    setDeselected((prev) => (prev[id] ? { ...prev, [newId]: new Set(prev[id]) } : prev));
+    if (scroll) scrollRoomIntoView(newId);
+  };
   const removeRoom = (id: string) => {
     markDirty();
     setRooms((prev) => (prev.length > 1 ? prev.filter((r) => r.id !== id) : prev));
+    setOverDraft((d) => (d?.roomId === id ? null : d));
+  };
+
+  // ── Ordem das acomodações — é a ordem que o cliente vê no link da proposta ──
+  const [dragRoomId, setDragRoomId] = useState<string | null>(null);
+  const [dragOverRoomId, setDragOverRoomId] = useState<string | null>(null);
+
+  const reorderRooms = (fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    markDirty();
+    setRooms((prev) => {
+      const from = prev.findIndex((r) => r.id === fromId);
+      const to = prev.findIndex((r) => r.id === toId);
+      if (from < 0 || to < 0) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  };
+  const moveRoom = (id: string, delta: -1 | 1) => {
+    markDirty();
+    setRooms((prev) => {
+      const i = prev.findIndex((r) => r.id === id);
+      const j = i + delta;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(i, 1);
+      next.splice(j, 0, moved);
+      return next;
+    });
+  };
+
+  /** Props do BLOCO da acomodação (alvo de drop) — vale no passo 1 e no 3. */
+  const roomDropProps = (roomId: string) => ({
+    "data-room": roomId,
+    onDragOver: (e: React.DragEvent) => {
+      if (!dragRoomId || dragRoomId === roomId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      if (dragOverRoomId !== roomId) setDragOverRoomId(roomId);
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      if (e.currentTarget === e.target) setDragOverRoomId((cur) => (cur === roomId ? null : cur));
+    },
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      if (dragRoomId) reorderRooms(dragRoomId, roomId);
+      setDragRoomId(null);
+      setDragOverRoomId(null);
+    },
+  });
+
+  /** Alça de arrasto + setas: mouse arrasta, toque/teclado usa as setas. */
+  const dragHandle = (roomId: string, index: number, count: number) => {
+    const arrowS = (off: boolean): React.CSSProperties => ({
+      padding: 0, height: 11, display: "flex", alignItems: "center", justifyContent: "center",
+      background: "none", border: "none", fontFamily: "inherit",
+      cursor: off ? "default" : "pointer", color: T.muted2, opacity: off ? 0.25 : 1,
+    });
+    return (
+      <span style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}>
+        <span
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData("text/plain", roomId);
+            e.dataTransfer.effectAllowed = "move";
+            const block = (e.currentTarget as HTMLElement).closest("[data-room]");
+            if (block instanceof HTMLElement) e.dataTransfer.setDragImage(block, 24, 18);
+            setDragRoomId(roomId);
+          }}
+          onDragEnd={() => { setDragRoomId(null); setDragOverRoomId(null); }}
+          title="Arraste para mudar a ordem — é a ordem em que o cliente vê no link"
+          style={{ display: "flex", alignItems: "center", cursor: "grab", color: T.muted2, touchAction: "none" }}>
+          <GripVertical size={14} />
+        </span>
+        <span style={{ display: "flex", flexDirection: "column" }}>
+          <button onClick={() => moveRoom(roomId, -1)} disabled={index === 0}
+            title="Subir na ordem" style={arrowS(index === 0)}>
+            <ChevronUp size={10} />
+          </button>
+          <button onClick={() => moveRoom(roomId, 1)} disabled={index === count - 1}
+            title="Descer na ordem" style={arrowS(index === count - 1)}>
+            <ChevronDown size={10} />
+          </button>
+        </span>
+      </span>
+    );
   };
 
   const step1Error = !name.trim() ? "Informe o nome do cliente."
@@ -314,6 +444,9 @@ export function NewQuoteWizard({
       quoteId: q.id, checkIn: q.checkIn, checkOut: q.checkOut, rooms: q.rooms,
       adults: q.adults, children: q.children, babies: q.babies, pets: q.pets,
     }));
+    // Repõe o recorte de cabanas oferecidas do orçamento salvo (consumido pelo
+    // efeito assim que o roomQuotes recalcular com estas acomodações).
+    narrowSeedRef.current = q.rooms ?? null;
     setFluctuationPct(q.fluctuationPct ?? 0);
     setFluctuationAuto(q.fluctuationAuto === true);
     setDiscountIds(q.discountIds ?? []);
@@ -539,23 +672,27 @@ export function NewQuoteWizard({
 
   // Reabrindo um orçamento salvo: pré-marca só as cabanas que estavam REALMENTE
   // oferecidas (as chaves de `options`, já filtradas pelo fix de "oferece o
-  // parque inteiro"), não tudo o que recalcula agora. Roda uma vez só — depois
-  // disso o toggle do vendedor manda. Acomodação nova (sem par no seed) começa
-  // com tudo marcado, como sempre.
-  const seedDeselectedDone = useRef(false);
+  // parque inteiro"), não tudo o que recalcula agora. A semente é consumida uma
+  // vez — depois disso o toggle do vendedor manda — e é REPOSTA quando o passo 2
+  // traz o pedido salvo de volta ("Manter o que já estava" / "Usar o pedido
+  // original"), que antes perdia o recorte e voltava a oferecer tudo.
+  // Acomodação sem par na semente (recém-adicionada) começa com tudo marcado.
   useEffect(() => {
-    if (seedDeselectedDone.current || !seed?.rooms?.length || !roomQuotes) return;
-    seedDeselectedDone.current = true;
-    const next: Record<string, Set<string>> = {};
-    for (const rq of roomQuotes) {
-      const saved = seed.rooms.find((r) => r.id === rq.room.id);
-      if (!saved) continue;
-      const offeredIds = new Set(saved.options.map((o) => o.categoryId || o.category));
-      const off = new Set(rq.result.categories.filter((c) => !offeredIds.has(c.categoryId)).map((c) => c.categoryId));
-      if (off.size > 0) next[rq.room.id] = off;
-    }
-    if (Object.keys(next).length > 0) setDeselected(next);
-  }, [seed, roomQuotes]);
+    const savedRooms = narrowSeedRef.current;
+    if (!savedRooms?.length || !roomQuotes) return;
+    narrowSeedRef.current = null;
+    setDeselected((prev) => {
+      const merged = { ...prev };
+      for (const rq of roomQuotes) {
+        const saved = savedRooms.find((r) => r.id === rq.room.id);
+        if (!saved) continue;
+        const offeredIds = new Set(saved.options.map((o) => o.categoryId || o.category));
+        const off = new Set(rq.result.categories.filter((c) => !offeredIds.has(c.categoryId)).map((c) => c.categoryId));
+        if (off.size > 0) merged[rq.room.id] = off; else delete merged[rq.room.id];
+      }
+      return merged;
+    });
+  }, [roomQuotes]);
 
   /** Pax somado — os placeholders da mensagem falam do grupo inteiro. */
   const totalInput: RateQuoteInput = useMemo(() => {
@@ -618,13 +755,22 @@ export function NewQuoteWizard({
       if (mins.length > 1) approximate = true;
     }
     return { value, approximate };
+    // `deselected` nas deps: desmarcar uma cabana muda o "a partir de" — sem
+    // isso o rodapé e o total da mensagem ficavam com o valor de antes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomQuotes]);
+  }, [roomQuotes, deselected]);
 
   // Mudou o cálculo/cliente → o save anterior não representa mais o orçamento.
+  // As cabanas MARCADAS entram na chave: elas viram `includedCategoryIds` no
+  // save — sem isso, desmarcar uma opção e clicar "Copiar orçamento" não
+  // re-salvava, a mensagem saía certa e o LINK continuava com as opções velhas.
   const quoteKey = JSON.stringify([
     checkIn, checkOut, commercial, rooms, name, document, documentType, language, phone, email,
     linkedGuest?.id ?? null, source,
+    Object.entries(deselected)
+      .map(([roomId, off]) => [roomId, Array.from(off).sort()] as const)
+      .filter(([, off]) => off.length > 0)
+      .sort((a, b) => a[0].localeCompare(b[0])),
   ]);
   const isSavedCurrent = savedId !== null && savedKeyRef.current === quoteKey;
 
@@ -873,7 +1019,10 @@ export function NewQuoteWizard({
     </div>
   );
 
-  const stepDot = (n: 1 | 2 | 3, label: string) => (
+  // `num` é o número EXIBIDO: editando, o passo de confirmação some e a
+  // calculadora vira o "2" — mostrar "1 e 3" fazia o vendedor falar de um
+  // "passo 2" que não existia na tela.
+  const stepDot = (n: 1 | 2 | 3, num: number, label: string) => (
     <span style={{
       display: "inline-flex", alignItems: "center", gap: 6,
       fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase",
@@ -885,7 +1034,7 @@ export function NewQuoteWizard({
         background: step === n ? T.gradSoft : T.glass2,
         border: `1px solid ${step === n ? T.g1Border : T.border}`,
         color: step === n ? T.g1 : T.muted,
-      }}>{n}</span>
+      }}>{num}</span>
       {label}
     </span>
   );
@@ -1117,9 +1266,9 @@ export function NewQuoteWizard({
               </div>
             )}
             <div style={{ display: "flex", gap: 14, marginTop: 6 }}>
-              {stepDot(1, "Pedido")}
-              {!hasSeed && stepDot(2, "Confirmação")}
-              {stepDot(3, "Cotação")}
+              {stepDot(1, 1, "Pedido")}
+              {!hasSeed && stepDot(2, 2, "Confirmação")}
+              {stepDot(3, hasSeed ? 2 : 3, "Cotação")}
             </div>
           </div>
           <IconButton icon={X} label="Fechar" variant="secondary" onClick={requestClose} />
@@ -1287,7 +1436,7 @@ export function NewQuoteWizard({
               <span style={{ fontSize: 10.5, color: T.muted2 }}>
                 {rooms.length > 1 ? `${rooms.length} cabanas na mesma reserva` : "uma cabana"}
               </span>
-              <button onClick={addRoom}
+              <button onClick={() => addRoom()}
                 style={{
                   marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5,
                   padding: "6px 11px", borderRadius: 9, cursor: "pointer", fontFamily: "inherit",
@@ -1298,8 +1447,15 @@ export function NewQuoteWizard({
               </button>
             </div>
             {rooms.map((r, i) => (
-              <div key={r.id} style={{ ...S.row, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+              <div key={r.id} {...roomDropProps(r.id)}
+                style={{
+                  ...S.row, padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10,
+                  opacity: dragRoomId === r.id ? 0.55 : 1,
+                  border: `1px solid ${dragOverRoomId === r.id ? T.g1Border : T.border}`,
+                  background: dragOverRoomId === r.id ? T.glass2 : T.glass,
+                }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {rooms.length > 1 && dragHandle(r.id, i, rooms.length)}
                   <span style={{
                     width: 22, height: 22, borderRadius: 7, background: T.gradSoft,
                     border: `1px solid ${T.g1Border}`, color: T.g1, fontSize: 10, fontWeight: 900,
@@ -1576,8 +1732,15 @@ export function NewQuoteWizard({
                 const custom = !!(rq.room.checkIn || rq.room.checkOut);
                 const nights = rq.result.nights;
                 return (
-                  <div key={rq.room.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div key={rq.room.id} {...roomDropProps(rq.room.id)}
+                    style={{
+                      display: "flex", flexDirection: "column", gap: 6, borderRadius: 10,
+                      opacity: dragRoomId === rq.room.id ? 0.55 : 1,
+                      outline: dragOverRoomId === rq.room.id ? `2px dashed ${T.g1Border}` : "none",
+                      outlineOffset: 5,
+                    }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      {roomQuotes.length > 1 && dragHandle(rq.room.id, i, roomQuotes.length)}
                       <span style={{ fontSize: 12, fontWeight: 800, color: T.text }}>
                         {roomQuotes.length > 1 ? roomLabel(rq.room, i) : "Cabanas oferecidas"}
                       </span>
@@ -1671,6 +1834,20 @@ export function NewQuoteWizard({
                           </button>
                         )}
                       </span>
+                      {/* Compor aqui mesmo — sem a viagem de volta ao pedido. */}
+                      <span style={{ display: "flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+                        <button onClick={() => duplicateRoom(rq.room.id, true)}
+                          title="Duplicar — mesmas pessoas e mesmas cabanas oferecidas"
+                          style={iconBtnS}>
+                          <Copy size={12} />
+                        </button>
+                        {rooms.length > 1 && (
+                          <button onClick={() => removeRoom(rq.room.id)} title="Remover esta acomodação"
+                            style={iconBtnS}>
+                            <Trash2 size={12} />
+                          </button>
+                        )}
+                      </span>
                     </div>
 
                     {rq.result.uncoveredDates.length > 0 && (
@@ -1749,6 +1926,19 @@ export function NewQuoteWizard({
                   </div>
                 );
               })}
+
+              {/* Faltou uma cabana? Adiciona aqui mesmo — recalcula na hora e as
+                  opções dela aparecem logo abaixo, sem voltar ao pedido. */}
+              <button onClick={() => addRoom(true)}
+                title="Mais uma acomodação neste orçamento"
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  padding: "10px 14px", borderRadius: 11, cursor: "pointer", fontFamily: "inherit",
+                  fontSize: 12, fontWeight: 800, color: T.g1,
+                  background: "transparent", border: `1px dashed ${T.g1Border}`,
+                }}>
+                <Plus size={13} /> Adicionar acomodação
+              </button>
 
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11.5, color: T.muted, cursor: "pointer" }}>

@@ -894,6 +894,10 @@ export const RateService = {
            selectedCategory: payload.selectedCategory } as Partial<RateQuoteRoom>];
 
     let firstAvgPct = 0;
+    // Id repetido no payload não pode persistir: escolha da proposta, checkbox
+    // e acompanhantes do intake casam por id — duplicado acerta DUAS
+    // acomodações. O primeiro fica com o id; o repetido ganha um novo.
+    const seenRoomIds = new Set<string>();
     const rooms: RateQuoteRoom[] = requested.map((r, i) => {
       // A exceção só existe COM justificativa: a flag habilita o cálculo, o
       // texto é a prova comercial que fica no orçamento e na auditoria.
@@ -948,8 +952,11 @@ export const RateService = {
         }
       }
 
+      const roomId = r.id && !seenRoomIds.has(r.id) ? r.id : crypto.randomUUID();
+      seenRoomIds.add(roomId);
+
       return {
-        id: r.id || crypto.randomUUID(),
+        id: roomId,
         label: r.label?.trim() || null,
         // Guarda as datas SEMPRE (já sanitizadas): a acomodação passa a ser
         // autocontida para quem lê o orçamento depois.
