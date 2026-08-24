@@ -7,8 +7,8 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle, BedDouble, CalendarClock, CalendarDays, CopyPlus, ExternalLink,
-  Heart, Instagram, Link2, Loader2, Mail, MessageSquare, Pencil, Phone, Send, Tag,
-  Trash2, X, XCircle,
+  Heart, Instagram, Link2, Loader2, Mail, MessageSquare, Pencil, Phone, Save, Send,
+  Tag, Trash2, X, XCircle,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { T } from "@/lib/admin-tokens";
@@ -415,42 +415,36 @@ function ContractCharges({ lead }: { lead: CrmLead }) {
  * "completa" — ex.: ano 0002), desabilitava o campo (busy) e persistia data
  * lixo. Datas antes de 2000 são descartadas como digitação incompleta.
  */
-function DatePatchField({ value, busy, onCommit }: {
-  value: string | null | undefined;
-  busy: boolean;
-  onCommit: (v: string | null) => void;
-}) {
-  const [draft, setDraft] = useState(value ?? "");
-  const syncedTo = useRef(value ?? "");
-  useEffect(() => {
-    if (syncedTo.current !== (value ?? "")) {
-      syncedTo.current = value ?? "";
-      setDraft(value ?? "");
-    }
-  }, [value]);
+/** Rascunho da seção Negociação — nada vai ao servidor antes do Salvar. */
+type NegDraft = {
+  /** Texto em formato BR ("3.450,00"); vazio = volta ao valor de tabela. */
+  negotiatedValue: string;
+  source: string;
+  followUpAt: string;
+  expiresAt: string;
+};
 
-  const commit = () => {
-    if (draft && draft < "2000-01-01") { setDraft(value ?? ""); return; }
-    if ((draft || null) !== (value || null)) onCommit(draft || null);
-  };
-
-  return (
-    <input type="date" style={S.input} value={draft} disabled={busy}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => e.key === "Enter" && commit()} />
-  );
-}
+const negDraftFromLead = (lead: CrmLead): NegDraft => ({
+  negotiatedValue: lead.negotiatedValue != null ? moneyToInput(lead.negotiatedValue) : "",
+  source: lead.source ?? "",
+  followUpAt: lead.followUpAt ?? "",
+  expiresAt: lead.expiresAt ?? "",
+});
 
 /**
- * Seção "Negociação" (só orçamentos): valor negociado editável inline —
- * recepção pode mexer SEM aval de gerente, o registro fica na timeline
- * (value_change) e na auditoria — mais canal e prazos.
+ * Seção "Negociação" (só orçamentos): valor negociado, canal de origem e
+ * prazos. A recepção mexe SEM aval de gerente — o registro fica na timeline
+ * (value_change) e na auditoria.
+ *
+ * Rascunho local + botão Salvar, nunca gravação por tecla ou por blur: sair do
+ * campo sem querer não pode virar mudança de valor negociado. O que muda é o
+ * que vai no PATCH — mandar o bloco inteiro carimbaria value_change à toa.
+ *
  * Componente no topo do módulo de propósito: definido dentro do render
  * perderia o foco a cada tecla (pegadinha já vivida no form de casamentos).
  */
 function NegotiationSection({
-  lead, channels, busy, hideValue, onPatch,
+  lead, channels, busy, hideValue, onPatch, onDirtyChange,
 }: {
   lead: CrmLead;
   channels: CrmChannel[];
@@ -458,93 +452,128 @@ function NegotiationSection({
   /** Orçamento com acomodações: o valor é fechado POR acomodação, acima. */
   hideValue?: boolean;
   onPatch: (patch: Record<string, unknown>) => Promise<void>;
+  /** Avisa o drawer que há rascunho pendente (guarda do fechar). */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
-  const [editingValue, setEditingValue] = useState(false);
-  const [valueStr, setValueStr] = useState("");
+  const [draft, setDraft] = useState<NegDraft>(() => negDraftFromLead(lead));
+  const [saving, setSaving] = useState(false);
 
-  const startEdit = () => {
-    // Prefill em formato BR (vírgula) — prefill com ponto + parser BR era o
-    // bug de 10x/100x pego na revisão.
-    setValueStr(lead.negotiatedValue ? moneyToInput(lead.negotiatedValue)
-      : lead.value > 0 ? moneyToInput(lead.value) : "");
-    setEditingValue(true);
+  // Só resincroniza quando o dado vem de FORA (outro lead, recarga) — não a
+  // cada render, senão o que está sendo digitado seria apagado.
+  const syncedTo = useRef(JSON.stringify(negDraftFromLead(lead)));
+  useEffect(() => {
+    const fresh = negDraftFromLead(lead);
+    const key = JSON.stringify(fresh);
+    if (syncedTo.current !== key) {
+      syncedTo.current = key;
+      setDraft(fresh);
+    }
+  }, [lead]);
+
+  const saved = negDraftFromLead(lead);
+  const isDirty = JSON.stringify(draft) !== JSON.stringify(saved);
+  useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
+  // Desmontar (drawer fechou por outro caminho) não pode deixar o aviso preso.
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+
+  const patchDraft = <K extends keyof NegDraft>(key: K, value: NegDraft[K]) =>
+    setDraft((d) => ({ ...d, [key]: value }));
+
+  const save = async () => {
+    if (!isDirty || busy || saving) return;
+    const patch: Record<string, unknown> = {};
+
+    if (draft.negotiatedValue !== saved.negotiatedValue) {
+      const v = parseMoneyBR(draft.negotiatedValue);
+      patch.negotiatedValue = Number.isFinite(v) && v > 0 ? v : null;
+    }
+    if (draft.source !== saved.source) patch.source = draft.source || null;
+    // Data absurda (o "0002-05-12" de quem digita o ano no campo errado) volta
+    // ao que estava em vez de virar prazo.
+    if (draft.followUpAt !== saved.followUpAt) {
+      patch.followUpAt = draft.followUpAt && draft.followUpAt >= "2000-01-01" ? draft.followUpAt : null;
+    }
+    if (draft.expiresAt !== saved.expiresAt) {
+      patch.expiresAt = draft.expiresAt && draft.expiresAt >= "2000-01-01" ? draft.expiresAt : null;
+    }
+    if (Object.keys(patch).length === 0) return;
+
+    setSaving(true);
+    try {
+      await onPatch(patch);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const commitValue = async () => {
-    if (busy) return;
-    const v = parseMoneyBR(valueStr);
-    await onPatch({ negotiatedValue: Number.isFinite(v) && v > 0 ? v : null });
-    setEditingValue(false);
-  };
+  const busyAll = busy || saving;
 
   return (
     <div style={{ padding: 20, borderBottom: `1px solid ${T.border}`, display: "flex", flexDirection: "column", gap: 12 }}>
-      <p style={drawerLabel}>Negociação</p>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <p style={drawerLabel}>Negociação</p>
+        {isDirty && (
+          <span style={{ ...pillS(T.amberBg, T.amber, T.amberBorder), fontSize: 9 }}>
+            não salvo
+          </span>
+        )}
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <div style={{ display: hideValue ? "none" : undefined }}>
-          <label style={fieldLabel}>Valor</label>
-          {editingValue ? (
-            <div style={{ display: "flex", gap: 6 }}>
-              <input autoFocus style={{ ...S.input, flex: 1 }} inputMode="decimal"
-                placeholder="Ex.: 3450,00"
-                value={valueStr} onChange={(e) => setValueStr(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") commitValue();
-                  if (e.key === "Escape") setEditingValue(false);
-                }} />
-              <button onClick={commitValue} disabled={busy}
-                style={{ ...S.gradBtn, padding: "8px 12px", opacity: busy ? 0.6 : 1 }}>
-                {busy ? <Loader2 size={13} className="animate-spin" /> : "OK"}
-              </button>
-            </div>
-          ) : (
-            <button onClick={startEdit} disabled={busy}
-              style={{
-                ...S.input, display: "flex", alignItems: "center", gap: 8,
-                textAlign: "left", cursor: "pointer",
-              }}>
-              <span style={{ fontWeight: 800, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {lead.value > 0
-                  ? `${lead.valueApproximate ? "a partir de " : ""}R$ ${money(lead.value)}`
-                  : "Definir valor"}
-              </span>
-              {lead.negotiatedValue != null && (
-                <span style={{ ...pillS(T.amberBg, T.amber, T.amberBorder), flexShrink: 0, fontSize: 9 }}>
-                  negociado
-                </span>
-              )}
-              <Pencil size={11} style={{ marginLeft: "auto", flexShrink: 0, color: T.muted }} />
-            </button>
-          )}
-          {lead.negotiatedValue != null && !editingValue && (
-            <button onClick={() => onPatch({ negotiatedValue: null })} disabled={busy}
-              style={{
-                background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
-                fontSize: 10, color: T.muted, textDecoration: "underline", textUnderlineOffset: 2,
-                marginTop: 4, padding: 0,
-              }}>
-              voltar ao valor de tabela
-            </button>
-          )}
+          <label style={fieldLabel}>Valor negociado</label>
+          <input style={S.input} inputMode="decimal" disabled={busyAll}
+            placeholder={lead.value > 0 ? `Tabela: ${money(lead.value)}` : "Ex.: 3450,00"}
+            value={draft.negotiatedValue}
+            onChange={(e) => patchDraft("negotiatedValue", e.target.value)} />
+          <p style={{ fontSize: 10, color: T.muted2, margin: "4px 0 0" }}>
+            {draft.negotiatedValue.trim()
+              ? "Vence o valor de tabela."
+              : lead.value > 0
+                ? `Vazio = vale a tabela (${lead.valueApproximate ? "a partir de " : ""}R$ ${money(lead.value)}).`
+                : "Vazio = vale a tabela."}
+          </p>
         </div>
         <div>
           <label style={fieldLabel}>Canal de origem</label>
-          <select style={{ ...S.input, background: T.card }} value={lead.source ?? ""} disabled={busy}
-            onChange={(e) => onPatch({ source: e.target.value || null })}>
+          <select style={{ ...S.input, background: T.card }} value={draft.source} disabled={busyAll}
+            onChange={(e) => patchDraft("source", e.target.value)}>
             <option value="">—</option>
             {channels.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
           </select>
         </div>
         <div>
           <label style={fieldLabel}>Próximo follow-up</label>
-          <DatePatchField value={lead.followUpAt} busy={busy}
-            onCommit={(v) => onPatch({ followUpAt: v })} />
+          <input type="date" style={S.input} value={draft.followUpAt} disabled={busyAll}
+            onChange={(e) => patchDraft("followUpAt", e.target.value)} />
         </div>
         <div>
           <label style={fieldLabel}>Validade do lead</label>
-          <DatePatchField value={lead.expiresAt} busy={busy}
-            onCommit={(v) => onPatch({ expiresAt: v })} />
+          <input type="date" style={S.input} value={draft.expiresAt} disabled={busyAll}
+            onChange={(e) => patchDraft("expiresAt", e.target.value)} />
         </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <button onClick={save} disabled={!isDirty || busyAll}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px",
+            borderRadius: 10, border: `1px solid ${isDirty ? T.g1Border : T.border}`,
+            background: isDirty ? T.gradSoft : "transparent",
+            color: isDirty ? T.g1 : T.muted, fontSize: 12, fontWeight: 800,
+            cursor: isDirty && !busyAll ? "pointer" : "default", fontFamily: "inherit",
+          }}>
+          {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+          Salvar
+        </button>
+        {isDirty && !saving && (
+          <button onClick={() => setDraft(negDraftFromLead(lead))} disabled={busyAll}
+            style={{
+              background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
+              fontSize: 11, color: T.muted, textDecoration: "underline", textUnderlineOffset: 2,
+              padding: 0,
+            }}>
+            descartar
+          </button>
+        )}
       </div>
     </div>
   );
@@ -733,10 +762,11 @@ export function LeadDrawer({
   // Dados do cliente (ClientPanel) têm o próprio "Salvar" — fechar o drawer
   // com edição pendente ali precisa avisar, não descartar em silêncio.
   const [clientDirty, setClientDirty] = useState(false);
+  const [negDirty, setNegDirty] = useState(false);
   const isMobile = useIsMobile();
   const { requestClose, guardProps } = useCloseGuard(onClose, {
     open, escape: false,
-    dirty: clientDirty,
+    dirty: clientDirty || negDirty,
     message: "Há alterações não salvas nos dados do cliente. Fechar mesmo assim?",
   });
 
@@ -924,7 +954,8 @@ export function LeadDrawer({
             {/* Negociação — só orçamentos; casamentos têm o financeiro na gestão do evento */}
             {isQuote && active && (
               <NegotiationSection lead={lead} channels={channels} busy={busy}
-                hideValue={quoteHasRooms} onPatch={patchAndRefresh} />
+                hideValue={quoteHasRooms} onPatch={patchAndRefresh}
+                onDirtyChange={setNegDirty} />
             )}
 
             {/* Vincular estadia — paridade com o funil antigo do Tarifário:

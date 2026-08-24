@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  AlertTriangle, ArrowLeft, ArrowRight, BadgeCheck, Copy, Loader2, Pencil,
+  AlertTriangle, ArrowLeft, ArrowRight, BadgeCheck, Copy, Heart, Loader2, Pencil,
   Phone, Plus, Save, Trash2, X,
 } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
@@ -28,7 +28,7 @@ import {
   DEFAULT_MSG_TEMPLATE, DEFAULT_MSG_SINGLE_TEMPLATE, MIN_OVER_CAPACITY_REASON,
   addDays, dateToIso, formatBRL,
 } from "@/lib/rate-engine";
-import type { RateBundle } from "@/services/rate-service";
+import type { QuoteWedding, RateBundle } from "@/services/rate-service";
 import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
 import {
   CrmChannel, Guest, RateAvailability, RateQuoteCategory, RateQuoteInput,
@@ -367,6 +367,7 @@ export function NewQuoteWizard({
   const [contextByPeriod, setContextByPeriod] = useState<Record<string, {
     availability: Record<string, RateAvailability>;
     events: { title: string; date: string }[];
+    weddings: QuoteWedding[];
   }>>({});
   const [saving, setSaving] = useState(false);
   // Editando: o "salvo" já é o orçamento existente desde o início.
@@ -397,24 +398,61 @@ export function NewQuoteWizard({
   }, [rooms, checkIn, checkOut]);
 
   useEffect(() => {
-    if (step !== 3 || periodKeys.length === 0) return;
+    // Também no passo 1: o casamento com exclusividade precisa aparecer ANTES
+    // de escolher cabana — é ele que decide a origem do lead. Debounce curto
+    // porque o campo de data dispara a cada dígito digitado à mão.
+    if (step === 2 || periodKeys.length === 0) return;
     let cancelled = false;
-    Promise.all(periodKeys.map(async (key) => {
-      const [ci, co] = key.split("|");
-      const res = await fetch(`/api/admin/tarifario/context?propertyId=${propertyId}&in=${ci}&out=${co}`)
-        .catch(() => null);
-      const d = res?.ok ? await res.json() : { availability: {}, events: [] };
-      return [key, d] as const;
-    })).then((entries) => {
-      if (cancelled) return;
-      const byPeriod: Record<string, { availability: Record<string, RateAvailability>; events: { title: string; date: string }[] }> = {};
-      for (const [key, d] of entries) {
-        byPeriod[key] = { availability: d.availability || {}, events: d.events || [] };
-      }
-      setContextByPeriod(byPeriod);
-    });
-    return () => { cancelled = true; };
+    const timer = setTimeout(() => {
+      Promise.all(periodKeys.map(async (key) => {
+        const [ci, co] = key.split("|");
+        const res = await fetch(`/api/admin/tarifario/context?propertyId=${propertyId}&in=${ci}&out=${co}`)
+          .catch(() => null);
+        const d = res?.ok ? await res.json() : { availability: {}, events: [], weddings: [] };
+        return [key, d] as const;
+      })).then((entries) => {
+        if (cancelled) return;
+        const byPeriod: Record<string, {
+          availability: Record<string, RateAvailability>;
+          events: { title: string; date: string }[];
+          weddings: QuoteWedding[];
+        }> = {};
+        for (const [key, d] of entries) {
+          byPeriod[key] = {
+            availability: d.availability || {},
+            events: d.events || [],
+            weddings: d.weddings || [],
+          };
+        }
+        setContextByPeriod(byPeriod);
+      });
+    }, 350);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [step, propertyId, periodKeys]);
+
+  /**
+   * Casamentos que cruzam QUALQUER período do pedido, sem repetir. Regem o
+   * cabeçalho da mensagem/proposta e o aviso de exclusividade.
+   */
+  const weddingsInPeriod = useMemo(() => {
+    const all = Object.values(contextByPeriod).flatMap((c) => c.weddings ?? []);
+    return all.filter((w, i) => all.findIndex((o) => o.id === w.id) === i);
+  }, [contextByPeriod]);
+  const exclusiveWedding = weddingsInPeriod.find((w) => w.exclusivity) ?? null;
+  /** Canal "Evento/Casamento" desta propriedade (slug padrão 'evento'). */
+  const eventChannelId = channels.some((c) => c.id === "evento") ? "evento" : null;
+  const isWeddingGuest = !!eventChannelId && source === eventChannelId;
+
+  // Exclusividade: a pousada inteira é do casamento, então a origem NASCE como
+  // Evento/Casamento. Sugestão, não trava — o vendedor pode trocar (e o aviso
+  // continua na tela dizendo o que está acontecendo).
+  const sourceTouched = useRef(!!seed?.source);
+  useEffect(() => {
+    if (!exclusiveWedding || !eventChannelId) return;
+    if (sourceTouched.current || source === eventChannelId) return;
+    setSource(eventChannelId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exclusiveWedding, eventChannelId]);
 
   // Automática só vale com a migration aplicada (bundle.fluctuations != null);
   // sem ela, cai no manual silenciosamente — mesma regra do servidor.
@@ -618,7 +656,13 @@ export function NewQuoteWizard({
             clientPhone: phone.trim(), clientEmail: email.trim(),
             clientInstagram: normalizeInstagram(instagram),
             guestId: linkedGuest?.id ?? null,
-            weddingId: null, source: source || null,
+            // Vínculo formal só para convidado (origem Evento/Casamento): é o
+            // que o site dos noivos conta no soft-block de pré-reservas —
+            // vincular hóspede comum inflaria essa conta. Com mais de um
+            // casamento no período não há palpite: fica sem vínculo.
+            weddingId: isWeddingGuest && weddingsInPeriod.length === 1
+              ? weddingsInPeriod[0].id : null,
+            source: source || null,
             checkIn, checkOut,
             // Só a COMPOSIÇÃO vai — as opções e os preços são calculados no
             // servidor (o cliente nunca manda valor).
@@ -732,7 +776,11 @@ export function NewQuoteWizard({
     );
     const avisos = buildEventNotices(uniqueEvents, pickLang(settings.eventTemplate, settings.eventTemplate_en, settings.eventTemplate_es));
     const msgCtx = {
-      attendantName, input: totalInput, isWedding: false,
+      attendantName, input: totalInput,
+      // Convidado do casamento é quem tem a origem marcada como
+      // Evento/Casamento; cruzar as datas só rende o aviso neutro.
+      isWedding: isWeddingGuest,
+      weddingCouple: weddingsInPeriod[0]?.couple ?? null,
       quoteLink: quoteId ? `${proposalBase}/cotacao/${quoteId}` : null,
     };
     const msg = processTemplate(
@@ -1137,7 +1185,7 @@ export function NewQuoteWizard({
               <div>
                 <label style={fieldLabel}>Origem do lead *</label>
                 <select style={{ ...S.input, background: T.card }} value={source}
-                  onChange={(e) => setSource(e.target.value)}>
+                  onChange={(e) => { sourceTouched.current = true; setSource(e.target.value); }}>
                   <option value="">—</option>
                   {channels.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
                 </select>
@@ -1179,6 +1227,27 @@ export function NewQuoteWizard({
             <p style={{ fontSize: 10.5, color: T.muted2, margin: "-6px 0 0" }}>
               Pelo menos UM meio de contato (telefone, e-mail ou Instagram) é obrigatório.
             </p>
+
+            {/* A origem já nasce Evento/Casamento quando a pousada está
+                reservada para um casamento — sugestão, não trava: o select
+                acima continua livre. */}
+            {exclusiveWedding && (
+              <div style={{
+                background: T.violetBg, border: `1px solid ${T.violetBorder}`, borderRadius: 11,
+                padding: "9px 13px", fontSize: 12, color: T.violet,
+                display: "flex", alignItems: "flex-start", gap: 8,
+              }}>
+                <Heart size={12} style={{ flexShrink: 0, marginTop: 2 }} />
+                <span>
+                  A pousada está reservada para o casamento de <b>{exclusiveWedding.couple}</b>{" "}
+                  ({fmtBR(exclusiveWedding.checkin)} → {fmtBR(exclusiveWedding.checkout)})
+                  {exclusiveWedding.status === "tentative" ? " · pré-reserva" : ""}.{" "}
+                  {isWeddingGuest
+                    ? "A origem foi marcada como Evento/Casamento."
+                    : "Cotação nesse período costuma ser de convidado — confira a origem do lead."}
+                </span>
+              </div>
+            )}
             <div>
               <label style={fieldLabel}>Idioma do hóspede</label>
               <div style={{ display: "inline-flex", gap: 4, background: T.glass, borderRadius: 11, padding: 3 }}>
@@ -1374,6 +1443,43 @@ export function NewQuoteWizard({
                   Período exige mínimo de {roomQuotes[0].result.minNightsRequired} diárias (cotação tem {roomQuotes[0].result.nights}).
                 </div>
               )}
+              {/* Casamento no período: exclusividade manda a origem do lead;
+                  sem ela, é só o aviso de que a data tem casamento. */}
+              {weddingsInPeriod.map((w) => {
+                const guest = isWeddingGuest;
+                const tone = w.exclusivity && !guest
+                  ? { bg: T.amberBg, border: T.amberBorder, color: T.amber }
+                  : { bg: T.violetBg, border: T.violetBorder, color: T.violet };
+                return (
+                  <div key={w.id} style={{
+                    background: tone.bg, border: `1px solid ${tone.border}`, borderRadius: 11,
+                    padding: "9px 13px", fontSize: 12, color: tone.color,
+                    display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+                  }}>
+                    <Heart size={12} style={{ flexShrink: 0 }} />
+                    <span>
+                      {w.exclusivity ? "Pousada reservada para o casamento de " : "Casamento no período: "}
+                      <b>{w.couple}</b> ({fmtBR(w.checkin)} → {fmtBR(w.checkout)})
+                      {w.status === "tentative" ? " · pré-reserva" : ""}
+                      {guest
+                        ? " — o cabeçalho entra na mensagem e na proposta."
+                        : w.exclusivity
+                          ? " — esta cotação deveria ter origem Evento/Casamento."
+                          : ""}
+                    </span>
+                    {!guest && eventChannelId && (
+                      <button onClick={() => { sourceTouched.current = true; setSource(eventChannelId); }}
+                        style={{
+                          marginLeft: "auto", padding: "4px 10px", borderRadius: 8, border: "none",
+                          background: tone.color, color: "#1c1c1c", fontSize: 10.5, fontWeight: 800,
+                          cursor: "pointer", fontFamily: "inherit", flexShrink: 0,
+                        }}>
+                        Marcar como Evento/Casamento
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
               {(() => {
                 const all = Object.values(contextByPeriod).flatMap((c) => c.events);
                 return all.filter((ev, i) => all.findIndex((o) => o.title === ev.title && o.date === ev.date) === i);

@@ -219,6 +219,19 @@ export interface SitImportResult {
   unmatchedCategories: string[];
 }
 
+/** Casamento que cruza o período cotado — cabeçalho da mensagem e da proposta,
+ *  e o aviso de exclusividade no wizard. */
+export type QuoteWedding = {
+  id: string;
+  couple: string;
+  checkin: string;
+  checkout: string;
+  status: string;
+  exclusivity: boolean;
+  /** Foto de capa do site dos noivos, quando o casal subiu uma. */
+  coverPhotoUrl: string | null;
+};
+
 export const RateService = {
   async getBundle(propertyId: string): Promise<RateBundle> {
     const admin = supabaseAdmin!;
@@ -684,10 +697,14 @@ export const RateService = {
     propertyId: string,
     checkIn: string,
     checkOut: string
-  ): Promise<{ availability: Record<string, RateAvailability>; events: { title: string; date: string }[] }> {
+  ): Promise<{
+    availability: Record<string, RateAvailability>;
+    events: { title: string; date: string }[];
+    weddings: QuoteWedding[];
+  }> {
     const admin = supabaseAdmin!;
 
-    const [cabinsRes, staysRes, eventsRes] = await Promise.all([
+    const [cabinsRes, staysRes, eventsRes, weddingsRes] = await Promise.all([
       admin.from("cabins").select("id, name, categoryId").eq("propertyId", propertyId),
       admin
         .from("stays")
@@ -703,6 +720,16 @@ export const RateService = {
         .eq("status", "published")
         .lt("startDate", checkOut)
         .or(`endDate.gte.${checkIn},and(endDate.is.null,startDate.gte.${checkIn})`),
+      // Casamento que CRUZA o período. Pré-reserva conta junto do confirmado:
+      // a data já está segurada, e vender por cima é o problema que a checagem
+      // existe para evitar. Perdido/cancelado/realizado ficam de fora.
+      admin
+        .from("weddings")
+        .select("id, bride, groom, checkin, checkout, status, exclusivity, siteConfig")
+        .eq("propertyId", propertyId)
+        .in("status", ["confirmed", "tentative"])
+        .lt("checkin", checkOut)
+        .gt("checkout", checkIn),
     ]);
 
     // Ocupação com a mesma semântica date-only do resto do sistema:
@@ -731,7 +758,23 @@ export const RateService = {
       .filter((e) => e.startDate < checkOut && (e.endDate || e.startDate) >= checkIn)
       .map((e) => ({ title: e.title, date: e.startDate }));
 
-    return { availability, events };
+    // A coluna `exclusivity`/`siteConfig` pode não existir numa propriedade
+    // antiga: erro na query devolve lista vazia, não derruba a cotação.
+    const weddings = ((weddingsRes.data || []) as {
+      id: string; bride: string; groom: string; checkin: string; checkout: string;
+      status: string; exclusivity?: boolean | null;
+      siteConfig?: { coverPhotoUrl?: string | null } | null;
+    }[]).map((w) => ({
+      id: w.id,
+      couple: `${w.bride} & ${w.groom}`.trim(),
+      checkin: w.checkin,
+      checkout: w.checkout,
+      status: w.status,
+      exclusivity: !!w.exclusivity,
+      coverPhotoUrl: w.siteConfig?.coverPhotoUrl ?? null,
+    }));
+
+    return { availability, events, weddings };
   },
 
   // ── Orçamentos salvos / funil de vendas ────────────────────────────────────

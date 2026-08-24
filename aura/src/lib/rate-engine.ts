@@ -503,9 +503,30 @@ export function paymentTotal(total: number, discountPct: number): number {
 export interface QuoteMessageContext {
   attendantName: string;
   input: RateQuoteInput;
+  /** O orçamento é de CONVIDADO do casamento (origem Evento/Casamento). */
   isWedding: boolean;
+  /**
+   * Nomes do casal, quando um casamento cruza o período cotado. Sem isto o
+   * cabeçalho volta ao texto genérico de antes.
+   */
+  weddingCouple?: string | null;
   /** Link público da proposta (/cotacao/<id>) — placeholder {QUOTE_LINK}. */
   quoteLink?: string | null;
+}
+
+/**
+ * O cabeçalho de casamento da mensagem. Duas frases porque são dois fatos
+ * diferentes: quem vem PARA o casamento é convidado; quem calhou de pedir as
+ * mesmas datas só precisa saber que haverá um casamento na casa.
+ */
+export function weddingHeader(couple: string | null | undefined, isGuest: boolean): string {
+  const names = (couple || '').trim();
+  if (names) {
+    return isGuest
+      ? `💍 *Convidados do casamento de ${names}*\n`
+      : `💍 *Casamento de ${names} na pousada neste período*\n`;
+  }
+  return isGuest ? '💍 *Convidados de Casamento*\n' : '';
 }
 
 export function processTemplate(tpl: string, ctx: QuoteMessageContext, resumo = '', avisos = ''): string {

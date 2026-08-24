@@ -57,6 +57,8 @@ type Dict = {
   disclaimer: string;
   genericError: string;
   /** Faixa curta no topo do cadastro — o aceite já foi registrado. */
+  weddingGuest: (couple: string) => string;
+  weddingSamePeriod: (couple: string) => string;
   acceptedBanner: string;
   skipIntake: string;
 };
@@ -94,6 +96,8 @@ const DICT: Record<MsgLang, Dict> = {
     acceptButton: "Aceitar proposta",
     disclaimer: "Aceitar não gera cobrança: a recepção confirma a disponibilidade e combina o pagamento com você.",
     genericError: "Não foi possível registrar.",
+    weddingGuest: (c) => `Convidados do casamento de ${c}`,
+    weddingSamePeriod: (c) => `Casamento de ${c} na pousada neste período`,
     acceptedBanner: "Proposta aceita — já avisamos a recepção.",
     skipIntake: "Prefiro enviar meus dados depois",
   },
@@ -129,6 +133,8 @@ const DICT: Record<MsgLang, Dict> = {
     acceptButton: "Accept quote",
     disclaimer: "Accepting doesn't charge you — the front desk will confirm availability and arrange payment with you.",
     genericError: "Couldn't submit your choice.",
+    weddingGuest: (c) => `Guests of ${c}'s wedding`,
+    weddingSamePeriod: (c) => `${c}'s wedding takes place here during your stay`,
     acceptedBanner: "Quote accepted — the front desk already knows.",
     skipIntake: "I'd rather send my details later",
   },
@@ -164,6 +170,8 @@ const DICT: Record<MsgLang, Dict> = {
     acceptButton: "Aceptar presupuesto",
     disclaimer: "Aceptar no genera ningún cobro: recepción confirmará la disponibilidad y coordinará el pago con usted.",
     genericError: "No se pudo registrar su elección.",
+    weddingGuest: (c) => `Invitados de la boda de ${c}`,
+    weddingSamePeriod: (c) => `Boda de ${c} en la posada durante su estadía`,
     acceptedBanner: "Presupuesto aceptado — ya avisamos a recepción.",
     skipIntake: "Prefiero enviar mis datos después",
   },
@@ -201,7 +209,18 @@ export default function ProposalClient({ quote, startAtIntake }: {
   const t = DICT[lang];
   const [picks, setPicks] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
-    for (const r of quote.rooms) if (r.selectedCategory) initial[r.id] = r.selectedCategory;
+    for (const r of quote.rooms) {
+      // A escolha gravada só vale se ainda estiver entre as opções: recalcular
+      // o orçamento pode ter tirado a cabana do ar, e um pick órfão deixava o
+      // botão liberado com o total preso em "a partir de".
+      const saved = r.selectedCategory
+        && r.options.some((o) => o.categoryId === r.selectedCategory)
+        ? r.selectedCategory : null;
+      // Uma opção só não é escolha: deixar o cliente clicar num cartão único
+      // para destravar o botão é charada, não decisão.
+      const pick = saved ?? (r.options.length === 1 ? r.options[0].categoryId : null);
+      if (pick) initial[r.id] = pick;
+    }
     return initial;
   });
   const [sending, setSending] = useState(false);
@@ -283,6 +302,29 @@ export default function ProposalClient({ quote, startAtIntake }: {
         }}>
           {t.eyebrow}
         </p>
+        {/* Casamento na casa: a foto do casal (quando existe no site dos
+            noivos) e a frase certa para cada caso — convidado vs quem só
+            calhou das mesmas datas. */}
+        {quote.wedding && (
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 9,
+            background: "var(--surface)", border: "1px solid var(--line)",
+            borderRadius: 999, padding: quote.wedding.photoUrl ? "5px 16px 5px 5px" : "7px 16px",
+            margin: "10px 0 2px", maxWidth: "100%",
+          }}>
+            {quote.wedding.photoUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={quote.wedding.photoUrl} alt={quote.wedding.couple}
+                style={{ width: 34, height: 34, borderRadius: 999, objectFit: "cover", flexShrink: 0 }} />
+            )}
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink-soft)", lineHeight: 1.35 }}>
+              💍 {quote.wedding.guest
+                ? t.weddingGuest(quote.wedding.couple)
+                : t.weddingSamePeriod(quote.wedding.couple)}
+            </span>
+          </div>
+        )}
+
         <h1 style={{
           fontFamily: DISPLAY_FONT, fontSize: 30, lineHeight: 1.15,
           color: "var(--ink)", margin: "6px 0 8px", fontWeight: 400,

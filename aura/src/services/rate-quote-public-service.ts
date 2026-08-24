@@ -101,6 +101,14 @@ export type PublicQuoteView = {
   intakeDone: boolean;
   /** Condições de pagamento oferecidas no cadastro, já no idioma do hóspede. */
   paymentOptions: { id: string; label: string; discountPct: number }[];
+  /**
+   * Casamento que cruza o período. Nomes do casal e a foto de capa já são
+   * públicos no site dos noivos — o resto da negociação do casamento não sai
+   * daqui. `guest` = este orçamento é de CONVIDADO (vinculado ou com origem
+   * Evento/Casamento); só ele muda a frase de "haverá um casamento" para
+   * "vocês são convidados".
+   */
+  wedding: { couple: string; photoUrl: string | null; guest: boolean } | null;
   /** Pets cotados (0 = a proposta não previu pet — informar um muda o preço). */
   petsQuoted: number;
   /** Política de pets da propriedade — rege os avisos do bloco de pet. */
@@ -160,6 +168,38 @@ async function loadPaymentOptions(propertyId: string): Promise<RatePaymentOption
   if (error) return DEFAULT_PAYMENT_OPTIONS;
   const list = (data as { paymentOptions?: RatePaymentOption[] | null } | null)?.paymentOptions;
   return list?.length ? list : DEFAULT_PAYMENT_OPTIONS;
+}
+
+/**
+ * O casamento por trás da proposta: o vinculado (`weddingId`) ou, na falta
+ * dele, um que cruze as datas. Pré-reserva conta junto do confirmado — a data
+ * já está segurada. Coluna nova ausente devolve null em vez de derrubar a
+ * proposta inteira.
+ */
+async function loadWedding(
+  q: RateQuoteRecord
+): Promise<PublicQuoteView["wedding"]> {
+  const guest = !!q.weddingId || q.source === "evento";
+  let query = supabaseAdmin!
+    .from("weddings")
+    .select("id, bride, groom, siteConfig")
+    .eq("propertyId", q.propertyId);
+
+  query = q.weddingId
+    ? query.eq("id", q.weddingId)
+    : query.in("status", ["confirmed", "tentative"])
+        .lt("checkin", q.checkOut)
+        .gt("checkout", q.checkIn);
+
+  const { data, error } = await query.limit(1);
+  if (error || !data?.length) return null;
+
+  const w = data[0] as {
+    bride: string; groom: string; siteConfig?: { coverPhotoUrl?: string | null } | null;
+  };
+  const couple = `${w.bride ?? ""} & ${w.groom ?? ""}`.trim();
+  if (couple === "&") return null;
+  return { couple, photoUrl: w.siteConfig?.coverPhotoUrl ?? null, guest };
 }
 
 /** Política de privacidade — mesma regra multilíngue das regras da pousada. */
@@ -469,11 +509,14 @@ export const RateQuotePublicService = {
       .map((o) => ({ id: o.id, label: paymentLabel(o, language), discountPct: Number(o.discountPct) || 0 }))
       .filter((o) => o.label);
 
-    const { data: property } = await supabaseAdmin
-      .from("properties")
-      .select("id, name, logoUrl, theme, settings")
-      .eq("id", q.propertyId)
-      .maybeSingle();
+    const [{ data: property }, wedding] = await Promise.all([
+      supabaseAdmin
+        .from("properties")
+        .select("id, name, logoUrl, theme, settings")
+        .eq("id", q.propertyId)
+        .maybeSingle(),
+      loadWedding(q),
+    ]);
 
     let total = 0;
     let approximate = false;
@@ -524,6 +567,7 @@ export const RateQuotePublicService = {
       privacyPolicyText: privacyTextOf(property?.settings, language),
       intakeDone: !!q.intakeAt,
       paymentOptions,
+      wedding,
       petsQuoted: Math.max(0, Number(q.pets) || 0),
       petRules: {
         accepts: settings.acceptsPets !== false,
