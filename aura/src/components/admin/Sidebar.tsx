@@ -30,6 +30,7 @@ import { useMediaQuery } from "@/components/aura/hooks";
 import { useOverlay } from "@/components/aura/OverlayProvider";
 import Image from "next/image";
 import { ImpersonateModal } from "@/components/admin/ImpersonateModal";
+import { EnvBadge } from "@/components/admin/EnvBadge";
 import { StaffService } from "@/services/staff-service";
 import { useNotifications } from "@/context/NotificationContext";
 
@@ -666,6 +667,7 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
                 <span style={{ fontSize: 17, fontWeight: 900, letterSpacing: ".12em", textTransform: "uppercase" }}>
                   <span style={S.gradText}>{property?.name ?? "aaura"}</span>
                 </span>
+                <EnvBadge />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 <button className="flex lg:hidden" onClick={() => setIsOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: TT.muted, padding: 6, borderRadius: 6, transition: "color .15s" }}>
@@ -677,8 +679,11 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
               </div>
             </>
           ) : (
-            <div style={S.logoMonogram}>
-              <span style={S.gradText}>A</span>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+              <div style={S.logoMonogram}>
+                <span style={S.gradText}>A</span>
+              </div>
+              <EnvBadge variant="compact" />
             </div>
           )}
         </div>
@@ -847,6 +852,9 @@ export const Sidebar = ({ isOpen, setIsOpen }: { isOpen: boolean; setIsOpen: (v:
           flexDirection: "column",
           gap: 6,
         }}>
+          {/* Aviso de ambiente — some em produção */}
+          {!collapsed && <EnvBadge variant="footer" />}
+
           {/* Impersonar — apenas para admin/hr/super_admin (oculto durante impersonação ativa) */}
           {isAdmin && !impersonating && !collapsed && (
             <button

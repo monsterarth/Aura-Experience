@@ -12,6 +12,7 @@ import { UserRole } from "@/types/aura";
 import { T } from "@/lib/admin-tokens";
 import { IconButton } from "@/components/aura/Button";
 import { Dialog } from "@/components/aura/Dialog";
+import { EnvBadge } from "@/components/admin/EnvBadge";
 
 // ─── Route label map ──────────────────────────────────────────────────────────
 const ROUTE_LABELS: Record<string, string> = {
@@ -362,6 +363,11 @@ export function AdminTopbar({ onMenuClick }: { onMenuClick?: () => void }) {
       <Breadcrumb />
 
       <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+        {/* No celular a sidebar é gaveta: sem isto, o aviso de ambiente ficaria escondido
+            atrás do hambúrguer justamente em quem mais alterna entre os dois. */}
+        <span className="inline-flex lg:hidden" style={{ marginRight: 4 }}>
+          <EnvBadge variant="compact" />
+        </span>
         <div className="hidden sm:block">
           <SearchBox />
         </div>

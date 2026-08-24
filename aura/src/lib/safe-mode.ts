@@ -37,6 +37,19 @@ export function isSafeMode(): boolean {
 }
 
 /**
+ * Em qual ambiente a interface está rodando. Serve para avisar o usuário na tela.
+ *
+ * Pode ser chamada do navegador: olha só `NEXT_PUBLIC_SUPABASE_URL`, que é a única
+ * variável que existe dos dois lados. Note que ela ignora `AURA_SAFE_MODE` de
+ * propósito — a pergunta aqui é "qual banco estou vendo?", não "os envios estão
+ * cortados?". Alguém rodando local contra produção com a trava ligada precisa ver
+ * PRODUÇÃO na tela, porque os dados que aparecem são os reais.
+ */
+export function environmentName(): "producao" | "dev" {
+  return usingProductionDatabase() ? "producao" : "dev";
+}
+
+/**
  * Registra o envio que NÃO aconteceu. O log é a entrega em modo seguro — dá para
  * conferir no terminal do `pnpm dev` ou nos logs da Vercel exatamente o que teria saído.
  */
