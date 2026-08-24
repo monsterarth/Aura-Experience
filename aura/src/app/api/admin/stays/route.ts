@@ -8,7 +8,12 @@
 // Agora:    4 queries batch totais (stays + guests + cabins + folio_items) →
 //           join em memória → < 500ms esperado para qualquer volume.
 // "encerradas" é limitado a 100 mais recentes (checkOut desc) para evitar crescimento.
-// "conta" (status=finished only) filtra server-side e só retorna as que têm saldo.
+//
+// ── Conta (2026-08-24) ────────────────────────────────────────────────────────
+// A aba "Conta" deixou de existir: a conta é da estadia, e é `billClosedAt` que
+// decide a aba. Quem pede a lista manda `?scope=ativas|futuras|encerradas` — o
+// status sozinho não basta, já que uma estadia `finished` pode estar em Ativas
+// (conta aberta) ou em Encerradas (conta fechada).
 // ──────────────────────────────────────────────────────────────────────────────
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, isAuthError } from '@/lib/api-auth';
@@ -44,12 +49,17 @@ export async function GET(request: NextRequest) {
 
         const statusList = statusParam ? statusParam.split(',').map(s => s.trim()).filter(Boolean) : [];
 
-        // Detecta aba pelo conjunto de status:
-        //   "encerradas" → ['finished','cancelled']  → limita + ordena por checkOut desc
-        //   "conta"      → ['finished']              → filtra server-side por saldo pendente
-        //   demais       → sem limite, ordena por checkIn asc
-        const isEncerradas = statusList.includes('cancelled');
-        const isContaOnly  = statusList.length === 1 && statusList[0] === 'finished';
+        // ── Aba pedida ────────────────────────────────────────────────────────
+        //
+        // Quem manda agora é `scope`, e não mais o conjunto de status: desde que a
+        // conta virou o portão entre "Ativas" e "Encerradas", o status sozinho não
+        // diz mais em que aba a estadia mora. Uma estadia `finished` com a conta
+        // ABERTA continua em Ativas — a cabana só sai da vista de quem opera
+        // quando alguém encerra a conta.
+        //
+        // `status=` continua aceito para não quebrar chamada antiga.
+        const scope = searchParams.get('scope');
+        const isEncerradas = scope ? scope === 'encerradas' : statusList.includes('cancelled');
 
         // ── 1. Busca as estadias ──────────────────────────────────────────────
         let query = supabaseAdmin
@@ -57,7 +67,17 @@ export async function GET(request: NextRequest) {
             .select('*')
             .eq('propertyId', propertyId);
 
-        if (statusList.length > 0) {
+        if (scope === 'ativas') {
+            // Hóspede na casa + quem já saiu mas deixou a conta aberta.
+            query = query
+                .in('status', ['active', 'finished'])
+                .or('status.eq.active,billClosedAt.is.null');
+        } else if (scope === 'futuras') {
+            query = query.in('status', ['pending', 'pre_checkin_done']);
+        } else if (scope === 'encerradas') {
+            // Só o que fechou o ciclo (ou nunca aconteceu).
+            query = query.or('and(status.eq.finished,billClosedAt.not.is.null),status.eq.cancelled');
+        } else if (statusList.length > 0) {
             query = query.in('status', statusList);
         }
 
@@ -123,13 +143,6 @@ export async function GET(request: NextRequest) {
                 hasOpenFolio:    pendingFolioCount > 0,
             };
         });
-
-        // ── 6. Aba "Conta": filtra server-side (antes era client-side sobre 190 stays) ──
-        if (isContaOnly) {
-            return NextResponse.json(
-                enriched.filter((s: any) => s.pendingFolioCount > 0 || !!s.lostItemsDescription)
-            );
-        }
 
         return NextResponse.json(enriched);
     } catch {

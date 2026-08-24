@@ -72,8 +72,12 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     // de novo 30–50s depois, quando a tela demorava a responder). Os dois passariam pela
     // leitura antes de qualquer um gravar. O resultado eram duas mensagens de NPS e de
     // agradecimento para o hóspede, além de audit e faxinas em duplicidade.
+    // A chave vira estado da conta já aqui: devolvida no balcão fecha o chip na
+    // hora; ficou na cabana (ou ninguém sabe) espera a conferência da governança.
+    const keyStatus = keyLocation === 'reception' ? 'reception' : 'awaiting_conference';
+
     const { data: claimed, error: claimError } = await supabaseAdmin.from('stays')
-        .update({ status: 'finished', checkOutActual: now, keyLocation, updatedAt: now })
+        .update({ status: 'finished', checkOutActual: now, keyLocation, keyStatus, keyStatusAt: now, keyStatusBy: auth.staff.id, updatedAt: now })
         .eq('id', stayId)
         .neq('status', 'finished')
         .select('id');

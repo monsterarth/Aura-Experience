@@ -21,11 +21,15 @@ export async function POST(req: Request) {
     taskId?: string;
     lostItems?: { description: string; photo?: string | null };
     loanedReturned?: boolean;
+    /** Faltou item na devolução — acende o chip vermelho da conta para a recepção resolver. */
+    loanedMissing?: boolean;
     cabinChecked?: boolean;
     // Passo 1 da conferência: lança o consumo de frigobar (preços vêm do catálogo no servidor).
     frigobar?: { cabinId?: string; cart: Record<string, number> };
     // Passo 2: chave não encontrada → item de rastreio (preço zero) no fólio.
     keyNotFound?: boolean;
+    /** Chave estava na acomodação — fecha o chip da chave na conta. */
+    keyFound?: boolean;
   };
   try {
     body = await req.json();
@@ -38,7 +42,7 @@ export async function POST(req: Request) {
 
   try {
     // Frigobar / chave: operam sobre uma estadia — valida a posse antes (service-role ignora RLS).
-    if (body.stayId && (body.frigobar || body.keyNotFound)) {
+    if (body.stayId && (body.frigobar || body.keyNotFound || body.keyFound)) {
       const { data: stay } = await supabaseAdmin
         .from('stays').select('propertyId').eq('id', body.stayId).single();
       if (!stay?.propertyId) {
@@ -73,10 +77,22 @@ export async function POST(req: Request) {
           actorId, actorName,
         );
       }
+
+      // A resposta da conferência vira estado da conta: até aqui o "não encontrei"
+      // só existia como item de rastreio no fólio, e no dia seguinte ninguém sabia
+      // se a chave tinha aparecido. Agora o chip fica aceso até alguém resolver.
+      if (body.keyNotFound || body.keyFound) {
+        await supabaseAdmin.from('stays').update({
+          keyStatus: body.keyNotFound ? 'missing' : 'found',
+          keyStatusAt: now,
+          keyStatusBy: actorId,
+          updatedAt: now,
+        }).eq('id', body.stayId);
+      }
     }
 
     // Stays: objetos esquecidos e/ou emprestados. Escopado à propriedade do staff (exceto admin).
-    if (body.stayId && (body.lostItems || body.loanedReturned)) {
+    if (body.stayId && (body.lostItems || body.loanedReturned || body.loanedMissing)) {
       const stayUpdate: Record<string, any> = {};
       if (body.lostItems) {
         stayUpdate.lostItemsDescription = body.lostItems.description;
@@ -87,6 +103,14 @@ export async function POST(req: Request) {
       if (body.loanedReturned) {
         stayUpdate.loanedItemsChecked = true;
         stayUpdate.loanedItemsCheckedAt = now;
+        stayUpdate.loanedItemsStatus = 'returned';
+      }
+      // Faltou item: a conferência foi feita (não fica em aberto para a camareira),
+      // mas o desfecho é da recepção — devolver depois ou cobrar no fólio.
+      if (body.loanedMissing) {
+        stayUpdate.loanedItemsChecked = true;
+        stayUpdate.loanedItemsCheckedAt = now;
+        stayUpdate.loanedItemsStatus = 'missing';
       }
       let q = supabaseAdmin.from('stays').update(stayUpdate).eq('id', body.stayId);
       if (!isAdminTier) q = q.eq('propertyId', auth.staff.propertyId);

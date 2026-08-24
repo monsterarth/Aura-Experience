@@ -5,7 +5,7 @@
 // e chama o `load` mais recente via ref.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase, safeRemoveChannel } from "@/lib/supabase";
-import { TAB_STATUS, type StayRow, type TabStatus } from "./stay-utils";
+import { TAB_SCOPE, type StayRow, type TabStatus } from "./stay-utils";
 
 export function useStaysLive(propertyId: string | undefined, tab: TabStatus) {
   const [stays, setStays] = useState<StayRow[]>([]);
@@ -20,7 +20,7 @@ export function useStaysLive(propertyId: string | undefined, tab: TabStatus) {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ propertyId, status: TAB_STATUS[t].join(",") });
+      const params = new URLSearchParams({ propertyId, scope: TAB_SCOPE[t] });
       const res = await fetch(`/api/admin/stays?${params}`);
       if (!res.ok) throw new Error("fetch-error");
       const data = await res.json();

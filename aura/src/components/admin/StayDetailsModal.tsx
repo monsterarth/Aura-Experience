@@ -28,9 +28,10 @@ import { Dialog } from "@/components/aura/Dialog";
 import { useConfirm } from "@/components/aura/ConfirmDialog";
 import { Button } from "@/components/aura/Button";
 import { stayDisplayName } from "@/lib/stay-display";
+import { useFolio } from "./folio/useFolio";
 import { supabase } from "@/lib/supabase";
 import { extractTimeHHMM, combineDateAndTimeISO, DEFAULT_CHECK_IN_TIME, DEFAULT_CHECK_OUT_TIME } from "@/lib/stay-times";
-import { Stay, Guest, Cabin, FolioItem } from "@/types/aura";
+import { Stay, Guest, Cabin } from "@/types/aura";
 
 interface StayDetailsModalProps {
   isOpen: boolean;
@@ -117,8 +118,13 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   // ==========================================
   // ESTADOS DO FOLIO (CONTA & CONSUMO)
   // ==========================================
-  const [folioItems, setFolioItems] = useState<FolioItem[]>([]);
-  const [loadingFolio, setLoadingFolio] = useState(false);
+  // O fólio (carga, realtime e lançamentos) vive no hook compartilhado — o modal
+  // da Conta usa exatamente o mesmo, para as duas telas não divergirem.
+  const folio = useFolio(stay?.propertyId, stay?.id, { id: userData?.id, name: userData?.fullName }, isOpen);
+  const folioItems = folio.items;
+  const loadFolio = folio.reload;
+  const [savingFolio, setSavingFolio] = useState(false);
+  const loadingFolio = folio.loading || savingFolio;
   const [newFolioItem, setNewFolioItem] = useState({ description: "", quantity: 1, unitPrice: 0 });
   // kind: consumo (débito) ou pagamento (crédito) — fólio como extrato
   const [newFolioKind, setNewFolioKind] = useState<"debit" | "credit">("debit");
@@ -189,8 +195,6 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
         }
       });
 
-      // Carrega o extrato sempre que abrir o modal
-      loadFolio();
     }
   }, [stay, guest]);
 
@@ -199,73 +203,19 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   }, [initData]);
 
   // Realtime: escuta mudanças na tabela stay_folio para esta estadia
-  useEffect(() => {
-    if (!isOpen || !stay?.id) return;
-
-    const channel = supabase.channel(`folio_${stay.id}`)
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'folio_items', filter: `stayId=eq.${stay.id}` },
-        () => loadFolio()
-      )
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [isOpen, stay?.id]);
-
-  const loadFolio = async () => {
-    if (!stay) return;
-    setLoadingFolio(true);
-    try {
-      const items = await StayService.getStayFolio(stay.propertyId, stay.id);
-      setFolioItems(items);
-    } catch (error) {
-      toast.error("Erro ao carregar o extrato.");
-    } finally {
-      setLoadingFolio(false);
-    }
-  };
-
   const handleAddFolioItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newFolioItem.description || newFolioItem.quantity <= 0 || newFolioItem.unitPrice < 0) {
       return toast.error("Preencha os campos do item corretamente.");
     }
-    setLoadingFolio(true);
-    try {
-      if (newFolioKind === "credit") {
-        await FinanceService.addPayment(
-          stay.propertyId, stay.id,
-          newFolioItem.description,
-          newFolioItem.quantity * newFolioItem.unitPrice,
-          userData?.id || "unknown", userData?.fullName || "Recepção"
-        );
-        toast.success("Pagamento lançado como crédito.");
-      } else {
-        await StayService.addFolioItemManual(
-          stay.propertyId,
-          stay.id,
-          {
-            description: newFolioItem.description,
-            quantity: newFolioItem.quantity,
-            unitPrice: newFolioItem.unitPrice,
-            totalPrice: newFolioItem.quantity * newFolioItem.unitPrice,
-            category: 'other',
-            addedBy: userData?.id || "SYSTEM"
-          },
-          userData?.id || "unknown",
-          userData?.fullName || "Recepção"
-        );
-        toast.success("Item adicionado à conta.");
-      }
-      setNewFolioItem({ description: "", quantity: 1, unitPrice: 0 });
-      setNewFolioKind("debit");
-      loadFolio();
-      if (onUpdate) onUpdate(); // Atualiza lista de estadias (para o ícone de alerta)
-    } catch (error) {
-      toast.error(newFolioKind === "credit" ? "Erro ao lançar pagamento." : "Erro ao adicionar item.");
-    } finally {
-      setLoadingFolio(false);
+    if (newFolioKind === "credit") {
+      await folio.addCredit(newFolioItem.description, newFolioItem.quantity * newFolioItem.unitPrice);
+    } else {
+      await folio.addDebit(newFolioItem.description, newFolioItem.quantity, newFolioItem.unitPrice);
     }
+    setNewFolioItem({ description: "", quantity: 1, unitPrice: 0 });
+    setNewFolioKind("debit");
+    if (onUpdate) onUpdate(); // Atualiza lista de estadias (para o ícone de alerta)
   };
 
   // Estadia avulsa: define a diária e já lança as noites vencidas
@@ -298,36 +248,25 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
   const handleDeleteFolioItem = async (itemId: string, description: string) => {
     if (!(await confirm({ title: "Estornar este lançamento?", description: "Remove “" + description + "” do fólio. O estorno fica registrado no histórico.", confirmLabel: "Estornar", tone: "danger" }))) return;
-    setLoadingFolio(true);
-    try {
-      await StayService.deleteFolioItem(
-        stay.propertyId, stay.id, itemId, description, userData?.id || "unknown", userData?.fullName || "Recepção"
-      );
-      toast.success("Item estornado com sucesso.");
-      loadFolio();
-      if (onUpdate) onUpdate(); // Atualiza lista de estadias
-    } catch (error) {
-      toast.error("Erro ao estornar item.");
-    } finally {
-      setLoadingFolio(false);
-    }
+    await folio.remove(itemId, description);
+    if (onUpdate) onUpdate(); // Atualiza lista de estadias
   };
 
   // NOVA FUNÇÃO: Marcar como Pago / Pendente
   const handleToggleFolioStatus = async (itemId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'paid' ? 'pending' : 'paid';
-    setLoadingFolio(true);
+    setSavingFolio(true);
     try {
       await StayService.toggleFolioItemStatus(
         stay.propertyId, stay.id, itemId, newStatus as 'pending' | 'paid', userData?.id || "unknown", userData?.fullName || "Recepção"
       );
       toast.success(newStatus === 'paid' ? "Item baixado!" : "Item reaberto.");
-      loadFolio();
+      void loadFolio();
       if (onUpdate) onUpdate(); // Atualiza lista de estadias (para o ícone de alerta sumir se tudo for pago)
     } catch (error) {
       toast.error("Erro ao atualizar status do item.");
     } finally {
-      setLoadingFolio(false);
+      setSavingFolio(false);
     }
   };
 

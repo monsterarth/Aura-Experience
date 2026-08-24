@@ -23,11 +23,11 @@ import {
 } from "@/components/aura";
 import { GuestContactModal } from "@/components/admin/GuestContactModal";
 import { CheckoutKeyDialog, type KeyLocation } from "@/components/admin/CheckoutKeyDialog";
+import { isAccountOpen } from "@/lib/stay-account";
 import { StayCard } from "./_components/StayCard";
 import { StayListView } from "./_components/StayListView";
 import { StaysToolbar } from "./_components/StaysToolbar";
 import { GroupSection } from "./_components/GroupSection";
-import { PendingAccountCard } from "./_components/PendingAccountCard";
 import { useStaysLive } from "./_components/useStaysLive";
 import { useStaysPrefs, type PrefTab } from "./_components/useStaysPrefs";
 import {
@@ -35,7 +35,7 @@ import {
   hasDateFilter, isFiltering, type SortState, type StayFilters,
 } from "./_components/stay-filters";
 import {
-  TABS, fmtDay, hasPendingAccount, isDocPending, npsInfo, shortName, titleCase,
+  TABS, fmtDay, isDocPending, isInHouse, npsInfo, shortName, titleCase,
   type StayRow, type TabStatus,
 } from "./_components/stay-utils";
 
@@ -45,10 +45,17 @@ const StayDetailsModal = dynamic(
   { ssr: false },
 );
 
+const StayAccountModal = dynamic(
+  () => import("@/components/admin/StayAccountModal").then(m => m.StayAccountModal),
+  { ssr: false },
+);
+
+// A aba "Conta" saiu: a conta é da estadia. Quem fez check-out e não encerrou a
+// conta continua em Ativas, no grupo "Saíram" — a cabana não some da vista de
+// quem opera antes do ciclo fechar.
 const TAB_ITEMS = [
   { id: "ativas" as const, label: "Ativas", icon: Home },
   { id: "futuras" as const, label: "Futuras", icon: CalendarClock },
-  { id: "pendente" as const, label: "Conta", icon: Receipt, tone: "orange" as const },
   { id: "encerradas" as const, label: "Encerradas", icon: Archive },
 ];
 
@@ -107,17 +114,17 @@ function StaysPageInner() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [checkoutTarget, setCheckoutTarget] = useState<StayRow | null>(null);
+  const [accountTarget, setAccountTarget] = useState<StayRow | null>(null);
 
   // Estados de progresso por cartão (o botão certo gira, não a página inteira)
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [checkingInId, setCheckingInId] = useState<string | null>(null);
-  const [closingId, setClosingId] = useState<string | null>(null);
   const [checkingOut, setCheckingOut] = useState(false);
 
-  const filtered = useMemo(() => {
-    const base = tab === "pendente" ? stays.filter(hasPendingAccount) : stays;
-    return applySort(applyFilters(applySearch(base, search), filters, tab), sort);
-  }, [stays, tab, search, filters, sort]);
+  const filtered = useMemo(
+    () => applySort(applyFilters(applySearch(stays, search), filters, tab), sort),
+    [stays, tab, search, filters, sort],
+  );
 
   // Filtrar por período já é dizer qual janela interessa — agrupar de novo por
   // 72h em cima disso só embaralha a resposta.
@@ -126,7 +133,20 @@ function StaysPageInner() {
     [tab, filtered, filters],
   );
 
-  const pendingCount = useMemo(() => stays.filter(hasPendingAccount).length, [stays]);
+  // Ativas em duas frentes: quem está na casa e quem já saiu deixando a conta
+  // aberta. Sem ninguém no segundo grupo, a aba volta a ser uma lista simples —
+  // cabeçalho de grupo sozinho é ruído.
+  const activeGroups = useMemo(() => {
+    if (tab !== "ativas") return [];
+    const leaving = filtered.filter(s => !isInHouse(s));
+    if (leaving.length === 0) return [];
+    return [
+      { id: "inhouse", label: "Na casa", rows: filtered.filter(isInHouse), tone: "neutral" as const },
+      { id: "account", label: "Saíram · conta aberta", rows: leaving, tone: "orange" as const },
+    ].filter(g => g.rows.length > 0);
+  }, [tab, filtered]);
+
+  const openAccountCount = useMemo(() => stays.filter(isAccountOpen).length, [stays]);
 
   // ---------- handlers ----------
   const handleOpenFicha = async (s: StayRow) => {
@@ -253,27 +273,6 @@ function StaysPageInner() {
     }
   };
 
-  const handleCloseBill = async (s: StayRow) => {
-    if (!property?.id || !userData?.id) return;
-    const ok = await confirm({
-      title: `Encerrar a conta de ${shortName(s.guestName)}?`,
-      description: "Todos os lançamentos pendentes serão marcados como pagos.",
-      confirmLabel: "Encerrar conta",
-      icon: Receipt,
-    });
-    if (!ok) return;
-    setClosingId(s.id);
-    try {
-      await StayService.closeStayBill(property.id, s.id, userData.id, userData.fullName);
-      toast.success("Conta encerrada.");
-      setTab("encerradas");
-    } catch {
-      toast.error("Erro ao encerrar conta.");
-    } finally {
-      setClosingId(null);
-    }
-  };
-
   const handleArchive = async (s: StayRow) => {
     if (!property?.id || !userData?.id) return;
     const ok = await confirm({
@@ -343,8 +342,6 @@ function StaysPageInner() {
     <EmptyState icon={Home} title="Nenhuma estadia ativa" description="Quando um hóspede fizer check-in, ele aparece aqui." action={{ label: "Nova hospedagem", href: "/admin/stays/new", icon: Plus }} />
   ) : tab === "futuras" ? (
     <EmptyState icon={CalendarClock} title="Nenhuma chegada prevista" description="Reservas futuras aparecem aqui assim que forem criadas." action={{ label: "Nova hospedagem", href: "/admin/stays/new", icon: Plus }} />
-  ) : tab === "pendente" ? (
-    <EmptyState icon={Receipt} tone="green" title="Nenhuma conta pendente" description="Estadias encerradas com fólio em aberto ou objetos esquecidos aparecem aqui." />
   ) : (
     <EmptyState icon={Archive} title="Nenhuma estadia encerrada" description="O histórico de check-outs e cancelamentos aparece aqui." />
   );
@@ -360,6 +357,7 @@ function StaysPageInner() {
           onWhatsapp={handleOpenWhatsapp}
           onCheckIn={mode === "futuras" ? handleCheckIn : undefined}
           onCheckOut={mode === "ativas" ? setCheckoutTarget : undefined}
+          onAccount={mode === "ativas" ? setAccountTarget : undefined}
           onCancel={mode === "futuras" ? handleCancel : undefined}
           onCopyLink={handleCopyLink}
         />
@@ -378,6 +376,7 @@ function StaysPageInner() {
             onWhatsapp={handleOpenWhatsapp}
             onCheckIn={mode === "futuras" ? handleCheckIn : undefined}
             onCheckOut={mode === "ativas" ? setCheckoutTarget : undefined}
+            onAccount={mode === "ativas" ? setAccountTarget : undefined}
             onCancel={mode === "futuras" ? handleCancel : undefined}
             onCopyLink={handleCopyLink}
             opening={openingId === s.id}
@@ -399,7 +398,7 @@ function StaysPageInner() {
 
       <SegmentedTabs
         ariaLabel="Filtrar estadias"
-        items={TAB_ITEMS.map(t => (t.id === "pendente" && tab === "pendente" && pendingCount > 0 ? { ...t, count: pendingCount } : t))}
+        items={TAB_ITEMS.map(t => (t.id === "ativas" && openAccountCount > 0 ? { ...t, count: openAccountCount } : t))}
         value={tab}
         onChange={setTab}
         style={{ maxWidth: "100%" }}
@@ -435,12 +434,6 @@ function StaysPageInner() {
             rowActions={closedActions}
             actionsLabel="Ações da estadia"
           />
-        ) : tab === "pendente" ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {filtered.map(s => (
-              <PendingAccountCard key={s.id} stay={s} onOpen={handleOpenFicha} onCloseBill={handleCloseBill} opening={openingId === s.id} closing={closingId === s.id} />
-            ))}
-          </div>
         ) : tab === "futuras" ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             {futureGroups.map(g => (
@@ -453,10 +446,29 @@ function StaysPageInner() {
               )
             ))}
           </div>
+        ) : activeGroups.length > 0 ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            {activeGroups.map(g => (
+              <GroupSection key={g.id} label={g.label} count={g.rows.length} tone={g.tone}>
+                {renderStays(g.rows, "ativas")}
+              </GroupSection>
+            ))}
+          </div>
         ) : (
           renderStays(filtered, "ativas")
         )}
       </Loadable>
+
+      {accountTarget && property?.id && (
+        <StayAccountModal
+          open
+          onClose={() => setAccountTarget(null)}
+          stay={accountTarget}
+          propertyId={property.id}
+          actor={{ id: userData?.id, name: userData?.fullName }}
+          onChanged={() => void reload()}
+        />
+      )}
 
       <CheckoutKeyDialog
         open={!!checkoutTarget}

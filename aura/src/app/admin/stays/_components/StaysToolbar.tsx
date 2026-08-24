@@ -52,7 +52,6 @@ function periodPresets(): { id: string; label: string; from: string; to: string 
 const PERIOD_HINT: Record<TabStatus, string> = {
   ativas: "Estadias que passam pelo período (chegada ou saída dentro dele).",
   futuras: "Filtra pela data de chegada.",
-  pendente: "Filtra pela data de saída.",
   encerradas: "Filtra pela data de saída.",
 };
 

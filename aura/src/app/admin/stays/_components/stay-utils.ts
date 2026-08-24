@@ -2,22 +2,35 @@
 import { format, differenceInCalendarDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { Tone } from "@/lib/admin-tokens";
+import { isAccountOpen } from "@/lib/stay-account";
 
-export type TabStatus = "ativas" | "futuras" | "pendente" | "encerradas";
-export const TABS: readonly TabStatus[] = ["ativas", "futuras", "pendente", "encerradas"] as const;
+/**
+ * Três abas. A "Conta" saiu: a conta é da estadia, não uma fila paralela — quem
+ * fez check-out e não encerrou a conta fica em Ativas, no grupo "Saíram".
+ */
+export type TabStatus = "ativas" | "futuras" | "encerradas";
+export const TABS: readonly TabStatus[] = ["ativas", "futuras", "encerradas"] as const;
 
-/** Status (DB) que cada aba pede à API. */
-export const TAB_STATUS: Record<TabStatus, string[]> = {
-  futuras: ["pending", "pre_checkin_done"],
-  ativas: ["active"],
-  pendente: ["finished"],
-  encerradas: ["finished", "cancelled"],
+/**
+ * A API filtra por `scope`, não por status: uma estadia `finished` pode estar em
+ * Ativas (conta aberta) ou em Encerradas (conta fechada), e só o status não diz.
+ */
+export const TAB_SCOPE: Record<TabStatus, string> = {
+  ativas: "ativas",
+  futuras: "futuras",
+  encerradas: "encerradas",
 };
 
 export type StayRow = any;
 
+/** Conta ainda aberta: saiu e ninguém encerrou, ou há saldo/pendência registrada. */
 export function hasPendingAccount(s: StayRow): boolean {
-  return (s.pendingFolioCount ?? 0) > 0 || !!s.lostItemsDescription;
+  return isAccountOpen(s) || (s.pendingFolioCount ?? 0) > 0;
+}
+
+/** Hóspede ainda na casa (o outro grupo de Ativas é "já saiu, conta aberta"). */
+export function isInHouse(s: StayRow): boolean {
+  return s.status === "active";
 }
 
 export function activeStatusInfo(checkOut: string | null | undefined): { label: string; tone: Tone } {

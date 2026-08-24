@@ -1,10 +1,11 @@
 "use client";
 
 import React from "react";
-import { Ban, Clock, Copy, Dog, LogIn, LogOut, MessageCircle, ShieldAlert, Users } from "lucide-react";
+import { Ban, Clock, Copy, Dog, LogIn, LogOut, MessageCircle, Receipt, ShieldAlert, Users } from "lucide-react";
 import { T, tone as toneOf, type Tone } from "@/lib/admin-tokens";
 import { Button, IconButton } from "@/components/aura/Button";
 import { Pill } from "@/components/aura/Pill";
+import { accountChips, isAccountOpen, openChips } from "@/lib/stay-account";
 import { activeStatusInfo, futureStatusInfo, fmtDay, isDocPending, shortName, type StayRow } from "./stay-utils";
 
 export interface StayCardProps {
@@ -16,6 +17,8 @@ export interface StayCardProps {
   onWhatsapp: (s: StayRow) => void;
   onCheckIn?: (s: StayRow) => void;
   onCheckOut?: (s: StayRow) => void;
+  /** Abre a Conta — é o botão principal de quem já saiu e não encerrou. */
+  onAccount?: (s: StayRow) => void;
   onCancel?: (s: StayRow) => void;
   onCopyLink?: (code: string) => void;
   opening?: boolean;
@@ -34,9 +37,15 @@ function Flag({ title, tone, children }: { title: string; tone: Tone; children: 
 const labelStyle: React.CSSProperties = { fontSize: 9, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: T.muted };
 
 /** Cartão de estadia ativa/futura: cabana, hóspede (toque = WhatsApp), datas, status e ações. */
-export function StayCard({ stay: s, mode, variant = "full", onOpen, onWhatsapp, onCheckIn, onCheckOut, onCancel, onCopyLink, opening, checkingIn }: StayCardProps) {
+export function StayCard({ stay: s, mode, variant = "full", onOpen, onWhatsapp, onCheckIn, onCheckOut, onAccount, onCancel, onCopyLink, opening, checkingIn }: StayCardProps) {
   const docPending = isDocPending(s);
-  const status = mode === "ativas" ? activeStatusInfo(s.checkOut) : futureStatusInfo(s.checkIn, s.expectedArrivalTime);
+  // Já saiu e a conta não foi encerrada: a cabana continua na vista de quem opera,
+  // mas o que falta ali é a conta, não a hospedagem.
+  const accountOpen = mode === "ativas" && isAccountOpen(s);
+  const pendingChips = accountOpen ? openChips(accountChips(s)) : [];
+  const status = accountOpen
+    ? { label: `Saiu ${fmtDay(s.checkOutActual ?? s.checkOut)} · conta aberta`, tone: "orange" as const }
+    : mode === "ativas" ? activeStatusInfo(s.checkOut) : futureStatusInfo(s.checkIn, s.expectedArrivalTime);
   const st = toneOf(status.tone);
   const preDone = s.status === "pre_checkin_done";
   const compact = variant === "compact";
@@ -92,16 +101,26 @@ export function StayCard({ stay: s, mode, variant = "full", onOpen, onWhatsapp, 
             <Clock size={11} /> {fmtDay(s.checkIn)} — {fmtDay(s.checkOut)}
           </span>
           {s.internalUse && <Pill tone="amber" label="Uso da casa" />}
+          {/* No compacto não há bloco de status — mas "já saiu e a conta está aberta"
+              é o tipo de coisa que não pode depender de reparar no botão. */}
+          {compact && accountOpen && <Pill tone="orange" icon={Receipt} label="Conta aberta" />}
         </div>
       </div>
 
       {!compact && (mode === "ativas" ? (
         <div style={{ background: st.bg, border: `1px solid ${st.border}`, borderRadius: 12, padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
           <div style={{ minWidth: 0 }}>
-            <div style={labelStyle}>Status atual</div>
+            <div style={labelStyle}>{accountOpen ? "Conta" : "Status atual"}</div>
             <div style={{ fontSize: 14, fontWeight: 800, color: st.color, marginTop: 2 }}>{status.label}</div>
+            {pendingChips.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                {pendingChips.map(c => (
+                  <Pill key={c.id} tone={c.state === "alert" ? "red" : "amber"} label={`${c.label}: ${c.detail}`} />
+                ))}
+              </div>
+            )}
           </div>
-          {docPending && <Pill tone="red" label="Doc pendente" />}
+          {docPending && !accountOpen && <Pill tone="red" label="Doc pendente" />}
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -123,7 +142,10 @@ export function StayCard({ stay: s, mode, variant = "full", onOpen, onWhatsapp, 
 
       <div style={{ display: "flex", gap: 8, paddingTop: 2 }}>
         {!compact && <Button variant="secondary" onClick={() => onOpen(s)} loading={opening} style={{ flex: 1 }}>Ver ficha</Button>}
-        {mode === "ativas" && onCheckOut && (
+        {accountOpen && onAccount && (
+          <Button variant="primary" tone="orange" icon={Receipt} onClick={stop(() => onAccount(s))} style={{ flex: 1 }}>Conta</Button>
+        )}
+        {mode === "ativas" && !accountOpen && onCheckOut && (
           <Button variant="primary" icon={LogOut} onClick={stop(() => onCheckOut(s))} style={{ flex: 1 }}>Check-out</Button>
         )}
         {mode === "futuras" && onCheckIn && (

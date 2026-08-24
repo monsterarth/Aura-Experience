@@ -114,9 +114,11 @@ export async function postCabinConference(payload: {
   taskId?: string;
   lostItems?: { description: string; photo: string | null };
   loanedReturned?: boolean;
+  loanedMissing?: boolean;
   cabinChecked?: boolean;
   frigobar?: { cabinId?: string; cart: Record<string, number> };
   keyNotFound?: boolean;
+  keyFound?: boolean;
 }): Promise<{ ok: boolean; error?: string }> {
   return postFieldAction("/api/field/cabin-conference", payload);
 }
@@ -179,11 +181,13 @@ export function MinibarSheet({
   };
 
   const confirmKey = async (found: boolean) => {
-    if (!found && stayId) {
+    if (stayId) {
       // Via rota de campo (server-side): addFolioItemManual pelo browser pendurava no lock frio.
       // Fire-and-forget: o registro é best-effort e não pode travar o fluxo da conferência.
-      void postCabinConference({ stayId, keyNotFound: true }).then(r => {
-        if (r.ok) showToast?.("Chave não encontrada registrada no fólio.", T.amber);
+      // As DUAS respostas são registradas — o "sim, estava lá" fecha o chip da chave
+      // na conta da estadia; antes só o "não encontrei" deixava rastro.
+      void postCabinConference(found ? { stayId, keyFound: true } : { stayId, keyNotFound: true }).then(r => {
+        if (r.ok && !found) showToast?.("Chave não encontrada registrada no fólio.", T.amber);
       });
     }
     setPhase("lost");
@@ -253,10 +257,13 @@ export function MinibarSheet({
     if (parsedLoaned.length > 0) { setPhase("loaned"); } else { await finishAll(); }
   };
 
-  const submitLoaned = async () => {
+  const submitLoaned = async (allReturned = true) => {
     setSavingLoaned(true);
-    await postCabinConference({ stayId: stayId ?? "", loanedReturned: true });
+    await postCabinConference(allReturned
+      ? { stayId: stayId ?? "", loanedReturned: true }
+      : { stayId: stayId ?? "", loanedMissing: true });
     setSavingLoaned(false);
+    if (!allReturned) showToast?.("Registrado: item não devolvido. A recepção resolve na conta.", T.amber);
     await finishAll();
   };
 
@@ -355,7 +362,7 @@ export function MinibarSheet({
         </div>
         <div style={{ padding: "12px 16px", borderTop: `1px solid ${T.border}`, background: "#0d1020", flexShrink: 0 }}>
           <button
-            onClick={submitLoaned}
+            onClick={() => void submitLoaned(true)}
             disabled={!allChecked || savingLoaned}
             style={{
               width: "100%", padding: 16,
@@ -370,6 +377,24 @@ export function MinibarSheet({
           >
             {savingLoaned ? <I n="loader" s={17} c="#021a17" w={2} /> : <><I n="check" s={17} />Confirmar Devolução</>}
           </button>
+          {/* Sem esta saída, faltando um item a conferência ficava travada: o botão
+              acima só liga com tudo marcado. Agora a camareira registra a falta e a
+              recepção decide na conta (devolvido depois ou cobrado). */}
+          {!allChecked && (
+            <button
+              onClick={() => void submitLoaned(false)}
+              disabled={savingLoaned}
+              style={{
+                width: "100%", marginTop: 10, padding: 14,
+                background: T.amberBg, color: T.amber,
+                fontFamily: "inherit", fontSize: 13, fontWeight: 800, letterSpacing: "0.03em",
+                border: `1px solid ${T.amberBorder}`, borderRadius: 16, cursor: savingLoaned ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              }}
+            >
+              <I n="info" s={16} c={T.amber} />Faltou item — avisar a recepção
+            </button>
+          )}
         </div>
       </Sheet>
     );

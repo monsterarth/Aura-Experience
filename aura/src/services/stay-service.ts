@@ -880,17 +880,144 @@ export const StayService = {
     });
   },
 
-  async closeStayBill(propertyId: string, stayId: string, actorId: string, actorName: string) {
+  /**
+   * Encerra a conta da estadia — o portão único entre "Ativas" e "Encerradas".
+   *
+   * `pendingSummary` é o que a confirmação mostrou para quem clicou (chips
+   * acesos). Vai para a auditoria: encerrar com pendência é permitido, ficar
+   * sem registro do que foi deixado para trás não é.
+   *
+   * Não apaga mais `lostItemsDescription`. A versão anterior zerava a descrição
+   * do objeto esquecido ao encerrar — o único registro do achado sumia junto
+   * com a conta. Agora o objeto tem destino próprio (`lostItemsResolution`).
+   */
+  async closeStayBill(propertyId: string, stayId: string, actorId: string, actorName: string, pendingSummary?: string) {
     await supabase.from('folio_items').update({ status: 'paid' }).eq('stayId', stayId).eq('status', 'pending');
-    await supabase.from('stays').update({
+    const { error } = await supabase.from('stays').update({
       hasOpenFolio: false,
       billClosedAt: new Date().toISOString(),
-      lostItemsDescription: null,
-    }).eq('id', stayId);
+      updatedAt: new Date().toISOString(),
+    }).eq('id', stayId).eq('propertyId', propertyId);
+    if (error) throw new Error(error.message);
 
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
-      details: `Conta encerrada: todos os lançamentos pendentes marcados como pagos.`
+      details: pendingSummary
+        ? `Conta encerrada COM pendência: ${pendingSummary}. Lançamentos pendentes marcados como pagos.`
+        : `Conta encerrada: todos os lançamentos pendentes marcados como pagos.`,
+    });
+  },
+
+  /** Reabre a conta de uma estadia encerrada (volta para "Saíram · conta aberta"). */
+  async reopenStayBill(propertyId: string, stayId: string, actorId: string, actorName: string) {
+    const { error } = await supabase.from('stays')
+      .update({ billClosedAt: null, updatedAt: new Date().toISOString() })
+      .eq('id', stayId).eq('propertyId', propertyId);
+    if (error) throw new Error(error.message);
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
+      details: "Conta reaberta.",
+    });
+  },
+
+  // ── Desfechos da conta ───────────────────────────────────────────────────
+  // Chave e empréstimo terminam do mesmo jeito: ou a coisa apareceu, ou virou
+  // cobrança no fólio. Objeto esquecido tem três destinos e nenhum deles é
+  // "apagar a descrição".
+
+  async resolveKey(
+    propertyId: string, stayId: string,
+    outcome: 'found' | 'returned' | 'charged',
+    actorId: string, actorName: string,
+    charge?: { amount: number; description?: string },
+  ) {
+    if (outcome === 'charged') {
+      const amount = Math.round((charge?.amount ?? 0) * 100) / 100;
+      if (!(amount > 0)) throw new Error('KEY_CHARGE_INVALID');
+      await StayService.addFolioItemManual(
+        propertyId, stayId,
+        {
+          description: charge?.description?.trim() || 'Chave não devolvida',
+          quantity: 1, unitPrice: amount, totalPrice: amount,
+          category: 'services', addedBy: actorId,
+        },
+        actorId, actorName,
+      );
+    }
+
+    const { error } = await supabase.from('stays').update({
+      keyStatus: outcome,
+      keyStatusAt: new Date().toISOString(),
+      keyStatusBy: actorId,
+      updatedAt: new Date().toISOString(),
+    }).eq('id', stayId).eq('propertyId', propertyId);
+    if (error) throw new Error(error.message);
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
+      details: outcome === 'charged'
+        ? `Chave cobrada no fólio (R$ ${(charge?.amount ?? 0).toFixed(2)}).`
+        : outcome === 'returned' ? 'Chave devolvida depois do check-out.' : 'Chave encontrada na acomodação.',
+    });
+  },
+
+  async resolveLoanedItems(
+    propertyId: string, stayId: string,
+    outcome: 'returned' | 'charged',
+    actorId: string, actorName: string,
+    charge?: { amount: number; description?: string },
+  ) {
+    if (outcome === 'charged') {
+      const amount = Math.round((charge?.amount ?? 0) * 100) / 100;
+      if (!(amount > 0)) throw new Error('LOAN_CHARGE_INVALID');
+      await StayService.addFolioItemManual(
+        propertyId, stayId,
+        {
+          description: charge?.description?.trim() || 'Itens emprestados não devolvidos',
+          quantity: 1, unitPrice: amount, totalPrice: amount,
+          category: 'services', addedBy: actorId,
+        },
+        actorId, actorName,
+      );
+    }
+
+    // `loanedItemsChecked` continua espelhado: é o campo que o app da camareira lê.
+    const now = new Date().toISOString();
+    const { error } = await supabase.from('stays').update({
+      loanedItemsStatus: outcome,
+      loanedItemsChecked: true,
+      loanedItemsCheckedAt: now,
+      updatedAt: now,
+    }).eq('id', stayId).eq('propertyId', propertyId);
+    if (error) throw new Error(error.message);
+
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
+      details: outcome === 'charged'
+        ? `Itens emprestados cobrados no fólio (R$ ${(charge?.amount ?? 0).toFixed(2)}).`
+        : 'Itens emprestados devolvidos.',
+    });
+  },
+
+  async resolveLostItems(
+    propertyId: string, stayId: string,
+    resolution: 'returned' | 'discarded' | 'stored',
+    actorId: string, actorName: string,
+  ) {
+    const now = new Date().toISOString();
+    const { error } = await supabase.from('stays').update({
+      lostItemsResolution: resolution,
+      lostItemsResolvedAt: now,
+      lostItemsResolvedBy: actorId,
+      updatedAt: now,
+    }).eq('id', stayId).eq('propertyId', propertyId);
+    if (error) throw new Error(error.message);
+
+    const LABEL = { returned: 'devolvido ao hóspede', discarded: 'descartado', stored: 'guardado em achados e perdidos' } as const;
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
+      details: `Objeto esquecido ${LABEL[resolution]}.`,
     });
   },
 

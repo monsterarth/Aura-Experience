@@ -818,6 +818,12 @@ export interface Stay {
   loanedItems?: string;           // Lista de objetos emprestados (preenchida pela recepção no checkout)
   loanedItemsChecked?: boolean;   // true após a camareira confirmar devolução
   loanedItemsCheckedAt?: string;
+  /** Desfecho do empréstimo. `loanedItemsChecked` continua espelhado para o app de campo. */
+  loanedItemsStatus?: LoanedItemsStatus;
+  /** Destino do objeto esquecido — sem isto a descrição ficava pendurada para sempre. */
+  lostItemsResolution?: LostItemsResolution;
+  lostItemsResolvedAt?: string;
+  lostItemsResolvedBy?: string;
 
   cestaBreakfastEnabled?: boolean;
 
@@ -830,9 +836,22 @@ export interface Stay {
 
   // Chave da acomodação no momento do check-out
   keyLocation?: 'reception' | 'cabin' | 'unknown';
+  /** Ciclo da chave até ela estar localizada (ou cobrada). NULL = sem registro. */
+  keyStatus?: KeyStatus;
+  keyStatusAt?: string;
+  keyStatusBy?: string;
 
   createdAt: Timestamp;
 }
+
+/**
+ * A conta só fecha quando o ciclo fecha: pagamento quitado, chave localizada,
+ * empréstimos devolvidos ou pagos e nenhum objeto esquecido em aberto. Os três
+ * estados abaixo são os que o banco guarda; o saldo vem do fólio.
+ */
+export type KeyStatus = 'reception' | 'awaiting_conference' | 'found' | 'missing' | 'returned' | 'charged';
+export type LoanedItemsStatus = 'pending' | 'returned' | 'missing' | 'charged';
+export type LostItemsResolution = 'returned' | 'discarded' | 'stored';
 
 // ==========================================
 // MÓDULO DE AUTOMAÇÃO E MENSAGERIA

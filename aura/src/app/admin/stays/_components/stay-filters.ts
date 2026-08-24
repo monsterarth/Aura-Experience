@@ -25,7 +25,6 @@ export const SORT_LABELS: Record<SortKey, string> = {
 export const DEFAULT_SORT: Record<TabStatus, SortState> = {
   ativas: { key: "cabin", dir: "asc" },
   futuras: { key: "checkIn", dir: "asc" },
-  pendente: { key: "checkOut", dir: "desc" },
   encerradas: { key: "checkOut", dir: "desc" },
 };
 

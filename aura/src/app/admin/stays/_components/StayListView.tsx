@@ -3,9 +3,10 @@
 // Modo lista das abas Ativas e Futuras: uma tabela no desktop, cards no celular
 // (o DataList do kit resolve os dois com a mesma fonte de dados).
 import React, { useMemo } from "react";
-import { ArrowUpRight, Ban, Copy, DollarSign, Dog, LogIn, LogOut, MessageCircle, ShieldAlert, Users } from "lucide-react";
+import { ArrowUpRight, Ban, Copy, DollarSign, Dog, LogIn, LogOut, MessageCircle, Receipt, ShieldAlert, Users } from "lucide-react";
 import { T, tone as toneOf } from "@/lib/admin-tokens";
 import { DataList, Pill, type Column, type RowAction } from "@/components/aura";
+import { accountChips, isAccountOpen, openChips } from "@/lib/stay-account";
 import { activeStatusInfo, futureStatusInfo, fmtDay, isDocPending, titleCase, type StayRow } from "./stay-utils";
 
 export interface StayListViewProps {
@@ -15,6 +16,7 @@ export interface StayListViewProps {
   onWhatsapp: (s: StayRow) => void;
   onCheckIn?: (s: StayRow) => void;
   onCheckOut?: (s: StayRow) => void;
+  onAccount?: (s: StayRow) => void;
   onCancel?: (s: StayRow) => void;
   onCopyLink?: (code: string) => void;
 }
@@ -32,7 +34,7 @@ function pendingTotal(s: StayRow): number {
     .reduce((acc: number, f: any) => acc + (f.totalPrice ?? 0), 0);
 }
 
-export function StayListView({ rows, mode, onOpen, onWhatsapp, onCheckIn, onCheckOut, onCancel, onCopyLink }: StayListViewProps) {
+export function StayListView({ rows, mode, onOpen, onWhatsapp, onCheckIn, onCheckOut, onAccount, onCancel, onCopyLink }: StayListViewProps) {
   const columns: Column<StayRow>[] = useMemo(() => {
     const base: Column<StayRow>[] = [
       {
@@ -55,6 +57,15 @@ export function StayListView({ rows, mode, onOpen, onWhatsapp, onCheckIn, onChec
       {
         id: "status", header: mode === "ativas" ? "Status" : "Previsão", mobile: "trailing", nowrap: true,
         cell: s => {
+          if (mode === "ativas" && isAccountOpen(s)) {
+            const pend = openChips(accountChips(s));
+            return (
+              <span style={{ display: "inline-flex", flexDirection: "column", gap: 2 }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: T.orange }}>Saiu {fmtDay(s.checkOutActual ?? s.checkOut, "dd/MM")} · conta aberta</span>
+                {pend.length > 0 && <span style={{ fontSize: 11, color: T.muted, fontWeight: 600 }}>{pend.map(c => c.label.toLowerCase()).join(" · ")}</span>}
+              </span>
+            );
+          }
           const info = mode === "ativas" ? activeStatusInfo(s.checkOut) : futureStatusInfo(s.checkIn, s.expectedArrivalTime);
           const t = toneOf(info.tone);
           return <span style={{ fontSize: 12, fontWeight: 800, color: t.color }}>{info.label}</span>;
@@ -109,7 +120,8 @@ export function StayListView({ rows, mode, onOpen, onWhatsapp, onCheckIn, onChec
       list.push({ id: "link", label: "Copiar link do check-in", icon: Copy, onClick: r => onCopyLink(r.accessCode) });
     }
     if (mode === "futuras" && onCheckIn) list.push({ id: "in", label: "Fazer check-in", icon: LogIn, onClick: onCheckIn, tone: "green" });
-    if (mode === "ativas" && onCheckOut) list.push({ id: "out", label: "Fazer check-out", icon: LogOut, onClick: onCheckOut, tone: "brand" });
+    if (mode === "ativas" && onAccount) list.push({ id: "acct", label: "Abrir a conta", icon: Receipt, onClick: onAccount, tone: "orange" });
+    if (mode === "ativas" && onCheckOut && !isAccountOpen(s)) list.push({ id: "out", label: "Fazer check-out", icon: LogOut, onClick: onCheckOut, tone: "brand" });
     if (mode === "futuras" && onCancel) list.push({ id: "cancel", label: "Cancelar reserva", icon: Ban, onClick: onCancel, danger: true });
     return list;
   };
