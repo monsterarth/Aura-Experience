@@ -6,7 +6,16 @@
 // vivem em RateQuotePublicService.
 
 import { headers } from "next/headers";
-import { RateQuotePublicService } from "@/services/rate-quote-public-service";
+import {
+  RateQuotePublicService, type PublicIntakeInput,
+} from "@/services/rate-quote-public-service";
+
+/** Mesma leitura de IP do rate-limit do login do hóspede. */
+function clientIp(h: Headers): string {
+  return h.get("x-forwarded-for")?.split(",")[0]?.trim()
+    || h.get("x-real-ip")
+    || "unknown";
+}
 
 export async function acceptQuoteProposal(
   id: string,
@@ -18,11 +27,8 @@ export async function acceptQuoteProposal(
   },
 ): Promise<{ ok: boolean; error?: string }> {
   try {
-    // Mesma leitura de IP do rate-limit do login do hóspede.
     const h = headers();
-    const ip = h.get("x-forwarded-for")?.split(",")[0]?.trim()
-      || h.get("x-real-ip")
-      || "unknown";
+    const ip = clientIp(h);
 
     return await RateQuotePublicService.acceptQuote({
       id,
@@ -36,5 +42,34 @@ export async function acceptQuoteProposal(
   } catch (e) {
     console.error("[acceptQuoteProposal]", e);
     return { ok: false, error: "Não foi possível registrar o aceite." };
+  }
+}
+
+/**
+ * Passo 2 da proposta: o cadastro do titular ("para garantir sua reserva").
+ * Só o ID da condição de pagamento vem daqui — rótulo, desconto e valor são
+ * resolvidos no servidor. Validação e trava vivem no service.
+ */
+export async function submitQuoteIntake(
+  id: string,
+  input: {
+    intake: PublicIntakeInput;
+    elapsedMs?: number;
+    website?: string;
+  },
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const h = headers();
+    return await RateQuotePublicService.submitIntake({
+      id,
+      intake: input.intake,
+      elapsedMs: input.elapsedMs,
+      website: input.website,
+      ip: clientIp(h),
+      userAgent: h.get("user-agent") ?? undefined,
+    });
+  } catch (e) {
+    console.error("[submitQuoteIntake]", e);
+    return { ok: false, error: "Não foi possível registrar os seus dados." };
   }
 }

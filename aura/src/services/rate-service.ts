@@ -6,6 +6,8 @@ import {
   CabinCategory,
   CrmChannel,
   Guest,
+  PetDetails,
+  QuoteIntake,
   RateFluctuationRule,
   RatePeriod,
   RateQuoteInput,
@@ -16,11 +18,14 @@ import {
   RateTable,
   RateTableVersion,
   RateAvailability,
+  Stay,
 } from "@/types/aura";
 import {
   addDays, computeQuote, findOverlaps, MIN_OVER_CAPACITY_REASON, nightsBetween,
   offeredTotal, resolveFill, resolveOverwrite, resolveQuoteValue, resolveRoomValue,
 } from "@/lib/rate-engine";
+import { normalizeInstagram } from "@/lib/instagram";
+import { readPets, writePets } from "@/lib/pets";
 import { AuditService } from "./audit-service";
 import { CrmService } from "./crm-service";
 import { GuestService } from "./guest-service";
@@ -30,12 +35,107 @@ const QUOTE_STATUSES: RateQuoteStatus[] = ["open", "sent", "negotiating", "won",
 /** Campos de rate_quotes que o PATCH pode alterar (whitelist). */
 const QUOTE_PATCH_FIELDS = [
   "clientName", "clientDocument", "clientDocumentType", "clientPhone", "clientEmail",
-  "clientLanguage",
+  "clientLanguage", "clientInstagram",
   "guestId", "stayId", "weddingId", "source",
   "selectedCategory", "finalValue", "negotiatedValue",
   "status", "lostReason", "notes",
   "followUpAt", "expiresAt",
 ] as const;
+
+/**
+ * O que o CADASTRO da proposta acrescenta a uma ficha de hóspede nova:
+ * nascimento e endereço, que a conversão não tinha de onde tirar (nasciam
+ * vazios e alguém redigitava no pré-check-in).
+ *
+ * Só complementa — `document`/`fullName` continuam vindo do que a recepção
+ * conferiu na modal, que é a decisão consciente do vínculo.
+ */
+function guestExtrasFromIntake(intake: QuoteIntake | null | undefined): Partial<Guest> {
+  if (!intake) return {};
+  const a = intake.holder.address;
+  const hasAddress = !!(a.street || a.city);
+  return {
+    ...(intake.holder.birthDate ? { birthDate: intake.holder.birthDate } : {}),
+    ...(hasAddress ? {
+      address: {
+        street: a.street || "",
+        number: a.number || "",
+        ...(a.complement ? { complement: a.complement } : {}),
+        neighborhood: a.neighborhood || "",
+        city: a.city || "",
+        state: a.state || "",
+        zipCode: a.zipCode || "",
+        country: a.country === "BR" || !a.country ? "Brasil" : a.country,
+      },
+    } : {}),
+  };
+}
+
+/** Nome ainda não preenchido de verdade na linha do acompanhante. */
+const PLACEHOLDER_NAME = /^(acompanhante)?$/i;
+
+/**
+ * Cadastro da proposta → estadia. A estadia nasce com uma linha por pessoa
+ * (todas chamadas "ACOMPANHANTE", ver StayService.createStay) e sem placa nem
+ * pet: aqui as linhas ganham nome e nascimento, na ordem, por tipo.
+ *
+ * Só toca no que continua em branco — quem editou a estadia à mão sabe mais
+ * que um formulário preenchido semanas antes. Gente a MAIS do que foi cotado
+ * não entra: mexeria no `counts` da reserva, decisão da recepção.
+ */
+async function applyIntakeToStay(
+  admin: NonNullable<typeof supabaseAdmin>,
+  propertyId: string,
+  stayId: string,
+  intake: QuoteIntake | null | undefined,
+  stay: {
+    vehiclePlate?: string | null;
+    additionalGuests?: NonNullable<Stay["additionalGuests"]>;
+    pets?: PetDetails[] | null; petDetails?: PetDetails | null; hasPet?: boolean;
+  }
+): Promise<void> {
+  if (!intake) return;
+  const patch: Record<string, unknown> = {};
+
+  if (intake.vehiclePlate && !(stay.vehiclePlate || "").trim()) {
+    patch.vehiclePlate = intake.vehiclePlate;
+  }
+
+  const queue: Record<"adult" | "child" | "baby", typeof intake.companions> = {
+    adult: [], child: [], baby: [],
+  };
+  for (const c of intake.companions) {
+    if ((c.fullName ?? "").trim()) queue[c.kind].push(c);
+  }
+  const rows = stay.additionalGuests ?? [];
+  if (rows.length && (queue.adult.length || queue.child.length || queue.baby.length)) {
+    let changed = false;
+    const next = rows.map((g) => {
+      if (!PLACEHOLDER_NAME.test((g.fullName ?? "").trim())) return g;
+      const kind = g.type === "adult" ? "adult" : g.type === "child" ? "child" : "baby";
+      const c = queue[kind].shift();
+      if (!c) return g;
+      changed = true;
+      return {
+        ...g,
+        fullName: c.fullName!.trim().toUpperCase(),
+        ...(c.birthDate ? { birthDate: c.birthDate } : {}),
+      };
+    });
+    if (changed) patch.additionalGuests = next;
+  }
+
+  if (intake.pets?.length && readPets({ pets: stay.pets ?? undefined, petDetails: stay.petDetails ?? undefined }).length === 0) {
+    Object.assign(patch, writePets(true, intake.pets));
+  }
+
+  if (Object.keys(patch).length === 0) return;
+  await admin
+    .from("stays")
+    .update({ ...patch, updatedAt: new Date().toISOString() })
+    .eq("id", stayId)
+    .eq("propertyId", propertyId);
+}
 
 const QUOTE_STAGE_LABEL: Record<RateQuoteStatus, string> = {
   open: "Aberto", sent: "Enviado", negotiating: "Negociando", won: "Ganho", lost: "Perdido",
@@ -548,6 +648,21 @@ export const RateService = {
     if (settings.categoryLinks && typeof settings.categoryLinks === "object" && !Array.isArray(settings.categoryLinks)) {
       clean.categoryLinks = settings.categoryLinks;
     }
+    // Condições de pagamento da proposta: saneadas item a item — o
+    // `discountPct` sai daqui direto para o total que o CLIENTE lê na tela.
+    if (Array.isArray(settings.paymentOptions)) {
+      clean.paymentOptions = settings.paymentOptions
+        .filter((o) => o && typeof o.id === "string" && typeof o.label === "string" && o.label.trim())
+        .map((o, i) => ({
+          id: o.id,
+          label: o.label.trim(),
+          label_en: typeof o.label_en === "string" ? o.label_en.trim() || null : null,
+          label_es: typeof o.label_es === "string" ? o.label_es.trim() || null : null,
+          discountPct: Math.min(100, Math.max(0, Number(o.discountPct) || 0)),
+          order: Number.isFinite(Number(o.order)) ? Number(o.order) : i + 1,
+        }))
+        .sort((a, b) => a.order - b.order);
+    }
     for (const key of [
       "msgTemplate", "msgTemplate_en", "msgTemplate_es",
       "msgSingleTemplate", "msgSingleTemplate_en", "msgSingleTemplate_es",
@@ -839,6 +954,8 @@ export const RateService = {
       clientDocumentType: payload.clientDocumentType?.trim() || "CPF",
       clientPhone: payload.clientPhone ? payload.clientPhone.replace(/\D/g, "") : null,
       clientEmail: payload.clientEmail?.trim() || null,
+      // Instagram do lead que chegou por DM — vale como meio de contato.
+      clientInstagram: normalizeInstagram(payload.clientInstagram),
       // Idioma falado pelo hóspede — rege a proposta pública e o template de
       // WhatsApp copiado. Default PT: só muda quando o vendedor sabe que é outro.
       clientLanguage: (payload.clientLanguage === "en" || payload.clientLanguage === "es")
@@ -976,6 +1093,9 @@ export const RateService = {
     }
     if (typeof clean.clientPhone === "string") {
       clean.clientPhone = clean.clientPhone.replace(/\D/g, "") || null;
+    }
+    if ("clientInstagram" in clean) {
+      clean.clientInstagram = normalizeInstagram(clean.clientInstagram as string | null);
     }
     if ("finalValue" in clean && typeof clean.finalValue !== "number") clean.finalValue = null;
     if ("negotiatedValue" in clean &&
@@ -1214,6 +1334,62 @@ export const RateService = {
   },
 
   /**
+   * CORREÇÃO DO CADASTRO pela recepção. O link do cliente trava depois do
+   * envio (ver `submitIntake`), então este é o único caminho para consertar um
+   * CPF trocado ou completar o endereço — e ele exige sessão.
+   *
+   * Faz MERGE no que já existe: o consentimento e a hora do envio original são
+   * prova e não se reescrevem. `editedBy` marca quem mexeu.
+   */
+  async updateQuoteIntake(
+    propertyId: string,
+    id: string,
+    patch: Partial<QuoteIntake>,
+    actor: { id: string; name: string }
+  ): Promise<QuoteIntake> {
+    const admin = supabaseAdmin!;
+    const { data } = await admin
+      .from("rate_quotes").select("intake, intakeAt, clientName")
+      .eq("id", id).eq("propertyId", propertyId).maybeSingle();
+    if (!data) throw new Error("Orçamento não encontrado.");
+
+    const current = (data.intake ?? null) as QuoteIntake | null;
+    if (!current) throw new Error("Este orçamento ainda não tem cadastro do titular.");
+
+    const next: QuoteIntake = {
+      ...current,
+      ...patch,
+      holder: {
+        ...current.holder,
+        ...(patch.holder ?? {}),
+        address: { ...current.holder.address, ...(patch.holder?.address ?? {}) },
+      },
+      // Prova do consentimento e do envio: imutáveis.
+      consent: current.consent,
+      submittedAt: current.submittedAt,
+      editedBy: { id: actor.id, name: actor.name, at: new Date().toISOString() },
+    };
+
+    const { error } = await admin
+      .from("rate_quotes")
+      .update({ intake: next, updatedAt: new Date().toISOString() })
+      .eq("id", id).eq("propertyId", propertyId);
+    if (error) throw new Error(error.message);
+
+    await CrmService.logInteraction(propertyId, "quote", id, "note", {
+      actorId: actor.id, actorName: actor.name,
+      note: "Cadastro do titular corrigido pela recepção.",
+    });
+    await AuditService.log({
+      propertyId, userId: actor.id, userName: actor.name,
+      action: "UPDATE", entity: "RATE_QUOTE", entityId: id,
+      details: `Cadastro do titular de ${data.clientName || "sem nome"} corrigido.`,
+    });
+
+    return next;
+  },
+
+  /**
    * Garante a ficha de hóspede do lead SEM mexer no estágio ("Promover a
    * hóspede" — o titular pode virar hóspede no meio da negociação). A decisão
    * é do vendedor, na modal: `guestId` vincula uma ficha EXISTENTE (sugestão
@@ -1300,6 +1476,8 @@ export const RateService = {
           address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", country: "Brasil" },
           allergies: [],
           preferredLanguage: quote.clientLanguage || "pt",
+          // Nascimento e endereço que o cliente já mandou na proposta.
+          ...guestExtrasFromIntake(quote.intake),
         };
         guestId = await GuestService.upsertGuestDirect(propertyId, newGuest, actor.id, actor.name);
       }
@@ -1337,6 +1515,7 @@ export const RateService = {
             address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", country: "Brasil" },
             allergies: [],
             preferredLanguage: quote.clientLanguage || "pt",
+            ...guestExtrasFromIntake(quote.intake),
           };
           guestId = await GuestService.upsertGuestDirect(propertyId, newGuest, actor.id, actor.name);
         }
@@ -1442,14 +1621,24 @@ export const RateService = {
 
     const [{ data: quoteRow }, { data: stayRow }] = await Promise.all([
       admin.from("rate_quotes").select("*").eq("id", quoteId).eq("propertyId", propertyId).maybeSingle(),
-      admin.from("stays").select("id, cabinId, guestId, checkIn, checkOut").eq("id", stayId).eq("propertyId", propertyId).maybeSingle(),
+      admin.from("stays")
+        .select("id, cabinId, guestId, checkIn, checkOut, vehiclePlate, additionalGuests, pets, petDetails, hasPet")
+        .eq("id", stayId).eq("propertyId", propertyId).maybeSingle(),
     ]);
     if (!quoteRow || !stayRow) throw new Error("Orçamento ou estadia não encontrados.");
     const quote = quoteRow as RateQuoteRecord;
     const stay = stayRow as {
       id: string; cabinId: string | null; guestId: string | null;
       checkIn: string; checkOut: string;
+      vehiclePlate?: string | null;
+      additionalGuests?: NonNullable<Stay["additionalGuests"]>;
+      pets?: PetDetails[] | null; petDetails?: PetDetails | null; hasPet?: boolean;
     };
+
+    // O CADASTRO da proposta é a única fonte de placa, nomes dos acompanhantes
+    // e pet — a estadia nasce com "ACOMPANHANTE" em todas as linhas. Preenche
+    // só o que continua vazio: recepção que já editou vence o formulário.
+    await applyIntakeToStay(admin, propertyId, stayId, quote.intake, stay);
 
     const snapshot = quote.snapshot || [];
     let chosen = undefined as (typeof snapshot)[number] | undefined;

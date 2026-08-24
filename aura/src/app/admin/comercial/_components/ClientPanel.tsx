@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { BadgeCheck, Home, Link2, Loader2, UserPlus } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
+import { normalizeInstagram } from "@/lib/instagram";
 import { CrmLead, Guest, RateQuoteRecord } from "@/types/aura";
 import { resolveQuoteValue } from "@/lib/rate-engine";
 import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
@@ -41,6 +42,7 @@ type LeadDraft = {
   clientName: string;
   clientPhone: string;
   clientEmail: string;
+  clientInstagram: string;
   clientDocumentType: string;
   clientDocument: string;
 };
@@ -49,6 +51,7 @@ const draftFromLead = (lead: CrmLead): LeadDraft => ({
   clientName: lead.title === "Sem nome" ? "" : lead.title,
   clientPhone: lead.phone ?? "",
   clientEmail: lead.email ?? "",
+  clientInstagram: lead.instagram ?? "",
   clientDocumentType: lead.documentType ?? "CPF",
   clientDocument: lead.document ?? "",
 });
@@ -109,6 +112,7 @@ export function ClientPanel({
         clientName: draft.clientName.trim() || null,
         clientPhone: draft.clientPhone.replace(/\D/g, "") || null,
         clientEmail: draft.clientEmail.trim() || null,
+        clientInstagram: normalizeInstagram(draft.clientInstagram),
         clientDocumentType: draft.clientDocumentType,
         clientDocument: draft.clientDocument || null,
       });
@@ -235,6 +239,15 @@ export function ClientPanel({
               <input style={{ ...S.input, padding: "7px 10px", fontSize: 12 }}
                 value={draft.clientEmail} placeholder="cliente@email.com" disabled={busy || saving}
                 onChange={(e) => patchDraft("clientEmail", e.target.value)} />
+            </div>
+            <div>
+              <label style={fieldLabelSm}>Instagram</label>
+              <input style={{ ...S.input, padding: "7px 10px", fontSize: 12 }}
+                value={draft.clientInstagram} placeholder="@usuario" disabled={busy || saving}
+                onChange={(e) => patchDraft("clientInstagram", e.target.value)}
+                onBlur={() => patchDraft(
+                  "clientInstagram", normalizeInstagram(draft.clientInstagram) ?? draft.clientInstagram.trim()
+                )} />
             </div>
             <div>
               <label style={fieldLabelSm}>Tipo de documento</label>

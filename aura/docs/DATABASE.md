@@ -100,6 +100,21 @@ survey templates/`survey_responses`, curated config, area reviews. Entities: `Su
 events, weddings (+ vendors, cabin assignments, installments). Entities: `Event`, `Wedding`,
 `WeddingVendor`, `WeddingInstallment`.
 
+**Tarifário & CRM comercial**
+`rate_tables` (+ `rate_table_versions`), `rate_periods`, `rate_fluctuations`, `rate_settings`
+(config comercial por propriedade), `rate_quotes` (orçamento = lead do funil),
+`crm_interactions` (timeline), `crm_alarms` (Fila de hoje), `waitlist_entries`. Entities:
+`RateTable`, `RatePeriod`, `RateFluctuation`, `RateSettings`, `RatePaymentOption`,
+`RateQuoteRecord`, `CrmInteraction`, `CrmAlarm`, `CrmLead`, `WaitlistEntry`.
+
+> `rate_quotes."intake"` (JSONB, tipo `QuoteIntake`) guarda o **cadastro do titular** que o
+> próprio cliente preenche na proposta pública — nome, documento, endereço, acompanhantes,
+> placa, pet, condição de pagamento e a prova do consentimento. Fica no orçamento de
+> propósito: a página é anônima e não escreve em `guests`; a ficha e a estadia são
+> pré-preenchidas na conversão. `"intakeAt"` é a trava do link (um envio só).
+> `rate_settings."paymentOptions"` são as condições que o cliente escolhe ali; vazio cai em
+> `DEFAULT_PAYMENT_OPTIONS`.
+
 **System**
 `audit_logs` (all writes + cron runs), `changelogs` + `changelog_entries`, system bugs,
 contacts. Entities: `AuditLog`, `Changelog`, `ChangelogEntry`, `SystemBug`, `Contact`.

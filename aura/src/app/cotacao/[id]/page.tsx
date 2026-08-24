@@ -2,7 +2,8 @@
 //
 // A PROPOSTA. URL pública que o vendedor manda para o cliente: ele vê as
 // cabanas oferecidas para cada acomodação, escolhe e aceita — e isso volta
-// para o CRM (timeline + alarme na fila de hoje da recepção).
+// para o CRM (timeline + alarme na fila de hoje da recepção) — e, no passo 2,
+// o cadastro do titular ("para garantir sua reserva").
 //
 // Server component, molde do /p/[code]: sem sessão, sem waterfall. O que sai
 // é exatamente PublicQuoteView — sem CPF, sem valor negociado, sem a régua de
@@ -26,7 +27,10 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
   };
 }
 
-export default async function CotacaoPage({ params }: { params: { id: string } }) {
+export default async function CotacaoPage({ params, searchParams }: {
+  params: { id: string };
+  searchParams?: { cadastro?: string };
+}) {
   const quote = await RateQuotePublicService.getPublicQuote(params.id);
   // Id inválido, proposta fechada e proposta vencida dão a MESMA resposta —
   // um palpite não pode distinguir "não existe" de "existe mas fechou".
@@ -44,7 +48,9 @@ export default async function CotacaoPage({ params }: { params: { id: string } }
       color: "var(--ink)",
       minHeight: "100dvh",
     }}>
-      <ProposalClient quote={quote} />
+      {/* ?cadastro=1 abre direto no passo 2 — o link que a recepção copia no
+          drawer para quem fechou pelo WhatsApp ou aceitou antes disto existir. */}
+      <ProposalClient quote={quote} startAtIntake={searchParams?.cadastro === "1"} />
     </main>
   );
 }

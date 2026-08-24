@@ -22,6 +22,7 @@ import { T } from "@/lib/admin-tokens";
 import { useCloseGuard } from "@/lib/use-discard-guard";
 import { parseMoneyBR, moneyToInput } from "@/lib/parse-money";
 import { copyText } from "@/lib/clipboard";
+import { normalizeInstagram } from "@/lib/instagram";
 import {
   computeQuote, processTemplate, buildCategoryBlock, buildEventNotices,
   DEFAULT_MSG_TEMPLATE, DEFAULT_MSG_SINGLE_TEMPLATE, MIN_OVER_CAPACITY_REASON,
@@ -113,6 +114,8 @@ export type QuoteSeed = {
   clientName?: string | null;
   clientPhone?: string | null;
   clientEmail?: string | null;
+  /** @usuário do Instagram — meio de contato de quem chega por DM. */
+  clientInstagram?: string | null;
   clientDocument?: string | null;
   /** FNRH ID do tipo de documento (CPF/PASSAPORTE/RG/DNI/CNH/OUTRO) — default CPF. */
   clientDocumentType?: string | null;
@@ -197,6 +200,7 @@ export function NewQuoteWizard({
   const [source, setSource] = useState(seed?.source ?? "");
   const [phone, setPhone] = useState(seed?.clientPhone ?? "");
   const [email, setEmail] = useState(seed?.clientEmail ?? "");
+  const [instagram, setInstagram] = useState(seed?.clientInstagram ?? "");
   const [document, setDocument] = useState(seed?.clientDocument ?? "");
   const [documentType, setDocumentType] = useState(seed?.clientDocumentType ?? "CPF");
   const [language, setLanguage] = useState<"pt" | "en" | "es">(seed?.clientLanguage ?? "pt");
@@ -231,7 +235,8 @@ export function NewQuoteWizard({
 
   const step1Error = !name.trim() ? "Informe o nome do cliente."
     : !source ? "Informe a origem do lead."
-    : !phone.trim() && !email.trim() ? "Informe telefone ou e-mail."
+    : !phone.trim() && !email.trim() && !normalizeInstagram(instagram)
+      ? "Informe telefone, e-mail ou Instagram."
     : !checkIn || !checkOut || checkIn >= checkOut ? "Período inválido."
     : null;
 
@@ -290,6 +295,7 @@ export function NewQuoteWizard({
     if (q.guestId) setLinkedGuest({ id: q.guestId, name: q.clientName || name });
     if (!phone.trim() && q.clientPhone) setPhone(q.clientPhone);
     if (!email.trim() && q.clientEmail) setEmail(q.clientEmail);
+    if (!instagram.trim() && q.clientInstagram) setInstagram(q.clientInstagram);
     if (!document.trim() && q.clientDocument) setDocument(q.clientDocument);
     if (q.clientDocumentType) setDocumentType(q.clientDocumentType);
     if (q.clientLanguage) setLanguage(q.clientLanguage);
@@ -610,6 +616,7 @@ export function NewQuoteWizard({
             clientName: name.trim(), clientDocument: document.trim(),
             clientDocumentType: documentType, clientLanguage: language,
             clientPhone: phone.trim(), clientEmail: email.trim(),
+            clientInstagram: normalizeInstagram(instagram),
             guestId: linkedGuest?.id ?? null,
             weddingId: null, source: source || null,
             checkIn, checkOut,
@@ -875,7 +882,8 @@ export function NewQuoteWizard({
     const saved = quoteComposition(q);
     const draft = { count: rooms.length, pax: sumPax(rooms.map(paxOf)) };
     const savedValue = q.negotiatedValue ?? q.finalValue ?? 0;
-    const contactOf = (p: string, e: string) => [p, e].filter(Boolean).join(" · ") || "—";
+    const contactOf = (p: string, e: string, ig: string) =>
+      [p, e, ig ? `@${ig}` : ""].filter(Boolean).join(" · ") || "—";
     const created = String(q.createdAt || "").slice(0, 10);
 
     return (
@@ -907,8 +915,8 @@ export function NewQuoteWizard({
             `${saved.count} · ${paxText(saved.pax)}`,
             `${draft.count} · ${paxText(draft.pax)}`)}
           {compareRow("Contato",
-            contactOf(q.clientPhone || "", q.clientEmail || ""),
-            contactOf(phone.trim(), email.trim()))}
+            contactOf(q.clientPhone || "", q.clientEmail || "", q.clientInstagram || ""),
+            contactOf(phone.trim(), email.trim(), normalizeInstagram(instagram) || ""))}
           {/* Valor não é comparável no passo 2: o novo só é calculado adiante. */}
           <span style={{ ...fieldLabel, margin: 0, alignSelf: "center" }}>Valor</span>
           <span style={{ padding: "7px 10px", fontSize: 12, fontWeight: 700, color: T.text }}>
@@ -1135,7 +1143,7 @@ export function NewQuoteWizard({
                 </select>
               </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
               <div>
                 <label style={fieldLabel}>Telefone (WhatsApp)</label>
                 <input style={S.input} inputMode="tel" placeholder="Só dígitos" value={phone}
@@ -1146,6 +1154,15 @@ export function NewQuoteWizard({
                 <label style={fieldLabel}>E-mail</label>
                 <input style={S.input} type="email" value={email} autoComplete="off"
                   onChange={(e) => setEmail(e.target.value)} />
+              </div>
+              {/* Instagram: quem chega por DM não tem telefone nem e-mail — o
+                  @ é o contato. Aceita colar a URL do perfil. */}
+              <div>
+                <label style={fieldLabel}>Instagram</label>
+                <input style={S.input} value={instagram} autoComplete="off"
+                  placeholder="@usuario"
+                  onChange={(e) => setInstagram(e.target.value)}
+                  onBlur={() => setInstagram((v) => normalizeInstagram(v) ?? v.trim())} />
               </div>
               <div>
                 <label style={fieldLabel}>Documento (opcional)</label>
@@ -1160,7 +1177,7 @@ export function NewQuoteWizard({
               </div>
             </div>
             <p style={{ fontSize: 10.5, color: T.muted2, margin: "-6px 0 0" }}>
-              Pelo menos UM meio de contato (telefone ou e-mail) é obrigatório.
+              Pelo menos UM meio de contato (telefone, e-mail ou Instagram) é obrigatório.
             </p>
             <div>
               <label style={fieldLabel}>Idioma do hóspede</label>

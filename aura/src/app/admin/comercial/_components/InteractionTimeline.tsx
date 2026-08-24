@@ -4,8 +4,8 @@
 
 import { useEffect, useState } from "react";
 import {
-  ArrowRight, BadgeCheck, BellRing, CalendarClock, CircleDollarSign, FilePlus2,
-  Loader2, MessageSquare, Pencil, Send, UserCheck, XCircle, Link2,
+  ArrowRight, BadgeCheck, BellRing, CalendarClock, CircleDollarSign, ClipboardList,
+  FilePlus2, Loader2, MessageSquare, Pencil, Send, UserCheck, XCircle, Link2,
 } from "lucide-react";
 import { T } from "@/lib/admin-tokens";
 import { CrmInteraction, CrmLead } from "@/types/aura";
@@ -25,6 +25,14 @@ const KIND_CFG: Record<string, { icon: React.ElementType; label: (i: CrmInteract
   guest_linked: { icon: UserCheck,     label: () => "Vinculado à ficha de hóspede" },
   alarm_done:   { icon: BellRing,      label: (i) => `Alarme concluído${i.payload?.title ? ` — ${i.payload.title}` : ""}` },
   client_accepted: { icon: BadgeCheck, label: (i) => `Cliente ACEITOU a proposta${i.payload?.total ? ` — R$ ${money(Number(i.payload.total))}` : ""}` },
+  client_intake:   { icon: ClipboardList, label: (i) => {
+    const extra = [
+      i.payload?.companions ? `${i.payload.companions} acompanhante(s)` : null,
+      i.payload?.pets ? "pet" : null,
+      i.payload?.vehiclePlate ? "placa" : null,
+    ].filter(Boolean).join(" · ");
+    return `Cliente enviou o CADASTRO do titular${extra ? ` — ${extra}` : ""}`;
+  } },
 };
 
 export function InteractionTimeline({ propertyId, lead }: { propertyId: string; lead: CrmLead }) {

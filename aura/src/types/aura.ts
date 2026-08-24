@@ -2545,6 +2545,21 @@ export interface RatePromo {
   dayType: RatePromoDayType;  // fds = SEX/SÁB · week = DOM–QUI
 }
 
+/**
+ * Uma condição de pagamento oferecida na proposta pública. `discountPct` > 0
+ * recalcula o total EXIBIDO ao cliente (o "Pix à vista com 5%") — é
+ * informativo: quem fecha o valor do orçamento continua sendo a recepção.
+ */
+export interface RatePaymentOption {
+  id: string;
+  label: string;
+  label_en?: string | null;
+  label_es?: string | null;
+  /** Desconto sobre o total, em % (0 = sem desconto). */
+  discountPct: number;
+  order: number;
+}
+
 /** Config comercial do tarifário — 1 linha por propriedade. */
 export interface RateSettings {
   propertyId: string;
@@ -2570,6 +2585,11 @@ export interface RateSettings {
   inclusionsText?: string | null;
   inclusionsText_en?: string | null;
   inclusionsText_es?: string | null;
+  /**
+   * Condições de pagamento oferecidas no cadastro da proposta. Vazio/ausente
+   * cai em DEFAULT_PAYMENT_OPTIONS (src/lib/rate-engine.ts).
+   */
+  paymentOptions?: RatePaymentOption[] | null;
   updatedAt?: Timestamp;
 }
 
@@ -2732,7 +2752,9 @@ export type CrmInteractionKind =
   | 'converted' | 'stay_linked' | 'lost' | 'reopened'
   | 'value_change' | 'guest_linked' | 'alarm_done'
   /** O cliente aceitou a proposta na página pública. */
-  | 'client_accepted';
+  | 'client_accepted'
+  /** O cliente preencheu o cadastro do titular na proposta pública. */
+  | 'client_intake';
 
 /** Uma linha do histórico comercial — contato, troca de etapa, envio, perda… */
 export interface CrmInteraction {
@@ -2761,6 +2783,8 @@ export interface CrmLead {
   title: string;
   phone?: string | null;
   email?: string | null;
+  /** @usuário do Instagram (orçamentos) — meio de contato de quem chega por DM. */
+  instagram?: string | null;
   /** CPF/doc do lead (orçamentos) — habilita criar a ficha de hóspede. */
   document?: string | null;
   /** FNRH ID do tipo de documento (orçamentos) — default CPF. */
@@ -2783,6 +2807,8 @@ export interface CrmLead {
   negotiatedValue?: number | null;
   /** Cliente aceitou a proposta na página pública — a recepção precisa agir. */
   acceptedAt?: Timestamp | null;
+  /** Cliente preencheu o cadastro do titular na proposta (ver QuoteIntake). */
+  intakeAt?: Timestamp | null;
   createdAt: Timestamp;
 }
 
@@ -2886,6 +2912,79 @@ export interface LodgingNight {
 /** Estágio do funil de vendas de um orçamento salvo. */
 export type RateQuoteStatus = 'open' | 'sent' | 'negotiating' | 'won' | 'lost';
 
+/** Endereço do titular como o cliente preenche na proposta (começa pelo CEP). */
+export interface QuoteIntakeAddress {
+  /** ISO 3166-1 alpha-2 — 'BR' liga a busca por CEP; fora dele o endereço é livre. */
+  country: string;
+  zipCode: string;
+  street: string;
+  number: string;
+  complement?: string;
+  neighborhood: string;
+  city: string;
+  /** UF (BR) ou província/estado no formato do país. */
+  state: string;
+}
+
+/** Uma pessoa da reserva além do titular. Nome e nascimento são opcionais. */
+export interface QuoteIntakeCompanion {
+  /** Acomodação a que pertence (`RateQuoteRoom.id`) — a reserva pode ter várias. */
+  roomId: string;
+  kind: 'adult' | 'child' | 'baby';
+  fullName?: string;
+  birthDate?: string;   // YYYY-MM-DD
+}
+
+/**
+ * CADASTRO DO TITULAR — o que o CLIENTE preencheu na proposta pública depois
+ * de aceitar (/cotacao/<id>), no lugar da mensagem que a recepção mandava no
+ * WhatsApp. Vive em `rate_quotes.intake`: a página é anônima e não escreve em
+ * `guests`; a ficha e a estadia são pré-preenchidas na conversão, por quem
+ * tem sessão.
+ *
+ * `RateQuoteRecord.intakeAt` é a trava: preenchido, o link não aceita novo
+ * envio — correção é da recepção, pelo drawer do lead.
+ */
+export interface QuoteIntake {
+  holder: {
+    fullName: string;
+    /** FNRH ID (CPF/PASSAPORTE/RG/DNI/CNH/OUTRO). */
+    documentType: string;
+    document: string;
+    birthDate?: string;    // YYYY-MM-DD — opcional
+    email: string;
+    /** Só dígitos, COM DDI (55…) — mesmo formato de `Guest.phone`. */
+    phone: string;
+    address: QuoteIntakeAddress;
+  };
+  companions: QuoteIntakeCompanion[];
+  vehiclePlate?: string;
+  /** Condição escolhida — informativa: quem fecha o valor é a recepção. */
+  payment?: {
+    optionId: string;
+    label: string;
+    discountPct: number;
+    /** Total exibido na tela no momento do envio (com o desconto aplicado). */
+    valueAtSubmit: number;
+  };
+  pets?: PetDetails[];
+  /** Cliente informou pet numa cotação SEM pet — a diária muda de preço. */
+  petsNotQuoted?: boolean;
+  notes?: string;
+  /** Prova do consentimento — mesma lógica do aceite das regras. */
+  consent: {
+    privacyAccepted: boolean;
+    /** Tamanho do texto vigente: identifica a versão sem guardar o texto. */
+    privacyLength?: number | null;
+    at: Timestamp;
+    ip?: string | null;
+    userAgent?: string | null;
+  };
+  submittedAt: Timestamp;
+  /** Correção feita pela recepção no drawer (o link nunca reabre). */
+  editedBy?: { id: string; name: string; at: Timestamp };
+}
+
 /**
  * Orçamento salvo no funil (CRM leve): dados do cliente são todos opcionais —
  * é um lead. `guestId` liga ao hóspede (guests.id = documento normalizado),
@@ -2905,6 +3004,12 @@ export interface RateQuoteRecord {
   /** Idioma falado pelo hóspede — escolhido pelo vendedor no wizard. Rege a
    *  proposta pública e o template de WhatsApp copiado. Default 'pt'. */
   clientLanguage?: 'pt' | 'en' | 'es' | null;
+  /**
+   * @usuário do Instagram. Lead que chega por DM não tem telefone nem e-mail —
+   * este campo vale como meio de contato no wizard (telefone, e-mail OU
+   * Instagram). Guardado sem o '@'.
+   */
+  clientInstagram?: string | null;
   guestId?: string | null;
   stayId?: string | null;
   weddingId?: string | null;
@@ -2945,6 +3050,10 @@ export interface RateQuoteRecord {
   negotiatedValue?: number | null;
   /** Quando o cliente aceitou a proposta na página pública /cotacao/[id]. */
   acceptedAt?: Timestamp | null;
+  /** Cadastro do titular preenchido pelo cliente na proposta (ver QuoteIntake). */
+  intake?: QuoteIntake | null;
+  /** Quando o cadastro chegou. Preenchido = link travado para novos envios. */
+  intakeAt?: Timestamp | null;
   // Funil
   status: RateQuoteStatus;
   lostReason?: string | null;

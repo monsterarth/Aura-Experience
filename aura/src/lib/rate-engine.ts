@@ -8,6 +8,7 @@ import {
   CabinCategory,
   RateBreakdownItem,
   RateFluctuationRule,
+  RatePaymentOption,
   RatePeriod,
   RatePromo,
   RateQuoteCategory,
@@ -451,6 +452,53 @@ export const OVER_CAPACITY_NOTICE: Record<MsgLang, string> = {
     'que trae su grupo. La cama extra fue acordada con la posada y se monta en la llegada. ' +
     'Cualquier duda, hable con nosotros antes de confirmar.',
 };
+
+/**
+ * Condições de pagamento oferecidas no cadastro da proposta — o padrão é a
+ * mensagem que a recepção mandava no WhatsApp. Cai aqui quando a propriedade
+ * não configurou nada em Tarifário → Comercial.
+ */
+export const DEFAULT_PAYMENT_OPTIONS: RatePaymentOption[] = [
+  {
+    id: 'pix_full',
+    label: 'À vista: 100% via Pix/depósito (5% de desconto)',
+    label_en: 'In full: 100% by bank transfer (5% off)',
+    label_es: 'Al contado: 100% por transferencia (5% de descuento)',
+    discountPct: 5,
+    order: 1,
+  },
+  {
+    id: 'split_50',
+    label: '2 pagamentos: 50% agora + 50% até 60 dias antes do check-in (Pix/depósito)',
+    label_en: '2 payments: 50% now + 50% up to 60 days before check-in (bank transfer)',
+    label_es: '2 pagos: 50% ahora + 50% hasta 60 días antes del check-in (transferencia)',
+    discountPct: 0,
+    order: 2,
+  },
+  {
+    id: 'card_3x',
+    label: 'Cartão: 100% do valor em até 3x',
+    label_en: 'Credit card: up to 3 interest-free instalments',
+    label_es: 'Tarjeta: hasta 3 cuotas',
+    discountPct: 0,
+    order: 3,
+  },
+];
+
+/**
+ * Rótulo da condição no idioma do hóspede. Vazio em EN/ES cai no PT — mesmo
+ * fallback de "o que está incluso" e dos templates de WhatsApp.
+ */
+export function paymentLabel(opt: RatePaymentOption, lang: MsgLang): string {
+  const raw = lang === 'en' ? opt.label_en : lang === 'es' ? opt.label_es : null;
+  return (raw || opt.label || '').trim();
+}
+
+/** Total com o desconto da condição escolhida (arredondado ao centavo). */
+export function paymentTotal(total: number, discountPct: number): number {
+  if (!discountPct) return total;
+  return Math.round(total * (1 - discountPct / 100) * 100) / 100;
+}
 
 export interface QuoteMessageContext {
   attendantName: string;

@@ -19,9 +19,20 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { AuditService } from "./audit-service";
 import { CrmService } from "./crm-service";
-import { offeredTotal, resolveRoomValue, MsgLang } from "@/lib/rate-engine";
+import {
+  offeredTotal, resolveRoomValue, MsgLang, DEFAULT_PAYMENT_OPTIONS, paymentLabel,
+  paymentTotal,
+} from "@/lib/rate-engine";
 import { parseMultiLang } from "@/lib/multilang";
-import { RateQuoteCategory, RateQuoteRecord, RateQuoteRoom } from "@/types/aura";
+import { maxPetsOf, PET_HARD_CAP } from "@/lib/pets";
+import { normalizeDocument } from "@/lib/guest-doc";
+import { validateCPF } from "@/lib/utils-checkin";
+import { NOTIFICATION_ALERT_ROLES } from "@/lib/notifications";
+import { fanOutByRole } from "@/lib/push-notify";
+import {
+  PetDetails, QuoteIntake, QuoteIntakeCompanion, RatePaymentOption,
+  RateQuoteCategory, RateQuoteRecord, RateQuoteRoom,
+} from "@/types/aura";
 
 /** Status em que a proposta ainda pode ser vista/aceita pelo cliente. */
 const OPEN_STATUSES = ["open", "sent", "negotiating"];
@@ -81,6 +92,19 @@ export type PublicQuoteView = {
   inclusions: string[];
   /** Regras da pousada (settings.generalPolicyText) — aceite obrigatório. */
   policyText: string | null;
+  /** Política de privacidade (settings.privacyPolicyText) — consentimento do cadastro. */
+  privacyPolicyText: string | null;
+  /**
+   * O cadastro do titular JÁ chegou. Só o booleano sai daqui: o link é
+   * encaminhável e o que o cliente digitou (CPF, endereço) nunca volta à tela.
+   */
+  intakeDone: boolean;
+  /** Condições de pagamento oferecidas no cadastro, já no idioma do hóspede. */
+  paymentOptions: { id: string; label: string; discountPct: number }[];
+  /** Pets cotados (0 = a proposta não previu pet — informar um muda o preço). */
+  petsQuoted: number;
+  /** Política de pets da propriedade — rege os avisos do bloco de pet. */
+  petRules: { accepts: boolean; maxPets: number; minWeight: number | null; maxWeight: number | null };
   /**
    * Aviso de ocupação estendida — true quando ALGUMA opção de alguma
    * acomodação foi cotada em exceção. O TEXTO (traduzido) mora no dicionário
@@ -123,6 +147,30 @@ function policyTextOf(settings: unknown, lang: MsgLang = "pt"): string | null {
 }
 
 /**
+ * Condições de pagamento da propriedade. Consulta isolada e à prova da coluna
+ * ainda não existir (migration crm_intake_proposta pendente) — nesse caso vale
+ * o padrão do código.
+ */
+async function loadPaymentOptions(propertyId: string): Promise<RatePaymentOption[]> {
+  const { data, error } = await supabaseAdmin!
+    .from("rate_settings")
+    .select("paymentOptions")
+    .eq("propertyId", propertyId)
+    .maybeSingle();
+  if (error) return DEFAULT_PAYMENT_OPTIONS;
+  const list = (data as { paymentOptions?: RatePaymentOption[] | null } | null)?.paymentOptions;
+  return list?.length ? list : DEFAULT_PAYMENT_OPTIONS;
+}
+
+/** Política de privacidade — mesma regra multilíngue das regras da pousada. */
+function privacyTextOf(settings: unknown, lang: MsgLang = "pt"): string | null {
+  const raw = (settings as { privacyPolicyText?: unknown } | null)?.privacyPolicyText;
+  if (!raw) return null;
+  const ml = parseMultiLang(raw);
+  return (ml[lang] || ml.pt || ml.en || ml.es || "").trim() || null;
+}
+
+/**
  * A cabana como o cliente vê. `total` é o preço OFERECIDO (com o ajuste que o
  * vendedor fez para esta cabana); `wasTotal` é o "de" do de/por — o valor que
  * o tarifário calculou, com a flutuação já embutida, quando estamos
@@ -149,6 +197,210 @@ function publicOption(
     ...(c.overCapacity ? { overCapacity: c.overCapacity } : {}),
   };
 }
+
+/**
+ * O que o formulário do cadastro manda. Tudo `unknown`-ish de propósito: vem
+ * de uma página anônima, então nada é tipo confiável até passar por
+ * `buildIntake`. O valor do pagamento NÃO vem daqui — só o id da condição.
+ */
+export type PublicIntakeInput = {
+  holder: {
+    fullName?: string;
+    documentType?: string;
+    document?: string;
+    birthDate?: string;
+    email?: string;
+    /** Só dígitos, já com o DDI (o formulário tem campo de país separado). */
+    phone?: string;
+    address?: {
+      country?: string;
+      zipCode?: string;
+      street?: string;
+      number?: string;
+      complement?: string;
+      neighborhood?: string;
+      city?: string;
+      state?: string;
+    };
+  };
+  companions?: { roomId?: string; kind?: string; fullName?: string; birthDate?: string }[];
+  vehiclePlate?: string;
+  paymentOptionId?: string;
+  pets?: { name?: string; species?: string; breed?: string; weight?: number }[];
+  notes?: string;
+  privacyAccepted?: boolean;
+};
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** Tipos de documento aceitos — espelha os domínios da FnrhService. */
+const DOC_TYPES = ["CPF", "PASSAPORTE", "RG", "DNI", "CNH", "OUTRO"];
+const PET_SPECIES: PetDetails["species"][] = ["Cachorro", "Gato", "Outro"];
+
+const clip = (v: unknown, max: number) => String(v ?? "").trim().slice(0, max);
+
+/**
+ * Valida e monta o `QuoteIntake` que vai para o banco. Devolve `{ error }` com
+ * a mensagem que o cliente lê — as mesmas regras do formulário, repetidas aqui
+ * porque o formulário não é a defesa.
+ */
+function buildIntake(
+  raw: PublicIntakeInput,
+  q: RateQuoteRecord,
+  language: MsgLang,
+  paymentOptions: RatePaymentOption[],
+  ctx: { ip: string | null; userAgent: string | null; privacyLength: number | null }
+): { intake: QuoteIntake } | { error: string } {
+  const M = INTAKE_ERRORS[language];
+  if (!raw?.privacyAccepted) return { error: M.privacy };
+
+  const h = raw.holder ?? {};
+  const fullName = clip(h.fullName, 120);
+  if (fullName.split(/\s+/).filter(Boolean).length < 2) return { error: M.fullName };
+
+  const documentType = DOC_TYPES.includes(clip(h.documentType, 20).toUpperCase())
+    ? clip(h.documentType, 20).toUpperCase() : "CPF";
+  const document = normalizeDocument(h.document);
+  if (documentType === "CPF") {
+    if (!validateCPF(document)) return { error: M.cpf };
+  } else if (document.length < 4) {
+    return { error: M.document };
+  }
+
+  const email = clip(h.email, 160).toLowerCase();
+  if (!EMAIL_RE.test(email)) return { error: M.email };
+
+  // O telefone chega com o DDI colado pelo formulário (campo de país próprio).
+  const phone = String(h.phone ?? "").replace(/\D/g, "");
+  if (phone.length < 10 || phone.length > 15) return { error: M.phone };
+
+  const birthDate = clip(h.birthDate, 10);
+  if (birthDate && (!ISO_DATE_RE.test(birthDate) || birthDate > new Date().toISOString().slice(0, 10))) {
+    return { error: M.birthDate };
+  }
+
+  const a = h.address ?? {};
+  const country = (clip(a.country, 2) || "BR").toUpperCase();
+  const isBR = country === "BR";
+  const zipCode = isBR ? String(a.zipCode ?? "").replace(/\D/g, "") : clip(a.zipCode, 16);
+  const street = clip(a.street, 160);
+  const city = clip(a.city, 80);
+  const state = clip(a.state, 40);
+  if (isBR) {
+    if (zipCode.length !== 8) return { error: M.zip };
+    if (!street || !clip(a.number, 16) || !city || state.length < 2) return { error: M.address };
+  } else if (!street || !city) {
+    return { error: M.address };
+  }
+
+  const roomIds = new Set(roomsOf(q).map((r) => r.id));
+  const companions: QuoteIntakeCompanion[] = (raw.companions ?? [])
+    .slice(0, 30)
+    .map((c) => ({
+      roomId: roomIds.has(String(c?.roomId)) ? String(c!.roomId) : roomsOf(q)[0]?.id ?? "",
+      kind: c?.kind === "child" || c?.kind === "baby" ? c.kind : "adult" as const,
+      fullName: clip(c?.fullName, 120) || undefined,
+      birthDate: ISO_DATE_RE.test(clip(c?.birthDate, 10)) ? clip(c?.birthDate, 10) : undefined,
+    }));
+
+  // Pets: o cliente pode informar mesmo sem pet na cotação — é justamente o
+  // aviso que a recepção precisa (a diária muda de preço).
+  const pets: PetDetails[] = (raw.pets ?? [])
+    .slice(0, PET_HARD_CAP)
+    .map((p) => ({
+      name: clip(p?.name, 60),
+      species: PET_SPECIES.includes(p?.species as PetDetails["species"])
+        ? (p!.species as PetDetails["species"]) : "Cachorro",
+      breed: clip(p?.breed, 60) || undefined,
+      weight: Math.max(0, Math.min(120, Number(p?.weight) || 0)),
+    }))
+    .filter((p) => p.name || p.weight > 0);
+
+  // Condição de pagamento: o cliente manda só o ID. Rótulo, desconto e valor
+  // são resolvidos aqui — um payload adulterado não compra 90% de desconto.
+  let payment: QuoteIntake["payment"];
+  if (raw.paymentOptionId) {
+    const opt = paymentOptions.find((o) => o.id === raw.paymentOptionId);
+    if (opt) {
+      const total = roomsOf(q).reduce((sum, r) => sum + resolveRoomValue(r).value, 0);
+      payment = {
+        optionId: opt.id,
+        label: paymentLabel(opt, language),
+        discountPct: Number(opt.discountPct) || 0,
+        valueAtSubmit: paymentTotal(total, Number(opt.discountPct) || 0),
+      };
+    }
+  }
+
+  return {
+    intake: {
+      holder: {
+        fullName, documentType, document, email, phone,
+        ...(birthDate ? { birthDate } : {}),
+        address: {
+          country, zipCode, street,
+          number: clip(a.number, 16),
+          ...(clip(a.complement, 80) ? { complement: clip(a.complement, 80) } : {}),
+          neighborhood: clip(a.neighborhood, 80),
+          city, state,
+        },
+      },
+      companions,
+      ...(clip(raw.vehiclePlate, 12) ? { vehiclePlate: clip(raw.vehiclePlate, 12).toUpperCase() } : {}),
+      ...(payment ? { payment } : {}),
+      ...(pets.length ? { pets, petsNotQuoted: !(Number(q.pets) > 0) } : {}),
+      ...(clip(raw.notes, 1000) ? { notes: clip(raw.notes, 1000) } : {}),
+      consent: {
+        privacyAccepted: true,
+        privacyLength: ctx.privacyLength,
+        at: new Date().toISOString(),
+        ip: ctx.ip,
+        userAgent: ctx.userAgent,
+      },
+      submittedAt: new Date().toISOString(),
+    },
+  };
+}
+
+/** Mensagens de validação do cadastro — o cliente lê no idioma dele. */
+const INTAKE_ERRORS: Record<MsgLang, Record<
+  "privacy" | "fullName" | "cpf" | "document" | "email" | "phone" | "birthDate" | "zip" | "address",
+  string
+>> = {
+  pt: {
+    privacy: "É preciso autorizar o uso dos dados para a reserva.",
+    fullName: "Informe o nome completo do titular.",
+    cpf: "CPF inválido — confira os números.",
+    document: "Informe o número do documento.",
+    email: "Informe um e-mail válido.",
+    phone: "Informe o telefone com o código do país (Brasil = 55).",
+    birthDate: "Data de nascimento inválida.",
+    zip: "CEP inválido — são 8 dígitos.",
+    address: "Complete o endereço (rua, número, cidade e estado).",
+  },
+  en: {
+    privacy: "Please allow us to use your details for the booking.",
+    fullName: "Enter the main guest's full name.",
+    cpf: "Invalid CPF — please check the numbers.",
+    document: "Enter your document number.",
+    email: "Enter a valid email address.",
+    phone: "Enter your phone with the country code.",
+    birthDate: "Invalid date of birth.",
+    zip: "Invalid postal code.",
+    address: "Complete your address (street, number, city and state).",
+  },
+  es: {
+    privacy: "Es necesario autorizar el uso de los datos para la reserva.",
+    fullName: "Informe el nombre completo del titular.",
+    cpf: "CPF inválido — revise los números.",
+    document: "Informe el número del documento.",
+    email: "Informe un correo electrónico válido.",
+    phone: "Informe el teléfono con el código del país.",
+    birthDate: "Fecha de nacimiento inválida.",
+    zip: "Código postal inválido.",
+    address: "Complete la dirección (calle, número, ciudad y estado).",
+  },
+};
 
 export const RateQuotePublicService = {
   /**
@@ -206,6 +458,17 @@ export const RateQuotePublicService = {
       .map((l) => l.replace(/^\s*[-•*]\s*/, "").trim())
       .filter(Boolean);
 
+    // Condições de pagamento do cadastro — consulta SEPARADA de propósito: a
+    // coluna é nova e, sem a migration, o Supabase erra a query inteira. Junto
+    // das inclusões, isso derrubaria também "o que está incluso".
+    // Vazio (ou coluna ausente) cai no padrão do código, que é a mensagem da
+    // recepção.
+    const paymentSource = await loadPaymentOptions(q.propertyId);
+    const paymentOptions = [...paymentSource]
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .map((o) => ({ id: o.id, label: paymentLabel(o, language), discountPct: Number(o.discountPct) || 0 }))
+      .filter((o) => o.label);
+
     const { data: property } = await supabaseAdmin
       .from("properties")
       .select("id, name, logoUrl, theme, settings")
@@ -228,6 +491,8 @@ export const RateQuotePublicService = {
 
     const settings = (property?.settings ?? {}) as {
       whatsappNumber?: string; contactPhone?: string;
+      acceptsPets?: boolean; maxPets?: number;
+      petMinWeight?: number; petMaxWeight?: number;
     };
 
     return {
@@ -256,6 +521,16 @@ export const RateQuotePublicService = {
       expiresAt: q.expiresAt ?? null,
       inclusions,
       policyText: policyTextOf(property?.settings, language),
+      privacyPolicyText: privacyTextOf(property?.settings, language),
+      intakeDone: !!q.intakeAt,
+      paymentOptions,
+      petsQuoted: Math.max(0, Number(q.pets) || 0),
+      petRules: {
+        accepts: settings.acceptsPets !== false,
+        maxPets: maxPetsOf(settings),
+        minWeight: Number.isFinite(Number(settings.petMinWeight)) ? Number(settings.petMinWeight) : null,
+        maxWeight: Number.isFinite(Number(settings.petMaxWeight)) ? Number(settings.petMaxWeight) : null,
+      },
       overCapacityNotice: rooms.some((r) => r.options.some((c) => c.overCapacity)),
       property: {
         id: property?.id ?? q.propertyId,
@@ -370,6 +645,126 @@ export const RateQuotePublicService = {
       propertyId: q.propertyId, userId: "client", userName: clientName,
       action: "UPDATE", entity: "RATE_QUOTE", entityId: q.id,
       details: `Proposta aceita pelo cliente na página pública (R$ ${total.toFixed(2)}).`,
+    });
+
+    return { ok: true };
+  },
+
+  /**
+   * CADASTRO DO TITULAR — o passo 2 da proposta, no lugar da mensagem que a
+   * recepção mandava no WhatsApp pedindo os dados "para garantir a reserva".
+   *
+   * O que entra é SANEADO campo a campo (o cliente é anônimo): preço e rótulo
+   * da condição de pagamento são resolvidos AQUI, nunca aceitos do payload.
+   * O JSON fica no orçamento; a ficha de hóspede e a estadia são
+   * pré-preenchidas depois, na conversão, por quem tem sessão.
+   *
+   * `intakeAt` é a trava: um segundo envio é recusado. Correção é da recepção,
+   * pelo drawer do lead — assim o link encaminhado não vira porta de edição.
+   */
+  async submitIntake(input: {
+    id: string;
+    intake: PublicIntakeInput;
+    elapsedMs?: number;
+    website?: string;           // honeypot
+    ip?: string;
+    userAgent?: string;
+  }): Promise<{ ok: boolean; error?: string }> {
+    if (!supabaseAdmin || !input.id) return { ok: false, error: "Proposta não encontrada." };
+
+    const { data } = await supabaseAdmin
+      .from("rate_quotes").select("*").eq("id", input.id).maybeSingle();
+    if (!data) return { ok: false, error: "Proposta não encontrada." };
+
+    const q = data as RateQuoteRecord;
+    if (!OPEN_STATUSES.includes(q.status)) return { ok: false, error: "Esta proposta não está mais disponível." };
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    if (q.expiresAt && q.expiresAt < today) return { ok: false, error: "Esta proposta venceu — fale com a pousada." };
+
+    // Trava: cadastro já enviado. Diferente do aceite (idempotente), reenviar
+    // aqui SOBRESCREVERIA dados conferidos — quem corrige é a recepção.
+    if (q.intakeAt) {
+      return { ok: false, error: "Seus dados já foram recebidos. Se precisar corrigir algo, fale com a pousada." };
+    }
+
+    // Robô: engole em silêncio (o cliente honesto nunca cai aqui).
+    if (input.website || (input.elapsedMs != null && input.elapsedMs < MIN_ELAPSED_MS)) {
+      return { ok: true };
+    }
+
+    const language: MsgLang = q.clientLanguage === "en" || q.clientLanguage === "es"
+      ? q.clientLanguage : "pt";
+
+    const [{ data: propRow }, paymentOptions] = await Promise.all([
+      supabaseAdmin.from("properties").select("settings").eq("id", q.propertyId).maybeSingle(),
+      loadPaymentOptions(q.propertyId),
+    ]);
+    const privacyText = privacyTextOf(propRow?.settings, language);
+
+    const built = buildIntake(input.intake, q, language, paymentOptions, {
+      ip: input.ip ?? null,
+      userAgent: input.userAgent ?? null,
+      privacyLength: privacyText ? privacyText.length : null,
+    });
+    if ("error" in built) return { ok: false, error: built.error };
+    const intake = built.intake;
+
+    // O lead SÓ ganha o que estava faltando: onde o vendedor já tinha
+    // digitado algo diferente, quem decide é a recepção (o drawer mostra a
+    // divergência lado a lado).
+    const fill: Record<string, unknown> = {};
+    if (!(q.clientName || "").trim()) fill.clientName = intake.holder.fullName;
+    if (!(q.clientDocument || "").trim() && intake.holder.document) {
+      fill.clientDocument = intake.holder.document;
+      fill.clientDocumentType = intake.holder.documentType;
+    }
+    if (!(q.clientEmail || "").trim() && intake.holder.email) fill.clientEmail = intake.holder.email;
+    if (!(q.clientPhone || "").trim() && intake.holder.phone) fill.clientPhone = intake.holder.phone;
+
+    const now = new Date().toISOString();
+    const { error } = await supabaseAdmin
+      .from("rate_quotes")
+      .update({ ...fill, intake, intakeAt: now, updatedAt: now })
+      .eq("id", q.id);
+    if (error) return { ok: false, error: "Não foi possível registrar os seus dados." };
+
+    const clientName = intake.holder.fullName || q.clientName || "Cliente";
+
+    // Timeline: o QUE chegou, não o conteúdo — CPF e endereço não viram
+    // histórico consultável por todo mundo que abre o lead.
+    await CrmService.logInteraction(q.propertyId, "quote", q.id, "client_intake", {
+      actorId: "client", actorName: clientName,
+      note: "Cadastro do titular preenchido na proposta pública.",
+      payload: {
+        companions: intake.companions.length,
+        pets: intake.pets?.length ?? 0,
+        petsNotQuoted: !!intake.petsNotQuoted,
+        vehiclePlate: !!intake.vehiclePlate,
+        payment: intake.payment?.label ?? null,
+        ip: intake.consent.ip,
+        userAgent: intake.consent.userAgent,
+        privacyAccepted: intake.consent.privacyAccepted,
+        privacyLength: intake.consent.privacyLength,
+      },
+    });
+
+    // A recepção já tem o alarme do aceite na Fila de hoje: ele passa a dizer
+    // que os dados chegaram, em vez de virar um segundo item para a mesma
+    // reserva. Sem alarme (aceite antigo, link avulso), cria um.
+    await CrmService.upsertIntakeAlarm(q.propertyId, q.id, clientName, today).catch(() => {});
+
+    await fanOutByRole(q.propertyId, NOTIFICATION_ALERT_ROLES, {
+      title: "Cadastro recebido",
+      body: `${clientName} enviou os dados para garantir a reserva.`,
+      url: "/admin/comercial",
+      tag: `quote-intake-${q.id}`,
+      role: "reception",
+    }).catch(() => {});
+
+    await AuditService.log({
+      propertyId: q.propertyId, userId: "client", userName: clientName,
+      action: "UPDATE", entity: "RATE_QUOTE", entityId: q.id,
+      details: "Cadastro do titular preenchido pelo cliente na página pública.",
     });
 
     return { ok: true };

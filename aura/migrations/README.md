@@ -15,7 +15,16 @@ record**. There is **no migration runner** — each file was applied manually vi
 - Tables are scoped per property for multi-tenancy; RLS policies live in
   `rls_all_properties.sql` and the `*_rls.sql` files.
 - New changes: add a new `.sql` file here (don't edit applied ones), append it to the table
-  below with its date and a one-line description, and apply it in the Supabase SQL Editor.
+  below with its date and a one-line description, and apply it with `pnpm db:sql` — **DEV
+  first, production after it works**:
+
+  ```bash
+  pnpm db:sql migrations/nova_coisa.sql                # DEV (padrão)
+  pnpm db:sql migrations/nova_coisa.sql --target prod  # produção, com confirmação
+  ```
+
+  O script roda tudo em uma transação (um erro no meio desfaz tudo), ao contrário do SQL
+  Editor. Detalhes em [`../docs/DEV-DATABASE.md`](../docs/DEV-DATABASE.md).
 
 ## Index (chronological)
 
@@ -84,3 +93,4 @@ record**. There is **no migration runner** — each file was applied manually vi
 | 2026-08-18 | `weddings_guest_site.sql` | Site dos noivos: códigos de 6 dígitos (`"guestCode"`/`"coupleCode"`), tabela vinculada (`"rateTableId"`), janela de extensão (`"maxExtendNights"`), `"siteEnabled"`/`"siteConfig"` e índice parcial de pré-reservas abertas em `rate_quotes` |
 | 2026-08-20 | `stock_location_policy.sql` | Estoque Etapa A: `stock_locations."policy"` (stock/consume_all/consume_categories, ponto de consumo) + `"consumeCategoryIds"` e `stock_products."neverConsume"` (bem durável isento da conversão transferência→saída) |
 | 2026-08-20 | `restock_requests.sql` | Reposição Etapa B: tabela `restock_requests` (pedido camareira→mensageiro fora do Concierge, com fontes planejada/fallback/usada) + `stock_products."maidRequestable"/"deductMode"/"deductLocationId"` e `stock_categories."deductLocationId"` (cadeia de baixa produto→categoria) |
+| 2026-08-24 | `crm_intake_proposta.sql` | Proposta pública: `rate_quotes."intake"`/`"intakeAt"` (cadastro do titular preenchido pelo CLIENTE depois do aceite — titular, endereço, acompanhantes, placa, pet, pagamento e consentimento; `intakeAt` é a trava do link), `rate_quotes."clientInstagram"` (lead sem telefone/e-mail), `rate_settings."paymentOptions"` (condições de pagamento em 3 idiomas) e kind `client_intake` |

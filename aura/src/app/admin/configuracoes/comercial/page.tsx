@@ -17,11 +17,11 @@ import { toast } from "sonner";
 import { useProperty } from "@/context/PropertyContext";
 import { SaveBar } from "../_components/SaveBar";
 import { SectionCard } from "@/components/ui/SectionCard";
-import { CircleDollarSign, MessageSquareText, PawPrint, Percent, Plus, Trash2 } from "lucide-react";
-import { RateFluctuation, RateSettings } from "@/types/aura";
+import { CircleDollarSign, CreditCard, MessageSquareText, PawPrint, Percent, Plus, Trash2 } from "lucide-react";
+import { RateFluctuation, RatePaymentOption, RateSettings } from "@/types/aura";
 import {
   DEFAULT_EVENT_TEMPLATE, DEFAULT_INCLUSIONS_TEXT, DEFAULT_MSG_SINGLE_TEMPLATE,
-  DEFAULT_MSG_TEMPLATE,
+  DEFAULT_MSG_TEMPLATE, DEFAULT_PAYMENT_OPTIONS,
 } from "@/lib/rate-engine";
 
 /** Só o recorte desta tela — descontos/promos (Marketing) ficam intactos. */
@@ -32,6 +32,7 @@ type Draft = Pick<
   | "msgSingleTemplate" | "msgSingleTemplate_en" | "msgSingleTemplate_es"
   | "eventTemplate" | "eventTemplate_en" | "eventTemplate_es"
   | "inclusionsText" | "inclusionsText_en" | "inclusionsText_es"
+  | "paymentOptions"
 >;
 
 type EditLang = "pt" | "en" | "es";
@@ -100,6 +101,69 @@ function FluctuationRow({ f, onSave, onRemove }: {
   );
 }
 
+/**
+ * Uma condição de pagamento — o rótulo é POR IDIOMA (a coluna PT é a base;
+ * EN/ES vazios caem nela) e o % é o desconto que o cliente vê aplicado no
+ * total da proposta. Mesmo commit-no-blur da flutuação.
+ */
+function PaymentRow({ opt, lang, onSave, onRemove }: {
+  opt: RatePaymentOption;
+  lang: EditLang;
+  onSave: (id: string, patch: Partial<RatePaymentOption>) => void;
+  onRemove: (id: string) => void;
+}) {
+  const labelKey = (lang === "pt" ? "label" : `label_${lang}`) as "label" | "label_en" | "label_es";
+  const current = (opt[labelKey] as string | null) ?? "";
+  const [label, setLabel] = useState(current);
+  const [pctText, setPctText] = useState(String(opt.discountPct));
+
+  useEffect(() => setLabel(current), [current]);
+  useEffect(() => setPctText(String(opt.discountPct)), [opt.discountPct]);
+
+  const commitLabel = () => {
+    const v = label.trim();
+    if (v !== current) onSave(opt.id, { [labelKey]: v || null } as Partial<RatePaymentOption>);
+  };
+  const commitPct = () => {
+    const v = Math.min(100, Math.max(0, parseFloat(pctText.replace(",", ".")) || 0));
+    if (v !== opt.discountPct) onSave(opt.id, { discountPct: v });
+    else setPctText(String(opt.discountPct));
+  };
+  const blurOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+  };
+
+  return (
+    <div className="flex items-center gap-3 bg-secondary border border-border rounded-xl px-3 py-2">
+      <input
+        className="flex-1 min-w-0 bg-transparent text-sm font-medium text-foreground outline-none border-b border-transparent focus:border-primary/50"
+        value={label} onChange={(e) => setLabel(e.target.value)}
+        placeholder={lang === "pt" ? "Ex.: À vista via Pix (5% de desconto)" : opt.label}
+        onBlur={commitLabel} onKeyDown={blurOnEnter}
+      />
+      <span className="flex items-center gap-0.5 shrink-0" title="Desconto aplicado no total exibido ao cliente">
+        <input
+          className={`w-12 bg-transparent text-sm font-bold text-right outline-none border-b border-transparent focus:border-primary/50 ${
+            opt.discountPct > 0 ? "text-emerald-500" : "text-muted-foreground"
+          }`}
+          inputMode="decimal" value={pctText}
+          onChange={(e) => setPctText(e.target.value)}
+          onBlur={commitPct} onKeyDown={blurOnEnter}
+          disabled={lang !== "pt"}
+        />
+        <span className={`text-sm font-bold ${opt.discountPct > 0 ? "text-emerald-500" : "text-muted-foreground"}`}>%</span>
+      </span>
+      <button
+        onClick={() => onRemove(opt.id)} disabled={lang !== "pt"}
+        className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 shrink-0 disabled:opacity-30"
+        title={lang === "pt" ? "Remover condição" : "Remova pelo idioma Português"}
+      >
+        <Trash2 size={13} />
+      </button>
+    </div>
+  );
+}
+
 export default function ComercialConfigPage() {
   const { currentProperty: property } = useProperty();
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -132,6 +196,7 @@ export default function ComercialConfigPage() {
         inclusionsText: s.inclusionsText ?? null,
         inclusionsText_en: s.inclusionsText_en ?? null,
         inclusionsText_es: s.inclusionsText_es ?? null,
+        paymentOptions: s.paymentOptions ?? null,
       });
       setDirty(false);
     } catch {
@@ -166,6 +231,39 @@ export default function ComercialConfigPage() {
 
   const removeFluct = (id: string) =>
     patchFluctuations((list) => list.filter((f) => f.id !== id));
+
+  // ── Condições de pagamento (proposta pública) ──────────────────────────────
+  // Lista vazia/nula = a proposta usa DEFAULT_PAYMENT_OPTIONS. Mexer em
+  // qualquer linha materializa a lista inteira: meia configuração salva seria
+  // pior que nenhuma (o cliente veria só uma condição).
+  const paymentOptions = draft?.paymentOptions ?? null;
+  const effectivePayments = paymentOptions?.length ? paymentOptions : DEFAULT_PAYMENT_OPTIONS;
+
+  const patchPayments = (updater: (list: RatePaymentOption[]) => RatePaymentOption[]) => {
+    setDraft((prev) => (prev
+      ? { ...prev, paymentOptions: updater(prev.paymentOptions?.length ? prev.paymentOptions : DEFAULT_PAYMENT_OPTIONS) }
+      : prev));
+    setDirty(true);
+  };
+
+  const updatePayment = (id: string, item: Partial<RatePaymentOption>) =>
+    patchPayments((list) => list.map((o) => (o.id === id ? { ...o, ...item } : o)));
+
+  const removePayment = (id: string) =>
+    patchPayments((list) => list.filter((o) => o.id !== id));
+
+  const addPayment = () =>
+    patchPayments((list) => [...list, {
+      id: crypto.randomUUID(),
+      label: "", label_en: null, label_es: null,
+      discountPct: 0,
+      order: (list.at(-1)?.order ?? 0) + 1,
+    }]);
+
+  const resetPayments = () => {
+    setDraft((prev) => (prev ? { ...prev, paymentOptions: null } : prev));
+    setDirty(true);
+  };
 
   // Sempre por %: a lista não pode reordenar sozinha enquanto alguém digita
   // (o componente da linha só comita no blur), só reflete depois de salvar.
@@ -325,6 +423,50 @@ export default function ComercialConfigPage() {
             {langSwitcher}
           </div>
           {templateField("Itens (um por linha)", "inclusionsText", DEFAULT_INCLUSIONS_TEXT, 6)}
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Condições de pagamento" icon={CreditCard}
+        description="As formas de pagamento que o cliente escolhe ao preencher o cadastro na proposta pública. O desconto recalcula o total EXIBIDO na tela — o valor do orçamento no funil não muda; quem fecha a conta é a recepção."
+      >
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">
+              Editando em
+            </span>
+            {langSwitcher}
+          </div>
+
+          {!paymentOptions?.length && (
+            <p className="text-xs text-muted-foreground">
+              Usando as condições padrão. Editar qualquer linha abaixo passa a valer como
+              configuração desta propriedade.
+            </p>
+          )}
+
+          {effectivePayments.map((o) => (
+            <PaymentRow key={o.id} opt={o} lang={editLang}
+              onSave={updatePayment} onRemove={removePayment} />
+          ))}
+
+          <div className="flex items-center gap-2 pt-1">
+            <button onClick={addPayment} disabled={editLang !== "pt"}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 text-xs font-bold disabled:opacity-40">
+              <Plus size={14} /> Adicionar condição
+            </button>
+            {!!paymentOptions?.length && (
+              <button onClick={resetPayments}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold text-muted-foreground hover:text-foreground">
+                Voltar ao padrão
+              </button>
+            )}
+          </div>
+
+          <p className="text-[10px] text-muted-foreground">
+            O % só é editado no idioma Português (é o mesmo desconto nos três).
+            Vazio em EN/ES = usa o texto em Português.
+          </p>
         </div>
       </SectionCard>
 

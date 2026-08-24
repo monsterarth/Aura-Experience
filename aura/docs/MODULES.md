@@ -64,6 +64,23 @@ Mobile-first, no login (access by stay code), PT/EN/ES. Shared state/strings liv
 Backed by `/api/guest/*` (`today`, `breakfast-menu`, `breakfast-orders`, `structures`,
 `structure-slots`, `structure-bookings`, `structure-reviews`, `resort-map`, `survey`, …).
 
+## Proposta pública (`src/app/cotacao/[id]/`)
+
+Link anônimo que o vendedor manda ao cliente (o id do orçamento é a credencial), em
+PT/EN/ES. Três telas no `ProposalClient`: escolher a cabana de cada acomodação e **aceitar**
+→ **cadastro do titular** (`IntakeForm` — nome/documento/nascimento, endereço via CEP,
+acompanhantes, placa, pet, condição de pagamento, consentimento LGPD) → confirmação.
+`?cadastro=1` abre direto no cadastro (link que a recepção copia no drawer do lead).
+
+O aceite é gravado no clique, antes do cadastro — abandonar o formulário não desfaz nada.
+Enviado o cadastro, `rate_quotes.intakeAt` **trava** o link; correção é da recepção, pelo
+`IntakePanel` do drawer (`/api/admin/tarifario/quotes/intake`).
+
+Tudo passa por `RateQuotePublicService` (allowlist campo a campo — nunca a linha crua) via
+as server actions de `src/app/actions/quote-actions.ts`. Na conversão, o cadastro
+pré-preenche a ficha do hóspede (nascimento/endereço) e a estadia (placa, nomes dos
+acompanhantes, pet) — ver `RateService.ensureGuestForQuote` e `linkQuoteToStay`.
+
 ## API groups (`src/app/api/`)
 
 | Group | Purpose |

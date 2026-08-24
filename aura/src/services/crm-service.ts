@@ -43,6 +43,7 @@ function quoteToLead(q: RateQuoteRecord): CrmLead {
     title: q.clientName || "Sem nome",
     phone: q.clientPhone,
     email: q.clientEmail,
+    instagram: q.clientInstagram ?? null,
     document: q.clientDocument,
     documentType: q.clientDocumentType,
     source: q.source,
@@ -58,6 +59,7 @@ function quoteToLead(q: RateQuoteRecord): CrmLead {
     weddingId: q.weddingId,
     negotiatedValue: q.negotiatedValue ?? null,
     acceptedAt: q.acceptedAt ?? null,
+    intakeAt: q.intakeAt ?? null,
     createdAt: q.createdAt,
   };
 }
@@ -479,6 +481,49 @@ export const CrmService = {
       });
     }
     return alarm;
+  },
+
+  /**
+   * O cadastro do titular chegou (proposta pública): o alarme ABERTO do aceite
+   * passa a dizer isso, em vez de virar um segundo item na Fila de hoje para a
+   * mesma reserva. Sem alarme aberto — aceite antigo, link de cadastro avulso
+   * — cria um, porque alguém precisa conferir e confirmar a reserva.
+   */
+  async upsertIntakeAlarm(
+    propertyId: string,
+    quoteId: string,
+    clientName: string,
+    dueAt: string
+  ): Promise<void> {
+    const title = `Cadastro recebido — confirmar reserva de ${clientName}`;
+    const note = "O cliente preencheu os dados do titular na página da proposta.";
+
+    // Só o alarme nascido do ACEITE (createdBy 'client'): reescrever o título
+    // de um lembrete que a recepção criou à mão seria apagar o recado dela.
+    const { data: open } = await supabaseAdmin
+      .from("crm_alarms")
+      .select("id")
+      .eq("propertyId", propertyId)
+      .eq("entityType", "quote")
+      .eq("entityId", quoteId)
+      .eq("done", false)
+      .eq("createdBy", "client")
+      .order("dueAt", { ascending: true })
+      .limit(1);
+
+    if (open?.length) {
+      await supabaseAdmin
+        .from("crm_alarms")
+        .update({ title, note, entityLabel: clientName.trim() || "Lead" })
+        .eq("id", open[0].id)
+        .eq("propertyId", propertyId);
+      return;
+    }
+
+    await this.createAlarm(propertyId, {
+      entityType: "quote", entityId: quoteId, entityLabel: clientName,
+      kind: "follow_up", title, note, dueAt,
+    }, { id: "client", name: clientName });
   },
 
   async deleteAlarm(propertyId: string, id: string): Promise<void> {

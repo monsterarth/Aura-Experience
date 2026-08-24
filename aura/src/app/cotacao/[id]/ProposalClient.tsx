@@ -1,5 +1,10 @@
-// A parte interativa da proposta: o cliente escolhe UMA cabana por
-// acomodação e aceita. Visual no tema "camaleão" do Portal do Hóspede.
+// A parte interativa da proposta, em três telas: o cliente escolhe UMA cabana
+// por acomodação e ACEITA → preenche o CADASTRO do titular (IntakeForm) →
+// confirmação. Visual no tema "camaleão" do Portal do Hóspede.
+//
+// O aceite é registrado no clique do botão, ANTES do cadastro: quem desistir
+// no meio do formulário já deixou o aceite no CRM e o alarme na fila da
+// recepção. O cadastro é o passo 2, não um pedágio do aceite.
 //
 // Idioma: abre no idioma que o vendedor marcou no orçamento (quote.language)
 // — quem falou com o hóspede sabe o idioma dele antes de mandar o link. O
@@ -11,6 +16,7 @@
 import { useMemo, useRef, useState } from "react";
 import { acceptQuoteProposal } from "@/app/actions/quote-actions";
 import { DISPLAY_FONT } from "@/app/check-in/[code]/_portal/ui";
+import IntakeForm, { INTAKE_DICT } from "./IntakeForm";
 import { MsgLang, OVER_CAPACITY_NOTICE, OVER_CAPACITY_SHORT } from "@/lib/rate-engine";
 import type { PublicQuoteView } from "@/services/rate-quote-public-service";
 
@@ -50,6 +56,9 @@ type Dict = {
   acceptButton: string;
   disclaimer: string;
   genericError: string;
+  /** Faixa curta no topo do cadastro — o aceite já foi registrado. */
+  acceptedBanner: string;
+  skipIntake: string;
 };
 
 const DICT: Record<MsgLang, Dict> = {
@@ -85,6 +94,8 @@ const DICT: Record<MsgLang, Dict> = {
     acceptButton: "Aceitar proposta",
     disclaimer: "Aceitar não gera cobrança: a recepção confirma a disponibilidade e combina o pagamento com você.",
     genericError: "Não foi possível registrar.",
+    acceptedBanner: "Proposta aceita — já avisamos a recepção.",
+    skipIntake: "Prefiro enviar meus dados depois",
   },
   en: {
     eyebrow: "Your quote",
@@ -118,6 +129,8 @@ const DICT: Record<MsgLang, Dict> = {
     acceptButton: "Accept quote",
     disclaimer: "Accepting doesn't charge you — the front desk will confirm availability and arrange payment with you.",
     genericError: "Couldn't submit your choice.",
+    acceptedBanner: "Quote accepted — the front desk already knows.",
+    skipIntake: "I'd rather send my details later",
   },
   es: {
     eyebrow: "Su presupuesto",
@@ -151,6 +164,8 @@ const DICT: Record<MsgLang, Dict> = {
     acceptButton: "Aceptar presupuesto",
     disclaimer: "Aceptar no genera ningún cobro: recepción confirmará la disponibilidad y coordinará el pago con usted.",
     genericError: "No se pudo registrar su elección.",
+    acceptedBanner: "Presupuesto aceptado — ya avisamos a recepción.",
+    skipIntake: "Prefiero enviar mis datos después",
   },
 };
 
@@ -176,7 +191,12 @@ function LangSwitcher({ lang, setLang }: { lang: MsgLang; setLang: (l: MsgLang) 
   );
 }
 
-export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
+/** `startAtIntake` = link "?cadastro=1", que a recepção copia no drawer para
+ *  quem fechou por WhatsApp ou aceitou antes de o cadastro existir. */
+export default function ProposalClient({ quote, startAtIntake }: {
+  quote: PublicQuoteView;
+  startAtIntake?: boolean;
+}) {
   const [lang, setLang] = useState<MsgLang>(quote.language);
   const t = DICT[lang];
   const [picks, setPicks] = useState<Record<string, string>>(() => {
@@ -185,6 +205,16 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
     return initial;
   });
   const [sending, setSending] = useState(false);
+  // Três telas. Voltar ao link depois de aceitar (sem ter mandado os dados)
+  // reabre o cadastro — é o que ainda falta para garantir a reserva.
+  const [step, setStep] = useState<"choose" | "intake" | "done">(() => {
+    if (quote.intakeDone) return "done";
+    if (startAtIntake || quote.acceptedAt) return "intake";
+    return "choose";
+  });
+  const [intakeDone, setIntakeDone] = useState(quote.intakeDone);
+  // O link avulso (?cadastro=1) abre o cadastro sem aceite nenhum — a faixa de
+  // "proposta aceita" só existe quando ela de fato aconteceu.
   const [accepted, setAccepted] = useState(!!quote.acceptedAt);
   const [error, setError] = useState<string | null>(null);
   const [honeypot, setHoneypot] = useState("");
@@ -228,7 +258,9 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
       website: honeypot,
     });
     setSending(false);
-    if (res.ok) setAccepted(true);
+    // Aceite gravado: o passo 2 (cadastro) começa aqui. Fechar a aba agora
+    // não desfaz nada — a recepção já foi avisada.
+    if (res.ok) { setAccepted(true); setStep("intake"); }
     else setError(res.error ?? t.genericError);
   };
 
@@ -264,7 +296,7 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
             ? t.periodMixed(fmtBR(quote.checkIn), fmtBR(quote.checkOut))
             : t.period(fmtBR(quote.checkIn), fmtBR(quote.checkOut), quote.nights)}
         </p>
-        {showValidity && !accepted && (
+        {showValidity && step === "choose" && (
           <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 6 }}>
             {t.validity(fmtBR(quote.expiresAt!))}
           </p>
@@ -272,16 +304,16 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
         <LangSwitcher lang={lang} setLang={setLang} />
       </header>
 
-      {accepted ? (
+      {step === "done" ? (
         <div style={{
           background: "var(--green-soft)", border: "1px solid var(--green)",
           borderRadius: 18, padding: "28px 22px", textAlign: "center",
         }}>
           <p style={{ fontFamily: DISPLAY_FONT, fontSize: 24, color: "var(--ink)", margin: "0 0 8px", fontWeight: 400 }}>
-            {t.acceptedTitle}
+            {intakeDone ? INTAKE_DICT[lang].doneTitle : t.acceptedTitle}
           </p>
           <p style={{ fontSize: 14, color: "var(--ink-soft)", margin: 0, lineHeight: 1.55 }}>
-            {t.acceptedBody}
+            {intakeDone ? INTAKE_DICT[lang].doneBody : t.acceptedBody}
           </p>
           {waLink && (
             <a href={waLink} target="_blank" rel="noreferrer"
@@ -294,7 +326,34 @@ export default function ProposalClient({ quote }: { quote: PublicQuoteView }) {
             </a>
           )}
         </div>
-      ) : (<>
+      ) : step === "intake" ? (<>
+        {/* O aceite já está gravado — a faixa é o recibo disso. */}
+        {accepted && (
+          <div style={{
+            background: "var(--green-soft)", border: "1px solid var(--green)",
+            borderRadius: 999, padding: "9px 16px", marginBottom: 18,
+            fontSize: 12.5, fontWeight: 700, color: "var(--ink-soft)", textAlign: "center",
+          }}>
+            ✓ {t.acceptedBanner}
+          </div>
+        )}
+
+        <IntakeForm quote={quote} lang={lang} total={total.sum}
+          onDone={() => { setIntakeDone(true); setStep("done"); }} />
+
+        {accepted && (
+        <div style={{ textAlign: "center", marginTop: 14 }}>
+          <button type="button" onClick={() => setStep("done")}
+            style={{
+              background: "none", border: "none", padding: 8, cursor: "pointer",
+              fontFamily: "inherit", fontSize: 12.5, color: "var(--muted)",
+              textDecoration: "underline",
+            }}>
+            {t.skipIntake}
+          </button>
+        </div>
+        )}
+      </>) : (<>
         <p style={{ fontSize: 14, color: "var(--ink-soft)", lineHeight: 1.6, marginBottom: 20 }}>
           {quote.rooms.length > 1 ? t.introMulti(quote.rooms.length) : t.introSingle}
         </p>

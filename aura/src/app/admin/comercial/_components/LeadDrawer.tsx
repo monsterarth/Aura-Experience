@@ -7,16 +7,18 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle, BedDouble, CalendarClock, CalendarDays, CopyPlus, ExternalLink,
-  Heart, Link2, Loader2, Mail, MessageSquare, Pencil, Phone, Send, Tag, Trash2,
-  X, XCircle,
+  Heart, Instagram, Link2, Loader2, Mail, MessageSquare, Pencil, Phone, Send, Tag,
+  Trash2, X, XCircle,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { T } from "@/lib/admin-tokens";
+import { instagramDisplay, instagramUrl } from "@/lib/instagram";
 import { useCloseGuard } from "@/lib/use-discard-guard";
 import { offeredTotal, resolveRoomValue } from "@/lib/rate-engine";
 import { parseMoneyBR, moneyToInput } from "@/lib/parse-money";
 import { CrmChannel, CrmLead, RateQuoteRecord, RateQuoteRoom, WeddingInstallment } from "@/types/aura";
 import { ClientPanel } from "./ClientPanel";
+import { IntakePanel } from "./IntakePanel";
 import type { PromotePayload } from "./PromoteGuestModal";
 import { InteractionTimeline } from "./InteractionTimeline";
 import { LeadAlarms } from "./LeadAlarms";
@@ -863,6 +865,13 @@ export function LeadDrawer({
                 <Mail size={12} /> {lead.email}
               </a>
             )}
+            {/* Lead de DM: o @ é o contato — abre o perfil direto. */}
+            {instagramUrl(lead.instagram) && (
+              <a href={instagramUrl(lead.instagram)!} target="_blank" rel="noreferrer"
+                style={contactBtn}>
+                <Instagram size={12} /> {instagramDisplay(lead.instagram)}
+              </a>
+            )}
             {/* Orçamento vive AQUI (editar = wizard); só casamento tem tela própria. */}
             {!isQuote && (
               <button onClick={onOpenOrigin} style={contactBtn}>
@@ -893,6 +902,14 @@ export function LeadDrawer({
               <ClientPanel propertyId={propertyId} lead={lead} busy={busy}
                 editable={active} onPromote={promoteAndRefresh} onPatch={patchAndRefresh}
                 onDirtyChange={setClientDirty} />
+            )}
+
+            {/* Cadastro do titular — o que o cliente preencheu na proposta
+                (ou o link para pedir, quando ainda não veio) */}
+            {isQuote && (
+              <IntakePanel propertyId={propertyId} lead={lead} busy={busy}
+                onPatch={patchAndRefresh}
+                onChanged={() => setTimelineKey((k) => k + 1)} />
             )}
 
             {/* Orçamento — acomodações pedidas e as cabanas oferecidas em cada */}

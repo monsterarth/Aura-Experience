@@ -67,7 +67,8 @@ export function FunnelPage({ funnel }: { funnel: CrmEntityType }) {
   const seedFromQuote = (q: RateQuoteRecord, keepId: boolean): QuoteSeed => ({
     quoteId: keepId ? q.id : null,
     clientName: q.clientName, clientPhone: q.clientPhone,
-    clientEmail: q.clientEmail, clientDocument: q.clientDocument,
+    clientEmail: q.clientEmail, clientInstagram: q.clientInstagram,
+    clientDocument: q.clientDocument,
     clientDocumentType: q.clientDocumentType, clientLanguage: q.clientLanguage,
     guestId: q.guestId, source: q.source,
     checkIn: keepId ? q.checkIn : null, checkOut: keepId ? q.checkOut : null,
