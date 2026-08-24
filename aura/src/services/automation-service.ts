@@ -512,6 +512,26 @@ export class AutomationService {
       const { data: stay } = await supabaseAdmin.from('stays').select('*').eq('id', stayId).single();
       if (!stay) return { queued: false, reason: 'stay_not_found' };
 
+      // Rede de segurança: um gatilho, uma mensagem por estadia. Os disparos de check-out
+      // chegam aqui vindos de uma rota que já pode ter sido chamada duas vezes; sem esta
+      // checagem, o hóspede recebe NPS e agradecimento em duplicidade. Vale para qualquer
+      // gatilho futuro, porque este é o funil por onde todos passam.
+      //
+      // 'cancelled' fica de fora de propósito: mensagem cancelada (estadia estendida, por
+      // exemplo) deve poder ser reenfileirada quando o motivo do cancelamento sai de cena.
+      const { data: jaExiste } = await supabaseAdmin
+        .from('messages')
+        .select('id')
+        .eq('stayId', stayId)
+        .eq('triggerEvent', triggerEvent)
+        .neq('status', 'cancelled')
+        .limit(1);
+
+      if (jaExiste?.length) {
+        console.log(`[triggerAutomationAdmin] ${triggerEvent} já existe para a estadia ${stayId} — não reenfileirado.`);
+        return { queued: false, reason: 'already_queued' };
+      }
+
       const { data: guest } = await supabaseAdmin.from('guests').select('*').eq('id', stay.guestId).single();
       if (!guest?.phone) return { queued: false, reason: 'guest_no_phone' };
 

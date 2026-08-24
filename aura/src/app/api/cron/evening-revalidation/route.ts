@@ -125,15 +125,28 @@ export async function GET(request: Request) {
       for (const stayDoc of staysSnap) {
         const stay = stayDoc as any as Stay;
 
-        const { data: existing } = await supabaseAdmin
+        // Qualquer mensagem não cancelada conta como "já existe". Antes o filtro era
+        // `status in (pending, processing)`: quando este cron roda, a mensagem enfileirada
+        // de manhã pelo daily-automations já saiu (status 'sent'), a busca não achava nada
+        // e uma segunda era enfileirada — 20 hóspedes receberam as instruções de saída
+        // duplicadas em 30 dias, sempre com ~9h entre as duas criações.
+        //
+        // O `.maybeSingle()` também saiu: ele ERRA quando encontra mais de uma linha, e o
+        // erro não era verificado — ou seja, justamente onde já havia duplicata, `existing`
+        // vinha nulo e o cron acrescentava mais uma. O bug se realimentava.
+        const { data: existing, error: existingError } = await supabaseAdmin
           .from('messages')
           .select('id')
           .eq('stayId', stay.id)
           .eq('triggerEvent', 'pre_checkout')
-          .in('status', ['pending', 'processing'])
-          .maybeSingle();
+          .neq('status', 'cancelled')
+          .limit(1);
 
-        if (existing) continue;
+        if (existingError) {
+          console.error(`[evening-revalidation] checagem de duplicata falhou (estadia ${stay.id}):`, existingError.message);
+          continue; // na dúvida, não enfileira: repetir mensagem é pior que atrasar
+        }
+        if (existing?.length) continue;
 
         const { data: guestSnap } = await supabaseAdmin
           .from('guests')

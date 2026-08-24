@@ -61,6 +61,35 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     const now = new Date().toISOString();
 
+    // ── Trava do check-out ────────────────────────────────────────────────────
+    //
+    // Encerrar a conta é a PRIMEIRA coisa, e por UPDATE condicional: `status <> 'finished'`
+    // faz o próprio Postgres eleger um vencedor. Quem não atualizar nenhuma linha perdeu a
+    // corrida e sai daqui sem efeito nenhum.
+    //
+    // Ler o status antes e decidir no Node não resolveria: em produção houve check-out da
+    // MESMA estadia por duas pessoas com 3 segundos de diferença (e a mesma pessoa clicando
+    // de novo 30–50s depois, quando a tela demorava a responder). Os dois passariam pela
+    // leitura antes de qualquer um gravar. O resultado eram duas mensagens de NPS e de
+    // agradecimento para o hóspede, além de audit e faxinas em duplicidade.
+    const { data: claimed, error: claimError } = await supabaseAdmin.from('stays')
+        .update({ status: 'finished', checkOutActual: now, keyLocation, updatedAt: now })
+        .eq('id', stayId)
+        .neq('status', 'finished')
+        .select('id');
+
+    if (claimError) {
+        console.error('[Checkout] falha ao encerrar a estadia:', claimError.message);
+        return NextResponse.json({ error: 'Não foi possível encerrar a conta.' }, { status: 500 });
+    }
+
+    if (!claimed?.length) {
+        // Já encerrada por outra chamada. Responde sucesso (o resultado desejado está lá),
+        // mas sem repetir automações, auditoria ou faxinas.
+        console.log(`[Checkout] estadia ${stayId} já estava encerrada — nada refeito.`);
+        return NextResponse.json({ success: true, alreadyFinished: true });
+    }
+
     // Cancel pending daily tasks
     await supabaseAdmin.from('housekeeping_tasks')
         .update({
@@ -72,11 +101,6 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         .eq('cabinId', cabinId)
         .eq('type', 'daily')
         .eq('status', 'pending');
-
-    // Finish stay
-    await supabaseAdmin.from('stays')
-        .update({ status: 'finished', checkOutActual: now, keyLocation, updatedAt: now })
-        .eq('id', stayId);
 
     // Free cabin
     await supabaseAdmin.from('cabins')

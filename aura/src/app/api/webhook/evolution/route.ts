@@ -177,7 +177,12 @@ export async function POST(req: Request) {
     const currentUnread = comms?.unread || 0;
     const newUnread = direction === "inbound" ? currentUnread + 1 : currentUnread;
 
-    await supabaseAdmin.from("communications").upsert(
+    // onConflict tem de nomear uma constraint que EXISTE: a chave de `communications` é a
+    // PK simples em `id` (o número do contato). Com "id,propertyId" o Postgres respondia
+    // "there is no unique or exclusion constraint matching the ON CONFLICT specification"
+    // em toda mensagem — e como o erro não era lido, falhava calado desde abril: a lista de
+    // conversas parou de receber lastMessage, contador de não lidas e o desarquivar.
+    const { error: commError } = await supabaseAdmin.from("communications").upsert(
       {
         id: contactNumber,
         propertyId,
@@ -186,8 +191,12 @@ export async function POST(req: Request) {
         unread: newUnread,
         ...(direction === "inbound" && { archived: false }),
       },
-      { onConflict: "id,propertyId" }
+      { onConflict: "id" }
     );
+
+    if (commError) {
+      console.error("[webhook/evolution] falha ao atualizar a conversa:", commError.message);
+    }
 
     // 3. Garantir contato na agenda (não sobrescreve contato existente)
     const { data: contact } = await supabaseAdmin
