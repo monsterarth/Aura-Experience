@@ -22,6 +22,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { fanOutByRole } from "@/lib/push-notify";
 import { isSessionDownError } from "@/lib/evolution-error";
 import { CoolifyService } from "@/services/coolify-service";
+import { isSafeMode } from "@/lib/safe-mode";
 
 /** Janela que o veredito olha para trás na tabela `messages`. */
 const WINDOW_MIN = 90;
@@ -217,6 +218,12 @@ export const WhatsAppHealthService = {
    * envios acabaram de falhar) — poupa a consulta e mira o push em quem sofreu.
    */
   async checkAndRecover(trigger: "fila" | "vigia", hintPropertyIds: string[] = []): Promise<WatchdogResult> {
+    // Fora de produção não há sessão para vigiar: os envios são simulados, então qualquer
+    // veredito daqui seria sobre a Evolution de produção — e o remédio, um restart nela.
+    if (isSafeMode()) {
+      return { verdict: "indefinida", detail: "Modo seguro: vigia desligado fora de produção.", acted: "nada" };
+    }
+
     const a = await assess();
     if (a.verdict === "ok" || a.verdict === "indefinida") {
       return { verdict: a.verdict, detail: a.detail, acted: "nada" };

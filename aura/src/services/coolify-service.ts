@@ -17,6 +17,8 @@
 //   COOLIFY_API_TOKEN               Coolify → Security → API Tokens
 //   COOLIFY_EVOLUTION_SERVICE_UUID  uuid do service da Evolution (GET /api/v1/services)
 
+import { isSafeMode, logSuppressedSend } from "@/lib/safe-mode";
+
 const TIMEOUT_MS = 15000;
 
 export interface CoolifyActionResult {
@@ -59,6 +61,13 @@ export const CoolifyService = {
    * as betas divergem nisso e um 405 não pode virar "não deu".
    */
   async restartEvolution(): Promise<CoolifyActionResult> {
+    // As envs do Coolify são as mesmas em qualquer ambiente: um vigia rodando no DEV
+    // derrubaria e recriaria o container da Evolution que atende produção.
+    if (isSafeMode()) {
+      logSuppressedSend("coolify", "restart Evolution");
+      return { ok: false, message: "Modo seguro: restart da Evolution não é disparado fora de produção." };
+    }
+
     const { uuid } = config();
     if (!this.isConfigured()) {
       return {

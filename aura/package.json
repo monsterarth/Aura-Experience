@@ -6,7 +6,16 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:check": "node scripts/db/check.mjs",
+    "db:backup": "node scripts/db/backup.mjs",
+    "db:mirror": "node scripts/db/mirror.mjs",
+    "db:diff": "node scripts/db/diff.mjs",
+    "db:restore": "node scripts/db/restore.mjs",
+    "db:sql": "node scripts/db/sql.mjs",
+    "env:dev": "node scripts/db/env-switch.mjs dev",
+    "env:prod": "node scripts/db/env-switch.mjs prod",
+    "env:qual": "node scripts/db/env-switch.mjs qual"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

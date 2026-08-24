@@ -1,5 +1,6 @@
 // Server-only. Never importe em client components.
 import webpush from 'web-push';
+import { isSafeMode, logSuppressedSend } from '@/lib/safe-mode';
 
 let vapidInitialized = false;
 
@@ -39,6 +40,12 @@ export async function sendPushNotification(
   sub: StoredSubscription,
   payload: PushPayload
 ): Promise<{ ok: boolean; gone?: boolean }> {
+  // Espelho de produção manda push para o celular real do colaborador — no DEV, vira log.
+  if (isSafeMode()) {
+    logSuppressedSend('push', sub.endpoint.slice(0, 48), payload.title);
+    return { ok: true };
+  }
+
   const pushSubscription = {
     endpoint: sub.endpoint,
     keys: { p256dh: sub.p256dh, auth: sub.auth },

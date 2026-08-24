@@ -48,3 +48,10 @@ manual_api.txt
 
 # backups de migração (gerados por scripts/dev/*.mjs)
 /.backups/
+
+# o env-switch guarda o perfil anterior aqui; o padrao .env*.local NAO pega .bak
+.env*.bak
+
+# banco: backups locais e conexões diretas ao Postgres (scripts/db/)
+/backups/
+.env.db

@@ -5,6 +5,7 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { PropertySecretsService } from "./property-secrets-service";
 import { Stay, Guest, Cabin, Property } from "@/types/aura";
+import { isSafeMode, logSuppressedSend } from "@/lib/safe-mode";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,13 @@ interface ResolvedConfig {
  * Retorna null se qualquer campo estiver ausente — sem fallback para env vars.
  */
 async function resolveConfig(property?: Property): Promise<ResolvedConfig | null> {
+  // Espelho de produção traz a conta real do Chatwoot dentro de settings: sem este corte,
+  // testar uma estadia criaria contato e conversa de verdade no atendimento.
+  if (isSafeMode()) {
+    logSuppressedSend("chatwoot", property?.name ?? "propriedade", "sync suprimido");
+    return null;
+  }
+
   const wc = property?.settings?.whatsappConfig;
   if (!property?.id || !wc?.chatwootUrl || !wc?.chatwootAccountId || !wc?.chatwootInboxId) return null;
 

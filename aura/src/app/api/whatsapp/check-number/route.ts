@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireAuth, isAuthError } from "@/lib/api-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { PropertySecretsService } from "@/services/property-secrets-service";
+import { isSafeMode, logSuppressedSend } from "@/lib/safe-mode";
 
 export async function POST(req: Request) {
   const auth = await requireAuth();
@@ -13,6 +14,12 @@ export async function POST(req: Request) {
 
     if (!number) {
       return NextResponse.json({ error: "O número é obrigatório" }, { status: 400 });
+    }
+
+    // Consulta de número também bate na Evolution real — no DEV assume que existe.
+    if (isSafeMode()) {
+      logSuppressedSend("whatsapp/check-number", String(number));
+      return NextResponse.json({ exists: true, safeMode: true });
     }
 
     let apiUrl = process.env.EVOLUTION_API_URL;

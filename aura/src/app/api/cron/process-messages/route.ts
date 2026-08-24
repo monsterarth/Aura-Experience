@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { WhatsAppMessage } from "@/types/aura";
 import { parseEvolutionError, isSessionDownError } from "@/lib/evolution-error";
 import { PropertySecretsService } from "@/services/property-secrets-service";
+import { isSafeMode, logSuppressedSend } from "@/lib/safe-mode";
 import { WhatsAppHealthService } from "@/services/whatsapp-health-service";
 
 async function writeCronLog(action: string, entityId: string, details: string, newData: object) {
@@ -132,6 +133,24 @@ export async function GET(request: Request) {
         if (!apiUrl || !apiKey || !instanceName) throw new Error("Configuração da Evolution API ausente.");
 
         const baseUrl = apiUrl.endsWith("/") ? apiUrl.slice(0, -1) : apiUrl;
+
+        // Fila de automações rodando contra o espelho: a fila anda (status vira "sent"),
+        // mas nenhuma mensagem sai. Sem isso, um `pnpm dev` esquecido aberto dispararia
+        // boas-vindas e lembretes reais para os hóspedes de verdade.
+        if (isSafeMode()) {
+          logSuppressedSend("whatsapp", msg.to ?? "(sem destinatário)", (msg.body || "").slice(0, 60));
+          await supabaseAdmin
+            .from("messages")
+            .update({
+              status: "sent",
+              attempts: (msg.attempts || 0) + 1,
+              lastAttemptAt: new Date().toISOString(),
+              errorMessage: null,
+            })
+            .eq("id", msg.id);
+          successCount++;
+          continue;
+        }
 
         const response = await fetch(`${baseUrl}/message/sendText/${encodeURIComponent(instanceName)}`, {
           method: "POST",

@@ -9,7 +9,17 @@ pnpm dev          # Start development server
 pnpm build        # Production build
 pnpm start        # Start production server
 pnpm lint         # Run ESLint
+
+pnpm db:check     # Verify both databases answer (run this first)
+pnpm db:backup    # Manual backup of prod into backups/ (free plan has no backups)
+pnpm db:mirror    # Rebuild the DEV Supabase project as a copy of prod
+pnpm db:diff      # Compare prod vs DEV — proves the mirror is faithful
+pnpm db:sql <f>   # Apply a .sql file — DEV by default, --target prod for production
+pnpm env:dev      # Point .env.local at the DEV project (env:prod switches back)
 ```
+
+Database tooling runs `pg_dump`/`psql` from a Docker image — nothing to install. See
+`docs/DEV-DATABASE.md`.
 
 No test framework is configured. Use `pnpm build` to catch type errors.
 
@@ -170,6 +180,8 @@ Deeper docs live in `docs/`, read on demand:
 - `docs/MODULES.md` — catalog of every admin module, mobile app, portal page and API group (route · role · service).
 - `docs/DATABASE.md` — table glossary + ERD + RLS overview.
 - `docs/CRON.md` — cron runbook.
+- `docs/DEV-DATABASE.md` — projeto Supabase de DEV (espelho de produção), backups manuais e o
+  modo seguro que transforma envios externos em log fora de produção.
 - `docs/DEPLOYMENT.md` — Vercel + Supabase setup, env vars, migration order, `whatsapp-service`.
 - `docs/REFACTORING.md` — plan for splitting the largest files (not yet executed).
 - `docs/MODULARIZATION.md` — core × módulos / planos por propriedade. Execution deferred, but its **section 1 rules apply NOW** to all new code: new module → settings flag day one; core flows never hard-depend on module tables (soft check, default ON — `stock-integration.ts` pattern); new crons skip properties without the module.

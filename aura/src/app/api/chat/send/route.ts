@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { requireAuth, isAuthError } from "@/lib/api-auth";
 import { parseEvolutionError } from "@/lib/evolution-error";
 import { PropertySecretsService } from "@/services/property-secrets-service";
+import { isSafeMode, logSuppressedSend } from "@/lib/safe-mode";
 
 export async function POST(req: Request) {
   const auth = await requireAuth();
@@ -38,6 +39,17 @@ export async function POST(req: Request) {
     const instanceName = cfg?.instanceName
       || cfg?.instances?.[0]?.instanceName
       || process.env.EVOLUTION_INSTANCE;
+
+    // Fora de produção o chat não fala com a Evolution real — a mensagem entra no banco
+    // como enviada (a conversa continua legível no admin) e o conteúdo vai para o log.
+    if (isSafeMode()) {
+      logSuppressedSend("whatsapp", number, String(message).slice(0, 60));
+      await supabaseAdmin
+        .from("messages")
+        .update({ status: "sent", messageIdApi: null })
+        .eq("id", messageId);
+      return NextResponse.json({ success: true, messageId: null, safeMode: true });
+    }
 
     if (!apiUrl || !apiKey || !instanceName) {
       return NextResponse.json({ error: "Configuração da Evolution API ausente no servidor." }, { status: 500 });

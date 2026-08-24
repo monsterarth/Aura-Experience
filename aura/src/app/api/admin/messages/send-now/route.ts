@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { requireAuth, isAuthError } from "@/lib/api-auth";
 import { parseEvolutionError } from "@/lib/evolution-error";
 import { PropertySecretsService } from "@/services/property-secrets-service";
+import { isSafeMode, logSuppressedSend } from "@/lib/safe-mode";
 
 export async function POST(req: Request) {
   const auth = await requireAuth();
@@ -43,6 +44,23 @@ export async function POST(req: Request) {
     cfg.instances?.[0]?.instanceName ||
     process.env.EVOLUTION_INSTANCE ||
     "";
+
+  // Fora de produção a config acima veio do espelho e aponta para a Evolution REAL.
+  // Marca como enviada para o fluxo seguir igual, mas nada sai da máquina.
+  if (isSafeMode()) {
+    logSuppressedSend("whatsapp", msg.to, (msg.body || "").slice(0, 60));
+    await supabaseAdmin
+      .from("messages")
+      .update({
+        status: "sent",
+        messageIdApi: null,
+        attempts: (msg.attempts || 0) + 1,
+        lastAttemptAt: new Date().toISOString(),
+        errorMessage: null,
+      })
+      .eq("id", messageId);
+    return NextResponse.json({ success: true, safeMode: true });
+  }
 
   console.log("[send-now] cfg from DB:", JSON.stringify({ apiUrl: cfg.apiUrl, hasApiKey: !!apiKey, instanceName: cfg.instanceName }));
   console.log("[send-now] resolved:", JSON.stringify({ apiUrl, hasApiKey: !!apiKey, instanceName }));
