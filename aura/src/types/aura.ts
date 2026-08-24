@@ -236,6 +236,8 @@ export interface Cabin {
   name: string;       // Gerado: "01 - Praia - 2 Dormitórios"
   capacity: number;
   status: 'available' | 'occupied' | 'maintenance' | 'cleaning';
+  /** false = fora de operação (some das listagens operacionais). Diferente de `ignoreInOccupancy`, que só tira da taxa. */
+  active?: boolean;
   ignoreInOccupancy?: boolean; // true → não conta na taxa de ocupação (extra / uso da casa)
   allowedSetups?: string[];
   layout?: CabinArea[];

@@ -7,8 +7,8 @@
 import { PageShell, PageHeader, SkeletonList, useConfirm, Dialog } from "@/components/aura";
 import { toast } from "sonner";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useProperty } from "@/context/PropertyContext";
 import { useAuth } from "@/context/AuthContext";
 import { RoleGuard } from "@/components/auth/RoleGuard";
@@ -77,6 +77,7 @@ const dayEnd = (v: string) => { const d = new Date(`${v}T23:59:59.999`); return 
 
 function ReviewsExplorer() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { currentProperty: property } = useProperty();
   const confirm = useConfirm();
     const { isSuperAdmin } = useAuth();
@@ -195,6 +196,18 @@ function ReviewsExplorer() {
         });
         return list.sort((SORTS[sort] || SORTS.date_desc).cmp);
     }, [rows, q, kind, origin, from, to, ratingF, recoF, statusF, signalF, onlyComments, sort]);
+
+    // Link direto de uma estadia (`?stay=`): a nota no card de "últimas saídas"
+    // em /admin/stays abre a resposta desta pessoa, não a lista inteira.
+    const deepLinkStay = searchParams.get("stay");
+    const deepLinkDone = useRef<string | null>(null);
+    useEffect(() => {
+        if (!deepLinkStay || deepLinkDone.current === deepLinkStay) return;
+        const match = rows.find(r => r.survey?.stayId === deepLinkStay);
+        if (!match) return;
+        deepLinkDone.current = deepLinkStay;
+        setSelected(match);
+    }, [deepLinkStay, rows]);
 
     // resumo do recorte filtrado — os números acompanham o filtro, não o total
     const summary = useMemo(() => {

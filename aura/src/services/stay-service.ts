@@ -1021,14 +1021,8 @@ export const StayService = {
     });
   },
 
-  async archiveStay(propertyId: string, stayId: string, actorId: string, actorName: string) {
-    await supabase.from('stays')
-      .update({ status: 'archived', updatedAt: new Date().toISOString() })
-      .eq('id', stayId);
-
-    await AuditService.log({
-      propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "STAY", entityId: stayId,
-      details: "Estadia arquivada."
-    });
-  }
+  // `archiveStay` foi removida em 24/08/2026 junto com o botão "Arquivar": era a
+  // única faxina possível na aba Encerradas e escondia a estadia para sempre. O
+  // lugar dela é a grade de "Últimas saídas" + histórico paginado, e as 8 estadias
+  // que estavam em 'archived' voltaram por migration (`unarchive_stays.sql`).
 };

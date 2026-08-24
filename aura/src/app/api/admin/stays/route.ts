@@ -25,6 +25,161 @@ import { hasValidDocument } from '@/lib/guest-doc';
 // Evita que o histórico cresça indefinidamente e quebre a rota.
 const CLOSED_STAYS_LIMIT = 100;
 
+// Varredura para achar a última saída de cada cabana numa consulta só.
+const LAST_EXITS_SWEEP = 400;
+
+/**
+ * Junta a cada estadia o que a lista precisa mostrar: nome do titular, cabana,
+ * fólio e avaliação — tudo em queries em lote, nunca uma por estadia.
+ *
+ * A avaliação entrou aqui em 24/08/2026 e conserta uma coluna morta: a lista
+ * mostrava "Avaliação" desde sempre lendo `stay.nps`, um campo que NADA no
+ * sistema grava (o NPS vive em `survey_responses.metrics.npsScore`). Resultado:
+ * "Sem avaliação" para todo mundo, e buscar por "promotor"/"detrator" nunca
+ * achava nada.
+ */
+async function enrichStays(stays: any[]) {
+    if (!supabaseAdmin || stays.length === 0) return [];
+
+    const guestIds = Array.from(new Set(stays.filter((s: any) => s.guestId).map((s: any) => s.guestId as string)));
+    const cabinIds = Array.from(new Set(stays.filter((s: any) => s.cabinId).map((s: any) => s.cabinId as string)));
+    const stayIds  = stays.map((s: any) => s.id as string);
+
+    const [guestsRes, cabinsRes, folioRes, surveyRes] = await Promise.all([
+        guestIds.length > 0
+            ? supabaseAdmin.from('guests').select('id, fullName, document').in('id', guestIds)
+            : Promise.resolve({ data: [] as any[], error: null }),
+        cabinIds.length > 0
+            ? supabaseAdmin.from('cabins').select('id, name').in('id', cabinIds)
+            : Promise.resolve({ data: [] as any[], error: null }),
+        supabaseAdmin
+            .from('folio_items')
+            .select('id, stayId, description, quantity, unitPrice, totalPrice, status, category, type')
+            .in('stayId', stayIds),
+        supabaseAdmin
+            .from('survey_responses')
+            .select('id, stayId, metrics, createdAt')
+            .in('stayId', stayIds),
+    ]);
+
+    // O documento NÃO vai para o browser — só o booleano derivado. A lista precisa
+    // saber se falta documento (alerta "Doc pendente"), não qual é o CPF.
+    const guestMap = new Map<string, { fullName: string; hasDoc: boolean }>(
+        (guestsRes.data ?? []).map((g: any) => [g.id, { fullName: g.fullName, hasDoc: hasValidDocument(g.document) }])
+    );
+    const cabinMap = new Map<string, string>(
+        (cabinsRes.data ?? []).map((c: any) => [c.id, c.name])
+    );
+
+    const folioByStay = new Map<string, any[]>();
+    for (const item of (folioRes.data ?? [])) {
+        const sid: string = item.stayId;
+        if (!folioByStay.has(sid)) folioByStay.set(sid, []);
+        folioByStay.get(sid)!.push(item);
+    }
+
+    // Mais de uma resposta por estadia é raro, mas acontece — fica a mais recente.
+    const surveyByStay = new Map<string, { id: string; nps: number | null; overall: number | null }>();
+    for (const r of (surveyRes.data ?? [])) {
+        const prev = surveyByStay.get(r.stayId);
+        if (prev) continue;
+        surveyByStay.set(r.stayId, {
+            id: r.id,
+            nps: typeof r.metrics?.npsScore === 'number' ? r.metrics.npsScore : null,
+            overall: typeof r.metrics?.overall === 'number' ? r.metrics.overall : null,
+        });
+    }
+
+    return stays.map((stay: any) => {
+        const folioItems        = folioByStay.get(stay.id) ?? [];
+        const pendingFolioCount = folioItems.filter((f: any) => f.status === 'pending').length;
+        const guest             = stay.guestId ? guestMap.get(stay.guestId) : undefined;
+        const survey            = surveyByStay.get(stay.id);
+        return {
+            ...stay,
+            guestName:       stayDisplayName(stay, guest?.fullName, 'Hóspede desconhecido'),
+            // Uso da casa não tem titular; fora isso, sem ficha ou sem documento = pendente.
+            docPending:      !stay.internalUse && !guest?.hasDoc,
+            cabinName:       cabinMap.get(stay.cabinId) ?? 'Sem Cabana',
+            folioItems,
+            pendingFolioCount,
+            hasOpenFolio:    pendingFolioCount > 0,
+            nps:             survey?.nps ?? null,
+            surveyOverall:   survey?.overall ?? null,
+            surveyId:        survey?.id ?? null,
+        };
+    });
+}
+
+/**
+ * A última saída de CADA cabana ativa — a grade fixa do topo de "Encerradas".
+ *
+ * Antes o histórico era um monte indistinto de 100 linhas e a pergunta mais
+ * comum ("quem saiu por último da 7?") exigia rolar e procurar. Aqui cada cabana
+ * ocupa um card até outro check-out sobrepor.
+ *
+ * Regras: só estadia que aconteceu de fato (`checkOutActual`) — cancelada nunca
+ * ocupa o card; cabana inativa ou ignorada na ocupação fica de fora; cabana sem
+ * saída registrada volta com `stay: null` para a grade não ficar com buracos.
+ */
+async function lastExitsByCabin(propertyId: string) {
+    if (!supabaseAdmin) return [];
+
+    const { data: cabins } = await supabaseAdmin
+        .from('cabins')
+        .select('id, name, number, active, ignoreInOccupancy')
+        .eq('propertyId', propertyId);
+
+    const eligible = (cabins ?? []).filter((c: any) => c.active !== false && !c.ignoreInOccupancy);
+    if (eligible.length === 0) return [];
+
+    // Uma varredura só resolve o caso comum; as cabanas que ficarem sem saída
+    // dentro dela levam uma consulta dirigida (raro — cabana parada há meses).
+    const { data: recent } = await supabaseAdmin
+        .from('stays')
+        .select('*')
+        .eq('propertyId', propertyId)
+        .eq('status', 'finished')
+        .not('checkOutActual', 'is', null)
+        .order('checkOutActual', { ascending: false })
+        .limit(LAST_EXITS_SWEEP);
+
+    const lastByCabin = new Map<string, any>();
+    for (const stay of (recent ?? [])) {
+        if (!stay.cabinId || lastByCabin.has(stay.cabinId)) continue;
+        lastByCabin.set(stay.cabinId, stay);
+    }
+
+    const missing = eligible.filter((c: any) => !lastByCabin.has(c.id));
+    if (missing.length > 0) {
+        const found = await Promise.all(missing.map(async (c: any) => {
+            const { data } = await supabaseAdmin!
+                .from('stays')
+                .select('*')
+                .eq('propertyId', propertyId)
+                .eq('cabinId', c.id)
+                .eq('status', 'finished')
+                .not('checkOutActual', 'is', null)
+                .order('checkOutActual', { ascending: false })
+                .limit(1);
+            return data?.[0] ?? null;
+        }));
+        for (const stay of found) if (stay?.cabinId) lastByCabin.set(stay.cabinId, stay);
+    }
+
+    const enriched = await enrichStays(Array.from(lastByCabin.values()));
+    const byId = new Map(enriched.map((s: any) => [s.id, s]));
+
+    return eligible
+        .map((c: any) => ({
+            cabinId: c.id,
+            cabinName: c.name,
+            cabinNumber: c.number,
+            stay: lastByCabin.has(c.id) ? byId.get(lastByCabin.get(c.id).id) ?? null : null,
+        }))
+        .sort((a: any, b: any) => String(a.cabinNumber ?? a.cabinName).localeCompare(String(b.cabinNumber ?? b.cabinName), 'pt-BR', { numeric: true }));
+}
+
 export async function GET(request: NextRequest) {
     try {
         // Sessão + cargo. Antes esta rota só validava autenticação inline (herança do
@@ -61,6 +216,13 @@ export async function GET(request: NextRequest) {
         const scope = searchParams.get('scope');
         const isEncerradas = scope ? scope === 'encerradas' : statusList.includes('cancelled');
 
+        // ── Últimas saídas por cabana ─────────────────────────────────────────
+        // Uma cabana parada há seis meses tem que aparecer do mesmo jeito, então
+        // esta consulta é própria e não passa pelo limite do histórico.
+        if (searchParams.get('view') === 'last-exits') {
+            return NextResponse.json(await lastExitsByCabin(propertyId));
+        }
+
         // ── 1. Busca as estadias ──────────────────────────────────────────────
         let query = supabaseAdmin
             .from('stays')
@@ -82,7 +244,11 @@ export async function GET(request: NextRequest) {
         }
 
         if (isEncerradas) {
-            // Mais recentes primeiro; LIMIT evita carga irrestrita do histórico
+            // Mais recentes primeiro; LIMIT evita carga irrestrita do histórico.
+            // `before` é o "carregar mais": a página manda a saída mais antiga que
+            // já tem e recebe a página seguinte.
+            const before = searchParams.get('before');
+            if (before) query = query.lt('checkOut', before);
             query = query.order('checkOut', { ascending: false }).limit(CLOSED_STAYS_LIMIT);
         } else {
             query = query.order('checkIn', { ascending: true });
@@ -91,58 +257,7 @@ export async function GET(request: NextRequest) {
         const { data: stays, error } = await query;
         if (error || !stays || stays.length === 0) return NextResponse.json([], { status: 200 });
 
-        // ── 2. Coleta IDs únicos para busca em lote ───────────────────────────
-        const guestIds = Array.from(new Set(stays.filter((s: any) => s.guestId).map((s: any) => s.guestId as string)));
-        const cabinIds = Array.from(new Set(stays.filter((s: any) => s.cabinId).map((s: any) => s.cabinId as string)));
-        const stayIds  = stays.map((s: any) => s.id as string);
-
-        // ── 3. Três queries batch em paralelo (antes eram N×3) ────────────────
-        const [guestsRes, cabinsRes, folioRes] = await Promise.all([
-            guestIds.length > 0
-                ? supabaseAdmin.from('guests').select('id, fullName, document').in('id', guestIds)
-                : Promise.resolve({ data: [] as any[], error: null }),
-            cabinIds.length > 0
-                ? supabaseAdmin.from('cabins').select('id, name').in('id', cabinIds)
-                : Promise.resolve({ data: [] as any[], error: null }),
-            supabaseAdmin
-                .from('folio_items')
-                .select('id, stayId, description, quantity, unitPrice, totalPrice, status, category')
-                .in('stayId', stayIds),
-        ]);
-
-        // ── 4. Mapas de lookup O(1) ───────────────────────────────────────────
-        // O documento NÃO vai para o browser — só o booleano derivado. A lista precisa
-        // saber se falta documento (alerta "Doc pendente"), não qual é o CPF.
-        const guestMap = new Map<string, { fullName: string; hasDoc: boolean }>(
-            (guestsRes.data ?? []).map((g: any) => [g.id, { fullName: g.fullName, hasDoc: hasValidDocument(g.document) }])
-        );
-        const cabinMap = new Map<string, string>(
-            (cabinsRes.data ?? []).map((c: any) => [c.id, c.name])
-        );
-
-        const folioByStay = new Map<string, any[]>();
-        for (const item of (folioRes.data ?? [])) {
-            const sid: string = item.stayId;
-            if (!folioByStay.has(sid)) folioByStay.set(sid, []);
-            folioByStay.get(sid)!.push(item);
-        }
-
-        // ── 5. Join em memória ────────────────────────────────────────────────
-        const enriched = stays.map((stay: any) => {
-            const folioItems       = folioByStay.get(stay.id) ?? [];
-            const pendingFolioCount = folioItems.filter((f: any) => f.status === 'pending').length;
-            const guest             = stay.guestId ? guestMap.get(stay.guestId) : undefined;
-            return {
-                ...stay,
-                guestName:       stayDisplayName(stay, guest?.fullName, 'Hóspede desconhecido'),
-                // Uso da casa não tem titular; fora isso, sem ficha ou sem documento = pendente.
-                docPending:      !stay.internalUse && !guest?.hasDoc,
-                cabinName:       cabinMap.get(stay.cabinId) ?? 'Sem Cabana',
-                folioItems,
-                pendingFolioCount,
-                hasOpenFolio:    pendingFolioCount > 0,
-            };
-        });
+        const enriched = await enrichStays(stays);
 
         return NextResponse.json(enriched);
     } catch {

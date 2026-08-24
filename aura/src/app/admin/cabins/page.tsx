@@ -232,6 +232,7 @@ export default function CabinsPage() {
         categoryId: "",
         capacity: 2,
         status: "available",
+        active: true,
         ignoreInOccupancy: false,
         allowedSetups: [],
         wifi: { ssid: "", password: "" },
@@ -249,6 +250,7 @@ export default function CabinsPage() {
       categoryId: "",
       capacity: 2,
       status: "available",
+      active: true,
       ignoreInOccupancy: false,
       allowedSetups: [],
       wifi: { ssid: "", password: "" },
@@ -438,6 +440,11 @@ export default function CabinsPage() {
                       Fora da ocupação
                     </div>
                   )}
+                  {cabin.active === false && (
+                    <div className="px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border bg-red-500/10 text-red-600 border-red-500/20">
+                      Desativada
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
                   {!isGovOnly && (
@@ -589,6 +596,26 @@ export default function CabinsPage() {
                   </div>
                 )}
               </section>
+
+              {/* Fora de operação ≠ fora da ocupação: a de cima some das listagens
+                  (grade de últimas saídas), a de baixo só não conta na taxa. */}
+              <label className={cn(
+                "flex items-center gap-3 p-4 rounded-2xl border transition-colors",
+                editingCabin?.active === false ? "bg-red-500/10 border-red-500/30" : "bg-secondary border-border",
+                isGovOnly ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:bg-accent"
+              )}>
+                <input
+                  type="checkbox"
+                  disabled={isGovOnly}
+                  checked={editingCabin?.active !== false}
+                  onChange={e => setEditingCabin({ ...editingCabin!, active: e.target.checked })}
+                  className="accent-red-500 w-4 h-4"
+                />
+                <div className="flex flex-col">
+                  <span className="text-[10px] font-black text-foreground uppercase tracking-tighter">Cabana ativa</span>
+                  <span className="text-[9px] text-muted-foreground">Desmarque para tirar de operação — some da grade de últimas saídas</span>
+                </div>
+              </label>
 
               <label className={cn(
                 "flex items-center gap-3 p-4 rounded-2xl border transition-colors",

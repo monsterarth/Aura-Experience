@@ -18,17 +18,19 @@ import { chatwootSyncOnCheckIn, chatwootSyncOnCancelled } from "@/app/actions/ch
 import { T } from "@/lib/admin-tokens";
 import {
   PageShell, PageHeader, SegmentedTabs, Loadable, SkeletonCards, SkeletonList,
-  EmptyState, DataList, Pill, useConfirm, useAlert, useTabParam,
+  EmptyState, DataList, Pill, Button, SectionLabel, useConfirm, useAlert, useTabParam,
   type Column, type RowAction,
 } from "@/components/aura";
 import { GuestContactModal } from "@/components/admin/GuestContactModal";
 import { CheckoutKeyDialog, type KeyLocation } from "@/components/admin/CheckoutKeyDialog";
 import { isAccountOpen } from "@/lib/stay-account";
 import { StayCard } from "./_components/StayCard";
+import { LastExitCard } from "./_components/LastExitCard";
 import { StayListView } from "./_components/StayListView";
 import { StaysToolbar } from "./_components/StaysToolbar";
 import { GroupSection } from "./_components/GroupSection";
 import { useStaysLive } from "./_components/useStaysLive";
+import { useLastExits } from "./_components/useLastExits";
 import { useStaysPrefs, type PrefTab } from "./_components/useStaysPrefs";
 import {
   DEFAULT_SORT, EMPTY_FILTERS, applyFilters, applySearch, applySort, groupFuturas,
@@ -94,7 +96,8 @@ function StaysPageInner() {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT.ativas);
   const [filters, setFilters] = useState<StayFilters>(EMPTY_FILTERS);
-  const { stays, setStays, loading, error, reload } = useStaysLive(property?.id, tab);
+  const { stays, setStays, loading, error, reload, loadMore, loadingMore, hasMore } = useStaysLive(property?.id, tab);
+  const lastExits = useLastExits(property?.id, tab === "encerradas");
   const { getView, setView } = useStaysPrefs();
 
   // Ordenação e filtros são do momento, não preferência: cada aba começa no seu
@@ -273,25 +276,6 @@ function StaysPageInner() {
     }
   };
 
-  const handleArchive = async (s: StayRow) => {
-    if (!property?.id || !userData?.id) return;
-    const ok = await confirm({
-      title: "Arquivar esta estadia?",
-      description: "Ela sai desta lista e fica guardada no histórico do Aura.",
-      confirmLabel: "Arquivar",
-      tone: "danger",
-      icon: Archive,
-    });
-    if (!ok) return;
-    try {
-      await StayService.archiveStay(property.id, s.id, userData.id, userData.fullName);
-      toast.success("Estadia arquivada.");
-      setStays(prev => prev.filter(x => x.id !== s.id));
-    } catch {
-      toast.error("Erro ao arquivar.");
-    }
-  };
-
   // ---------- encerradas (DataList) ----------
   const closedColumns: Column<StayRow>[] = useMemo(() => [
     { id: "cabin", header: "Cabana", width: 200, mobile: "meta", cell: s => <Pill tone={s.cabinId ? "brand" : "amber"} size="md" label={s.cabinName || "Sem cabana"} /> },
@@ -317,11 +301,17 @@ function StaysPageInner() {
     },
   ], []);
 
+  // "Arquivar" saiu: era a única faxina possível aqui e escondia a estadia para
+  // sempre. Com a grade de últimas saídas em cima e o histórico paginado embaixo,
+  // não há mais o que arquivar (as 8 arquivadas voltaram por migration).
   const closedActions = (s: StayRow): RowAction<StayRow>[] => [
     { id: "wa", label: "WhatsApp", icon: MessageCircle, onClick: handleOpenWhatsapp },
     { id: "open", label: "Abrir ficha", icon: ArrowUpRight, onClick: handleOpenFicha },
-    { id: "archive", label: "Arquivar", icon: Archive, onClick: handleArchive, danger: true },
+    { id: "acct", label: "Abrir a conta", icon: Receipt, onClick: setAccountTarget },
   ];
+
+  /** A nota do card leva direto à resposta da avaliação. */
+  const handleOpenSurvey = (s: StayRow) => router.push(`/admin/surveys/avaliacoes?stay=${s.id}`);
 
   // ---------- vazios ----------
   const emptyState = search.trim() ? (
@@ -422,18 +412,51 @@ function StaysPageInner() {
         skeleton={tab === "encerradas" || view === "list" ? <SkeletonList rows={6} avatar={false} /> : <SkeletonCards n={6} minWidth={300} />}
         error={error}
         onRetry={() => void reload()}
-        isEmpty={filtered.length === 0}
+        isEmpty={tab !== "encerradas" && filtered.length === 0}
         empty={emptyState}
       >
         {tab === "encerradas" ? (
-          <DataList<StayRow>
-            rows={filtered}
-            columns={closedColumns}
-            rowKey={s => s.id}
-            onRowClick={handleOpenFicha}
-            rowActions={closedActions}
-            actionsLabel="Ações da estadia"
-          />
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            {/* Uma cabana por card, sempre visível: a pergunta "quem saiu por
+                último da 7?" não pode exigir rolar o histórico. A grade não
+                responde à busca nem aos filtros — eles são do histórico. */}
+            {lastExits.exits.length > 0 && (
+              <GroupSection label="Últimas saídas" count={lastExits.exits.length} tone="neutral">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(190px, 100%), 1fr))", gap: 10 }}>
+                  {lastExits.exits.map(e => (
+                    <LastExitCard
+                      key={e.cabinId}
+                      exit={e}
+                      onOpen={handleOpenFicha}
+                      onAccount={setAccountTarget}
+                      onSurvey={handleOpenSurvey}
+                    />
+                  ))}
+                </div>
+              </GroupSection>
+            )}
+
+            <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <SectionLabel>Histórico</SectionLabel>
+              {filtered.length === 0 ? emptyState : (
+                <>
+                  <DataList<StayRow>
+                    rows={filtered}
+                    columns={closedColumns}
+                    rowKey={s => s.id}
+                    onRowClick={handleOpenFicha}
+                    rowActions={closedActions}
+                    actionsLabel="Ações da estadia"
+                  />
+                  {hasMore && (
+                    <Button variant="secondary" onClick={() => void loadMore()} loading={loadingMore} style={{ alignSelf: "center" }}>
+                      Carregar mais
+                    </Button>
+                  )}
+                </>
+              )}
+            </section>
+          </div>
         ) : tab === "futuras" ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             {futureGroups.map(g => (
