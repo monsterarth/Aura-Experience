@@ -23,6 +23,7 @@ import {
 import {
   addDays, computeQuote, findOverlaps, MIN_OVER_CAPACITY_REASON, nightsBetween,
   offeredTotal, resolveFill, resolveOverwrite, resolveQuoteValue, resolveRoomValue,
+  roomDisplayName,
 } from "@/lib/rate-engine";
 import { normalizeInstagram } from "@/lib/instagram";
 import { readPets, writePets } from "@/lib/pets";
@@ -1344,7 +1345,7 @@ export const RateService = {
       .single();
     if (error) throw new Error(error.message);
 
-    const label = target.label || `Acomodação ${next.indexOf(updated) + 1}`;
+    const label = roomDisplayName(target, next.indexOf(updated));
     const priceOption = patch.price
       ? target.options.find(
           (c) => c.categoryId === patch.price!.categoryId || c.category === patch.price!.categoryId
@@ -1383,6 +1384,79 @@ export const RateService = {
         propertyId, userId: actor.id, userName: actor.name,
         action: "UPDATE", entity: "RATE_QUOTE", entityId: quoteId,
         details: `${label}: ${details.join(" · ")}.`,
+      });
+    }
+    return data as RateQuoteRecord;
+  },
+
+  /**
+   * REORDENA as acomodações do orçamento. A ordem é decisão comercial: é a
+   * sequência que o cliente lê na proposta e na mensagem — a recepção conta a
+   * história do pedido na ordem que quiser (a suíte do casal primeiro, as dos
+   * filhos depois).
+   *
+   * Só permuta: nada é criado, removido, recalculado nem reprecificado. As
+   * colunas raiz voltam a espelhar a acomodação 1, que é a invariante que o
+   * saveQuote mantém e as telas legadas leem.
+   */
+  async reorderQuoteRooms(
+    propertyId: string,
+    quoteId: string,
+    roomIds: string[],
+    actor?: { id: string; name: string }
+  ): Promise<RateQuoteRecord> {
+    const admin = supabaseAdmin!;
+    const quote = await this.getQuoteById(propertyId, quoteId);
+    if (!quote) throw new Error("Orçamento não encontrado.");
+
+    const rooms = quote.rooms ?? [];
+    // Orçamento pré-fase 3 (só snapshot) tem uma acomodação só — nada a ordenar.
+    if (rooms.length < 2) throw new Error("Este orçamento não tem acomodações para ordenar.");
+
+    // Permutação exata: mesma quantidade e mesmo conjunto de ids. Qualquer
+    // divergência é tela desatualizada — recusar é melhor que gravar um
+    // orçamento com acomodação perdida.
+    const current = rooms.map((r) => r.id);
+    const wanted = roomIds.map(String);
+    const sameSet = wanted.length === current.length &&
+      new Set(wanted).size === wanted.length &&
+      wanted.every((id) => current.includes(id));
+    if (!sameSet) throw new Error("Ordem inválida — recarregue o orçamento e tente de novo.");
+
+    // Ordem igual: nada a gravar (nem nota na timeline).
+    if (wanted.every((id, i) => id === current[i])) return quote;
+
+    const next = wanted.map((id) => rooms.find((r) => r.id === id)!);
+    const first = next[0];
+
+    const { data, error } = await admin
+      .from("rate_quotes")
+      .update({
+        rooms: next,
+        // Espelho da acomodação 1 (mesma regra do saveQuote).
+        snapshot: first.options,
+        selectedCategory: first.selectedCategory ?? null,
+        adults: first.adults, children: first.children,
+        babies: first.babies, pets: first.pets,
+        updatedAt: new Date().toISOString(),
+      })
+      .eq("id", quoteId)
+      .eq("propertyId", propertyId)
+      .select("*")
+      .single();
+    if (error) throw new Error(error.message);
+
+    const order = next.map((r, i) => roomDisplayName(r, i)).join(", ");
+    await CrmService.logInteraction(propertyId, "quote", quoteId, "note", {
+      actorId: actor?.id, actorName: actor?.name,
+      note: `Ordem das acomodações: ${order}`,
+      payload: { tag: "rooms_reordered", roomIds: wanted },
+    });
+    if (actor) {
+      await AuditService.log({
+        propertyId, userId: actor.id, userName: actor.name,
+        action: "UPDATE", entity: "RATE_QUOTE", entityId: quoteId,
+        details: `Ordem das acomodações de ${quote.clientName || "sem nome"}: ${order}.`,
       });
     }
     return data as RateQuoteRecord;

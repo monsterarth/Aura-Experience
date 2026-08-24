@@ -287,6 +287,34 @@ export function computeQuote(input: RateQuoteInput, data: RateData): RateQuoteRe
 }
 
 /**
+ * Nome de UMA acomodação numa lista de várias — vale para a tela, para a
+ * mensagem de WhatsApp e para a proposta pública. Precedência:
+ *
+ *   1. o rótulo escrito pelo vendedor ("Casal 1", "Família");
+ *   2. o nome da cabana, quando a acomodação oferece UMA só — não há escolha
+ *      a fazer ali, então "Eco Suíte" diz muito mais ao cliente do que
+ *      "Acomodação 3" (um pedido de 8 cabanas viraria uma lista numerada sem
+ *      informação nenhuma);
+ *   3. a numeração, quando há opções de verdade para comparar.
+ *
+ * Com UMA acomodação no orçamento cada tela tem o seu próprio texto ("Sua
+ * cabana", "Cabanas oferecidas") — aí não existe lista para nomear.
+ */
+export function roomDisplayName(
+  room: Pick<RateQuoteRoom, 'label' | 'options'>,
+  index: number
+): string {
+  const own = room.label?.trim();
+  if (own) return own;
+  const options = room.options ?? [];
+  if (options.length === 1) {
+    const only = options[0].category?.trim();
+    if (only) return only;
+  }
+  return `Acomodação ${index + 1}`;
+}
+
+/**
  * Preço OFERECIDO de uma cabana dentro da acomodação: o override manual do
  * vendedor quando existir, senão o total calculado pelo tarifário.
  * É o número que vale para o cliente e para a soma do orçamento.

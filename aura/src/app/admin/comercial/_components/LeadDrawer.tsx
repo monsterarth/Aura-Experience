@@ -6,15 +6,15 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
-  AlertTriangle, BedDouble, CalendarClock, CalendarDays, CopyPlus, ExternalLink,
-  Heart, Instagram, Link2, Loader2, Mail, MessageSquare, Pencil, Phone, Save, Send,
-  Tag, Trash2, X, XCircle,
+  AlertTriangle, BedDouble, CalendarClock, CalendarDays, ChevronDown, ChevronUp,
+  CopyPlus, ExternalLink, GripVertical, Heart, Instagram, Link2, Loader2, Mail,
+  MessageSquare, Pencil, Phone, Save, Send, Tag, Trash2, X, XCircle,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { T } from "@/lib/admin-tokens";
 import { instagramDisplay, instagramUrl } from "@/lib/instagram";
 import { useCloseGuard } from "@/lib/use-discard-guard";
-import { offeredTotal, resolveRoomValue } from "@/lib/rate-engine";
+import { offeredTotal, resolveRoomValue, roomDisplayName } from "@/lib/rate-engine";
 import { parseMoneyBR, moneyToInput } from "@/lib/parse-money";
 import { CrmChannel, CrmLead, RateQuoteRecord, RateQuoteRoom, WeddingInstallment } from "@/types/aura";
 import { ClientPanel } from "./ClientPanel";
@@ -34,6 +34,13 @@ const fieldLabel: React.CSSProperties = {
   fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase",
   color: T.muted, marginBottom: 5, display: "block",
 };
+
+/** Setinha de ordem (toque e teclado, onde arrastar não vale). */
+const orderArrowS = (off: boolean): React.CSSProperties => ({
+  padding: 0, height: 11, display: "flex", alignItems: "center", justifyContent: "center",
+  background: "none", border: "none", fontFamily: "inherit",
+  cursor: off ? "default" : "pointer", color: T.muted2, opacity: off ? 0.25 : 1,
+});
 
 const contactBtn: React.CSSProperties = {
   display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 800,
@@ -67,6 +74,9 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
   /** Cabana com o preço em edição (acomodação + categoria) + rascunho. */
   const [editingPrice, setEditingPrice] = useState<{ roomId: string; categoryId: string } | null>(null);
   const [priceDraft, setPriceDraft] = useState("");
+  /** Arrasto da ordem das acomodações (a mesma que o cliente lê no link). */
+  const [dragRoomId, setDragRoomId] = useState<string | null>(null);
+  const [dragOverRoomId, setDragOverRoomId] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -125,6 +135,55 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
   const commit = (roomId: string, categoryId: string | null) =>
     patchRoom(roomId, { categoryId }, categoryId ? "Cabana escolhida." : "Escolha desfeita.");
 
+  /**
+   * Grava a nova ordem. Otimista: a lista já muda no clique/solta (arrastar e
+   * ver a peça voltar para o lugar enquanto salva é pior que não arrastar);
+   * se o servidor recusar, volta ao que estava e diz o porquê.
+   */
+  const saveOrder = async (nextRooms: RateQuoteRoom[]) => {
+    const before = quote.rooms ?? [];
+    setQuote({ ...quote, rooms: nextRooms });
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/tarifario/quotes/reorder-rooms", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          propertyId, id: quote.id, roomIds: nextRooms.map((r) => r.id),
+        }),
+      });
+      const d = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(d?.error);
+      setQuote(d.quote);
+      onChanged();
+    } catch (e) {
+      setQuote({ ...quote, rooms: before });
+      toast.error(e instanceof Error && e.message ? e.message : "Erro ao reordenar.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const moveRoom = (roomId: string, delta: -1 | 1) => {
+    const i = rooms.findIndex((r) => r.id === roomId);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= rooms.length) return;
+    const next = [...rooms];
+    const [moved] = next.splice(i, 1);
+    next.splice(j, 0, moved);
+    saveOrder(next);
+  };
+
+  const dropRoom = (targetId: string) => {
+    if (!dragRoomId || dragRoomId === targetId) return;
+    const from = rooms.findIndex((r) => r.id === dragRoomId);
+    const to = rooms.findIndex((r) => r.id === targetId);
+    if (from < 0 || to < 0) return;
+    const next = [...rooms];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    saveOrder(next);
+  };
+
   /** Preço oferecido DESTA cabana; vazio/0 volta ao valor do tarifário. */
   const commitPrice = (roomId: string, categoryId: string) => {
     const v = parseMoneyBR(priceDraft);
@@ -165,14 +224,68 @@ function QuoteSnapshot({ propertyId, lead, busy, active, onChanged, onEdit, onDu
           ? `Datas por acomodação · entre ${fmtBR(quote.checkIn)} e ${fmtBR(quote.checkOut)}`
           : `${fmtBR(quote.checkIn)} → ${fmtBR(quote.checkOut)} · ${nights} noite${nights !== 1 ? "s" : ""}`}
         {" · "}{rooms.length} acomodaç{rooms.length > 1 ? "ões" : "ão"} · {totalPax} pagante{totalPax !== 1 ? "s" : ""}
+        {active && rooms.length > 1 && (
+          <span style={{ color: T.muted2 }}> · arraste para ordenar como o cliente vê no link</span>
+        )}
       </p>
 
       {rooms.map((room, i) => {
-        const label = room.label?.trim() || (rooms.length > 1 ? `Acomodação ${i + 1}` : "Cabanas oferecidas");
+        // Com várias, a de opção única leva o NOME da cabana (roomDisplayName).
+        const label = rooms.length > 1
+          ? roomDisplayName(room, i)
+          : room.label?.trim() || "Cabanas oferecidas";
         const roomNights = room.options[0]?.nights ?? 0;
+        // Ordenar é edição comercial: só em lead ativo e com mais de uma.
+        const sortable = active && rooms.length > 1;
         return (
-          <div key={room.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div key={room.id}
+            onDragOver={(e) => {
+              if (!dragRoomId || dragRoomId === room.id) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              if (dragOverRoomId !== room.id) setDragOverRoomId(room.id);
+            }}
+            onDragLeave={(e) => {
+              if (e.currentTarget === e.target) setDragOverRoomId((cur) => (cur === room.id ? null : cur));
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              dropRoom(room.id);
+              setDragRoomId(null);
+              setDragOverRoomId(null);
+            }}
+            style={{
+              display: "flex", flexDirection: "column", gap: 6, borderRadius: 10,
+              opacity: dragRoomId === room.id ? 0.55 : 1,
+              outline: dragOverRoomId === room.id ? `2px dashed ${T.g1Border}` : "none",
+              outlineOffset: 5,
+            }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {sortable && (
+                <span style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}>
+                  <span draggable={!busyAll}
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("text/plain", room.id);
+                      e.dataTransfer.effectAllowed = "move";
+                      setDragRoomId(room.id);
+                    }}
+                    onDragEnd={() => { setDragRoomId(null); setDragOverRoomId(null); }}
+                    title="Arraste para mudar a ordem — é a ordem que o cliente vê no link"
+                    style={{ display: "flex", cursor: busyAll ? "default" : "grab", color: T.muted2 }}>
+                    <GripVertical size={13} />
+                  </span>
+                  <span style={{ display: "flex", flexDirection: "column" }}>
+                    <button onClick={() => moveRoom(room.id, -1)} disabled={busyAll || i === 0}
+                      title="Subir na ordem" style={orderArrowS(busyAll || i === 0)}>
+                      <ChevronUp size={10} />
+                    </button>
+                    <button onClick={() => moveRoom(room.id, 1)} disabled={busyAll || i === rooms.length - 1}
+                      title="Descer na ordem" style={orderArrowS(busyAll || i === rooms.length - 1)}>
+                      <ChevronDown size={10} />
+                    </button>
+                  </span>
+                </span>
+              )}
               <span style={{ fontSize: 11.5, fontWeight: 800, color: T.text }}>{label}</span>
               <span style={{ fontSize: 10.5, color: T.muted }}>
                 {room.adults + room.children} pagante{room.adults + room.children !== 1 ? "s" : ""}

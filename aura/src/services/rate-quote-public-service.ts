@@ -20,8 +20,8 @@ import { supabaseAdmin } from "@/lib/supabase";
 import { AuditService } from "./audit-service";
 import { CrmService } from "./crm-service";
 import {
-  offeredTotal, resolveRoomValue, MsgLang, DEFAULT_PAYMENT_OPTIONS, paymentLabel,
-  paymentTotal,
+  offeredTotal, resolveRoomValue, roomDisplayName, MsgLang, DEFAULT_PAYMENT_OPTIONS,
+  paymentLabel, paymentTotal,
 } from "@/lib/rate-engine";
 import { parseMultiLang } from "@/lib/multilang";
 import { maxPetsOf, PET_HARD_CAP } from "@/lib/pets";
@@ -549,7 +549,11 @@ export const RateQuotePublicService = {
       language,
       rooms: rooms.map((room, i) => ({
         id: room.id,
-        label: room.label?.trim() || (rooms.length > 1 ? `Acomodação ${i + 1}` : "Sua cabana"),
+        // Com várias, a acomodação de opção única leva o NOME da cabana (ver
+        // roomDisplayName); com uma só, o texto neutro de sempre.
+        label: rooms.length > 1
+          ? roomDisplayName(room, i)
+          : room.label?.trim() || "Sua cabana",
         checkIn: room.checkIn || q.checkIn,
         checkOut: room.checkOut || q.checkOut,
         nights: room.options[0]?.nights ?? 0,

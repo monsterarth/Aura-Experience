@@ -26,7 +26,7 @@ import { normalizeInstagram } from "@/lib/instagram";
 import {
   computeQuote, processTemplate, buildCategoryBlock, buildEventNotices,
   DEFAULT_MSG_TEMPLATE, DEFAULT_MSG_SINGLE_TEMPLATE, MIN_OVER_CAPACITY_REASON,
-  addDays, dateToIso, formatBRL,
+  addDays, dateToIso, formatBRL, roomDisplayName,
 } from "@/lib/rate-engine";
 import type { QuoteWedding, RateBundle } from "@/services/rate-service";
 import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
@@ -88,7 +88,10 @@ const newDraftRoom = (over?: Partial<DraftRoom>): DraftRoom => ({
   ...over,
 });
 
-const roomLabel = (r: DraftRoom, i: number) => r.label.trim() || `Acomodação ${i + 1}`;
+/** Nome da acomodação na lista — com UMA cabana oferecida, é o nome dela
+ *  (mesma regra da mensagem e da proposta; ver roomDisplayName). */
+const roomLabel = (r: DraftRoom, i: number, options: RateQuoteCategory[] = []) =>
+  roomDisplayName({ label: r.label, options }, i);
 const paxOf = (r: DraftRoom) => ({
   adults: Math.max(1, parseInt(r.adults) || 1),
   children: Math.max(0, parseInt(r.children) || 0),
@@ -905,9 +908,14 @@ export function NewQuoteWizard({
       const p = periodOf(rq.room);
       const ownPeriod = p.checkIn !== span.checkIn || p.checkOut !== span.checkOut
         ? ` · ${fmtBR(p.checkIn)} → ${fmtBR(p.checkOut)}` : "";
-      parts.push(roomQuotes.length === 1
-        ? blocks
-        : `*${roomLabel(rq.room, i)}* — ${paxLabel(rq.room)}${ownPeriod}\n${blocks}`);
+      // Com UMA cabana oferecida o bloco logo abaixo já diz o nome dela em
+      // negrito: repetir no cabeçalho deixaria duas linhas seguidas iguais.
+      // Aí o cabeçalho fica só com quem ocupa (e a data, quando difere).
+      // Rótulo escrito pelo vendedor ("Casal 1") não repete nada e continua.
+      const head = picked.length === 1 && !rq.room.label.trim()
+        ? `👥 ${paxLabel(rq.room)}${ownPeriod}`
+        : `*${roomLabel(rq.room, i, picked)}* — ${paxLabel(rq.room)}${ownPeriod}`;
+      parts.push(roomQuotes.length === 1 ? blocks : `${head}\n${blocks}`);
     });
     if (parts.length === 0) { toast.error("Selecione pelo menos uma categoria."); return; }
 
@@ -1742,7 +1750,7 @@ export function NewQuoteWizard({
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       {roomQuotes.length > 1 && dragHandle(rq.room.id, i, roomQuotes.length)}
                       <span style={{ fontSize: 12, fontWeight: 800, color: T.text }}>
-                        {roomQuotes.length > 1 ? roomLabel(rq.room, i) : "Cabanas oferecidas"}
+                        {roomQuotes.length > 1 ? roomLabel(rq.room, i, includedOf(rq)) : "Cabanas oferecidas"}
                       </span>
                       <span style={{ fontSize: 11, color: T.muted }}>{paxLabel(rq.room)}</span>
                       {rq.room.selectedCategory && (
