@@ -504,18 +504,36 @@ export const RateService = {
 
     if (resolution.insert.length === 0) return { created: 0 };
 
+    // Linhas coluna a coluna, TODAS com o mesmo formato: o PostgREST monta o
+    // INSERT do lote com a união das chaves e preenche as ausentes com NULL
+    // (não com o DEFAULT) — misturar pedaço aparado (que trazia createdAt) com
+    // a regra nova (que não trazia) violava o NOT NULL e derrubava o Sobrepor.
+    const nowIso = new Date().toISOString();
+    const rows = resolution.insert.map((p) => ({
+      id: crypto.randomUUID(),
+      propertyId,
+      name: p.name,
+      startDate: p.startDate,
+      endDate: p.endDate,
+      minNights: p.minNights,
+      weekdayTableId: p.weekdayTableId ?? null,
+      weekendTableId: p.weekendTableId ?? null,
+      createdAt: p.createdAt ?? nowIso,
+    }));
+
+    // Insere ANTES de apagar: com o delete primeiro, um insert rejeitado
+    // deixava o calendário sem as regras antigas e sem a nova.
+    const { error: insertError } = await admin.from("rate_periods").insert(rows);
+    if (insertError) throw new Error(insertError.message);
+
     if (resolution.removeIds.length > 0) {
-      const { error } = await admin
+      const { error: deleteError } = await admin
         .from("rate_periods")
         .delete()
         .in("id", resolution.removeIds)
         .eq("propertyId", propertyId);
-      if (error) throw new Error(error.message);
+      if (deleteError) throw new Error(deleteError.message);
     }
-
-    const rows = resolution.insert.map((p) => ({ ...p, id: crypto.randomUUID(), propertyId }));
-    const { error } = await admin.from("rate_periods").insert(rows);
-    if (error) throw new Error(error.message);
     return { created: rows.length };
   },
 
@@ -604,17 +622,32 @@ export const RateService = {
       mode === "overwrite" ? resolveOverwrite(existing, next) : resolveFill(existing, next);
     if (resolution.insert.length === 0) return { created: 0 };
 
+    // Mesmo cuidado do savePeriod: lote uniforme (senão o PostgREST manda NULL
+    // no createdAt dos pedaços sem a chave) e insert ANTES do delete.
+    const nowIso = new Date().toISOString();
+    const rows = resolution.insert.map((f) => ({
+      id: crypto.randomUUID(),
+      propertyId,
+      presetId: f.presetId ?? null,
+      name: f.name ?? null,
+      pct: f.pct,
+      startDate: f.startDate,
+      endDate: f.endDate,
+      createdAt: f.createdAt ?? nowIso,
+      createdBy: f.createdBy ?? null,
+      createdByName: f.createdByName ?? null,
+    }));
+    const { error: insertError } = await admin.from("rate_fluctuations").insert(rows);
+    if (insertError) throw new Error(insertError.message);
+
     if (resolution.removeIds.length > 0) {
-      const { error } = await admin
+      const { error: deleteError } = await admin
         .from("rate_fluctuations")
         .delete()
         .in("id", resolution.removeIds)
         .eq("propertyId", propertyId);
-      if (error) throw new Error(error.message);
+      if (deleteError) throw new Error(deleteError.message);
     }
-    const rows = resolution.insert.map((f) => ({ ...f, id: crypto.randomUUID(), propertyId }));
-    const { error } = await admin.from("rate_fluctuations").insert(rows);
-    if (error) throw new Error(error.message);
     await audit(`Flutuação atribuída (${mode === "overwrite" ? "sobrepondo" : "preenchendo vazios"}): ${label}.`);
     return { created: rows.length };
   },

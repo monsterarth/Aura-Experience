@@ -75,7 +75,11 @@ export function FlutuacoesTab({ propertyId, bundle, onRefresh }: {
         setConflicts(null);
         return;
       }
-      toast.success(data?.created > 1 ? `Flutuação aplicada em ${data.created} trechos livres.` : "Flutuação aplicada ao período.");
+      toast.success(
+        mode === "overwrite"
+          ? "Flutuação aplicada — as antigas foram aparadas nessas datas."
+          : data?.created > 1 ? `Flutuação aplicada em ${data.created} trechos livres.` : "Flutuação aplicada ao período."
+      );
       setForm(EMPTY);
       setConflicts(null);
       await onRefresh();
@@ -213,20 +217,22 @@ export function FlutuacoesTab({ propertyId, bundle, onRefresh }: {
               ))}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button onClick={() => save("overwrite")}
+              <button onClick={() => save("overwrite")} disabled={saving}
                 style={{
                   border: `1px solid ${T.redBorder}`, background: T.redBg, borderRadius: 13,
                   padding: 12, textAlign: "left", cursor: "pointer", fontFamily: "inherit",
+                  opacity: saving ? 0.6 : 1,
                 }}>
                 <p style={{ fontSize: 12.5, fontWeight: 900, color: T.red, margin: 0 }}>Sobrepor</p>
                 <p style={{ fontSize: 11, color: T.muted, margin: "3px 0 0" }}>
                   Apara as antigas nessas datas e impõe a nova.
                 </p>
               </button>
-              <button onClick={() => save("fill")}
+              <button onClick={() => save("fill")} disabled={saving}
                 style={{
                   border: `1px solid ${T.blueBorder}`, background: T.blueBg, borderRadius: 13,
                   padding: 12, textAlign: "left", cursor: "pointer", fontFamily: "inherit",
+                  opacity: saving ? 0.6 : 1,
                 }}>
                 <p style={{ fontSize: 12.5, fontWeight: 900, color: T.blue, margin: 0 }}>Preencher vazios</p>
                 <p style={{ fontSize: 11, color: T.muted, margin: "3px 0 0" }}>
@@ -234,7 +240,11 @@ export function FlutuacoesTab({ propertyId, bundle, onRefresh }: {
                 </p>
               </button>
             </div>
-            $1          </div>)}
+            <button onClick={() => setConflicts(null)} disabled={saving}
+              style={{ ...S.ghostBtn, justifyContent: "center", opacity: saving ? 0.6 : 1 }}>
+              Cancelar operação
+            </button>
+          </div>)}
       </Dialog>
     </div>
   );
