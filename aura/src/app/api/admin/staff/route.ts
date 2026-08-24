@@ -349,7 +349,7 @@ export async function PUT(request: Request) {
     const sameProperty = auth.staff.propertyId === targetUser.propertyId;
 
     // Preferências de UI são sempre permitidas pelo próprio utilizador (bypass de permissões)
-    const UI_PREFS = ['uiTheme', 'sidebarDefaultCollapsed'] as const;
+    const UI_PREFS = ['uiTheme', 'sidebarDefaultCollapsed', 'staysViewAtivas', 'staysViewFuturas'] as const;
     const isSelfPreferenceOnly = isSelf && Object.keys(updates).every(k => (UI_PREFS as readonly string[]).includes(k));
     if (isSelfPreferenceOnly) {
       const safePrefs: Record<string, unknown> = {};
@@ -397,7 +397,7 @@ export async function PUT(request: Request) {
     }
 
     // Campos permitidos — role/secondaryRoles só chegam aqui se passaram nas guards acima
-    const allowedFields = ['fullName', 'phone', 'birthDate', 'hireDate', 'bio', 'profilePictureUrl', 'active', 'role', 'uiTheme', 'sidebarDefaultCollapsed', 'secondaryRoles'];
+    const allowedFields = ['fullName', 'phone', 'birthDate', 'hireDate', 'bio', 'profilePictureUrl', 'active', 'role', 'uiTheme', 'sidebarDefaultCollapsed', 'staysViewAtivas', 'staysViewFuturas', 'secondaryRoles'];
     const safeUpdates: Record<string, unknown> = {};
     for (const key of allowedFields) {
       if (key in updates) safeUpdates[key] = updates[key];

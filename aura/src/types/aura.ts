@@ -992,6 +992,9 @@ export interface ContactContext {
 }
 
 // --- STAFF ---
+/** Densidade da lista de estadias: cartão completo, cartão enxuto ou tabela. */
+export type StaysViewMode = 'card' | 'compact' | 'list';
+
 export interface Staff {
   id: string;
   propertyId: string | null;
@@ -1011,6 +1014,9 @@ export interface Staff {
   hireDate?: string; // YYYY-MM-DD
   uiTheme?: 'dark' | 'light';
   sidebarDefaultCollapsed?: boolean;
+  /** Modo da lista de estadias por aba — o PC da recepção é compartilhado, então a escolha vive no usuário, não no navegador. */
+  staysViewAtivas?: StaysViewMode;
+  staysViewFuturas?: StaysViewMode;
   secondaryRoles?: UserRole[];
 }
 

@@ -57,36 +57,10 @@ export function npsInfo(s: StayRow): { label: string; tone: Tone; value: number 
   return { label: `Neutro (${v})`, tone: "amber", value: v };
 }
 
-/** Filtro por busca livre + regras da aba + ordenação. */
-export function filterAndSort(stays: StayRow[], tab: TabStatus, searchTerm: string): StayRow[] {
-  const term = searchTerm.toLowerCase().trim();
-  return stays
-    .filter(s => {
-      if (tab === "pendente" && !hasPendingAccount(s)) return false;
-      if (!term) return true;
-      const guestMatch = (s.guestName || "").toLowerCase().includes(term);
-      const cabinMatch = (s.cabinName || "").toLowerCase().includes(term);
-      const checkInStr = s.checkIn ? format(new Date(s.checkIn), "dd/MM/yyyy", { locale: ptBR }) : "";
-      const checkOutStr = s.checkOut ? format(new Date(s.checkOut), "dd/MM/yyyy", { locale: ptBR }) : "";
-      const periodMatch = checkInStr.includes(term) || checkOutStr.includes(term);
-      const nps = npsInfo(s);
-      const evalMatch =
-        (term === "avaliado" && !!nps) ||
-        (term === "pendente" && !nps) ||
-        (term === "promotor" && nps?.tone === "emerald") ||
-        (term === "neutro" && nps?.tone === "amber") ||
-        (term === "detrator" && nps?.tone === "red");
-      return guestMatch || cabinMatch || periodMatch || evalMatch;
-    })
-    .sort((a, b) => {
-      if (tab === "encerradas") {
-        const da = a.checkOut ? new Date(a.checkOut).getTime() : 0;
-        const db = b.checkOut ? new Date(b.checkOut).getTime() : 0;
-        return db - da;
-      }
-      return extractCabinNumber(a.cabinName) - extractCabinNumber(b.cabinName);
-    });
-}
+/**
+ * Busca, filtros, ordenação e agrupamento vivem em `stay-filters.ts` — este
+ * arquivo ficou com as regras de apresentação (rótulos, status, nomes).
+ */
 
 /**
  * Ficha do titular sem número de documento. Quem decide é a rota (`docPending`):

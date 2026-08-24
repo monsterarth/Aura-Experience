@@ -227,12 +227,16 @@ export function useStayDetail(stayId: string | undefined) {
     else void handleUndoCheckOut();
   };
 
-  const handleConfirmCheckOut = async () => {
-    if (!keyLocation || !propertyId) return;
+  // O diálogo da chave é compartilhado com a lista de Ativas e guarda a escolha
+  // internamente — por isso ela chega por parâmetro; o estado local continua
+  // valendo para quem ainda chama sem argumento.
+  const handleConfirmCheckOut = async (chosen?: KeyLocation) => {
+    const location = chosen ?? keyLocation;
+    if (!location || !propertyId) return;
     setCheckOutModalOpen(false);
     setIsSaving(true);
     try {
-      await StayService.performCheckOut(propertyId, stay.id, actorId, actorName, keyLocation);
+      await StayService.performCheckOut(propertyId, stay.id, actorId, actorName, location);
       toast.success("Check-out realizado!");
       await refresh();
     } catch { toast.error("Erro na operação."); } finally { setIsSaving(false); }

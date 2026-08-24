@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -17,16 +17,25 @@ import { StayService } from "@/services/stay-service";
 import { chatwootSyncOnCheckIn, chatwootSyncOnCancelled } from "@/app/actions/chatwoot-actions";
 import { T } from "@/lib/admin-tokens";
 import {
-  PageShell, PageHeader, SegmentedTabs, SearchInput, Loadable, SkeletonCards, SkeletonList,
+  PageShell, PageHeader, SegmentedTabs, Loadable, SkeletonCards, SkeletonList,
   EmptyState, DataList, Pill, useConfirm, useAlert, useTabParam,
   type Column, type RowAction,
 } from "@/components/aura";
 import { GuestContactModal } from "@/components/admin/GuestContactModal";
+import { CheckoutKeyDialog, type KeyLocation } from "@/components/admin/CheckoutKeyDialog";
 import { StayCard } from "./_components/StayCard";
+import { StayListView } from "./_components/StayListView";
+import { StaysToolbar } from "./_components/StaysToolbar";
+import { GroupSection } from "./_components/GroupSection";
 import { PendingAccountCard } from "./_components/PendingAccountCard";
 import { useStaysLive } from "./_components/useStaysLive";
+import { useStaysPrefs, type PrefTab } from "./_components/useStaysPrefs";
 import {
-  TABS, filterAndSort, fmtDay, hasPendingAccount, isDocPending, npsInfo, shortName, titleCase,
+  DEFAULT_SORT, EMPTY_FILTERS, applyFilters, applySearch, applySort, groupFuturas,
+  hasDateFilter, isFiltering, type SortState, type StayFilters,
+} from "./_components/stay-filters";
+import {
+  TABS, fmtDay, hasPendingAccount, isDocPending, npsInfo, shortName, titleCase,
   type StayRow, type TabStatus,
 } from "./_components/stay-utils";
 
@@ -42,6 +51,9 @@ const TAB_ITEMS = [
   { id: "pendente" as const, label: "Conta", icon: Receipt, tone: "orange" as const },
   { id: "encerradas" as const, label: "Encerradas", icon: Archive },
 ];
+
+/** Abas com alternador de modo — as outras têm layout próprio. */
+const VIEW_TABS: TabStatus[] = ["ativas", "futuras"];
 
 const REASON_MAP: Record<string, string> = {
   rule_inactive: "Automação de boas-vindas inativa nas configurações.",
@@ -73,7 +85,20 @@ function StaysPageInner() {
 
   const [tab, setTab] = useTabParam<TabStatus>("tab", "ativas", TABS);
   const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<SortState>(DEFAULT_SORT.ativas);
+  const [filters, setFilters] = useState<StayFilters>(EMPTY_FILTERS);
   const { stays, setStays, loading, error, reload } = useStaysLive(property?.id, tab);
+  const { getView, setView } = useStaysPrefs();
+
+  // Ordenação e filtros são do momento, não preferência: cada aba começa no seu
+  // padrão e nada fica ligado escondido de uma visita para a outra.
+  useEffect(() => {
+    setSort(DEFAULT_SORT[tab]);
+    setFilters(EMPTY_FILTERS);
+    setSearch("");
+  }, [tab]);
+
+  const view = VIEW_TABS.includes(tab) ? getView(tab as PrefTab) : "card";
 
   // Seleção para os modais
   const [selectedStay, setSelectedStay] = useState<StayRow | null>(null);
@@ -81,13 +106,26 @@ function StaysPageInner() {
   const [selectedCabin, setSelectedCabin] = useState<StayRow | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
+  const [checkoutTarget, setCheckoutTarget] = useState<StayRow | null>(null);
 
   // Estados de progresso por cartão (o botão certo gira, não a página inteira)
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [checkingInId, setCheckingInId] = useState<string | null>(null);
   const [closingId, setClosingId] = useState<string | null>(null);
+  const [checkingOut, setCheckingOut] = useState(false);
 
-  const filtered = useMemo(() => filterAndSort(stays, tab, search), [stays, tab, search]);
+  const filtered = useMemo(() => {
+    const base = tab === "pendente" ? stays.filter(hasPendingAccount) : stays;
+    return applySort(applyFilters(applySearch(base, search), filters, tab), sort);
+  }, [stays, tab, search, filters, sort]);
+
+  // Filtrar por período já é dizer qual janela interessa — agrupar de novo por
+  // 72h em cima disso só embaralha a resposta.
+  const futureGroups = useMemo(
+    () => (tab === "futuras" ? groupFuturas(filtered, !hasDateFilter(filters)) : []),
+    [tab, filtered, filters],
+  );
+
   const pendingCount = useMemo(() => stays.filter(hasPendingAccount).length, [stays]);
 
   // ---------- handlers ----------
@@ -172,6 +210,24 @@ function StaysPageInner() {
       }
     } finally {
       setCheckingInId(null);
+    }
+  };
+
+  // Check-out direto da lista: o passo da chave é o mesmo da ficha, e fechar o
+  // diálogo (X, Esc ou clique fora) não faz nada.
+  const handleConfirmCheckOut = async (keyLocation: KeyLocation) => {
+    const s = checkoutTarget;
+    if (!s || !property?.id || !userData?.id) return;
+    setCheckingOut(true);
+    try {
+      await StayService.performCheckOut(property.id, s.id, userData.id, userData.fullName, keyLocation);
+      toast.success("Check-out realizado!", { description: keyLocation === "reception" ? undefined : "A governança confirma a chave na conferência da cabana." });
+      setCheckoutTarget(null);
+      void reload();
+    } catch {
+      toast.error("Erro ao realizar check-out.");
+    } finally {
+      setCheckingOut(false);
     }
   };
 
@@ -276,6 +332,13 @@ function StaysPageInner() {
       description="Tente outro nome, cabana ou data (dd/mm/aaaa)."
       action={{ label: "Limpar busca", onClick: () => setSearch("") }}
     />
+  ) : isFiltering(filters) ? (
+    <EmptyState
+      icon={SearchX}
+      title="Nenhuma estadia com esses filtros"
+      description="Os filtros ativos aparecem em chips abaixo da busca."
+      action={{ label: "Limpar filtros", onClick: () => setFilters(EMPTY_FILTERS) }}
+    />
   ) : tab === "ativas" ? (
     <EmptyState icon={Home} title="Nenhuma estadia ativa" description="Quando um hóspede fizer check-in, ele aparece aqui." action={{ label: "Nova hospedagem", href: "/admin/stays/new", icon: Plus }} />
   ) : tab === "futuras" ? (
@@ -286,6 +349,45 @@ function StaysPageInner() {
     <EmptyState icon={Archive} title="Nenhuma estadia encerrada" description="O histórico de check-outs e cancelamentos aparece aqui." />
   );
 
+  // ---------- render das estadias (cartão / compacto / lista) ----------
+  const renderStays = (rows: StayRow[], mode: "ativas" | "futuras") => {
+    if (view === "list") {
+      return (
+        <StayListView
+          rows={rows}
+          mode={mode}
+          onOpen={handleOpenFicha}
+          onWhatsapp={handleOpenWhatsapp}
+          onCheckIn={mode === "futuras" ? handleCheckIn : undefined}
+          onCheckOut={mode === "ativas" ? setCheckoutTarget : undefined}
+          onCancel={mode === "futuras" ? handleCancel : undefined}
+          onCopyLink={handleCopyLink}
+        />
+      );
+    }
+    const min = view === "compact" ? 240 : 300;
+    return (
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fill, minmax(min(${min}px, 100%), 1fr))`, gap: 12 }}>
+        {rows.map(s => (
+          <StayCard
+            key={s.id}
+            stay={s}
+            mode={mode}
+            variant={view === "compact" ? "compact" : "full"}
+            onOpen={handleOpenFicha}
+            onWhatsapp={handleOpenWhatsapp}
+            onCheckIn={mode === "futuras" ? handleCheckIn : undefined}
+            onCheckOut={mode === "ativas" ? setCheckoutTarget : undefined}
+            onCancel={mode === "futuras" ? handleCancel : undefined}
+            onCopyLink={handleCopyLink}
+            opening={openingId === s.id}
+            checkingIn={checkingInId === s.id}
+          />
+        ))}
+      </div>
+    );
+  };
+
   return (
     <PageShell>
       <PageHeader
@@ -295,26 +397,30 @@ function StaysPageInner() {
         primaryAction={{ label: "Nova hospedagem", icon: Plus, href: "/admin/stays/new" }}
       />
 
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10 }}>
-        <SegmentedTabs
-          ariaLabel="Filtrar estadias"
-          items={TAB_ITEMS.map(t => (t.id === "pendente" && tab === "pendente" && pendingCount > 0 ? { ...t, count: pendingCount } : t))}
-          value={tab}
-          onChange={setTab}
-          style={{ maxWidth: "100%" }}
-        />
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Hóspede, cabana ou data…"
-          debounce={150}
-          wrapStyle={{ flex: "1 1 240px", maxWidth: 380 }}
-        />
-      </div>
+      <SegmentedTabs
+        ariaLabel="Filtrar estadias"
+        items={TAB_ITEMS.map(t => (t.id === "pendente" && tab === "pendente" && pendingCount > 0 ? { ...t, count: pendingCount } : t))}
+        value={tab}
+        onChange={setTab}
+        style={{ maxWidth: "100%" }}
+      />
+
+      <StaysToolbar
+        tab={tab}
+        search={search}
+        onSearch={setSearch}
+        sort={sort}
+        onSort={setSort}
+        filters={filters}
+        onFilters={setFilters}
+        rows={stays}
+        view={VIEW_TABS.includes(tab) ? view : undefined}
+        onView={VIEW_TABS.includes(tab) ? (v => setView(tab as PrefTab, v)) : undefined}
+      />
 
       <Loadable
         loading={loading && stays.length === 0}
-        skeleton={tab === "encerradas" ? <SkeletonList rows={6} avatar={false} /> : <SkeletonCards n={6} minWidth={300} />}
+        skeleton={tab === "encerradas" || view === "list" ? <SkeletonList rows={6} avatar={false} /> : <SkeletonCards n={6} minWidth={300} />}
         error={error}
         onRetry={() => void reload()}
         isEmpty={filtered.length === 0}
@@ -335,25 +441,30 @@ function StaysPageInner() {
               <PendingAccountCard key={s.id} stay={s} onOpen={handleOpenFicha} onCloseBill={handleCloseBill} opening={openingId === s.id} closing={closingId === s.id} />
             ))}
           </div>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(300px, 100%), 1fr))", gap: 12 }}>
-            {filtered.map(s => (
-              <StayCard
-                key={s.id}
-                stay={s}
-                mode={tab}
-                onOpen={handleOpenFicha}
-                onWhatsapp={handleOpenWhatsapp}
-                onCheckIn={tab === "futuras" ? handleCheckIn : undefined}
-                onCancel={tab === "futuras" ? handleCancel : undefined}
-                onCopyLink={handleCopyLink}
-                opening={openingId === s.id}
-                checkingIn={checkingInId === s.id}
-              />
+        ) : tab === "futuras" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            {futureGroups.map(g => (
+              g.label ? (
+                <GroupSection key={g.id} label={g.label} count={g.rows.length} tone={g.tone}>
+                  {renderStays(g.rows, "futuras")}
+                </GroupSection>
+              ) : (
+                <React.Fragment key={g.id}>{renderStays(g.rows, "futuras")}</React.Fragment>
+              )
             ))}
           </div>
+        ) : (
+          renderStays(filtered, "ativas")
         )}
       </Loadable>
+
+      <CheckoutKeyDialog
+        open={!!checkoutTarget}
+        onClose={() => setCheckoutTarget(null)}
+        onConfirm={handleConfirmCheckOut}
+        context={checkoutTarget ? `${checkoutTarget.cabinName || "Sem cabana"} · ${shortName(checkoutTarget.guestName)}` : undefined}
+        saving={checkingOut}
+      />
 
       {/* selectedGuest pode ser null (uso da casa) — a ficha tolera e mostra o rótulo interno */}
       {selectedStay && (
