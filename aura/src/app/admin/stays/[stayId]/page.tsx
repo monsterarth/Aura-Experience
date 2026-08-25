@@ -12,6 +12,7 @@ import { useStayDetail } from "./_components/useStayDetail";
 import { stayStatus } from "./_components/stay-detail-utils";
 import { HeroStrip, FolioCard, GuestCard, LodgingCard, TravelCard } from "./_components/StayDetailCards";
 import { TransferDialog, CheckoutKeyDialog } from "./_components/StayDialogs";
+import { StayOriginPills, StayPendingCard } from "@/components/admin/StayOpsBlocks";
 
 const ROLES: UserRole[] = ["super_admin", "admin", "reception", "governance", "manager"];
 
@@ -60,8 +61,14 @@ function StayDetailInner() {
           back={{ href: "/admin/stays", label: "Estadias" }}
           icon={FileText}
           title={guest?.fullName || stay?.guestName || "Ficha da estadia"}
-          badge={st ? <Pill tone={st.tone} label={st.label} /> : undefined}
-          subtitle={stay ? <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", color: T.muted }}>Reserva {stay.accessCode}</span> : undefined}
+          badge={st && stay ? <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}><Pill tone={st.tone} label={st.label} /><StayOriginPills stay={stay} /></span> : undefined}
+          subtitle={stay ? (
+            <span style={{ color: T.muted }}>
+              <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>Reserva {stay.accessCode}</span>
+              {stay.externalId && <> · HUNIT <span style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{stay.externalId}</span></>}
+              {stay.createdAt && <> · criada em {new Date(stay.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })}</>}
+            </span>
+          ) : undefined}
           actions={isEditing ? <span className="ak-hide-mobile" style={{ display: "inline-flex", gap: 8 }}>{editActions}</span> : viewActions}
         />
       </div>
@@ -70,6 +77,7 @@ function StayDetailInner() {
         {stay && (
           <>
             <HeroStrip s={s} />
+            <StayPendingCard propertyId={stay.propertyId} stay={stay} active />
             <FolioCard s={s} />
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
               <GuestCard s={s} />

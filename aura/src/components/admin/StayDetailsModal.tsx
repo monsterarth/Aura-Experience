@@ -1,14 +1,18 @@
 // src/components/admin/StayDetailsModal.tsx
+//
+// FICHA RÁPIDA da estadia (reforma 08/2026) — o que a recepção precisa DE RELANCE:
+// datas, quem está na cabana (todos nomeados, pets incluídos), origem da reserva,
+// pendências operacionais (chave, empréstimos, concierge aberto) e a conta.
+// Detalhe fica na Ficha Completa (/admin/stays/[stayId]): FNRH, viagem, montagem
+// do quarto, endereço — nada disso mora aqui, de propósito.
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  X, Edit2, Save, Calendar, User,
-  MapPin, Phone, Mail, Car, FileText,
-  Users, CheckCircle, Clock, Plane,
-  Briefcase, PawPrint, Trash2, Plus,
-  LogIn, LogOut, RotateCcw, Sparkles, Receipt, RefreshCw, ShoppingCart, Coffee, BedDouble, ArrowRight, Search, UserRoundPen,
-  KeyRound, AlertTriangle, Package
+  X, Edit2, Save, Calendar, User, Phone, Users, CheckCircle, Clock, Car,
+  PawPrint, Trash2, LogIn, LogOut, RotateCcw, Sparkles, Receipt, RefreshCw,
+  ShoppingCart, BedDouble, ArrowRight, Search, UserRoundPen, KeyRound, Package,
+  FileText, ExternalLink, Plus,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -20,17 +24,19 @@ import { chatwootSyncOnCabinTransfer, chatwootSyncOnCheckIn, chatwootSyncOnCheck
 import { GuestService } from "@/services/guest-service";
 import { CabinService } from "@/services/cabin-service";
 import { ContactService } from "@/services/contact-service";
-import { FnrhService, FnrhDomain } from "@/services/fnrh-service";
-import { sanitizeDocumentForFnrh } from "@/lib/utils-checkin";
-import { cn } from "@/lib/utils";
 import { useCloseGuard } from "@/lib/use-discard-guard";
 import { Dialog } from "@/components/aura/Dialog";
 import { useConfirm } from "@/components/aura/ConfirmDialog";
-import { Button } from "@/components/aura/Button";
+import {
+  T, alpha, tone as toneOf, Button, IconButton, Pill, Card, SectionLabel,
+  Field, FieldRow, Input, Select,
+} from "@/components/aura";
 import { stayDisplayName } from "@/lib/stay-display";
+import { readPets } from "@/lib/pets";
 import { useFolio } from "./folio/useFolio";
 import { supabase } from "@/lib/supabase";
 import { extractTimeHHMM, combineDateAndTimeISO, DEFAULT_CHECK_IN_TIME, DEFAULT_CHECK_OUT_TIME } from "@/lib/stay-times";
+import { StayOriginPills, StayPendingCard } from "./StayOpsBlocks";
 import { Stay, Guest, Cabin } from "@/types/aura";
 
 interface StayDetailsModalProps {
@@ -42,54 +48,37 @@ interface StayDetailsModalProps {
   onUpdate?: () => void;
 }
 
+const STATUS: Record<string, { label: string; tone: "amber" | "blue" | "green" | "neutral" | "red" }> = {
+  pending: { label: "Pendente", tone: "amber" },
+  pre_checkin_done: { label: "Pré check-in OK", tone: "blue" },
+  active: { label: "Hospedado", tone: "green" },
+  finished: { label: "Encerrado", tone: "neutral" },
+  cancelled: { label: "Cancelado", tone: "red" },
+};
+const COMPANION_LABEL: Record<string, string> = { adult: "Adulto", child: "Criança", free: "Bebê", baby: "Bebê" };
+const COMPANION_TONE: Record<string, "brand" | "blue" | "orange"> = { adult: "brand", child: "blue", free: "orange", baby: "orange" };
 
 const formatDateForInput = (timestamp: any) => {
   if (!timestamp) return "";
   const d = new Date(timestamp);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
-
-const Label = ({ icon: Icon, children }: { icon: any, children: React.ReactNode }) => (
-  <label className="flex items-center gap-2 text-[10px] font-bold uppercase text-muted-foreground mb-1.5">
-    <Icon size={12} className="text-primary" /> {children}
-  </label>
-);
-
-const Input = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
-  <input
-    {...props}
-    className={cn(
-      "w-full bg-background border border-border rounded-xl p-2.5 text-foreground text-xs outline-none focus:border-primary/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed [color-scheme:light] dark:[color-scheme:dark]",
-      props.className
-    )}
-  />
-);
-
-const Select = ({ children, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) => (
-  <select
-    {...props}
-    className="w-full bg-background border border-border rounded-xl p-2.5 text-foreground text-xs outline-none focus:border-primary/50 transition-colors appearance-none disabled:opacity-50 disabled:cursor-not-allowed"
-  >
-    {children}
-  </select>
-);
 
 export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, onUpdate }: StayDetailsModalProps) {
   const { userData } = useAuth();
-
-  const isGovOnly = userData?.role === 'governance';
+  const isGovOnly = userData?.role === "governance";
 
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [checkOutModalOpen, setCheckOutModalOpen] = useState(false);
-  const [checkOutStep, setCheckOutStep] = useState<'key' | 'loaned'>('key');
-  const [keyLocation, setKeyLocation] = useState<'reception' | 'cabin' | null>(null);
+  const [checkOutStep, setCheckOutStep] = useState<"key" | "loaned">("key");
+  const [keyLocation, setKeyLocation] = useState<"reception" | "cabin" | null>(null);
   const [hasLoanedItems, setHasLoanedItems] = useState<boolean | null>(null);
   const [loanedItemsText, setLoanedItemsText] = useState("");
-  const [expandedArea, setExpandedArea] = useState<string | null>(null);
 
+  // Rascunho de edição — SÓ o que o modal edita (o resto é da Ficha Completa).
   const [formData, setFormData] = useState<Partial<Stay>>({});
-  const [guestData, setGuestData] = useState<Partial<Guest>>({});
+  const [phoneDraft, setPhoneDraft] = useState("");
   const [cabins, setCabins] = useState<Cabin[]>([]);
 
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
@@ -100,14 +89,6 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const [reassignResults, setReassignResults] = useState<Guest[]>([]);
   const [reassignLoading, setReassignLoading] = useState(false);
 
-  const [fnrhDomains, setFnrhDomains] = useState<{
-    generos: FnrhDomain[];
-    racas: FnrhDomain[];
-    transportes: FnrhDomain[];
-    motivos: FnrhDomain[];
-    tiposDocumento: FnrhDomain[];
-  } | null>(null);
-
   const [checkInStr, setCheckInStr] = useState("");
   const [checkOutStr, setCheckOutStr] = useState("");
   const [checkInTimeStr, setCheckInTimeStr] = useState("");
@@ -115,20 +96,14 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
   const isCoreFieldLocked = !isEditing || isGovOnly;
 
-  // ==========================================
-  // ESTADOS DO FOLIO (CONTA & CONSUMO)
-  // ==========================================
-  // O fólio (carga, realtime e lançamentos) vive no hook compartilhado — o modal
-  // da Conta usa exatamente o mesmo, para as duas telas não divergirem.
+  // Fólio (carga, realtime e lançamentos) — hook compartilhado com o modal da Conta.
   const folio = useFolio(stay?.propertyId, stay?.id, { id: userData?.id, name: userData?.fullName }, isOpen);
   const folioItems = folio.items;
   const loadFolio = folio.reload;
   const [savingFolio, setSavingFolio] = useState(false);
   const loadingFolio = folio.loading || savingFolio;
   const [newFolioItem, setNewFolioItem] = useState({ description: "", quantity: 1, unitPrice: 0 });
-  // kind: consumo (débito) ou pagamento (crédito) — fólio como extrato
   const [newFolioKind, setNewFolioKind] = useState<"debit" | "credit">("debit");
-  // Diária de estadia avulsa (sem orçamento do funil)
   const [rateInput, setRateInput] = useState("");
   const [savingRate, setSavingRate] = useState(false);
   // Esc fica de fora: este modal abre sub-modais (check-out, transferência).
@@ -138,71 +113,27 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   useEffect(() => {
     if (isOpen && stay?.propertyId) {
       CabinService.getCabinsByProperty(stay.propertyId).then(setCabins);
-      Promise.all([
-        FnrhService.getGeneros(),
-        FnrhService.getRacas(),
-        FnrhService.getMeiosTransporte(),
-        FnrhService.getMotivosViagem(),
-        FnrhService.getTiposDocumento()
-      ]).then(([generos, racas, transportes, motivos, tiposDocumento]) => {
-        setFnrhDomains({ generos, racas, transportes, motivos, tiposDocumento });
-      });
     }
   }, [isOpen, stay?.propertyId]);
 
   const initData = useCallback(() => {
-    if (stay) {
-      setCheckInStr(formatDateForInput(stay.checkIn));
-      setCheckOutStr(formatDateForInput(stay.checkOut));
-      setCheckInTimeStr(extractTimeHHMM(stay.checkIn) || DEFAULT_CHECK_IN_TIME);
-      setCheckOutTimeStr(extractTimeHHMM(stay.checkOut) || DEFAULT_CHECK_OUT_TIME);
-
-      setFormData({
-        cabinId: stay.cabinId,
-        expectedArrivalTime: stay.expectedArrivalTime || "",
-        roomSetup: stay.roomSetup || "double",
-        roomSetupNotes: stay.roomSetupNotes || "",
-        counts: stay.counts || { adults: 1, children: 0, babies: 0 },
-        vehiclePlate: stay.vehiclePlate || "",
-        travelReason: stay.travelReason || "Turismo",
-        transportation: stay.transportation || "Carro",
-        lastCity: stay.lastCity || "",
-        nextCity: stay.nextCity || "",
-        hasPet: stay.hasPet || false,
-        petDetails: stay.petDetails || { name: "", species: "Cachorro", weight: 0, breed: "" },
-        additionalGuests: stay.additionalGuests || [],
-        housekeepingItems: stay.housekeepingItems || [],
-        cestaBreakfastEnabled: stay.cestaBreakfastEnabled || false,
-        areaConfigs: stay.areaConfigs || []
-      });
-
-      // Uso da casa não tem titular — inicializa vazio para o modal abrir mesmo assim.
-      const g = guest ?? ({} as Partial<Guest>);
-      setGuestData({
-        fullName: g.fullName || "",
-        nationality: g.nationality || "Brasil",
-        document: g.document || { type: 'CPF', number: '' },
-        birthDate: g.birthDate || "",
-        gender: g.gender || "Outro",
-        raca: g.raca || "NAO_DECLARADO",
-        occupation: g.occupation || "",
-        email: g.email || "",
-        phone: g.phone || "",
-        address: g.address || {
-          street: "", number: "", neighborhood: "",
-          city: "", state: "", zipCode: "", country: "Brasil",
-          ibgeCityId: ""
-        }
-      });
-
-    }
+    if (!stay) return;
+    setCheckInStr(formatDateForInput(stay.checkIn));
+    setCheckOutStr(formatDateForInput(stay.checkOut));
+    setCheckInTimeStr(extractTimeHHMM(stay.checkIn) || DEFAULT_CHECK_IN_TIME);
+    setCheckOutTimeStr(extractTimeHHMM(stay.checkOut) || DEFAULT_CHECK_OUT_TIME);
+    setFormData({
+      cabinId: stay.cabinId,
+      expectedArrivalTime: stay.expectedArrivalTime || "",
+      counts: stay.counts || { adults: 1, children: 0, babies: 0 },
+      vehiclePlate: stay.vehiclePlate || "",
+    });
+    setPhoneDraft(guest?.phone || "");
   }, [stay, guest]);
 
-  useEffect(() => {
-    initData();
-  }, [initData]);
+  useEffect(() => { initData(); }, [initData]);
 
-  // Realtime: escuta mudanças na tabela stay_folio para esta estadia
+  // ── Fólio ──────────────────────────────────────────────────────────────────
   const handleAddFolioItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newFolioItem.description || newFolioItem.quantity <= 0 || newFolioItem.unitPrice < 0) {
@@ -215,16 +146,15 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     }
     setNewFolioItem({ description: "", quantity: 1, unitPrice: 0 });
     setNewFolioKind("debit");
-    if (onUpdate) onUpdate(); // Atualiza lista de estadias (para o ícone de alerta)
+    if (onUpdate) onUpdate();
   };
 
-  // Estadia avulsa: define a diária e já lança as noites vencidas
   const handleSetRate = async () => {
     const nightly = parseFloat(rateInput);
     if (!(nightly > 0)) return toast.error("Informe o valor da diária.");
     const nights = Math.max(1, Math.round(
       (new Date(stay.checkOut.slice(0, 10) + "T12:00:00").getTime() -
-       new Date(stay.checkIn.slice(0, 10) + "T12:00:00").getTime()) / 86400000
+        new Date(stay.checkIn.slice(0, 10) + "T12:00:00").getTime()) / 86400000
     ));
     setSavingRate(true);
     try {
@@ -232,7 +162,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
         stay.propertyId, stay.id, nightly, Math.round(nightly * nights * 100) / 100,
         userData?.id || "unknown", userData?.fullName || "Recepção"
       );
-      stay.nightlyRate = nightly; // reflete sem esperar reload do pai
+      stay.nightlyRate = nightly;
       stay.lodgingTotal = Math.round(nightly * nights * 100) / 100;
       toast.success(posted > 0
         ? `Diária definida — ${posted} noite(s) vencida(s) lançada(s).`
@@ -249,62 +179,28 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const handleDeleteFolioItem = async (itemId: string, description: string) => {
     if (!(await confirm({ title: "Estornar este lançamento?", description: "Remove “" + description + "” do fólio. O estorno fica registrado no histórico.", confirmLabel: "Estornar", tone: "danger" }))) return;
     await folio.remove(itemId, description);
-    if (onUpdate) onUpdate(); // Atualiza lista de estadias
+    if (onUpdate) onUpdate();
   };
 
-  // NOVA FUNÇÃO: Marcar como Pago / Pendente
   const handleToggleFolioStatus = async (itemId: string, currentStatus: string) => {
-    const newStatus = currentStatus === 'paid' ? 'pending' : 'paid';
+    const newStatus = currentStatus === "paid" ? "pending" : "paid";
     setSavingFolio(true);
     try {
       await StayService.toggleFolioItemStatus(
-        stay.propertyId, stay.id, itemId, newStatus as 'pending' | 'paid', userData?.id || "unknown", userData?.fullName || "Recepção"
+        stay.propertyId, stay.id, itemId, newStatus as "pending" | "paid", userData?.id || "unknown", userData?.fullName || "Recepção"
       );
-      toast.success(newStatus === 'paid' ? "Item baixado!" : "Item reaberto.");
+      toast.success(newStatus === "paid" ? "Item baixado!" : "Item reaberto.");
       void loadFolio();
-      if (onUpdate) onUpdate(); // Atualiza lista de estadias (para o ícone de alerta sumir se tudo for pago)
-    } catch (error) {
+      if (onUpdate) onUpdate();
+    } catch {
       toast.error("Erro ao atualizar status do item.");
     } finally {
       setSavingFolio(false);
     }
   };
 
-  const fetchAddressByCep = async (cep: string | undefined) => {
-    if (!cep) return;
-    const cleanCep = cep.replace(/\D/g, '');
-    if (cleanCep.length !== 8) return;
-
-    try {
-      const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.erro) {
-        toast.error("CEP não encontrado.");
-        return;
-      }
-
-      setGuestData((prev: any) => ({
-        ...prev,
-        address: {
-          ...prev.address,
-          street: data.logradouro || prev.address?.street || "",
-          neighborhood: data.bairro || prev.address?.neighborhood || "",
-          city: data.localidade || prev.address?.city || "",
-          state: data.uf || prev.address?.state || "",
-          country: "Brasil",
-          zipCode: data.cep || prev.address?.zipCode || "",
-          ibgeCityId: data.ibge || prev.address?.ibgeCityId || ""
-        }
-      }));
-      toast.success("Endereço preenchido com sucesso!");
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
+  // ── Alterar titular ────────────────────────────────────────────────────────
   const reassignDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   useEffect(() => {
     if (!stay?.propertyId) return;
     if (reassignDebounceRef.current) clearTimeout(reassignDebounceRef.current);
@@ -315,7 +211,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
         const results = await GuestService.listGuests(stay.propertyId, reassignSearch.trim());
         setReassignResults(results.filter(g => g.id !== guest?.id));
       } catch (err) {
-        console.error('[ReassignSearch]', err);
+        console.error("[ReassignSearch]", err);
         setReassignResults([]);
       } finally { setReassignLoading(false); }
     }, 300);
@@ -332,70 +228,49 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     setReassignResults([]);
   };
 
+  // ── Salvar (datas, cabana, pax, ETA, placa, telefone) ─────────────────────
   const handleSave = async () => {
-    // Detect cabin change before saving
     const cabinChanged = formData.cabinId !== stay.cabinId;
-    const isUnassigning = cabinChanged && !formData.cabinId; // was assigned, now null
-    const isTransferring = cabinChanged && !!formData.cabinId; // changed to a different cabin
+    const isUnassigning = cabinChanged && !formData.cabinId;
+    const isTransferring = cabinChanged && !!formData.cabinId;
 
-    if (isTransferring && stay.status === 'active') {
-      // Ask about old cabin fate before proceeding
+    if (isTransferring && stay.status === "active") {
       setPendingTransferCabinId(formData.cabinId!);
       setTransferDialogOpen(true);
       return;
     }
-
     await doSave(isTransferring ? formData.cabinId! : null, isUnassigning, null);
   };
 
-  const doSave = async (newCabinId: string | null, unassignCabin: boolean, oldCabinDisposition: 'cleaning' | 'available' | null) => {
-    const cleanHousekeeping = formData.housekeepingItems?.filter(i => i.label.trim() !== "") || [];
+  const doSave = async (newCabinId: string | null, unassignCabin: boolean, oldCabinDisposition: "cleaning" | "available" | null) => {
     setLoading(true);
     try {
       const parsedCheckIn = combineDateAndTimeISO(checkInStr, checkInTimeStr, DEFAULT_CHECK_IN_TIME);
       const parsedCheckOut = combineDateAndTimeISO(checkOutStr, checkOutTimeStr, DEFAULT_CHECK_OUT_TIME);
 
-      // Strip cabinId from general payload — transfer/unassign is handled separately
-      const { cabinId: _cabinId, ...restFormData } = formData;
-
-      const fnrhStayPayload: Partial<Stay> = {
-        ...restFormData,
-        housekeepingItems: cleanHousekeeping,
+      const stayPayload: Partial<Stay> = {
+        expectedArrivalTime: formData.expectedArrivalTime,
+        counts: formData.counts,
+        vehiclePlate: formData.vehiclePlate,
         checkIn: parsedCheckIn || stay.checkIn,
         checkOut: parsedCheckOut || stay.checkOut,
-        additionalGuests: formData.additionalGuests?.map(ag => ({
-          ...ag,
-          document: ag.document ? sanitizeDocumentForFnrh(ag.document) : ""
-        }))
       };
 
       const ops: Promise<any>[] = [
-        StayService.updateStayData(stay.propertyId, stay.id, fnrhStayPayload, userData?.id || "ADMIN", userData?.fullName || "Recepção"),
+        StayService.updateStayData(stay.propertyId, stay.id, stayPayload, userData?.id || "ADMIN", userData?.fullName || "Recepção"),
       ];
 
       // Uso da casa não tem titular — só sincroniza o hóspede quando ele existe.
-      if (guest) {
-        const fnrhGuestPayload: Partial<Guest> = {
-          id: guest.id,
-          ...guestData,
-          document: {
-            ...guestData.document!,
-            number: sanitizeDocumentForFnrh(guestData.document?.number)
-          }
-        };
-        ops.push(GuestService.upsertGuest(stay.propertyId, fnrhGuestPayload as Guest, userData?.id || "ADMIN", userData?.fullName || "Recepção"));
+      if (guest && phoneDraft !== (guest.phone || "")) {
+        ops.push(GuestService.upsertGuest(stay.propertyId, { ...guest, phone: phoneDraft } as Guest, userData?.id || "ADMIN", userData?.fullName || "Recepção"));
       }
 
-      // Handle unassign (remove cabin)
       if (unassignCabin) {
         ops.push(StayService.unassignCabin(stay.propertyId, stay.id, userData?.id || "ADMIN", userData?.fullName || "Recepção"));
-      }
-      // Handle cabin transfer separately
-      else if (newCabinId && oldCabinDisposition) {
+      } else if (newCabinId && oldCabinDisposition) {
         ops.push(StayService.transferCabin(stay.propertyId, stay.id, newCabinId, oldCabinDisposition, userData?.id || "ADMIN", userData?.fullName || "Recepção"));
-      } else if (newCabinId && stay.status !== 'active') {
-        // Pending stay: just reassign, no cabin status changes needed
-        ops.push(StayService.transferCabin(stay.propertyId, stay.id, newCabinId, 'available', userData?.id || "ADMIN", userData?.fullName || "Recepção"));
+      } else if (newCabinId && stay.status !== "active") {
+        ops.push(StayService.transferCabin(stay.propertyId, stay.id, newCabinId, "available", userData?.id || "ADMIN", userData?.fullName || "Recepção"));
       }
 
       await Promise.all(ops);
@@ -404,11 +279,10 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
         chatwootSyncOnCabinTransfer(stay.id, newCabinId).catch(() => {});
       }
 
-      // Migrate contact/messages if phone number changed
+      // Migra contato/mensagens se o telefone mudou.
       const oldPhone = guest?.phone || "";
-      const newPhone = guestData.phone || "";
-      if (guest && oldPhone && newPhone && ContactService.formatPhoneId(oldPhone) !== ContactService.formatPhoneId(newPhone)) {
-        await ContactService.migrateContactPhone(stay.propertyId, oldPhone, newPhone, guestData.fullName || guest.fullName || "", guest.id);
+      if (guest && oldPhone && phoneDraft && ContactService.formatPhoneId(oldPhone) !== ContactService.formatPhoneId(phoneDraft)) {
+        await ContactService.migrateContactPhone(stay.propertyId, oldPhone, phoneDraft, guest.fullName || "", guest.id);
       }
 
       toast.success("Ficha da hospedagem atualizada!");
@@ -417,9 +291,9 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
       if (onUpdate) onUpdate();
     } catch (error: any) {
       console.error(error);
-      const msg = error?.message ?? '';
-      if (msg.startsWith('CABIN_NOT_AVAILABLE')) {
-        const label = msg.split(':')[2] ?? 'indisponível';
+      const msg = error?.message ?? "";
+      if (msg.startsWith("CABIN_NOT_AVAILABLE")) {
+        const label = msg.split(":")[2] ?? "indisponível";
         toast.error(`Transferência bloqueada: acomodação ${label}. Verifique antes de prosseguir.`);
       } else {
         toast.error("Erro ao salvar alterações.");
@@ -429,6 +303,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     }
   };
 
+  // ── Check-in / Check-out ───────────────────────────────────────────────────
   const handleCheckIn = async () => {
     if (!(await confirm({ title: "Confirmar check-in?", description: "O hóspede entra na acomodação agora e a cabana passa a ocupada.", confirmLabel: "Fazer check-in" }))) return;
     setLoading(true);
@@ -439,15 +314,15 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
       if (onUpdate) onUpdate();
     } catch (error: any) {
       console.error(error);
-      const msg = error?.message ?? '';
-      if (msg.startsWith('CABIN_NOT_AVAILABLE')) {
+      const msg = error?.message ?? "";
+      if (msg.startsWith("CABIN_NOT_AVAILABLE")) {
         const statusMap: Record<string, string> = {
-          occupied: 'ocupada por outra estadia',
-          cleaning: 'em limpeza',
-          maintenance: 'em manutenção',
+          occupied: "ocupada por outra estadia",
+          cleaning: "em limpeza",
+          maintenance: "em manutenção",
         };
-        toast.error(`Check-in bloqueado: acomodação ${statusMap[msg.split(':')[1] ?? ''] ?? 'indisponível'}. Verifique antes de prosseguir.`);
-      } else if (msg.startsWith('CHECKIN_')) {
+        toast.error(`Check-in bloqueado: acomodação ${statusMap[msg.split(":")[1] ?? ""] ?? "indisponível"}. Verifique antes de prosseguir.`);
+      } else if (msg.startsWith("CHECKIN_")) {
         toast.error("Check-in não foi gravado. Nada foi alterado — tente novamente.");
       } else {
         toast.error("Erro ao realizar check-in.");
@@ -458,7 +333,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   };
 
   const handleToggleCheckOut = () => {
-    if (stay.status === 'active') {
+    if (stay.status === "active") {
       setKeyLocation(null);
       setCheckOutModalOpen(true);
     } else {
@@ -487,9 +362,8 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     setLoading(true);
     try {
       await StayService.performCheckOut(stay.propertyId, stay.id, userData?.id || "ADMIN", userData?.fullName || "Recepção", keyLocation);
-      // Save loaned items if informed
       if (hasLoanedItems && loanedItemsText.trim()) {
-        await supabase.from('stays').update({ loanedItems: loanedItemsText.trim() }).eq('id', stay.id);
+        await supabase.from("stays").update({ loanedItems: loanedItemsText.trim() }).eq("id", stay.id);
       }
       chatwootSyncOnCheckOut(stay.id).catch(() => {});
       toast.success("Check-out realizado com sucesso!");
@@ -499,40 +373,11 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
       toast.error("Erro ao realizar check-out.");
     } finally {
       setLoading(false);
-      // Reset state
-      setCheckOutStep('key');
+      setCheckOutStep("key");
       setKeyLocation(null);
       setHasLoanedItems(null);
       setLoanedItemsText("");
     }
-  };
-
-  const updateAdditionalGuest = (index: number, field: string, value: string) => {
-    const newGuests = [...(formData.additionalGuests || [])];
-    (newGuests[index] as any)[field] = value;
-    setFormData({ ...formData, additionalGuests: newGuests });
-  };
-  const removeAdditionalGuest = (index: number) => {
-    const newGuests = (formData.additionalGuests || []).filter((_, i) => i !== index);
-    setFormData({ ...formData, additionalGuests: newGuests });
-  };
-  const addAdditionalGuest = (type: 'adult' | 'child' | 'free') => {
-    const newGuests = [...(formData.additionalGuests || [])];
-    newGuests.push({ id: Date.now().toString(), type, fullName: "", document: "" });
-    setFormData({ ...formData, additionalGuests: newGuests });
-  };
-
-  const addStayHousekeepingItem = () => {
-    const newItems = [...(formData.housekeepingItems || []), { id: Date.now().toString(), label: "" }];
-    setFormData({ ...formData, housekeepingItems: newItems });
-  };
-  const updateStayHousekeepingItem = (id: string, label: string) => {
-    const newItems = (formData.housekeepingItems || []).map(i => i.id === id ? { ...i, label } : i);
-    setFormData({ ...formData, housekeepingItems: newItems });
-  };
-  const removeStayHousekeepingItem = (id: string) => {
-    const newItems = (formData.housekeepingItems || []).filter(i => i.id !== id);
-    setFormData({ ...formData, housekeepingItems: newItems });
   };
 
   const handleReassignGuest = async (newGuest: Guest) => {
@@ -551,437 +396,356 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     } finally { setLoading(false); }
   };
 
-  const statusMap: any = {
-    pending: { label: 'Pendente', class: 'text-yellow-600 border-yellow-600/30' },
-    pre_checkin_done: { label: 'Pré Check-in OK', class: 'text-blue-600 border-blue-600/30' },
-    active: { label: 'Hospedado', class: 'text-green-600 border-green-600/30' },
-    finished: { label: 'Encerrado', class: 'text-zinc-500 border-zinc-500/30' },
-    cancelled: { label: 'Cancelado', class: 'text-red-600 border-red-600/30' },
-  };
-  const currentStatus = statusMap[stay.status] || { label: stay.status, class: 'text-muted-foreground border-border' };
+  // ── Dados derivados da visão ───────────────────────────────────────────────
+  const st = STATUS[stay.status] ?? { label: stay.status, tone: "neutral" as const };
+  const { debits: folioDebits, credits: folioCredits, balance: folioBalance } = FinanceService.summarize(folioItems);
+  const companions = (stay.additionalGuests ?? []).filter(c => c.fullName?.trim() && c.fullName !== "ACOMPANHANTE");
+  const unnamedCompanions = (stay.additionalGuests ?? []).length - companions.length;
+  const pets = readPets(stay);
+  const counts = formData.counts ?? stay.counts ?? { adults: 1, children: 0, babies: 0 };
+  const nights = stay.checkIn && stay.checkOut
+    ? Math.max(1, Math.round((new Date(stay.checkOut.slice(0, 10) + "T12:00").getTime() - new Date(stay.checkIn.slice(0, 10) + "T12:00").getTime()) / 86400000))
+    : 0;
+  const totalPax = (counts.adults ?? 0) + (counts.children ?? 0) + (counts.babies ?? 0);
 
-  // Fólio como extrato: débitos (diárias + consumo) − créditos (pagamentos)
-  const { debits: folioDebits, credits: folioCredits, balance: folioBalance } =
-    FinanceService.summarize(folioItems);
-
-  const selectedCabin = cabins.find(c => c.id === (formData.cabinId || stay.cabinId));
-
-  const AreaSection = () => {
-    if (!selectedCabin?.layout?.length) return null;
-    const bedLabel = (b: any) => ({ single: "Solteiro", double: "Casal", sofa_bed: "Sofá-Cama" }[b.type as string] ?? b.label ?? "Extra") as string;
-    return (
-      <div className="space-y-2 pt-1">
-        {selectedCabin.layout.map((area: any) => {
-          const configs: any[][] = area.configs ?? (area.beds ? [area.beds] : [[]]);
-          const fixed = configs.length <= 1;
-          const selIdx = (formData.areaConfigs || []).find((ac: any) => ac.areaId === area.id)?.configIndex ?? 0;
-          return (
-            <div key={area.id} className="border border-border rounded-xl overflow-hidden">
-              <div className="flex items-center justify-between px-3 py-2 bg-secondary/50">
-                <span className="text-[10px] font-black uppercase tracking-widest text-primary">{area.name || area.type}</span>
-                {fixed && <span className="text-[9px] font-bold uppercase bg-primary/10 text-primary px-2 py-0.5 rounded">Padrão</span>}
-              </div>
-              {fixed ? (
-                <div className="px-3 py-2.5 flex flex-wrap gap-1.5">
-                  {(configs[0] || []).map((b: any) => (
-                    <span key={b.id} className="flex items-center gap-1 bg-background border border-border px-2.5 py-1 rounded-lg text-xs font-semibold">🛏 {bedLabel(b)}</span>
-                  ))}
-                </div>
-              ) : expandedArea === area.id ? (
-                <div className="p-2 flex flex-col gap-1.5">
-                  {configs.map((cfg, idx) => {
-                    const lbl = cfg.length ? cfg.map(bedLabel).join(" + ") : `Opção ${String.fromCharCode(65 + idx)}`;
-                    const sel = selIdx === idx;
-                    return (
-                      <button key={idx} type="button"
-                        onClick={() => { setFormData((p: any) => ({ ...p, areaConfigs: [...(p.areaConfigs || []).filter((ac: any) => ac.areaId !== area.id), { areaId: area.id, configIndex: idx }] })); setExpandedArea(null); }}
-                        className={cn("w-full px-3 py-2 rounded-lg border text-left text-xs font-bold transition-all flex items-center gap-2",
-                          sel ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border text-muted-foreground hover:border-primary/50")}>
-                        <span className={cn("w-3.5 h-3.5 rounded-full border-2 shrink-0 flex items-center justify-center", sel ? "border-primary-foreground" : "border-border")}>
-                          {sel && <span className="w-1.5 h-1.5 rounded-full bg-primary-foreground" />}
-                        </span>
-                        🛏 {lbl}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="px-3 py-2.5 flex items-center justify-between gap-2">
-                  <div className="flex flex-wrap gap-1.5">
-                    {(configs[selIdx] || configs[0] || []).map((b: any) => (
-                      <span key={b.id} className="flex items-center gap-1 bg-background border border-border px-2.5 py-1 rounded-lg text-xs font-semibold">🛏 {bedLabel(b)}</span>
-                    ))}
-                  </div>
-                  {isEditing && <button type="button" onClick={() => setExpandedArea(area.id)} className="shrink-0 px-2.5 py-1 bg-secondary border border-border rounded-lg text-xs font-bold uppercase text-primary hover:bg-accent transition-colors">Alterar</button>}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
+  const mono = "ui-monospace, SFMono-Regular, Menlo, monospace";
+  const cellLabel = (icon: React.ReactNode, label: string) => (
+    <SectionLabel style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+      <span style={{ color: T.brandText, opacity: .85, display: "inline-flex" }}>{icon}</span>{label}
+    </SectionLabel>
+  );
+  const big = (txt: React.ReactNode, isMono?: boolean) => (
+    <span style={{ fontSize: 17, fontWeight: 900, color: T.text, fontVariantNumeric: "tabular-nums", fontFamily: isMono ? mono : undefined }}>{txt}</span>
+  );
 
   return (
     <>
-    <Dialog open={isOpen} onClose={requestClose} presentation="auto" size="xl" rawBody hideClose panelProps={guardProps} ariaLabel="Ficha da hospedagem">
+      <Dialog open={isOpen} onClose={requestClose} presentation="auto" size="xl" rawBody hideClose panelProps={guardProps} ariaLabel="Ficha da hospedagem">
 
-        <header className="p-4 md:p-6 border-b border-border bg-secondary/50 flex flex-wrap justify-between items-center gap-3 shrink-0">
-          <div className="flex items-center gap-3 md:gap-4 min-w-0">
-            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black text-xl border border-primary/20 shadow-sm">
+        {/* ── Cabeçalho ── */}
+        <header style={{ padding: "16px 20px", borderBottom: `1px solid ${T.border}`, background: T.glass, display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 12, flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+            <div style={{ height: 46, width: 46, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 900, fontSize: 19, flexShrink: 0, boxShadow: `0 4px 14px ${alpha(T.g1, 30)}` }}>
               {stayDisplayName(stay, guest?.fullName).charAt(0) || "G"}
             </div>
-            <div>
-              <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
-                {stayDisplayName(stay, guest?.fullName)}
-                {stay.internalUse && (
-                  <span className="px-2 py-0.5 rounded-full text-[9px] uppercase font-black tracking-wider border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                    Uso da Casa
-                  </span>
-                )}
-                <span className={cn("px-2 py-0.5 rounded-full text-[9px] uppercase font-black tracking-wider border bg-background", currentStatus.class)}>
-                  {currentStatus.label}
-                </span>
-              </h2>
-              <p className="text-xs text-muted-foreground font-medium mt-0.5">Reserva: <span className="font-mono">{stay.accessCode}</span></p>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {stayDisplayName(stay, guest?.fullName)}
+                </h2>
+                <Pill tone={st.tone} dot label={st.label} />
+                <StayOriginPills stay={stay} />
+              </div>
+              <p style={{ margin: "3px 0 0", fontSize: 11.5, color: T.muted, fontWeight: 500 }}>
+                Reserva <span style={{ fontFamily: mono, fontWeight: 700, color: T.text }}>{stay.accessCode}</span>
+                {stay.groupId && <> · grupo <span style={{ fontFamily: mono }}>{stay.groupId}</span></>}
+                {stay.externalId && <> · HUNIT <span style={{ fontFamily: mono }}>{stay.externalId}</span></>}
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             {!isEditing ? (
               <>
-                {['pending', 'pre_checkin_done'].includes(stay.status) && (
-                  <button onClick={handleCheckIn} disabled={loading} className="px-4 py-2 bg-green-500/10 text-green-600 hover:bg-green-500 hover:text-white rounded-xl text-xs font-bold uppercase transition-all flex items-center gap-2">
-                    <LogIn size={16} /> Check-in
-                  </button>
+                {["pending", "pre_checkin_done"].includes(stay.status) && (
+                  <Button variant="soft" tone="green" icon={LogIn} onClick={handleCheckIn} disabled={loading}>Check-in</Button>
                 )}
-
-                {stay.status === 'active' && (
-                  <button onClick={handleToggleCheckOut} disabled={loading} className="px-4 py-2 bg-orange-500/10 text-orange-600 hover:bg-orange-500 hover:text-white rounded-xl text-xs font-bold uppercase transition-all flex items-center gap-2">
-                    <LogOut size={16} /> Check-out
-                  </button>
+                {stay.status === "active" && (
+                  <Button variant="soft" tone="orange" icon={LogOut} onClick={handleToggleCheckOut} disabled={loading}>Check-out</Button>
                 )}
-
-                {stay.status === 'finished' && (
-                  <button onClick={handleToggleCheckOut} disabled={loading} className="px-4 py-2 bg-blue-500/10 text-blue-600 hover:bg-blue-500 hover:text-white rounded-xl text-xs font-bold uppercase transition-all flex items-center gap-2">
-                    <RotateCcw size={16} /> Reativar
-                  </button>
+                {stay.status === "finished" && (
+                  <Button variant="soft" tone="blue" icon={RotateCcw} onClick={handleToggleCheckOut} disabled={loading}>Reativar</Button>
                 )}
-
-                <button onClick={() => setIsEditing(true)} className="px-4 py-2 hover:bg-accent rounded-xl text-muted-foreground hover:text-foreground transition-all flex items-center gap-2 text-xs font-bold uppercase">
-                  <Edit2 size={16} /> Editar
-                </button>
+                <Button variant="secondary" icon={Edit2} onClick={() => setIsEditing(true)}>Editar</Button>
               </>
             ) : (
               <>
-                <button onClick={handleCancel} className="px-4 py-2 hover:bg-accent rounded-xl text-muted-foreground hover:text-foreground text-xs font-bold uppercase transition-all">Cancelar</button>
-                <button onClick={handleSave} disabled={loading} className="px-6 py-2 bg-primary hover:opacity-90 text-primary-foreground rounded-xl text-xs font-bold uppercase flex items-center gap-2 transition-all active:scale-95 shadow-sm">
-                  {loading ? "Salvando..." : <><Save size={14} /> Salvar</>}
-                </button>
+                <Button variant="ghost" onClick={handleCancel}>Cancelar</Button>
+                <Button variant="primary" icon={Save} loading={loading} loadingText="Salvando…" onClick={handleSave}>Salvar</Button>
               </>
             )}
-            <button
-              type="button"
-              onClick={() => window.open(`/admin/stays/${stay.id}`, '_blank')}
-              className="px-4 py-2 bg-secondary hover:bg-accent rounded-xl text-xs font-bold uppercase flex items-center gap-2 text-foreground transition-all"
-            >
-              <FileText size={16} /> Ficha Completa
-            </button>
-            <button onClick={requestClose} className="p-3 hover:bg-destructive/10 hover:text-destructive text-muted-foreground rounded-xl transition-all"><X size={20} /></button>
+            <Button variant="secondary" icon={FileText} onClick={() => window.open(`/admin/stays/${stay.id}`, "_blank")}>Ficha Completa</Button>
+            <IconButton icon={X} label="Fechar" variant="ghost" onClick={requestClose} />
           </div>
         </header>
 
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain custom-scrollbar bg-background">
+        {/* ── Corpo ── */}
+        <div className="custom-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", background: T.bg, padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
 
-          {/* Top row: 2-col grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
-
-            {/* Left card: Datas & Acomodação */}
-            <div className="bg-card border border-border rounded-2xl overflow-hidden">
-              <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-secondary/40">
-                <Calendar size={13} className="text-primary" />
-                <span className="text-[11px] font-black uppercase tracking-widest text-foreground">Datas & Acomodação</span>
-              </div>
-              <div className="p-4 space-y-3">
-                {/* Check-in | Check-out (data + horário previsto) */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label icon={LogIn}>Check-in</Label>
-                    {isEditing ? (
-                      <div className="space-y-1.5">
-                        <Input disabled={isCoreFieldLocked} type="date" value={checkInStr} onChange={e => setCheckInStr(e.target.value)} />
-                        <Input disabled={isCoreFieldLocked} type="time" value={checkInTimeStr} onChange={e => setCheckInTimeStr(e.target.value)} />
-                      </div>
-                    ) : (
-                      <div className="text-foreground font-mono bg-secondary p-2 rounded-xl text-xs border border-border">
-                        {stay.checkIn ? format(new Date(stay.checkIn), "dd/MM/yy · HH:mm") : "—"}
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <Label icon={LogOut}>Check-out</Label>
-                    {isEditing ? (
-                      <div className="space-y-1.5">
-                        <Input disabled={isCoreFieldLocked} type="date" value={checkOutStr} onChange={e => setCheckOutStr(e.target.value)} />
-                        <Input disabled={isCoreFieldLocked} type="time" value={checkOutTimeStr} onChange={e => setCheckOutTimeStr(e.target.value)} />
-                      </div>
-                    ) : (
-                      <div className="text-foreground font-mono bg-secondary p-2 rounded-xl text-xs border border-border">
-                        {stay.checkOut ? format(new Date(stay.checkOut), "dd/MM/yy · HH:mm") : "—"}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Chegada prevista (ETA informada pelo hóspede — usada nas mensagens de early/late check-in) */}
-                <div>
-                  <Label icon={Plane}>Chegada Prevista</Label>
-                  {isEditing ? (
-                    <Input disabled={isCoreFieldLocked} type="time" value={formData.expectedArrivalTime} onChange={e => setFormData({ ...formData, expectedArrivalTime: e.target.value })} />
-                  ) : (
-                    <div className="text-foreground font-mono bg-secondary p-2 rounded-xl text-xs border border-border">
-                      {formData.expectedArrivalTime || "—"}
+          {/* Faixa-resumo: datas · pax · acomodação */}
+          <Card pad={0} style={{ overflow: "hidden" }}>
+            <div className="grid grid-cols-2 md:grid-cols-4" style={{ gap: 1, background: T.border }}>
+              {[
+                <div key="ci" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+                  {cellLabel(<LogIn size={10} />, "Check-in")}
+                  {isCoreFieldLocked ? big(stay.checkIn ? format(new Date(stay.checkIn), "dd/MM/yy · HH:mm") : "—", true) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <Input type="date" fieldSize="sm" value={checkInStr} onChange={e => setCheckInStr(e.target.value)} />
+                      <Input type="time" fieldSize="sm" value={checkInTimeStr} onChange={e => setCheckInTimeStr(e.target.value)} />
                     </div>
                   )}
-                </div>
-
-                {/* Acomodação */}
-                <div>
-                  <Label icon={BedDouble}>Acomodação</Label>
-                  {isEditing ? (
-                    <Select disabled={isCoreFieldLocked} value={formData.cabinId ?? ''} onChange={e => setFormData({ ...formData, cabinId: e.target.value || null })}>
+                </div>,
+                <div key="co" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+                  {cellLabel(<LogOut size={10} />, "Check-out")}
+                  {isCoreFieldLocked ? big(stay.checkOut ? format(new Date(stay.checkOut), "dd/MM/yy · HH:mm") : "—", true) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <Input type="date" fieldSize="sm" value={checkOutStr} onChange={e => setCheckOutStr(e.target.value)} />
+                      <Input type="time" fieldSize="sm" value={checkOutTimeStr} onChange={e => setCheckOutTimeStr(e.target.value)} />
+                    </div>
+                  )}
+                  <span style={{ fontSize: 11, color: T.muted }}>{nights} noite{nights !== 1 ? "s" : ""}</span>
+                </div>,
+                <div key="pax" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+                  {cellLabel(<Users size={10} />, "Ocupação")}
+                  {isCoreFieldLocked ? (
+                    big(`${counts.adults ?? 1}A · ${counts.children ?? 0}C${(counts.babies ?? 0) > 0 ? ` · ${counts.babies}B` : ""}`)
+                  ) : (
+                    <div style={{ display: "flex", gap: 6 }}>
+                      {([["adults", "Ad", 1], ["children", "Cr", 0], ["babies", "Bb", 0]] as [keyof typeof counts, string, number][]).map(([key, lbl, min]) => (
+                        <label key={key} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, fontSize: 9, fontWeight: 800, textTransform: "uppercase", color: T.muted }}>
+                          <Input type="number" min={min} fieldSize="sm" style={{ width: 50, textAlign: "center" }} value={counts[key] ?? min}
+                            onChange={e => setFormData(p => ({ ...p, counts: { ...(p.counts ?? counts), [key]: Math.max(min, +e.target.value) } as Stay["counts"] }))} />
+                          {lbl}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  <span style={{ fontSize: 11, color: T.muted }}>{totalPax} hóspede{totalPax !== 1 ? "s" : ""}{pets.length > 0 ? ` + ${pets.length} pet${pets.length > 1 ? "s" : ""}` : ""}</span>
+                </div>,
+                <div key="cab" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+                  {cellLabel(<BedDouble size={10} />, "Acomodação")}
+                  {isCoreFieldLocked ? big(stay.cabinName || cabins.find(c => c.id === stay.cabinId)?.name || "Sem cabana") : (
+                    <Select fieldSize="sm" value={formData.cabinId ?? ""} onChange={e => setFormData({ ...formData, cabinId: e.target.value || null })}>
                       <option value="">— Sem cabana —</option>
                       {cabins.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </Select>
-                  ) : (
-                    <div className="text-foreground font-bold p-2 bg-secondary rounded-xl border border-border text-sm">{stay.cabinName}</div>
                   )}
-                </div>
+                </div>,
+              ].map((node, i) => <div key={i} style={{ background: T.card, minWidth: 0 }}>{node}</div>)}
+            </div>
 
-                {/* Cabin History */}
-                {stay.cabinHistory && stay.cabinHistory.length > 0 && (
-                  <div className="mt-2 p-3 bg-secondary/50 rounded-xl border border-border space-y-1.5">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-foreground/40 mb-1">Histórico de Acomodações</p>
-                    {stay.cabinHistory.map((entry, idx) => {
-                      const cabinName = cabins.find(c => c.id === entry.cabinId)?.name || "Cabana";
-                      return (
-                        <div key={idx} className="flex items-center gap-2 text-xs text-foreground/60">
-                          <BedDouble size={12} className="shrink-0 text-foreground/30" />
-                          <span className="font-semibold">{cabinName}</span>
-                          <span className="text-foreground/30">
-                            {format(new Date(entry.from), "dd/MM")} — {format(new Date(entry.to), "dd/MM")}
+            {/* Linha secundária: ETA · placa · histórico de cabanas */}
+            <div style={{ borderTop: `1px solid ${T.border}`, padding: "10px 14px", display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", background: T.card }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: T.muted }}>
+                <Clock size={12} style={{ color: T.brandText }} />
+                Chegada prevista:{" "}
+                {isCoreFieldLocked ? (
+                  <b style={{ color: T.text, fontFamily: mono }}>{stay.expectedArrivalTime || "—"}</b>
+                ) : (
+                  <Input type="time" fieldSize="sm" style={{ width: 96 }} value={formData.expectedArrivalTime ?? ""} onChange={e => setFormData({ ...formData, expectedArrivalTime: e.target.value })} />
+                )}
+              </span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: T.muted }}>
+                <Car size={12} style={{ color: T.brandText }} />
+                Placa:{" "}
+                {isCoreFieldLocked ? (
+                  <b style={{ color: T.text, fontFamily: mono }}>{stay.vehiclePlate || "—"}</b>
+                ) : (
+                  <Input fieldSize="sm" style={{ width: 110, textTransform: "uppercase" }} placeholder="ABC1D23" value={formData.vehiclePlate ?? ""} onChange={e => setFormData({ ...formData, vehiclePlate: e.target.value.toUpperCase() })} />
+                )}
+              </span>
+              {(stay.cabinHistory?.length ?? 0) > 0 && (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: T.muted, minWidth: 0 }}>
+                  <ArrowRight size={12} style={{ color: T.brandText }} />
+                  {stay.cabinHistory!.map(h => cabins.find(c => c.id === h.cabinId)?.name?.split(" - ")[0] ?? "?").join(" → ")}
+                  {" → "}<b style={{ color: T.text }}>{(stay.cabinName || cabins.find(c => c.id === stay.cabinId)?.name || "atual").split(" - ")[0]}</b>
+                </span>
+              )}
+            </div>
+          </Card>
+
+          {/* Quem está na cabana · Pendências */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+            <Card header={{
+              icon: Users, tone: "brand", title: "Quem está na cabana",
+              sub: `${totalPax} hóspede${totalPax !== 1 ? "s" : ""}${pets.length > 0 ? ` · ${pets.length} pet${pets.length > 1 ? "s" : ""}` : ""}`,
+              aside: isEditing && !isGovOnly && guest ? (
+                <Button size="sm" variant={showReassign ? "primary" : "soft"} icon={UserRoundPen} onClick={() => setShowReassign(!showReassign)}>Alterar titular</Button>
+              ) : undefined,
+            }}>
+              {showReassign ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ position: "relative" }}>
+                    <Search size={14} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: T.muted }} />
+                    <Input autoFocus value={reassignSearch} onChange={e => setReassignSearch(e.target.value)} placeholder="Buscar por nome, documento, email…" style={{ paddingLeft: 34 }} />
+                  </div>
+                  {reassignLoading && <p style={{ margin: 0, fontSize: 11, color: T.muted, textAlign: "center" }}>Buscando…</p>}
+                  {!reassignLoading && reassignSearch.trim().length >= 2 && reassignResults.length === 0 && (
+                    <p style={{ margin: 0, fontSize: 11, color: T.muted, textAlign: "center" }}>Nenhum hóspede encontrado.</p>
+                  )}
+                  {reassignResults.length > 0 && (
+                    <div className="custom-scrollbar" style={{ maxHeight: 176, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+                      {reassignResults.slice(0, 8).map(g => (
+                        <button key={g.id} type="button" className="ak-press" onClick={() => handleReassignGuest(g)}
+                          style={{ display: "flex", alignItems: "center", gap: 10, padding: 10, borderRadius: 12, border: `1px solid ${T.border}`, background: T.glass, cursor: "pointer", textAlign: "left", fontFamily: "inherit" }}>
+                          <span style={{ height: 30, width: 30, borderRadius: "50%", background: T.glass2, border: `1px solid ${T.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: T.muted, flexShrink: 0 }}>
+                            {g.fullName?.charAt(0) || "?"}
                           </span>
-                          <ArrowRight size={10} className="text-foreground/20" />
-                        </div>
-                      );
-                    })}
-                    <div className="flex items-center gap-2 text-xs text-foreground">
-                      <BedDouble size={12} className="shrink-0 text-primary" />
-                      <span className="font-bold">{stay.cabinName || cabins.find(c => c.id === stay.cabinId)?.name || "Atual"}</span>
-                      <span className="text-foreground/50">
-                        {format(new Date(stay.cabinHistory[stay.cabinHistory.length - 1].to), "dd/MM")} — atual
+                          <span style={{ minWidth: 0 }}>
+                            <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.fullName}</span>
+                            <span style={{ display: "block", fontSize: 10.5, color: T.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.document?.type}: {g.document?.number}{g.phone ? ` · ${g.phone}` : ""}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <p style={{ margin: 0, fontSize: 10.5, color: T.muted2, lineHeight: 1.5 }}>
+                    Selecione um hóspede já cadastrado para substituir o titular. As demais reservas do grupo não são afetadas.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {/* Titular */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 10, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+                    <Pill tone="brand" icon={User} label="Titular" />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 13.5, fontWeight: 800, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {guest?.fullName || stay.internalLabel || "—"}
+                      </span>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: T.muted, fontFamily: mono }}>
+                        <Phone size={10} />
+                        {isEditing && !isGovOnly && guest ? (
+                          <Input fieldSize="sm" style={{ width: 160 }} value={phoneDraft} onChange={e => setPhoneDraft(e.target.value)} inputMode="tel" />
+                        ) : (guest?.phone || "—")}
                       </span>
                     </div>
+                    {guest?.id && (
+                      <Button size="sm" variant="ghost" iconRight={ExternalLink} onClick={() => (onViewGuest ? onViewGuest(guest.id) : window.open(`/admin/guests?id=${guest.id}`, "_blank"))}>Ver hóspede</Button>
+                    )}
                   </div>
-                )}
 
-                {/* AreaSection */}
-                <AreaSection />
-              </div>
-            </div>
-
-            {/* Right card: Titular */}
-            <div className="bg-card border border-border rounded-2xl overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-secondary/40">
-                <div className="flex items-center gap-2">
-                  <User size={13} className="text-primary" />
-                  <span className="text-[11px] font-black uppercase tracking-widest text-foreground">Titular</span>
-                </div>
-                {isEditing && !isGovOnly && (
-                  <button
-                    type="button"
-                    onClick={() => setShowReassign(!showReassign)}
-                    className={cn(
-                      "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase transition-all",
-                      showReassign
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-primary/10 text-primary hover:bg-primary/20"
-                    )}
-                  >
-                    <UserRoundPen size={12} /> Alterar Titular
-                  </button>
-                )}
-              </div>
-              <div className="p-4 space-y-3">
-                {showReassign ? (
-                  <div className="space-y-3">
-                    <div className="relative">
-                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                      <input
-                        autoFocus
-                        value={reassignSearch}
-                        onChange={e => setReassignSearch(e.target.value)}
-                        placeholder="Buscar por nome, documento, email..."
-                        className="w-full bg-background border border-border rounded-xl pl-9 pr-3 py-2.5 text-xs outline-none focus:border-primary/50 transition-colors"
-                      />
-                    </div>
-                    {reassignLoading && <p className="text-[11px] text-muted-foreground text-center py-2">Buscando...</p>}
-                    {!reassignLoading && reassignSearch.trim().length >= 2 && reassignResults.length === 0 && (
-                      <p className="text-[11px] text-muted-foreground text-center py-2">Nenhum hóspede encontrado.</p>
-                    )}
-                    {reassignResults.length > 0 && (
-                      <div className="max-h-40 overflow-y-auto space-y-1 custom-scrollbar">
-                        {reassignResults.slice(0, 8).map(g => (
-                          <button
-                            key={g.id}
-                            type="button"
-                            onClick={() => handleReassignGuest(g)}
-                            className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-primary/5 border border-transparent hover:border-primary/20 transition-all text-left"
-                          >
-                            <div className="h-8 w-8 rounded-full bg-secondary flex items-center justify-center text-xs font-bold text-foreground/60 shrink-0">
-                              {g.fullName?.charAt(0) || "?"}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-xs font-semibold text-foreground truncate">{g.fullName}</p>
-                              <p className="text-[10px] text-muted-foreground truncate">{g.document?.type}: {g.document?.number}{g.phone ? ` · ${g.phone}` : ""}</p>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
-                      Selecione um hóspede já cadastrado para substituir o titular desta reserva. As demais reservas do grupo não serão afetadas.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div>
-                      <p className="font-bold text-foreground text-sm">{guestData.fullName || "—"}</p>
-                    </div>
-                    <div>
-                      <Label icon={Phone}>WhatsApp</Label>
-                      {isEditing ? (
-                        <Input disabled={isCoreFieldLocked} value={guestData.phone} onChange={e => setGuestData({ ...guestData, phone: e.target.value })} />
-                      ) : (
-                        <p className="text-sm text-foreground">{guestData.phone || "—"}</p>
+                  {/* Acompanhantes */}
+                  <SectionLabel>Acompanhantes</SectionLabel>
+                  {companions.length === 0 && unnamedCompanions <= 0 ? (
+                    <div style={{ padding: 12, textAlign: "center", border: `1px dashed ${T.border2}`, borderRadius: 12, color: T.muted2, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: ".06em" }}>Sem acompanhantes</div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {companions.map((c, idx) => (
+                        <div key={c.id ?? idx} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+                          <Pill tone={COMPANION_TONE[c.type] ?? "brand"} label={COMPANION_LABEL[c.type] ?? c.type} />
+                          <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 600, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {c.fullName}{c.document && <span style={{ color: T.muted, fontWeight: 500 }}> · {c.document}</span>}
+                          </span>
+                        </div>
+                      ))}
+                      {unnamedCompanions > 0 && (
+                        <div style={{ padding: "8px 10px", border: `1px dashed ${T.border2}`, borderRadius: 12, color: T.muted, fontSize: 11.5 }}>
+                          + {unnamedCompanions} acompanhante{unnamedCompanions > 1 ? "s" : ""} ainda sem nome — preenchido no pré-check-in ou na Ficha Completa.
+                        </div>
                       )}
                     </div>
-                    {guest?.id && (
-                      <button
-                        type="button"
-                        onClick={() => window.open(`/admin/guests?id=${guest.id}`, '_blank')}
-                        className="inline-flex items-center gap-1.5 text-[11px] font-bold text-primary hover:underline"
-                      >
-                        Ver Hóspede →
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
+                  )}
+
+                  {/* Pets */}
+                  {pets.length > 0 && (
+                    <>
+                      <SectionLabel style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><PawPrint size={10} color={T.orange} /> Pets</SectionLabel>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {pets.map((p, i) => (
+                          <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 999, background: T.orangeBg, border: `1px solid ${T.orangeBorder}`, fontSize: 12, fontWeight: 700, color: T.orange }}>
+                            <PawPrint size={11} />
+                            {p.name || "Pet"}
+                            <span style={{ color: T.muted, fontWeight: 500 }}>· {p.species}{p.weight ? ` · ${p.weight}kg` : ""}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {isEditing && (
+                    <p style={{ margin: 0, fontSize: 10.5, color: T.muted2 }}>Acompanhantes, pets e dados FNRH são editados na <b>Ficha Completa</b>.</p>
+                  )}
+                </div>
+              )}
+            </Card>
+
+            <StayPendingCard propertyId={stay.propertyId} stay={stay} active={isOpen} />
           </div>
 
-          {/* Full-width: Conta & Consumo */}
-          <div className="px-4 pb-4">
-            <div className="bg-card border border-border rounded-2xl overflow-hidden">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-secondary/40">
-                <div className="flex items-center gap-2">
-                  <Receipt size={13} className="text-primary" />
-                  <span className="text-[11px] font-black uppercase tracking-widest text-foreground">Conta & Consumo</span>
+          {/* Conta & consumo */}
+          <Card pad={0} header={{
+            icon: Receipt, tone: "brand", title: "Conta & consumo",
+            sub: `${folioItems.length} lançamento${folioItems.length === 1 ? "" : "s"}`,
+            aside: (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 14 }}>
+                <span style={{ textAlign: "right", lineHeight: 1.15 }}>
+                  <span style={{ display: "block", fontSize: 9, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: T.muted }}>Débitos</span>
+                  <span style={{ display: "block", fontSize: 13, fontWeight: 900, color: T.text, fontVariantNumeric: "tabular-nums" }}>R$ {folioDebits.toFixed(2)}</span>
+                </span>
+                <span style={{ textAlign: "right", lineHeight: 1.15 }}>
+                  <span style={{ display: "block", fontSize: 9, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: T.muted }}>Créditos</span>
+                  <span style={{ display: "block", fontSize: 13, fontWeight: 900, color: T.green, fontVariantNumeric: "tabular-nums" }}>R$ {folioCredits.toFixed(2)}</span>
+                </span>
+                <span style={{ textAlign: "right", lineHeight: 1.15 }}>
+                  <span style={{ display: "block", fontSize: 9, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: T.muted }}>Saldo</span>
+                  <span style={{ display: "block", fontSize: 15, fontWeight: 900, color: folioBalance > 0.009 ? T.red : T.green, fontVariantNumeric: "tabular-nums" }}>R$ {folioBalance.toFixed(2)}</span>
+                </span>
+                <IconButton icon={RefreshCw} label="Atualizar extrato" size="sm" onClick={() => void loadFolio()} loading={loadingFolio} />
+              </span>
+            ),
+          }}>
+            <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+              {/* Hospedagem: diária vinculada (funil/canal) ou definida à mão (avulsa) */}
+              {Number(stay.nightlyRate) > 0 ? (
+                <LodgingPanel
+                  propertyId={stay.propertyId}
+                  stayId={stay.id}
+                  onChanged={() => { loadFolio(); if (onUpdate) onUpdate(); }}
+                />
+              ) : !isGovOnly && (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "8px 12px", borderRadius: 12, background: T.glass, border: `1px dashed ${T.border2}`, fontSize: 12 }}>
+                  <SectionLabel style={{ margin: 0 }}>Diária</SectionLabel>
+                  <span style={{ color: T.muted }} className="ak-hide-mobile">Estadia sem valor de hospedagem —</span>
+                  <Input type="number" step="0.01" min={0} placeholder="R$ / noite" fieldSize="sm" style={{ width: 110 }} value={rateInput} onChange={e => setRateInput(e.target.value)} inputMode="decimal" />
+                  <Button size="sm" variant="primary" loading={savingRate} onClick={handleSetRate}>Ativar diárias</Button>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <p className="text-[9px] font-bold uppercase text-muted-foreground">Débitos</p>
-                    <p className="text-sm font-black text-foreground leading-none">R$ {folioDebits.toFixed(2)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[9px] font-bold uppercase text-muted-foreground">Créditos</p>
-                    <p className="text-sm font-black text-green-500 leading-none">R$ {folioCredits.toFixed(2)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[9px] font-bold uppercase text-muted-foreground">Saldo</p>
-                    <p className={cn("text-base font-black leading-none",
-                      folioBalance > 0.009 ? "text-red-500" : "text-green-500")}>
-                      R$ {folioBalance.toFixed(2)}
-                    </p>
-                  </div>
-                  <button onClick={loadFolio} disabled={loadingFolio} className="p-1.5 rounded-lg bg-secondary hover:bg-accent transition-all disabled:opacity-50">
-                    <RefreshCw size={13} className={loadingFolio ? "animate-spin" : ""} />
-                  </button>
-                </div>
-              </div>
-              <div className="p-4 space-y-3">
-                {/* Hospedagem: diária vinculada (funil) ou definida à mão (avulsa) */}
-                {Number(stay.nightlyRate) > 0 ? (
-                  <LodgingPanel
-                    propertyId={stay.propertyId}
-                    stayId={stay.id}
-                    onChanged={() => { loadFolio(); if (onUpdate) onUpdate(); }}
-                  />
-                ) : !isGovOnly && (
-                  <div className="flex items-center gap-2 text-xs bg-secondary/60 border border-dashed border-border rounded-xl px-3 py-2">
-                    <span className="font-bold text-muted-foreground uppercase text-[9px] tracking-widest shrink-0">Diária</span>
-                    <span className="text-muted-foreground hidden sm:inline">Estadia sem valor de hospedagem —</span>
-                    <input type="number" step="0.01" min="0" placeholder="R$ / noite" value={rateInput}
-                      onChange={e => setRateInput(e.target.value)}
-                      className="w-28 bg-background border border-border px-2 py-1.5 rounded-lg text-xs outline-none focus:border-primary text-foreground" />
-                    <button type="button" onClick={handleSetRate} disabled={savingRate}
-                      className="px-3 py-1.5 bg-primary text-primary-foreground font-black text-[9px] uppercase tracking-widest rounded-lg hover:opacity-90 disabled:opacity-50">
-                      {savingRate ? "..." : "Ativar diárias"}
-                    </button>
-                  </div>
-                )}
+              )}
 
-                <div className="flex gap-4 items-start flex-col xl:flex-row">
-                  <div className="flex-1 min-w-0 border border-border rounded-xl overflow-hidden">
-                    <table className="w-full text-left">
-                      <thead className="bg-secondary/50 border-b border-border">
+              <div className="flex flex-col xl:flex-row gap-4 items-start">
+                <div style={{ flex: 1, minWidth: 0, width: "100%", border: `1px solid ${T.border}`, borderRadius: 14, overflow: "hidden" }}>
+                  <div style={{ overflowX: "auto" }}>
+                    <table style={{ width: "100%", textAlign: "left", borderCollapse: "collapse" }}>
+                      <thead style={{ background: T.glass, borderBottom: `1px solid ${T.border}` }}>
                         <tr>
-                          <th className="px-4 py-2.5 text-[10px] font-bold uppercase text-muted-foreground">Item / Descrição</th>
-                          <th className="px-3 py-2.5 text-[10px] font-bold uppercase text-muted-foreground text-center w-14">Qtd</th>
-                          <th className="px-3 py-2.5 text-[10px] font-bold uppercase text-muted-foreground text-right w-20">Unit.</th>
-                          <th className="px-3 py-2.5 text-[10px] font-bold uppercase text-muted-foreground text-right w-24">Total</th>
-                          {!isGovOnly && <th className="w-10" />}
+                          {["Item / descrição", "Qtd", "Unit.", "Total", ""].map((h, i) => (
+                            (i < 4 || !isGovOnly) && <th key={i} style={{ padding: "9px 12px", fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: T.muted, textAlign: i >= 1 && i <= 3 ? (i === 1 ? "center" : "right") : "left", whiteSpace: "nowrap" }}>{h}</th>
+                          ))}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-border">
+                      <tbody>
                         {folioItems.length === 0 ? (
-                          <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground text-sm">Nenhum consumo registrado nesta estadia.</td></tr>
+                          <tr><td colSpan={5} style={{ padding: "28px 16px", textAlign: "center", color: T.muted, fontSize: 13 }}>Nenhum consumo registrado nesta estadia.</td></tr>
                         ) : folioItems.map(item => (
-                          <tr key={item.id} className={cn("hover:bg-muted/20 transition-colors text-sm", item.status === "paid" && "opacity-50")}>
-                            <td className="px-4 py-3 font-semibold text-foreground">
-                              <div className="flex items-center gap-2.5">
+                          <tr key={item.id} style={{ borderTop: `1px solid ${T.border}`, opacity: item.status === "paid" ? .55 : 1 }}>
+                            <td style={{ padding: "10px 12px" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                                 {!isGovOnly && (
-                                  <button onClick={() => handleToggleFolioStatus(item.id, item.status || "pending")}
-                                    className={cn("w-4 h-4 rounded flex items-center justify-center border transition-all shrink-0",
-                                      item.status === "paid" ? "bg-green-500 border-green-500 text-white" : "border-border hover:border-primary")}>
-                                    {item.status === "paid" && <CheckCircle size={12} strokeWidth={3} />}
+                                  <button onClick={() => handleToggleFolioStatus(item.id, item.status || "pending")} className="ak-press"
+                                    style={{ width: 17, height: 17, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer", background: item.status === "paid" ? T.green : "transparent", border: `1.5px solid ${item.status === "paid" ? T.green : T.border2}`, color: "#fff", padding: 0 }}
+                                    title={item.status === "paid" ? "Reabrir" : "Marcar como pago"}>
+                                    {item.status === "paid" && <CheckCircle size={11} strokeWidth={3} />}
                                   </button>
                                 )}
-                                <div>
-                                  <span className={item.status === "paid" && item.type !== "credit" ? "line-through text-muted-foreground" : ""}>
+                                <div style={{ minWidth: 0 }}>
+                                  <span style={{ fontSize: 13, fontWeight: 700, color: item.status === "paid" && item.type !== "credit" ? T.muted : T.text, textDecoration: item.status === "paid" && item.type !== "credit" ? "line-through" : "none" }}>
                                     {item.description}
-                                    {item.category === "lodging" && (
-                                      <span className="ml-1.5 text-[8px] font-black uppercase bg-primary/10 text-primary px-1.5 py-0.5 rounded">Diária</span>
-                                    )}
-                                    {item.type === "credit" && (
-                                      <span className="ml-1.5 text-[8px] font-black uppercase bg-green-500/10 text-green-500 px-1.5 py-0.5 rounded">Crédito</span>
-                                    )}
+                                    {item.category === "lodging" && <Pill tone="brand" label="Diária" style={{ marginLeft: 6 }} />}
+                                    {item.type === "credit" && <Pill tone="green" label="Crédito" style={{ marginLeft: 6 }} />}
                                   </span>
-                                  <p className="text-[10px] text-muted-foreground font-normal mt-0.5 flex items-center gap-1">
+                                  <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: T.muted, marginTop: 2 }}>
                                     <Clock size={9} /> {item.createdAt ? format(new Date(item.createdAt), "dd/MM HH:mm") : "—"}
-                                  </p>
+                                  </span>
                                 </div>
                               </div>
                             </td>
-                            <td className="px-3 py-3 text-center text-muted-foreground font-medium">{item.quantity}×</td>
-                            <td className="px-3 py-3 text-right text-muted-foreground">R$ {item.unitPrice.toFixed(2)}</td>
-                            <td className={cn("px-3 py-3 text-right font-black", item.type === "credit" && "text-green-500")}>
+                            <td style={{ padding: "10px 8px", textAlign: "center", color: T.muted, fontWeight: 600, fontSize: 12.5, whiteSpace: "nowrap" }}>{item.quantity}×</td>
+                            <td style={{ padding: "10px 8px", textAlign: "right", color: T.muted, fontSize: 12.5, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>R$ {item.unitPrice.toFixed(2)}</td>
+                            <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: 900, fontSize: 12.5, whiteSpace: "nowrap", color: item.type === "credit" ? T.green : T.text, fontVariantNumeric: "tabular-nums" }}>
                               {item.type === "credit" ? "−" : ""}R$ {item.totalPrice.toFixed(2)}
                             </td>
                             {!isGovOnly && (
-                              <td className="pr-3 py-3 text-right">
-                                <button onClick={() => handleDeleteFolioItem(item.id, item.description)} className="p-1.5 text-destructive/60 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"><Trash2 size={13} /></button>
+                              <td style={{ padding: "10px 10px 10px 0", textAlign: "right" }}>
+                                <IconButton icon={Trash2} label={`Estornar ${item.description}`} size="sm" variant="ghost" tone="red" onClick={() => handleDeleteFolioItem(item.id, item.description)} />
                               </td>
                             )}
                           </tr>
@@ -989,189 +753,169 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                       </tbody>
                     </table>
                   </div>
-
-                  {!isGovOnly && (
-                    <form onSubmit={handleAddFolioItem} className="xl:w-60 w-full bg-secondary/50 border border-border p-4 rounded-xl space-y-3 shrink-0">
-                      <h4 className="font-bold flex items-center gap-1.5 text-[11px] uppercase tracking-widest text-primary"><ShoppingCart size={13} /> Lançamento</h4>
-                      <div className="grid grid-cols-2 gap-1 p-1 bg-background border border-border rounded-xl">
-                        <button type="button" onClick={() => setNewFolioKind("debit")}
-                          className={cn("py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
-                            newFolioKind === "debit" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
-                          Consumo
-                        </button>
-                        <button type="button" onClick={() => setNewFolioKind("credit")}
-                          className={cn("py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all",
-                            newFolioKind === "credit" ? "bg-green-500 text-white" : "text-muted-foreground hover:text-foreground")}>
-                          Pagamento
-                        </button>
-                      </div>
-                      <div>
-                        <label className="text-[9px] font-bold uppercase text-muted-foreground">
-                          {newFolioKind === "credit" ? "Descrição do pagamento" : "Produto / Serviço"}
-                        </label>
-                        <input required value={newFolioItem.description} onChange={e => setNewFolioItem({ ...newFolioItem, description: e.target.value })}
-                          placeholder={newFolioKind === "credit" ? "Ex: Pix hospedagem" : "Ex: Lenha extra"}
-                          className="mt-0.5 w-full bg-background border border-border px-3 py-2 rounded-xl text-xs outline-none focus:border-primary text-foreground" />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-[9px] font-bold uppercase text-muted-foreground">Qtd</label>
-                          <input type="number" min="1" required value={newFolioItem.quantity} onChange={e => setNewFolioItem({ ...newFolioItem, quantity: Number(e.target.value) })}
-                            className="mt-0.5 w-full bg-background border border-border px-3 py-2 rounded-xl text-xs outline-none focus:border-primary text-foreground" />
-                        </div>
-                        <div>
-                          <label className="text-[9px] font-bold uppercase text-muted-foreground">R$ Unit.</label>
-                          <input type="number" step="0.01" min="0" required value={newFolioItem.unitPrice || ""} onChange={e => setNewFolioItem({ ...newFolioItem, unitPrice: Number(e.target.value) })}
-                            className="mt-0.5 w-full bg-background border border-border px-3 py-2 rounded-xl text-xs outline-none focus:border-primary text-foreground" />
-                        </div>
-                      </div>
-                      <button type="submit" disabled={loadingFolio}
-                        className={cn("w-full py-2 font-black text-[10px] uppercase tracking-widest rounded-xl hover:opacity-90 disabled:opacity-50",
-                          newFolioKind === "credit" ? "bg-green-500 text-white" : "bg-primary text-primary-foreground")}>
-                        {newFolioKind === "credit" ? "Lançar Pagamento" : "Adicionar à Conta"}
-                      </button>
-                    </form>
-                  )}
                 </div>
+
+                {!isGovOnly && (
+                  <form onSubmit={handleAddFolioItem} className="w-full xl:w-64 shrink-0" style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                    <SectionLabel style={{ display: "inline-flex", alignItems: "center", gap: 6, color: T.brandText }}><ShoppingCart size={12} /> Lançamento</SectionLabel>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, padding: 4, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12 }}>
+                      {(["debit", "credit"] as const).map(kind => {
+                        const sel = newFolioKind === kind;
+                        const tn = kind === "credit" ? toneOf("green") : toneOf("brand");
+                        return (
+                          <button key={kind} type="button" onClick={() => setNewFolioKind(kind)} className="ak-press"
+                            style={{ padding: "7px 0", borderRadius: 9, fontSize: 9.5, fontWeight: 900, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer", fontFamily: "inherit", background: sel ? tn.bg : "transparent", border: `1px solid ${sel ? tn.border : "transparent"}`, color: sel ? tn.color : T.muted }}>
+                            {kind === "debit" ? "Consumo" : "Pagamento"}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <Field label={newFolioKind === "credit" ? "Descrição do pagamento" : "Produto / serviço"}>
+                      <Input required value={newFolioItem.description} onChange={e => setNewFolioItem({ ...newFolioItem, description: e.target.value })} placeholder={newFolioKind === "credit" ? "Ex.: Pix hospedagem" : "Ex.: lenha extra"} />
+                    </Field>
+                    <FieldRow cols={2}>
+                      <Field label="Qtd">
+                        <Input type="number" min={1} required value={newFolioItem.quantity} onChange={e => setNewFolioItem({ ...newFolioItem, quantity: Number(e.target.value) })} inputMode="numeric" />
+                      </Field>
+                      <Field label="R$ unit.">
+                        <Input type="number" step="0.01" min={0} required value={newFolioItem.unitPrice || ""} onChange={e => setNewFolioItem({ ...newFolioItem, unitPrice: Number(e.target.value) })} inputMode="decimal" />
+                      </Field>
+                    </FieldRow>
+                    <Button type="submit" variant="primary" tone={newFolioKind === "credit" ? "green" : undefined} fullWidth loading={loadingFolio} icon={Plus}>
+                      {newFolioKind === "credit" ? "Lançar pagamento" : "Adicionar à conta"}
+                    </Button>
+                  </form>
+                )}
               </div>
             </div>
-          </div>
-
+          </Card>
         </div>
-    </Dialog>
+      </Dialog>
 
-    {/* Transfer Cabin Dialog */}
-    <Dialog
-      open={transferDialogOpen}
-      onClose={() => { setTransferDialogOpen(false); setPendingTransferCabinId(null); }}
-      presentation="auto"
-      size="sm"
-      icon={Sparkles}
-      iconTone="amber"
-      title="Mudança de acomodação"
-      subtitle="O hóspede já fez check-in. A acomodação anterior precisa de limpeza de troca?"
-      footer={(
-        <>
-          <Button variant="ghost" onClick={() => { setTransferDialogOpen(false); setPendingTransferCabinId(null); }}>Cancelar</Button>
-          <Button variant="secondary" onClick={async () => { setTransferDialogOpen(false); await doSave(pendingTransferCabinId, false, 'available'); setPendingTransferCabinId(null); }}>Só liberar</Button>
-          <Button variant="primary" tone="amber" onClick={async () => { setTransferDialogOpen(false); await doSave(pendingTransferCabinId, false, 'cleaning'); setPendingTransferCabinId(null); }}>Gerar faxina</Button>
-        </>
-      )}
-    >
-      <p className="text-sm text-muted-foreground m-0">Gerar faxina cria uma tarefa de limpeza para a governança; só liberar coloca a cabana como disponível na hora.</p>
-    </Dialog>
+      {/* Transferência de acomodação */}
+      <Dialog
+        open={transferDialogOpen}
+        onClose={() => { setTransferDialogOpen(false); setPendingTransferCabinId(null); }}
+        presentation="auto"
+        size="sm"
+        icon={Sparkles}
+        iconTone="amber"
+        title="Mudança de acomodação"
+        subtitle="O hóspede já fez check-in. A acomodação anterior precisa de limpeza de troca?"
+        footer={(
+          <>
+            <Button variant="ghost" onClick={() => { setTransferDialogOpen(false); setPendingTransferCabinId(null); }}>Cancelar</Button>
+            <Button variant="secondary" onClick={async () => { setTransferDialogOpen(false); await doSave(pendingTransferCabinId, false, "available"); setPendingTransferCabinId(null); }}>Só liberar</Button>
+            <Button variant="primary" tone="amber" onClick={async () => { setTransferDialogOpen(false); await doSave(pendingTransferCabinId, false, "cleaning"); setPendingTransferCabinId(null); }}>Gerar faxina</Button>
+          </>
+        )}
+      >
+        <p style={{ margin: 0, fontSize: 13, color: T.muted }}>Gerar faxina cria uma tarefa de limpeza para a governança; só liberar coloca a cabana como disponível na hora.</p>
+      </Dialog>
 
-    {/* Modal de Check-out (2 steps: chave → objetos emprestados) */}
-    <Dialog open={checkOutModalOpen} onClose={() => setCheckOutModalOpen(false)} presentation="auto" size="sm" icon={LogOut} iconTone="orange" title="Check-out" subtitle="Duas etapas: chave e itens emprestados">
-        <div className="space-y-5">
+      {/* Check-out (2 etapas: chave → objetos emprestados) */}
+      <Dialog open={checkOutModalOpen} onClose={() => setCheckOutModalOpen(false)} presentation="auto" size="sm" icon={LogOut} iconTone="orange" title="Check-out" subtitle="Duas etapas: chave e itens emprestados">
+        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
 
-          {/* Step indicators */}
-          <div className="flex items-center gap-2 justify-center mb-1">
-            {(['key', 'loaned'] as const).map((s, i) => (
-              <div key={s} className="flex items-center gap-2">
-                <div className={cn(
-                  "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all",
-                  checkOutStep === s ? "bg-primary text-primary-foreground" :
-                  (checkOutStep === 'loaned' && s === 'key') ? "bg-green-500 text-white" : "bg-muted text-muted-foreground"
-                )}>{i + 1}</div>
-                {i < 1 && <div className={cn("h-px w-8 transition-all", checkOutStep === 'loaned' ? "bg-green-500" : "bg-border")} />}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
+            {(["key", "loaned"] as const).map((s, i) => (
+              <div key={s} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{
+                  width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 900,
+                  background: checkOutStep === s ? T.grad : checkOutStep === "loaned" && s === "key" ? T.green : T.glass2,
+                  color: checkOutStep === s || (checkOutStep === "loaned" && s === "key") ? "#fff" : T.muted,
+                  border: `1px solid ${checkOutStep === s ? "transparent" : T.border}`,
+                }}>{i + 1}</div>
+                {i < 1 && <div style={{ height: 1, width: 32, background: checkOutStep === "loaned" ? T.green : T.border }} />}
               </div>
             ))}
           </div>
 
-          {/* STEP 1: Chave */}
-          {checkOutStep === 'key' && (<>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-primary/10 rounded-2xl flex items-center justify-center">
-                <KeyRound size={20} className="text-primary" />
-              </div>
+          {checkOutStep === "key" && (<>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ width: 40, height: 40, borderRadius: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", background: alpha(T.g1, 10), border: `1px solid ${T.g1Border}` }}>
+                <KeyRound size={19} style={{ color: T.brandText }} />
+              </span>
               <div>
-                <h2 className="text-base font-black text-foreground">Localização da Chave</h2>
-                <p className="text-xs text-muted-foreground">Onde está a chave da acomodação?</p>
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 900, color: T.text }}>Localização da chave</h3>
+                <p style={{ margin: 0, fontSize: 12, color: T.muted }}>Onde está a chave da acomodação?</p>
               </div>
             </div>
-            <div className="space-y-2">
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {([
-                { value: 'reception', label: 'Na Recepção', desc: 'Hóspede devolveu a chave', color: 'border-green-500/40 bg-green-500/5 hover:bg-green-500/10', active: 'border-green-500 bg-green-500/15', dot: 'bg-green-500' },
-                { value: 'cabin', label: 'Na Acomodação', desc: 'Camareira irá verificar', color: 'border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/10', active: 'border-amber-500 bg-amber-500/15', dot: 'bg-amber-500' },
-              ] as const).map(opt => (
-                <button key={opt.value} onClick={() => setKeyLocation(opt.value)}
-                  className={cn("w-full flex items-center gap-3 p-3 rounded-2xl border-2 transition-all text-left", keyLocation === opt.value ? opt.active : opt.color)}
-                >
-                  <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", opt.dot)} />
-                  <div>
-                    <p className="text-sm font-bold text-foreground">{opt.label}</p>
-                    <p className="text-xs text-muted-foreground">{opt.desc}</p>
-                  </div>
-                  {keyLocation === opt.value && <CheckCircle size={16} className="ml-auto text-foreground shrink-0" />}
-                </button>
-              ))}
+                { value: "reception" as const, label: "Na recepção", desc: "Hóspede devolveu a chave", tone: "green" as const },
+                { value: "cabin" as const, label: "Na acomodação", desc: "Camareira irá verificar", tone: "amber" as const },
+              ]).map(opt => {
+                const tn = toneOf(opt.tone);
+                const sel = keyLocation === opt.value;
+                return (
+                  <button key={opt.value} onClick={() => setKeyLocation(opt.value)} className="ak-press"
+                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 12, borderRadius: 14, cursor: "pointer", textAlign: "left", fontFamily: "inherit", background: sel ? tn.bg : T.glass, border: `1.5px solid ${sel ? tn.color : T.border}` }}>
+                    <span style={{ width: 10, height: 10, borderRadius: "50%", background: tn.color, flexShrink: 0 }} />
+                    <span style={{ flex: 1 }}>
+                      <span style={{ display: "block", fontSize: 13.5, fontWeight: 800, color: T.text }}>{opt.label}</span>
+                      <span style={{ display: "block", fontSize: 11.5, color: T.muted }}>{opt.desc}</span>
+                    </span>
+                    {sel && <CheckCircle size={16} style={{ color: tn.color, flexShrink: 0 }} />}
+                  </button>
+                );
+              })}
             </div>
-            <div className="flex gap-2 pt-1">
-              <button onClick={() => setCheckOutModalOpen(false)}
-                className="flex-1 py-2.5 rounded-xl border border-border text-sm font-bold text-muted-foreground hover:bg-accent transition-all">
-                Cancelar
-              </button>
-              <button onClick={() => setCheckOutStep('loaned')} disabled={!keyLocation}
-                className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-black disabled:opacity-40 transition-all active:scale-95 flex items-center justify-center gap-2">
-                Próximo →
-              </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button variant="secondary" fullWidth onClick={() => setCheckOutModalOpen(false)}>Cancelar</Button>
+              <Button variant="primary" fullWidth disabled={!keyLocation} onClick={() => setCheckOutStep("loaned")}>Próximo →</Button>
             </div>
           </>)}
 
-          {/* STEP 2: Objetos emprestados */}
-          {checkOutStep === 'loaned' && (<>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-500/10 rounded-2xl flex items-center justify-center">
-                <Package size={20} className="text-blue-400" />
-              </div>
+          {checkOutStep === "loaned" && (<>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ width: 40, height: 40, borderRadius: 14, display: "inline-flex", alignItems: "center", justifyContent: "center", background: T.blueBg, border: `1px solid ${T.blueBorder}` }}>
+                <Package size={19} style={{ color: T.blue }} />
+              </span>
               <div>
-                <h2 className="text-base font-black text-foreground">Objetos Emprestados</h2>
-                <p className="text-xs text-muted-foreground">O hóspede ficou com algum item da propriedade?</p>
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 900, color: T.text }}>Objetos emprestados</h3>
+                <p style={{ margin: 0, fontSize: 12, color: T.muted }}>O hóspede ficou com algum item da propriedade?</p>
               </div>
             </div>
-            <div className="space-y-2">
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {([
-                { value: false, label: 'Não, nada emprestado', desc: 'Hóspede não ficou com nada', color: 'border-green-500/40 bg-green-500/5 hover:bg-green-500/10', active: 'border-green-500 bg-green-500/15', dot: 'bg-green-500' },
-                { value: true, label: 'Sim, há itens', desc: 'Camareira irá verificar no checkout', color: 'border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/10', active: 'border-blue-500 bg-blue-500/15', dot: 'bg-blue-500' },
-              ] as const).map(opt => (
-                <button key={String(opt.value)} onClick={() => setHasLoanedItems(opt.value)}
-                  className={cn("w-full flex items-center gap-3 p-3 rounded-2xl border-2 transition-all text-left", hasLoanedItems === opt.value ? opt.active : opt.color)}
-                >
-                  <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", opt.dot)} />
-                  <div>
-                    <p className="text-sm font-bold text-foreground">{opt.label}</p>
-                    <p className="text-xs text-muted-foreground">{opt.desc}</p>
-                  </div>
-                  {hasLoanedItems === opt.value && <CheckCircle size={16} className="ml-auto text-foreground shrink-0" />}
-                </button>
-              ))}
+                { value: false, label: "Não, nada emprestado", desc: "Hóspede não ficou com nada", tone: "green" as const },
+                { value: true, label: "Sim, há itens", desc: "Camareira irá verificar no checkout", tone: "blue" as const },
+              ]).map(opt => {
+                const tn = toneOf(opt.tone);
+                const sel = hasLoanedItems === opt.value;
+                return (
+                  <button key={String(opt.value)} onClick={() => setHasLoanedItems(opt.value)} className="ak-press"
+                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 12, borderRadius: 14, cursor: "pointer", textAlign: "left", fontFamily: "inherit", background: sel ? tn.bg : T.glass, border: `1.5px solid ${sel ? tn.color : T.border}` }}>
+                    <span style={{ width: 10, height: 10, borderRadius: "50%", background: tn.color, flexShrink: 0 }} />
+                    <span style={{ flex: 1 }}>
+                      <span style={{ display: "block", fontSize: 13.5, fontWeight: 800, color: T.text }}>{opt.label}</span>
+                      <span style={{ display: "block", fontSize: 11.5, color: T.muted }}>{opt.desc}</span>
+                    </span>
+                    {sel && <CheckCircle size={16} style={{ color: tn.color, flexShrink: 0 }} />}
+                  </button>
+                );
+              })}
             </div>
             {hasLoanedItems === true && (
               <textarea
                 autoFocus
-                placeholder="Liste os itens emprestados (ex: toalha extra, secador, travesseiro, berço)..."
+                placeholder="Liste os itens emprestados (ex: toalha extra, secador, travesseiro, berço)…"
                 value={loanedItemsText}
                 onChange={e => setLoanedItemsText(e.target.value)}
                 rows={3}
-                className="w-full bg-secondary border border-border rounded-xl p-3 text-sm resize-none outline-none focus:border-blue-500/50 transition-colors"
+                className="ak-textarea"
               />
             )}
-            <div className="flex gap-2 pt-1">
-              <button onClick={() => setCheckOutStep('key')}
-                className="flex-1 py-2.5 rounded-xl border border-border text-sm font-bold text-muted-foreground hover:bg-accent transition-all">
-                ← Voltar
-              </button>
-              <button onClick={handleConfirmCheckOut}
-                disabled={hasLoanedItems === null || (hasLoanedItems === true && !loanedItemsText.trim())}
-                className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-black disabled:opacity-40 transition-all active:scale-95 flex items-center justify-center gap-2">
-                <LogOut size={15} /> Confirmar Check-out
-              </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button variant="secondary" fullWidth onClick={() => setCheckOutStep("key")}>← Voltar</Button>
+              <Button variant="primary" fullWidth icon={LogOut} disabled={hasLoanedItems === null || (hasLoanedItems === true && !loanedItemsText.trim())} onClick={handleConfirmCheckOut}>
+                Confirmar check-out
+              </Button>
             </div>
           </>)}
-
         </div>
-    </Dialog>
+      </Dialog>
     </>
   );
 }
