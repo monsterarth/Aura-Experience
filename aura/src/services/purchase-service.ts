@@ -70,6 +70,16 @@ export const PurchaseService = {
       locationId: payload.locationId ?? null,
       invoiceNumber: payload.invoiceNumber ?? null,
       invoiceUrl: payload.invoiceUrl ?? null,
+      // Identidade fiscal: só a importação por XML preenche. Numa edição comum
+      // esses campos não vêm no payload — e por isso são gravados apenas quando
+      // vêm: escrever null aqui apagaria a chave de acesso de uma nota importada
+      // no primeiro "Salvar" da tela de compras.
+      ...(payload.invoiceKey !== undefined && { invoiceKey: payload.invoiceKey }),
+      ...(payload.invoiceSeries !== undefined && { invoiceSeries: payload.invoiceSeries }),
+      ...(payload.invoiceModel !== undefined && { invoiceModel: payload.invoiceModel }),
+      ...(payload.invoiceXmlUrl !== undefined && { invoiceXmlUrl: payload.invoiceXmlUrl }),
+      ...(payload.invoiceDeclaredTotal !== undefined && { invoiceDeclaredTotal: payload.invoiceDeclaredTotal }),
+      ...(payload.importSource !== undefined && { importSource: payload.importSource }),
       status: payload.status ?? "draft",
       isEmergency: payload.isEmergency ?? false,
       orderDate: payload.orderDate ?? null,

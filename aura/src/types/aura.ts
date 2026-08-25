@@ -970,7 +970,7 @@ export interface AuditLog {
   | 'CRON_HOUSEKEEPING_ROUTINES' | 'CRON_MAINTENANCE' | 'CRON_PROCESS_MESSAGES'
   | 'CRON_EVENING_REVALIDATION'
   | 'STOCK_ENTRY' | 'STOCK_EXIT' | 'STOCK_TRANSFER' | 'STOCK_ADJUSTMENT' | 'STOCK_LOSS'
-  | 'PURCHASE_CREATED' | 'PURCHASE_RECEIVED' | 'PURCHASE_CANCELLED'
+  | 'PURCHASE_CREATED' | 'PURCHASE_RECEIVED' | 'PURCHASE_CANCELLED' | 'PURCHASE_IMPORTED'
   | 'SUPPLIER_CREATED' | 'SUPPLIER_UPDATED' | 'SUPPLIER_DELETED'
   | 'ASSET_CREATED' | 'ASSET_UPDATED' | 'ASSET_DISPOSED' | 'ASSET_DELETED'
   | 'ASSET_REINSTATED' | 'ASSET_MOVED' | 'ASSET_CUSTODY_CHANGED' | 'ASSET_PUBLIC_REPORT'
@@ -2076,6 +2076,13 @@ export interface Purchase {
   locationId?: string | null;     // local de recebimento (destino das entradas)
   invoiceNumber?: string;
   invoiceUrl?: string;            // documento da NF (PDF/imagem)
+  // Identidade fiscal — preenchida quando a nota entra pelo XML
+  invoiceKey?: string | null;           // chave de acesso (44 dígitos): trava a duplicidade
+  invoiceSeries?: string | null;
+  invoiceModel?: string | null;         // 55 = NF-e · 65 = NFC-e
+  invoiceXmlUrl?: string | null;        // XML original arquivado
+  invoiceDeclaredTotal?: number | null; // vNF do XML — contra o qual a soma dos itens é conferida
+  importSource?: 'manual' | 'xml_upload' | 'xml_dfe' | null;
   status: PurchaseStatus;
   isEmergency: boolean;
   orderDate?: string | null;      // YYYY-MM-DD
@@ -2097,6 +2104,127 @@ export interface SupplierDetail {
   supplier: Supplier;
   purchases: Purchase[];
   stats: { count: number; totalReceived: number; lastPurchaseDate?: string | null };
+}
+
+// ── Importação da nota pelo XML (NF-e / NFC-e) ───────────────────────────────
+
+/**
+ * De-para que se lembra: o código do produto NA NOTA DO FORNECEDOR (cProd)
+ * apontando para o produto daqui, com o fator de embalagem (1 CX = 12 un).
+ */
+export interface SupplierProductMap {
+  id: string;
+  propertyId: string;
+  supplierId: string;
+  supplierCode: string;
+  productId?: string | null;
+  assetLine: boolean;             // a linha vira ativo em Patrimônio, não estoque
+  ignoreLine: boolean;            // a linha nunca entra no lançamento
+  factor: number;                 // 1 unidade do XML = N unidades do AURA
+  xmlUnit?: string | null;
+  lastDescription?: string | null;
+  lastEan?: string | null;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+/** O que fazer com uma linha da nota. */
+export type InvoiceLineTarget = 'product' | 'new_product' | 'asset' | 'ignore';
+
+/** Como o servidor chegou no produto sugerido — a tela mostra isso para dar confiança. */
+export type InvoiceLineMatch = 'map' | 'barcode' | 'name' | null;
+
+export interface InvoiceImportLine {
+  n: number;                      // nItem
+  code: string;                   // cProd
+  ean: string | null;
+  description: string;            // xProd, do jeito que o fornecedor escreveu
+  unit: string;                   // uCom
+  quantity: number;               // qCom
+  unitValue: number;              // vUnCom
+  total: number;                  // vProd
+  ipi: number;
+  icmsSt: number;
+  discount: number;
+  freight: number;
+  // Sugestão do servidor — a tela deixa trocar tudo
+  target: InvoiceLineTarget;
+  productId: string | null;
+  factor: number;
+  suggestedFactor: number | null; // inferido de qTrib/qCom, para a tela explicar de onde veio
+  matchedBy: InvoiceLineMatch;
+  candidates: { productId: string; name: string; unit: string }[];
+}
+
+export interface InvoiceImportPreview {
+  invoice: {
+    key: string | null;
+    number: string;
+    series: string;
+    model: string;
+    issuedAt: string | null;
+    operation?: string;
+  };
+  /** Nota já lançada nesta propriedade — a chave de acesso não repete. */
+  duplicate: { purchaseId: string; invoiceNumber?: string | null; status: PurchaseStatus; createdAt: string } | null;
+  supplier: {
+    matchedId: string | null;     // fornecedor já cadastrado com este CNPJ
+    cnpj: string;
+    name: string;
+    suggestion: Partial<Supplier>; // o que criar, se a pessoa confirmar
+  };
+  lines: InvoiceImportLine[];
+  totals: {
+    products: number;
+    freight: number;
+    discount: number;
+    icmsSt: number;
+    ipi: number;
+    other: number;
+    declared: number;             // vNF
+  };
+  /** XML de volta: o commit reenvia para o servidor reler (fonte da verdade). */
+  xml: string;
+  fileName?: string;
+}
+
+export interface InvoiceImportCommitLine {
+  n: number;
+  target: InvoiceLineTarget;
+  productId?: string | null;
+  factor: number;
+  remember: boolean;              // grava o de-para para a próxima nota
+  newProduct?: { name: string; unit: StockUnit; categoryId?: string | null; minStock?: number; trackExpiry?: boolean };
+  asset?: { name: string; categoryId?: string | null; locationId?: string | null };
+}
+
+export interface InvoiceImportCommit {
+  propertyId: string;
+  xml: string;
+  fileName?: string;
+  supplierId?: string | null;
+  createSupplier?: boolean;
+  locationId?: string | null;
+  invoiceXmlUrl?: string | null;
+  /** Soma IPI + ICMS-ST ao custo dos itens (para consumo próprio, imposto É custo). */
+  includeTaxesInCost?: boolean;
+  /** Frete da nota — a tela deixa jogar aqui a diferença que não fechou. */
+  freightValue?: number;
+  isEmergency?: boolean;
+  notes?: string;
+  lines: InvoiceImportCommitLine[];
+}
+
+export interface InvoiceImportResult {
+  purchaseId: string;
+  supplierId: string | null;
+  createdProducts: number;
+  createdAssets: number;
+  mappedLines: number;
+  skippedLines: number;
+  totalValue: number;
+  declaredTotal: number;
+  difference: number;             // totalValue − vNF (o que ficou de resto)
 }
 
 // ── Fase 1: Patrimônio ───────────────────────────────────────────────────────

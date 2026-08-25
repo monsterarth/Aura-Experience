@@ -5,12 +5,13 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { useProperty } from "@/context/PropertyContext";
 import { supabase } from "@/lib/supabase";
 import { StockClient } from "@/lib/stock-client";
-import { Purchase, PurchaseStatus, Supplier, StockLocation, StockProduct } from "@/types/aura";
+import { Purchase, PurchaseStatus, Supplier, StockLocation, StockProduct, StockCategory } from "@/types/aura";
 import { toast } from "sonner";
 import { PageShell, PageHeader, SkeletonList, useConfirm, Dialog, Button, Pill } from "@/components/aura";
 import { cn } from "@/lib/utils";
-import { Plus, Pencil, Trash2, Save, ShoppingCart, PackageCheck, Zap, Trash, Paperclip } from "lucide-react";
+import { Plus, Pencil, Trash2, Save, ShoppingCart, PackageCheck, Zap, Trash, Paperclip, FileCode2 } from "lucide-react";
 import { FileUpload } from "@/components/admin/FileUpload";
+import ImportXmlDialog from "./_components/ImportXmlDialog";
 import StockLocationSelect from "@/components/admin/StockLocationSelect";
 import { splitLocations } from "@/lib/stock-locations";
 import { useDiscardGuard } from "@/lib/use-discard-guard";
@@ -42,7 +43,9 @@ export default function ComprasPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [products, setProducts] = useState<StockProduct[]>([]);
+  const [categories, setCategories] = useState<StockCategory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
   const [form, setForm] = useState<PForm | null>(null);
   const [saving, setSaving] = useState(false);
   const requestClose = useDiscardGuard(form, () => setForm(null));
@@ -53,10 +56,12 @@ export default function ComprasPage() {
 
   const loadStatic = useCallback(async () => {
     if (!property?.id) return;
-    const [sup, loc, prod] = await Promise.all([
+    const [sup, loc, prod, cat] = await Promise.all([
       StockClient.suppliers(property.id), StockClient.locations(property.id), StockClient.products(property.id),
+      StockClient.categories(property.id),
     ]);
     setSuppliers(sup.filter((s) => s.active)); setLocations(loc.filter((l) => l.active)); setProducts(prod.filter((p) => p.active));
+    setCategories(cat);
   }, [property?.id]);
 
   const load = useCallback(async () => {
@@ -176,6 +181,7 @@ export default function ComprasPage() {
         icon={ShoppingCart}
         title="Compras"
         subtitle={<>{purchases.length} compra(s)</>}
+        actions={<Button variant="ghost" icon={FileCode2} onClick={() => setImporting(true)}>Importar XML</Button>}
         primaryAction={{ label: "Nova compra", icon: Plus, onClick: openNew }}
       />
 
@@ -282,6 +288,17 @@ export default function ComprasPage() {
           </table>
         </div>
         </>
+      )}
+
+      {importing && property?.id && (
+        <ImportXmlDialog
+          propertyId={property.id}
+          products={products}
+          locations={flatLocations}
+          categories={categories}
+          onClose={() => setImporting(false)}
+          onImported={() => { load(); loadStatic(); }}
+        />
       )}
 
       {form && (
@@ -402,6 +419,22 @@ export default function ComprasPage() {
                 <div><div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Pedido</div><div className="text-foreground">{fmtDate(nota.orderDate)}</div></div>
                 <div><div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Recebido</div><div className="text-foreground">{fmtDate(nota.receivedDate)}</div></div>
               </div>
+
+              {/* Nota que entrou pelo XML: mostra de onde veio e a chave de acesso */}
+              {nota.invoiceKey && (
+                <div className="rounded-xl border border-border bg-secondary/30 px-3 py-2">
+                  <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
+                    <FileCode2 size={11} /> {nota.invoiceModel === "65" ? "NFC-e" : "NF-e"} importada
+                    {nota.invoiceSeries ? ` · série ${nota.invoiceSeries}` : ""}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground font-mono break-all mt-0.5">{nota.invoiceKey}</div>
+                  {Number(nota.invoiceDeclaredTotal ?? 0) > 0 && Math.abs(Number(nota.invoiceDeclaredTotal) - Number(nota.totalValue)) >= 0.01 && (
+                    <div className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                      Total da nota: R$ {Number(nota.invoiceDeclaredTotal).toFixed(2)} — diferença de R$ {Math.abs(Number(nota.invoiceDeclaredTotal) - Number(nota.totalValue)).toFixed(2)} (impostos, patrimônio ou linhas ignoradas).
+                    </div>
+                  )}
+                </div>
+              )}
 
               <table className="w-full text-sm">
                 <thead>

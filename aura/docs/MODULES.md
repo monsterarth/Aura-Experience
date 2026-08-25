@@ -27,7 +27,7 @@ are admin/manager (+ the relevant operational role).
 | `houseman` | — | Houseman/porter admin view |
 | `food-and-beverage` (`menu`, `orders`) | `fb-service` | Restaurant menu + orders |
 | `cafe-salao` (+`kds`) | `breakfast-salon-service` | Breakfast salon, tables, kitchen display |
-| `estoque` (`produtos`, `inventario`, `compras`, `fornecedores`, `movimentacoes`, `perdas`, `configuracoes`) | `stock-service`, `inventory-service`, `purchase-service`, `supplier-service`, `stock-integration` | Inventory / procurement (see [[stock-module]]) |
+| `estoque` (`produtos`, `inventario`, `compras`, `fornecedores`, `movimentacoes`, `perdas`, `configuracoes`) | `stock-service`, `inventory-service`, `purchase-service`, `supplier-service`, `nfe-import-service`, `stock-integration` | Inventory / procurement (see [[stock-module]]). `compras` também lança a nota pelo **XML da NF-e** (`nfe-import-service` + `lib/nfe.ts`, rota `api/admin/estoque/purchases/import`): lê o XML ou o ZIP do contador, casa fornecedor pelo CNPJ e produto pelo de-para `supplier_product_map`, e cria a compra em rascunho |
 | `patrimonio` | `asset-service` | Fixed assets: ficha, depreciation, disposal, movements, QR plaque |
 | `patrimonio/[id]` | `asset-service` | Asset detail sheet (maintenance, movements, depreciation ledger, audit) |
 | `patrimonio/inventario` | `asset-inventory-service` | Physical asset count by location (scan or type the plaque code) |

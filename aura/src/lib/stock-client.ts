@@ -8,6 +8,7 @@ import {
   StockCategory, StockLocation, StockProduct, StockMovement, StockStaffOption, StockSettings,
   StockMovementHistory, StockMovementHistoryFilters, StockBatchDetail,
   Supplier, Purchase, PurchaseItem, Asset, StockBatch, InventoryCount, ProductDetail, SupplierDetail, StockDashboard,
+  InvoiceImportPreview, InvoiceImportCommit, InvoiceImportResult,
   AssetDetail, AssetLabel, AssetDisposalInput, AssetTransferInput,
   AssetInventoryCount, AssetInventoryItemStatus, AssetInventoryItemUpdate,
   AssetReport, AssetReportFilters, AssetReportKind,
@@ -106,6 +107,20 @@ export const StockClient = {
   deletePurchase: (pid: string, id: string) => del("estoque/purchases", pid, id),
   receivePurchase: (propertyId: string, purchaseId: string, overrides?: Record<string, { expiryDate?: string | null; batchCode?: string | null }>) =>
     post("estoque/purchases/receive", { propertyId, purchaseId, overrides }),
+  // compras pelo XML da NF-e — o upload aceita .xml solto e o .zip do contador
+  readInvoiceFiles: async (propertyId: string, files: File[]) => {
+    const fd = new FormData();
+    fd.append("propertyId", propertyId);
+    for (const f of files) fd.append("files", f);
+    const res = await fetch(`${BASE}/estoque/purchases/import`, { method: "POST", body: fd });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "Não consegui ler o arquivo.");
+    return res.json() as Promise<{
+      previews: { fileName: string; preview: InvoiceImportPreview }[];
+      failures: { fileName: string; error: string }[];
+      truncated: number;
+    }>;
+  },
+  importInvoice: (body: InvoiceImportCommit) => post<InvoiceImportResult>("estoque/purchases/import", body),
   // patrimônio
   assets: (pid: string, includeDisposed = false) =>
     get<Asset[]>("patrimonio", pid, includeDisposed ? "&includeDisposed=1" : ""),
