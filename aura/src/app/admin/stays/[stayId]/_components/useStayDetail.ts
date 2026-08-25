@@ -13,9 +13,8 @@ import { CabinService } from "@/services/cabin-service";
 import { FnrhService, type FnrhDomain } from "@/services/fnrh-service";
 import { sanitizeDocumentForFnrh, validateCPF } from "@/lib/utils-checkin";
 import { EMPTY_PET, maxPetsOf, readPets, writePets } from "@/lib/pets";
-import { supabase, safeRemoveChannel } from "@/lib/supabase";
 import { useConfirm } from "@/components/aura";
-import type { Stay, Guest, Cabin, FolioItem } from "@/types/aura";
+import type { Stay, Guest, Cabin } from "@/types/aura";
 import { formatDateForInput, parseDateFromInput, type KeyLocation } from "./stay-detail-utils";
 
 
@@ -49,21 +48,11 @@ export function useStayDetail(stayId: string | undefined) {
   const [checkInStr, setCheckInStr] = useState("");
   const [checkOutStr, setCheckOutStr] = useState("");
 
-  const [folioItems, setFolioItems] = useState<FolioItem[]>([]);
-  const [loadingFolio, setLoadingFolio] = useState(false);
-  const [newFolioItem, setNewFolioItem] = useState({ description: "", quantity: 1, unitPrice: 0 });
-
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const [pendingTransferCabinId, setPendingTransferCabinId] = useState<string | null>(null);
 
-  // ── Load ──
-  const loadFolio = useCallback(async () => {
-    if (!propertyId || !stayId) return;
-    setLoadingFolio(true);
-    try { setFolioItems(await StayService.getStayFolio(propertyId, stayId)); }
-    catch { toast.error("Erro ao carregar extrato."); }
-    finally { setLoadingFolio(false); }
-  }, [propertyId, stayId]);
+  // O fólio e os quatro sinais vivem em `useStayAccount` (componente compartilhado
+  // com o modal da Conta e a ficha rápida) — a página instancia direto.
 
   const initData = useCallback((s: any, g: any) => {
     if (!s) return;
@@ -128,17 +117,7 @@ export function useStayDetail(stayId: string | undefined) {
   useEffect(() => {
     if (!propertyId) return;
     CabinService.getCabinsByProperty(propertyId).then(setCabins);
-    void loadFolio();
-  }, [propertyId, loadFolio]);
-
-  useEffect(() => {
-    if (!stayId) return;
-    let subscribed = false;
-    const ch = supabase.channel(`folio_page_${stayId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "folio_items", filter: `stayId=eq.${stayId}` }, () => { void loadFolio(); })
-      .subscribe((status: string) => { if (status === "SUBSCRIBED") subscribed = true; });
-    return () => { safeRemoveChannel(ch, subscribed); };
-  }, [stayId, loadFolio]);
+  }, [propertyId]);
 
   // ── Handlers ──
   const fetchAddressByCep = async (cep?: string) => {
@@ -242,35 +221,6 @@ export function useStayDetail(stayId: string | undefined) {
     } catch { toast.error("Erro na operação."); } finally { setIsSaving(false); }
   };
 
-  const handleAddFolioItem = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!propertyId) return;
-    if (!newFolioItem.description || newFolioItem.quantity <= 0 || newFolioItem.unitPrice < 0) { toast.error("Preencha corretamente."); return; }
-    setLoadingFolio(true);
-    try {
-      await StayService.addFolioItemManual(propertyId, stay.id,
-        { description: newFolioItem.description, quantity: newFolioItem.quantity, unitPrice: newFolioItem.unitPrice, totalPrice: newFolioItem.quantity * newFolioItem.unitPrice, category: "other", addedBy: userData?.id || "SYSTEM" },
-        userData?.id || "unknown", actorName);
-      toast.success("Item adicionado."); setNewFolioItem({ description: "", quantity: 1, unitPrice: 0 }); void loadFolio();
-    } catch { toast.error("Erro ao adicionar."); } finally { setLoadingFolio(false); }
-  };
-
-  const handleDeleteFolioItem = async (id: string, desc: string) => {
-    if (!propertyId) return;
-    if (!(await confirm({ title: "Estornar este lançamento?", description: `“${desc}” sai do fólio. O estorno fica registrado no histórico.`, confirmLabel: "Estornar", tone: "danger" }))) return;
-    setLoadingFolio(true);
-    try { await StayService.deleteFolioItem(propertyId, stay.id, id, desc, userData?.id || "unknown", actorName); toast.success("Item estornado."); void loadFolio(); }
-    catch { toast.error("Erro ao estornar."); } finally { setLoadingFolio(false); }
-  };
-
-  const handleToggleFolioStatus = async (id: string, cur: string) => {
-    if (!propertyId) return;
-    const next = cur === "paid" ? "pending" : "paid";
-    setLoadingFolio(true);
-    try { await StayService.toggleFolioItemStatus(propertyId, stay.id, id, next as any, userData?.id || "unknown", actorName); toast.success(next === "paid" ? "Baixado!" : "Reaberto."); void loadFolio(); }
-    catch { toast.error("Erro ao atualizar."); } finally { setLoadingFolio(false); }
-  };
-
   // ── Pets ──
   const patchPet = (idx: number, patch: Record<string, any>) =>
     setFormData((p: any) => ({ ...p, pets: (p.pets ?? []).map((pet: any, i: number) => (i === idx ? { ...pet, ...patch } : pet)) }));
@@ -281,7 +231,6 @@ export function useStayDetail(stayId: string | undefined) {
   // ── Computed ──
   const computed = useMemo(() => {
     const locked = !isEditing || isGovOnly;
-    const totalFolio = folioItems.reduce((a, i) => a + i.totalPrice, 0);
     const selectedCabin = cabins.find(c => c.id === (formData.cabinId || stay?.cabinId));
     const ag = formData.additionalGuests || [];
     const actualCounts = {
@@ -295,8 +244,8 @@ export function useStayDetail(stayId: string | undefined) {
     const nights = stay ? differenceInCalendarDays(new Date(stay.checkOut), new Date(stay.checkIn)) : 0;
     const petList: any[] = formData.pets ?? [];
     const maxPets = maxPetsOf(currentProperty?.settings);
-    return { locked, totalFolio, selectedCabin, actualCounts, acfDiverges, nights, petList, maxPets };
-  }, [isEditing, isGovOnly, folioItems, cabins, formData, stay, currentProperty?.settings]);
+    return { locked, selectedCabin, actualCounts, acfDiverges, nights, petList, maxPets };
+  }, [isEditing, isGovOnly, cabins, formData, stay, currentProperty?.settings]);
 
   return {
     // identidade
@@ -304,12 +253,11 @@ export function useStayDetail(stayId: string | undefined) {
     // estado
     loading, notFound, isSaving, isEditing, setIsEditing, stay, guest, formData, setFormData, guestData, setGuestData,
     cabins, fnrhDomains, checkInStr, setCheckInStr, checkOutStr, setCheckOutStr, expandedArea, setExpandedArea,
-    folioItems, loadingFolio, newFolioItem, setNewFolioItem, loadFolio,
     checkOutModalOpen, setCheckOutModalOpen, keyLocation, setKeyLocation,
     transferDialogOpen, setTransferDialogOpen, pendingTransferCabinId, setPendingTransferCabinId,
     // ações
     handleCancel, handleSave, doSave, handleToggleCheckOut, handleConfirmCheckOut,
-    handleAddFolioItem, handleDeleteFolioItem, handleToggleFolioStatus, fetchAddressByCep,
+    fetchAddressByCep,
     patchPet, addPet, removePet, togglePet,
     ...computed,
   };

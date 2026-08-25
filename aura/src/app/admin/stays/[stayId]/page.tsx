@@ -3,16 +3,19 @@
 
 import React from "react";
 import { useParams } from "next/navigation";
-import { Edit2, FileText, LogOut, Printer, RotateCcw, Save, SearchX } from "lucide-react";
+import { CheckCircle2, Edit2, FileText, LogOut, Printer, Receipt, RotateCcw, Save, SearchX } from "lucide-react";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import type { UserRole } from "@/types/aura";
 import { T } from "@/lib/admin-tokens";
-import { PageShell, PageHeader, Loadable, PageSkeleton, EmptyState, Button, Pill, BottomActionBar } from "@/components/aura";
+import { useAuth } from "@/context/AuthContext";
+import { PageShell, PageHeader, Loadable, PageSkeleton, EmptyState, Button, Pill, Card, BottomActionBar, useConfirm } from "@/components/aura";
 import { useStayDetail } from "./_components/useStayDetail";
 import { stayStatus } from "./_components/stay-detail-utils";
-import { HeroStrip, FolioCard, GuestCard, LodgingCard, TravelCard } from "./_components/StayDetailCards";
+import { HeroStrip, GuestCard, LodgingCard, TravelCard } from "./_components/StayDetailCards";
 import { TransferDialog, CheckoutKeyDialog } from "./_components/StayDialogs";
-import { StayOriginPills, StayPendingCard } from "@/components/admin/StayOpsBlocks";
+import { StayOriginPills, StayRequestsCard } from "@/components/admin/StayOpsBlocks";
+import { useStayAccount } from "@/components/admin/folio/useStayAccount";
+import { StayAccountPanel } from "@/components/admin/folio/StayAccountPanel";
 
 const ROLES: UserRole[] = ["super_admin", "admin", "reception", "governance", "manager"];
 
@@ -26,8 +29,27 @@ export default function StayDetailPage() {
 
 function StayDetailInner() {
   const { stayId } = useParams<{ stayId: string }>();
+  const { userData } = useAuth();
+  const confirm = useConfirm();
   const s = useStayDetail(stayId);
   const { stay, guest, loading, notFound, isEditing, isSaving, isGovOnly } = s;
+
+  // A conta é o MESMO componente da ficha rápida e do modal da Conta.
+  const account = useStayAccount(s.propertyId, stay, { id: userData?.id, name: userData?.fullName }, !!stay);
+
+  const handleCloseBill = async () => {
+    const summary = account.pending.map(c => `${c.label.toLowerCase()} (${c.detail})`).join(" · ");
+    const ok = await confirm({
+      title: "Encerrar a conta desta estadia?",
+      description: account.pending.length
+        ? `Fica para trás: ${summary}. Os lançamentos pendentes serão marcados como pagos e a estadia vai para Encerradas.`
+        : "Ciclo completo. Os lançamentos pendentes serão marcados como pagos e a estadia vai para Encerradas.",
+      confirmLabel: "Encerrar conta",
+      tone: account.pending.length ? "danger" : undefined,
+      icon: Receipt,
+    });
+    if (ok) await account.closeBill(summary || undefined);
+  };
 
   if (!loading && (notFound || !stay)) {
     return (
@@ -77,8 +99,24 @@ function StayDetailInner() {
         {stay && (
           <>
             <HeroStrip s={s} />
-            <StayPendingCard propertyId={stay.propertyId} stay={stay} active />
-            <FolioCard s={s} />
+            <StayRequestsCard propertyId={stay.propertyId} stay={stay} active />
+            <Card
+              header={{
+                icon: Receipt,
+                tone: account.folio.balance > 0.005 ? "orange" : "brand",
+                title: "Conta",
+                sub: account.closed ? "encerrada" : `${account.folio.items.length} lançamento${account.folio.items.length === 1 ? "" : "s"}`,
+                aside: !isGovOnly ? (
+                  account.closed ? (
+                    <Button size="sm" variant="secondary" icon={RotateCcw} loading={account.busy} onClick={() => void account.reopenBill()}>Reabrir conta</Button>
+                  ) : (
+                    <Button size="sm" variant="soft" icon={CheckCircle2} loading={account.busy} onClick={() => void handleCloseBill()}>Encerrar conta</Button>
+                  )
+                ) : undefined,
+              }}
+            >
+              <StayAccountPanel a={account} readOnly={isGovOnly} />
+            </Card>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
               <GuestCard s={s} />
               <LodgingCard s={s} />

@@ -6,16 +6,14 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 import {
-  BedDouble, Calendar, Car, CheckCircle, Clock, Coffee, ExternalLink, FileText, Mail, MapPin, PawPrint, Phone, Plane,
-  Plus, Receipt, RefreshCw, RotateCcw, ShoppingCart, Sparkles, Trash2, User, Users,
+  BedDouble, Calendar, Car, Coffee, ExternalLink, FileText, Mail, MapPin, PawPrint, Phone, Plane,
+  Plus, Sparkles, Trash2, User, Users,
 } from "lucide-react";
-import type { FolioItem } from "@/types/aura";
 import { PET_HARD_CAP } from "@/lib/pets";
 import { validateCPF } from "@/lib/utils-checkin";
 import { T, tone as toneOf } from "@/lib/admin-tokens";
 import {
-  Card, Field, FieldRow, Input, Select, Button, IconButton, Pill, Switch, SectionLabel, DataList, EmptyState,
-  type Column, type RowAction,
+  Card, Field, FieldRow, Input, Select, Button, IconButton, Pill, Switch, SectionLabel,
 } from "@/components/aura";
 import { renderIcon, type IconLike } from "@/components/aura/icon";
 import { bedLabel, COMPANION_LABEL, COMPANION_TONE } from "./stay-detail-utils";
@@ -85,78 +83,6 @@ export function HeroStrip({ s }: { s: StayDetailState }) {
             </Select>
           ) : big(stay.cabinName || selectedCabin?.name || "—")),
         ].map((node, i) => <div key={i} style={{ background: T.card }}>{node}</div>)}
-      </div>
-    </Card>
-  );
-}
-
-// ── Conta & consumo ───────────────────────────────────────────────────────
-
-export function FolioCard({ s }: { s: StayDetailState }) {
-  const { folioItems, loadingFolio, loadFolio, totalFolio, isGovOnly, newFolioItem, setNewFolioItem, handleAddFolioItem, handleDeleteFolioItem, handleToggleFolioStatus } = s;
-  const columns: Column<FolioItem>[] = [
-    {
-      id: "desc", header: "Item / descrição", mobile: "title", priority: 1,
-      cell: i => (
-        <span style={{ display: "inline-flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-          <span style={{ fontWeight: 700, color: i.status === "paid" ? T.muted : T.text, textDecoration: i.status === "paid" ? "line-through" : "none" }}>{i.description}</span>
-          <span style={{ fontSize: 10, color: T.muted, display: "inline-flex", alignItems: "center", gap: 4 }}><Clock size={9} /> {i.createdAt ? format(new Date(i.createdAt), "dd/MM HH:mm") : "—"}{i.status === "paid" ? " · pago" : ""}</span>
-        </span>
-      ),
-    },
-    { id: "qty", header: "Qtd", align: "center", width: 64, mobile: "meta", nowrap: true, cell: i => <span style={{ color: T.muted, fontWeight: 600 }}>{i.quantity}×</span> },
-    { id: "unit", header: "Unit.", align: "right", width: 100, mobile: "meta", nowrap: true, cell: i => <span style={{ color: T.muted, fontVariantNumeric: "tabular-nums" }}>R$ {i.unitPrice.toFixed(2)}</span> },
-    { id: "total", header: "Total", align: "right", width: 110, mobile: "trailing", nowrap: true, cell: i => <span style={{ fontWeight: 900, color: T.text, fontVariantNumeric: "tabular-nums" }}>R$ {i.totalPrice.toFixed(2)}</span> },
-  ];
-  const actions = isGovOnly ? undefined : (i: FolioItem): RowAction<FolioItem>[] => [
-    { id: "toggle", label: i.status === "paid" ? "Reabrir" : "Marcar como pago", icon: i.status === "paid" ? RotateCcw : CheckCircle, onClick: r => void handleToggleFolioStatus(r.id, r.status || "pending"), tone: "green" },
-    { id: "delete", label: "Estornar", icon: Trash2, danger: true, onClick: r => void handleDeleteFolioItem(r.id, r.description) },
-  ];
-  return (
-    <Card
-      pad={0}
-      header={{
-        icon: Receipt, tone: "brand", title: "Conta & consumo", sub: `${folioItems.length} lançamento${folioItems.length === 1 ? "" : "s"}`,
-        aside: (
-          <>
-            <span style={{ textAlign: "right", lineHeight: 1.1 }}>
-              <span style={{ display: "block", fontSize: 9, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: T.muted }}>Total</span>
-              <span style={{ display: "block", fontSize: 16, fontWeight: 900, color: T.brandText, fontVariantNumeric: "tabular-nums" }}>R$ {totalFolio.toFixed(2)}</span>
-            </span>
-            <IconButton icon={RefreshCw} label="Atualizar extrato" size="sm" onClick={() => void loadFolio()} loading={loadingFolio} />
-          </>
-        ),
-      }}
-    >
-      <div className="flex flex-col xl:flex-row gap-4 items-start" style={{ padding: "0 16px 16px" }}>
-        <div style={{ flex: 1, minWidth: 0, width: "100%" }}>
-          <DataList<FolioItem>
-            rows={folioItems}
-            columns={columns}
-            rowKey={i => i.id}
-            rowActions={actions}
-            density="compact"
-            loading={loadingFolio && folioItems.length === 0}
-            empty={<EmptyState compact icon={Receipt} title="Nenhum consumo registrado" description="Lançamentos de frigobar, restaurante e extras aparecem aqui." />}
-          />
-        </div>
-        {!isGovOnly && (
-          <form onSubmit={e => void handleAddFolioItem(e)} className="w-full xl:w-64 shrink-0" style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-            <SectionLabel style={{ display: "inline-flex", alignItems: "center", gap: 6, color: T.brandText }}><ShoppingCart size={12} /> Lançamento manual</SectionLabel>
-            <Field label="Produto / serviço">
-              <Input required value={newFolioItem.description} onChange={e => setNewFolioItem({ ...newFolioItem, description: e.target.value })} placeholder="Ex.: lenha extra" />
-            </Field>
-            <FieldRow cols={2}>
-              <Field label="Qtd">
-                <Input type="number" min={1} required value={newFolioItem.quantity} onChange={e => setNewFolioItem({ ...newFolioItem, quantity: Number(e.target.value) })} inputMode="numeric" />
-              </Field>
-              <Field label="R$ unit.">
-                <Input type="number" step="0.01" min={0} required value={newFolioItem.unitPrice || ""} onChange={e => setNewFolioItem({ ...newFolioItem, unitPrice: Number(e.target.value) })} inputMode="decimal" />
-              </Field>
-            </FieldRow>
-            <Button type="submit" variant="primary" fullWidth loading={loadingFolio} icon={Plus}>Adicionar à conta</Button>
-          </form>
-        )}
       </div>
     </Card>
   );

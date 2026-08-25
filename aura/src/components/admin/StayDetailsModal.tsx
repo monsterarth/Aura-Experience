@@ -1,18 +1,21 @@
 // src/components/admin/StayDetailsModal.tsx
 //
-// FICHA RÁPIDA da estadia (reforma 08/2026) — o que a recepção precisa DE RELANCE:
-// datas, quem está na cabana (todos nomeados, pets incluídos), origem da reserva,
-// pendências operacionais (chave, empréstimos, concierge aberto) e a conta.
-// Detalhe fica na Ficha Completa (/admin/stays/[stayId]): FNRH, viagem, montagem
-// do quarto, endereço — nada disso mora aqui, de propósito.
+// FICHA RÁPIDA da estadia. Contexto (cabana, datas, ocupação, ETA, placa) vive no
+// CABEÇALHO, compacto: é o que se lê de relance, não conteúdo de tela. O corpo
+// guarda o que exige leitura de verdade — quem está na cabana, o que a operação
+// deve ao hóspede e a conta.
+//
+// A conta aqui é o MESMO componente do modal da Conta e da ficha completa
+// (`folio/StayAccountPanel`): saldo, os quatro sinais com desfecho inline,
+// lançamentos e formulário. Duas implementações do mesmo extrato era o começo de
+// duas verdades.
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  X, Edit2, Save, Calendar, User, Phone, Users, CheckCircle, Clock, Car,
-  PawPrint, Trash2, LogIn, LogOut, RotateCcw, Sparkles, Receipt, RefreshCw,
-  ShoppingCart, BedDouble, ArrowRight, Search, UserRoundPen, KeyRound, Package,
-  FileText, ExternalLink, Plus,
+  X, Edit2, Save, User, Phone, Users, Car, PawPrint, LogIn, LogOut, RotateCcw,
+  Sparkles, Receipt, BedDouble, ArrowRight, Search, UserRoundPen, KeyRound,
+  Package, FileText, ExternalLink, CheckCircle, CheckCircle2, Clock, Calendar,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -28,15 +31,15 @@ import { useCloseGuard } from "@/lib/use-discard-guard";
 import { Dialog } from "@/components/aura/Dialog";
 import { useConfirm } from "@/components/aura/ConfirmDialog";
 import {
-  T, alpha, tone as toneOf, Button, IconButton, Pill, Card, SectionLabel,
-  Field, FieldRow, Input, Select,
+  T, alpha, tone as toneOf, Button, IconButton, Pill, Card, SectionLabel, Input, Select,
 } from "@/components/aura";
 import { stayDisplayName } from "@/lib/stay-display";
 import { readPets } from "@/lib/pets";
-import { useFolio } from "./folio/useFolio";
+import { useStayAccount } from "./folio/useStayAccount";
+import { StayAccountPanel } from "./folio/StayAccountPanel";
 import { supabase } from "@/lib/supabase";
 import { extractTimeHHMM, combineDateAndTimeISO, DEFAULT_CHECK_IN_TIME, DEFAULT_CHECK_OUT_TIME } from "@/lib/stay-times";
-import { StayOriginPills, StayPendingCard } from "./StayOpsBlocks";
+import { StayOriginPills, StayRequestsCard } from "./StayOpsBlocks";
 import { Stay, Guest, Cabin } from "@/types/aura";
 
 interface StayDetailsModalProps {
@@ -57,12 +60,26 @@ const STATUS: Record<string, { label: string; tone: "amber" | "blue" | "green" |
 };
 const COMPANION_LABEL: Record<string, string> = { adult: "Adulto", child: "Criança", free: "Bebê", baby: "Bebê" };
 const COMPANION_TONE: Record<string, "brand" | "blue" | "orange"> = { adult: "brand", child: "blue", free: "orange", baby: "orange" };
+const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
 
 const formatDateForInput = (timestamp: any) => {
   if (!timestamp) return "";
   const d = new Date(timestamp);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
+
+/** Item da barra de contexto do cabeçalho: ícone + rótulo + valor (ou campo). */
+function Meta({ icon, label, children }: { icon: React.ReactNode; label: string; children: React.ReactNode }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+      <span style={{ color: T.brandText, opacity: .85, display: "inline-flex", flexShrink: 0 }}>{icon}</span>
+      <span style={{ display: "inline-flex", alignItems: "baseline", gap: 5, minWidth: 0 }}>
+        <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: T.muted2, flexShrink: 0 }}>{label}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: T.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{children}</span>
+      </span>
+    </span>
+  );
+}
 
 export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, onUpdate }: StayDetailsModalProps) {
   const { userData } = useAuth();
@@ -76,7 +93,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const [hasLoanedItems, setHasLoanedItems] = useState<boolean | null>(null);
   const [loanedItemsText, setLoanedItemsText] = useState("");
 
-  // Rascunho de edição — SÓ o que o modal edita (o resto é da Ficha Completa).
+  // Rascunho de edição — só o que a ficha rápida edita (o resto é da Ficha Completa).
   const [formData, setFormData] = useState<Partial<Stay>>({});
   const [phoneDraft, setPhoneDraft] = useState("");
   const [cabins, setCabins] = useState<Cabin[]>([]);
@@ -94,18 +111,14 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const [checkInTimeStr, setCheckInTimeStr] = useState("");
   const [checkOutTimeStr, setCheckOutTimeStr] = useState("");
 
-  const isCoreFieldLocked = !isEditing || isGovOnly;
-
-  // Fólio (carga, realtime e lançamentos) — hook compartilhado com o modal da Conta.
-  const folio = useFolio(stay?.propertyId, stay?.id, { id: userData?.id, name: userData?.fullName }, isOpen);
-  const folioItems = folio.items;
-  const loadFolio = folio.reload;
-  const [savingFolio, setSavingFolio] = useState(false);
-  const loadingFolio = folio.loading || savingFolio;
-  const [newFolioItem, setNewFolioItem] = useState({ description: "", quantity: 1, unitPrice: 0 });
-  const [newFolioKind, setNewFolioKind] = useState<"debit" | "credit">("debit");
   const [rateInput, setRateInput] = useState("");
   const [savingRate, setSavingRate] = useState(false);
+
+  const locked = !isEditing || isGovOnly;
+
+  // A conta inteira (fólio, sinais, encerramento) — mesmo estado das outras telas.
+  const account = useStayAccount(stay?.propertyId, stay, { id: userData?.id, name: userData?.fullName }, isOpen, onUpdate);
+
   // Esc fica de fora: este modal abre sub-modais (check-out, transferência).
   const { requestClose, confirmDiscard, guardProps, reset } = useCloseGuard(onClose, { open: isOpen, escape: false });
   const confirm = useConfirm();
@@ -133,24 +146,9 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
 
   useEffect(() => { initData(); }, [initData]);
 
-  // ── Fólio ──────────────────────────────────────────────────────────────────
-  const handleAddFolioItem = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newFolioItem.description || newFolioItem.quantity <= 0 || newFolioItem.unitPrice < 0) {
-      return toast.error("Preencha os campos do item corretamente.");
-    }
-    if (newFolioKind === "credit") {
-      await folio.addCredit(newFolioItem.description, newFolioItem.quantity * newFolioItem.unitPrice);
-    } else {
-      await folio.addDebit(newFolioItem.description, newFolioItem.quantity, newFolioItem.unitPrice);
-    }
-    setNewFolioItem({ description: "", quantity: 1, unitPrice: 0 });
-    setNewFolioKind("debit");
-    if (onUpdate) onUpdate();
-  };
-
+  // ── Diária de estadia avulsa ───────────────────────────────────────────────
   const handleSetRate = async () => {
-    const nightly = parseFloat(rateInput);
+    const nightly = parseFloat(rateInput.replace(",", "."));
     if (!(nightly > 0)) return toast.error("Informe o valor da diária.");
     const nights = Math.max(1, Math.round(
       (new Date(stay.checkOut.slice(0, 10) + "T12:00:00").getTime() -
@@ -168,7 +166,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
         ? `Diária definida — ${posted} noite(s) vencida(s) lançada(s).`
         : "Diária definida — as noites entram no fólio automaticamente.");
       setRateInput("");
-      loadFolio();
+      void account.folio.reload();
     } catch {
       toast.error("Erro ao definir a diária.");
     } finally {
@@ -176,27 +174,20 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     }
   };
 
-  const handleDeleteFolioItem = async (itemId: string, description: string) => {
-    if (!(await confirm({ title: "Estornar este lançamento?", description: "Remove “" + description + "” do fólio. O estorno fica registrado no histórico.", confirmLabel: "Estornar", tone: "danger" }))) return;
-    await folio.remove(itemId, description);
-    if (onUpdate) onUpdate();
-  };
-
-  const handleToggleFolioStatus = async (itemId: string, currentStatus: string) => {
-    const newStatus = currentStatus === "paid" ? "pending" : "paid";
-    setSavingFolio(true);
-    try {
-      await StayService.toggleFolioItemStatus(
-        stay.propertyId, stay.id, itemId, newStatus as "pending" | "paid", userData?.id || "unknown", userData?.fullName || "Recepção"
-      );
-      toast.success(newStatus === "paid" ? "Item baixado!" : "Item reaberto.");
-      void loadFolio();
-      if (onUpdate) onUpdate();
-    } catch {
-      toast.error("Erro ao atualizar status do item.");
-    } finally {
-      setSavingFolio(false);
-    }
+  // ── Encerrar conta (mesma confirmação do modal da Conta) ───────────────────
+  const handleCloseBill = async () => {
+    const summary = account.pending.map(c => `${c.label.toLowerCase()} (${c.detail})`).join(" · ");
+    const ok = await confirm({
+      title: "Encerrar a conta desta estadia?",
+      description: account.pending.length
+        ? `Fica para trás: ${summary}. Os lançamentos pendentes serão marcados como pagos e a estadia vai para Encerradas.`
+        : "Ciclo completo. Os lançamentos pendentes serão marcados como pagos e a estadia vai para Encerradas.",
+      confirmLabel: "Encerrar conta",
+      tone: account.pending.length ? "danger" : undefined,
+      icon: Receipt,
+    });
+    if (!ok) return;
+    await account.closeBill(summary || undefined);
   };
 
   // ── Alterar titular ────────────────────────────────────────────────────────
@@ -279,7 +270,6 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
         chatwootSyncOnCabinTransfer(stay.id, newCabinId).catch(() => {});
       }
 
-      // Migra contato/mensagens se o telefone mudou.
       const oldPhone = guest?.phone || "";
       if (guest && oldPhone && phoneDraft && ContactService.formatPhoneId(oldPhone) !== ContactService.formatPhoneId(phoneDraft)) {
         await ContactService.migrateContactPhone(stay.propertyId, oldPhone, phoneDraft, guest.fullName || "", guest.id);
@@ -396,9 +386,8 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     } finally { setLoading(false); }
   };
 
-  // ── Dados derivados da visão ───────────────────────────────────────────────
+  // ── Derivados da visão ─────────────────────────────────────────────────────
   const st = STATUS[stay.status] ?? { label: stay.status, tone: "neutral" as const };
-  const { debits: folioDebits, credits: folioCredits, balance: folioBalance } = FinanceService.summarize(folioItems);
   const companions = (stay.additionalGuests ?? []).filter(c => c.fullName?.trim() && c.fullName !== "ACOMPANHANTE");
   const unnamedCompanions = (stay.additionalGuests ?? []).length - companions.length;
   const pets = readPets(stay);
@@ -407,155 +396,131 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     ? Math.max(1, Math.round((new Date(stay.checkOut.slice(0, 10) + "T12:00").getTime() - new Date(stay.checkIn.slice(0, 10) + "T12:00").getTime()) / 86400000))
     : 0;
   const totalPax = (counts.adults ?? 0) + (counts.children ?? 0) + (counts.babies ?? 0);
-
-  const mono = "ui-monospace, SFMono-Regular, Menlo, monospace";
-  const cellLabel = (icon: React.ReactNode, label: string) => (
-    <SectionLabel style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-      <span style={{ color: T.brandText, opacity: .85, display: "inline-flex" }}>{icon}</span>{label}
-    </SectionLabel>
-  );
-  const big = (txt: React.ReactNode, isMono?: boolean) => (
-    <span style={{ fontSize: 17, fontWeight: 900, color: T.text, fontVariantNumeric: "tabular-nums", fontFamily: isMono ? mono : undefined }}>{txt}</span>
-  );
+  const cabinLabel = stay.cabinName || cabins.find(c => c.id === stay.cabinId)?.name || "Sem cabana";
 
   return (
     <>
       <Dialog open={isOpen} onClose={requestClose} presentation="auto" size="xl" rawBody hideClose panelProps={guardProps} ariaLabel="Ficha da hospedagem">
 
-        {/* ── Cabeçalho ── */}
-        <header style={{ padding: "16px 20px", borderBottom: `1px solid ${T.border}`, background: T.glass, display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 12, flexShrink: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
-            <div style={{ height: 46, width: 46, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 900, fontSize: 19, flexShrink: 0, boxShadow: `0 4px 14px ${alpha(T.g1, 30)}` }}>
-              {stayDisplayName(stay, guest?.fullName).charAt(0) || "G"}
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {stayDisplayName(stay, guest?.fullName)}
-                </h2>
-                <Pill tone={st.tone} dot label={st.label} />
-                <StayOriginPills stay={stay} />
+        {/* ── Cabeçalho: identidade + contexto ── */}
+        <header style={{ borderBottom: `1px solid ${T.border}`, background: T.glass, flexShrink: 0 }}>
+          <div style={{ padding: "14px 20px 12px", display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+              <div style={{ height: 44, width: 44, borderRadius: "50%", background: T.grad, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 900, fontSize: 18, flexShrink: 0, boxShadow: `0 4px 14px ${alpha(T.g1, 30)}` }}>
+                {stayDisplayName(stay, guest?.fullName).charAt(0) || "G"}
               </div>
-              <p style={{ margin: "3px 0 0", fontSize: 11.5, color: T.muted, fontWeight: 500 }}>
-                Reserva <span style={{ fontFamily: mono, fontWeight: 700, color: T.text }}>{stay.accessCode}</span>
-                {stay.groupId && <> · grupo <span style={{ fontFamily: mono }}>{stay.groupId}</span></>}
-                {stay.externalId && <> · HUNIT <span style={{ fontFamily: mono }}>{stay.externalId}</span></>}
-              </p>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {stayDisplayName(stay, guest?.fullName)}
+                  </h2>
+                  <Pill tone={st.tone} dot label={st.label} />
+                  <StayOriginPills stay={stay} />
+                </div>
+                <p style={{ margin: "2px 0 0", fontSize: 11.5, color: T.muted, fontWeight: 500 }}>
+                  Reserva <span style={{ fontFamily: MONO, fontWeight: 700, color: T.text }}>{stay.accessCode}</span>
+                  {stay.groupId && <> · grupo <span style={{ fontFamily: MONO }}>{stay.groupId}</span></>}
+                  {stay.externalId && <> · HUNIT <span style={{ fontFamily: MONO }}>{stay.externalId}</span></>}
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {!isEditing ? (
+                <>
+                  {["pending", "pre_checkin_done"].includes(stay.status) && (
+                    <Button variant="soft" tone="green" icon={LogIn} onClick={handleCheckIn} disabled={loading}>Check-in</Button>
+                  )}
+                  {stay.status === "active" && (
+                    <Button variant="soft" tone="orange" icon={LogOut} onClick={handleToggleCheckOut} disabled={loading}>Check-out</Button>
+                  )}
+                  {stay.status === "finished" && (
+                    <Button variant="soft" tone="blue" icon={RotateCcw} onClick={handleToggleCheckOut} disabled={loading}>Reativar</Button>
+                  )}
+                  {!isGovOnly && <Button variant="secondary" icon={Edit2} onClick={() => setIsEditing(true)}>Editar</Button>}
+                </>
+              ) : (
+                <>
+                  <Button variant="ghost" onClick={handleCancel}>Cancelar</Button>
+                  <Button variant="primary" icon={Save} loading={loading} loadingText="Salvando…" onClick={handleSave}>Salvar</Button>
+                </>
+              )}
+              <Button variant="secondary" icon={FileText} onClick={() => window.open(`/admin/stays/${stay.id}`, "_blank")}>Ficha Completa</Button>
+              <IconButton icon={X} label="Fechar" variant="ghost" onClick={requestClose} />
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            {!isEditing ? (
-              <>
-                {["pending", "pre_checkin_done"].includes(stay.status) && (
-                  <Button variant="soft" tone="green" icon={LogIn} onClick={handleCheckIn} disabled={loading}>Check-in</Button>
-                )}
-                {stay.status === "active" && (
-                  <Button variant="soft" tone="orange" icon={LogOut} onClick={handleToggleCheckOut} disabled={loading}>Check-out</Button>
-                )}
-                {stay.status === "finished" && (
-                  <Button variant="soft" tone="blue" icon={RotateCcw} onClick={handleToggleCheckOut} disabled={loading}>Reativar</Button>
-                )}
-                <Button variant="secondary" icon={Edit2} onClick={() => setIsEditing(true)}>Editar</Button>
-              </>
-            ) : (
-              <>
-                <Button variant="ghost" onClick={handleCancel}>Cancelar</Button>
-                <Button variant="primary" icon={Save} loading={loading} loadingText="Salvando…" onClick={handleSave}>Salvar</Button>
-              </>
+          {/* Barra de contexto: cabana · datas · ocupação · chegada · placa */}
+          <div style={{ padding: "0 20px 12px", display: "flex", alignItems: "center", gap: 20, rowGap: 10, flexWrap: "wrap" }}>
+            <Meta icon={<BedDouble size={13} />} label="Cabana">
+              {locked ? cabinLabel : (
+                <Select fieldSize="sm" wrapStyle={{ minWidth: 190 }} value={formData.cabinId ?? ""} onChange={e => setFormData({ ...formData, cabinId: e.target.value || null })}>
+                  <option value="">— Sem cabana —</option>
+                  {cabins.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </Select>
+              )}
+            </Meta>
+
+            <Meta icon={<Calendar size={13} />} label="Estadia">
+              {locked ? (
+                <span style={{ fontFamily: MONO }}>
+                  {stay.checkIn ? format(new Date(stay.checkIn), "dd/MM HH:mm") : "—"}
+                  <span style={{ color: T.muted2, margin: "0 6px" }}>→</span>
+                  {stay.checkOut ? format(new Date(stay.checkOut), "dd/MM HH:mm") : "—"}
+                  <span style={{ color: T.muted, fontWeight: 500, marginLeft: 6 }}>· {nights} noite{nights !== 1 ? "s" : ""}</span>
+                </span>
+              ) : (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+                  <Input type="date" fieldSize="sm" style={{ width: 140 }} value={checkInStr} onChange={e => setCheckInStr(e.target.value)} />
+                  <Input type="time" fieldSize="sm" style={{ width: 96 }} value={checkInTimeStr} onChange={e => setCheckInTimeStr(e.target.value)} />
+                  <span style={{ color: T.muted2 }}>→</span>
+                  <Input type="date" fieldSize="sm" style={{ width: 140 }} value={checkOutStr} onChange={e => setCheckOutStr(e.target.value)} />
+                  <Input type="time" fieldSize="sm" style={{ width: 96 }} value={checkOutTimeStr} onChange={e => setCheckOutTimeStr(e.target.value)} />
+                </span>
+              )}
+            </Meta>
+
+            <Meta icon={<Users size={13} />} label="Pax">
+              {locked ? (
+                <>
+                  {counts.adults ?? 1}A{(counts.children ?? 0) > 0 ? ` · ${counts.children}C` : ""}{(counts.babies ?? 0) > 0 ? ` · ${counts.babies}B` : ""}
+                  {pets.length > 0 && <span style={{ color: T.orange, fontWeight: 600 }}> · {pets.length}🐾</span>}
+                </>
+              ) : (
+                <span style={{ display: "inline-flex", gap: 4 }}>
+                  {([["adults", "A", 1], ["children", "C", 0], ["babies", "B", 0]] as [keyof typeof counts, string, number][]).map(([key, lbl, min]) => (
+                    <Input key={key} type="number" min={min} fieldSize="sm" style={{ width: 54, textAlign: "center" }} title={lbl} value={counts[key] ?? min}
+                      onChange={e => setFormData(p => ({ ...p, counts: { ...(p.counts ?? counts), [key]: Math.max(min, +e.target.value) } as Stay["counts"] }))} />
+                  ))}
+                </span>
+              )}
+            </Meta>
+
+            <Meta icon={<Clock size={13} />} label="Chegada">
+              {locked ? (stay.expectedArrivalTime || "—") : (
+                <Input type="time" fieldSize="sm" style={{ width: 96 }} value={formData.expectedArrivalTime ?? ""} onChange={e => setFormData({ ...formData, expectedArrivalTime: e.target.value })} />
+              )}
+            </Meta>
+
+            <Meta icon={<Car size={13} />} label="Placa">
+              {locked ? (stay.vehiclePlate || "—") : (
+                <Input fieldSize="sm" style={{ width: 110, textTransform: "uppercase" }} placeholder="ABC1D23" value={formData.vehiclePlate ?? ""} onChange={e => setFormData({ ...formData, vehiclePlate: e.target.value.toUpperCase() })} />
+              )}
+            </Meta>
+
+            {(stay.cabinHistory?.length ?? 0) > 0 && (
+              <Meta icon={<ArrowRight size={13} />} label="Trocas">
+                {stay.cabinHistory!.map(h => cabins.find(c => c.id === h.cabinId)?.name?.split(" - ")[0] ?? "?").join(" → ")} → {cabinLabel.split(" - ")[0]}
+              </Meta>
             )}
-            <Button variant="secondary" icon={FileText} onClick={() => window.open(`/admin/stays/${stay.id}`, "_blank")}>Ficha Completa</Button>
-            <IconButton icon={X} label="Fechar" variant="ghost" onClick={requestClose} />
           </div>
         </header>
 
         {/* ── Corpo ── */}
         <div className="custom-scrollbar" style={{ flex: 1, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", background: T.bg, padding: 16, display: "flex", flexDirection: "column", gap: 14 }}>
 
-          {/* Faixa-resumo: datas · pax · acomodação */}
-          <Card pad={0} style={{ overflow: "hidden" }}>
-            <div className="grid grid-cols-2 md:grid-cols-4" style={{ gap: 1, background: T.border }}>
-              {[
-                <div key="ci" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
-                  {cellLabel(<LogIn size={10} />, "Check-in")}
-                  {isCoreFieldLocked ? big(stay.checkIn ? format(new Date(stay.checkIn), "dd/MM/yy · HH:mm") : "—", true) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <Input type="date" fieldSize="sm" value={checkInStr} onChange={e => setCheckInStr(e.target.value)} />
-                      <Input type="time" fieldSize="sm" value={checkInTimeStr} onChange={e => setCheckInTimeStr(e.target.value)} />
-                    </div>
-                  )}
-                </div>,
-                <div key="co" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
-                  {cellLabel(<LogOut size={10} />, "Check-out")}
-                  {isCoreFieldLocked ? big(stay.checkOut ? format(new Date(stay.checkOut), "dd/MM/yy · HH:mm") : "—", true) : (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <Input type="date" fieldSize="sm" value={checkOutStr} onChange={e => setCheckOutStr(e.target.value)} />
-                      <Input type="time" fieldSize="sm" value={checkOutTimeStr} onChange={e => setCheckOutTimeStr(e.target.value)} />
-                    </div>
-                  )}
-                  <span style={{ fontSize: 11, color: T.muted }}>{nights} noite{nights !== 1 ? "s" : ""}</span>
-                </div>,
-                <div key="pax" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
-                  {cellLabel(<Users size={10} />, "Ocupação")}
-                  {isCoreFieldLocked ? (
-                    big(`${counts.adults ?? 1}A · ${counts.children ?? 0}C${(counts.babies ?? 0) > 0 ? ` · ${counts.babies}B` : ""}`)
-                  ) : (
-                    <div style={{ display: "flex", gap: 6 }}>
-                      {([["adults", "Ad", 1], ["children", "Cr", 0], ["babies", "Bb", 0]] as [keyof typeof counts, string, number][]).map(([key, lbl, min]) => (
-                        <label key={key} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, fontSize: 9, fontWeight: 800, textTransform: "uppercase", color: T.muted }}>
-                          <Input type="number" min={min} fieldSize="sm" style={{ width: 50, textAlign: "center" }} value={counts[key] ?? min}
-                            onChange={e => setFormData(p => ({ ...p, counts: { ...(p.counts ?? counts), [key]: Math.max(min, +e.target.value) } as Stay["counts"] }))} />
-                          {lbl}
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                  <span style={{ fontSize: 11, color: T.muted }}>{totalPax} hóspede{totalPax !== 1 ? "s" : ""}{pets.length > 0 ? ` + ${pets.length} pet${pets.length > 1 ? "s" : ""}` : ""}</span>
-                </div>,
-                <div key="cab" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
-                  {cellLabel(<BedDouble size={10} />, "Acomodação")}
-                  {isCoreFieldLocked ? big(stay.cabinName || cabins.find(c => c.id === stay.cabinId)?.name || "Sem cabana") : (
-                    <Select fieldSize="sm" value={formData.cabinId ?? ""} onChange={e => setFormData({ ...formData, cabinId: e.target.value || null })}>
-                      <option value="">— Sem cabana —</option>
-                      {cabins.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </Select>
-                  )}
-                </div>,
-              ].map((node, i) => <div key={i} style={{ background: T.card, minWidth: 0 }}>{node}</div>)}
-            </div>
-
-            {/* Linha secundária: ETA · placa · histórico de cabanas */}
-            <div style={{ borderTop: `1px solid ${T.border}`, padding: "10px 14px", display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", background: T.card }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: T.muted }}>
-                <Clock size={12} style={{ color: T.brandText }} />
-                Chegada prevista:{" "}
-                {isCoreFieldLocked ? (
-                  <b style={{ color: T.text, fontFamily: mono }}>{stay.expectedArrivalTime || "—"}</b>
-                ) : (
-                  <Input type="time" fieldSize="sm" style={{ width: 96 }} value={formData.expectedArrivalTime ?? ""} onChange={e => setFormData({ ...formData, expectedArrivalTime: e.target.value })} />
-                )}
-              </span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: T.muted }}>
-                <Car size={12} style={{ color: T.brandText }} />
-                Placa:{" "}
-                {isCoreFieldLocked ? (
-                  <b style={{ color: T.text, fontFamily: mono }}>{stay.vehiclePlate || "—"}</b>
-                ) : (
-                  <Input fieldSize="sm" style={{ width: 110, textTransform: "uppercase" }} placeholder="ABC1D23" value={formData.vehiclePlate ?? ""} onChange={e => setFormData({ ...formData, vehiclePlate: e.target.value.toUpperCase() })} />
-                )}
-              </span>
-              {(stay.cabinHistory?.length ?? 0) > 0 && (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: T.muted, minWidth: 0 }}>
-                  <ArrowRight size={12} style={{ color: T.brandText }} />
-                  {stay.cabinHistory!.map(h => cabins.find(c => c.id === h.cabinId)?.name?.split(" - ")[0] ?? "?").join(" → ")}
-                  {" → "}<b style={{ color: T.text }}>{(stay.cabinName || cabins.find(c => c.id === stay.cabinId)?.name || "atual").split(" - ")[0]}</b>
-                </span>
-              )}
-            </div>
-          </Card>
-
-          {/* Quem está na cabana · Pendências */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+            {/* Quem está na cabana */}
             <Card header={{
               icon: Users, tone: "brand", title: "Quem está na cabana",
               sub: `${totalPax} hóspede${totalPax !== 1 ? "s" : ""}${pets.length > 0 ? ` · ${pets.length} pet${pets.length > 1 ? "s" : ""}` : ""}`,
@@ -602,7 +567,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
                       <span style={{ display: "block", fontSize: 13.5, fontWeight: 800, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {guest?.fullName || stay.internalLabel || "—"}
                       </span>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: T.muted, fontFamily: mono }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: T.muted, fontFamily: MONO }}>
                         <Phone size={10} />
                         {isEditing && !isGovOnly && guest ? (
                           <Input fieldSize="sm" style={{ width: 160 }} value={phoneDraft} onChange={e => setPhoneDraft(e.target.value)} inputMode="tel" />
@@ -659,135 +624,45 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
               )}
             </Card>
 
-            <StayPendingCard propertyId={stay.propertyId} stay={stay} active={isOpen} />
+            <StayRequestsCard propertyId={stay.propertyId} stay={stay} active={isOpen} />
           </div>
 
-          {/* Conta & consumo */}
-          <Card pad={0} header={{
-            icon: Receipt, tone: "brand", title: "Conta & consumo",
-            sub: `${folioItems.length} lançamento${folioItems.length === 1 ? "" : "s"}`,
-            aside: (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 14 }}>
-                <span style={{ textAlign: "right", lineHeight: 1.15 }}>
-                  <span style={{ display: "block", fontSize: 9, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: T.muted }}>Débitos</span>
-                  <span style={{ display: "block", fontSize: 13, fontWeight: 900, color: T.text, fontVariantNumeric: "tabular-nums" }}>R$ {folioDebits.toFixed(2)}</span>
-                </span>
-                <span style={{ textAlign: "right", lineHeight: 1.15 }}>
-                  <span style={{ display: "block", fontSize: 9, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: T.muted }}>Créditos</span>
-                  <span style={{ display: "block", fontSize: 13, fontWeight: 900, color: T.green, fontVariantNumeric: "tabular-nums" }}>R$ {folioCredits.toFixed(2)}</span>
-                </span>
-                <span style={{ textAlign: "right", lineHeight: 1.15 }}>
-                  <span style={{ display: "block", fontSize: 9, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: T.muted }}>Saldo</span>
-                  <span style={{ display: "block", fontSize: 15, fontWeight: 900, color: folioBalance > 0.009 ? T.red : T.green, fontVariantNumeric: "tabular-nums" }}>R$ {folioBalance.toFixed(2)}</span>
-                </span>
-                <IconButton icon={RefreshCw} label="Atualizar extrato" size="sm" onClick={() => void loadFolio()} loading={loadingFolio} />
-              </span>
-            ),
-          }}>
-            <div style={{ padding: "0 16px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
-              {/* Hospedagem: diária vinculada (funil/canal) ou definida à mão (avulsa) */}
-              {Number(stay.nightlyRate) > 0 ? (
-                <LodgingPanel
-                  propertyId={stay.propertyId}
-                  stayId={stay.id}
-                  onChanged={() => { loadFolio(); if (onUpdate) onUpdate(); }}
-                />
-              ) : !isGovOnly && (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "8px 12px", borderRadius: 12, background: T.glass, border: `1px dashed ${T.border2}`, fontSize: 12 }}>
-                  <SectionLabel style={{ margin: 0 }}>Diária</SectionLabel>
-                  <span style={{ color: T.muted }} className="ak-hide-mobile">Estadia sem valor de hospedagem —</span>
-                  <Input type="number" step="0.01" min={0} placeholder="R$ / noite" fieldSize="sm" style={{ width: 110 }} value={rateInput} onChange={e => setRateInput(e.target.value)} inputMode="decimal" />
-                  <Button size="sm" variant="primary" loading={savingRate} onClick={handleSetRate}>Ativar diárias</Button>
-                </div>
-              )}
-
-              <div className="flex flex-col xl:flex-row gap-4 items-start">
-                <div style={{ flex: 1, minWidth: 0, width: "100%", border: `1px solid ${T.border}`, borderRadius: 14, overflow: "hidden" }}>
-                  <div style={{ overflowX: "auto" }}>
-                    <table style={{ width: "100%", textAlign: "left", borderCollapse: "collapse" }}>
-                      <thead style={{ background: T.glass, borderBottom: `1px solid ${T.border}` }}>
-                        <tr>
-                          {["Item / descrição", "Qtd", "Unit.", "Total", ""].map((h, i) => (
-                            (i < 4 || !isGovOnly) && <th key={i} style={{ padding: "9px 12px", fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: T.muted, textAlign: i >= 1 && i <= 3 ? (i === 1 ? "center" : "right") : "left", whiteSpace: "nowrap" }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {folioItems.length === 0 ? (
-                          <tr><td colSpan={5} style={{ padding: "28px 16px", textAlign: "center", color: T.muted, fontSize: 13 }}>Nenhum consumo registrado nesta estadia.</td></tr>
-                        ) : folioItems.map(item => (
-                          <tr key={item.id} style={{ borderTop: `1px solid ${T.border}`, opacity: item.status === "paid" ? .55 : 1 }}>
-                            <td style={{ padding: "10px 12px" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                {!isGovOnly && (
-                                  <button onClick={() => handleToggleFolioStatus(item.id, item.status || "pending")} className="ak-press"
-                                    style={{ width: 17, height: 17, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer", background: item.status === "paid" ? T.green : "transparent", border: `1.5px solid ${item.status === "paid" ? T.green : T.border2}`, color: "#fff", padding: 0 }}
-                                    title={item.status === "paid" ? "Reabrir" : "Marcar como pago"}>
-                                    {item.status === "paid" && <CheckCircle size={11} strokeWidth={3} />}
-                                  </button>
-                                )}
-                                <div style={{ minWidth: 0 }}>
-                                  <span style={{ fontSize: 13, fontWeight: 700, color: item.status === "paid" && item.type !== "credit" ? T.muted : T.text, textDecoration: item.status === "paid" && item.type !== "credit" ? "line-through" : "none" }}>
-                                    {item.description}
-                                    {item.category === "lodging" && <Pill tone="brand" label="Diária" style={{ marginLeft: 6 }} />}
-                                    {item.type === "credit" && <Pill tone="green" label="Crédito" style={{ marginLeft: 6 }} />}
-                                  </span>
-                                  <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: T.muted, marginTop: 2 }}>
-                                    <Clock size={9} /> {item.createdAt ? format(new Date(item.createdAt), "dd/MM HH:mm") : "—"}
-                                  </span>
-                                </div>
-                              </div>
-                            </td>
-                            <td style={{ padding: "10px 8px", textAlign: "center", color: T.muted, fontWeight: 600, fontSize: 12.5, whiteSpace: "nowrap" }}>{item.quantity}×</td>
-                            <td style={{ padding: "10px 8px", textAlign: "right", color: T.muted, fontSize: 12.5, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>R$ {item.unitPrice.toFixed(2)}</td>
-                            <td style={{ padding: "10px 8px", textAlign: "right", fontWeight: 900, fontSize: 12.5, whiteSpace: "nowrap", color: item.type === "credit" ? T.green : T.text, fontVariantNumeric: "tabular-nums" }}>
-                              {item.type === "credit" ? "−" : ""}R$ {item.totalPrice.toFixed(2)}
-                            </td>
-                            {!isGovOnly && (
-                              <td style={{ padding: "10px 10px 10px 0", textAlign: "right" }}>
-                                <IconButton icon={Trash2} label={`Estornar ${item.description}`} size="sm" variant="ghost" tone="red" onClick={() => handleDeleteFolioItem(item.id, item.description)} />
-                              </td>
-                            )}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+          {/* Conta — o mesmo painel do modal da Conta e da ficha completa */}
+          <Card
+            header={{
+              icon: Receipt,
+              tone: account.folio.balance > 0.005 ? "orange" : "brand",
+              title: "Conta",
+              sub: account.closed ? "encerrada" : `${account.folio.items.length} lançamento${account.folio.items.length === 1 ? "" : "s"}`,
+              aside: !isGovOnly ? (
+                account.closed ? (
+                  <Button size="sm" variant="secondary" icon={RotateCcw} loading={account.busy} onClick={() => void account.reopenBill()}>Reabrir conta</Button>
+                ) : (
+                  <Button size="sm" variant="soft" icon={CheckCircle2} loading={account.busy} onClick={() => void handleCloseBill()}>Encerrar conta</Button>
+                )
+              ) : undefined,
+            }}
+          >
+            <StayAccountPanel
+              a={account}
+              readOnly={isGovOnly}
+              lodgingSlot={
+                Number(stay.nightlyRate) > 0 ? (
+                  <LodgingPanel
+                    propertyId={stay.propertyId}
+                    stayId={stay.id}
+                    onChanged={() => { void account.folio.reload(); if (onUpdate) onUpdate(); }}
+                  />
+                ) : !isGovOnly ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "8px 12px", borderRadius: 12, background: T.glass, border: `1px dashed ${T.border2}`, fontSize: 12 }}>
+                    <SectionLabel style={{ margin: 0 }}>Diária</SectionLabel>
+                    <span style={{ color: T.muted }} className="ak-hide-mobile">Estadia sem valor de hospedagem —</span>
+                    <Input inputMode="decimal" placeholder="R$ / noite" fieldSize="sm" style={{ width: 110 }} value={rateInput} onChange={e => setRateInput(e.target.value)} />
+                    <Button size="sm" variant="primary" loading={savingRate} onClick={handleSetRate}>Ativar diárias</Button>
                   </div>
-                </div>
-
-                {!isGovOnly && (
-                  <form onSubmit={handleAddFolioItem} className="w-full xl:w-64 shrink-0" style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-                    <SectionLabel style={{ display: "inline-flex", alignItems: "center", gap: 6, color: T.brandText }}><ShoppingCart size={12} /> Lançamento</SectionLabel>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, padding: 4, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12 }}>
-                      {(["debit", "credit"] as const).map(kind => {
-                        const sel = newFolioKind === kind;
-                        const tn = kind === "credit" ? toneOf("green") : toneOf("brand");
-                        return (
-                          <button key={kind} type="button" onClick={() => setNewFolioKind(kind)} className="ak-press"
-                            style={{ padding: "7px 0", borderRadius: 9, fontSize: 9.5, fontWeight: 900, letterSpacing: ".08em", textTransform: "uppercase", cursor: "pointer", fontFamily: "inherit", background: sel ? tn.bg : "transparent", border: `1px solid ${sel ? tn.border : "transparent"}`, color: sel ? tn.color : T.muted }}>
-                            {kind === "debit" ? "Consumo" : "Pagamento"}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <Field label={newFolioKind === "credit" ? "Descrição do pagamento" : "Produto / serviço"}>
-                      <Input required value={newFolioItem.description} onChange={e => setNewFolioItem({ ...newFolioItem, description: e.target.value })} placeholder={newFolioKind === "credit" ? "Ex.: Pix hospedagem" : "Ex.: lenha extra"} />
-                    </Field>
-                    <FieldRow cols={2}>
-                      <Field label="Qtd">
-                        <Input type="number" min={1} required value={newFolioItem.quantity} onChange={e => setNewFolioItem({ ...newFolioItem, quantity: Number(e.target.value) })} inputMode="numeric" />
-                      </Field>
-                      <Field label="R$ unit.">
-                        <Input type="number" step="0.01" min={0} required value={newFolioItem.unitPrice || ""} onChange={e => setNewFolioItem({ ...newFolioItem, unitPrice: Number(e.target.value) })} inputMode="decimal" />
-                      </Field>
-                    </FieldRow>
-                    <Button type="submit" variant="primary" tone={newFolioKind === "credit" ? "green" : undefined} fullWidth loading={loadingFolio} icon={Plus}>
-                      {newFolioKind === "credit" ? "Lançar pagamento" : "Adicionar à conta"}
-                    </Button>
-                  </form>
-                )}
-              </div>
-            </div>
+                ) : null
+              }
+            />
           </Card>
         </div>
       </Dialog>

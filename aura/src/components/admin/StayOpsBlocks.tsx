@@ -1,14 +1,15 @@
 "use client";
 
-// Blocos operacionais compartilhados entre o StayDetailsModal (acesso rápido) e a
-// Ficha Completa (/admin/stays/[stayId]) — origem da reserva e pendências. Um só
-// componente nos dois lugares é o que mantém as telas coerentes.
+// Blocos operacionais compartilhados entre a ficha rápida (StayDetailsModal) e a
+// Ficha Completa: origem da reserva e os pedidos em aberto.
+//
+// Chave, objetos emprestados e esquecidos NÃO moram aqui: eles são três dos
+// quatro sinais da Conta (`folio/StayAccountPanel`), onde além de aparecerem têm
+// desfecho — repetir aqui só criaria duas verdades para o mesmo fato.
 import React, { useEffect, useState } from "react";
-import {
-  Bot, ConciergeBell, ExternalLink, Gift, KeyRound, Package, PawPrint, Sparkles,
-} from "lucide-react";
+import { Bot, ConciergeBell, ExternalLink, Gift, Sparkles } from "lucide-react";
 import { T, tone as toneOf, type Tone } from "@/lib/admin-tokens";
-import { Card, Pill, SectionLabel, Spinner } from "@/components/aura";
+import { Card, Pill, Spinner } from "@/components/aura";
 import type { Stay } from "@/types/aura";
 
 // ── Origem da reserva ────────────────────────────────────────────────────────
@@ -46,29 +47,7 @@ export function StayOriginPills({ stay }: { stay: Partial<Stay> }) {
   );
 }
 
-// ── Pendências & operação ────────────────────────────────────────────────────
-
-const KEY_META: Record<string, { label: string; tone: Tone }> = {
-  reception: { label: "Chave na recepção", tone: "green" },
-  awaiting_conference: { label: "Chave aguardando conferência", tone: "amber" },
-  found: { label: "Chave localizada", tone: "green" },
-  missing: { label: "Chave extraviada", tone: "red" },
-  returned: { label: "Chave devolvida", tone: "green" },
-  charged: { label: "Chave cobrada", tone: "blue" },
-};
-
-const LOANED_META: Record<string, { label: string; tone: Tone }> = {
-  pending: { label: "A devolver", tone: "amber" },
-  returned: { label: "Devolvidos", tone: "green" },
-  missing: { label: "Não devolvidos", tone: "red" },
-  charged: { label: "Cobrados", tone: "blue" },
-};
-
-const LOST_RESOLUTION: Record<string, string> = {
-  returned: "devolvido ao hóspede",
-  discarded: "descartado",
-  stored: "guardado na recepção",
-};
+// ── Pedidos em aberto ────────────────────────────────────────────────────────
 
 interface ConciergeRow {
   id: string;
@@ -96,11 +75,10 @@ function Row({ icon, tone, title, sub, aside }: { icon: React.ReactNode; tone: T
 }
 
 /**
- * Card de pendências operacionais da estadia: chave, objetos emprestados, objetos
- * esquecidos, pedidos de governança e concierge em aberto. Linhas só existem
- * quando há o que mostrar — sem pendência, o card confirma isso numa linha só.
+ * Pedidos que a operação ainda deve ao hóspede: concierge em aberto (do portal
+ * ou da camareira) e os pedidos de governança da reserva.
  */
-export function StayPendingCard({ propertyId, stay, active = true }: { propertyId: string; stay: Partial<Stay>; active?: boolean }) {
+export function StayRequestsCard({ propertyId, stay, active = true }: { propertyId: string; stay: Partial<Stay>; active?: boolean }) {
   const [concierge, setConcierge] = useState<ConciergeRow[] | null>(null);
 
   useEffect(() => {
@@ -114,61 +92,51 @@ export function StayPendingCard({ propertyId, stay, active = true }: { propertyI
     return () => { cancelled = true; };
   }, [active, propertyId, stay.id]);
 
-  const openConcierge = (concierge ?? []).filter(r => r.status === "pending" || r.status === "in_progress");
+  const all = concierge ?? [];
+  const open = all.filter(r => r.status === "pending" || r.status === "in_progress");
+  const hk = (stay.housekeepingItems ?? []).filter(i => i.label?.trim());
   const rows: React.ReactNode[] = [];
 
-  const key = stay.keyStatus ? KEY_META[stay.keyStatus] : null;
-  if (key) {
-    rows.push(<Row key="key" icon={<KeyRound size={13} />} tone={key.tone} title={key.label}
-      sub={stay.keyStatusAt ? new Date(stay.keyStatusAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : undefined}
-      aside={<Pill tone={key.tone} dot label={key.tone === "green" || key.tone === "blue" ? "ok" : "pendente"} />} />);
-  } else if (stay.keyLocation === "cabin" && stay.status === "finished") {
-    rows.push(<Row key="key" icon={<KeyRound size={13} />} tone="amber" title="Chave ficou na acomodação" sub="camareira confere no checkout" aside={<Pill tone="amber" dot label="pendente" />} />);
+  for (const r of open) {
+    rows.push(<Row key={`c-${r.id}`} icon={<Gift size={13} />} tone={r.urgent ? "red" : "blue"}
+      title={<>{r.itemName}{r.quantity > 1 ? ` ×${r.quantity}` : ""}</>}
+      sub={r.status === "in_progress" ? "em atendimento" : "aguardando atendimento"}
+      aside={<Pill tone={r.urgent ? "red" : "blue"} dot label={r.urgent ? "urgente" : "aberto"} />} />);
   }
 
-  if (stay.loanedItems) {
-    const lm = LOANED_META[stay.loanedItemsStatus ?? (stay.loanedItemsChecked ? "returned" : "pending")] ?? LOANED_META.pending;
-    rows.push(<Row key="loaned" icon={<Package size={13} />} tone={lm.tone} title="Objetos emprestados" sub={stay.loanedItems} aside={<Pill tone={lm.tone} dot label={lm.label} />} />);
-  }
-
-  if (stay.lostItemsDescription) {
-    const resolved = stay.lostItemsResolution ? LOST_RESOLUTION[stay.lostItemsResolution] : null;
-    rows.push(<Row key="lost" icon={<Package size={13} />} tone={resolved ? "green" : "amber"} title="Objeto esquecido" sub={`${stay.lostItemsDescription}${resolved ? ` — ${resolved}` : ""}`} aside={<Pill tone={resolved ? "green" : "amber"} dot label={resolved ? "resolvido" : "em aberto"} />} />);
-  }
-
-  const hk = (stay.housekeepingItems ?? []).filter(i => i.label?.trim());
   if (hk.length > 0) {
     rows.push(<Row key="hk" icon={<Sparkles size={13} />} tone="violet" title="Pedidos de governança" sub={hk.map(i => i.label).join(" · ")} />);
   }
 
-  for (const r of openConcierge) {
-    rows.push(<Row key={`c-${r.id}`} icon={<Gift size={13} />} tone={r.urgent ? "red" : "blue"}
-      title={<>{r.itemName}{r.quantity > 1 ? ` ×${r.quantity}` : ""}</>}
-      sub={r.status === "in_progress" ? "em atendimento" : "aguardando atendimento"}
-      aside={r.urgent ? <Pill tone="red" dot label="urgente" /> : <Pill tone="blue" dot label="aberto" />} />);
-  }
+  const delivered = all.length - open.length;
 
   return (
     <Card
       header={{
         icon: ConciergeBell,
         tone: rows.length > 0 ? "amber" : "green",
-        title: "Pendências & operação",
-        sub: "chave · empréstimos · esquecidos · governança · concierge",
+        title: "Pedidos em aberto",
+        sub: "concierge e governança",
         aside: concierge === null && active && stay.id
           ? <Spinner size={13} color={T.muted} />
-          : (concierge ?? []).length > 0
+          : all.length > 0
             ? <a href="/admin/concierge" target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: T.brandText, textDecoration: "none" }}>Concierge <ExternalLink size={10} /></a>
             : undefined,
       }}
     >
       {rows.length === 0 ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 12px", borderRadius: 12, background: T.greenBg, border: `1px solid ${T.greenBorder}`, color: T.green, fontSize: 12, fontWeight: 700 }}>
-          <PawPrint size={13} style={{ display: "none" }} />
-          Sem pendências operacionais.
+          Nada pendente{delivered > 0 ? ` — ${delivered} pedido${delivered > 1 ? "s" : ""} já entregue${delivered > 1 ? "s" : ""}` : ""}.
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{rows}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {rows}
+          {delivered > 0 && (
+            <span style={{ fontSize: 11, color: T.muted2, paddingLeft: 2 }}>
+              + {delivered} pedido{delivered > 1 ? "s" : ""} já entregue{delivered > 1 ? "s" : ""}.
+            </span>
+          )}
+        </div>
       )}
     </Card>
   );
