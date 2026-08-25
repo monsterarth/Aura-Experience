@@ -190,6 +190,9 @@ Deeper docs live in `docs/`, read on demand:
   verdade financeira** — o dinheiro é controlado no HMAX e a virada é por data de corte, com
   período de lançamento duplo. Gap fundador: a forma de pagamento é texto livre na descrição do
   crédito do fólio.
+- `docs/ALTAMARE.md` — integração com o sistema do restaurante Altamare (eventos/casamentos):
+  AURA expõe `/api/partner/*` e o parceiro consome; AURA é fonte da verdade de data/espaço e
+  **valores nunca cruzam**. Em construção; cascata de status ainda a definir.
 - `docs/FISCAL.md` — plano da emissão fiscal própria (NFS-e + NFC-e via API terceirizada), o último
   pré-requisito para largar o HMAX. Não iniciado; traz as perguntas que dependem da contabilidade.
 - `docs/REFACTORING.md` — plan for splitting the largest files (not yet executed).
