@@ -869,6 +869,7 @@ export const HsystemService = {
       return id;
     }
 
+    // Colunas conferidas contra o schema real: guests NÃO tem createdAt (só updatedAt).
     const { error } = await db().from("guests").insert({
       id,
       propertyId,
@@ -883,7 +884,6 @@ export const HsystemService = {
       occupation: "",
       allergies: [],
       address: { street: "", number: "", neighborhood: "", city: "", state: "", zipCode: "", country: "Brasil" },
-      createdAt: nowIso,
       updatedAt: nowIso,
     });
     if (error) {
