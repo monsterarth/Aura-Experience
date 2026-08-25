@@ -185,6 +185,8 @@ Deeper docs live in `docs/`, read on demand:
 - `docs/DEV-DATABASE.md` — projeto Supabase de DEV (espelho de produção), backups manuais e o
   modo seguro que transforma envios externos em log fora de produção.
 - `docs/DEPLOYMENT.md` — Vercel + Supabase setup, env vars, migration order, `whatsapp-service`.
+- `docs/FISCAL.md` — plano da emissão fiscal própria (NFS-e + NFC-e via API terceirizada), o último
+  pré-requisito para largar o HMAX. Não iniciado; traz as perguntas que dependem da contabilidade.
 - `docs/REFACTORING.md` — plan for splitting the largest files (not yet executed).
 - `docs/MODULARIZATION.md` — core × módulos / planos por propriedade. Execution deferred, but its **section 1 rules apply NOW** to all new code: new module → settings flag day one; core flows never hard-depend on module tables (soft check, default ON — `stock-integration.ts` pattern); new crons skip properties without the module.
 
