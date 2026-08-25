@@ -185,6 +185,9 @@ Deeper docs live in `docs/`, read on demand:
 - `docs/DEV-DATABASE.md` — projeto Supabase de DEV (espelho de produção), backups manuais e o
   modo seguro que transforma envios externos em log fora de produção.
 - `docs/DEPLOYMENT.md` — Vercel + Supabase setup, env vars, migration order, `whatsapp-service`.
+- `docs/FINANCE.md` — plano do módulo financeiro (caixa diário, formas de pagamento, movimento,
+  previsão de receita, RevPAR/ADR, a receber/a pagar, DRE). Não iniciado. O gap fundador é que
+  a forma de pagamento hoje é texto livre na descrição do crédito do fólio.
 - `docs/FISCAL.md` — plano da emissão fiscal própria (NFS-e + NFC-e via API terceirizada), o último
   pré-requisito para largar o HMAX. Não iniciado; traz as perguntas que dependem da contabilidade.
 - `docs/REFACTORING.md` — plan for splitting the largest files (not yet executed).

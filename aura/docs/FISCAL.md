@@ -2,7 +2,8 @@
 
 > Status: **plano aprovado, não iniciado**. Escrito em 25/08/2026.
 > Decisões já tomadas com o usuário: NFS-e **e** NFC-e · três regimes tributários
-> previstos · emissão **manual** por botão na conta · via **API terceirizada**.
+> previstos · emissão **manual** por botão na conta · via **API terceirizada** ·
+> NFC-e sai **no encerramento da hospedagem** (é como o HMAX já opera hoje).
 
 ## Por que
 
@@ -149,10 +150,12 @@ libera o frigobar.
 Estas mudam o desenho e **não são decisão de software** — precisam de resposta
 antes da fase 1:
 
-1. **Momento da NFC-e.** A regra é emitir no ato da venda ao consumidor presente.
-   Hoje o frigobar é lançado no fólio e pago no check-out. Emitir tudo no
-   fechamento é aceitável para a fiscalização, ou cada lançamento precisa gerar
-   sua NFC-e na hora?
+1. **Momento da NFC-e.** ~~Aberta.~~ **Resolvida na prática:** no HMAX a NFC-e
+   já sai no encerramento da hospedagem, e é assim que a pousada opera hoje. O
+   AURA mantém o mesmo comportamento — a nota de produto acompanha o
+   fechamento da conta, não cada lançamento. Vale uma confirmação de rotina com
+   a contabilidade, mas o precedente operacional existe e é o que define o
+   desenho da fase 3.
 2. **Reserva de OTA (`CanalCollect`).** Quando a Booking cobra do hóspede e
    repassa, o tomador da nota é o hóspede ou a OTA? E a comissão, entra como
    despesa ou desconto na nota?
