@@ -6,10 +6,11 @@
 // Chave, objetos emprestados e esquecidos NÃO moram aqui: eles são três dos
 // quatro sinais da Conta (`folio/StayAccountPanel`), onde além de aparecerem têm
 // desfecho — repetir aqui só criaria duas verdades para o mesmo fato.
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Bot, ConciergeBell, ExternalLink, Gift, Sparkles } from "lucide-react";
 import { T, tone as toneOf, type Tone } from "@/lib/admin-tokens";
 import { Card, Pill, Spinner } from "@/components/aura";
+import type { StayRequest } from "./folio/useStayAccount";
 import type { Stay } from "@/types/aura";
 
 // ── Origem da reserva ────────────────────────────────────────────────────────
@@ -49,15 +50,6 @@ export function StayOriginPills({ stay }: { stay: Partial<Stay> }) {
 
 // ── Pedidos em aberto ────────────────────────────────────────────────────────
 
-interface ConciergeRow {
-  id: string;
-  itemName: string;
-  quantity: number;
-  status: string;
-  urgent?: boolean;
-  createdAt: string;
-}
-
 function Row({ icon, tone, title, sub, aside }: { icon: React.ReactNode; tone: Tone; title: React.ReactNode; sub?: React.ReactNode; aside?: React.ReactNode }) {
   const t = toneOf(tone);
   return (
@@ -78,28 +70,15 @@ function Row({ icon, tone, title, sub, aside }: { icon: React.ReactNode; tone: T
  * Pedidos que a operação ainda deve ao hóspede: concierge em aberto (do portal
  * ou da camareira) e os pedidos de governança da reserva.
  */
-export function StayRequestsCard({ propertyId, stay, active = true }: { propertyId: string; stay: Partial<Stay>; active?: boolean }) {
-  const [concierge, setConcierge] = useState<ConciergeRow[] | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!active || !stay.id) { setConcierge(null); return; }
-    setConcierge(null);
-    fetch(`/api/admin/concierge/by-stay?${new URLSearchParams({ propertyId, stayId: stay.id })}`)
-      .then(r => (r.ok ? r.json() : { requests: [] }))
-      .then(d => { if (!cancelled) setConcierge(d?.requests ?? []); })
-      .catch(() => { if (!cancelled) setConcierge([]); });
-    return () => { cancelled = true; };
-  }, [active, propertyId, stay.id]);
-
-  const all = concierge ?? [];
+export function StayRequestsCard({ stay, requests }: { stay: Partial<Stay>; requests: StayRequest[] | null }) {
+  const all = requests ?? [];
   const open = all.filter(r => r.status === "pending" || r.status === "in_progress");
   const hk = (stay.housekeepingItems ?? []).filter(i => i.label?.trim());
   const rows: React.ReactNode[] = [];
 
   for (const r of open) {
     rows.push(<Row key={`c-${r.id}`} icon={<Gift size={13} />} tone={r.urgent ? "red" : "blue"}
-      title={<>{r.itemName}{r.quantity > 1 ? ` ×${r.quantity}` : ""}</>}
+      title={<>{r.itemName}{r.quantity > 1 ? ` x${r.quantity}` : ""}</>}
       sub={r.status === "in_progress" ? "em atendimento" : "aguardando atendimento"}
       aside={<Pill tone={r.urgent ? "red" : "blue"} dot label={r.urgent ? "urgente" : "aberto"} />} />);
   }
@@ -108,7 +87,7 @@ export function StayRequestsCard({ propertyId, stay, active = true }: { property
     rows.push(<Row key="hk" icon={<Sparkles size={13} />} tone="violet" title="Pedidos de governança" sub={hk.map(i => i.label).join(" · ")} />);
   }
 
-  const delivered = all.length - open.length;
+  const delivered = all.filter(r => r.status === "delivered").length;
 
   return (
     <Card
@@ -117,7 +96,7 @@ export function StayRequestsCard({ propertyId, stay, active = true }: { property
         tone: rows.length > 0 ? "amber" : "green",
         title: "Pedidos em aberto",
         sub: "concierge e governança",
-        aside: concierge === null && active && stay.id
+        aside: requests === null
           ? <Spinner size={13} color={T.muted} />
           : all.length > 0
             ? <a href="/admin/concierge" target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: T.brandText, textDecoration: "none" }}>Concierge <ExternalLink size={10} /></a>

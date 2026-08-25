@@ -87,7 +87,14 @@ const LOST_STATE: Record<LostItemsResolution, ChipState> = {
   stored: "warn",
 };
 
-export function accountChips(stay: StayLike, items?: FolioItem[]): AccountChip[] {
+/** Empréstimo em aberto: pedido de item `loan` entregue e ainda não devolvido. */
+export interface OpenLoan {
+  id: string;
+  itemName: string;
+  quantity: number;
+}
+
+export function accountChips(stay: StayLike, items?: FolioItem[], loans: OpenLoan[] = []): AccountChip[] {
   const folio = items ?? stay.folioItems ?? [];
   const balance = folioBalance(folio);
 
@@ -99,11 +106,24 @@ export function accountChips(stay: StayLike, items?: FolioItem[]): AccountChip[]
     ? { id: "key", label: "Chave", detail: KEY_DETAIL[stay.keyStatus], state: KEY_STATE[stay.keyStatus] }
     : { id: "key", label: "Chave", detail: "sem registro", state: "idle" };
 
+  // Duas fontes: os itens de empréstimo entregues pelo Concierge (governança,
+  // mensageiro ou recepção) e o texto avulso anotado no check-out. Item ainda com
+  // o hóspede fala mais alto que o texto — é fato, não anotação.
+  const openLoans = loans.reduce((n, l) => n + (l.quantity || 1), 0);
   const hasLoaned = !!(stay.loanedItems && stay.loanedItems.trim());
   const loanedStatus: LoanedItemsStatus | undefined = stay.loanedItemsStatus ?? (hasLoaned ? "pending" : undefined);
-  const loaned: AccountChip = loanedStatus
-    ? { id: "loaned", label: "Empréstimos", detail: LOANED_DETAIL[loanedStatus], state: LOANED_STATE[loanedStatus] }
-    : { id: "loaned", label: "Empréstimos", detail: "nada emprestado", state: "idle" };
+  const loaned: AccountChip = openLoans > 0
+    ? {
+        id: "loaned",
+        label: "Empréstimos",
+        detail: loans.length === 1
+          ? `${loans[0].itemName}${loans[0].quantity > 1 ? ` ×${loans[0].quantity}` : ""} com o hóspede`
+          : `${openLoans} itens com o hóspede`,
+        state: "warn",
+      }
+    : loanedStatus
+      ? { id: "loaned", label: "Empréstimos", detail: LOANED_DETAIL[loanedStatus], state: LOANED_STATE[loanedStatus] }
+      : { id: "loaned", label: "Empréstimos", detail: "nada emprestado", state: "idle" };
 
   const hasLost = !!(stay.lostItemsDescription && stay.lostItemsDescription.trim());
   const lost: AccountChip = !hasLost

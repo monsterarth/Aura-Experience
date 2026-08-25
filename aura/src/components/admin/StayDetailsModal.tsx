@@ -16,6 +16,7 @@ import {
   X, Edit2, Save, User, Phone, Users, Car, PawPrint, LogIn, LogOut, RotateCcw,
   Sparkles, Receipt, BedDouble, ArrowRight, Search, UserRoundPen, KeyRound,
   Package, FileText, ExternalLink, CheckCircle, CheckCircle2, Clock, Calendar,
+  HandHelping,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -90,7 +91,6 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
   const [checkOutModalOpen, setCheckOutModalOpen] = useState(false);
   const [checkOutStep, setCheckOutStep] = useState<"key" | "loaned">("key");
   const [keyLocation, setKeyLocation] = useState<"reception" | "cabin" | null>(null);
-  const [hasLoanedItems, setHasLoanedItems] = useState<boolean | null>(null);
   const [loanedItemsText, setLoanedItemsText] = useState("");
 
   // Rascunho de edição — só o que a ficha rápida edita (o resto é da Ficha Completa).
@@ -352,7 +352,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     setLoading(true);
     try {
       await StayService.performCheckOut(stay.propertyId, stay.id, userData?.id || "ADMIN", userData?.fullName || "Recepção", keyLocation);
-      if (hasLoanedItems && loanedItemsText.trim()) {
+      if (loanedItemsText.trim()) {
         await supabase.from("stays").update({ loanedItems: loanedItemsText.trim() }).eq("id", stay.id);
       }
       chatwootSyncOnCheckOut(stay.id).catch(() => {});
@@ -365,7 +365,6 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
       setLoading(false);
       setCheckOutStep("key");
       setKeyLocation(null);
-      setHasLoanedItems(null);
       setLoanedItemsText("");
     }
   };
@@ -397,6 +396,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
     : 0;
   const totalPax = (counts.adults ?? 0) + (counts.children ?? 0) + (counts.babies ?? 0);
   const cabinLabel = stay.cabinName || cabins.find(c => c.id === stay.cabinId)?.name || "Sem cabana";
+  const hasArrived = stay.status === "active" || stay.status === "finished";
 
   return (
     <>
@@ -425,27 +425,30 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
               </div>
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            {/* Ações: ícones no topo, sem texto — o que a recepção faz mil vezes por dia
+                não precisa de rótulo, precisa de alvo. Salvar/Cancelar são exceção:
+                aparecem escritos porque só existem no modo edição. */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               {!isEditing ? (
                 <>
                   {["pending", "pre_checkin_done"].includes(stay.status) && (
-                    <Button variant="soft" tone="green" icon={LogIn} onClick={handleCheckIn} disabled={loading}>Check-in</Button>
+                    <IconButton icon={LogIn} label="Fazer check-in" variant="soft" tone="green" onClick={handleCheckIn} disabled={loading} />
                   )}
                   {stay.status === "active" && (
-                    <Button variant="soft" tone="orange" icon={LogOut} onClick={handleToggleCheckOut} disabled={loading}>Check-out</Button>
+                    <IconButton icon={LogOut} label="Fazer check-out" variant="soft" tone="orange" onClick={handleToggleCheckOut} disabled={loading} />
                   )}
                   {stay.status === "finished" && (
-                    <Button variant="soft" tone="blue" icon={RotateCcw} onClick={handleToggleCheckOut} disabled={loading}>Reativar</Button>
+                    <IconButton icon={RotateCcw} label="Reativar estadia" variant="soft" tone="blue" onClick={handleToggleCheckOut} disabled={loading} />
                   )}
-                  {!isGovOnly && <Button variant="secondary" icon={Edit2} onClick={() => setIsEditing(true)}>Editar</Button>}
+                  {!isGovOnly && <IconButton icon={Edit2} label="Editar reserva" variant="secondary" onClick={() => setIsEditing(true)} />}
+                  <IconButton icon={FileText} label="Abrir ficha completa" variant="secondary" onClick={() => window.open(`/admin/stays/${stay.id}`, "_blank")} />
                 </>
               ) : (
                 <>
-                  <Button variant="ghost" onClick={handleCancel}>Cancelar</Button>
-                  <Button variant="primary" icon={Save} loading={loading} loadingText="Salvando…" onClick={handleSave}>Salvar</Button>
+                  <Button variant="ghost" size="sm" onClick={handleCancel}>Cancelar</Button>
+                  <Button variant="primary" size="sm" icon={Save} loading={loading} loadingText="Salvando…" onClick={handleSave}>Salvar</Button>
                 </>
               )}
-              <Button variant="secondary" icon={FileText} onClick={() => window.open(`/admin/stays/${stay.id}`, "_blank")}>Ficha Completa</Button>
               <IconButton icon={X} label="Fechar" variant="ghost" onClick={requestClose} />
             </div>
           </div>
@@ -496,11 +499,14 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
               )}
             </Meta>
 
-            <Meta icon={<Clock size={13} />} label="Chegada">
-              {locked ? (stay.expectedArrivalTime || "—") : (
-                <Input type="time" fieldSize="sm" style={{ width: 96 }} value={formData.expectedArrivalTime ?? ""} onChange={e => setFormData({ ...formData, expectedArrivalTime: e.target.value })} />
-              )}
-            </Meta>
+            {/* Chegada prevista só interessa antes de o hóspede chegar. */}
+            {(!hasArrived || !locked) && (
+              <Meta icon={<Clock size={13} />} label="Chegada">
+                {locked ? (stay.expectedArrivalTime || "—") : (
+                  <Input type="time" fieldSize="sm" style={{ width: 96 }} value={formData.expectedArrivalTime ?? ""} onChange={e => setFormData({ ...formData, expectedArrivalTime: e.target.value })} />
+                )}
+              </Meta>
+            )}
 
             <Meta icon={<Car size={13} />} label="Placa">
               {locked ? (stay.vehiclePlate || "—") : (
@@ -624,7 +630,7 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
               )}
             </Card>
 
-            <StayRequestsCard propertyId={stay.propertyId} stay={stay} active={isOpen} />
+            <StayRequestsCard stay={stay} requests={account.requests} />
           </div>
 
           {/* Conta — o mesmo painel do modal da Conta e da ficha completa */}
@@ -749,46 +755,59 @@ export function StayDetailsModal({ isOpen, onClose, stay, guest, onViewGuest, on
               </span>
               <div>
                 <h3 style={{ margin: 0, fontSize: 15, fontWeight: 900, color: T.text }}>Objetos emprestados</h3>
-                <p style={{ margin: 0, fontSize: 12, color: T.muted }}>O hóspede ficou com algum item da propriedade?</p>
+                <p style={{ margin: 0, fontSize: 12, color: T.muted }}>
+                  {account.loans.length > 0 ? "Confira o que foi entregue durante a estadia." : "Nada foi entregue durante a estadia."}
+                </p>
               </div>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {([
-                { value: false, label: "Não, nada emprestado", desc: "Hóspede não ficou com nada", tone: "green" as const },
-                { value: true, label: "Sim, há itens", desc: "Camareira irá verificar no checkout", tone: "blue" as const },
-              ]).map(opt => {
-                const tn = toneOf(opt.tone);
-                const sel = hasLoanedItems === opt.value;
-                return (
-                  <button key={String(opt.value)} onClick={() => setHasLoanedItems(opt.value)} className="ak-press"
-                    style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 12, borderRadius: 14, cursor: "pointer", textAlign: "left", fontFamily: "inherit", background: sel ? tn.bg : T.glass, border: `1.5px solid ${sel ? tn.color : T.border}` }}>
-                    <span style={{ width: 10, height: 10, borderRadius: "50%", background: tn.color, flexShrink: 0 }} />
-                    <span style={{ flex: 1 }}>
-                      <span style={{ display: "block", fontSize: 13.5, fontWeight: 800, color: T.text }}>{opt.label}</span>
-                      <span style={{ display: "block", fontSize: 11.5, color: T.muted }}>{opt.desc}</span>
+
+            {/* Conferência: o que a governança, o mensageiro ou a recepção entregaram. */}
+            {account.loans.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {account.loans.map(r => (
+                  <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", borderRadius: 12, border: `1px solid ${T.amberBorder}`, background: T.amberBg, flexWrap: "wrap" }}>
+                    <HandHelping size={14} color={T.amber} style={{ flexShrink: 0 }} />
+                    <span style={{ flex: "1 1 140px", minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 13, fontWeight: 700, color: T.text }}>
+                        {r.itemName}{r.quantity > 1 ? ` x${r.quantity}` : ""}
+                      </span>
+                      <span style={{ display: "block", fontSize: 10.5, color: T.muted }}>
+                        entregue {format(new Date(r.createdAt), "dd/MM")}{r.assignedName ? ` · ${r.assignedName}` : ""}
+                      </span>
                     </span>
-                    {sel && <CheckCircle size={16} style={{ color: tn.color, flexShrink: 0 }} />}
-                  </button>
-                );
-              })}
-            </div>
-            {hasLoanedItems === true && (
+                    <Button size="sm" variant="secondary" icon={CheckCircle} loading={account.busy} onClick={() => void account.resolveLoan(r.id, "return")}>
+                      Devolvido
+                    </Button>
+                  </div>
+                ))}
+                <span style={{ fontSize: 11, color: T.muted2 }}>
+                  O que não for devolvido agora continua em aberto na conta — dá para resolver depois.
+                </span>
+              </div>
+            )}
+
+            {/* Avulso: item que não estava no catálogo. */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", color: T.muted }}>
+                Ficou com mais alguma coisa? (opcional)
+              </span>
               <textarea
-                autoFocus
-                placeholder="Liste os itens emprestados (ex: toalha extra, secador, travesseiro, berço)…"
+                placeholder="Ex.: toalha extra, secador, guarda-chuva…"
                 value={loanedItemsText}
                 onChange={e => setLoanedItemsText(e.target.value)}
-                rows={3}
+                rows={2}
                 className="ak-textarea"
               />
-            )}
+            </div>
+
             <div style={{ display: "flex", gap: 8 }}>
               <Button variant="secondary" fullWidth onClick={() => setCheckOutStep("key")}>← Voltar</Button>
-              <Button variant="primary" fullWidth icon={LogOut} disabled={hasLoanedItems === null || (hasLoanedItems === true && !loanedItemsText.trim())} onClick={handleConfirmCheckOut}>
+              <Button variant="primary" fullWidth icon={LogOut} loading={loading} onClick={handleConfirmCheckOut}>
                 Confirmar check-out
               </Button>
             </div>
           </>)}
+
         </div>
       </Dialog>
     </>

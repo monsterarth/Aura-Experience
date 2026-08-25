@@ -9,14 +9,15 @@
 import React from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import {
-  CheckCircle2, DollarSign, KeyRound, PackageSearch, Trash2, Wallet,
-} from "lucide-react";
+import { CheckCircle2, DollarSign, KeyRound, PackageSearch, Trash2, Wallet } from "lucide-react";
 import { T, tone as toneOf, type Tone } from "@/lib/admin-tokens";
-import { Button, Field, IconButton, Input, Select, Spinner, useConfirm } from "@/components/aura";
+import { Button, Field, IconButton, Input, Spinner, useConfirm } from "@/components/aura";
 import { StayService } from "@/services/stay-service";
 import type { AccountChip, ChipId, ChipState } from "@/lib/stay-account";
 import type { StayAccountState } from "./useStayAccount";
+import { LoanBlock, Money, NewEntry, SectionTitle, money } from "./AccountEntry";
+
+export { money, Money, SectionTitle } from "./AccountEntry";
 
 const CHIP_ICON: Record<ChipId, React.ElementType> = {
   payment: Wallet,
@@ -31,8 +32,6 @@ const CHIP_TONE: Record<ChipState, Tone> = {
   warn: "amber",
   idle: "neutral",
 };
-
-export const money = (v: number) => `R$ ${v.toFixed(2).replace(".", ",")}`;
 
 export interface StayAccountPanelProps {
   a: StayAccountState;
@@ -173,6 +172,9 @@ export function StayAccountPanel({ a, lodgingSlot, readOnly, showTotals = true }
         </div>
       )}
 
+      {/* Emprestados com o hóspede */}
+      <LoanBlock a={a} readOnly={readOnly} />
+
       {/* Lançamentos */}
       <div>
         <SectionTitle>Lançamentos</SectionTitle>
@@ -211,38 +213,8 @@ export function StayAccountPanel({ a, lodgingSlot, readOnly, showTotals = true }
         )}
       </div>
 
-      {/* Novo lançamento */}
-      {!closed && !readOnly && (
-        <form onSubmit={e => void a.submitEntry(e)} style={{ borderTop: `1px solid ${T.border}`, paddingTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-          <SectionTitle>Novo lançamento</SectionTitle>
-          <div className="ak-fieldrow" data-cols="2">
-            <Field label="Tipo">
-              <Select value={a.kind} onChange={e => a.setKind(e.target.value as "debit" | "credit")}>
-                <option value="debit">Débito (consumo/serviço)</option>
-                <option value="credit">Crédito (pagamento)</option>
-              </Select>
-            </Field>
-            <Field label={a.kind === "credit" ? "Descrição do pagamento" : "Produto / serviço"}>
-              <Input value={a.desc} onChange={e => a.setDesc(e.target.value)} placeholder={a.kind === "credit" ? "Ex: Pix hospedagem" : "Ex: Lenha extra"} />
-            </Field>
-          </div>
-          <div className="ak-fieldrow" data-cols="3">
-            {a.kind === "debit" && (
-              <Field label="Quantidade">
-                <Input type="number" min={1} value={a.qty} onChange={e => a.setQty(Math.max(1, parseInt(e.target.value || "1", 10)))} />
-              </Field>
-            )}
-            <Field label={a.kind === "credit" ? "Valor (R$)" : "Valor unitário (R$)"}>
-              <Input inputMode="decimal" value={a.price} onChange={e => a.setPrice(e.target.value)} placeholder="0,00" />
-            </Field>
-            <Field label="&nbsp;">
-              <Button type="submit" variant={a.kind === "credit" ? "primary" : "secondary"} loading={folio.loading} fullWidth>
-                {a.kind === "credit" ? "Lançar pagamento" : "Adicionar à conta"}
-              </Button>
-            </Field>
-          </div>
-        </form>
-      )}
+      {/* Novo lançamento: do catálogo ou avulso */}
+      {!closed && !readOnly && <NewEntry a={a} />}
     </div>
   );
 }
@@ -281,17 +253,4 @@ function ChipCard({ chip, active, onClick }: { chip: AccountChip; active: boolea
       </span>
     </button>
   );
-}
-
-export function Money({ label, value, color, strong }: { label: string; value: number; color: string; strong?: boolean }) {
-  return (
-    <div style={{ background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12, padding: "10px 12px" }}>
-      <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: T.muted }}>{label}</div>
-      <div style={{ fontSize: strong ? 19 : 16, fontWeight: 900, color, marginTop: 2, letterSpacing: "-.3px", fontVariantNumeric: "tabular-nums" }}>{money(value)}</div>
-    </div>
-  );
-}
-
-export function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: T.muted }}>{children}</div>;
 }

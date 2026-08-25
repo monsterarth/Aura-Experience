@@ -99,7 +99,7 @@ function StayDetailInner() {
         {stay && (
           <>
             <HeroStrip s={s} />
-            <StayRequestsCard propertyId={stay.propertyId} stay={stay} active />
+            <StayRequestsCard stay={stay} requests={account.requests} />
             <Card
               header={{
                 icon: Receipt,

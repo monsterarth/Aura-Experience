@@ -550,7 +550,10 @@ export const ConciergeService = {
     actorId: string,
     actorName: string
   ): Promise<void> {
-    const { error } = await supabase
+    // db(): chamado também de rota (conta da estadia). Pelo client do browser no
+    // servidor este update é anon — o RLS devolve 0 linhas sem erro e o item
+    // "voltava" só na tela.
+    const { error } = await db()
       .from('concierge_requests')
       .update({ status: 'returned', updatedAt: new Date().toISOString() })
       .eq('id', requestId);
@@ -584,8 +587,8 @@ export const ConciergeService = {
       .single();
     const item = itemRow as ConciergeItem;
 
-    // 2. Update status
-    const { error: updErr } = await supabase
+    // 2. Update status (db(): idem returnRequest — anon no servidor não escreve)
+    const { error: updErr } = await db()
       .from('concierge_requests')
       .update({ status: 'lost', updatedAt: new Date().toISOString() })
       .eq('id', requestId);
@@ -711,21 +714,41 @@ export const ConciergeService = {
     return this._annotateAvailability(propertyId, items);
   },
 
-  /** Lança o consumo de frigobar pelo pipeline do concierge (folio + estoque + histórico). */
+  /**
+   * Cria e entrega itens do catálogo de uma vez — o caminho de quem já está com o
+   * item na mão (camareira repondo frigobar, recepção lançando na conta). Passa
+   * pelo pipeline normal: fólio, baixa de estoque e histórico.
+   *
+   * Item de categoria `loan` entregue por aqui vira empréstimo em aberto: fica
+   * `delivered` até alguém marcar devolvido ou extraviado.
+   */
+  async launchItems(
+    propertyId: string,
+    params: { stayId: string; cabinId?: string; cart: Record<string, number>; requestedBy?: 'guest' | 'maid'; notes?: string },
+    actorId: string,
+    actorName: string,
+  ): Promise<number> {
+    let launched = 0;
+    for (const [itemId, qty] of Object.entries(params.cart)) {
+      if (!qty || qty <= 0) continue;
+      const req = await this.createRequest(
+        { propertyId, stayId: params.stayId, cabinId: params.cabinId, itemId, quantity: qty, requestedBy: params.requestedBy ?? 'maid', notes: params.notes },
+        actorId, actorName,
+      );
+      await this.deliverRequest(propertyId, req.id, actorId, actorName);
+      launched += 1;
+    }
+    return launched;
+  },
+
+  /** Lança o consumo de frigobar (mesma cadeia; nome mantido para o modal da camareira). */
   async launchFrigobar(
     propertyId: string,
     params: { stayId: string; cabinId?: string; cart: Record<string, number> },
     actorId: string,
     actorName: string,
   ): Promise<void> {
-    for (const [itemId, qty] of Object.entries(params.cart)) {
-      if (!qty || qty <= 0) continue;
-      const req = await this.createRequest(
-        { propertyId, stayId: params.stayId, cabinId: params.cabinId, itemId, quantity: qty, requestedBy: 'maid' },
-        actorId, actorName,
-      );
-      await this.deliverRequest(propertyId, req.id, actorId, actorName);
-    }
+    await this.launchItems(propertyId, params, actorId, actorName);
   },
 
   // ==========================================
