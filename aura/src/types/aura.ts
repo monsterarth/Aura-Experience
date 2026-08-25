@@ -180,6 +180,8 @@ export interface Guest {
   allergies: string[];
   preferredLanguage?: 'pt' | 'en' | 'es';
   chatwootContactId?: string; // ID do contato no Chatwoot (cache para evitar search repetida)
+  /** Quando a ficha nasceu. NULL em fichas antigas sem audit de criação (migration guests_created_at). */
+  createdAt?: Timestamp | null;
   updatedAt: Timestamp;
 }
 
