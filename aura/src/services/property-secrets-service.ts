@@ -16,9 +16,14 @@ import { supabaseAdmin } from "@/lib/supabase";
 export interface PropertySecrets {
   evolutionApiKey: string | null;
   chatwootApiToken: string | null;
+  /** Credenciais de integração PMS do HUNIT (Hsystem). O hotelId não é segredo e vive em settings. */
+  hunitUserName: string | null;
+  hunitPassword: string | null;
 }
 
-const EMPTY: PropertySecrets = { evolutionApiKey: null, chatwootApiToken: null };
+const EMPTY: PropertySecrets = {
+  evolutionApiKey: null, chatwootApiToken: null, hunitUserName: null, hunitPassword: null,
+};
 
 /** Cache curto por instância: o cron de mensagens resolve segredo por mensagem em loop. */
 const TTL_MS = 60_000;
@@ -49,6 +54,8 @@ export const PropertySecretsService = {
     const value: PropertySecrets = {
       evolutionApiKey: stored.evolutionApiKey ?? null,
       chatwootApiToken: stored.chatwootApiToken ?? null,
+      hunitUserName: stored.hunitUserName ?? null,
+      hunitPassword: stored.hunitPassword ?? null,
     };
 
     cache.set(propertyId, { at: Date.now(), value });
@@ -90,6 +97,10 @@ export const PropertySecretsService = {
       evolutionApiKeyMask: maskOf(s.evolutionApiKey),
       hasChatwootApiToken: !!s.chatwootApiToken,
       chatwootApiTokenMask: maskOf(s.chatwootApiToken),
+      hasHunitUserName: !!s.hunitUserName,
+      hunitUserNameMask: maskOf(s.hunitUserName),
+      hasHunitPassword: !!s.hunitPassword,
+      hunitPasswordMask: maskOf(s.hunitPassword),
     };
   },
 };

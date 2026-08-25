@@ -788,6 +788,14 @@ export interface Stay {
   internalUse?: boolean;   // true → ocupação interna (manutenção, família, bloqueio), não é cliente
   internalLabel?: string;  // rótulo livre quando não há hóspede (ex: "Manutenção cabana 5")
 
+  // ── Origem externa (channel manager / motor) ──
+  /** Canal de origem — slug de `settings.crmChannels` (site/booking/airbnb/...) ou nome do portal. */
+  source?: string | null;
+  /** locatorId da reserva no HUNIT (Hsystem). Presente = estadia importada. */
+  externalId?: string | null;
+  /** roomLocatorId do quarto no HUNIT — reserva multi-quarto vira N estadias no mesmo groupId. */
+  externalRoomId?: string | null;
+
   // Status
   status: 'pending' | 'pre_checkin_done' | 'active' | 'finished' | 'cancelled' | 'archived';
   automationFlags: {
@@ -974,7 +982,9 @@ export interface AuditLog {
   | 'RATE_QUOTE_LINKED' | 'CRON_DAILY_LODGING'
   | 'LODGING_PAUSED' | 'LODGING_RESUMED' | 'LODGING_NIGHT_OVERRIDDEN'
   | 'WEDDING_AUTO_COMPLETED' | 'WEDDING_LOST' | 'WEDDING_FOLLOW_UP'
-  | 'CRON_CRM_STATUS';
+  | 'CRON_CRM_STATUS'
+  | 'HSYSTEM_CREATED' | 'HSYSTEM_UPDATED' | 'HSYSTEM_CANCELLED'
+  | 'HSYSTEM_NEEDS_ATTENTION' | 'HSYSTEM_FAILED';
   entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'STRUCTURE_REVIEW' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER' | 'CONTACT' | 'AUTOMATION' | 'BREAKFAST' | 'CRON' | 'SUPPLIER' | 'ASSET' | 'ASSET_INVENTORY' | 'PURCHASE' | 'INVENTORY' | 'RATE_TABLE' | 'RATE_QUOTE' | 'RATE_FLUCTUATION' | 'RATE_SETTINGS' | 'WEDDING';
   entityId: string;
   oldData?: any;
@@ -3098,3 +3108,87 @@ export interface RateQuoteRecord {
   updatedAt: Timestamp;
 }
 
+
+// =====================================================================
+// --- INTEGRAÇÃO HSYSTEM (HUNIT / HBOOK / HPRICE) ---
+// =====================================================================
+
+/**
+ * Configuração pública do módulo (vive em `properties.settings.hsystemConfig`;
+ * o flag do módulo é `settings.hasHsystem`). Credenciais (userName/password do
+ * HUNIT) ficam no cofre `property_secrets` — nunca aqui.
+ */
+export interface HsystemConfig {
+  /**
+   * shadow = espelha reservas SEM confirmar recebimento e SEM enviar
+   * disponibilidade (HMAX segue como PMS oficial da fila).
+   * active = fluxo completo (confirma + envia disponibilidade) — sandbox de
+   * homologação hoje; produção só no evento de troca de PMS.
+   */
+  mode: 'shadow' | 'active';
+  /** Código do hotel no HUNIT (não é segredo — segredo é user/senha). */
+  hotelId: string;
+  /** roomTypeId do HUNIT → categoryId do AURA (cabin_categories). */
+  categoryMap: Record<string, string>;
+  /** Envia disponibilidade no ciclo do cron (só tem efeito em mode=active). */
+  pushAvailability: boolean;
+  /** Janela do envio de disponibilidade em dias (máx. 730 — limite do HUNIT é 2 anos). */
+  horizonDays: number;
+  /** Portais tratados como motor próprio (automações de WhatsApp ligadas). Default [27] = HBOOK. */
+  hbookPortalIds: number[];
+}
+
+/** Linha de `hsystem_reservations` — espelho de uma reserva recebida do HUNIT. */
+export interface HsystemReservationRecord {
+  propertyId: string;
+  locatorId: string;
+  portalId?: number | null;
+  portalName?: string | null;
+  channelReservationId?: string | null;
+  status?: string | null;            // new | modify | cancel (último visto)
+  payload?: Record<string, unknown> | null;
+  contentHash?: string | null;
+  guestName?: string | null;
+  checkIn?: string | null;           // YYYY-MM-DD
+  checkOut?: string | null;          // YYYY-MM-DD
+  totalValue?: number | null;
+  collectType?: string | null;       // HotelCollect | CanalCollect
+  paymentType?: number | null;
+  stayGroupId?: string | null;
+  stayIds: string[];
+  action?: HsystemReservationAction | null;
+  actionDetail?: string | null;
+  error?: string | null;
+  receivedAt: Timestamp;
+  processedAt?: Timestamp | null;
+  confirmedAt?: Timestamp | null;    // nunca preenchido em modo sombra
+  updatedAt: Timestamp;
+}
+
+export type HsystemReservationAction =
+  | 'created' | 'updated' | 'cancelled' | 'skipped' | 'needs_attention' | 'failed';
+
+/** Linha de `hsystem_sync_log`. */
+export interface HsystemSyncLogEntry {
+  id: string;
+  propertyId: string;
+  kind: 'bookings' | 'availability' | 'kpi' | 'test';
+  ok: boolean;
+  itemCount: number;
+  detail?: Record<string, unknown> | null;
+  error?: string | null;
+  startedAt: Timestamp;
+  finishedAt?: Timestamp | null;
+}
+
+/** Combinação quarto × tarifa devolvida pelo roomrate/read do HUNIT (p/ UI de mapeamento). */
+export interface HunitRoomRate {
+  id: string;
+  roomTypeId: string;
+  name: string;
+  isActive: boolean;
+  rateTypeId?: string | null;
+  isChildRoomRate?: boolean;
+  masterRoomRateId?: string | null;
+  masterRoomRate?: string | null;
+}

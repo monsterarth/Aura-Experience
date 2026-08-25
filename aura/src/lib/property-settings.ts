@@ -22,6 +22,7 @@ export const SETTINGS_KEY_ROLES: Record<string, UserRole[]> = {
   hasBreakfast: ["super_admin"],
   hasKDS: ["super_admin"],
   hasWeddingSite: ["super_admin"],
+  hasHsystem: ["super_admin"],
 
   // Identidade e integrações.
   slogan: ["super_admin", "admin"],
@@ -29,6 +30,7 @@ export const SETTINGS_KEY_ROLES: Record<string, UserRole[]> = {
   whatsappEnabled: ["super_admin", "admin"],
   whatsappNumber: ["super_admin", "admin"],
   whatsappConfig: ["super_admin", "admin"],
+  hsystemConfig: ["super_admin", "admin"],
   mapConfig: ["super_admin", "admin"],
   areaReviews: ["super_admin", "admin", "manager"],
 

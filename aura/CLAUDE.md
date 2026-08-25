@@ -102,7 +102,9 @@ Scheduled in `vercel.json` (UTC):
 | `wedding-status` | `30 8 * * *` | 08:30 daily (casamento confirmado que passou → realizado) |
 | `crm-status` | `45 8 * * *` | 08:45 daily (orçamento com prazo/data vencidos → perdido) |
 
-Other cron-style routes exist in code but are **not** in `vercel.json` (triggered manually/externally): `process-messages`, `whatsapp-watchdog`, `housekeeping-routines`. All cron routes check the `CRON_SECRET` header in production. Details in `docs/CRON.md`.
+Other cron-style routes exist in code but are **not** in `vercel.json` (triggered manually/externally): `process-messages`, `whatsapp-watchdog`, `housekeeping-routines`, `hsystem-sync` (polling do HUNIT — cron externo a cada 1–5 min; ver módulo Hsystem abaixo). All cron routes check the `CRON_SECRET` header in production. Details in `docs/CRON.md`.
+
+**Hsystem (channel manager)**: módulo em `src/services/hsystem-service.ts` + `src/lib/hunit.ts` (protocolo XML do HUNIT) + página `/admin/hsystem`. Flag `settings.hasHsystem` (super_admin) e config em `settings.hsystemConfig`; credenciais no cofre `property_secrets`. Dois modos: `shadow` (espelha reservas sem confirmar nem enviar disponibilidade — produção em paralelo com o HMAX) e `active` (fluxo completo — sandbox de homologação / pós-troca de PMS). Reserva entra por categoria e o service encaixa sozinho numa cabana livre (`categoryMap`); estadia importada carrega `source`/`externalId`/`externalRoomId`.
 
 **WhatsApp watchdog**: `process-messages` also runs `WhatsAppHealthService` inline — real sends failing with the dead-session signature trigger an automatic Evolution restart via the Coolify API (`COOLIFY_API_URL/TOKEN/EVOLUTION_SERVICE_UUID` envs) plus admin push alerts; the session card in Configurações → Integrações gains a "Reiniciar Evolution" button when those envs are set. Only real sends / probe timeouts are trusted signals — Evolution's `connectionState`/`fetchInstances` lie optimistically.
 

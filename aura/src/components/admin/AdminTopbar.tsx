@@ -150,6 +150,7 @@ const SEARCH_ROUTES: SearchItem[] = [
   { label: "Eventos",           href: "/admin/eventos", keywords: ["evento", "programação"] },
   { label: "Casamentos",        href: "/admin/casamentos", keywords: ["casamento", "noivos", "lead"] },
   { label: "Tarifário",         href: "/admin/tarifario", keywords: ["tarifa", "preço", "diária", "tabela", "flutuação"] },
+  { label: "Hsystem",           href: "/admin/hsystem", keywords: ["hsystem", "hunit", "hbook", "hprice", "channel", "canal", "ota", "integração", "disponibilidade"] },
   { label: "Pipeline Estadias", href: "/admin/comercial/reservas", keywords: ["orçamento", "cotação", "funil", "lead", "pipeline"] },
   { label: "Manutenção",        href: "/admin/maintenance", keywords: ["manutenção", "conserto", "defeito", "os"] },
   { label: "Kanban Manutenção", href: "/admin/maintenance/kanban", keywords: ["manutenção", "kanban", "ordem"] },

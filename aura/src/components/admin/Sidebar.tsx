@@ -22,7 +22,7 @@ import {
   UserCircle2, Smartphone, Heart, History,
   Package, ArrowLeftRight, SlidersHorizontal,
   ShoppingCart, Truck, Landmark, AlertOctagon, ListFilter,
-  CircleDollarSign, Handshake, Hourglass, Megaphone,
+  CircleDollarSign, Handshake, Hourglass, Megaphone, Plug,
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import { T as SharedT } from "@/lib/admin-tokens";
@@ -229,6 +229,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "equipe",      label: "Equipe",            icon: Users,         href: "/admin/staff",                            roles: ["super_admin","admin","manager"] },
       { id: "nps",         label: "Pesquisas (NPS)",   icon: ClipboardList, href: "/admin/surveys",                          roles: ["super_admin","admin","manager"] },
       { id: "automacoes",  label: "Automações",        icon: Bot,           href: "/admin/comunicacao/automations/settings", roles: ["super_admin","admin"] },
+      { id: "hsystem",     label: "Hsystem",           icon: Plug,          href: "/admin/hsystem",                          roles: ["super_admin","admin","manager"] },
       // Levava para a lista multi-tenant, não para a configuração da pousada — e a tela
       // real de configuração não era alcançável pelo menu. Agora aponta para o hub.
       { id: "config",      label: "Configurações",     icon: Settings,      href: "/admin/configuracoes",                    roles: ["super_admin","admin","manager","reception","kitchen","compras","governance"], requireProperty: true },

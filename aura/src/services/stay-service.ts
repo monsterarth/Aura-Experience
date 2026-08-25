@@ -112,12 +112,18 @@ export const StayService = {
     const checkInDate = checkIn.slice(0, 10);
     const checkOutDate = checkOut.slice(0, 10);
 
+    // Prefiltro de janela no SERVIDOR: sem ele, o limit devolvia as 50 primeiras
+    // estadias em ordem arbitrária e uma cabana com histórico grande podia passar
+    // como "livre" (falso negativo de conflito). O filtro exato (date-only,
+    // checkout==checkin permitido) continua sendo o some() abaixo.
     const { data } = await supabase
       .from('stays')
       .select('id, checkIn, checkOut')
       .eq('cabinId', cabinId)
       .in('status', ['pending', 'pre_checkin_done', 'active'])
-      .limit(50);
+      .lt('checkIn', `${checkOutDate}T23:59:59.999Z`)
+      .gt('checkOut', checkInDate)
+      .limit(200);
 
     const conflict = (data ?? []).some((stay: { checkIn: string; checkOut: string }) => {
       const existIn = stay.checkIn.slice(0, 10);
