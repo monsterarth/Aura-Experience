@@ -4,7 +4,7 @@
 >
 > Decisões com o usuário: escopo **completo** (caixa, recebimentos, a receber, a
 > pagar, DRE, relatórios) · formas em uso: **Pix, dinheiro, cartão
-> crédito/débito, transferência** · fechamento de caixa **diário** · dos
+> crédito/débito, transferência, boleto** · fechamento de caixa **diário** · dos
 > relatórios do HMAX importam **Faturamento/Movimento** e **Previsão de receita**
 > · **sinal cria a reserva na hora** · cargo **`finance`** novo · virada **em
 > paralelo ao HMAX** antes do corte definitivo · adquirente: **Cielo**.
@@ -167,23 +167,54 @@ Mais: pessoa (busca), **histórico** (obrigatório — é o que se lê na lista)
 documento, valor, observação, **plano de contas** e **parcelas** (quantidade +
 frequência, gerando a grade de vencimentos e valores).
 
-> **Origem/Destino** no lançamento do HMAX é o **plano de contas** — confirmado
-> pelo usuário. Print pendente para entender se são dois níveis (conta de
-> origem × destino) ou classificação em dois campos; o modelo abaixo assume
-> plano de contas hierárquico e se ajusta quando o print chegar.
+> **Origem/Destino é o plano de contas** — um campo só, não dois: digita-se (ou
+> busca-se com F3) o **código hierárquico** e o sistema resolve o nome ao lado:
+>
+> ```
+> 3.04.003.0003  →  MANUTENCAO PREDIAL/INSTAL
+> ```
+>
+> Quatro níveis (`natureza.grupo.subgrupo.analítica`), no padrão contábil
+> clássico. O AURA precisa do mesmo formato — e o plano de contas tem que ser o
+> que a contabilidade já usa, importado, não inventado.
+
+### O que o print de edição ensina sobre as regras
+
+- **Tipo não se edita.** Depois de criado, um título "Pagar" nunca vira
+  "Receber" — o campo aparece travado. Se errou, cancela e lança de novo.
+- **Data de pagamento também não se digita.** Ela é preenchida pela ação
+  **Quitar**, nunca à mão. Baixa é evento, não campo — e é isso que garante que
+  todo pagamento tenha um lançamento de caixa por trás.
+- **Valor bruto × líquido.** A tela mostra os dois (`Valor 47,17 · Valor líquido:
+  47,17`) — desconto, juros e multa entram na baixa e o líquido é o que de fato
+  saiu.
+- **NSU** fica ao lado do documento: é o número da transação do cartão, chave da
+  conciliação com a adquirente.
+- **Botão "Alterações"** — o histórico de edições do título é visível na própria
+  tela, não escondido num log. No AURA sai de graça (`audit_logs`), mas precisa
+  estar à mão no drawer.
+- **Documentos** — anexos do título (boleto em PDF, comprovante).
+- **Boleto é forma de pagamento**, ao lado de Pix, dinheiro, cartão e
+  transferência — e é a mais comum nos títulos a pagar. Diferente das outras,
+  **não passa pelo caixa da recepção**: sai direto do banco. Por isso
+  `payment_methods` tem o flag "entra no caixa físico".
 
 ### Modelo
 
-**`finance_accounts`** — plano de contas hierárquico (código, nome, natureza
-receita/despesa, conta pai). Precisa espelhar o que a contabilidade já usa.
+**`finance_accounts`** — plano de contas hierárquico: `code` (`3.04.003.0003`),
+`name` (`MANUTENCAO PREDIAL/INSTAL`), natureza (receita/despesa), nível, conta
+pai e se aceita lançamento (só a folha analítica aceita; grupo é para somar).
+**Importar o plano que a contabilidade já usa** — se o AURA inventar o próprio,
+nasce a segunda contabilidade que o `docs/FISCAL.md` também alerta.
 
 **`finance_titles`** — o título, receber ou pagar:
 
 - `type` (`receive` | `pay`), `status` (`open` | `partial` | `paid` | `cancelled`)
 - pessoa: tipo (fornecedor · hóspede · outro), id e **nome em snapshot**
-- `history` (obrigatório), `documentNumber`, `invoiceNumber`, `paymentMethodId`
-- as quatro datas, `amount` e `paidAmount`
-- `accountId` (plano de contas)
+- `history` (obrigatório), `documentNumber`, `invoiceNumber`, `nsu`,
+  `paymentMethodId`, `notes`, anexos
+- as quatro datas, `amount` (bruto), `discount`/`interest`/`fine` e `netAmount`
+- `accountCode` (plano de contas, formato `3.04.003.0003`)
 - parcelamento: `installment` (3/12), `parentTitleId`, `frequency`
 - procedência: `sourceType` (`manual` · `purchase` · `stay` · `card`) + `sourceId`
 - rastro: quem criou, quem quitou, quando
