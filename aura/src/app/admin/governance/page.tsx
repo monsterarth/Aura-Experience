@@ -60,6 +60,7 @@ function GovernanceReportModal({
   activeStays,
   reportArrivals,
   reportDate,
+  lastCleaning,
   onClose,
 }: {
   propertyName: string;
@@ -69,6 +70,7 @@ function GovernanceReportModal({
   activeStays: ActiveStayInfo[];
   reportArrivals: ReportArrival[];
   reportDate: Date;
+  lastCleaning: Record<string, { finishedAt: string; assignedTo: string[] }>;
   onClose: () => void;
 }) {
   const now = new Date();
@@ -82,18 +84,15 @@ function GovernanceReportModal({
     a.number.localeCompare(b.number, undefined, { numeric: true })
   );
 
+  // Vem de uma consulta própria (mode=last-cleaning), não de `tasks`: uma cabana pode não
+  // ser limpa há semanas, e o quadro em memória só carrega a janela recente.
   function getLastCleaning(cabinId: string): string {
-    const completed = tasks
-      .filter(t => t.cabinId === cabinId && t.status === 'completed' && t.finishedAt)
-      .sort((a, b) =>
-        new Date(b.finishedAt as string).getTime() - new Date(a.finishedAt as string).getTime()
-      );
-    if (!completed.length) return '—';
-    const task = completed[0];
-    const names = (task.assignedTo || [])
+    const last = lastCleaning[cabinId];
+    if (!last) return '—';
+    const names = (last.assignedTo || [])
       .map(id => maids.find(m => m.id === id)?.fullName?.split(' ')[0])
       .filter(Boolean).join(', ') || '—';
-    const date = new Date(task.finishedAt as string).toLocaleDateString('pt-BR', {
+    const date = new Date(last.finishedAt).toLocaleDateString('pt-BR', {
       day: '2-digit', month: '2-digit',
     });
     return `${names} · ${date}`;
@@ -588,6 +587,7 @@ export default function GovernancePage() {
   const [reportArrivals, setReportArrivals] = useState<ReportArrival[]>([]);
   const [reportDate, setReportDate] = useState<Date>(new Date());
   const [reportLoading, setReportLoading] = useState(false);
+  const [lastCleaning, setLastCleaning] = useState<Record<string, { finishedAt: string; assignedTo: string[] }>>({});
 
   useEffect(() => {
     if (!property) return;
@@ -642,10 +642,14 @@ export default function GovernancePage() {
     try {
       const dateISO = date.toISOString().split('T')[0];
       const params = new URLSearchParams({ propertyId: property.id, date: dateISO });
-      const res = await fetch(`/api/admin/governance/report?${params}`);
+      const [res, lastMap] = await Promise.all([
+        fetch(`/api/admin/governance/report?${params}`),
+        HousekeepingService.getLastCleaningByCabin(property.id),
+      ]);
       if (!res.ok) throw new Error('fetch-error');
       const data = await res.json();
       setReportArrivals(data.arrivals || []);
+      setLastCleaning(lastMap);
     } catch {
       toast.error("Erro ao gerar relatório.");
     } finally {
@@ -999,6 +1003,7 @@ export default function GovernancePage() {
           activeStays={activeStays}
           reportArrivals={reportArrivals}
           reportDate={reportDate}
+          lastCleaning={lastCleaning}
           onClose={() => setShowReport(false)}
         />
       )}

@@ -133,14 +133,23 @@ export const HousekeepingService = {
     if (error) throw error;
   },
 
-  async getActiveTasks(propertyId: string): Promise<HousekeepingTask[] | null> {
+  /**
+   * Janela de histórico que a tela consome. 'day' cobre tudo que é operação (a camareira
+   * descarta concluídas na hora, a recepção olha as últimas 4h); 'week' existe só para o
+   * kanban de governança, que mostra uma coluna de concluídas dos últimos 7 dias.
+   * A rota devolvia o acervo inteiro — 779 kB, dos quais 96% eram faxinas de meses atrás.
+   */
+  async getActiveTasks(propertyId: string, window: 'day' | 'week' = 'day'): Promise<HousekeepingTask[] | null> {
     // Lê via rota de servidor (sessão validada/renovada pelo middleware) em vez da query
     // RLS do browser — esta retornava [] quando o access token estava brevemente expirado
     // (refresh mobile), apagando o quadro de faxinas mesmo havendo tarefas.
     // Em erro (rede/sessão), retorna null (não []) para que listenToActiveTasks PRESERVE
     // o quadro atual em vez de apagá-lo.
     try {
-      const res = await fetch(`/api/field/housekeeping-tasks?propertyId=${encodeURIComponent(propertyId)}`, { cache: 'no-store' });
+      const res = await fetch(
+        `/api/field/housekeeping-tasks?propertyId=${encodeURIComponent(propertyId)}&window=${window}`,
+        { cache: 'no-store' }
+      );
       if (!res.ok) {
         console.error("Error fetching active tasks:", res.status);
         return null;
@@ -152,17 +161,68 @@ export const HousekeepingService = {
     }
   },
 
-  listenToActiveTasks(propertyId: string, callback: (tasks: HousekeepingTask[]) => void) {
+  /**
+   * Última faxina concluída de cada cabana, sem limite de idade — o dado que a janela acima
+   * não cobre (uma cabana pode não ser limpa há semanas). Chamada uma vez no load, fora do
+   * polling: são ~25 linhas de três colunas contra as tarefas inteiras.
+   */
+  async getLastCleaningByCabin(propertyId: string): Promise<Record<string, { finishedAt: string; assignedTo: string[] }>> {
+    try {
+      const res = await fetch(
+        `/api/field/housekeeping-tasks?propertyId=${encodeURIComponent(propertyId)}&mode=last-cleaning`,
+        { cache: 'no-store' }
+      );
+      if (!res.ok) return {};
+      return await res.json();
+    } catch {
+      return {};
+    }
+  },
+
+  listenToActiveTasks(
+    propertyId: string,
+    callback: (tasks: HousekeepingTask[]) => void,
+    window: 'day' | 'week' = 'day'
+  ) {
     const fetchInitial = async () => {
-      const tasks = await this.getActiveTasks(propertyId);
+      const tasks = await this.getActiveTasks(propertyId, window);
       // null = erro na query → preserva o quadro atual, não apaga as tarefas
       if (tasks !== null) callback(tasks);
     };
 
     fetchInitial();
 
-    // Safety net: cobre DELETEs perdidos por RLS e reconexões de canal
-    const intervalId = setInterval(fetchInitial, 15_000);
+    // Rede de segurança para reconexão de canal — não é o caminho principal, o realtime é.
+    // Era 15s: nas apps de campo a tela fica ligada no bolso por horas, então isso sozinho
+    // gerava 4 requisições/minuto por dispositivo o turno inteiro. A 60s e só com a aba
+    // visível, o custo cai ~95% sem perder a recuperação de um canal que caiu calado.
+    const POLL_MS = 60_000;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const startPolling = () => {
+      if (intervalId === null) intervalId = setInterval(fetchInitial, POLL_MS);
+    };
+    const stopPolling = () => {
+      if (intervalId !== null) { clearInterval(intervalId); intervalId = null; }
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        // Voltar para a aba é o momento em que o quadro tem mais chance de estar velho:
+        // busca na hora em vez de esperar o próximo tick.
+        fetchInitial();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibility);
+      if (document.visibilityState === 'visible') startPolling();
+    } else {
+      startPolling();
+    }
 
     // Rastreia se o canal chegou a subscrever — usado no cleanup para evitar
     // fechar o WebSocket enquanto ainda está em CONNECTING (browser warning:
@@ -179,7 +239,10 @@ export const HousekeepingService = {
       });
 
     return () => {
-      clearInterval(intervalId);
+      stopPolling();
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibility);
+      }
       if (subscribed) {
         // Canal conectado: remoção limpa (fecha o join + socket se não há mais canais)
         supabase.removeChannel(channel);
@@ -332,6 +395,29 @@ export const HousekeepingService = {
     await AuditService.log({
       propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "CABIN", entityId: taskId,
       details: `Hóspede pediu para não limpar: ${location}.`
+    });
+  },
+
+  // Desfaz o "hóspede pediu para não limpar". Sem isto a tarefa pulada simplesmente some do
+  // quadro da camareira (o app filtra 'skipped') e um toque errado só se conserta pedindo a
+  // um gestor para mexer no banco — foi o que aconteceu em 26/08/2026 com três faxinas.
+  async unskipTask(propertyId: string, taskId: string, actorId: string, actorName: string) {
+    const { data: task } = await db().from('housekeeping_tasks')
+      .select('cabinId, structureId, customLocation, type, status').eq('id', taskId).single();
+    if (!task) return;
+    // Idempotente: se já voltou (outra aba, realtime), não faz nada nem audita de novo.
+    if (task.status !== 'skipped') return;
+
+    const now = new Date().toISOString();
+    const { error } = await db().from('housekeeping_tasks')
+      .update({ status: 'pending', skippedAt: null, updatedAt: now })
+      .eq('id', taskId);
+    if (error) throw new Error(`unskipTask: ${error.message}`);
+
+    const location = await resolveLocation(task.cabinId, task.structureId, task.customLocation);
+    await AuditService.log({
+      propertyId, userId: actorId, userName: actorName, action: "UPDATE", entity: "CABIN", entityId: taskId,
+      details: `Desfez o "não limpar" — faxina de volta na lista: ${location}.`
     });
   },
 

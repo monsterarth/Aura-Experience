@@ -25,11 +25,51 @@ export async function GET(req: Request) {
 
   if (!propertyId) return NextResponse.json([]);
 
+  // Modo 'last-cleaning': a governanta mostra a ULTIMA faxina de cada cabana, sem limite de
+  // idade — dado que a janela abaixo nao cobre. Sai numa chamada propria, fora do polling,
+  // porque sao ~25 linhas de tres colunas em vez das tarefas inteiras.
+  if (searchParams.get('mode') === 'last-cleaning') {
+    const { data, error } = await supabaseAdmin
+      .from('housekeeping_tasks')
+      .select('cabinId, finishedAt, assignedTo')
+      .eq('propertyId', propertyId)
+      .eq('status', 'completed')
+      .not('cabinId', 'is', null)
+      .not('finishedAt', 'is', null)
+      .order('finishedAt', { ascending: false })
+      .limit(400);
+
+    if (error) {
+      console.error('[field/housekeeping-tasks last-cleaning]', error.message);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Uma linha por cabana (a mais recente): a ordem DESC acima garante que a primeira vence.
+    const latest: Record<string, { finishedAt: string; assignedTo: string[] }> = {};
+    for (const row of data ?? []) {
+      const id = row.cabinId as string;
+      if (!latest[id]) latest[id] = { finishedAt: row.finishedAt as string, assignedTo: (row.assignedTo as string[]) ?? [] };
+    }
+    return NextResponse.json(latest);
+  }
+
+  // A tabela acumula todo o historico de faxinas, mas nenhuma tela consome mais que uma
+  // semana: a app da camareira descarta 'completed' na hora, a recepcao olha as ultimas 4h e
+  // o kanban filtra 7 dias. Devolver o acervo inteiro custava 779 kB por chamada — a cada
+  // polling, em cada dispositivo — dos quais 96% eram faxinas concluidas desde abril.
+  // 'week' existe so para o kanban; todo o resto pede 'day' e paga 35 kB.
+  const days = searchParams.get('window') === 'week' ? 7 : 1;
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+
   const { data, error } = await supabaseAdmin
     .from('housekeeping_tasks')
     .select('*')
     .eq('propertyId', propertyId)
-    .neq('status', 'cancelled');
+    .neq('status', 'cancelled')
+    // Abertas sempre; encerradas so dentro da janela. O or() do PostgREST nao aceita
+    // COALESCE, entao 'finishedAt nulo mas updatedAt recente' cobre a tarefa encerrada
+    // sem finishedAt (pulada, ou concluida antes da coluna existir).
+    .or(`status.not.in.(completed,skipped),finishedAt.gte.${since},updatedAt.gte.${since}`);
 
   if (error) {
     console.error('[field/housekeeping-tasks]', error.message);
@@ -44,7 +84,7 @@ export async function GET(req: Request) {
 // sequência pela rede móvel + auditoria que podia se perder ao bloquear o celular. Aqui é
 // 1 round-trip a partir do dispositivo; o HousekeepingService roda com service-role (db()
 // detecta o servidor) e conclui update + cabana + auditoria/push de forma confiável.
-type TaskAction = 'start' | 'resume' | 'pause' | 'skip' | 'finish' | 'upgrade' | 'confirm' | 'reject' | 'assign' | 'cancel' | 'create';
+type TaskAction = 'start' | 'resume' | 'pause' | 'skip' | 'unskip' | 'finish' | 'upgrade' | 'confirm' | 'reject' | 'assign' | 'cancel' | 'create';
 
 export async function POST(req: Request) {
   // 'governance' incluído para a conferência de qualidade (confirm/reject). 'maid' cobre a
@@ -122,6 +162,9 @@ export async function POST(req: Request) {
         break;
       case 'skip':
         await HousekeepingService.skipTask(propertyId, taskId, actorId, actorName);
+        break;
+      case 'unskip':
+        await HousekeepingService.unskipTask(propertyId, taskId, actorId, actorName);
         break;
       case 'upgrade':
         await HousekeepingService.upgradeToLinenChange(propertyId, taskId, actorId, actorName);

@@ -91,9 +91,11 @@ export default function GovernanceKanbanPage() {
 
         setMaids(staffData.filter(s => s.active && (s.role === 'maid' || (s.secondaryRoles ?? []).includes('maid'))));
 
+        // 'week': esta é a única tela que mostra concluídas além do dia (a coluna de
+        // recentes filtra 7 dias logo abaixo). As demais pedem 'day' e pagam bem menos.
         unsubscribe = HousekeepingService.listenToActiveTasks(property.id, (realtimeTasks) => {
           setTasks(realtimeTasks);
-        });
+        }, 'week');
 
       } catch (error) {
         toast.error("Erro ao conectar base de governança.");
