@@ -35,6 +35,8 @@ const STYLE = `
 @keyframes maid-slideup{from{transform:translateY(100%)}to{transform:translateY(0)}}
 @keyframes maid-toast{from{transform:translateY(-16px);opacity:0}to{transform:translateY(0);opacity:1}}
 @keyframes maid-spin{to{transform:rotate(360deg)}}
+@keyframes maid-nudge{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+@keyframes maid-pop{from{transform:scale(.92);opacity:0}to{transform:scale(1);opacity:1}}
 .maid-shell button{touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
 .maid-shell button:not([disabled]):active{opacity:.7;transform:scale(.97);}
 .maid-shell button[disabled]{pointer-events:none;}
@@ -73,6 +75,10 @@ const T = {
   blueBorder: "rgba(96,165,250,0.25)",
   red: "#f87171",
   redBg: "rgba(248,113,113,0.1)",
+  rose: "#fb7185",
+  roseBg: "rgba(251,113,133,0.09)",
+  roseBorder: "rgba(251,113,133,0.32)",
+  roseG: "linear-gradient(135deg,#f43f5e,#fb7185)",
 };
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
@@ -99,6 +105,184 @@ function todayLabel() {
 function requiresConferenceClient(t: { type: string; needsConference?: boolean }): boolean {
   return ["turnover", "inspection_checkin", "inspection_checkout"].includes(t.type) ||
     (t.type === "custom" && t.needsConference === true);
+}
+
+// ─── Salvaguardas de toque ────────────────────────────────────────────────────
+// Contexto (26/08/2026): três faxinas foram puladas sem ninguém querer. A causa é o "clique
+// fantasma": os botões críticos agem no `pointerdown`, então o diálogo fecha ANTES do `click`
+// que o mesmo toque ainda vai emitir. Como React processa o pointerdown de forma síncrona, o
+// que estiver na tela no instante seguinte recebe esse click órfão — e as duas confirmações
+// de "pular" eram caixas centralizadas do mesmo tamanho, com o botão de confirmar a ~12px de
+// distância uma da outra. Um toque só atravessava as duas.
+// (preventDefault no pointerdown NÃO cancela o click: a spec de Pointer Events mantém
+//  click/auxclick/contextmenu, e `touch-action:manipulation` ainda tira o atraso de 300ms.)
+
+const ARM_MS = 450;
+
+/** Deixa um diálogo inerte nos primeiros ms de vida — o click órfão do toque anterior morre aqui. */
+function useArmed(open: boolean, ms = ARM_MS) {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!open) { setArmed(false); return; }
+    setArmed(false);
+    const t = setTimeout(() => setArmed(true), ms);
+    return () => clearTimeout(t);
+  }, [open, ms]);
+  return armed;
+}
+
+/** Escudo transparente: some sozinho e engole qualquer toque que chegue enquanto está de pé. */
+function TapShield({ z = 400 }: { z?: number }) {
+  return (
+    <div
+      style={{ position: "absolute", inset: 0, zIndex: z, background: "transparent" }}
+      onPointerDown={e => { e.preventDefault(); e.stopPropagation(); }}
+      onClick={e => { e.preventDefault(); e.stopPropagation(); }}
+    />
+  );
+}
+
+/**
+ * Escudo com prazo — usado quando uma sheet fecha no pointerdown e a lista atrás dela fica
+ * exposta exatamente sob o dedo (o footer "Pausar" mora em cima dos botões dos cartões).
+ */
+function useTapShield(ms = ARM_MS) {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    if (!on) return;
+    const t = setTimeout(() => setOn(false), ms);
+    return () => clearTimeout(t);
+  }, [on, ms]);
+  return { shield: on, raiseShield: useCallback(() => setOn(true), []) };
+}
+
+/**
+ * Confirmação por pressão contínua. Nenhum clique fantasma, nenhum esbarrão e nenhum toque
+ * distraído sustenta 1,6s de dedo parado — e a barra que enche dá o retorno visual que quem
+ * não lê o rótulo entende na hora.
+ */
+const HOLD_TONES = {
+  // Tirar a faxina da lista: vermelho, gordo, 1,6s.
+  danger: { fg: T.rose, bg: T.roseBg, border: `2px solid ${T.roseBorder}`, fill: T.roseG, hint: T.rose },
+  // Trazer de volta: sem preenchimento, borda fina, texto apagado — a barra que enche usa o
+  // gradiente da casa (roxo/azul = a faxina volta). Discreto de propósito: é um botão que fica
+  // o dia todo na tela e não pode disputar atenção nem convidar o polegar.
+  quiet: { fg: "rgba(238,240,248,0.66)", bg: "transparent", border: `1px solid ${T.border2}`, fill: "linear-gradient(135deg,rgba(155,109,255,.62),rgba(78,201,212,.62))", hint: T.g2 },
+} as const;
+
+const HOLD_SIZES = {
+  lg: { pad: "17px 14px", fs: 15, r: 18, ic: 19, gap: 9, weight: 900 as const, upper: true },
+  sm: { pad: "12px 14px", fs: 13, r: 14, ic: 16, gap: 7, weight: 800 as const, upper: false },
+} as const;
+
+function HoldConfirm({
+  label, holdingLabel, icon, ms = 1600, disabled, busy, onComplete,
+  tone = "danger", size = "lg", hint = "always",
+}: {
+  label: string;
+  holdingLabel: string;
+  icon: IName;
+  ms?: number;
+  disabled?: boolean;
+  busy?: boolean;
+  onComplete: () => void;
+  tone?: keyof typeof HOLD_TONES;
+  size?: keyof typeof HOLD_SIZES;
+  /** "always" ensina o gesto; "nudge" fica calado até alguém tocar achando que bastava um toque. */
+  hint?: "always" | "nudge";
+}) {
+  const [pct, setPct] = useState(0);
+  // Contador (e não booleano) para a dica reanimar a cada tentativa frustrada.
+  const [nudgeSeq, setNudgeSeq] = useState(0);
+  const raf = useRef<number | null>(null);
+  const pctRef = useRef(0);
+  const doneRef = useRef(false);
+  const tk = HOLD_TONES[tone];
+  const sz = HOLD_SIZES[size];
+
+  const stop = useCallback(() => {
+    if (raf.current !== null) cancelAnimationFrame(raf.current);
+    raf.current = null;
+  }, []);
+
+  useEffect(() => stop, [stop]);
+
+  const begin = (e: React.PointerEvent) => {
+    e.preventDefault();
+    if (disabled || busy || doneRef.current || raf.current !== null) return;
+    const t0 = performance.now();
+    const tick = () => {
+      const p = Math.min(1, (performance.now() - t0) / ms);
+      pctRef.current = p;
+      setPct(p);
+      if (p >= 1) {
+        doneRef.current = true;
+        stop();
+        if (navigator.vibrate) navigator.vibrate(40);
+        onComplete();
+        return;
+      }
+      raf.current = requestAnimationFrame(tick);
+    };
+    raf.current = requestAnimationFrame(tick);
+  };
+
+  const abort = () => {
+    if (doneRef.current || raf.current === null) return;
+    stop();
+    // Soltou no meio do caminho: quase sempre é alguém que tocou achando que bastava um toque.
+    setNudgeSeq(n => n + 1);
+    pctRef.current = 0;
+    setPct(0);
+  };
+
+  const holding = pct > 0;
+  const ink = pct > 0.5 ? "#fff" : tk.fg;
+  const showHint = hint === "always" || nudgeSeq > 0;
+  return (
+    <div>
+      <button
+        onPointerDown={begin}
+        onPointerUp={abort}
+        onPointerLeave={abort}
+        onPointerCancel={abort}
+        onContextMenu={e => e.preventDefault()}
+        disabled={disabled || busy}
+        style={{
+          position: "relative", overflow: "hidden", width: "100%", padding: sz.pad,
+          background: tk.bg, border: tk.border, borderRadius: sz.r,
+          color: tk.fg, fontFamily: "inherit", fontSize: sz.fs, fontWeight: sz.weight,
+          letterSpacing: sz.upper ? "0.03em" : "0.01em",
+          textTransform: sz.upper ? ("uppercase" as const) : ("none" as const),
+          cursor: "pointer", userSelect: "none", WebkitUserSelect: "none",
+          opacity: disabled ? 0.35 : 1, touchAction: "none",
+        }}
+      >
+        {/* Barra que enche por baixo do rótulo */}
+        <div style={{
+          position: "absolute", inset: 0, width: `${pct * 100}%`,
+          background: tk.fill, opacity: 0.85, transition: holding ? "none" : "width .2s ease",
+        }} />
+        <span style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", gap: sz.gap, color: ink }}>
+          {busy ? <I n="loader" s={sz.ic} c={ink} w={2} /> : <I n={icon} s={sz.ic} c={ink} w={2.2} />}
+          {holding ? holdingLabel : label}
+        </span>
+      </button>
+      {showHint && (
+        <div
+          key={nudgeSeq}
+          style={{
+            marginTop: size === "lg" ? 8 : 6, textAlign: "center" as const,
+            fontSize: size === "lg" ? 12 : 11, fontWeight: 800,
+            color: nudgeSeq > 0 ? tk.hint : T.muted,
+            animation: nudgeSeq > 0 ? "maid-nudge .5s ease 2" : undefined,
+          }}
+        >
+          {nudgeSeq > 0 ? "☝ Segure o botão até encher" : "Segure o botão para confirmar"}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── GBorder ──────────────────────────────────────────────────────────────────
@@ -156,7 +340,7 @@ function Toast({ msg, color }: { msg: string; color: string }) {
 
 // ─── Icon component (subset) ─────────────────────────────────────────────────
 
-type IName = "home"|"coffee"|"sparkles"|"user"|"key"|"check"|"arrow"|"plus"|"minus"|"x"|"pkg"|"info"|"send"|"logout"|"edit"|"sun"|"clock"|"list"|"chevr"|"loader"|"camera"|"inbox"|"search"|"users"|"cal"|"smile"|"msg";
+type IName = "home"|"coffee"|"sparkles"|"user"|"key"|"check"|"arrow"|"plus"|"minus"|"x"|"pkg"|"info"|"send"|"logout"|"edit"|"sun"|"clock"|"list"|"chevr"|"loader"|"camera"|"inbox"|"search"|"users"|"cal"|"smile"|"msg"|"pause"|"dnd"|"undo";
 
 function I({ n, s = 20, c = "currentColor", w = 1.8 }: { n: IName; s?: number; c?: string; w?: number }) {
   const d: Record<IName, React.ReactNode> = {
@@ -187,6 +371,12 @@ function I({ n, s = 20, c = "currentColor", w = 1.8 }: { n: IName; s?: number; c
     cal: <><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></>,
     smile: <><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></>,
     msg: <><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></>,
+    // "pause" (duas barras) e "dnd" (plaquinha de porta) existem para que PAUSAR e NÃO LIMPAR
+    // nunca mais compartilhem o mesmo desenho — a camareira semi-alfabetizada lê o ícone,
+    // não a palavra, e "Pausar"/"Pular" eram indistinguíveis (mesmo âmbar, mesmo tamanho).
+    pause: <><rect x="6" y="4" width="4" height="16" rx="1.5"/><rect x="14" y="4" width="4" height="16" rx="1.5"/></>,
+    dnd: <><path d="M8.5 2h7a2 2 0 012 2v16a2 2 0 01-2 2h-7a2 2 0 01-2-2V4a2 2 0 012-2z"/><circle cx="12" cy="6" r="1.6"/><line x1="9.5" y1="12" x2="14.5" y2="12"/><line x1="9.5" y1="16" x2="14.5" y2="16"/></>,
+    undo: <><polyline points="3 8 3 14 9 14"/><path d="M21 16a9 9 0 00-9-9 9 9 0 00-6.7 3L3 12.5"/></>,
   };
   return (
     <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round"
@@ -430,6 +620,7 @@ function TaskSheet({
   const pausingRef = useRef(false);
   const upgradingRef = useRef(false);
   const finishingRef = useRef(false);
+  const confirmArmed = useArmed(showConfirm);
 
   useEffect(() => {
     if (task.checklist.length > 0) return;
@@ -674,7 +865,7 @@ function TaskSheet({
                 disabled={pausing || finishing}
                 style={{ flex: "0 0 auto", padding: "14px 16px", background: T.glass, border: `1px solid ${T.amberBorder}`, borderRadius: 16, cursor: pausing ? "wait" : "pointer", color: T.amber, display: "flex", alignItems: "center", gap: 7, fontFamily: "inherit", fontSize: 13, fontWeight: 700, opacity: pausing ? 0.5 : 1 }}
               >
-                {pausing ? <I n="loader" s={16} c={T.amber} w={2} /> : <I n="clock" s={16} c={T.amber} />}
+                {pausing ? <I n="loader" s={16} c={T.amber} w={2} /> : <I n="pause" s={16} c={T.amber} w={2} />}
                 Pausar
               </button>
             )}
@@ -692,6 +883,7 @@ function TaskSheet({
       {/* Confirm modal */}
       {showConfirm && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 24 }}>
+          {!confirmArmed && <TapShield z={310} />}
           <div style={{ background: "#111827", border: `1px solid ${T.border2}`, borderRadius: 24, padding: 24, width: "100%", maxWidth: 340, boxShadow: "0 20px 60px rgba(0,0,0,0.7)" }}>
             <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 6 }}>Finalizar esta faxina?</div>
             <div style={{ fontSize: 13, color: T.muted, marginBottom: 20 }}>
@@ -817,19 +1009,23 @@ function HomeScreen({
 // ─── Faxinas screen ───────────────────────────────────────────────────────────
 
 function FaxinasScreen({
-  tasks, onStart, onSkip, showToast, onToggle,
+  tasks, skippedTasks, onStart, onSkip, onUnskip, showToast, onToggle,
   propertyId, userId, userName, onChecklistLoaded, repRequests,
-  startingTaskId, onFinish, onPause, onUpgrade, onConfer,
+  startingTaskId, unskippingId, onFinish, onPause, onUpgrade, onConfer,
 }: {
   tasks: EnrichedTask[];
+  /** Puladas de hoje — ficam visíveis num quadro à parte só para poderem voltar. */
+  skippedTasks: EnrichedTask[];
   onStart: (id: string) => void;
   onSkip: (id: string) => void;
+  onUnskip: (id: string) => void;
   showToast: (m: string, c?: string) => void;
   onToggle: (tid: string, cid: string) => void;
   propertyId: string; userId: string; userName: string;
   onChecklistLoaded: (taskId: string, checklist: ChecklistItem[]) => void;
   repRequests: RestockRequest[];
   startingTaskId: string | null;
+  unskippingId: string | null;
   onFinish: (taskId: string, checklist: ChecklistItem[]) => void;
   onPause: (taskId: string) => void;
   onUpgrade: (taskId: string) => void;
@@ -838,14 +1034,17 @@ function FaxinasScreen({
 }) {
   const [detail, setDetail] = useState<string | null>(null);
   const [confirmStart, setConfirmStart] = useState<string | null>(null);
-  const [confirmSkip, setConfirmSkip] = useState<string | null>(null);
+  const { shield, raiseShield } = useTapShield();
 
   const inProg = tasks.filter(t => t.status === "in_progress");
   const pending = tasks.filter(t => t.status === "pending");
   const waiting = tasks.filter(t => t.status === "waiting_conference");
   const fullTask = detail ? tasks.find(t => t.id === detail) ?? null : null;
   const confirmTask = confirmStart ? tasks.find(t => t.id === confirmStart) ?? null : null;
-  const skipTask = confirmSkip ? tasks.find(t => t.id === confirmSkip) ?? null : null;
+  const startArmed = useArmed(!!confirmTask);
+
+  // A sheet fecha no pointerdown; o escudo cobre a lista até o click órfão passar.
+  const closeDetail = useCallback(() => { setDetail(null); raiseShield(); }, [raiseShield]);
 
   return (
     <>
@@ -978,22 +1177,24 @@ function FaxinasScreen({
                     <span style={{ fontSize: 13, color: T.amber, lineHeight: 1.45, fontWeight: 600 }}>{t.observations}</span>
                   </div>
                 )}
-                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 8 }}>
-                  <button
-                    onPointerDown={(e) => { e.preventDefault(); if (!startingTaskId) setConfirmSkip(t.id); }}
-                    disabled={startingTaskId !== null}
-                    style={{ padding: "16px 18px", background: T.amberBg, border: `1px solid ${T.amberBorder}`, color: T.amber, fontFamily: "inherit", fontSize: 13, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase" as const, borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: startingTaskId ? 0.4 : 1 }}
-                  >
-                    <I n="x" s={15} c={T.amber} /> Pular
-                  </button>
-                  <button
-                    onPointerDown={(e) => { e.preventDefault(); if (!startingTaskId) setConfirmStart(t.id); }}
-                    disabled={startingTaskId !== null}
-                    style={{ padding: 16, background: T.grad, color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: startingTaskId ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(155,109,255,0.35)", opacity: startingTaskId ? 0.7 : 1 }}
-                  >
-                    {startingTaskId === t.id ? <><I n="loader" s={18} c="#fff" w={2} /> Iniciando...</> : <>{t.startedAt ? "Retomar" : "Iniciar"} <I n="arrow" s={18} /></>}
-                  </button>
-                </div>
+                {/* Ação principal sozinha na linha. "Não limpar" saiu daqui de propósito: era um
+                    botão âmbar pequeno à esquerda de um botão grande — exatamente o desenho do
+                    "Pausar" do checklist. Agora vive embaixo, em outra cor, com outro ícone e
+                    outra forma (tracejado), para não ser confundido nem acertado de raspão. */}
+                <button
+                  onPointerDown={(e) => { e.preventDefault(); if (!startingTaskId) setConfirmStart(t.id); }}
+                  disabled={startingTaskId !== null}
+                  style={{ width: "100%", padding: 16, background: T.grad, color: "#fff", fontFamily: "inherit", fontSize: 15, fontWeight: 800, letterSpacing: "0.03em", textTransform: "uppercase" as const, border: "none", borderRadius: 16, cursor: startingTaskId ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: "0 4px 20px rgba(155,109,255,0.35)", opacity: startingTaskId ? 0.7 : 1 }}
+                >
+                  {startingTaskId === t.id ? <><I n="loader" s={18} c="#fff" w={2} /> Iniciando...</> : <>{t.startedAt ? "Retomar" : "Iniciar"} <I n="arrow" s={18} /></>}
+                </button>
+                <button
+                  onPointerDown={(e) => { e.preventDefault(); if (!startingTaskId) onSkip(t.id); }}
+                  disabled={startingTaskId !== null}
+                  style={{ width: "100%", marginTop: 10, padding: "11px 14px", background: "transparent", border: `1px dashed ${T.roseBorder}`, color: T.rose, fontFamily: "inherit", fontSize: 12, fontWeight: 800, letterSpacing: "0.02em", borderRadius: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, opacity: startingTaskId ? 0.4 : 0.85 }}
+                >
+                  <I n="dnd" s={15} c={T.rose} /> Hóspede não quer limpeza
+                </button>
               </div>
             ))}
           </div>
@@ -1030,7 +1231,44 @@ function FaxinasScreen({
           </div>
         )}
 
-        {tasks.length === 0 && (
+        {/* Não limpar hoje — a rede de segurança. A faxina pulada some do quadro, então antes
+            dela existir aqui um toque errado só voltava atrás por telefone com o gestor. */}
+        {skippedTasks.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase" as const, color: T.rose, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+              <I n="dnd" s={12} c={T.rose} /> Não limpar hoje
+            </div>
+            {skippedTasks.map(t => (
+              <div key={t.id} style={{ background: T.roseBg, border: `1px dashed ${T.roseBorder}`, borderRadius: 18, marginBottom: 10, padding: "14px 16px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 21, fontWeight: 900, color: T.rose, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{t.cabinName || "Cabana"}</div>
+                    <div style={{ fontSize: 12, color: T.rose, opacity: 0.7, marginTop: 2 }}>{getTaskLabel(t.type)}</div>
+                  </div>
+                  <I n="dnd" s={26} c={T.rose} />
+                </div>
+                {/* Também por pressão: se voltar fosse um toque, o hóspede que pediu para não
+                    limpar viraria uma faxina de volta na lista por esbarrão — o mesmo erro na
+                    direção contrária. Menos tempo (0,9s) porque desfazer é menos grave, e sem
+                    peso visual: este cartão fica o dia todo na tela. */}
+                <HoldConfirm
+                  label="Desfazer"
+                  holdingLabel="Segure..."
+                  icon="undo"
+                  ms={900}
+                  tone="quiet"
+                  size="sm"
+                  hint="nudge"
+                  disabled={unskippingId !== null && unskippingId !== t.id}
+                  busy={unskippingId === t.id}
+                  onComplete={() => onUnskip(t.id)}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tasks.length === 0 && skippedTasks.length === 0 && (
           <div style={{ textAlign: "center", padding: "60px 0" }}>
             <div style={{ fontSize: 48 }}>✨</div>
             <div style={{ fontSize: 16, fontWeight: 700, marginTop: 12 }}>Quadro limpo!</div>
@@ -1041,7 +1279,7 @@ function FaxinasScreen({
 
       {fullTask && (
         <TaskSheet
-          task={fullTask} onClose={() => setDetail(null)} onToggle={onToggle}
+          task={fullTask} onClose={closeDetail} onToggle={onToggle}
           showToast={showToast} propertyId={propertyId} userId={userId} userName={userName}
           onChecklistLoaded={onChecklistLoaded}
           onFinish={onFinish} onPause={onPause} onUpgrade={onUpgrade}
@@ -1051,6 +1289,7 @@ function FaxinasScreen({
       {/* Confirmação de início — evita iniciar por toque acidental ao rolar a lista */}
       {confirmTask && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 24 }}>
+          {!startArmed && <TapShield z={310} />}
           <div style={{ background: "#111827", border: `1px solid ${T.border2}`, borderRadius: 24, padding: 24, width: "100%", maxWidth: 340, boxShadow: "0 20px 60px rgba(0,0,0,0.7)" }}>
             <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 6 }}>
               {confirmTask.startedAt ? "Retomar esta faxina?" : "Iniciar esta faxina?"}
@@ -1074,29 +1313,10 @@ function FaxinasScreen({
         </div>
       )}
 
-      {/* Confirmação de pular — evita pular por toque acidental ao rolar a lista */}
-      {skipTask && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 24 }}>
-          <div style={{ background: "#111827", border: `1px solid ${T.border2}`, borderRadius: 24, padding: 24, width: "100%", maxWidth: 340, boxShadow: "0 20px 60px rgba(0,0,0,0.7)" }}>
-            <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 6 }}>Pular esta faxina?</div>
-            <div style={{ fontSize: 13, color: T.muted, marginBottom: 20 }}>
-              {skipTask.cabinName || "Cabana"} · {getTaskLabel(skipTask.type)}
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setConfirmSkip(null)} style={{ flex: 1, padding: 14, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 14, cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 700, color: T.muted }}>
-                Cancelar
-              </button>
-              <button
-                onPointerDown={(e) => { e.preventDefault(); const id = confirmSkip; setConfirmSkip(null); if (id && !startingTaskId) onSkip(id); }}
-                disabled={startingTaskId !== null}
-                style={{ flex: 1, padding: 14, background: T.amberBg, color: T.amber, fontFamily: "inherit", fontSize: 14, fontWeight: 800, border: `1px solid ${T.amberBorder}`, borderRadius: 14, cursor: startingTaskId ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: startingTaskId ? 0.7 : 1 }}
-              >
-                <I n="x" s={17} c={T.amber} w={2.5} /> Pular
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Escudo pós-fechamento da sheet: o footer "Pausar"/"Finalizar" age no pointerdown e
+          some na hora, deixando os botões dos cartões expostos bem debaixo do dedo. Sem isto
+          o click órfão do mesmo toque cai na lista. */}
+      {shield && <TapShield z={290} />}
     </>
   );
 }
@@ -1386,6 +1606,7 @@ export default function MaidPage() {
 
   const [tab, setTab] = useState<Tab>("home");
   const [tasks, setTasks] = useState<EnrichedTask[]>([]);
+  const [skippedTasks, setSkippedTasks] = useState<EnrichedTask[]>([]);
   const [cabins, setCabins] = useState<Record<string, Cabin>>({});
   const [dataLoading, setDataLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; color: string } | null>(null);
@@ -1397,6 +1618,9 @@ export default function MaidPage() {
   const [pauseStartBusy, setPauseStartBusy] = useState(false);
   const [skipConfirmTaskId, setSkipConfirmTaskId] = useState<string | null>(null);
   const [skipBusy, setSkipBusy] = useState(false);
+  const [undoSkip, setUndoSkip] = useState<{ id: string; name: string } | null>(null);
+  const [unskippingId, setUnskippingId] = useState<string | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const logoutRef = useRef(false);
 
   // Camareira que também é governanta: as faxinas dela próprias ficam em "Aguardando
@@ -1497,21 +1721,26 @@ export default function MaidPage() {
 
         unsubscribe = HousekeepingService.listenToActiveTasks(property.id, allTasks => {
           const myId = userData?.id;
-          // Fora do quadro da camareira: concluída/cancelada, a que ela pulou ('skipped') e a
-          // pausada pelo DND do hóspede ('paused'). Nenhuma delas tem ação possível aqui — se
-          // ficarem na lista viram cartão fantasma (contam em "N atribuída(s) hoje" e aparecem
-          // como "Pendente" no Início, sem nada em PARA FAZER). Governanta e admin continuam
-          // vendo as puladas em "Não Realizadas".
-          const isOffBoard = (s: string) => s === "completed" || s === "cancelled" || s === "skipped" || s === "paused";
-          const myTasks = (userData?.role === "maid" && myId)
-            ? allTasks.filter(t => t.assignedTo?.includes(myId) && !isOffBoard(t.status))
-            : allTasks.filter(t => !isOffBoard(t.status));
+          // Fora do quadro da camareira: concluída/cancelada e a pausada pelo DND do hóspede
+          // ('paused'). Nenhuma delas tem ação possível aqui — se ficarem na lista viram cartão
+          // fantasma (contam em "N atribuída(s) hoje" e aparecem como "Pendente" no Início, sem
+          // nada em PARA FAZER). Governanta e admin continuam vendo as puladas em "Não Realizadas".
+          const isOffBoard = (s: string) => s === "completed" || s === "cancelled" || s === "paused";
+          const mine = (userData?.role === "maid" && myId)
+            ? allTasks.filter(t => t.assignedTo?.includes(myId))
+            : allTasks;
 
-          const enriched: EnrichedTask[] = myTasks.map(t => ({
-            ...t,
-            cabinName: resolveLocationName(t),
-          }));
-          setTasks(enriched);
+          const enrich = (t: HousekeepingTask): EnrichedTask => ({ ...t, cabinName: resolveLocationName(t) });
+          setTasks(mine.filter(t => t.status !== "skipped" && !isOffBoard(t.status)).map(enrich));
+          // 'skipped' sai do quadro principal mas fica num bloco próprio ("Não limpar hoje"),
+          // só de hoje, para que um toque errado se conserte sem ligar para o gestor.
+          const today = new Date().toDateString();
+          setSkippedTasks(
+            mine
+              .filter(t => t.status === "skipped")
+              .filter(t => { const s = t.skippedAt ?? t.updatedAt; return !s || new Date(s).toDateString() === today; })
+              .map(enrich)
+          );
         });
       } catch {
         showToast("Erro ao carregar dados.", T.red);
@@ -1618,18 +1847,46 @@ export default function MaidPage() {
     setSkipBusy(true);
     const id = skipConfirmTaskId;
     const prev = tasks;
+    const task = tasks.find(t => t.id === id);
     setTasks(curr => curr.filter(t => t.id !== id));
+    if (task) setSkippedTasks(curr => curr.some(t => t.id === id) ? curr : [...curr, { ...task, status: "skipped" }]);
     setSkipConfirmTaskId(null);
-    showToast("Registrado — hóspede pediu para não limpar.");
+    // Barra de desfazer em vez do toast de 2,6s: quem pulou sem querer tem 15s e um botão
+    // grande para voltar atrás na hora, antes de sequer sair da tela.
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setUndoSkip({ id, name: task?.cabinName || "Faxina" });
+    undoTimer.current = setTimeout(() => setUndoSkip(null), 15000);
     try {
       await postAction("skip", id);
     } catch {
       setTasks(prev);
-      showToast("Erro ao pular tarefa.", T.red);
+      setSkippedTasks(curr => curr.filter(t => t.id !== id));
+      setUndoSkip(null);
+      showToast("Erro ao registrar. A faxina continua na lista.", T.red);
     } finally {
       setSkipBusy(false);
     }
   }, [skipConfirmTaskId, property, userData, skipBusy, showToast, tasks, postAction]);
+
+  const handleUnskip = useCallback(async (taskId: string) => {
+    if (!property || !userData || unskippingId) return;
+    setUnskippingId(taskId);
+    const task = skippedTasks.find(t => t.id === taskId);
+    setSkippedTasks(curr => curr.filter(t => t.id !== taskId));
+    if (task) setTasks(curr => curr.some(t => t.id === taskId) ? curr : [...curr, { ...task, status: "pending", skippedAt: undefined }]);
+    setUndoSkip(u => u?.id === taskId ? null : u);
+    showToast("Pronto! A faxina voltou para a sua lista.");
+    try {
+      await postAction("unskip", taskId);
+    } catch {
+      // Rollback: devolve ao bloco "Não limpar hoje" para não sumir dos dois lugares.
+      setTasks(curr => curr.filter(t => t.id !== taskId));
+      if (task) setSkippedTasks(curr => curr.some(t => t.id === taskId) ? curr : [...curr, task]);
+      showToast("Erro ao voltar a faxina.", T.red);
+    } finally {
+      setUnskippingId(null);
+    }
+  }, [property, userData, unskippingId, skippedTasks, showToast, postAction]);
 
   const handleFinish = useCallback(async (taskId: string, checklist: ChecklistItem[]) => {
     if (!property || !userData) return;
@@ -1716,6 +1973,12 @@ export default function MaidPage() {
       .finally(() => { window.location.href = '/admin/login'; });
   };
 
+  const skipTask = skipConfirmTaskId ? tasks.find(t => t.id === skipConfirmTaskId) ?? null : null;
+  const skipArmed = useArmed(!!skipTask);
+  const pauseArmed = useArmed(!!pauseConfirm);
+
+  useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
+
   const navItems: { id: Tab; label: string; icon: IName; badge: number }[] = [
     { id: "home", label: "Início", icon: "home", badge: 0 },
     { id: "tasks", label: "Faxinas", icon: "sparkles", badge: tasks.filter(t => t.status === "pending" || t.status === "in_progress").length },
@@ -1784,13 +2047,14 @@ export default function MaidPage() {
             </div>
             <RoleSwitcher />
             {tab === "home" && <HomeScreen tasks={tasks} cabins={cabins} onNav={setTab} userName={userData?.fullName ?? "Camareira"} />}
-            {tab === "tasks" && <FaxinasScreen tasks={tasks} onStart={handleStart} onSkip={setSkipConfirmTaskId} showToast={showToast} onToggle={handleToggle} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onChecklistLoaded={handleChecklistLoaded} repRequests={repRequests} startingTaskId={startingTaskId} onFinish={handleFinish} onPause={handlePause} onUpgrade={handleUpgrade} onConfer={canConfer ? () => router.push("/governanta?screen=conference") : undefined} />}
+            {tab === "tasks" && <FaxinasScreen tasks={tasks} skippedTasks={skippedTasks} onStart={handleStart} onSkip={setSkipConfirmTaskId} onUnskip={handleUnskip} showToast={showToast} onToggle={handleToggle} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onChecklistLoaded={handleChecklistLoaded} repRequests={repRequests} startingTaskId={startingTaskId} unskippingId={unskippingId} onFinish={handleFinish} onPause={handlePause} onUpgrade={handleUpgrade} onConfer={canConfer ? () => router.push("/governanta?screen=conference") : undefined} />}
             {tab === "profile" && <ProfileScreen userData={userData} showToast={showToast} onLogout={handleLogout} propertyId={property?.id ?? ""} />}
           </div>
 
           {/* Pause confirm modal */}
           {pauseConfirm && (
             <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 24 }}>
+              {!pauseArmed && <TapShield z={310} />}
               <div style={{ background: "#111827", border: `1px solid ${T.border2}`, borderRadius: 24, padding: 24, width: "100%", maxWidth: 340, boxShadow: "0 20px 60px rgba(0,0,0,0.7)" }}>
                 <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 8, color: T.text }}>Você já tem uma faxina ativa</div>
                 <div style={{ fontSize: 13, color: T.muted, marginBottom: 20, lineHeight: 1.5 }}>
@@ -1815,33 +2079,87 @@ export default function MaidPage() {
             </div>
           )}
 
-          {/* Skip confirm modal */}
-          {skipConfirmTaskId && (
-            <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 24 }}>
-              <div style={{ background: "#111827", border: `1px solid ${T.border2}`, borderRadius: 24, padding: 24, width: "100%", maxWidth: 340, boxShadow: "0 20px 60px rgba(0,0,0,0.7)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 14, background: T.amberBg, border: `1px solid ${T.amberBorder}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <I n="x" s={20} c={T.amber} />
+          {/* Confirmação de "não limpar" — a ÚNICA agora.
+              Antes eram duas caixas em cascata, ambas centralizadas, do mesmo tamanho, com o
+              botão de confirmar a ~12px de distância: a primeira agia no pointerdown e a
+              segunda herdava o click do mesmo toque. Um toque só pulava a faxina sem que a
+              camareira chegasse a ver a segunda pergunta.
+              Agora: uma caixa, inerte nos primeiros 450ms (mata o click órfão), com o local
+              em letra grande, o caminho seguro em destaque e o confirmar exigindo 1,6s de
+              dedo firme — impossível de acertar por engano ou de raspão. */}
+          {skipTask && (
+            <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.82)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 20, backdropFilter: "blur(3px)" }}>
+              {!skipArmed && <TapShield z={310} />}
+              <div style={{ background: "#111827", border: `1px solid ${T.roseBorder}`, borderRadius: 26, padding: "26px 20px 20px", width: "100%", maxWidth: 340, boxShadow: "0 20px 60px rgba(0,0,0,0.75)", animation: "maid-pop .18s ease" }}>
+                <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+                  <div style={{ width: 72, height: 72, borderRadius: 24, background: T.roseBg, border: `2px solid ${T.roseBorder}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <I n="dnd" s={38} c={T.rose} w={1.9} />
                   </div>
-                  <div style={{ fontSize: 18, fontWeight: 900, color: T.text }}>Pular limpeza?</div>
                 </div>
-                <div style={{ fontSize: 13, color: T.muted, marginBottom: 20, lineHeight: 1.5 }}>
-                  O hóspede pediu para não limpar?
+                <div style={{ textAlign: "center" as const, fontSize: 15, fontWeight: 700, color: T.muted, marginBottom: 4 }}>
+                  O hóspede pediu para NÃO limpar
                 </div>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <button
-                    onClick={() => setSkipConfirmTaskId(null)}
-                    style={{ flex: 1, padding: 14, background: T.glass, border: `1px solid ${T.border2}`, borderRadius: 14, cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 700, color: T.muted }}
-                  >
-                    Não
-                  </button>
-                  <button
-                    onClick={handleSkip}
-                    disabled={skipBusy}
-                    style={{ flex: 1, padding: 14, background: "linear-gradient(135deg,#f59e0b,#d97706)", color: "#fff", fontFamily: "inherit", fontSize: 14, fontWeight: 800, border: "none", borderRadius: 14, cursor: skipBusy ? "wait" : "pointer", opacity: skipBusy ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
-                  >
-                    {skipBusy ? <I n="loader" s={16} c="#fff" w={2} /> : "Sim, pular"}
-                  </button>
+                <div style={{ textAlign: "center" as const, fontSize: 26, fontWeight: 900, color: T.text, lineHeight: 1.15, marginBottom: 4 }}>
+                  {skipTask.cabinName || "Cabana"}
+                </div>
+                <div style={{ textAlign: "center" as const, fontSize: 13, color: T.muted, marginBottom: skipTask.startedAt ? 12 : 18 }}>
+                  {getTaskLabel(skipTask.type)} · sai da sua lista de hoje
+                </div>
+                {/* Foi exatamente este o caso da 06: faxina já começada, dedo no "pausar". */}
+                {skipTask.startedAt && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 9, background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 14, padding: "10px 12px", marginBottom: 18 }}>
+                    <I n="pause" s={17} c={T.amber} w={2} />
+                    <span style={{ fontSize: 12.5, fontWeight: 800, color: T.amber, lineHeight: 1.35 }}>
+                      Você já começou esta faxina. Queria só <b>pausar</b>?
+                    </span>
+                  </div>
+                )}
+
+                {/* O caminho seguro é o botão grande e colorido; o destrutivo exige pressão. */}
+                <button
+                  onClick={() => setSkipConfirmTaskId(null)}
+                  style={{ width: "100%", padding: 17, background: T.greenG, color: "#021a17", border: "none", borderRadius: 18, cursor: "pointer", fontFamily: "inherit", fontSize: 15, fontWeight: 900, letterSpacing: "0.03em", textTransform: "uppercase" as const, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 14 }}
+                >
+                  <span style={{ display: "inline-flex", transform: "rotate(180deg)" }}><I n="arrow" s={19} c="#021a17" w={2.4} /></span> Não, voltar
+                </button>
+                <HoldConfirm
+                  label="Não limpar"
+                  holdingLabel="Segure..."
+                  icon="dnd"
+                  ms={1600}
+                  tone="danger"
+                  size="lg"
+                  hint="always"
+                  disabled={!skipArmed}
+                  busy={skipBusy}
+                  onComplete={handleSkip}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Desfazer — 15s com um botão grande, para o engano morrer na própria tela */}
+          {undoSkip && (
+            <div style={{ position: "absolute", left: 12, right: 12, bottom: "calc(env(safe-area-inset-bottom,8px) + 76px)", zIndex: 250, animation: "maid-toast .22s ease" }}>
+              <div style={{ background: "#111827", border: `1px solid ${T.roseBorder}`, borderRadius: 18, padding: "12px 12px 12px 14px", display: "flex", alignItems: "center", gap: 10, boxShadow: "0 12px 40px rgba(0,0,0,0.6)" }}>
+                <I n="dnd" s={22} c={T.rose} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 900, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{undoSkip.name}</div>
+                  <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>Não vai ser limpa hoje</div>
+                </div>
+                <div style={{ flexShrink: 0, width: 132 }}>
+                  <HoldConfirm
+                    label="Desfazer"
+                    holdingLabel="Segure..."
+                    icon="undo"
+                    ms={900}
+                    tone="quiet"
+                    size="sm"
+                    hint="nudge"
+                    disabled={unskippingId !== null && unskippingId !== undoSkip.id}
+                    busy={unskippingId === undoSkip.id}
+                    onComplete={() => handleUnskip(undoSkip.id)}
+                  />
                 </div>
               </div>
             </div>
