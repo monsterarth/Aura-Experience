@@ -190,6 +190,10 @@ Deeper docs live in `docs/`, read on demand:
   verdade financeira** — o dinheiro é controlado no HMAX e a virada é por data de corte, com
   período de lançamento duplo. Gap fundador: a forma de pagamento é texto livre na descrição do
   crédito do fólio.
+- `docs/EVENTS-V2.md` — plano de conserto/refatoração do módulo de Eventos (7 fatias) que precede
+  a escrita do parceiro na tabela `events`. Traz os débitos medidos em produção (type='internal'
+  em 8/13, RLS `USING(true)`, multi-dia quebrado em 5 call sites) e o que foi deliberadamente
+  CORTADO do modelo do parceiro.
 - `docs/ALTAMARE.md` — integração com o sistema do restaurante Altamare (eventos/casamentos):
   AURA expõe `/api/partner/*` e o parceiro consome; AURA é fonte da verdade de data/espaço e
   **valores nunca cruzam**. Em construção; cascata de status ainda a definir.

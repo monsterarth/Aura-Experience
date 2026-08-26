@@ -196,6 +196,7 @@ pela saída do Allan:
 |---|---|---|
 | 0 | cardápio sai do código deles e vira tabela sincronizada do PDV | deles |
 | F | fundação da API de parceiro (tabelas, auth, rate limit, sandbox) | nosso, paralelo a 0 |
+| **E** | **Eventos v2 — `docs/EVENTS-V2.md` (fatias 1–5): higiene, rota admin, RLS real, multi-dia e as 6 colunas do contrato** | **nosso, pré-requisito da fatia 5** |
 | 1 | portal renderiza o cardápio (proxy + cache + ETag) | os dois |
 | 2 | `POST /leads` + alarme + push (**prazo: virada do Allan**) | os dois |
 | 3 | handoff gastronomia (webhook, ida e volta) | os dois |
@@ -216,6 +217,30 @@ completo), **perfil gastronômico do casal** (o quiz deles, junto do estágio) e
 **avaliações pós-evento**. Regra de tom fixada pelo Arthur: a mensagem ao
 parceiro NÃO expõe débitos internos nossos — ajuste interno é nosso, contrato é
 o que se negocia.
+
+## Terreno firme antes do contrato
+
+Antes de o parceiro escrever na nossa tabela `events`, sete fatias de conserto
+saem do forno — plano completo em **`docs/EVENTS-V2.md`**, com o veredito de uma
+crítica adversarial que cortou ~70% do desenho inicial. O essencial:
+
+- **`type='internal'` em 8 dos 13 eventos de produção** é valor fora do enum, e
+  os mapas de ícone/label não têm fallback: categoria desconhecida derruba a
+  lista inteira. Higiene primeiro.
+- **RLS de `events` tem uma policy `USING(true)`** que anula o escopo por
+  propriedade. Com terceiro escrevendo, isso fecha antes de qualquer token.
+- **Multi-dia quebrado em 5 call sites** — o evento em curso do parceiro
+  simplesmente não apareceria para o hóspede.
+- **6 colunas** no contrato físico: `source`, `externalRef` (unique parcial →
+  idempotência), `space`, `resource`, `blocksProperty`, `parentEventId`.
+- **Filtro que faltava:** evento do parceiro só entra em `getQuoteContext`
+  (cotação de tarifa e site dos noivos) se `blocksProperty=true` — senão um
+  sunset do restaurante vira restrição de venda da pousada.
+
+O que **não** vamos absorver do modelo deles, por decisão: tabela de lotes
+(vira JSONB se vier payload real), view de ocupação (bypassa RLS), galeria (eles
+não entregam foto — bucket privado com consentimento), vitrine com slug (não
+temos página pública de evento) e inventário por recurso (não vendemos lounge).
 
 ## Pendências dos humanos
 
