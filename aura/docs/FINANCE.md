@@ -3,8 +3,8 @@
 > Status: **plano aprovado, não iniciado**. Escrito em 25/08/2026.
 >
 > Decisões com o usuário: escopo **completo** (caixa, recebimentos, a receber, a
-> pagar, DRE, relatórios) · formas em uso: **Pix, dinheiro, cartão
-> crédito/débito, transferência, boleto** · fechamento de caixa **diário** · dos
+> pagar, DRE, relatórios) · formas em uso: **dinheiro, cheque, cartão
+> (bandeira + parcelas), bancário/Pix, uso de crédito e boleto** · fechamento de caixa **diário** · dos
 > relatórios do HMAX importam **Faturamento/Movimento** e **Previsão de receita**
 > · **sinal cria a reserva na hora** · cargo **`finance`** novo · virada **em
 > paralelo ao HMAX** antes do corte definitivo · adquirente: **Cielo**.
@@ -43,6 +43,101 @@ Disso saem dois conceitos que o AURA não tem hoje:
   reserva. Precisa de lugar próprio: uma caixa de entrada do financeiro, onde o
   valor espera até ser vinculado. Hoje esse estado simplesmente não existe no
   sistema; ele vive na cabeça de quem confere o extrato.
+
+## Antecipação — a peça central
+
+Quase todo o dinheiro entra **antes** da estadia. O movimento de caixa comprova:
+num turno com R$ 37.772,50 de contas, **R$ 36.392,50 já eram antecipações** — só
+R$ 1.340 foram pagos no balcão. Antecipação não é um caso à parte do caixa; é o
+caso normal.
+
+### A tela (dentro da reserva)
+
+Colunas: data/horário · valor · **forma** · C/C · **lançado por** ·
+**origem/confirmação** · obs · **a prazo**. Ações: **incluir · confirmar ·
+transferir · estornar · recibo**.
+
+Disso saem regras que o AURA precisa ter:
+
+- **Antecipação tem dois estados.** Ela nasce *lançada* (a recepção registrou) e
+  vira *confirmada* quando o financeiro audita. O botão **Confirmar** é o passo
+  de auditoria — é o financeiro dizendo "esse dinheiro existe mesmo". Por isso a
+  coluna se chama *origem/confirmação*.
+- **Transferir entre reservas.** O hóspede pagou e mudou de reserva (remarcou,
+  trocou de titular, virou outro grupo): o dinheiro se move **sem estorno**,
+  preservando o histórico. Sem isso, a recepção estorna e relança — e o caixa do
+  dia mente duas vezes.
+- **Estornar, nunca apagar.** Contra-lançamento, como o resto do módulo.
+- **Recibo** — o comprovante que o hóspede leva.
+- **A prazo** — antecipação parcelada (cartão em N vezes) contra a pagamento
+  à vista.
+
+### As formas, como elas são de fato
+
+| Forma | O que o AURA precisa guardar |
+|---|---|
+| **Dinheiro** | entra no caixa físico do turno |
+| **Cheque** | ainda existe; tem data de bom-para |
+| **Cartão** | **bandeira** (Visa, Master, Elo, Elo Débito, Amex, Hipercard, Diners…), **nº de parcelas** e **NSU** |
+| **Bancário** (Pix/transferência) | identificação do depósito; é o que passa pela caixa de entrada quando cai sem dono |
+| **Uso de crédito** | abate crédito que o cliente já tinha (conta corrente) — não é dinheiro novo entrando |
+| **Boleto** | nos títulos a pagar; não passa pelo caixa |
+
+> **Uso de crédito** é o conceito que faltava: o cliente com saldo a favor (pagou
+> a mais, cancelou uma reserva e ficou com crédito) usa esse valor numa nova
+> reserva. É movimento entre contas, não entrada de caixa — e se for tratado como
+> entrada, o caixa fecha com dinheiro que não existe.
+
+### O caminho do link de pagamento (hoje)
+
+A recepção captura o pagamento no **web app da Cielo**, copia **NSU, bandeira e
+número de parcelas**, e lança no PMS como **antecipação já efetivada**. O
+financeiro audita depois.
+
+É exatamente essa digitação que a fase 8 elimina: com o webhook da Cielo, NSU,
+bandeira e parcelas chegam sozinhos e a antecipação nasce confirmada. Até lá, o
+formulário do AURA precisa pedir esses três campos — eles são a ponte com a
+conciliação.
+
+## Movimento de caixa — como é de verdade
+
+**Não é "o dia".** É um **movimento numerado** (6267, 6268, 6269…) que abre e
+fecha por pessoa, e atravessa a madrugada:
+
+```
+6267 · abertura 22/08 19:58 DAIANA → encerramento 23/08 20:12 ROMINA
+```
+
+Ou seja: o turno vira por volta das 20h, quem abre não é quem fecha, e a
+numeração é sequencial e contínua. Modelar `cash_sessions` por data civil estaria
+errado — é por **movimento**, com número próprio, abertura e encerramento
+identificados.
+
+### A conta de cada linha
+
+Uma linha por hóspede/conta, e as colunas contam a história do dinheiro:
+
+```
+Bruto  −  Antecipações  −  Abatimentos  =  Líquido   → e o líquido se divide
+37.772,50   36.392,50        40,00        1.340,00      em dinheiro/cheque/cartão
+```
+
+**Abatimento** é o terceiro conceito novo (desconto, cortesia ou ajuste dado no
+fechamento). Ele reduz o que o hóspede paga sem ser pagamento — precisa de campo
+próprio, senão vira "desconto" escondido numa descrição e ninguém consegue medir
+quanto a casa deu de cortesia no mês.
+
+### O caixa físico
+
+Separado da conta das estadias, no rodapé:
+
+```
+Saldo anterior 118,00 + Entradas 3.764,50 − Saídas 3.704,50 = Saldo atual 178,00
+```
+
+É a gaveta: o que entrou em dinheiro, as sangrias e o que fica para o próximo
+movimento. Duas contas diferentes na mesma tela — as contas dos hóspedes e o
+dinheiro em espécie — e o AURA precisa das duas para o fechamento fazer sentido.
 
 ## O gap fundador
 
@@ -91,17 +186,22 @@ mudou a negociação com a Cielo, muda o cadastro.
 
 **`payments`** — um por recebimento: reserva, `folioItemId` correspondente,
 método, valor **bruto**, taxa, **líquido**, `receivedAt` (caixa),
-`expectedCreditAt` (banco), parcelas, NSU/autorização, `cashSessionId` e origem
-(`balcao` · `link` · `pix` · `manual`).
+`expectedCreditAt` (banco), **bandeira**, parcelas, **NSU**, `cashSessionId`,
+origem (`balcao` · `link` · `pix` · `manual`) e o par que a auditoria exige:
+`status` (`launched` | `confirmed` | `reversed`) com **quem lançou** e **quem
+confirmou**. Transferência entre reservas move o registro preservando a origem —
+não estorna e relança.
 
 **`unidentified_receipts`** — o Pix (ou transferência) que caiu sem dono: valor,
 data, identificação do pagador quando houver, status (`open` · `linked` ·
 `ignored`), e o `paymentId` gerado ao vincular. É a fila de trabalho do
 financeiro.
 
-**`cash_sessions`** — o dia: quem abriu, saldo inicial, entradas por método,
-sangrias, saldo contado, **diferença** (contado − esperado), observações, quem
-fechou. Fechado = congelado.
+**`cash_sessions`** — o **movimento**, não o dia: número sequencial, quem abriu e
+quando, quem encerrou e quando, saldo anterior, entradas por método, sangrias,
+saldo contado, **diferença** (contado − esperado) e observações. Fechado =
+congelado. O turno atravessa a madrugada (≈20h às 20h) e quem abre raramente é
+quem fecha — a sessão pertence ao movimento, não ao operador nem à data.
 
 **`finance_accounts`**, **`receivables`**, **`payables`** — plano de contas com
 centro de custo e títulos em aberto (fases 5–6).
@@ -240,8 +340,8 @@ daí `paidAmount` e o status `partial`.
 
 | Fase | Escopo | Por que nesta ordem |
 |---|---|---|
-| **0 — Forma de pagamento** | `payment_methods` + `payments`; lançar crédito passa a exigir método; **antecipação** vira conceito de primeira classe na reserva | Sem isto nada depois é confiável |
-| **1 — Caixa diário** | Abertura, movimento por método, sangria, fechamento com conferência e diferença; cargo `finance` | A rotina que já existe, agora no AURA |
+| **0 — Antecipação & forma de pagamento** | `payment_methods` + `payments`; **antecipação** com estados (lançada → confirmada), bandeira/parcelas/NSU no cartão, uso de crédito, transferência entre reservas, estorno e recibo | Sem isto nada depois é confiável — e é por onde entra quase todo o dinheiro |
+| **1 — Movimento de caixa** | Movimento numerado com abertura/encerramento por pessoa (turno ≈20h–20h), linha por conta (bruto − antecipações − **abatimentos** = líquido), caixa físico (saldo anterior/entradas/saídas), fechamento com diferença; cargo `finance` | A rotina que já existe, agora no AURA |
 | **2 — Pix não identificado** | Caixa de entrada do financeiro: lançar o que caiu na conta e vincular à reserva | Reproduz o passo do extrato sem depender de memória |
 | **3 — A Receber & A Pagar** | Plano de contas, títulos com as quatro datas, parcelas, quitação (total e parcial), seleção múltipla, totais e busca | **A tela que não pode faltar** — é onde o financeiro vive |
 | **4 — Compras → títulos** | NF-e do estoque sugere o título a pagar; financeiro confirma | Acaba a redigitação entre estoque e financeiro |
