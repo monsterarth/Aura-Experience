@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Camera, Loader2, UploadCloud } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@supabase/supabase-js';
+import { compressImage } from '@/lib/image-compress';
 
 interface ImageUploadProps {
     value?: string;
@@ -30,29 +31,44 @@ interface ImageUploadProps {
      * ultrapassam o limite de ~4.5MB de corpo das serverless functions da Vercel.
      */
     direct?: boolean;
+    /**
+     * Lado maior máximo após a compressão (padrão 1920px). Suba só onde a
+     * resolução extra é funcional — ex.: o mapa do resort, que tem zoom.
+     */
+    compressMaxDim?: number;
 }
 
-export function ImageUpload({ value, onUploadSuccess, className = '', path = 'profiles', stayId, accessCode, assetCode, maxSizeMb = 5, fit = 'cover', direct = false }: ImageUploadProps) {
+export function ImageUpload({ value, onUploadSuccess, className = '', path = 'profiles', stayId, accessCode, assetCode, maxSizeMb = 5, fit = 'cover', direct = false, compressMaxDim }: ImageUploadProps) {
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
+        const original = event.target.files?.[0];
+        if (!original) return;
 
-        // Validate type and size
-        if (!file.type.startsWith('image/')) {
+        if (!original.type.startsWith('image/')) {
             toast.error('Por favor, selecione uma imagem válida.');
             return;
         }
-        if (file.size > maxSizeMb * 1024 * 1024) {
-            toast.error(`A imagem excede o limite de ${maxSizeMb}MB.`);
+        // Trava só o absurdo ANTES de comprimir: o limite de verdade (maxSizeMb)
+        // é aplicado ao arquivo comprimido — uma foto de celular de 12MB vira
+        // ~400KB e tem que passar.
+        if (original.size > 40 * 1024 * 1024) {
+            toast.error('A imagem excede o limite de 40MB.');
             return;
         }
 
         setIsUploading(true);
 
         try {
+            // Compressão no navegador (1920px/WebP por padrão) — motivo: fotos de
+            // câmera cruas estouraram o egress do Supabase em ago/2026.
+            const file = await compressImage(original, { maxDim: compressMaxDim });
+
+            if (file.size > maxSizeMb * 1024 * 1024) {
+                toast.error(`A imagem excede o limite de ${maxSizeMb}MB mesmo comprimida.`);
+                return;
+            }
             if (direct) {
                 // 1) Autoriza e gera URL assinada (não trafega o arquivo pela função)
                 const signRes = await fetch('/api/upload/signed-url', {

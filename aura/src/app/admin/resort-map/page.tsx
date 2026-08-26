@@ -336,7 +336,7 @@ export default function ResortMapAdminPage() {
                                 </p>
                                 <div className="h-64 rounded-2xl overflow-hidden border border-border">
                                     <ImageUpload
-                                        path="maps" direct maxSizeMb={20}
+                                        path="maps" direct maxSizeMb={20} compressMaxDim={3072}
                                         onUploadSuccess={(url) => setMapConfig(c => ({ ...c, illustratedImageUrl: url }))}
                                     />
                                 </div>
