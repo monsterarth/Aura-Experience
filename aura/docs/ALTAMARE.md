@@ -10,9 +10,10 @@
 > (para agenda/pipeline) · o AURA é fonte da verdade de **data e espaço** ·
 > **preço de negociação não cruza; consumo do cliente cruza com valor** · a
 > pousada **não toca em pagamento do restaurante** · **o Allan passa a operar SÓ
-> no AURA** (a tela de locação do sistema deles será aposentada) · relação
-> tratada como mesmo grupo, com o compartilhamento declarado na política de
-> privacidade · avaliações fora do escopo por ora.
+> no AURA** (CONFIRMADO pelo Arthur na rodada 2; a tela de locação deles será
+> aposentada) · ordem cardápio-primeiro ACEITA · relação tratada como mesmo
+> grupo, com o compartilhamento declarado na política de privacidade ·
+> **avaliações REABERTAS** (entram por push, decisão da rodada 2).
 
 ## O problema (e como ele cresceu)
 
@@ -204,6 +205,17 @@ pela saída do Allan:
 | 7 | nossos casamentos → `ocupacoes` deles | os dois |
 | 8 | `guestRef`, opt-in, `/guests/today`, `/consumption` | os dois |
 | 9 | consumo item a item (exige comanda nominal no PDV) | fase própria |
+
+## Dados que pedimos por push (rodada 2 — "máximo de dado, custo zero")
+
+Ingress é grátis; tudo que eles EMPURRAM entra de graça no nosso banco. Além do
+consumo/visita já previsto: **compromissos do casamento** (degustação marcada,
+reunião feita — linha do tempo no card do Allan), **backfill one-shot dos 26
+casamentos históricos** (`gastronomia_de` + estágio atual — o funil nasce
+completo), **perfil gastronômico do casal** (o quiz deles, junto do estágio) e
+**avaliações pós-evento**. Regra de tom fixada pelo Arthur: a mensagem ao
+parceiro NÃO expõe débitos internos nossos — ajuste interno é nosso, contrato é
+o que se negocia.
 
 ## Pendências dos humanos
 
