@@ -173,6 +173,71 @@ O que ainda precisa ser combinado é operacional, não financeiro: cardápio
 espelhado ou consultado em tempo real, horários de atendimento, e quem leva o
 pedido (mensageiro da pousada ou entregador do restaurante).
 
+## Antes da reunião: o que pedir
+
+Sem isto a conversa vira "vamos integrar" e acaba sem próximo passo concreto.
+Tudo aqui cabe numa mensagem, e nada exige acesso a código.
+
+**Sobre o sistema deles (para saber ONDE encaixar):**
+
+1. **Prints das telas principais** e uma frase sobre cada uma. Vale mais que
+   qualquer documento — em cinco minutos dá para ver o que eles modelaram.
+2. **Que entidades existem** e como chamam: evento, cliente, proposta, pedido,
+   consumo, mesa? Nomes importam para o contrato não virar tradução.
+3. **O ciclo de status do funil de gastronomia** — quais estágios, nesta ordem.
+   É o que vai aparecer no card do casamento do nosso lado.
+4. **Como identificam um cliente**: CPF, telefone, e-mail, nome? Esta é a
+   pergunta mais importante da lista — sem uma chave em comum, não há como casar
+   o consumo com o hóspede certo, e o retorno para o CRM não acontece.
+5. **Volume**: eventos por mês, pedidos por dia.
+
+**Sobre a capacidade técnica (para saber SE e COMO):**
+
+6. **Stack e hospedagem** — linguagem, banco, onde roda, domínio fixo com HTTPS.
+7. **Conseguem fazer chamada HTTP autenticada** (header `Authorization`) e
+   **guardar um token com segurança** (variável de ambiente, não no front)?
+8. **Conseguem expor um endpoint público para receber webhook?** Se não, a
+   integração vira polling — funciona, mas eles perdem tempo real.
+9. **Têm ambiente de teste/homologação** separado da produção?
+10. **Quem desenvolve** — dev interno, freela ou agência? Qual a disponibilidade?
+    Define o ritmo realista e o tamanho do contrato que faz sentido propor.
+11. **O que eles esperam ganhar** com a integração. A resposta deles pode revelar
+    um encaixe que não pensamos.
+
+**Git não se troca.** Nem mandar o nosso, nem pedir o deles. Numa integração o
+que se compartilha é o **contrato** — endpoints, formato de payload, exemplos de
+requisição e resposta — nunca o código. Mandar repositório expõe segredos e
+histórico, cria a expectativa de que um lado dá manutenção no outro, e não
+acelera nada. Se em algum momento fizer sentido compartilhar algo versionado, que
+seja um repositório **separado e novo** contendo só a especificação (um arquivo
+OpenAPI e exemplos) — nunca o repositório do produto.
+
+## Custo de infra: quem paga a conta é o AURA
+
+Como somos nós que expomos a API, cada chamada do parceiro consome **nossa**
+infraestrutura. Os limites que valem hoje:
+
+| | Situação atual | O que importa aqui |
+|---|---|---|
+| **Supabase** | Plano **free** | 500 MB de banco · **5 GB de egress/mês** · 2 projetos ativos (prod + DEV, já no limite) · **sem backup** · projeto pausa após 1 semana sem uso |
+| **Vercel** | (confirmar plano) | Hobby é **proibido para uso comercial** e limita cron a **1×/dia**; Pro libera cron por minuto |
+
+Consequências de projeto, não de opinião:
+
+- **Tokens de parceiro são ilimitados e de graça** — cada um é uma linha na nossa
+  tabela, com escopo e revogação. O que tem teto não é a chave: é o **tráfego**
+  que ela gera.
+- **Rate limit por token é obrigatório**, não refinamento. Um parceiro fazendo
+  polling a cada segundo consome nosso egress do plano free. Sugestão: 60
+  requisições/minuto por token, com resposta `429` clara.
+- **Payload mínimo e paginação** em tudo: `/guests/today` devolve os hóspedes do
+  dia, não a base de hóspedes; `/events` exige janela de datas.
+- **Webhook nosso → deles é mais barato que polling deles → nós.** Push só gasta
+  quando algo muda; polling gasta o tempo todo. Vale insistir nisso na conversa
+  técnica.
+- **O cron do Hsystem (1–5 min) não roda no plano Hobby** — é exatamente por isso
+  que ele foi desenhado para cron externo (cronjob.org).
+
 ## Fases
 
 | Fase | Escopo |
