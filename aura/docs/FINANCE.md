@@ -131,6 +131,80 @@ conciliação, a receber/a pagar e relatórios; não vê operação. Toca
 `src/types/aura.ts`, `RoleGuard`, `supabase-middleware`, `api-auth`, `Sidebar` e
 `role-routes` — o padrão de sempre para cargo novo.
 
+## A Receber & A Pagar — a tela que não pode faltar
+
+É a tela central do financeiro (no HMAX: *Financeiro → Receber & Pagar*), e o
+plano a trata como entrega própria, não como apêndice do DRE.
+
+### Anatomia (do que existe hoje e funciona)
+
+**Uma lista só**, com receber e pagar juntos, navegável por mês/ano e com recorte
+"a vencer". Colunas: vencimento · pagamento · emissão · **competência** · pessoa
+(física/jurídica) · documento (NF, ORC, NFS…) · nota fiscal · forma de pagamento
+· `$ Receber` · `$ Pagar` · status. No rodapé, o que o financeiro olha primeiro:
+**total a receber, total a pagar e o saldo** do período.
+
+Selecionando um título, o rodapé mostra o **histórico** e o rastro — quem lançou
+e quando (`22/07/2026 09:09 h · CIBELE`). Esse rastro é requisito, não enfeite.
+
+**Ações:** lançar · quitar · editar · cancelar · visualizar · pesquisar · seleção
+múltipla · relatórios. E duas que dependem de fases posteriores: *Conc. Cartão*
+(conciliação com a adquirente) e *Boleto*.
+
+### O lançamento
+
+Tipo (**Pagar** ou **Receber**), forma de pagamento, e **quatro datas** que não
+podem ser confundidas:
+
+| Data | O que responde |
+|---|---|
+| Emissão | quando o documento foi emitido |
+| **Competência** | a que mês o custo/receita pertence |
+| Vencimento | quando deve ser pago |
+| Pagamento | quando foi pago de fato (vazio = em aberto) |
+
+Mais: pessoa (busca), **histórico** (obrigatório — é o que se lê na lista),
+documento, valor, observação, **plano de contas** e **parcelas** (quantidade +
+frequência, gerando a grade de vencimentos e valores).
+
+> **Origem/Destino** no lançamento do HMAX é o **plano de contas** — confirmado
+> pelo usuário. Print pendente para entender se são dois níveis (conta de
+> origem × destino) ou classificação em dois campos; o modelo abaixo assume
+> plano de contas hierárquico e se ajusta quando o print chegar.
+
+### Modelo
+
+**`finance_accounts`** — plano de contas hierárquico (código, nome, natureza
+receita/despesa, conta pai). Precisa espelhar o que a contabilidade já usa.
+
+**`finance_titles`** — o título, receber ou pagar:
+
+- `type` (`receive` | `pay`), `status` (`open` | `partial` | `paid` | `cancelled`)
+- pessoa: tipo (fornecedor · hóspede · outro), id e **nome em snapshot**
+- `history` (obrigatório), `documentNumber`, `invoiceNumber`, `paymentMethodId`
+- as quatro datas, `amount` e `paidAmount`
+- `accountId` (plano de contas)
+- parcelamento: `installment` (3/12), `parentTitleId`, `frequency`
+- procedência: `sourceType` (`manual` · `purchase` · `stay` · `card`) + `sourceId`
+- rastro: quem criou, quem quitou, quando
+
+**Quitar** não é mudar um campo: gera um `payment` (o mesmo do resto do módulo),
+move caixa/conta e carimba a data de pagamento. Baixa parcial é suportada —
+daí `paidAmount` e o status `partial`.
+
+### De onde os títulos nascem
+
+| Origem | Como |
+|---|---|
+| **Compra do estoque** | A NF-e importada por XML já traz fornecedor, valor e número. Vira título a pagar **sugerido**, que o financeiro **confirma** antes de virar dívida oficial (decisão do usuário) |
+| **Cartão corporativo** | Compra parcelada da pousada (ex.: `SICREDI CARTOES`, `NF 5649 10/12`) gera as parcelas a pagar |
+| **Faturamento** | Empresa/evento que paga depois vira título a receber |
+| **Manual** | O lançamento avulso da tela |
+
+> **Repasse da adquirente** (as vendas em cartão que a Cielo credita em D+30):
+> ainda **em aberto** — o usuário não opera essa parte hoje. Fica para a fase de
+> conciliação de cartão, quando o funcionamento estiver claro.
+
 ## Fases
 
 | Fase | Escopo | Por que nesta ordem |
@@ -138,12 +212,13 @@ conciliação, a receber/a pagar e relatórios; não vê operação. Toca
 | **0 — Forma de pagamento** | `payment_methods` + `payments`; lançar crédito passa a exigir método; **antecipação** vira conceito de primeira classe na reserva | Sem isto nada depois é confiável |
 | **1 — Caixa diário** | Abertura, movimento por método, sangria, fechamento com conferência e diferença; cargo `finance` | A rotina que já existe, agora no AURA |
 | **2 — Pix não identificado** | Caixa de entrada do financeiro: lançar o que caiu na conta e vincular à reserva | Reproduz o passo do extrato sem depender de memória |
-| **3 — Movimento & Faturamento** | Relatório do dia e do período por método, categoria e origem; exportação | Os relatórios que você usa de fato |
-| **4 — Painel gerencial** | RevPAR, ADR, ocupação e receita por canal no `/director` — preenche o placeholder que já está lá | Depende do dado limpo das fases anteriores |
-| **5 — Previsão de receita** | Reservas futuras + orçamentos ganhos + parcelas de cartão a receber | O outro relatório que importa |
-| **6 — Cielo integrada** | Link de pagamento pela reserva + webhook; Pix com `txid` identificado na hora | Só depois que o manual estiver provado |
-| **7 — A receber / a pagar / DRE** | Faturado, repasse de OTA (com o Hsystem), fornecedores, centro de custo, resultado | Fecha o ciclo |
-| **8 — Conciliação bancária** | Previsto × extrato | Só com meses de dado limpo |
+| **3 — A Receber & A Pagar** | Plano de contas, títulos com as quatro datas, parcelas, quitação (total e parcial), seleção múltipla, totais e busca | **A tela que não pode faltar** — é onde o financeiro vive |
+| **4 — Compras → títulos** | NF-e do estoque sugere o título a pagar; financeiro confirma | Acaba a redigitação entre estoque e financeiro |
+| **5 — Movimento & Faturamento** | Relatório do dia e do período por método, categoria e origem; exportação | Os relatórios que você usa de fato |
+| **6 — Painel gerencial** | RevPAR, ADR, ocupação e receita por canal no `/director` | Depende do dado limpo das fases anteriores |
+| **7 — Previsão de receita** | Reservas futuras + orçamentos ganhos + parcelas a receber | O outro relatório que importa |
+| **8 — Cielo integrada** | Link de pagamento pela reserva + webhook; Pix com `txid` identificado na hora | Só depois que o manual estiver provado |
+| **9 — DRE & conciliações** | Resultado por centro de custo; conciliação de cartão (repasse da adquirente) e bancária | Só com meses de dado limpo |
 
 ## A virada em paralelo
 
