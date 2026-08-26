@@ -1,267 +1,233 @@
-# Integração Altamare — plano
+# Integração Altamare — plano e contrato
 
-> Status: **plano em construção**. Escrito em 25/08/2026.
+> Status: **em negociação técnica (rodada 2 enviada)**. Atualizado em 25/08/2026.
 >
-> Decisões com o usuário: **o AURA expõe a API e o parceiro consome** · o AURA é
-> fonte da verdade de **data e espaço** · **preço de negociação não cruza** · relação tratada
-> como mesmo grupo (espaço da Fazenda, gestão do restaurante terceirizada), com o
-> compartilhamento declarado na política de privacidade.
+> A troca acontece **entre os dois Claudes** (nosso e o do Maicon), mediada por
+> Arthur e Maicon — cada mensagem é revisada pelos dois antes de ir. Regras da
+> troca: nada de credenciais; modelos, nunca código-fonte.
 >
->
-> Também decidido: a pousada **não toca em pagamento do restaurante** (eles cobram
-> direto do hóspede) · o **consumo do hóspede volta com valor** para enriquecer o
-> CRM · o restaurante passa a enxergar os **hóspedes do dia** · **avaliações ficam
-> fora** do escopo por ora.
->
-> Em aberto: a regra de cascata entre as duas vendas (ver seção própria).
+> Decisões já fechadas pelos humanos: **o AURA expõe a API e o parceiro consome**
+> (para agenda/pipeline) · o AURA é fonte da verdade de **data e espaço** ·
+> **preço de negociação não cruza; consumo do cliente cruza com valor** · a
+> pousada **não toca em pagamento do restaurante** · **o Allan passa a operar SÓ
+> no AURA** (a tela de locação do sistema deles será aposentada) · relação
+> tratada como mesmo grupo, com o compartilhamento declarado na política de
+> privacidade · avaliações fora do escopo por ora.
 
-## O problema
+## O problema (e como ele cresceu)
 
-Um casamento no Altamare é **uma festa vendida em duas partes**:
+Um casamento no Altamare é uma festa vendida em duas partes: o **espaço** (Allan,
+funil no AURA) e a **gastronomia** (restaurante, sistema próprio em produção com
+oito pessoas operando). A proposta original deles — Allan dentro da plataforma do
+restaurante — dobraria o funil dele; a integração resolve com cada equipe na sua
+ferramenta.
 
-- **Espaço** — vendido pelo Allan, coordenador de eventos, cujo pipeline já vive
-  no AURA (`/admin/comercial/casamentos`, entidade `Wedding` com estágios,
-  parcelas e site dos noivos).
-- **Gastronomia** — vendida pelo restaurante, num sistema próprio que eles
-  acabaram de construir.
+Na rodada 1 o escopo cresceu: além de agenda + pipeline, entra o **cardápio
+vivo** (o PDV SuiteTable é a verdade; o sistema do Altamare distribui; o portal
+do hóspede exibe) e, por último e com cuidado, a **pessoa do ecossistema**.
 
-A proposta inicial deles era colocar o Allan para trabalhar dentro da plataforma
-do restaurante. Isso seria retrabalho puro: ele passaria a manter o mesmo funil em
-dois lugares, e o AURA — que já é a ferramenta dele — viraria cópia
-desatualizada. A integração resolve o mesmo problema pelo outro lado: **cada
-equipe fica na sua ferramenta e os sistemas conversam**.
+## Verdade por superfície
 
-## Princípios
+A regra é uma só — a verdade fica com quem executa:
 
-1. **O espaço é da Fazenda.** O AURA é fonte da verdade de data, espaço e
-   exclusividade. O restaurante consulta antes de vender.
-2. **Preço de negociação não cruza; consumo de cliente sim.** São coisas
-   diferentes e a distinção é o coração do desenho:
-   - **Não cruza** — quanto o Allan cobrou pelo espaço, quanto o restaurante
-     cobrou pela gastronomia, parcelas, margem. É a informação comercial de cada
-     empresa, e é o que torna a ponte aceitável entre gestões diferentes.
-   - **Cruza** — quanto *o hóspede* gastou no restaurante. Isso é dado do
-     cliente, não da negociação entre as empresas, e é justamente o que enriquece
-     o CRM: saber que alguém janta bem lá muda como ele é tratado e cotado.
-3. **O AURA expõe, o parceiro consome.** Token por parceiro, escopo restrito,
-   auditoria de tudo. Como eles ainda não têm API, definimos o contrato — o que
-   também deixa a porta pronta para outros parceiros no futuro.
-4. **Gestão terceirizada é gestão que muda.** O acesso precisa ser revogável num
-   clique, com escopo mínimo, sem depender de boa vontade.
+| superfície | verdade | consequência |
+|---|---|---|
+| data e espaço da propriedade | **AURA** | eles consultam `/availability` antes de vender |
+| pipeline do espaço | **AURA** (Allan) | `etapa_espaco` deles vira espelho read-only |
+| pipeline da gastronomia | **Altamare** | nós só exibimos o estágio no card |
+| evento gastronômico (sunset, luau) | **Altamare** | eles criam; nós recebemos e exibimos |
+| **cardápio e carta** | **Altamare** (origem: PDV SuiteTable) | o portal **renderiza o JSON deles** — nunca cópia editável |
+| hóspede / estadia | **AURA** | eles recebem o mínimo operacional |
+| a pessoa do ecossistema | nenhum sozinho | opt-in do hóspede; última fase |
 
-## O evento como entidade compartilhada
+## Identidade — a correção que a rodada 1 forçou
 
-Cada lado tem seu registro; a ponte é um id canônico, gerado pelo AURA (dono do
-espaço), que os dois referenciam — mesmo padrão que já usamos com o HUnit
-(`externalId` na estadia).
+**`guests.id` É o documento (CPF normalizado)** — `src/lib/guest-doc.ts`. Ele
+JAMAIS cruza a fronteira. Para o parceiro existe o **`guestRef`**: uuid opaco por
+hóspede, numa tabela de mapeamento nossa (`partner_guest_refs`). Eles pediram
+explicitamente para **não** receber CPF — alinhado.
 
-```
-        AURA (espaço)                        Altamare (gastronomia)
-   Wedding / Event  ──── partnerRef ────►  negociação/evento deles
-        (canônico)      ◄─── externalId ───
-```
+Telefone no contrato: **E.164** (`+5548...`). Nosso banco guarda dígitos com DDI
+(maioria), com legado inconsistente — a normalização é nossa (`src/lib/phone.ts`
+já tem `splitPhone`/`joinPhone`; falta só o `+`). Casamento por telefone é
+**sugestão de vínculo, nunca fusão automática**.
 
-`Wedding` e `Event` ganham `partnerRef` (id do lado deles) e `partnerStage`
-(estágio da gastronomia, texto vindo do parceiro) — o suficiente para o card do
-casamento mostrar "Gastronomia: proposta enviada" sem que o AURA precise
-entender o funil interno do restaurante.
+## O contrato (v0.2)
 
-## API de parceiro (contrato proposto)
+### Lado A — API do AURA (`/api/partner/*`, eles consomem)
 
-Base `/api/partner/*`, autenticação `Authorization: Bearer <token>`, token no
-cofre `property_secrets`, escopos por parceiro:
+Auth `Authorization: Bearer <token>`; **um token = uma empresa** (Altamare e
+Maram são tenants distintos lá).
 
 | Método | Rota | Para quê |
 |---|---|---|
-| `GET` | `/availability?from&to` | Datas comprometidas e exclusividades — **sem valores** |
-| `GET` | `/events?from&to` | Agenda: eventos e casamentos, dados operacionais |
-| `POST` | `/events` | Eles criam evento do restaurante (público ou fechado) |
-| `PATCH` | `/events/{id}` | Atualizar ou cancelar **o próprio** evento |
-| `GET` | `/pipeline?from&to` | Negociações de espaço: estágio, data, convidados, cliente |
-| `POST` | `/pipeline/{id}/stage` | Eles informam o estágio da gastronomia |
-| `GET` | `/guests/today` | Hóspedes ativos: nome, cabana, período, aniversário, restrições |
-| `POST` | `/consumption` | Eles reportam o consumo de um hóspede (com valor) |
+| `GET` | `/availability?from&to` | por dia: bloqueios (casamento `confirmed` + exclusividade) e **opções** (`tentative`, não bloqueia, com contagem) — fecha a fresta do "confirmado ≠ assinado" dos dois lados |
+| `GET` | `/events?from&to` · `POST /events` · `PATCH /events/{id}` | agenda: eles criam/atualizam os eventos deles; `externalRef` (id deles) idempotente — repetir = atualizar |
+| `GET` | `/weddings?from&to` · `GET /weddings/{id}` | pipeline do espaço + **leitura de reconciliação** (por nosso id ou `?externalRef=`) — é o que protege o "verde da cerimônia" deles de webhook perdido |
+| `POST` | `/weddings/{id}/gastronomy-stage` | eles informam o estágio da gastronomia (vira `partnerStage` no card) |
+| `POST` | `/leads` | **dia 1** — lead de espaço (site do Maram) nasce no funil com `source='site-maram'` + alarme na Fila + push por cargo |
+| `GET` | `/guests/today` | hóspedes ativos por `guestRef`: nome, cabana, período, aniversário (MM-DD, sem ano), restrições quando houver |
+| `POST` | `/consumption` | consumo do hóspede (com valor) → CRM |
+| `POST` | `/cache/menu-invalidate` | ping deles para invalidarmos o cache do cardápio antes do TTL |
 
-**Webhooks do AURA para eles:** `event.created` · `event.updated` ·
-`event.cancelled` · `wedding.created` · `wedding.stage_changed`.
+Regras: `Idempotency-Key` em toda escrita · recursos carregam `version`
+(updatedAt); `If-Match` opcional → `409 version_conflict` · **cada lado só edita
+o que criou** (evento do parceiro é read-only na UI do AURA) · rate limit **60
+req/min por token** (`429` + `Retry-After`) · erros `{error:{code,message,details?}}`
+· `409 date_conflict` em `POST /events` sobre data bloqueada, com o bloqueio
+descrito (tipo + período, **sem valores**).
 
-Regras do contrato: `Idempotency-Key` em toda escrita (a rede falha e o retry não
-pode duplicar festa), retry com backoff, e **cada parceiro só altera o que
-criou** — o escopo é verificado na rota, não confiado ao cliente.
+### Lado B — cardápio (endpoint deles, nós consumimos)
 
-## O que trafega — e o que não
+Portal → **proxy server-side nosso** (`/api/guest/restaurant-menu`) → endpoint
+deles, com cache ~10 min + `If-None-Match`/ETag + fallback de idioma para PT.
+**Sem tabela, sem cópia editável** — pedido explícito deles, aceito: o problema
+de origem é exatamente "existe uma segunda versão do cardápio". Payload traz
+`sincronizado_em` (viagem do PDV) e flags `exibir_preco` (decisão do Maicon) e
+`disponivel_hoje` (PDV + toggle humano do maître). Cardápio velho **exibe mesmo
+assim** (com aviso discreto se >24h); nunca esconder.
 
-| Campo | Vai? |
-|---|---|
-| Nome do casal / cliente, telefone, e-mail | ✅ |
-| Data, horário, espaço, exclusividade | ✅ |
-| Número de convidados | ✅ |
-| Estágio da negociação (de cada lado) | ✅ |
-| Observações operacionais (cardápio, montagem, restrições) | ✅ |
-| Consumo do hóspede no restaurante, **com valor** | ✅ (deles para nós) |
-| Hóspedes do dia: nome, cabana, período, aniversário, restrições | ✅ (nossos para eles) |
-| **Valor do contrato, parcelas, tarifas, comissões** | ❌ |
-| Avaliações do restaurante | ❌ (fora de escopo por ora) |
-| Dados de hóspedes sem relação com evento ou visita | ❌ |
+### Webhooks (AURA → eles)
 
-## Fluxos
+`wedding.created` · `wedding.updated` (com bloco `previous` — data/hora/espaço
+antigos) · `wedding.stage_changed` (com `from/to` e `cause: manual|cron` — os
+crons de 08:30/08:45 mudam status sozinhos) · `wedding.cancelled` ·
+`handoff.gastronomy` (a passagem do Allan) · `lead.created`?
 
-1. **Nasce uma negociação de espaço.** Allan cria o casamento no AURA → webhook →
-   o Altamare abre a negociação de gastronomia já vinculada, com casal, data e
-   convidados preenchidos. Ninguém redigita.
-2. **A gastronomia anda.** Eles atualizam o estágio → o card do casamento no AURA
-   mostra em que pé está a outra metade da venda.
-3. **Evento do restaurante.** Eles criam no sistema deles → entra na agenda do
-   AURA. Se for **público**, aparece para o hóspede no portal; se for **fechado**,
-   fica só na agenda interna, bloqueando a data.
-4. **Casamento confirmado com exclusividade.** O AURA bloqueia a data e o parceiro
-   enxerga o bloqueio antes de vender qualquer coisa naquele fim de semana.
-5. **Cancelamento de qualquer lado** notifica o outro (ver cascata abaixo).
+Assinatura **HMAC-SHA256**: `X-Aura-Signature: t=<unix>,v1=<hex>` sobre
+`t + "." + body`, com **secret dedicado** (≠ token). Timeout 10s. Retries
+exponenciais (1m, 5m, 30m, 2h, 12h) → dead-letter + varredura diária. Entrega
+**at-least-once** → eles deduplicam por `deliveryId`. Secret trocado **fora
+desta conversa** (canal direto Arthur↔Maicon).
 
-## Em aberto: a cascata
+## A saída do Allan — obrigações de dia 1
 
-Quando uma das duas vendas cai, o que acontece com a outra? Ainda a estruturar
-com o Allan e o restaurante. A proposta que faz mais sentido operacionalmente:
+Três funções deles quebram quando a tela de locação sair. Viram entregas nossas
+**antes** da virada:
 
-- **Espaço perdido → encerra os dois.** Sem espaço não existe festa; manter a
-  negociação de gastronomia viva seria só ilusão no funil deles.
-- **Gastronomia perdida → alerta, evento segue.** O casamento continua de pé; a
-  pousada precisa saber para reagir, não para cancelar.
+1. **`POST /leads`** — o formulário do site do Maram passa a criar a negociação
+   aqui, com `source='site-maram'` (slug registrado em `settings.crmChannels` —
+   a procedência que o Maicon quer medir). Notificação: alarme CRM
+   (`CrmService.createAlarm`) + `fanOutByRole` push. Hoje a criação de casamento
+   **não notifica ninguém** — isso muda junto.
+2. **Handoff** — ação "Encaminhar para gastronomia" no card do casamento →
+   webhook `handoff.gastronomy`. Caminho inverso (casal chega pela comida) =
+   mesmo `POST /leads` com `source='altamare'`.
+3. **Reconciliação** — `GET /weddings/{id}` sob demanda, porque o "verde da
+   cerimônia" na página do casal deles passa a depender do nosso webhook.
 
-Ficam junto desta decisão: se evento público do parceiro entra direto no portal
-ou precisa de aprovação nossa, e como o restaurante enxerga os fins de semana de
-casamento (hoje a exclusividade bloqueia a propriedade inteira).
+**Critério de virada (proposta):** a tela deles só desliga com as três entregas
+no ar + ~7 dias de paralelo sem perda de lead. Data: decisão Arthur+Maicon.
 
-## O retorno: consumo alimentando o CRM
+**Nuance do funil:** nosso kanban de casamento tem **5 estados**
+(`tentative/confirmed/completed/cancelled/lost` — `shared.ts:62`), sem o grão
+fino deles (8 no espaço, 14 na gastronomia). O espelho deles mapeia:
+`tentative` cobre lead→negociação; **`confirmed` ≈ `assinado`**; nossa trava de
+data é uma só. `tentative` **não segura data** (N casais disputando é venda
+normal) — igual ao modelo deles.
 
-Este é o lado da ponte que vale mais do que parece. Hoje o AURA sabe tudo sobre o
-hóspede dentro da pousada e **nada** sobre o que ele faz no restaurante que está
-dentro da propriedade. Com `POST /consumption`, cada visita vira histórico no
-perfil: quanto gastou, o que consumiu, quando.
+## Eventos deles dentro do AURA
 
-O que isso destrava, sem nenhum esforço extra da equipe:
+- **Público** → `events` com `status='published'` → portal (Explore + agenda do
+  dia) e admin. **Fechado/bloqueio** → `status='published'` +
+  **`visibility='internal'`** (valor novo): aparece no calendário admin, nunca
+  para o hóspede. Hoje `visibility` é campo morto (nunca filtrado) — ativá-lo
+  exige o filtro `.neq('visibility','internal')` nas 3 leituras públicas
+  (`api/guest/events`, `api/guest/today`, `getPublishedEvents`).
+- **Sanitização deles, aceita:** evento fechado atravessa como `"Evento privado"`
+  — sem nome de casal, sem valor. `casal` é nome de pessoa real.
+- **`reserva` nunca cruza** (centenas/temporada); **sem recorrência** no
+  contrato (cada data = uma linha = um id); `category` derivada com a tabela de
+  de-para deles; eventos fora da propriedade não vêm.
+- **Meia-noite/multi-dia:** regra deles aceita — `endDate = startDate+1` quando
+  `hora_fim < hora_inicio`. E um débito nosso descoberto na varredura: o portal
+  testa **só `startDate`** (`/api/guest/events` `.gte`, `/today` `.eq`) — evento
+  multi-dia some no meio. Corrigir na fase em que os eventos deles entram.
+- **Espaço:** não temos entidade de venue (`Event.location` é texto livre).
+  Contrato define vocabulário canônico: `space: maram|mayan|null` +
+  `resource: lounge|bistro|mesa|beira_mar|null`; guardamos composto no
+  `location` no dia 1. Nossa `exclusivity` é **binária e bloqueia a propriedade
+  inteira** (as duas casas) — se um dia existir buy-out só do Mayan, é evolução.
+- **Conflito:** hoje o AURA **não valida** sobreposição de eventos/casamentos em
+  lugar nenhum — a rota do parceiro nasce com a checagem (409) usando a mesma
+  consulta do `getQuoteContext`.
+- **Imagem:** portal usa `<img>` (qualquer host); recomendação 16:9 ≥1200px,
+  centro seguro (também vira thumb 46px). Adicionar o domínio deles ao
+  `next.config` (`remotePatterns`) pelas superfícies com `next/image`.
+- **Lotes de ingresso:** aceitamos `lotes[]` no payload desde o dia 1 (guardamos
+  raw); a UI renderiza a string composta (`priceDescription`) até evoluir.
+- **`cateringBy`** (quem faz a comida): campo novo no casamento, editável pelos
+  dois (eles via API quando ganham/perdem; Allan na UI), auditado.
 
-- **Cotação com contexto** — quem janta bem lá é cliente de ticket alto, e o
-  comercial passa a saber disso na hora de negociar.
-- **Reconhecimento** — "na última vez o senhor pediu aquele Malbec" é o tipo de
-  detalhe que fideliza e que hoje se perde.
-- **Valor real do hóspede** — a receita da estadia deixa de ser a única medida.
+## Infra nossa — correções e decisões
 
-Fica em `guests` (ou tabela satélite `guest_consumption`), com origem marcada
-como parceiro — nunca misturado com o fólio, porque **não é dinheiro nosso**.
+- **Token de parceiro NÃO vai no cofre `property_secrets`** (correção deste
+  plano): lá é 1 linha por propriedade, texto puro, e o `db:mirror` **zera** o
+  cofre no DEV. Nasce `partners` + `partner_tokens`: **hash SHA-256** do token +
+  prefixo visível, `scopes[]`, `revokedAt`, `lastUsedAt`, `webhookUrl`,
+  `webhookSecret` — RLS sem policy + REVOKE (mesmo regime do cofre).
+- **Fila de webhooks de saída** nos moldes do worker real (`process-messages`):
+  claim → `processing` → recovery por timeout → `attempts` → `failed`; adaptações:
+  backoff exponencial e **safe-mode** (fora de produção, só entrega para URL de
+  sandbox — o espelho do DEV não pode disparar webhook no endpoint de produção
+  deles). Atenção: `message-queue-service.ts` é código morto — o molde é o cron.
+- **Cron externo** para a varredura (a branch DEV não roda cron da Vercel; mesmo
+  caminho do `hsystem-sync`).
+- **Rate limit por token**: `login_attempts` não serve (por IP, só falhas) —
+  contador próprio por token (janela deslizante).
+- **AuditService**: aceita ator não-staff (`userId:'partner:altamare'`), mas as
+  uniões `action`/`entity` são fechadas — estender com `PARTNER_*`.
+- **Sandbox**: ambiente DEV completo (deploy da branch DEV + Supabase espelho +
+  propriedade de teste) com token de sandbox próprio. Caveats: projeto free
+  hiberna após ~7 dias parado; crons por trigger externo.
+- **⚠️ Egress Supabase: ~4,3 GB dos 5 GB/mês já consumidos ANTES da integração.**
+  Rate limit e payload mínimo não são teoria; o upgrade para o Supabase Pro
+  (US$25/mês) provavelmente vira pré-requisito do go-live. Decisão do Arthur.
 
-## Hóspedes do dia: o outro sentido
+## Ordem do programa (aceita, com um ajuste)
 
-Com `GET /guests/today` o restaurante passa a saber quem está hospedado — nome,
-cabana, período, aniversário e restrições alimentares. Serve para reconhecer quem
-chega, lançar o consumo na pessoa certa e evitar o constrangimento de servir o que
-alguém não pode comer.
+Aceitamos a ordem deles — cardápio primeiro (sem PII, só leitura, dor semanal) —
+com o ajuste de que a **fundação da nossa API** (partners/tokens/auth/rate
+limit) corre em paralelo desde já, porque a fatia 2 (leads) tem prazo imposto
+pela saída do Allan:
 
-**Cuidado explícito:** restrição alimentar é dado de saúde, categoria sensível na
-LGPD. Justifica-se pela execução do serviço, mas exige menção clara na política de
-privacidade e escopo próprio no token — não vai junto por descuido, vai porque foi
-decidido.
-
-## Fase futura: pedidos do restaurante pelo portal
-
-O hóspede pede do restaurante pelo **portal**. Com a decisão de que a pousada
-**não toca no pagamento**, isto ficou simples: o portal mostra o cardápio, o
-hóspede pede, o pedido cai no sistema deles e **a cobrança acontece lá** — nada
-entra no fólio, nada é repassado. O AURA é o canal, não o caixa.
-
-O que ainda precisa ser combinado é operacional, não financeiro: cardápio
-espelhado ou consultado em tempo real, horários de atendimento, e quem leva o
-pedido (mensageiro da pousada ou entregador do restaurante).
-
-## Antes da reunião: o que pedir
-
-Sem isto a conversa vira "vamos integrar" e acaba sem próximo passo concreto.
-Tudo aqui cabe numa mensagem, e nada exige acesso a código.
-
-**Sobre o sistema deles (para saber ONDE encaixar):**
-
-1. **Prints das telas principais** e uma frase sobre cada uma. Vale mais que
-   qualquer documento — em cinco minutos dá para ver o que eles modelaram.
-2. **Que entidades existem** e como chamam: evento, cliente, proposta, pedido,
-   consumo, mesa? Nomes importam para o contrato não virar tradução.
-3. **O ciclo de status do funil de gastronomia** — quais estágios, nesta ordem.
-   É o que vai aparecer no card do casamento do nosso lado.
-4. **Como identificam um cliente**: CPF, telefone, e-mail, nome? Esta é a
-   pergunta mais importante da lista — sem uma chave em comum, não há como casar
-   o consumo com o hóspede certo, e o retorno para o CRM não acontece.
-5. **Volume**: eventos por mês, pedidos por dia.
-
-**Sobre a capacidade técnica (para saber SE e COMO):**
-
-6. **Stack e hospedagem** — linguagem, banco, onde roda, domínio fixo com HTTPS.
-7. **Conseguem fazer chamada HTTP autenticada** (header `Authorization`) e
-   **guardar um token com segurança** (variável de ambiente, não no front)?
-8. **Conseguem expor um endpoint público para receber webhook?** Se não, a
-   integração vira polling — funciona, mas eles perdem tempo real.
-9. **Têm ambiente de teste/homologação** separado da produção?
-10. **Quem desenvolve** — dev interno, freela ou agência? Qual a disponibilidade?
-    Define o ritmo realista e o tamanho do contrato que faz sentido propor.
-11. **O que eles esperam ganhar** com a integração. A resposta deles pode revelar
-    um encaixe que não pensamos.
-
-**Git não se troca.** Nem mandar o nosso, nem pedir o deles. Numa integração o
-que se compartilha é o **contrato** — endpoints, formato de payload, exemplos de
-requisição e resposta — nunca o código. Mandar repositório expõe segredos e
-histórico, cria a expectativa de que um lado dá manutenção no outro, e não
-acelera nada. Se em algum momento fizer sentido compartilhar algo versionado, que
-seja um repositório **separado e novo** contendo só a especificação (um arquivo
-OpenAPI e exemplos) — nunca o repositório do produto.
-
-## Custo de infra: quem paga a conta é o AURA
-
-Como somos nós que expomos a API, cada chamada do parceiro consome **nossa**
-infraestrutura. Os limites que valem hoje:
-
-| | Situação atual | O que importa aqui |
+| # | fatia | dono |
 |---|---|---|
-| **Supabase** | Plano **free** | 500 MB de banco · **5 GB de egress/mês** · 2 projetos ativos (prod + DEV, já no limite) · **sem backup** · projeto pausa após 1 semana sem uso |
-| **Vercel** | (confirmar plano) | Hobby é **proibido para uso comercial** e limita cron a **1×/dia**; Pro libera cron por minuto |
+| 0 | cardápio sai do código deles e vira tabela sincronizada do PDV | deles |
+| F | fundação da API de parceiro (tabelas, auth, rate limit, sandbox) | nosso, paralelo a 0 |
+| 1 | portal renderiza o cardápio (proxy + cache + ETag) | os dois |
+| 2 | `POST /leads` + alarme + push (**prazo: virada do Allan**) | os dois |
+| 3 | handoff gastronomia (webhook, ida e volta) | os dois |
+| 4 | espelho do funil do espaço + `GET /weddings/{id}` | os dois |
+| 5 | eventos deles → agenda AURA + portal (visibility internal, endDate fix) | os dois |
+| 6 | fila de webhooks + reenvio + varredura | nosso |
+| 7 | nossos casamentos → `ocupacoes` deles | os dois |
+| 8 | `guestRef`, opt-in, `/guests/today`, `/consumption` | os dois |
+| 9 | consumo item a item (exige comanda nominal no PDV) | fase própria |
 
-Consequências de projeto, não de opinião:
+## Pendências dos humanos
 
-- **Tokens de parceiro são ilimitados e de graça** — cada um é uma linha na nossa
-  tabela, com escopo e revogação. O que tem teto não é a chave: é o **tráfego**
-  que ela gera.
-- **Rate limit por token é obrigatório**, não refinamento. Um parceiro fazendo
-  polling a cada segundo consome nosso egress do plano free. Sugestão: 60
-  requisições/minuto por token, com resposta `429` clara.
-- **Payload mínimo e paginação** em tudo: `/guests/today` devolve os hóspedes do
-  dia, não a base de hóspedes; `/events` exige janela de datas.
-- **Webhook nosso → deles é mais barato que polling deles → nós.** Push só gasta
-  quando algo muda; polling gasta o tempo todo. Vale insistir nisso na conversa
-  técnica.
-- **O cron do Hsystem (1–5 min) não roda no plano Hobby** — é exatamente por isso
-  que ele foi desenhado para cron externo (cronjob.org).
-
-## Fases
-
-| Fase | Escopo |
+| pendência | de quem |
 |---|---|
-| **0 — Fundação** | Cadastro de parceiro, token no cofre, escopos, sandbox e a doc do contrato para o dev deles |
-| **1 — Agenda (leitura)** | Eles consultam `availability` e `events` — para de vender data comprometida |
-| **2 — Eventos deles no AURA** | `POST /events` popula a agenda; público aparece no portal do hóspede |
-| **3 — Pipeline cruzado** | Estágio da gastronomia no card do casamento e vice-versa; webhooks |
-| **4 — Consumo no CRM** | `POST /consumption` e `GET /guests/today`: eles reconhecem o hóspede, nós ganhamos o histórico |
-| **5 — Pedidos pelo portal** | Cardápio no portal e roteamento do pedido — sem dinheiro nosso no meio |
+| Data da virada do Allan (Q21) | Arthur + Maicon |
+| Preço do cardápio aparece no app? (Q24) | Maicon |
+| Upgrade Supabase Pro antes do go-live (egress 4,3/5 GB) | Arthur |
+| Confirmar plano da Vercel (evidência: não é Hobby — 10 crons variados) | Arthur |
+| Troca do webhook secret por canal direto (nunca pela conversa dos Claudes) | Arthur + Maicon |
+| Cascata espaço×gastronomia (a rodada 1 deles CONCORDA com a nossa proposta implícita: perder espaço não mata a ficha deles — gastronomia pode vender para quem alugou outro lugar; formalizar) | Arthur + Allan + Maicon |
 
-A fase 1 já mata o pior risco (vender data ocupada) e é a mais barata. A fase 3 é
-a que elimina o retrabalho que originou a conversa.
+## Riscos (atualizados)
 
-## Riscos
-
-- **Time pequeno do outro lado.** O contrato precisa ser simples e tolerante:
-  poucos endpoints, payload pequeno, erro claro. Integração que exige muito do
-  parceiro não sobrevive à primeira troca de desenvolvedor.
-- **Gestão terceirizada muda de mãos.** Token revogável e escopo mínimo não são
-  formalidade — são o que permite trocar de gestor sem trocar de sistema.
-- **Dado pessoal saindo da nossa base.** Minimização (só o do evento) e a
-  declaração na política de privacidade, como já foi decidido.
-- **Sem preço de negociação cruzando**, relatório financeiro conjunto continua
-  manual. É o custo consciente da regra 2 — e vale a pena.
-- **Dado sensível no pacote de hóspedes do dia** (restrição alimentar): escopo
-  próprio, política atualizada e revisão periódica de quem tem o token.
+- **Time pequeno + banco único do lado deles** (preview aponta para produção):
+  todo teste bidirecional passa pelo NOSSO sandbox. Sem exceção.
+- **Webhook perdido = cerimônia "pendente" na página do casal deles.** Por isso
+  reconciliação não é redundância, é requisito (já aconteceu a versão local
+  desse bug lá).
+- **Push quebrado em produção**: `push_subscriptions` não existe no banco de
+  produção (pendência aberta de 24/08) — o alarme CRM cobre o dia 1 do lead;
+  resolver a tabela antes de prometer push.
+- **Dado sensível** no `/guests/today` (restrição alimentar = saúde): escopo
+  próprio no token, política atualizada — e transparência: o campo de alergias
+  existe e é **pouco preenchido** hoje; vai quando houver.
+- Sem preço de negociação cruzando, relatório financeiro conjunto continua
+  manual — custo consciente.
