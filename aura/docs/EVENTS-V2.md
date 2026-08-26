@@ -108,9 +108,16 @@ num módulo que hoje não valida nada vira workaround pior.
 **E o filtro que ninguém tinha visto:** no minuto em que eventos do parceiro
 entrarem como `published`, eles passam a aparecer em
 `RateService.getQuoteContext` (`rate-service.ts:750-756`) e a **contaminar
-cotação de tarifa e o site dos noivos**. Só `blocksProperty=true` pode entrar no
-contexto comercial — senão um sunset do restaurante vira restrição de venda da
-pousada.
+cotação de tarifa e o site dos noivos**.
+
+> ⚠️ **Correção (26/08):** a primeira versão deste plano dizia "só
+> `blocksProperty=true` entra em `getQuoteContext`". **Está errado** — aplicado
+> assim, apagaria justamente o aviso de luau/sunset ao cliente, que é o
+> requisito da seção "Aviso de evento na cotação". O erro de fundo é
+> `getQuoteContext` devolver **uma** lista servindo a dois propósitos. Corrigir
+> para duas: `blockingEvents` (blocksProperty=true → restrição de venda, só
+> admin) e `noticeEvents` (quoteNotice != none → comunicação, admin + cliente).
+> Um evento pode estar nas duas.
 
 ### 7 · Flag + os 4 pontos do contrato
 
@@ -119,6 +126,196 @@ documento com o Altamare: **fuso e convenção de data** (locais, sem offset;
 `endTime < startTime` = dia seguinte), **tombstone de cancelamento** (parceiro
 apaga evento → não pode sobrar fantasma bloqueando data), **autenticação e rate
 limit** da rota, e **idioma** dos textos que chegam.
+
+## Categorias: vocabulário comum com o parceiro
+
+Nossa `category` e o `tipo_evento` deles são **eixos diferentes**, e confundi-los seria o primeiro
+erro do contrato:
+
+- **`category` (nosso)** = o *assunto* do evento, na linguagem do hóspede — é o que vira ícone e
+  filtro no portal.
+- **`tipo_evento` (deles)** = o *tipo comercial/operacional* — casamento, pacote extra, produção da
+  casa, reserva — é o que decide por qual funil a ficha passa lá dentro.
+
+Um "luau de lua cheia" é `producao_casa` para eles e `entertainment` para nós, e as duas
+classificações estão certas. Então: **cada lado mantém o seu eixo**, o contrato transporta a nossa
+`category` (que é a que o hóspede lê) e o tipo deles fica com eles.
+
+### A lista, revisada para servir aos dois
+
+A lista atual foi escrita pensando só na pousada. Duas adições cobrem o que o restaurante mais
+produz e hoje não tem casa boa:
+
+| categoria | quando usar |
+|---|---|
+| `entertainment` | shows, luau, atrações em geral |
+| `music` | **nova** — música ao vivo (o caso mais comum do restaurante; hoje cairia em `nightlife`, que dá a leitura errada de "balada") |
+| `gastronomy` | jantar harmonizado, festival gastronômico, degustação |
+| `wellness` | **nova** — yoga, meditação, retiro, sunset de bem-estar (hoje não tem onde cair) |
+| `nightlife` | festa noturna de fato |
+| `sports` · `culture` | esporte, arte, exposição |
+| `corporate` · `wedding` · `birthday` | eventos privados |
+| `other` | **o pouso seguro** — não encaixou, cai aqui |
+
+### A regra do `other` (dupla proteção)
+
+1. **No contrato:** categoria que não estiver na lista é gravada como `other`, **preservando o
+   rótulo original do parceiro** num campo de origem — não perdemos a informação, e o portal nunca
+   fica sem ícone.
+2. **No código:** todo mapa de ícone/rótulo/tom ganha fallback. Hoje `CATEGORY_ICONS[category]`
+   devolve `undefined` para valor desconhecido e o React quebra a tela inteira ao tentar renderizar
+   — é a fatia 1 deste plano, e vale independentemente do parceiro.
+
+A lista completa, com o significado de cada valor, entra na documentação da API que o parceiro
+recebe — junto dos valores de `status` e do vocabulário de espaço.
+
+## Aviso de evento na cotação (`quoteNotice`)
+
+Requisito do dono do produto: *"evento que altere o andamento da pousada (música
+alta, movimento no estacionamento) deve ser informado no ato da reserva — e na
+tela em que o hóspede aceita a cotação"*.
+
+### Correção de premissa: o aviso NÃO está quebrado
+
+O pipeline `getQuoteContext` → `buildEventNotices` → `{AVISO_EVENTO}` →
+clipboard está **íntegro** (`rate-engine.ts:446,580,619-632`). O template padrão
+já existe, já é configurável por propriedade em três idiomas
+(`/admin/configuracoes/comercial`) e o tom **já é convidativo**:
+
+> 🍹 Durante sua estadia teremos um evento especial: *{NOME_EVENTO}* em
+> {DATA_EVENTO}. Aproveite!
+
+O que existe de errado são **dois vazamentos** que explicam a percepção de
+"quebrou":
+
+1. **`LeadDrawer.tsx:1024-1036` copia só a URL** da proposta. Todo reenvio pelo
+   drawer perde o aviso — e reenviar é o caminho normal depois do primeiro
+   contato.
+2. **Só 5 dos 13 eventos estão `published`.** Evento em rascunho não avisa
+   ninguém, e ninguém sabe disso.
+
+E o que **nunca foi implementado**: a metade pública. `PublicQuoteView`
+(`rate-quote-public-service.ts:70-127`) não tem campo de evento e o service
+nunca consulta a tabela. Daí a conclusão de desenho: **a fonte da verdade do
+aviso deve ser a proposta pública** — o único artefato que sobrevive a
+encaminhamento, reenvio e print. A mensagem de WhatsApp vira redundância
+bem-vinda, não o canal.
+
+### O campo
+
+Uma coluna: `quoteNotice text NOT NULL DEFAULT 'none'`, com CHECK em
+`('none','invite','notice')`.
+
+**A semântica é o que salva o campo de ser impreenchível.** `quoteNotice` não
+classifica o humor do hóspede (indecidível — luau é atrativo para uns, incômodo
+para outros); classifica **o que a pousada é obrigada a dizer antes de vender**:
+
+| valor | significado operacional |
+|---|---|
+| `none` (default) | não entra em comunicação comercial nenhuma |
+| `invite` | **convite** — o hóspede ganha em saber; se ignorar, não houve dano |
+| `notice` | **obrigação de informar** — há impacto em quem *não* participa (som, estacionamento, área ocupada) |
+
+São **níveis ordenados**, não categorias paralelas: `notice` faz tudo que
+`invite` faz e acrescenta a linha de impacto. É assim que o "atrativo para um,
+incômodo para outro" se resolve sem um segundo campo — o texto **abre
+convidando e fecha informando**.
+
+### Quem preenche — a regra que mais importa
+
+**O parceiro nunca escreve o que o cliente lê numa proposta comercial da
+pousada.** A rota `/api/partner/*` **ignora** qualquer `quoteNotice` do payload
+e grava `'none'`, sempre. Um humano do AURA promove para `invite`/`notice` no
+formulário. Assim, evento do Altamare que ninguém revisou **não pode** chegar ao
+cliente — e o risco morre no schema, não numa checagem de UI que alguém remove
+em seis meses. Fricção deliberada: com 13 eventos/ano, revisar custa minutos e
+compra o direito de imprimir aquele texto num documento comercial.
+
+### Relação com `blocksProperty`: ortogonais
+
+`blocksProperty` é eixo de **venda** (a data está comprometida, a
+disponibilidade muda). `quoteNotice` é eixo de **comunicação** (o que o cliente
+lê). Os quatro quadrantes existem de verdade: sunset (`false`/`invite`), luau
+com som (`false`/`notice`), casamento exclusivo que ainda vendeu cabanas
+(`true`/`notice`), montagem interna sem impacto (`true`/`none`). Única regra
+derivada: `blocksProperty=true` com venda acontecendo **deveria** ser ao menos
+`notice` — validado como **aviso no formulário**, não como CHECK no banco.
+
+### Onde aparece
+
+| superfície | veredito |
+|---|---|
+| **Proposta pública** | **obrigatório** — é o pedido literal e o artefato que sobrevive ao encaminhamento |
+| **Wizard (atendente)** | **alterado** — badge por nível nos `invite`/`notice`, mais linha cinza com os `none` do período ("outros eventos, não informados ao cliente"): o vendedor precisa saber do casamento mesmo que ele não vá à proposta |
+| **Mensagem de WhatsApp** | **mantida**, só trocando a fonte para `noticeEvents` |
+| **Portal do hóspede** | **excesso** — já tem agenda e listagem; duplicar é convidar divergência |
+
+**Sem toggle de "suprimir este aviso nesta cotação".** É a tentação óbvia e é
+armadilha: no dia em que o vendedor pode esconder, a prova de transparência vale
+zero. Curadoria acontece **no evento**, não na cotação.
+
+**Posição:** entre "O que está incluso" e "Regras da pousada"
+(`ProposalClient.tsx:533-536`), reaproveitando o molde de card que já existe
+ali. O cliente é obrigado a passar pelo bloco porque o checkbox de política
+(`:565-573`) fica abaixo e trava o aceite (`canAccept`, `:256-258`) — a trava faz
+o trabalho de layout de graça.
+
+### O texto — convite primeiro, impacto depois, saída por último
+
+Luau com som (`notice`):
+
+> 🔥 **Durante a sua estadia**
+> **Luau na praia** — sábado, 14 de fevereiro, a partir das 20h
+> Fogueira, música ao vivo e drinks na beira-mar. A entrada é livre para hóspedes.
+> *A música toca até por volta de 01h e pode ser ouvida nas cabanas mais próximas
+> ao mar. Se você prefere uma noite silenciosa, é só nos avisar — acomodamos você
+> na parte alta da propriedade.*
+
+Festival gastronômico (`invite`) — três linhas, **sem** ressalva: acrescentar
+"caso o movimento incomode" onde não há incômodo ensina o cliente a ler o bloco
+como reclamação.
+
+**Nunca escrever:** "pedimos desculpas pelo transtorno" (constrói o evento como
+defeito antes de o cliente decidir se é) · eufemismo que a operação não sustenta
+("pequena celebração" para 120 pessoas — vira prova contra a pousada) ·
+**promessa** de que o evento acontecerá ou de acesso a ele (evento é cancelado e
+a proposta aceita virou obrigação) · nome de terceiros não públicos · qualquer
+valor ou dado de negociação · tradução automática (sem `titleEn`, cai para PT
+dentro da moldura no idioma do hóspede).
+
+**Casamento não vira bloco automático.** 48 dos 53 têm `exclusivity=true` —
+automatizar poria bloco em quase toda proposta e mataria a atenção ao aviso.
+Casamento segue na pílula do header; só vira bloco quando alguém marcar
+`quoteNotice` no evento, com dedupe contra `quote.wedding`.
+
+### Live para exibir, carimbo no aceite para provar
+
+A tela lê **ao vivo** (a página já é `force-dynamic`) — snapshot puro quebraria
+o caso que motivou o pedido: o Altamare vai agendar eventos **depois** da cotação
+existir, e uma proposta de outubro para janeiro nasceria sem o luau marcado em
+dezembro.
+
+No clique de aceite, `acceptQuote` grava `rate_quotes.acceptedContext jsonb` com
+o que estava na tela — **recalculado no servidor**, nunca a partir de payload do
+browser (payload do cliente é editável e o valor probatório seria zero). Resolve
+os três cenários: evento criado depois (o carimbo mostra que ele não viu), evento
+cancelado (some da tela, fica no carimbo) e "não fui informado" (o carimbo
+responde).
+
+### Fatias
+
+| # | o quê |
+|---|---|
+| **pré** | multi-dia (fatia 4) e higiene do `type` (fatia 1) — sem eles o cliente lê data errada e o filtro não é confiável |
+| **1** | coluna + tipo + seletor no form + `noticeEvents` no context + `loadQuoteEvents()` + bloco na proposta + badge no wizard + `buildEventNotices` lendo a nova fonte |
+| **2** | `acceptedContext` (a prova) |
+| **3** | override de texto multilíngue e imagem no bloco — *só se a operação pedir* |
+| **4** | junto do Altamare: `quoteNotice='none'` forçado na rota do parceiro + fila "aguardando curadoria" |
+
+Guard de segurança em qualquer fatia: filtro **positivo**
+(`quoteNotice IN ('invite','notice')` + `status='published'` +
+`type IN ('local','external')`), nunca "tudo que não é privado" — com
+`type='internal'` em 8 linhas, blacklist vazaria.
 
 ## Cortado — e por quê
 
