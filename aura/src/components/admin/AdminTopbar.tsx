@@ -157,6 +157,7 @@ const SEARCH_ROUTES: SearchItem[] = [
   { label: "Governança",        href: "/admin/governance", keywords: ["governança", "faxina", "camareira", "limpeza"] },
   { label: "Kanban Governança", href: "/admin/governance/kanban", keywords: ["governança", "faxina", "kanban"] },
   { label: "Concierge",         href: "/admin/concierge", keywords: ["concierge", "pedido", "frigobar", "amenidade"] },
+  { label: "Guarita",           href: "/admin/guarita", keywords: ["guarita", "estacionamento", "porteiro", "placa", "veículo", "carro", "tarifa"] },
   { label: "Estoque",           href: "/admin/estoque", keywords: ["estoque", "compras", "produto", "movimentação"] },
   { label: "Compras",           href: "/admin/estoque/compras", keywords: ["compra", "nota fiscal", "nf", "fornecedor", "frete", "taxa de entrega", "desconto"] },
   { label: "Movimentações",     href: "/admin/estoque/movimentacoes", keywords: ["movimentação", "transferência", "entrada", "saída", "perda", "ajuste", "baixa"] },

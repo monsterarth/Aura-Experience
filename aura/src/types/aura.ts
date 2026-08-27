@@ -986,8 +986,10 @@ export interface AuditLog {
   | 'WEDDING_AUTO_COMPLETED' | 'WEDDING_LOST' | 'WEDDING_FOLLOW_UP'
   | 'CRON_CRM_STATUS'
   | 'HSYSTEM_CREATED' | 'HSYSTEM_UPDATED' | 'HSYSTEM_CANCELLED'
-  | 'HSYSTEM_NEEDS_ATTENTION' | 'HSYSTEM_FAILED';
-  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'STRUCTURE_REVIEW' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER' | 'CONTACT' | 'AUTOMATION' | 'BREAKFAST' | 'CRON' | 'SUPPLIER' | 'ASSET' | 'ASSET_INVENTORY' | 'PURCHASE' | 'INVENTORY' | 'RATE_TABLE' | 'RATE_QUOTE' | 'RATE_FLUCTUATION' | 'RATE_SETTINGS' | 'WEDDING';
+  | 'HSYSTEM_NEEDS_ATTENTION' | 'HSYSTEM_FAILED'
+  | 'PARKING_ENTRY' | 'PARKING_EXIT' | 'PARKING_RATE_SET'
+  | 'PARKING_SHIFT_CLOSED' | 'VEHICLE_STATUS_SET';
+  entity: 'STAY' | 'GUEST' | 'CABIN' | 'USER' | 'PROPERTY' | 'MESSAGE' | 'STOCK' | 'STRUCTURE' | 'STRUCTURE_BOOKING' | 'STRUCTURE_REVIEW' | 'MAINTENANCE' | 'EVENT' | 'CONCIERGE' | 'FB_ORDER' | 'CONTACT' | 'AUTOMATION' | 'BREAKFAST' | 'CRON' | 'SUPPLIER' | 'ASSET' | 'ASSET_INVENTORY' | 'PURCHASE' | 'INVENTORY' | 'RATE_TABLE' | 'RATE_QUOTE' | 'RATE_FLUCTUATION' | 'RATE_SETTINGS' | 'WEDDING' | 'PARKING';
   entityId: string;
   oldData?: any;
   newData?: any;
@@ -3321,4 +3323,135 @@ export interface HunitRoomRate {
   isChildRoomRate?: boolean;
   masterRoomRateId?: string | null;
   masterRoomRate?: string | null;
+}
+
+// ==========================================
+// MÓDULO GUARITA / ESTACIONAMENTO
+// ==========================================
+
+/** O que o veículo é para a pousada — decide se paga e o que o painel mostra. */
+export type VehicleKind = 'guest' | 'visitor' | 'supplier' | 'staff' | 'customer';
+/** `whitelist` nunca paga; `blacklist` dispara alerta na entrada. */
+export type VehicleStatus = 'normal' | 'whitelist' | 'blacklist';
+export type ParkingPaymentMethod = 'credit' | 'debit' | 'pix' | 'cash';
+
+/** Só `customer` e (por decisão da casa) `visitor` chegam a pagar — ver docs/GUARITA.md. */
+export const PAYING_VEHICLE_KINDS: VehicleKind[] = ['customer'];
+
+/**
+ * Cadastro de placas — permanente, não diário.
+ *
+ * Responde "de quem é esse carro?" sem ninguém redigitar: a placa do hóspede
+ * entra pelo pré-check-in (`stays.vehiclePlate`) e a do funcionário pelo
+ * cadastro dele.
+ */
+export interface Vehicle {
+  id: string;
+  propertyId: string;
+  /** SEMPRE normalizada: maiúscula, sem hífen nem espaço. */
+  plate: string;
+  model?: string | null;
+  color?: string | null;
+  ownerName?: string | null;
+  ownerPhone?: string | null;
+  /** Consentimento para contato de marketing — o uso operacional não depende dele. */
+  marketingOptIn?: boolean;
+  kind: VehicleKind;
+  guestId?: string | null;
+  staffId?: string | null;
+  supplierId?: string | null;
+  status: VehicleStatus;
+  statusReason?: string | null;
+  statusBy?: string | null;
+  statusByName?: string | null;
+  statusAt?: Timestamp | null;
+  notes?: string | null;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+/** Tarifa de uma data. `closed` = não abriu (≠ tarifa zero). */
+export interface ParkingRate {
+  propertyId: string;
+  date: string;            // YYYY-MM-DD
+  amount: number;
+  closed: boolean;
+  setBy?: string | null;
+  setByName?: string | null;
+  setAt: Timestamp;
+}
+
+/** Turno numerado: quem abre raramente é quem fecha. */
+export interface ParkingShift {
+  id: string;
+  propertyId: string;
+  number: number;
+  status: 'open' | 'closed';
+  openedAt: Timestamp;
+  openedBy?: string | null;
+  openedByName?: string | null;
+  closedAt?: Timestamp | null;
+  closedBy?: string | null;
+  closedByName?: string | null;
+  /** Congelado no fechamento — turno fechado não se recalcula. */
+  summary?: ParkingShiftSummary | null;
+  notes?: string | null;
+}
+
+export interface ParkingShiftSummary {
+  total: number;
+  paidCount: number;
+  byMethod: Record<string, { count: number; total: number }>;
+  freeByKind: Record<string, number>;
+  stillInside: number;
+}
+
+/** Entrada (e saída) de um veículo. */
+export interface VehicleMovement {
+  id: string;
+  propertyId: string;
+  vehicleId?: string | null;
+  /** Desnormalizada: o histórico não muda se o cadastro for corrigido depois. */
+  plate: string;
+  kind: VehicleKind;
+  stayId?: string | null;
+  enteredAt: Timestamp;
+  exitedAt?: Timestamp | null;
+  amount: number;
+  paymentMethod?: ParkingPaymentMethod | null;
+  cardBrand?: string | null;
+  installments?: number | null;
+  nsu?: string | null;
+  shiftId?: string | null;
+  registeredBy?: string | null;
+  registeredByName?: string | null;
+  exitBy?: string | null;
+  exitByName?: string | null;
+  notes?: string | null;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  // ── Virtuais (montados na leitura, não persistem) ──
+  vehicle?: Vehicle | null;
+  guestName?: string | null;
+  cabinName?: string | null;
+}
+
+/** O que o app responde quando o guarita digita uma placa. */
+export interface PlateLookup {
+  plate: string;
+  vehicle: Vehicle | null;
+  /** De onde veio o palpite quando não há cadastro ainda. */
+  source: 'vehicle' | 'stay' | 'staff' | 'none';
+  kind: VehicleKind;
+  status: VehicleStatus;
+  statusReason?: string | null;
+  guestName?: string | null;
+  cabinName?: string | null;
+  stayId?: string | null;
+  checkOut?: string | null;
+  staffName?: string | null;
+  /** Movimento em aberto: este carro já está no pátio. */
+  openMovement?: VehicleMovement | null;
+  /** Quantas vezes já entrou (histórico). */
+  visitCount?: number;
 }

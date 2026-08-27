@@ -27,7 +27,7 @@ export const ROLE_HOME: Record<string, string> = {
   technician:  '/maintenance',
   waiter:      '/waiter',
   houseman:    '/houseman',
-  porter:      '/porter', // WIP — módulo ainda não criado
+  porter:      '/porter',
 };
 
 /** Fallback quando o cargo é desconhecido. Nunca /admin/stays (ninguém deve

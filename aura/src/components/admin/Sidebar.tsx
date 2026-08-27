@@ -22,7 +22,7 @@ import {
   UserCircle2, Smartphone, Heart, History,
   Package, ArrowLeftRight, SlidersHorizontal,
   ShoppingCart, Truck, Landmark, AlertOctagon, ListFilter,
-  CircleDollarSign, Handshake, Hourglass, Megaphone, Plug,
+  CircleDollarSign, Handshake, Hourglass, Megaphone, Plug, Car,
 } from "lucide-react";
 import { createClientBrowser } from "@/lib/supabase-browser";
 import { T as SharedT } from "@/lib/admin-tokens";
@@ -166,6 +166,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "manutencao",  label: "Manutenção",  icon: Wrench,       href: "/admin/maintenance/kanban",          roles: ["super_admin","admin","maintenance","manager"] },
       { id: "governanca",  label: "Governança",  icon: Sparkles,     href: "/admin/governance/kanban",           roles: ["super_admin","admin","governance","manager","reception"] },
       { id: "concierge",   label: "Concierge",   icon: Gift,         href: "/admin/concierge",                   roles: ["super_admin","admin","reception","manager"] },
+      { id: "guarita",     label: "Guarita",     icon: Car,          href: "/admin/guarita",                     roles: ["super_admin","admin","reception","manager"] },
       { id: "pedidos_fb",  label: "Pedidos F&B", icon: Coffee,       href: "/admin/food-and-beverage/orders",    roles: ["super_admin","admin","reception","kitchen","manager"] },
     ],
   },
