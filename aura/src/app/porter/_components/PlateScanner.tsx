@@ -104,6 +104,28 @@ async function getWorker() {
   return workerPromise;
 }
 
+/**
+ * A câmera falha de meia dúzia de jeitos e o navegador chama quase todos de
+ * "NotAllowedError". Dizer só "verifique a permissão" manda o guarita procurar
+ * um botão que às vezes nem existe — cada caso aqui tem a saída dele.
+ */
+function cameraError(e: any): string {
+  const name = String(e?.name ?? "");
+  if (name === "InsecureContext" || !window.isSecureContext) {
+    return "Esta tela precisa estar em HTTPS para usar a câmera. Abra pelo endereço do sistema (não por IP) ou digite a placa.";
+  }
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    return "O navegador bloqueou a câmera. Toque no cadeado ao lado do endereço, libere a Câmera e tente de novo.";
+  }
+  if (name === "NotFoundError" || name === "OverconstrainedError") {
+    return "Não encontrei uma câmera neste aparelho.";
+  }
+  if (name === "NotReadableError") {
+    return "A câmera está ocupada por outro aplicativo. Feche-o e tente de novo.";
+  }
+  return `Não consegui abrir a câmera${name ? ` (${name})` : ""}. Digite a placa.`;
+}
+
 type Phase = "starting" | "ready" | "reading" | "result" | "error";
 
 export function PlateScanner({ onPick, onClose }: { onPick: (plate: string) => void; onClose: () => void }) {
@@ -113,11 +135,19 @@ export function PlateScanner({ onPick, onClose }: { onPick: (plate: string) => v
   const [result, setResult] = useState<string | null>(null);
   const [rawText, setRawText] = useState("");
   const [error, setError] = useState("");
+  // Depois de liberar a permissão no cadeado, o guarita precisa poder tentar de
+  // novo sem sair da tela e voltar.
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
+        // Sem HTTPS o navegador nem expõe a API — e o erro que ele dá aqui não
+        // se parece com falta de permissão. Melhor dizer o que é.
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw Object.assign(new Error("sem API"), { name: "InsecureContext" });
+        }
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 } },
           audio: false,
@@ -130,11 +160,10 @@ export function PlateScanner({ onPick, onClose }: { onPick: (plate: string) => v
         }
         setPhase("ready");
         void getWorker().catch(() => {}); // aquece enquanto ele mira
-      } catch {
-        if (!cancelled) {
-          setError("Não consegui abrir a câmera. Verifique a permissão ou digite a placa.");
-          setPhase("error");
-        }
+      } catch (e: any) {
+        if (cancelled) return;
+        setError(cameraError(e));
+        setPhase("error");
       }
     })();
     return () => {
@@ -142,7 +171,7 @@ export function PlateScanner({ onPick, onClose }: { onPick: (plate: string) => v
       streamRef.current?.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     };
-  }, []);
+  }, [attempt]);
 
   const read = useCallback(async () => {
     if (!videoRef.current || phase === "reading") return;
@@ -204,7 +233,13 @@ export function PlateScanner({ onPick, onClose }: { onPick: (plate: string) => v
         {phase === "error" && (
           <>
             <div style={{ fontSize: 14, color: T.amber, lineHeight: 1.5 }}>{error}</div>
-            <button onClick={onClose} style={{ ...btn, background: T.glass2, color: T.text }}>Digitar a placa</button>
+            <button onClick={() => { setError(""); setPhase("starting"); setAttempt(a => a + 1); }} style={{ ...btn, background: T.grad, color: "#0b0d14" }}>
+              Tentar de novo
+            </button>
+            <button onClick={onClose} style={{
+              height: 48, borderRadius: 14, background: "transparent", border: `1px solid ${T.border2}`,
+              color: T.muted, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+            }}>Digitar a placa</button>
           </>
         )}
 
