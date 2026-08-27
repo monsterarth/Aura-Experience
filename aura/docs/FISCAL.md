@@ -145,6 +145,31 @@ A fase 1 é a que muda a vida da recepção. As fases 0 e 1 juntas são o mínim
 para parar de redigitar no HMAX **para hospedagem**; a NFC-e (fase 3) é o que
 libera o frigobar.
 
+### A emissão é o gargalo de tudo, não só do fiscal
+
+Descoberto no levantamento de 26/08: o **estacionamento** é lançado no HMAX não
+porque falta tela no AURA, mas porque **a nota sai de lá**. O mesmo valeria para
+qualquer venda nova. Enquanto a emissão morar no HMAX, toda venda tem que existir
+no HMAX — e qualquer módulo que o AURA construa antes disso duplica digitação em
+vez de eliminá-la.
+
+Isso reordena as prioridades do projeto: **o fiscal não é o último módulo, é o
+que destrava os outros.**
+
+### O estacionamento é o piloto ideal da NFC-e
+
+Quando a fase 3 chegar, a estreia não deve ser o frigobar — deve ser o
+estacionamento:
+
+- **Venda pequena e repetitiva** — muitos documentos por dia, erra rápido e
+  barato, aprende rápido.
+- **Isolada da hospedagem** — se der problema, não afeta a conta do hóspede nem
+  o check-out.
+- **Já é venda de produto/serviço avulso**, sem as complicações de rateio,
+  antecipação ou OTA.
+- **Some uma gambiarra junto** — a reserva-fantasma numa cabana qualquer deixa de
+  existir no mesmo dia.
+
 ## Perguntas para a contabilidade
 
 Estas mudam o desenho e **não são decisão de software** — precisam de resposta

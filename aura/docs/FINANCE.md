@@ -149,9 +149,14 @@ real — não suposição.
 
 > **Ninguém entra na cabana sem ter quitado 100% da reserva.**
 
-Existe uma única exceção, que a própria operação quer eliminar. Isso simplifica o
-módulo mais do que qualquer decisão de arquitetura: o fólio de hospedagem nasce
-zerado no check-in, e o que sobra para o check-out é só consumo.
+Existe uma única exceção que a operação quer eliminar, e uma **legítima**: o
+hóspede que **amplia a estadia** no meio da hospedagem gera saldo de diária no
+check-out. É raro, mas o modelo precisa suportar — o fólio continua aberto e
+recebe as noites novas.
+
+Fora isso, o fólio de hospedagem nasce zerado no check-in e o que sobra para o
+check-out é só consumo. Isso simplifica o módulo mais do que qualquer decisão de
+arquitetura.
 
 Na **baixa temporada** aceitam **50% na reserva e 50% no check-in** — nunca no
 check-out. O AURA precisa saber cobrar essa segunda parcela na chegada, e avisar
@@ -223,8 +228,18 @@ guarda as notas. No fim do dia a recepção **abre uma reserva numa cabana
 qualquer, sem diária**, e lança tudo um a um — inclusive o NSU de cada cartão.
 
 Uma reserva-fantasma existindo só para servir de recipiente. No AURA isso pede
-uma **venda avulsa** (lançamento sem reserva, com sua própria forma de pagamento
-e recibo) — e, mais adiante, a guarita lançando direto pelo celular.
+uma **venda avulsa** (lançamento sem reserva, com forma de pagamento e recibo
+próprios) — e, mais adiante, a guarita lançando direto pelo celular.
+
+> **Mas há uma trava:** o estacionamento **precisa** continuar sendo lançado no
+> HMAX enquanto a **nota fiscal sair de lá**. Fazer venda avulsa no AURA hoje não
+> elimina o trabalho — cria um segundo lugar para digitar a mesma coisa.
+>
+> Por isso a entrega útil agora é **substituir a planilha da guarita**, não o
+> lançamento no HMAX: a guarita registra no celular (nome, placa, valor, forma,
+> NSU) e a recepção recebe uma lista digital somada e conferida, em vez de papéis
+> soltos. O trabalho que morre é o da transcrição e da conferência; o lançamento
+> no HMAX sobrevive até a NFC-e existir no AURA — e aí é só ligar a chave.
 
 ### Cortesia e permuta são "abatimento"
 
