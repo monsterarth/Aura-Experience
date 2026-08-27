@@ -138,12 +138,44 @@ parcial no update.
 > grant nenhum** em `events` desde a remediação da chave pública, e grant é
 > avaliado antes da policy.
 >
-> Vale checar se a mesma `property_scoped_all` quebrada está em outras tabelas —
-> se estiver, é assunto maior que este plano.
+> **A varredura foi feita (26/08) e a resposta é: sim, e é assunto maior.**
+> Ver a seção "O que a varredura de RLS achou", logo abaixo.
 
 Com o parceiro escrevendo na tabela, `USING(true)` é contrato assinado sobre chão
 de terra. Realtime já está na publicação e **respeita RLS** — ganha isolamento de
 graça, desde que a policy que sobra realmente conceda leitura ao staff.
+
+#### O que a varredura de RLS achou (26/08, produção)
+
+O `USING(true)` de `events` não é exceção: é **o padrão da casa**. 63 policies em
+58 tabelas usam `USING (true)`. O que a varredura separou:
+
+| situação | tabelas | o que significa |
+|---|---|---|
+| `USING(true)` **com** rede escopada por trás | 15 | dropar o `true` é seguro — `property_scoped_all` assume na hora |
+| `USING(true)` **sem** rede nenhuma | ~40 | dropar o `true` **corta o acesso**; a policy escopada tem que ser criada antes |
+| policy do JWT quebrada como única rede | 4 | `events`, `system_bugs` e mais duas — o pior dos dois mundos |
+
+`events` está na terceira linha, e é por isso que a ordem da fatia importa.
+
+**E a varredura achou um vazamento vivo, que já foi fechado** (migration
+`rls_close_public_policies.sql`, aplicada nos dois bancos): três tabelas com
+`FOR ALL TO PUBLIC USING (true)` **mais** o GRANT do `anon` intacto —
+`messages` (36 246 linhas, com telefone e conteúdo), `communications` e
+`breakfast_visitors`. A chave pública lia e escrevia. Detalhe no cabeçalho da
+migration.
+
+Depois do fecho, as 54 tabelas com grant de `anon` foram testadas **uma a uma com
+a própria chave pública**: zero linhas visíveis.
+
+**O que sobra é maior que o módulo de Eventos** e é decisão de escopo: as ~40
+tabelas sem rede precisam de `property_scoped_all` antes que qualquer
+`USING(true)` possa cair. Enquanto isso não acontece, o isolamento por
+propriedade **não existe no navegador** — o que hoje é teórico (uma propriedade
+só) e vira concreto no dia da segunda, que é o mesmo gatilho de
+`docs/MODULARIZATION.md`. O risco de HOJE é outro e é por cargo: com
+`USING(true)`, a sessão de qualquer cargo — camareira, garçom, porteiro — lê
+qualquer linha dessas tabelas pelo navegador.
 
 ### 4 · Multi-dia (bug de hóspede, hoje)
 
