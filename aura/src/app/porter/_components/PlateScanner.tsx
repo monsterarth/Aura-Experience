@@ -1,6 +1,15 @@
 "use client";
 
-// Leitura da placa pela câmera — OFFLINE.
+// Leitura da placa pela câmera — OFFLINE. **NÃO ESTÁ EM USO.**
+//
+// Reprovado no teste em campo (27/08/2026): a placa real não sai legível. O
+// componente fica guardado inteiro; quem religar mexe em SCANNER_READY
+// (RegistroTab.tsx) e no Permissions-Policy (next.config.mjs).
+//
+// O que tentar antes de reativar: modelo treinado em placa (o eng.traineddata
+// é texto de documento, não caractere de placa), recorte guiado por detecção
+// de retângulo em vez de moldura fixa, e várias leituras por segundo votando
+// entre si em vez de um disparo só.
 //
 // O reconhecimento roda no próprio aparelho (Tesseract em WebAssembly, com os
 // modelos servidos de /tesseract), então funciona sem internet e **nenhuma foto

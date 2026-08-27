@@ -16,11 +16,13 @@ const nextConfig = {
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          // camera=(self): o app da guarita le a placa pela camera do proprio
-          // aparelho. Com camera=() o navegador nem chega a perguntar — a
-          // politica nega antes do prompt, e a tela fica preta sem explicacao.
-          // Continua fechada para iframe de terceiro, que e o que interessa.
-          { key: 'Permissions-Policy', value: 'camera=(self), microphone=(), geolocation=(self)' },
+          // camera=(): nenhuma tela usa a camera hoje (a leitura de placa da
+          // guarita esta desligada — ver SCANNER_READY em RegistroTab.tsx).
+          // Cuidado ao religar: com camera=() o navegador nem chega a
+          // perguntar — a politica nega antes do prompt e a tela abre preta,
+          // parecendo permissao negada. Ao religar o scanner, volte a
+          // camera=(self) aqui no mesmo commit.
+          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(self)' },
         ],
       },
       {
