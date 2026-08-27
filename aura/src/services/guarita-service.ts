@@ -135,6 +135,16 @@ export const GuaritaService = {
     const shift = await this.getOpenShift(propertyId);
     if (!shift) return null;
 
+    // A NSU pode entrar depois, mas não pode atravessar o fechamento: sem ela a
+    // recepção recebe um turno que não bate com o extrato da maquininha.
+    const pending = await this.getPendingMovements(propertyId, shift.id);
+    if (pending.length > 0) {
+      throw Object.assign(
+        new Error(`Falta a NSU de ${pending.length} pagamento(s) em cartão: ${pending.map(p => displayPlate(p.plate)).join(", ")}.`),
+        { code: "PENDING_NSU" },
+      );
+    }
+
     const summary = await this.summarize(propertyId, shift.id);
     const { data, error } = await db()
       .from("parking_shifts")
@@ -337,7 +347,6 @@ export const GuaritaService = {
       amount?: number;
       paymentMethod?: string | null;
       cardBrand?: string | null;
-      installments?: number | null;
       nsu?: string | null;
       stayId?: string | null;
       ownerName?: string | null;
@@ -404,7 +413,6 @@ export const GuaritaService = {
       amount,
       paymentMethod: amount > 0 ? input.paymentMethod : null,
       cardBrand: input.cardBrand ?? null,
-      installments: input.installments ?? null,
       nsu: input.nsu ?? null,
       shiftId: shift.id,
       registeredBy: actor.id,
@@ -421,6 +429,101 @@ export const GuaritaService = {
       details: amount > 0
         ? `Entrada ${displayPlate(plate)} (${KIND_LABEL[input.kind]}) — R$ ${amount.toFixed(2)} ${input.paymentMethod}.`
         : `Entrada ${displayPlate(plate)} (${KIND_LABEL[input.kind]}) — isento.`,
+    });
+    return data as VehicleMovement;
+  },
+
+  /**
+   * Pagamento em cartão sem NSU é registro pela metade: sem ele a conciliação
+   * com a adquirente não fecha. Pode ser preenchido depois — mas não passa do
+   * fim do turno.
+   */
+  pendingNsu(m: Pick<VehicleMovement, "paymentMethod" | "nsu" | "amount">): boolean {
+    const card = m.paymentMethod === "credit" || m.paymentMethod === "debit";
+    return card && Number(m.amount) > 0 && !String(m.nsu ?? "").trim();
+  },
+
+  /** Movimentos do turno aberto que ainda estão incompletos. */
+  async getPendingMovements(propertyId: string, shiftId?: string): Promise<VehicleMovement[]> {
+    const shift = shiftId ?? (await this.getOpenShift(propertyId))?.id;
+    if (!shift) return [];
+    const { data } = await db()
+      .from("vehicle_movements").select("*")
+      .eq("propertyId", propertyId).eq("shiftId", shift)
+      .in("paymentMethod", ["credit", "debit"])
+      .order("enteredAt", { ascending: false });
+    return ((data ?? []) as VehicleMovement[]).filter(m => this.pendingNsu(m));
+  },
+
+  /**
+   * Corrige um movimento já registrado — o erro de digitação aparece depois, e
+   * o NSU quase sempre é preenchido no fim. Só o turno ABERTO aceita correção:
+   * turno fechado congelou o resumo.
+   */
+  async updateMovement(
+    propertyId: string,
+    movementId: string,
+    patch: {
+      kind?: VehicleKind;
+      amount?: number;
+      paymentMethod?: string | null;
+      cardBrand?: string | null;
+      nsu?: string | null;
+      stayId?: string | null;
+      ownerName?: string | null;
+      ownerPhone?: string | null;
+      notes?: string | null;
+    },
+    actor: GuaritaActor,
+  ): Promise<VehicleMovement> {
+    const { data: current } = await db()
+      .from("vehicle_movements").select("*")
+      .eq("id", movementId).eq("propertyId", propertyId).maybeSingle();
+    if (!current) throw new Error("Registro não encontrado.");
+
+    const { data: shift } = await db()
+      .from("parking_shifts").select("status").eq("id", (current as VehicleMovement).shiftId ?? "").maybeSingle();
+    if (shift?.status === "closed") {
+      throw Object.assign(new Error("Turno já fechado — este registro não pode mais ser alterado."), { code: "SHIFT_CLOSED" });
+    }
+
+    const next: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+    if (patch.kind !== undefined) next.kind = patch.kind;
+    if (patch.stayId !== undefined) next.stayId = patch.stayId;
+    if (patch.notes !== undefined) next.notes = patch.notes;
+    if (patch.amount !== undefined) {
+      const amount = Math.max(0, Math.round((Number(patch.amount) || 0) * 100) / 100);
+      next.amount = amount;
+      next.paymentMethod = amount > 0 ? (patch.paymentMethod ?? (current as VehicleMovement).paymentMethod) : null;
+      if (amount === 0) { next.cardBrand = null; next.nsu = null; }
+    } else if (patch.paymentMethod !== undefined) {
+      next.paymentMethod = patch.paymentMethod;
+    }
+    if (patch.cardBrand !== undefined) next.cardBrand = patch.cardBrand;
+    if (patch.nsu !== undefined) next.nsu = patch.nsu ? String(patch.nsu).trim() : null;
+
+    if (Number(next.amount ?? (current as VehicleMovement).amount) > 0 && !next.paymentMethod && !(current as VehicleMovement).paymentMethod) {
+      throw new Error("Escolha a forma de pagamento.");
+    }
+
+    const { data, error } = await db()
+      .from("vehicle_movements").update(next).eq("id", movementId).select("*").single();
+    if (error) throw new Error(error.message);
+
+    // O dono do carro também se corrige aqui — é onde o guarita percebe o erro.
+    if (patch.ownerName !== undefined || patch.ownerPhone !== undefined || patch.kind !== undefined) {
+      await this.upsertVehicle(propertyId, {
+        plate: (current as VehicleMovement).plate,
+        ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
+        ...(patch.ownerName !== undefined ? { ownerName: patch.ownerName } : {}),
+        ...(patch.ownerPhone !== undefined ? { ownerPhone: patch.ownerPhone } : {}),
+      }, actor);
+    }
+
+    await AuditService.log({
+      propertyId, userId: actor.id, userName: actor.name,
+      action: "PARKING_ENTRY", entity: "PARKING", entityId: (current as VehicleMovement).plate,
+      details: `Registro de ${displayPlate((current as VehicleMovement).plate)} corrigido.`,
     });
     return data as VehicleMovement;
   },
@@ -456,10 +559,25 @@ export const GuaritaService = {
     return this._enrich(propertyId, rows);
   },
 
-  /** Preenche hóspede e cabana dos movimentos ligados a estadia. */
+  /**
+   * Preenche o que a lista precisa mostrar: hóspede e cabana (dos movimentos
+   * ligados a estadia) e o cadastro da placa — é dele que sai o nome do
+   * fornecedor e do cliente.
+   */
   async _enrich(propertyId: string, rows: VehicleMovement[]): Promise<VehicleMovement[]> {
+    if (rows.length === 0) return rows;
+
+    const vehicleIds = Array.from(new Set(rows.map(r => r.vehicleId).filter(Boolean))) as string[];
+    const { data: vehicles } = vehicleIds.length
+      ? await db().from("vehicles").select("*").in("id", vehicleIds)
+      : { data: [] as any[] };
+    const vehicleById: Record<string, Vehicle> = {};
+    (vehicles ?? []).forEach((v: any) => { vehicleById[v.id] = v as Vehicle; });
+    const withVehicle = rows.map(r => ({ ...r, vehicle: r.vehicleId ? vehicleById[r.vehicleId] ?? null : null }));
+
     const stayIds = Array.from(new Set(rows.map(r => r.stayId).filter(Boolean))) as string[];
-    if (stayIds.length === 0) return rows;
+    if (stayIds.length === 0) return withVehicle;
+    rows = withVehicle;
 
     const { data: stays } = await db()
       .from("stays").select('id, "guestId", "cabinId"').in("id", stayIds);
@@ -553,6 +671,7 @@ export const GuaritaService = {
     });
 
     const summary = shift ? await this.summarize(propertyId, shift.id) : null;
+    const pendingNsu = shift ? await this.getPendingMovements(propertyId, shift.id) : [];
 
     return {
       date: today,
@@ -560,6 +679,7 @@ export const GuaritaService = {
       ratePresets: await this.getRatePresets(propertyId),
       shift,
       summary,
+      pendingNsu: await this._enrich(propertyId, pendingNsu),
       patio,
       arrivals: arrivals.map(decorate).sort((a, b) => (a.expectedArrivalTime ?? "99").localeCompare(b.expectedArrivalTime ?? "99")),
       departures: departures.map(decorate),

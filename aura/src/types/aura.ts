@@ -3417,7 +3417,7 @@ export interface VehicleMovement {
   amount: number;
   paymentMethod?: ParkingPaymentMethod | null;
   cardBrand?: string | null;
-  installments?: number | null;
+  /** Número da transação do cartão — pode entrar depois, mas não passa do fechamento. */
   nsu?: string | null;
   shiftId?: string | null;
   registeredBy?: string | null;

@@ -17,6 +17,8 @@ export interface GuaritaDashboard {
   shift: ParkingShift | null;
   summary: ParkingShiftSummary | null;
   patio: VehicleMovement[];
+  /** Cartão sem NSU no turno aberto — trava o fechamento. */
+  pendingNsu: VehicleMovement[];
   arrivals: { id: string; guestName: string; cabinName: string | null; expectedArrivalTime: string | null; vehiclePlate: string | null }[];
   departures: { id: string; guestName: string; cabinName: string | null }[];
   /** Quem está em casa — alimenta o seletor de cabana/titular. */
@@ -26,7 +28,7 @@ export interface GuaritaDashboard {
 
 const EMPTY: GuaritaDashboard = {
   date: "", rate: null, ratePresets: [30, 50, 80, 100, 150], shift: null, summary: null,
-  patio: [], arrivals: [], departures: [], housed: [], events: [],
+  patio: [], pendingNsu: [], arrivals: [], departures: [], housed: [], events: [],
 };
 
 export function useGuarita() {
@@ -87,6 +89,19 @@ export function useGuarita() {
     } finally { setBusy(false); }
   }, [post, load]);
 
+  const updateMovement = useCallback(async (movementId: string, patch: Record<string, unknown>) => {
+    setBusy(true);
+    try {
+      await post({ action: "update", movementId, ...patch });
+      toast.success("Registro corrigido.");
+      await load();
+      return true;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao corrigir.");
+      return false;
+    } finally { setBusy(false); }
+  }, [post, load]);
+
   const registerExit = useCallback(async (movementId: string) => {
     setBusy(true);
     try {
@@ -124,7 +139,7 @@ export function useGuarita() {
 
   return {
     propertyId, userData, data, loading, busy, reload: load,
-    lookup, registerEntry, registerExit, setRate, closeShift,
+    lookup, registerEntry, updateMovement, registerExit, setRate, closeShift,
   };
 }
 

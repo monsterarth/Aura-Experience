@@ -21,7 +21,6 @@ export function RegistroTab({ g, onDone }: { g: GuaritaState; onDone: () => void
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<string | null>(null);
   const [brand, setBrand] = useState("");
-  const [installments, setInstallments] = useState(1);
   const [nsu, setNsu] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [ownerPhone, setOwnerPhone] = useState("");
@@ -38,7 +37,7 @@ export function RegistroTab({ g, onDone }: { g: GuaritaState; onDone: () => void
 
   const reset = () => {
     setPlate(""); setLookup(null); setAckAlert(false);
-    setKind("customer"); setAmount(""); setMethod(null); setBrand(""); setInstallments(1);
+    setKind("customer"); setAmount(""); setMethod(null); setBrand("");
     setNsu(""); setOwnerName(""); setOwnerPhone(""); setOptIn(false);
     setStayId(null); setStayQuery(""); setExempt(false);
   };
@@ -66,7 +65,6 @@ export function RegistroTab({ g, onDone }: { g: GuaritaState; onDone: () => void
       amount: value,
       paymentMethod: value > 0 ? method : null,
       cardBrand: value > 0 && PAYMENTS.find(p => p.id === method)?.card ? brand || null : null,
-      installments: value > 0 && method === "credit" ? installments : null,
       nsu: value > 0 && PAYMENTS.find(p => p.id === method)?.card ? nsu || null : null,
       stayId: stayId ?? lookup?.stayId ?? null,
       ownerName: ownerName || null,
@@ -326,6 +324,14 @@ export function RegistroTab({ g, onDone }: { g: GuaritaState; onDone: () => void
         </div>
       )}
 
+      {/* Fornecedor se identifica pelo nome, pague ou não */}
+      {kind === "supplier" && exempt && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+          {label("Fornecedor")}
+          {input({ value: ownerName, onChange: e => setOwnerName(e.target.value), placeholder: "Nome da empresa" })}
+        </div>
+      )}
+
       {/* Isento — o guarita decide, seja quem for */}
       <button onClick={() => { setExempt(v => !v); if (!exempt) setMethod(null); }} style={{
         display: "flex", alignItems: "center", gap: 12, padding: "13px 15px", borderRadius: 14, cursor: "pointer",
@@ -392,32 +398,25 @@ export function RegistroTab({ g, onDone }: { g: GuaritaState; onDone: () => void
             <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
               {label("Do comprovante")}
               {input({ value: nsu, onChange: e => setNsu(e.target.value), placeholder: "NSU", inputMode: "numeric" })}
-              <div style={{ display: "flex", gap: 8 }}>
-                <select value={brand} onChange={e => setBrand(e.target.value)} style={{
-                  flex: 1, height: 50, borderRadius: 13, background: T.card, border: `1px solid ${T.border}`,
-                  color: brand ? T.text : T.muted2, fontSize: 15, padding: "0 12px", fontFamily: "inherit",
-                }}>
-                  <option value="">Bandeira</option>
-                  {CARD_BRANDS.map(b => <option key={b} value={b}>{b}</option>)}
-                </select>
-                {method === "credit" && (
-                  <select value={installments} onChange={e => setInstallments(Number(e.target.value))} style={{
-                    width: 100, height: 50, borderRadius: 13, background: T.card, border: `1px solid ${T.border}`,
-                    color: T.text, fontSize: 15, padding: "0 12px", fontFamily: "inherit",
-                  }}>
-                    {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}x</option>)}
-                  </select>
-                )}
+              <select value={brand} onChange={e => setBrand(e.target.value)} style={{
+                height: 50, borderRadius: 13, background: T.card, border: `1px solid ${T.border}`,
+                color: brand ? T.text : T.muted2, fontSize: 15, padding: "0 12px", fontFamily: "inherit",
+              }}>
+                <option value="">Bandeira</option>
+                {CARD_BRANDS.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+              <div style={{ fontSize: 11.5, color: T.muted2, lineHeight: 1.5 }}>
+                A NSU pode entrar depois, pelo Pátio — mas o turno não fecha sem ela.
               </div>
             </div>
           )}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-              {label("Cliente")}
+              {label(kind === "supplier" ? "Fornecedor" : "Cliente")}
               <span style={{ fontSize: 11, color: T.muted2 }}>opcional</span>
             </div>
-            {input({ value: ownerName, onChange: e => setOwnerName(e.target.value), placeholder: "Nome" })}
+            {input({ value: ownerName, onChange: e => setOwnerName(e.target.value), placeholder: kind === "supplier" ? "Nome da empresa" : "Nome" })}
             {input({ value: ownerPhone, onChange: e => setOwnerPhone(e.target.value), placeholder: "Telefone", inputMode: "tel" })}
             <button onClick={() => setOptIn(v => !v)} style={{
               display: "flex", alignItems: "center", gap: 10, background: "transparent", border: "none",

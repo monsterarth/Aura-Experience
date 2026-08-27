@@ -111,6 +111,19 @@ export function TurnoTab({ g }: { g: GuaritaState }) {
         </div>
       )}
 
+      {/* A NSU trava o fechamento — avisa antes de o guarita tentar */}
+      {g.data.pendingNsu.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "13px 15px", borderRadius: 14, background: T.redBg, border: `1px solid ${T.redBorder}` }}>
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke={T.red} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <circle cx="12" cy="12" r="9" /><path d="M12 7.5v5M12 16v.5" />
+          </svg>
+          <div style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.45 }}>
+            <span style={{ fontWeight: 700 }}>Falta a NSU de {g.data.pendingNsu.length} pagamento(s)</span>
+            <span style={{ color: T.muted }}> — informe pelo Pátio antes de fechar.</span>
+          </div>
+        </div>
+      )}
+
       {/* Fechar */}
       {confirming ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
@@ -133,9 +146,11 @@ export function TurnoTab({ g }: { g: GuaritaState }) {
         </div>
       ) : (
         <>
-          <button onClick={() => setConfirming(true)} style={{
-            height: 56, borderRadius: 16, background: T.grad, border: "none", color: "#0b0d14",
-            fontSize: 16, fontWeight: 800, cursor: "pointer", fontFamily: "inherit",
+          <button onClick={() => setConfirming(true)} disabled={g.data.pendingNsu.length > 0} style={{
+            height: 56, borderRadius: 16, border: "none",
+            background: g.data.pendingNsu.length > 0 ? T.glass2 : T.grad,
+            color: g.data.pendingNsu.length > 0 ? T.muted2 : "#0b0d14",
+            fontSize: 16, fontWeight: 800, cursor: g.data.pendingNsu.length > 0 ? "default" : "pointer", fontFamily: "inherit",
           }}>Fechar e enviar à recepção</button>
           <div style={{ fontSize: 11.5, color: T.muted2, textAlign: "center", lineHeight: 1.5 }}>
             O resumo vai para a recepção e não pode mais ser editado.
