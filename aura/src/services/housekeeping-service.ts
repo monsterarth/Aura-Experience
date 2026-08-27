@@ -182,12 +182,20 @@ export const HousekeepingService = {
   listenToActiveTasks(
     propertyId: string,
     callback: (tasks: HousekeepingTask[]) => void,
-    window: 'day' | 'week' = 'day'
+    window: 'day' | 'week' = 'day',
+    /**
+     * Chamado quando a PRIMEIRA carga falha — antes disso o quadro está vazio porque nunca
+     * foi preenchido, não porque não há trabalho. Sem isto a tela anunciava "Quadro limpo!"
+     * para uma camareira com faxinas pendentes (relato de 27/08: "os serviços sumiram").
+     */
+    onLoadError?: () => void
   ) {
+    let everDelivered = false;
     const fetchInitial = async () => {
       const tasks = await this.getActiveTasks(propertyId, window);
       // null = erro na query → preserva o quadro atual, não apaga as tarefas
-      if (tasks !== null) callback(tasks);
+      if (tasks !== null) { everDelivered = true; callback(tasks); }
+      else if (!everDelivered) onLoadError?.();
     };
 
     fetchInitial();

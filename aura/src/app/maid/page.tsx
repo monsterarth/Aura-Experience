@@ -1012,6 +1012,7 @@ function FaxinasScreen({
   tasks, skippedTasks, onStart, onSkip, onUnskip, showToast, onToggle,
   propertyId, userId, userName, onChecklistLoaded, repRequests,
   startingTaskId, unskippingId, onFinish, onPause, onUpgrade, onConfer,
+  loadFailed, onReload,
 }: {
   tasks: EnrichedTask[];
   /** Puladas de hoje — ficam visíveis num quadro à parte só para poderem voltar. */
@@ -1031,6 +1032,9 @@ function FaxinasScreen({
   onUpgrade: (taskId: string) => void;
   /** Só quem acumula o cargo de governanta recebe: leva à conferência (app da governanta). */
   onConfer?: () => void;
+  /** Quadro vazio por ERRO na primeira carga — muda o estado vazio e oferece retentativa. */
+  loadFailed: boolean;
+  onReload: () => void;
 }) {
   const [detail, setDetail] = useState<string | null>(null);
   const [confirmStart, setConfirmStart] = useState<string | null>(null);
@@ -1268,13 +1272,41 @@ function FaxinasScreen({
           </div>
         )}
 
-        {tasks.length === 0 && skippedTasks.length === 0 && (
+        {/* "Quadro limpo!" só pode aparecer quando o quadro REALMENTE chegou vazio. Se a busca
+            falhou, o vazio é erro — e afirmar que não há faxina manda a camareira embora de uma
+            cabana que precisa de limpeza (relato de 27/08: "os serviços da Renata sumiram"). */}
+        {tasks.length === 0 && skippedTasks.length === 0 && (loadFailed ? (
+          <div style={{ textAlign: "center", padding: "44px 8px" }}>
+            <div style={{
+              width: 68, height: 68, borderRadius: 24, margin: "0 auto 16px", background: T.amberBg,
+              border: `2px solid ${T.amberBorder}`, display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <I n="info" s={34} c={T.amber} />
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 900 }}>Não consegui carregar</div>
+            <div style={{ fontSize: 14, color: T.muted, marginTop: 8, lineHeight: 1.5, maxWidth: 280, marginInline: "auto" }}>
+              Suas faxinas <b style={{ color: T.text }}>continuam salvas</b> — é só a internet deste
+              aparelho. Toque para tentar de novo.
+            </div>
+            <button
+              onClick={onReload}
+              style={{
+                marginTop: 20, padding: "16px 28px", background: T.grad, color: "#fff", border: "none",
+                borderRadius: 16, cursor: "pointer", fontFamily: "inherit", fontSize: 15, fontWeight: 900,
+                letterSpacing: "0.03em", textTransform: "uppercase" as const,
+                display: "inline-flex", alignItems: "center", gap: 9,
+              }}
+            >
+              <I n="undo" s={19} c="#fff" w={2.3} /> Tentar de novo
+            </button>
+          </div>
+        ) : (
           <div style={{ textAlign: "center", padding: "60px 0" }}>
             <div style={{ fontSize: 48 }}>✨</div>
             <div style={{ fontSize: 16, fontWeight: 700, marginTop: 12 }}>Quadro limpo!</div>
             <div style={{ fontSize: 13, color: T.muted, marginTop: 6 }}>Nenhuma faxina pendente.</div>
           </div>
-        )}
+        ))}
       </div>
 
       {fullTask && (
@@ -1607,6 +1639,16 @@ export default function MaidPage() {
   const [tab, setTab] = useState<Tab>("home");
   const [tasks, setTasks] = useState<EnrichedTask[]>([]);
   const [skippedTasks, setSkippedTasks] = useState<EnrichedTask[]>([]);
+  // Primeira carga falhou: o quadro está vazio por ERRO, não por falta de trabalho.
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [reloadSeq, setReloadSeq] = useState(0);
+  // `dataLoading` virava false no finally do init, mas as TAREFAS ainda estavam a caminho
+  // (listenToActiveTasks busca fora do await). A tela liberava com a lista vazia e piscava
+  // "Quadro limpo!" para quem tinha faxina. O quadro só conta como carregado quando a
+  // primeira resposta chega — ou quando desiste.
+  const [tasksReady, setTasksReady] = useState(false);
+  const tasksReadyRef = useRef(false);
+  const firstLoadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [cabins, setCabins] = useState<Record<string, Cabin>>({});
   const [dataLoading, setDataLoading] = useState(true);
   const [toast, setToast] = useState<{ msg: string; color: string } | null>(null);
@@ -1665,6 +1707,10 @@ export default function MaidPage() {
   useEffect(() => {
     if (!authLoading && userDataReady && !propertyLoading && !property) {
       setDataLoading(false);
+      // Sem propriedade o init nunca roda — sem isto o spinner ficaria eterno agora que o
+      // carregamento espera a primeira resposta das tarefas.
+      tasksReadyRef.current = true;
+      setTasksReady(true);
     }
   }, [authLoading, userDataReady, propertyLoading, property]);
 
@@ -1678,8 +1724,23 @@ export default function MaidPage() {
 
     let unsubscribe: (() => void) | undefined;
 
+    const markTasksReady = () => {
+      tasksReadyRef.current = true;
+      setTasksReady(true);
+      if (firstLoadTimer.current) { clearTimeout(firstLoadTimer.current); firstLoadTimer.current = null; }
+    };
+
     const init = async () => {
       setDataLoading(true);
+      setLoadFailed(false);
+      tasksReadyRef.current = false;
+      setTasksReady(false);
+      // Teto: se a primeira busca nunca voltar, não deixa a camareira presa no spinner —
+      // assume falha e mostra o estado com "Tentar de novo".
+      if (firstLoadTimer.current) clearTimeout(firstLoadTimer.current);
+      firstLoadTimer.current = setTimeout(() => {
+        if (!tasksReadyRef.current) { setLoadFailed(true); markTasksReady(); }
+      }, 12000);
       try {
         // Timeout de 6s: evita que uma query lenta trave a tela de loading
         const withTimeout = <R,>(p: Promise<R>, fallback: R) =>
@@ -1735,23 +1796,29 @@ export default function MaidPage() {
           // 'skipped' sai do quadro principal mas fica num bloco próprio ("Não limpar hoje"),
           // só de hoje, para que um toque errado se conserte sem ligar para o gestor.
           const today = new Date().toDateString();
+          markTasksReady();
           setSkippedTasks(
             mine
               .filter(t => t.status === "skipped")
               .filter(t => { const s = t.skippedAt ?? t.updatedAt; return !s || new Date(s).toDateString() === today; })
               .map(enrich)
           );
-        });
+        }, "day", () => { setLoadFailed(true); markTasksReady(); });
       } catch {
         showToast("Erro ao carregar dados.", T.red);
+        setLoadFailed(true);
+        markTasksReady();
       } finally {
         setDataLoading(false);
       }
     };
 
     init();
-    return () => unsubscribe?.();
-  }, [property, userData?.id, userData?.role, showToast, authConfirmed]);
+    return () => {
+      unsubscribe?.();
+      if (firstLoadTimer.current) { clearTimeout(firstLoadTimer.current); firstLoadTimer.current = null; }
+    };
+  }, [property, userData?.id, userData?.role, showToast, authConfirmed, reloadSeq]);
 
   // Feed de reposições no cartão da faxina — fetch via rota field; o realtime
   // da tabela restock_requests só dispara o refetch.
@@ -1988,7 +2055,7 @@ export default function MaidPage() {
   // dataLoading começa true e só vai para false quando init() termina.
   // init() é gateado em authConfirmed — o spinner mostra naturalmente até a sessão ser confirmada.
   const isBootstrapping = authLoading || !userDataReady || propertyLoading;
-  const loading = isBootstrapping || dataLoading;
+  const loading = isBootstrapping || dataLoading || !tasksReady;
 
   const [showEscape, setShowEscape] = useState(false);
   useEffect(() => {
@@ -2047,7 +2114,7 @@ export default function MaidPage() {
             </div>
             <RoleSwitcher />
             {tab === "home" && <HomeScreen tasks={tasks} cabins={cabins} onNav={setTab} userName={userData?.fullName ?? "Camareira"} />}
-            {tab === "tasks" && <FaxinasScreen tasks={tasks} skippedTasks={skippedTasks} onStart={handleStart} onSkip={setSkipConfirmTaskId} onUnskip={handleUnskip} showToast={showToast} onToggle={handleToggle} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onChecklistLoaded={handleChecklistLoaded} repRequests={repRequests} startingTaskId={startingTaskId} unskippingId={unskippingId} onFinish={handleFinish} onPause={handlePause} onUpgrade={handleUpgrade} onConfer={canConfer ? () => router.push("/governanta?screen=conference") : undefined} />}
+            {tab === "tasks" && <FaxinasScreen tasks={tasks} skippedTasks={skippedTasks} onStart={handleStart} onSkip={setSkipConfirmTaskId} onUnskip={handleUnskip} showToast={showToast} onToggle={handleToggle} propertyId={property?.id ?? ""} userId={userData?.id ?? ""} userName={userData?.fullName ?? "Camareira"} onChecklistLoaded={handleChecklistLoaded} repRequests={repRequests} startingTaskId={startingTaskId} unskippingId={unskippingId} onFinish={handleFinish} onPause={handlePause} onUpgrade={handleUpgrade} onConfer={canConfer ? () => router.push("/governanta?screen=conference") : undefined} loadFailed={loadFailed} onReload={() => setReloadSeq(n => n + 1)} />}
             {tab === "profile" && <ProfileScreen userData={userData} showToast={showToast} onLogout={handleLogout} propertyId={property?.id ?? ""} />}
           </div>
 

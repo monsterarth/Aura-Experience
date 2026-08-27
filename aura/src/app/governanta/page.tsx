@@ -857,6 +857,23 @@ const selectStyle = {
 
 // ─── Location Picker (module-level to avoid keyboard-close bug on re-render) ──
 
+function ListaVazia({ oque }: { oque: string }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 10, marginBottom: 16, padding: "13px 14px",
+      background: T.amberBg, border: `1px solid ${T.amberBorder}`, borderRadius: 12,
+    }}>
+      <I n="alert" s={18} c={T.amber} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 800, color: T.amber }}>Nenhuma {oque} carregada</div>
+        <div style={{ fontSize: 12, color: T.muted, marginTop: 2, lineHeight: 1.4 }}>
+          Feche o app e abra de novo. Se continuar assim, entre outra vez.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LocPicker({ lt, setLt, cid, setCid, sid, setSid, cust, setCust, cabins, structures }: {
   lt: "cabin" | "structure" | "custom"; setLt: (v: "cabin" | "structure" | "custom") => void;
   cid: string; setCid: (v: string) => void;
@@ -880,18 +897,24 @@ function LocPicker({ lt, setLt, cid, setCid, sid, setSid, cust, setCust, cabins,
           );
         })}
       </div>
-      {lt === "cabin" && (
-        <select value={cid} onChange={e => setCid(e.target.value)} style={{ ...selectStyle, marginBottom: 16 }}>
-          <option value="">Selecione a cabana</option>
-          {cabins.map(c => <option key={c.id} value={c.id}>{c.name || `Cabana ${c.number}`}</option>)}
-        </select>
-      )}
-      {lt === "structure" && (
-        <select value={sid} onChange={e => setSid(e.target.value)} style={{ ...selectStyle, marginBottom: 16 }}>
-          <option value="">Selecione a estrutura</option>
-          {structures.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-      )}
+      {/* Lista vazia é FALHA de carregamento, não "não há cabanas": um seletor que abre sem
+          nenhuma opção não diz nada a quem está tentando trabalhar. Diz o que houve. */}
+      {lt === "cabin" && (cabins.length === 0
+        ? <ListaVazia oque="cabana" />
+        : (
+          <select value={cid} onChange={e => setCid(e.target.value)} style={{ ...selectStyle, marginBottom: 16 }}>
+            <option value="">Selecione a cabana</option>
+            {cabins.map(c => <option key={c.id} value={c.id}>{c.name || `Cabana ${c.number}`}</option>)}
+          </select>
+        ))}
+      {lt === "structure" && (structures.length === 0
+        ? <ListaVazia oque="estrutura" />
+        : (
+          <select value={sid} onChange={e => setSid(e.target.value)} style={{ ...selectStyle, marginBottom: 16 }}>
+            <option value="">Selecione a estrutura</option>
+            {structures.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        ))}
       {lt === "custom" && (
         <input value={cust} onChange={e => setCust(e.target.value)} placeholder="Descreva o local..."
           style={{ ...selectStyle, marginBottom: 16 }} />
@@ -1475,6 +1498,9 @@ export default function GovernantaPage() {
   const [allCabins, setAllCabins] = useState<Cabin[]>([]);
   const [allStructures, setAllStructures] = useState<Structure[]>([]);
   const [loading, setLoading] = useState(true);
+  // Bootstrap falhou: a tela NÃO pode seguir renderizando um app vazio que parece íntegro.
+  const [bootFailed, setBootFailed] = useState(false);
+  const [bootRetry, setBootRetry] = useState(0);
   const [cabinStays, setCabinStays] = useState<Record<string, {
     guestName: string;
     internalUse?: boolean;
@@ -1598,12 +1624,35 @@ export default function GovernantaPage() {
         const withTimeout = <T,>(p: Promise<T>, fallback: T) =>
           Promise.race([p, new Promise<T>(resolve => setTimeout(() => resolve(fallback), 8000))]);
 
-        const boot = await withTimeout<any>(
-          fetch(`/api/field/governanta-bootstrap?propertyId=${encodeURIComponent(property.id)}`, { cache: 'no-store' })
-            .then(r => (r.ok ? r.json() : null))
-            .catch(() => null),
-          null
-        );
+        // O bootstrap falhava CALADO: qualquer erro (sessão expirada no celular que ficou horas
+        // no bolso, rede, timeout) virava `boot = null`, e a tela seguia renderizando com zero
+        // cabanas, zero estruturas e zero camareiras — sem aviso e sem caminho de volta. Foi o
+        // que a Sandra viu em 27/08 às 14:46: abriu "Nova Tarefa" e o seletor de cabana estava
+        // vazio, como se a propriedade não tivesse nenhuma. Agora: uma retentativa, sessão
+        // expirada volta para o login, e o resto vira estado de erro visível com "Tentar de novo".
+        const pedirBoot = async (): Promise<{ ok: true; data: any } | { ok: false; auth: boolean }> => {
+          try {
+            const r = await fetch(`/api/field/governanta-bootstrap?propertyId=${encodeURIComponent(property.id)}`, { cache: 'no-store' });
+            if (r.ok) return { ok: true, data: await r.json() };
+            return { ok: false, auth: r.status === 401 || r.status === 403 };
+          } catch {
+            return { ok: false, auth: false };
+          }
+        };
+
+        let res = await withTimeout<Awaited<ReturnType<typeof pedirBoot>>>(pedirBoot(), { ok: false, auth: false });
+        if (!res.ok && !res.auth) res = await withTimeout(pedirBoot(), { ok: false, auth: false });
+
+        if (!res.ok) {
+          // Sessão morta é o caso mais comum e o único que a camareira não resolve sozinha na
+          // tela: manda para o login em vez de deixar um app vazio que parece funcionar.
+          if (res.auth) { window.location.href = '/admin/login'; return; }
+          setBootFailed(true);
+          setLoading(false);
+          return;
+        }
+        setBootFailed(false);
+        const boot = res.data;
 
         if (boot) {
           const cabinsData: Cabin[] = boot.cabins ?? [];
@@ -1633,7 +1682,8 @@ export default function GovernantaPage() {
 
     init();
     return () => { if (unsub) unsub(); };
-  }, [property, propLoading, showToast, authConfirmed]);
+    // bootRetry: o botão "Tentar de novo" reexecuta o init inteiro.
+  }, [property, propLoading, showToast, authConfirmed, bootRetry]);
 
   function getLocationName(task: HousekeepingTask): string {
     if (task.cabinId && cabins[task.cabinId]) {
@@ -1805,6 +1855,57 @@ export default function GovernantaPage() {
   // ── Render ────────────────────────────────────────────────────────────────────
 
   const allActiveTasks = tasks.filter(t => t.status !== "completed" && t.status !== "cancelled");
+
+  // Bootstrap caiu: uma tela que DIZ o que houve, em vez de um app vazio que parece inteiro.
+  if (bootFailed) {
+    return (
+      <>
+        <style>{STYLE}</style>
+        <div className="dark gov-shell" style={{
+          height: "100dvh", background: T.bg, color: T.text, maxWidth: 480, margin: "0 auto",
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          gap: 18, padding: 28, textAlign: "center",
+        }}>
+          <div style={{
+            width: 76, height: 76, borderRadius: 26, background: T.amberBg,
+            border: `2px solid ${T.amberBorder}`, display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <I n="alert" s={38} c={T.amber} />
+          </div>
+          <div>
+            <div style={{ fontSize: 21, fontWeight: 900, color: T.text, lineHeight: 1.2 }}>
+              Não consegui carregar as cabanas
+            </div>
+            <div style={{ fontSize: 14, color: T.muted, marginTop: 8, lineHeight: 1.5 }}>
+              Suas tarefas <b style={{ color: T.text }}>não foram perdidas</b> — elas continuam salvas.
+              É só a conexão deste aparelho. Toque abaixo para tentar de novo.
+            </div>
+          </div>
+          <button
+            onClick={() => { setBootFailed(false); setLoading(true); setBootRetry(n => n + 1); }}
+            style={{
+              width: "100%", maxWidth: 300, padding: 18, background: T.vGrad, color: "#fff", border: "none",
+              borderRadius: 18, cursor: "pointer", fontFamily: "inherit", fontSize: 15, fontWeight: 900,
+              letterSpacing: "0.03em", textTransform: "uppercase",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 9,
+            }}
+          >
+            <I n="refresh" s={19} c="#fff" /> Tentar de novo
+          </button>
+          <button
+            onClick={() => { window.location.href = '/admin/login'; }}
+            style={{
+              padding: "12px 18px", background: "transparent", border: `1px solid ${T.border}`,
+              borderRadius: 14, cursor: "pointer", fontFamily: "inherit", fontSize: 13,
+              fontWeight: 700, color: T.muted,
+            }}
+          >
+            Entrar de novo
+          </button>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
