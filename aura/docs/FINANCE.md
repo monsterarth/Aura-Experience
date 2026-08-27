@@ -241,9 +241,10 @@ próprios) — e, mais adiante, a guarita lançando direto pelo celular.
 > soltos. O trabalho que morre é o da transcrição e da conferência; o lançamento
 > no HMAX sobrevive até a emissão existir no AURA — e aí é só ligar a chave.
 >
-> **A espera é mais curta do que parecia:** estacionamento é *serviço* (ISS), não
-> mercadoria. Ele sai na **NFS-e da fase 1** do `docs/FISCAL.md`, não na NFC-e da
-> fase 3.
+> **E na verdade não há espera nenhuma:** confirmado em 26/08 que o estacionamento
+> **não gera nota** — o lançamento no HMAX existe só para o valor aparecer no
+> faturamento. Assim que o AURA entregar esse número, o lançamento perde a razão
+> de existir. Virou módulo próprio: `docs/GUARITA.md`.
 
 ### Cortesia e permuta são "abatimento"
 
@@ -521,6 +522,43 @@ bater, o lançamento duplo acaba e o AURA assume.
 Armadilhas: **uso da casa** (`internalUse`) não é venda e sai dos dois; **cortesia**
 (`nightlyOverrides` = 0) é noite ocupada com receita zero — se virar noite não
 vendida, o ADR infla.
+
+## O financeiro é opcional por construção — e por isso não precisa de branch
+
+Requisito do usuário (26/08): criar o módulo **sem obrigar o AURA a usar esses
+dados financeiros** — "nem que para isso façamos um branch separado".
+
+**Branch separado é a solução errada para o problema certo.** Um branch de longa
+duração acumula conflito com tudo que o resto do sistema evolui, e o dia da fusão
+vira o dia mais arriscado do projeto. O isolamento que se quer é de *runtime*,
+não de repositório — e o AURA já tem o padrão para isso em
+`docs/MODULARIZATION.md`:
+
+1. **Flag desde o primeiro commit** — `settings.hasFinance`, `super_admin`-only.
+   Desligada, o AURA funciona **exatamente** como hoje: o fólio continua como
+   está, sem caixa, sem títulos, sem cargo novo aparecendo no menu.
+2. **A dependência anda em um sentido só.** O financeiro **lê** do core
+   (estadias, fólio, itens); o core **nunca** lê do financeiro. Check-in,
+   check-out, portal do hóspede e apps de campo não podem ter uma linha que
+   dependa de tabela financeira — se tiverem, a flag deixa de ser reversível.
+3. **Check suave, default ON** — padrão do `stock-integration.ts`: quem consulta
+   o módulo tolera ele não existir, em vez de quebrar.
+4. **Cron com gate** — rotina financeira pula propriedade sem o módulo.
+
+O ganho prático é exatamente o que a situação com o sócio exige: o módulo pode
+ser construído, testado em paralelo e **mostrado funcionando** sem que ninguém
+seja obrigado a adotá-lo. Se a decisão for não usar, desliga-se a flag e o resto
+do AURA não sente. Um branch daria a mesma independência hoje e cobraria caro
+todo mês.
+
+### Padrão de mercado, não invenção
+
+Do retorno de Lucas Sacks (26/08): o financeiro do HMAX é usado **como se usaria
+qualquer sistema financeiro** — o que se espera é estar "certinho e alinhado com
+o padrão de mercado". Isso confirma a direção do plano e vira critério de
+aceitação: plano de contas contábil de verdade, competência separada de caixa,
+títulos com baixa e DRE que o contador reconheça. **Nada de vocabulário próprio
+onde já existe o do mercado.**
 
 ## Regras de desenho
 

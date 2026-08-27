@@ -197,6 +197,10 @@ Deeper docs live in `docs/`, read on demand:
 - `docs/ALTAMARE.md` — integração com o sistema do restaurante Altamare (eventos/casamentos):
   AURA expõe `/api/partner/*` e o parceiro consome; AURA é fonte da verdade de data/espaço e
   **valores nunca cruzam**. Em construção; cascata de status ainda a definir.
+- `docs/GUARITA.md` — plano do módulo Guarita/Estacionamento: registro de veículos com tarifa
+  flutuante por dia, painel operacional (chegadas/saídas/entregas) e app do `porter`. Não iniciado.
+  É a primeira entrega que TIRA um processo do HMAX em vez de duplicá-lo (o lançamento de lá só
+  serve ao faturamento — não há emissão fiscal envolvida).
 - `docs/FISCAL.md` — plano da emissão fiscal própria (NFS-e + NFC-e via API terceirizada), o último
   pré-requisito para largar o HMAX. Não iniciado; traz as perguntas que dependem da contabilidade.
 - `docs/REFACTORING.md` — plan for splitting the largest files (not yet executed).
