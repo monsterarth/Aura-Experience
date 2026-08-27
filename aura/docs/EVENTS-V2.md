@@ -45,6 +45,10 @@ Cada uma sobe num deploy próprio (regra do repo: uma mudança estrutural por ve
 
 ### 1 · Higiene (a única fatia que REDUZ o blast radius)
 
+> ✅ **Feito em 26/08** (menos as três exclusões, que ficaram em aberto — ver o
+> fim desta seção). Migration `migrations/events_type_hygiene.sql`, aplicada no
+> DEV.
+
 - Backfill `type='internal' → 'local'` (8 linhas) e default do banco
   `'external' → 'local'`.
 - **Fallbacks** em `TYPE_TONE`, `TYPE_LABELS`, `CATEGORY_ICONS`
@@ -54,6 +58,21 @@ Cada uma sobe num deploy próprio (regra do repo: uma mudança estrutural por ve
 - **Deletar** `privateEventId` (0 linhas, 0 leituras — órfão declarado em
   `aura.ts:1431`), `StaffMobileHub.tsx` (sem importadores) e a página legada
   `check-in/[code]/events/page.tsx` (duplica o Explore do portal).
+
+> ⏸ **As três exclusões estão EM ABERTO, de propósito.** Apagar é a única parte
+> irreversível desta fatia, e uma delas mudou de status no meio do caminho:
+>
+> - **`privateEventId` não deve mais ser apagada.** O guard positivo desenhado
+>   depois (seção "O filtro que falta") usa `privateEventId IS NULL` como a
+>   trava que impede evento vinculado a casamento de aparecer na proposta de um
+>   terceiro. A coluna passou de órfã a peça do desenho — **manter**.
+> - `StaffMobileHub.tsx` continua sem importadores (o grep só acha o próprio
+>   arquivo). Exclusão segura, mas é código de tela: decisão do dono.
+> - A página legada `check-in/[code]/events/page.tsx` está órfã na navegação —
+>   as chaves `events`/`eventsSub` sobraram na tradução da home do portal sem
+>   nenhum uso. Mas a rota continua respondendo por URL direta, então quem tem
+>   link antigo ainda chega nela. Foi **corrigida** junto do multi-dia em vez de
+>   apagada; apagar é decisão à parte.
 
 ### 2 · `/api/admin/eventos` — tirar o service do browser
 
@@ -70,6 +89,14 @@ Dropar `Staff can manage events USING(true)`, que anula por OR a
 publicação e **respeita RLS** — ganha isolamento de graça.
 
 ### 4 · Multi-dia (bug de hóspede, hoje)
+
+> ✅ **Feito em 26/08.** Helper em `src/lib/event-dates.ts`. Foram **7** call
+> sites, não 5 — dois só apareceram lendo o código: o filtro "Hoje"/"Esta
+> semana" da página legada do portal e o `isToday` do Explore (portal 2.0),
+> ambos client-side, ambos perguntando pela data de INÍCIO. E de quebra o `from`
+> enviado à API era calculado em **UTC** (`toISOString()`): das 21h à meia-noite
+> em Brasília o portal já pedia "amanhã", e o evento daquela noite sumia da aba
+> "Hoje" enquanto acontecia. Agora há `localIso()`/`todayIso()` no mesmo helper.
 
 Helper único `spansDay(d)` / `overlaps(from,to)` aplicado nos **5** call sites:
 `api/guest/events:40` (`.gte` — evento em curso some da lista),

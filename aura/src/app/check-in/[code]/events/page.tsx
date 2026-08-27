@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, Suspense } from "react";
+import { eventOverlaps, eventSpansDay, localIso, todayIso } from "@/lib/event-dates";
 import { useParams, useRouter } from "next/navigation";
 import { GuestApi } from "@/lib/guest-api";
 import { Stay, Property, Event } from "@/types/aura";
@@ -110,20 +111,20 @@ function formatEventDate(startDate: string, endDate?: string, lang: "pt" | "en" 
   return formatted;
 }
 
-function isToday(dateStr: string): boolean {
-  const today = new Date();
-  const [y, m, d] = dateStr.split("-").map(Number);
-  return today.getFullYear() === y && today.getMonth() + 1 === m && today.getDate() === d;
+/**
+ * Multi-dia: os filtros perguntam se o evento COBRE o período, não se ele
+ * começa nele. Antes, um evento de sexta a domingo desaparecia da aba "Hoje"
+ * no sábado — para o hóspede, no meio do próprio evento.
+ */
+function isToday(event: Event): boolean {
+  return eventSpansDay(event, todayIso());
 }
 
-function isThisWeek(dateStr: string): boolean {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const eventDate = new Date(y, m - 1, d);
+function isThisWeek(event: Event): boolean {
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
   const nextWeek = new Date(today);
   nextWeek.setDate(today.getDate() + 7);
-  return eventDate >= today && eventDate <= nextWeek;
+  return eventOverlaps(event, localIso(today), localIso(nextWeek));
 }
 
 function getEventTitle(event: Event, lang: "pt" | "en" | "es"): string {
@@ -173,7 +174,7 @@ function EventsContent() {
         setStay(firstStay);
         setProperty(session.property as Property);
 
-        setEvents(await GuestApi.events(firstStay.propertyId, new Date().toISOString().split("T")[0]));
+        setEvents(await GuestApi.events(firstStay.propertyId, todayIso()));
 
         const savedLang = session.guest?.preferredLanguage;
         if (savedLang && ["pt", "en", "es"].includes(savedLang)) {
@@ -196,8 +197,8 @@ function EventsContent() {
   const filteredEvents = useMemo(() => {
     let list = events;
 
-    if (filter === "today") list = list.filter((e) => isToday(e.startDate));
-    else if (filter === "week") list = list.filter((e) => isThisWeek(e.startDate));
+    if (filter === "today") list = list.filter((e) => isToday(e));
+    else if (filter === "week") list = list.filter((e) => isThisWeek(e));
     else if (filter === "local") list = list.filter((e) => e.type === "local");
     else if (filter === "external") list = list.filter((e) => e.type === "external");
 
@@ -472,7 +473,7 @@ function EventCard({
   tr: typeof t["pt"];
   onClick: () => void;
 }) {
-  const todayBadge = isToday(event.startDate);
+  const todayBadge = isToday(event);
 
   return (
     <button

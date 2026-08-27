@@ -83,13 +83,19 @@ export function useEventos() {
     if (!property?.id || !userData?.id) return;
     if (!form.title?.trim()) { toast.error("O título é obrigatório"); return; }
     if (!form.startDate) { toast.error("A data de início é obrigatória"); return; }
+    // `endDate` é coluna `date` no banco e o formulário nasce com "" — string
+    // vazia não é data válida para o Postgres. Vira null, que é a forma de
+    // dizer "evento de um dia" que o resto do código já entende.
+    // `null` explícito (e não omissão) para que limpar a data de fim no
+    // formulário realmente limpe no banco.
+    const payload = { ...form, endDate: form.endDate || null } as Partial<Event>;
     setSavingForm(true);
     try {
       if (editingEvent) {
-        await EventService.updateEvent(property.id, editingEvent.id, form as Partial<Event>, userData.id, userData.fullName);
+        await EventService.updateEvent(property.id, editingEvent.id, payload, userData.id, userData.fullName);
         toast.success("Evento atualizado!");
       } else {
-        await EventService.createEvent(property.id, form as Omit<Event, "id" | "createdAt" | "updatedAt">, userData.id, userData.fullName);
+        await EventService.createEvent(property.id, payload as Omit<Event, "id" | "createdAt" | "updatedAt">, userData.id, userData.fullName);
         toast.success("Evento criado!");
       }
       setShowModal(false);

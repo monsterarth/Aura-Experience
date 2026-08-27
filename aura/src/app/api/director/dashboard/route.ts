@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { notEndedBefore } from "@/lib/event-dates";
 import { requireAuth, isAuthError } from '@/lib/api-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { StockService } from '@/services/stock-service';
@@ -164,7 +165,8 @@ export async function GET(request: NextRequest) {
         .select('id, title, startDate, endDate, startTime, endTime, location, category, type, status, imageUrl, description, price, priceDescription, featured')
         .eq('propertyId', propertyId)
         .in('status', ['published', 'draft'])
-        .gte('startDate', today).lte('startDate', in90dStr)
+        // Começa antes de hoje e ainda não terminou = continua na lista.
+        .lte('startDate', in90dStr).or(notEndedBefore(today)!)
         .order('startDate', { ascending: true }),
       // Stays da semana (Seg–Dom)
       supabaseAdmin.from('stays').select('checkIn, checkOut, cabinId')

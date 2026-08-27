@@ -12,7 +12,7 @@ import {
 import { useEventos, type ViewMode } from "./_components/useEventos";
 import { EventCard } from "./_components/EventCard";
 import { EventFormDialog } from "./_components/EventFormDialog";
-import { TYPE_LABELS, TYPE_TONE, WEEK_DAYS, formatDatePT } from "./_components/eventos-utils";
+import { typeLabel, typeTone, WEEK_DAYS, formatDatePT } from "./_components/eventos-utils";
 
 const VIEWS: ViewMode[] = ["list", "calendar"];
 
@@ -36,7 +36,7 @@ export default function EventosPage() {
         <div key={event.id} style={{ padding: 12, background: T.glass, border: `1px solid ${T.border}`, borderRadius: 12, display: "flex", flexDirection: "column", gap: 4 }}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
             <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: T.text, lineHeight: 1.3 }}>{event.title}</p>
-            <Pill tone={TYPE_TONE[event.type]} label={TYPE_LABELS[event.type]} />
+            <Pill tone={typeTone(event.type)} label={typeLabel(event.type)} />
           </div>
           {event.startTime && <p style={{ margin: 0, fontSize: 11, color: T.muted, display: "flex", alignItems: "center", gap: 4 }}><Clock size={10} />{event.startTime}{event.endTime ? ` – ${event.endTime}` : ""}</p>}
           {event.location && <p style={{ margin: 0, fontSize: 11, color: T.muted, display: "flex", alignItems: "center", gap: 4 }}><MapPin size={10} />{event.location}</p>}
@@ -104,7 +104,7 @@ export default function EventosPage() {
                         <span style={{ width: 24, height: 24, borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, background: isToday ? T.grad : "transparent", color: isToday ? "#fff" : dayEvents.length ? T.text : T.muted }}>{day}</span>
                         {dayEvents.length > 0 && (
                           <span style={{ display: "flex", flexWrap: "wrap", gap: 3, alignItems: "center" }}>
-                            {dayEvents.slice(0, 3).map(e => <span key={e.id} style={{ width: 6, height: 6, borderRadius: "50%", background: toneOf(TYPE_TONE[e.type]).color }} />)}
+                            {dayEvents.slice(0, 3).map(e => <span key={e.id} style={{ width: 6, height: 6, borderRadius: "50%", background: toneOf(typeTone(e.type)).color }} />)}
                             {dayEvents.length > 3 && <span style={{ fontSize: 8, color: T.muted }}>+{dayEvents.length - 3}</span>}
                           </span>
                         )}
