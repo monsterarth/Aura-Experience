@@ -59,10 +59,11 @@ transferir · estornar · recibo**.
 
 Disso saem regras que o AURA precisa ter:
 
-- **Antecipação tem dois estados.** Ela nasce *lançada* (a recepção registrou) e
-  vira *confirmada* quando o financeiro audita. O botão **Confirmar** é o passo
-  de auditoria — é o financeiro dizendo "esse dinheiro existe mesmo". Por isso a
-  coluna se chama *origem/confirmação*.
+- **A antecipação nasce confirmada** — corrigido pela recepção em 26/08. Não
+  existe lançamento "provisório": enquanto o cliente não paga, o que existe é uma
+  **pré-reserva pendente com saldo em aberto**. O botão *Confirmar* existe na
+  tela, mas não faz parte do fluxo normal. Quem faz o papel de auditoria é o
+  **recibo assinado** (ver abaixo), não um estado no sistema.
 - **Transferir entre reservas.** O hóspede pagou e mudou de reserva (remarcou,
   trocou de titular, virou outro grupo): o dinheiro se move **sem estorno**,
   preservando o histórico. Sem isso, a recepção estorna e relança — e o caixa do
@@ -138,6 +139,130 @@ Saldo anterior 118,00 + Entradas 3.764,50 − Saídas 3.704,50 = Saldo atual 178
 É a gaveta: o que entrou em dinheiro, as sangrias e o que fica para o próximo
 movimento. Duas contas diferentes na mesma tela — as contas dos hóspedes e o
 dinheiro em espécie — e o AURA precisa das duas para o fechamento fazer sentido.
+
+## O que a recepção contou (26/08/2026)
+
+Levantamento com quem opera o balcão. Cada item aqui é uma regra ou um buraco
+real — não suposição.
+
+### A regra que organiza tudo
+
+> **Ninguém entra na cabana sem ter quitado 100% da reserva.**
+
+Existe uma única exceção, que a própria operação quer eliminar. Isso simplifica o
+módulo mais do que qualquer decisão de arquitetura: o fólio de hospedagem nasce
+zerado no check-in, e o que sobra para o check-out é só consumo.
+
+Na **baixa temporada** aceitam **50% na reserva e 50% no check-in** — nunca no
+check-out. O AURA precisa saber cobrar essa segunda parcela na chegada, e avisar
+quem ainda não pagou.
+
+### O caminho de cada forma
+
+| Como entra | Como é hoje |
+|---|---|
+| **Walk-in** | Reserva criada na hora, cadastro completo, cartão na maquininha, guarda-se a **notinha com o NSU** e lança-se antecipação de 100% |
+| **Cartão (link)** | A recepção **cria o link na Cielo à mão**, envia ao cliente e, quando ele avisa que pagou, **volta à Cielo para capturar** a transação. Dois passos manuais fora do PMS |
+| **Pix** | Comprovante vai para um **grupo de WhatsApp do financeiro** com o número da reserva; o financeiro confere e lança; a recepção então acha o valor na lista da forma **bancário** |
+| **Dinheiro** | Só no check-in/balcão, entra no caixa físico |
+
+**Todo valor lançado gera um recibo que o recebedor assina** e entrega ao
+financeiro no fechamento. O papel assinado é o controle real — mais do que
+qualquer estado no sistema.
+
+### O buraco do fim de semana
+
+O financeiro trabalha **de segunda a sexta**, conferindo o extrato ~2× por dia.
+Pix pago numa sexta à noite só é confirmado na segunda. Nesse intervalo:
+
+> "Quando o hóspede chega e só temos o comprovante ainda não validado, a gente
+> faz um teatro, disfarça e faz de conta que tá tudo certo, e manda mensagem pro
+> financeiro acelerar."
+
+Esse é o problema mais claro do levantamento — e o que a integração Pix da Cielo
+resolve sozinha: com cobrança gerada pelo AURA (`txid`), o pagamento se confirma
+em segundos, inclusive domingo de madrugada. **Vale mais que qualquer relatório.**
+
+### Vouchers moram em três lugares
+
+Cliente que fica com crédito recebe um **voucher feito à mão no Canva**, anotado
+**numa planilha do Excel**, enquanto o saldo real vive **no HMAX**. Validade de
+**1 ano**.
+
+Três fontes para o mesmo dinheiro, nenhuma conversando com a outra. O AURA
+precisa de voucher como entidade: código, valor, origem (qual reserva gerou),
+validade, status e onde foi usado — e o resgate vira a forma de pagamento
+*uso de crédito*.
+
+### Transferência entre reservas é rotina
+
+Dois casos frequentes, ambos legítimos:
+
+1. Hóspede vai embora deixando crédito.
+2. **Uma pessoa paga R$ 10.000 num link só para três reservas de R$ 3.333,33** —
+   a recepção antecipa tudo numa reserva e depois distribui para as outras duas.
+
+O segundo caso é o que prova que transferir precisa ser fácil e rastreável: é uma
+operação normal de grupo, não uma correção de erro.
+
+### O troco sai do caixa (e o caixa fecha menor)
+
+Conta de R$ 38, cliente paga com R$ 50: devolve-se R$ 12 **do caixa**, e os R$ 50
+inteiros vão para o movimento. O fundo de troco fecha R$ 12 menor. É a mecânica
+real, e o fechamento do AURA precisa reproduzi-la — senão vai apontar diferença
+onde não há erro nenhum.
+
+Quando o caixa não bate, são quase sempre duas causas: **valor esquecido de
+lançar** ou **dinheiro retirado do caixa para outro fim** (o estacionamento pede
+troco quando o financeiro já saiu ou é fim de semana).
+
+### O estacionamento é a pior dor repetitiva
+
+A guarita anota **nome, placa, valor e forma de pagamento numa planilha** e
+guarda as notas. No fim do dia a recepção **abre uma reserva numa cabana
+qualquer, sem diária**, e lança tudo um a um — inclusive o NSU de cada cartão.
+
+Uma reserva-fantasma existindo só para servir de recipiente. No AURA isso pede
+uma **venda avulsa** (lançamento sem reserva, com sua própria forma de pagamento
+e recibo) — e, mais adiante, a guarita lançando direto pelo celular.
+
+### Cortesia e permuta são "abatimento"
+
+Hoje: reserva com **diária zerada**, fechada sem lançar nada. Acontece em três
+situações — uso da casa, **permuta com pousadeiros parceiros** (os sócios se
+hospedam nas propriedades deles em troca) e cortesia de diretoria.
+
+Zerar a diária resolve a cobrança e **apaga a informação**: ninguém sabe quanto a
+casa deu de cortesia no mês, nem separa permuta de favor. Com abatimento como
+campo (valor cheio + abatimento com motivo e autor), o hóspede continua pagando
+zero e o número passa a existir.
+
+### O que mais demora no balcão
+
+> "Copiar os documentos e preencher os dados dele no sistema."
+
+Isso o AURA **já resolve** — o pré-check-in do portal traz FNRH completa,
+documento e endereço antes de o hóspede chegar. É o ganho mais visível para
+mostrar a quem ainda não conhece o sistema.
+
+### Cargos
+
+Estorno de antecipação hoje é de gestão ou do **líder da recepção** (que tem
+acesso de gestor por falta de opção). O AURA precisa de um **cargo intermediário**
+— mais poder que recepcionista, sem virar gerente:
+
+| Cargo | Pode |
+|---|---|
+| `reception` | lançar pagamento, emitir recibo, fechar o próprio movimento |
+| **`reception_lead`** (novo) | + estornar, transferir entre reservas, abatimento até um limite |
+| `finance` (novo) | + conciliação, títulos, relatórios, reabrir movimento |
+
+### Turno
+
+Recepção trabalha **12×36, das 8:30 às 20:30** — o que confirma o movimento de
+caixa virando por volta das 20h. No fim do turno "roda-se o dia" no HMAX: confere
+os papéis impressos contra a tela de movimento, conta o caixa e transfere o
+dinheiro para o financeiro, mantendo só o fundo de troco.
 
 ## O gap fundador
 
@@ -342,7 +467,7 @@ daí `paidAmount` e o status `partial`.
 |---|---|---|
 | **0 — Antecipação & forma de pagamento** | `payment_methods` + `payments`; **antecipação** com estados (lançada → confirmada), bandeira/parcelas/NSU no cartão, uso de crédito, transferência entre reservas, estorno e recibo | Sem isto nada depois é confiável — e é por onde entra quase todo o dinheiro |
 | **1 — Movimento de caixa** | Movimento numerado com abertura/encerramento por pessoa (turno ≈20h–20h), linha por conta (bruto − antecipações − **abatimentos** = líquido), caixa físico (saldo anterior/entradas/saídas), fechamento com diferença; cargo `finance` | A rotina que já existe, agora no AURA |
-| **2 — Pix não identificado** | Caixa de entrada do financeiro: lançar o que caiu na conta e vincular à reserva | Reproduz o passo do extrato sem depender de memória |
+| **2 — Pix & vouchers** | Caixa de entrada do financeiro (o que caiu sem dono) **e voucher como entidade** — código, validade de 1 ano, origem e resgate como *uso de crédito* | Tira o Pix do grupo de WhatsApp e o voucher do Canva+Excel |
 | **3 — A Receber & A Pagar** | Plano de contas, títulos com as quatro datas, parcelas, quitação (total e parcial), seleção múltipla, totais e busca | **A tela que não pode faltar** — é onde o financeiro vive |
 | **4 — Compras → títulos** | NF-e do estoque sugere o título a pagar; financeiro confirma | Acaba a redigitação entre estoque e financeiro |
 | **5 — Movimento & Faturamento** | Relatório do dia e do período por método, categoria e origem; exportação | Os relatórios que você usa de fato |
