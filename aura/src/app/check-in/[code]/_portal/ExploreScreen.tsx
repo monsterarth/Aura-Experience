@@ -9,6 +9,7 @@ import { Icon, Chip, Tag } from "./ui";
 import { usePortal } from "./context";
 import type { Event } from "@/types/aura";
 import { formatEventDate, isToday, eventTitle, eventPrice } from "./eventHelpers";
+import { todayIso } from "@/lib/event-dates";
 import { useResortMap } from "./useResortMap";
 import { getThemeStyles } from "../map/utils/theme";
 import { MapArea, MapLang, MapPoi } from "../map/types";
@@ -65,7 +66,7 @@ function EventRow({ ev, lang, todayLabel, onOpen }: { ev: Event; lang: MapLang; 
                     {ev.location ? <><Icon n="pin" s={12} c="var(--muted)" />{ev.location}</> : eventPrice(ev, lang)}
                 </div>
             </div>
-            {isToday(ev.startDate) ? <Tag tone="green">{todayLabel}</Tag> : <Icon n="chevright" s={18} c="var(--faint)" />}
+            {isToday(ev) ? <Tag tone="green">{todayLabel}</Tag> : <Icon n="chevright" s={18} c="var(--faint)" />}
         </button>
     );
 }
@@ -86,8 +87,7 @@ export function ExploreScreen() {
         let alive = true;
         (async () => {
             try {
-                const today = new Date().toISOString().split("T")[0];
-                const evs = await GuestApi.events(stay.propertyId, today);
+                const evs = await GuestApi.events(stay.propertyId, todayIso());
                 if (alive) setEvents(evs);
             } catch { /* silently ignore */ }
             finally { if (alive) setLoadingEvents(false); }

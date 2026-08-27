@@ -4,6 +4,7 @@ import { Zap, Utensils, Dumbbell, Palette, Moon, Briefcase, Heart, Cake, HelpCir
 import { format } from "date-fns";
 import type { Event, EventCategory, EventStatus, EventType } from "@/types/aura";
 import type { Tone } from "@/lib/admin-tokens";
+import { eventDaysInMonth } from "@/lib/event-dates";
 
 export const CATEGORY_LABELS: Record<EventCategory, string> = {
   entertainment: "Entretenimento", gastronomy: "Gastronomia", sports: "Esportes", culture: "Cultura",
@@ -19,12 +20,25 @@ export const STATUS_TONE: Record<EventStatus, Tone> = { draft: "amber", publishe
 export const TYPE_TONE: Record<EventType, Tone> = { local: "brand", external: "violet", private: "amber" };
 export const WEEK_DAYS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 
+// Acesso com pouso seguro. Os mapas acima são `Record<union, …>`, mas o banco
+// não tem CHECK: a coluna é `text` livre e 8 linhas em produção carregam
+// `type='internal'`, que não existe no union. Indexar cru devolvia `undefined`
+// e derrubava a tela inteira (o ícone de categoria só é renderizado quando o
+// evento não tem imagem — por isso o bug ficou escondido). Nunca indexe os
+// mapas direto; use estes.
+export const catIcon = (c: string): LucideIcon => CATEGORY_ICONS[c as EventCategory] ?? HelpCircle;
+export const catLabel = (c: string): string => CATEGORY_LABELS[c as EventCategory] ?? c;
+export const typeLabel = (t: string): string => TYPE_LABELS[t as EventType] ?? t;
+export const typeTone = (t: string): Tone => TYPE_TONE[t as EventType] ?? "neutral";
+export const statusLabel = (s: string): string => STATUS_LABELS[s as EventStatus] ?? s;
+export const statusTone = (s: string): Tone => STATUS_TONE[s as EventStatus] ?? "neutral";
+
 /** Categorias oferecidas no formulário (casamento/corporativo têm módulos próprios). */
 export const FORM_CATEGORIES = (Object.keys(CATEGORY_LABELS) as EventCategory[]).filter(c => c !== "wedding" && c !== "corporate");
 
 export const emptyForm = (): Partial<Event> => ({
   title: "", titleEn: "", titleEs: "", description: "", descriptionEn: "", descriptionEs: "",
-  type: "external", category: "entertainment", status: "draft", visibility: "all_guests", featured: false,
+  type: "local", category: "entertainment", status: "draft", visibility: "all_guests", featured: false,
   startDate: format(new Date(), "yyyy-MM-dd"), endDate: "", startTime: "", endTime: "",
   location: "", locationUrl: "", price: undefined, priceDescription: "", maxCapacity: undefined, imageUrl: "", externalUrl: "",
 });
@@ -49,15 +63,17 @@ export function buildCalendarGrid(month: Date): (number | null)[] {
   return cells;
 }
 
-/** Eventos (não cancelados) por data no mês: no início e, se cair noutro dia do mês, no fim. */
+/**
+ * Eventos (não cancelados) por data no mês — em TODOS os dias que o evento
+ * cobre. Antes marcava só o primeiro e o último: um evento de quinta a domingo
+ * aparecia na quinta e no domingo, e o calendário mostrava sexta e sábado
+ * vazios.
+ */
 export function groupEventsByDate(events: Event[], month: Date): Record<string, Event[]> {
   const map: Record<string, Event[]> = {};
   const prefix = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}`;
   events.filter(e => e.status !== "cancelled").forEach(e => {
-    const start = e.startDate;
-    const end = e.endDate || e.startDate;
-    if (start.startsWith(prefix)) (map[start] ||= []).push(e);
-    if (end !== start && end.startsWith(prefix)) (map[end] ||= []).push(e);
+    for (const day of eventDaysInMonth(e, prefix)) (map[day] ||= []).push(e);
   });
   return map;
 }

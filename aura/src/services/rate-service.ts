@@ -2,6 +2,7 @@
 // comercial, mais o contexto de orçamento (disponibilidade real + eventos) e a
 // importação do backup do SIT (sistema offline que este módulo substitui).
 import { supabaseAdmin } from "@/lib/supabase";
+import { notEndedBefore } from "@/lib/event-dates";
 import {
   CabinCategory,
   CrmChannel,
@@ -753,7 +754,10 @@ export const RateService = {
         .eq("propertyId", propertyId)
         .eq("status", "published")
         .lt("startDate", checkOut)
-        .or(`endDate.gte.${checkIn},and(endDate.is.null,startDate.gte.${checkIn})`),
+        // O `or` é interpolado; `checkIn` chega de rota pública (site do casal)
+        // além da admin. `notEndedBefore` recusa o que não for YYYY-MM-DD e o
+        // filtro impossível devolve lista vazia em vez de consulta reescrita.
+        .or(notEndedBefore(checkIn) ?? "startDate.is.null"),
       // Casamento que CRUZA o período. Pré-reserva conta junto do confirmado:
       // a data já está segurada, e vender por cima é o problema que a checagem
       // existe para evitar. Perdido/cancelado/realizado ficam de fora.

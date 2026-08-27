@@ -10,6 +10,7 @@
 // (rascunho, notas de produção); só sai o que o hóspede precisa ver.
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { notEndedBefore } from "@/lib/event-dates";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,15 @@ export async function GET(req: NextRequest) {
     .eq("status", "published")
     .order("startDate", { ascending: true });
 
-  if (from) query = query.gte("startDate", from);
+  // Multi-dia: o corte é pelo FIM do evento, não pelo início. Com `.gte` um
+  // evento de 31/12 a 02/01 sumia da lista no dia 1º — para o hóspede, no meio
+  // do evento. E `from` é interpolado no `.or()`, então data inválida vira 400
+  // em vez de filtro reescrito pelo cliente.
+  if (from) {
+    const notEnded = notEndedBefore(from);
+    if (!notEnded) return NextResponse.json({ error: "Invalid from" }, { status: 400 });
+    query = query.or(notEnded);
+  }
 
   const { data, error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

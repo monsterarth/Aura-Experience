@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { Event, EventStatus, EventType, EventCategory } from "@/types/aura";
+import { notEndedBefore } from "@/lib/event-dates";
 import { AuditService } from "./audit-service";
 
 export interface EventFilters {
@@ -36,7 +37,13 @@ export const EventService = {
       .eq('status', 'published')
       .order('startDate', { ascending: true });
 
-    if (fromDate) query = query.gte('startDate', fromDate);
+    // Corte pelo FIM: evento em curso continua na lista até terminar. Data
+    // malformada cai no mesmo caminho de "sem fromDate" (devolve tudo que está
+    // publicado) em vez de virar filtro interpolado.
+    if (fromDate) {
+      const notEnded = notEndedBefore(fromDate);
+      if (notEnded) query = query.or(notEnded);
+    }
 
     const { data, error } = await query;
     if (error) { console.error("Error fetching published events:", error); return []; }
@@ -54,7 +61,7 @@ export const EventService = {
       .eq('propertyId', propertyId)
       .neq('status', 'cancelled')
       .lte('startDate', endOfMonth)
-      .or(`endDate.gte.${startOfMonth},and(endDate.is.null,startDate.gte.${startOfMonth})`);
+      .or(notEndedBefore(startOfMonth)!);
 
     if (error) { console.error("Error fetching calendar events:", error); return []; }
     return data as Event[];

@@ -1,4 +1,5 @@
 import type { Event } from "@/types/aura";
+import { eventOverlaps, eventSpansDay, localIso, todayIso } from "@/lib/event-dates";
 import type { Lang } from "./context";
 
 /* Helpers de evento compartilhados (ExploreScreen + EventSheet).
@@ -22,22 +23,19 @@ export function formatEventDate(startDate: string, endDate: string | undefined, 
     return formatted;
 }
 
-export function isToday(dateStr: string): boolean {
-    if (!dateStr) return false;
-    const today = new Date();
-    const [y, m, d] = dateStr.split("-").map(Number);
-    return today.getFullYear() === y && today.getMonth() + 1 === m && today.getDate() === d;
+/* Multi-dia: perguntam se o evento COBRE o período, não se ele começa nele —
+   senão um evento de sexta a domingo perde o selo "hoje" no sábado. */
+export function isToday(event: Event): boolean {
+    if (!event?.startDate) return false;
+    return eventSpansDay(event, todayIso());
 }
 
-export function isThisWeek(dateStr: string): boolean {
-    if (!dateStr) return false;
-    const [y, m, d] = dateStr.split("-").map(Number);
-    const eventDate = new Date(y, m - 1, d);
+export function isThisWeek(event: Event): boolean {
+    if (!event?.startDate) return false;
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const nextWeek = new Date(today);
     nextWeek.setDate(today.getDate() + 7);
-    return eventDate >= today && eventDate <= nextWeek;
+    return eventOverlaps(event, localIso(today), localIso(nextWeek));
 }
 
 export function eventTitle(event: Event, lang: Lang): string {

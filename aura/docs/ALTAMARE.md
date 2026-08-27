@@ -10,9 +10,10 @@
 > (para agenda/pipeline) · o AURA é fonte da verdade de **data e espaço** ·
 > **preço de negociação não cruza; consumo do cliente cruza com valor** · a
 > pousada **não toca em pagamento do restaurante** · **o Allan passa a operar SÓ
-> no AURA** (a tela de locação do sistema deles será aposentada) · relação
-> tratada como mesmo grupo, com o compartilhamento declarado na política de
-> privacidade · avaliações fora do escopo por ora.
+> no AURA** (CONFIRMADO pelo Arthur na rodada 2; a tela de locação deles será
+> aposentada) · ordem cardápio-primeiro ACEITA · relação tratada como mesmo
+> grupo, com o compartilhamento declarado na política de privacidade ·
+> **avaliações REABERTAS** (entram por push, decisão da rodada 2).
 
 ## O problema (e como ele cresceu)
 
@@ -137,8 +138,21 @@ normal) — igual ao modelo deles.
 - **Sanitização deles, aceita:** evento fechado atravessa como `"Evento privado"`
   — sem nome de casal, sem valor. `casal` é nome de pessoa real.
 - **`reserva` nunca cruza** (centenas/temporada); **sem recorrência** no
-  contrato (cada data = uma linha = um id); `category` derivada com a tabela de
-  de-para deles; eventos fora da propriedade não vêm.
+  contrato (cada data = uma linha = um id); eventos fora da propriedade não vêm.
+- **`category`: as categorias base são exigência do contrato** (decisão de
+  26/08 — antes era de-para nosso). Publicamos os valores na doc da API e eles
+  mandam a nossa `category`; o `tipo_evento` deles continua deles. Fora do
+  padrão, tentamos normalizar; o que não normaliza vira `other` preservando o
+  rótulo original. **Pelo critério de `docs/EVENTS-V2.md`,
+  `imageUrl`/`externalUrl`/`locationUrl` exigem allowlist de host** antes de o
+  parceiro escrevê-los — viram `src`/`href` na tela do hóspede.
+- **A vitrine é nossa; a agenda é compartilhada.** O parceiro escreve na agenda
+  **interna** (o que inclui os eventos que ele quer divulgar) e **não escreve
+  `status='published'`** — publicar no portal do hóspede é ato editorial do
+  AURA. Isso tira do contrato toda a discussão de "evento não revisado chegando
+  ao hóspede", e abre a mesma porta para outros estabelecimentos da região
+  sugerirem evento no futuro (a fila de curadoria não nasce exclusiva do
+  Altamare). Ver a seção "A vitrine é nossa" em `docs/EVENTS-V2.md`.
 - **Meia-noite/multi-dia:** regra deles aceita — `endDate = startDate+1` quando
   `hora_fim < hora_inicio`. E um débito nosso descoberto na varredura: o portal
   testa **só `startDate`** (`/api/guest/events` `.gte`, `/today` `.eq`) — evento
@@ -195,6 +209,7 @@ pela saída do Allan:
 |---|---|---|
 | 0 | cardápio sai do código deles e vira tabela sincronizada do PDV | deles |
 | F | fundação da API de parceiro (tabelas, auth, rate limit, sandbox) | nosso, paralelo a 0 |
+| **E** | **Eventos v2 — `docs/EVENTS-V2.md` (fatias 1–5): higiene, rota admin, RLS real, multi-dia e as 6 colunas do contrato** | **nosso, pré-requisito da fatia 5** |
 | 1 | portal renderiza o cardápio (proxy + cache + ETag) | os dois |
 | 2 | `POST /leads` + alarme + push (**prazo: virada do Allan**) | os dois |
 | 3 | handoff gastronomia (webhook, ida e volta) | os dois |
@@ -204,6 +219,41 @@ pela saída do Allan:
 | 7 | nossos casamentos → `ocupacoes` deles | os dois |
 | 8 | `guestRef`, opt-in, `/guests/today`, `/consumption` | os dois |
 | 9 | consumo item a item (exige comanda nominal no PDV) | fase própria |
+
+## Dados que pedimos por push (rodada 2 — "máximo de dado, custo zero")
+
+Ingress é grátis; tudo que eles EMPURRAM entra de graça no nosso banco. Além do
+consumo/visita já previsto: **compromissos do casamento** (degustação marcada,
+reunião feita — linha do tempo no card do Allan), **backfill one-shot dos 26
+casamentos históricos** (`gastronomia_de` + estágio atual — o funil nasce
+completo), **perfil gastronômico do casal** (o quiz deles, junto do estágio) e
+**avaliações pós-evento**. Regra de tom fixada pelo Arthur: a mensagem ao
+parceiro NÃO expõe débitos internos nossos — ajuste interno é nosso, contrato é
+o que se negocia.
+
+## Terreno firme antes do contrato
+
+Antes de o parceiro escrever na nossa tabela `events`, sete fatias de conserto
+saem do forno — plano completo em **`docs/EVENTS-V2.md`**, com o veredito de uma
+crítica adversarial que cortou ~70% do desenho inicial. O essencial:
+
+- **`type='internal'` em 8 dos 13 eventos de produção** é valor fora do enum, e
+  os mapas de ícone/label não têm fallback: categoria desconhecida derruba a
+  lista inteira. Higiene primeiro.
+- **RLS de `events` tem uma policy `USING(true)`** que anula o escopo por
+  propriedade. Com terceiro escrevendo, isso fecha antes de qualquer token.
+- **Multi-dia quebrado em 5 call sites** — o evento em curso do parceiro
+  simplesmente não apareceria para o hóspede.
+- **6 colunas** no contrato físico: `source`, `externalRef` (unique parcial →
+  idempotência), `space`, `resource`, `blocksProperty`, `parentEventId`.
+- **Filtro que faltava:** evento do parceiro só entra em `getQuoteContext`
+  (cotação de tarifa e site dos noivos) se `blocksProperty=true` — senão um
+  sunset do restaurante vira restrição de venda da pousada.
+
+O que **não** vamos absorver do modelo deles, por decisão: tabela de lotes
+(vira JSONB se vier payload real), view de ocupação (bypassa RLS), galeria (eles
+não entregam foto — bucket privado com consentimento), vitrine com slug (não
+temos página pública de evento) e inventário por recurso (não vendemos lounge).
 
 ## Pendências dos humanos
 

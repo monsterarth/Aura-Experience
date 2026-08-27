@@ -4,6 +4,7 @@
 // Usa supabaseAdmin (hóspede anônimo); valida posse via stayId + accessCode.
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { notEndedBefore } from "@/lib/event-dates";
 
 type TodayItem = {
     id: string;
@@ -37,6 +38,10 @@ export async function GET(req: NextRequest) {
     if (!stayId || !propertyId || !accessCode || !date) {
         return NextResponse.json({ error: "Missing required params" }, { status: 400 });
     }
+    // `date` vem do navegador do hóspede e é interpolado no filtro `.or()` dos
+    // eventos — sem validar, dá para reescrever o filtro do PostgREST.
+    const spansToday = notEndedBefore(date);
+    if (!spansToday) return NextResponse.json({ error: "Invalid date" }, { status: 400 });
 
     // Validação de posse
     const { data: stay } = await supabaseAdmin
@@ -87,8 +92,11 @@ export async function GET(req: NextRequest) {
 
     // 3) Eventos de hoje
     const { data: events } = await supabaseAdmin
-        .from("events").select("id, title, titleEn, titleEs, startTime, location")
-        .eq("propertyId", propertyId).eq("status", "published").eq("startDate", date)
+        .from("events").select("id, title, titleEn, titleEs, startDate, endDate, startTime, location")
+        .eq("propertyId", propertyId).eq("status", "published")
+        // Cobre o dia, não começa no dia: com `.eq` o evento de vários dias
+        // aparecia só na abertura e sumia da agenda em todos os dias do meio.
+        .lte("startDate", date).or(spansToday)
         .order("startTime", { ascending: true });
     for (const e of ((events || []) as { id: string; title: string; titleEn?: string; titleEs?: string; startTime?: string; location?: string }[]).slice(0, 2)) {
         items.push({ id: `event-${e.id}`, kind: "event", icon: "ticket", tone: "gold", sortKey: 120 + toMin(e.startTime || "12:00"), data: { title: e.title, titleEn: e.titleEn, titleEs: e.titleEs, time: e.startTime, location: e.location } });

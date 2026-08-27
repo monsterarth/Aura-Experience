@@ -5,12 +5,12 @@ import { Calendar, Clock, MapPin, Tag, Star, Eye, EyeOff, Edit2, ExternalLink, T
 import type { Event } from "@/types/aura";
 import { T } from "@/lib/admin-tokens";
 import { Card, Pill, IconButton } from "@/components/aura";
-import { CATEGORY_ICONS, STATUS_LABELS, STATUS_TONE, TYPE_LABELS, TYPE_TONE, formatDatePT } from "./eventos-utils";
+import { catIcon, statusLabel, statusTone, typeLabel, typeTone, formatDatePT } from "./eventos-utils";
 
 export function EventCard({ event, onEdit, onTogglePublish, onDelete }: {
   event: Event; onEdit: () => void; onTogglePublish: () => void; onDelete: () => void;
 }) {
-  const CategoryIcon = CATEGORY_ICONS[event.category];
+  const CategoryIcon = catIcon(event.category);
   return (
     <Card pad={0} style={{ overflow: "hidden" }}>
       <div className="flex flex-col sm:flex-row" style={{ minWidth: 0 }}>
@@ -33,8 +33,8 @@ export function EventCard({ event, onEdit, onTogglePublish, onDelete }: {
         {/* Conteúdo */}
         <div style={{ flex: 1, minWidth: 0, padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            <Pill tone={STATUS_TONE[event.status]} label={STATUS_LABELS[event.status]} />
-            {TYPE_LABELS[event.type] && <Pill tone={TYPE_TONE[event.type]} label={TYPE_LABELS[event.type]} />}
+            <Pill tone={statusTone(event.status)} label={statusLabel(event.status)} />
+            <Pill tone={typeTone(event.type)} label={typeLabel(event.type)} />
           </div>
           <h3 style={{ margin: 0, fontSize: 15, fontWeight: 900, color: T.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{event.title}</h3>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 12, color: T.muted }}>

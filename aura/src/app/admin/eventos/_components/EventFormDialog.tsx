@@ -78,7 +78,7 @@ export function EventFormDialog({ open, editing, form, setForm, saving, onClose,
         </div>
 
         <Field label="Tipo de evento">
-          <FilterChips<EventType> items={[{ id: "local", label: TYPE_LABELS.local, icon: Building2 }, { id: "external", label: TYPE_LABELS.external, icon: Globe }]} value={(form.type as EventType) || "external"} onChange={v => set("type", v)} scroll={false} ariaLabel="Tipo de evento" />
+          <FilterChips<EventType> items={[{ id: "local", label: TYPE_LABELS.local, icon: Building2 }, { id: "external", label: TYPE_LABELS.external, icon: Globe }]} value={(form.type as EventType) || "local"} onChange={v => set("type", v)} scroll={false} ariaLabel="Tipo de evento" />
         </Field>
         <Field label="Categoria">
           <FilterChips<EventCategory> items={categoryItems} value={(form.category as EventCategory) || "entertainment"} onChange={v => set("category", v)} scroll={false} ariaLabel="Categoria" />
