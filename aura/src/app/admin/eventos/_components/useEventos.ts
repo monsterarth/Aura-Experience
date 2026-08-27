@@ -6,7 +6,7 @@ import { startOfMonth } from "date-fns";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
-import { EventService } from "@/services/event-service";
+import { EventosApi } from "@/lib/eventos-api";
 import type { Event, EventStatus, EventType } from "@/types/aura";
 import { supabase, safeRemoveChannel } from "@/lib/supabase";
 import { useConfirm } from "@/components/aura";
@@ -35,8 +35,7 @@ export function useEventos() {
   const loadEvents = useCallback(async () => {
     if (!property?.id) return;
     try {
-      const data = await EventService.getEvents(property.id);
-      setEvents(data);
+      setEvents(await EventosApi.list(property.id));
     } catch {
       toast.error("Erro ao carregar eventos");
     } finally {
@@ -83,25 +82,23 @@ export function useEventos() {
     if (!property?.id || !userData?.id) return;
     if (!form.title?.trim()) { toast.error("O título é obrigatório"); return; }
     if (!form.startDate) { toast.error("A data de início é obrigatória"); return; }
-    // `endDate` é coluna `date` no banco e o formulário nasce com "" — string
-    // vazia não é data válida para o Postgres. Vira null, que é a forma de
-    // dizer "evento de um dia" que o resto do código já entende.
-    // `null` explícito (e não omissão) para que limpar a data de fim no
-    // formulário realmente limpe no banco.
-    const payload = { ...form, endDate: form.endDate || null } as Partial<Event>;
     setSavingForm(true);
     try {
+      // O corpo vai como está: a rota é que decide quais colunas existem e
+      // normaliza vazio para null. A tela não escolhe mais o que gravar.
       if (editingEvent) {
-        await EventService.updateEvent(property.id, editingEvent.id, payload, userData.id, userData.fullName);
+        await EventosApi.update(property.id, editingEvent.id, form);
         toast.success("Evento atualizado!");
       } else {
-        await EventService.createEvent(property.id, payload as Omit<Event, "id" | "createdAt" | "updatedAt">, userData.id, userData.fullName);
+        await EventosApi.create(property.id, form);
         toast.success("Evento criado!");
       }
       setShowModal(false);
       void loadEvents();
-    } catch {
-      toast.error("Erro ao salvar evento");
+    } catch (e) {
+      // A rota devolve o motivo (data invertida, horário fora de HH:mm); antes
+      // tudo virava "Erro ao salvar evento" e o operador ficava adivinhando.
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar evento");
     } finally {
       setSavingForm(false);
     }
@@ -111,11 +108,11 @@ export function useEventos() {
     if (!property?.id || !userData?.id) return;
     const newStatus = event.status === "published" ? "draft" : "published";
     try {
-      await EventService.updateEvent(property.id, event.id, { status: newStatus }, userData.id, userData.fullName);
+      await EventosApi.update(property.id, event.id, { status: newStatus });
       toast.success(newStatus === "published" ? "Evento publicado!" : "Evento despublicado");
       void loadEvents();
-    } catch {
-      toast.error("Erro ao alterar status");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao alterar status");
     }
   };
 
@@ -124,11 +121,11 @@ export function useEventos() {
     const ok = await confirm({ title: "Cancelar evento?", description: `O evento “${event.title}” será marcado como cancelado.`, confirmLabel: "Cancelar evento", cancelLabel: "Voltar", tone: "danger" });
     if (!ok) return;
     try {
-      await EventService.deleteEvent(property.id, event.id, userData.id, userData.fullName);
+      await EventosApi.remove(property.id, event.id);
       toast.success("Evento cancelado");
       void loadEvents();
-    } catch {
-      toast.error("Erro ao cancelar evento");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao cancelar evento");
     }
   };
 

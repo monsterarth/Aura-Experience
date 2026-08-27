@@ -4,7 +4,7 @@
 import React, { useState, useEffect } from "react";
 import { Staff } from "@/types/aura";
 import { supabase } from "@/lib/supabase";
-import { EventService } from "@/services/event-service";
+import { EventosApi } from "@/lib/eventos-api";
 import { StaffService } from "@/services/staff-service";
 import { Event } from "@/types/aura";
 import { ImageUpload } from "./ImageUpload";
@@ -126,10 +126,10 @@ function CalendarTab({ propertyId }: { propertyId: string }) {
     const fetchEvents = async () => {
       setLoading(true);
       try {
-        const today = new Date().toISOString().split('T')[0];
-        // Fetch all upcoming published events
-        const data = await EventService.getPublishedEvents(propertyId, today);
-        setEvents(data);
+        // Rota admin (o service virou server-only na fatia 2); publicados são
+        // filtrados aqui porque a listagem devolve o módulo inteiro.
+        const data = await EventosApi.list(propertyId);
+        setEvents(data.filter(e => e.status === 'published'));
       } catch (error) {
         toast.error("Erro ao carregar a agenda.");
       } finally {

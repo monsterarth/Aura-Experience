@@ -76,17 +76,74 @@ Cada uma sobe num deploy próprio (regra do repo: uma mudança estrutural por ve
 
 ### 2 · `/api/admin/eventos` — tirar o service do browser
 
-`event-service.ts` usa o client do navegador e `useEventos.ts` o chama direto,
-contra o padrão do repo. A rota nova traz três coisas que são **pré-requisito
-físico** do resto: `supabaseAdmin`, **whitelist de colunas na escrita** (hoje
-`handleSave` manda `{...event}` inteiro) e normalização `"" → null`.
+> ✅ **Feito em 26/08.** Rota em `src/app/api/admin/eventos/route.ts`
+> (GET/POST/PATCH/DELETE), saneamento em `src/lib/event-payload.ts`, cliente das
+> telas em `src/lib/eventos-api.ts`. O `EventService` virou **server-only**
+> (`supabaseAdmin`) e nenhuma tela o importa mais — Eventos, Calendário e o
+> `StaffMobileHub` passaram a falar com a rota.
+
+`event-service.ts` usava o client do navegador e `useEventos.ts` o chamava
+direto, contra o padrão do repo. A rota traz três coisas que são **pré-requisito
+físico** do resto: `supabaseAdmin`, **whitelist de colunas na escrita** (o
+`handleSave` mandava `{...event}` inteiro) e normalização `"" → null`.
+
+**A whitelist é lista fechada, não `delete rest.id`.** Chave fora da lista é
+descartada em silêncio; chave conhecida com valor inválido devolve 400 com o
+motivo — quem digitou merece saber que não entrou. Isso é o oposto do padrão de
+blacklist usado em `/api/admin/weddings`, que só funciona enquanto alguém se
+lembra de acrescentar `delete` a cada coluna nova.
+
+O que o saneamento trava, além das colunas de sistema (`id`, `propertyId`,
+`createdAt`, `updatedAt`):
+
+- **`locationUrl`/`imageUrl`/`externalUrl` só aceitam `http(s)`.** Esses três
+  viram `href`/`src` na tela do hóspede; sem isso, `javascript:` e `data:`
+  entram numa coluna que o portal renderiza. É o guard que a seção de categorias
+  aponta como obrigatório **antes** de o parceiro escrever.
+- **Enums são verificados no código**, não só no banco — `category` ainda não
+  tem CHECK (a lista vai ser revista com o parceiro) e sem isso a coluna
+  continuaria sendo `text` livre por essa porta.
+- **Intervalo coerente** (`endDate >= startDate`), horário em `HH:mm`, números
+  finitos e não-negativos, texto com teto de tamanho.
+
+Efeito colateral bom: o formulário parou de responder "Erro ao salvar evento"
+para tudo. O motivo real (data invertida, horário fora do formato) chega ao
+toast.
+
+**24 casos de saneamento verificados** — descarte de campo de sistema, recusa de
+`javascript:`/`data:`, enum inválido, data invertida, `""` → `null`, corpo
+parcial no update.
 
 ### 3 · RLS de verdade
 
-Dropar `Staff can manage events USING(true)`, que anula por OR a
-`property_scoped_all` já existente. Com o parceiro escrevendo na tabela,
-`USING(true)` é contrato assinado sobre chão de terra. Realtime já está na
-publicação e **respeita RLS** — ganha isolamento de graça.
+> ⚠️ **Sondado em produção (26/08) e é pior do que este plano dizia.** A
+> `property_scoped_all` que serviria de rede **não protege nada hoje**: a policy
+> que existe em produção é
+> `USING ("propertyId" = auth.jwt() ->> 'propertyId')`, e o JWT **não tem essa
+> claim** (nem em `app_metadata` nem em `user_metadata` — verificado). A
+> comparação devolve NULL, logo a policy nunca casa. Ela também não tem
+> `WITH CHECK` e não está restrita a `authenticated`.
+>
+> Ou seja: **`Staff can manage events USING(true)` é a ÚNICA coisa que dá acesso
+> à tabela pelo navegador hoje.** Dropar sozinho, como este plano mandava,
+> derrubaria o realtime da página de Eventos — a tela pararia de atualizar
+> sozinha sem nenhum erro visível.
+>
+> **Ordem correta da fatia:** (1) recriar `property_scoped_all` com a expressão
+> que funciona — `is_super_admin() OR "propertyId" = auth_property_id()`, `FOR
+> ALL TO authenticated`, com `WITH CHECK` (as duas funções já existem em
+> produção, vindas de `rls_all_properties.sql`); (2) só então dropar
+> `Staff can manage events`; (3) dropar também
+> `Guests can read published events`, que é letra morta — o `anon` **não tem
+> grant nenhum** em `events` desde a remediação da chave pública, e grant é
+> avaliado antes da policy.
+>
+> Vale checar se a mesma `property_scoped_all` quebrada está em outras tabelas —
+> se estiver, é assunto maior que este plano.
+
+Com o parceiro escrevendo na tabela, `USING(true)` é contrato assinado sobre chão
+de terra. Realtime já está na publicação e **respeita RLS** — ganha isolamento de
+graça, desde que a policy que sobra realmente conceda leitura ao staff.
 
 ### 4 · Multi-dia (bug de hóspede, hoje)
 

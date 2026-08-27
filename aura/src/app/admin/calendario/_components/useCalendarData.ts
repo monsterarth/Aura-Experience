@@ -4,7 +4,7 @@
 // (lógica de carregamento portada da página original; sem joins — RLS bloqueia no browser).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
-import { EventService } from "@/services/event-service";
+import { EventosApi } from "@/lib/eventos-api";
 import type { Event } from "@/types/aura";
 import { supabase } from "@/lib/supabase";
 import { stayDisplayName } from "@/lib/stay-display";
@@ -27,7 +27,7 @@ export function useCalendarData(propertyId: string | undefined, currentMonth: Da
     try {
       const { start, end, year, month } = getMonthBounds(currentMonth);
       const [eventsData, staysResult, structuresResult] = await Promise.all([
-        EventService.getEventsForCalendar(propertyId, year, month),
+        EventosApi.month(propertyId, year, month),
         supabase.from("stays").select("id, checkIn, checkOut, guestId, cabinId, internalUse, internalLabel").eq("propertyId", propertyId).lte("checkIn", end).gte("checkOut", start).not("status", "in", '("cancelled","archived")'),
         supabase.from("structure_bookings").select("id, date, startTime, endTime, status, structureId, guestId, guestName").eq("propertyId", propertyId).gte("date", start).lte("date", end).not("status", "in", '("cancelled","rejected","expired")'),
       ]);

@@ -1,4 +1,15 @@
-import { supabase } from "@/lib/supabase";
+// src/services/event-service.ts
+//
+// SERVER-ONLY. Usa `supabaseAdmin` (service-role) e é consumido pela rota
+// `/api/admin/eventos`, nunca importado por componente de tela.
+//
+// Antes este arquivo importava o client do NAVEGADOR: as páginas de Eventos e
+// Calendário liam e escreviam direto do browser, apoiadas na policy
+// `Staff can manage events USING(true)`. A escrita ainda era spread cru do
+// formulário. A troca para service-role só é segura porque a rota valida sessão,
+// cargo e propriedade antes de chegar aqui — o saneamento do corpo vive em
+// `@/lib/event-payload`.
+import { supabaseAdmin } from "@/lib/supabase";
 import { Event, EventStatus, EventType, EventCategory } from "@/types/aura";
 import { notEndedBefore } from "@/lib/event-dates";
 import { AuditService } from "./audit-service";
@@ -10,10 +21,16 @@ export interface EventFilters {
   featured?: boolean;
 }
 
+/** Falha alto e cedo se alguém importar isto no browser. */
+function db() {
+  if (!supabaseAdmin) throw new Error("EventService é server-only (supabaseAdmin ausente).");
+  return supabaseAdmin;
+}
+
 export const EventService = {
 
   async getEvents(propertyId: string, filters?: EventFilters): Promise<Event[]> {
-    let query = supabase
+    let query = db()
       .from('events')
       .select('*')
       .eq('propertyId', propertyId)
@@ -30,7 +47,7 @@ export const EventService = {
   },
 
   async getPublishedEvents(propertyId: string, fromDate?: string): Promise<Event[]> {
-    let query = supabase
+    let query = db()
       .from('events')
       .select('*')
       .eq('propertyId', propertyId)
@@ -55,7 +72,7 @@ export const EventService = {
     const lastDay = new Date(year, month, 0).getDate();
     const endOfMonth = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
 
-    const { data, error } = await supabase
+    const { data, error } = await db()
       .from('events')
       .select('*')
       .eq('propertyId', propertyId)
@@ -68,28 +85,30 @@ export const EventService = {
   },
 
   async getEventById(propertyId: string, id: string): Promise<Event | null> {
-    const { data, error } = await supabase
+    const { data, error } = await db()
       .from('events')
       .select('*')
       .eq('id', id)
       .eq('propertyId', propertyId)
-      .single();
+      .maybeSingle();
 
     if (error || !data) return null;
     return data as Event;
   },
 
+  /** `data` já vem saneado por `sanitizeEventInput` — a rota é a única porta. */
   async createEvent(
     propertyId: string,
-    data: Omit<Event, 'id' | 'createdAt' | 'updatedAt'>,
+    data: Record<string, unknown>,
     actorId: string,
     actorName: string
   ): Promise<string> {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
-    const payload = { ...data, id, propertyId, createdAt: now, updatedAt: now };
 
-    const { error } = await supabase.from('events').insert(payload);
+    const { error } = await db().from('events').insert({
+      ...data, id, propertyId, createdAt: now, updatedAt: now,
+    });
     if (error) throw error;
 
     await AuditService.log({
@@ -99,76 +118,62 @@ export const EventService = {
       action: 'EVENT_CREATED',
       entity: 'EVENT',
       entityId: id,
-      details: `Evento "${data.title}" criado.`,
+      details: `Evento "${data.title ?? ''}" criado.`,
     });
 
     return id;
   },
 
+  /** Devolve false quando nenhuma linha casou (id inexistente ou de outra propriedade). */
   async updateEvent(
     propertyId: string,
     id: string,
-    data: Partial<Event>,
+    data: Record<string, unknown>,
     actorId: string,
     actorName: string
-  ): Promise<void> {
-    const { error } = await supabase
+  ): Promise<boolean> {
+    const { data: rows, error } = await db()
       .from('events')
       .update({ ...data, updatedAt: new Date().toISOString() })
       .eq('id', id)
-      .eq('propertyId', propertyId);
+      .eq('propertyId', propertyId)
+      .select('id, title');
 
     if (error) throw error;
+    if (!rows || rows.length === 0) return false;
 
+    // Publicar tem peso próprio na auditoria: é o ato que leva o evento para a
+    // tela do hóspede. Despublicar volta a ser edição comum.
+    const published = data.status === 'published';
+    const title = (rows[0] as { title?: string }).title ?? '';
     await AuditService.log({
       propertyId,
       userId: actorId,
       userName: actorName,
-      action: 'EVENT_UPDATED',
+      action: published ? 'EVENT_PUBLISHED' : 'EVENT_UPDATED',
       entity: 'EVENT',
       entityId: id,
-      details: `Evento atualizado.`,
+      details: published ? `Evento "${title}" publicado.` : `Evento "${title}" atualizado.`,
     });
+    return true;
   },
 
-  async publishEvent(
-    propertyId: string,
-    id: string,
-    actorId: string,
-    actorName: string
-  ): Promise<void> {
-    const { error } = await supabase
-      .from('events')
-      .update({ status: 'published', updatedAt: new Date().toISOString() })
-      .eq('id', id)
-      .eq('propertyId', propertyId);
-
-    if (error) throw error;
-
-    await AuditService.log({
-      propertyId,
-      userId: actorId,
-      userName: actorName,
-      action: 'EVENT_PUBLISHED',
-      entity: 'EVENT',
-      entityId: id,
-      details: `Evento publicado.`,
-    });
-  },
-
+  /** Exclusão lógica: vira `cancelled`. Devolve false quando nada casou. */
   async deleteEvent(
     propertyId: string,
     id: string,
     actorId: string,
     actorName: string
-  ): Promise<void> {
-    const { error } = await supabase
+  ): Promise<boolean> {
+    const { data: rows, error } = await db()
       .from('events')
       .update({ status: 'cancelled', updatedAt: new Date().toISOString() })
       .eq('id', id)
-      .eq('propertyId', propertyId);
+      .eq('propertyId', propertyId)
+      .select('id, title');
 
     if (error) throw error;
+    if (!rows || rows.length === 0) return false;
 
     await AuditService.log({
       propertyId,
@@ -177,7 +182,8 @@ export const EventService = {
       action: 'EVENT_DELETED',
       entity: 'EVENT',
       entityId: id,
-      details: `Evento cancelado/excluído.`,
+      details: `Evento "${(rows[0] as { title?: string }).title ?? ''}" cancelado.`,
     });
+    return true;
   },
 };
