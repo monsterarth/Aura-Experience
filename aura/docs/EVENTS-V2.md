@@ -197,30 +197,35 @@ produz e hoje não tem casa boa:
 A lista completa, com o significado de cada valor, entra na documentação da API que o parceiro
 recebe — junto dos valores de `status` e do vocabulário de espaço.
 
-### Quem preenche a categoria: eles — e por que isso não fere a regra do aviso
+### Quem preenche a categoria: eles
 
-Decisão (26/08): **o parceiro escolhe a NOSSA `category`** ao publicar o evento,
-em vez de nós derivarmos do `tipo_evento` dele. O contrato de campos não muda —
-muda o dono do mapeamento, que passa a ser quem conhece o evento. Um de-para
-nosso seria palpite sobre a intenção deles, atualizado tarde e sempre por último.
+Decisão (26/08): **as categorias base são exigência do contrato — o parceiro
+manda a NOSSA `category`**, em vez de nós derivarmos do `tipo_evento` dele.
+Categoria fora do padrão, tentamos normalizar; só o que não normaliza cai em
+`other`. O contrato de campos não muda — muda o dono do mapeamento, que passa a
+ser quem conhece o evento. Um de-para nosso seria palpite sobre a intenção
+deles, atualizado tarde e sempre por último.
 
-Isso parece bater de frente com a regra do aviso ("o parceiro não escreve o que o
-cliente lê"). Não bate — e o critério que separa os dois casos é **mecânico**,
-checável numa rota, não filosófico:
+> **Não é questão de confiança.** O parceiro é confiável e escreve na tabela.
+> A regra é outra e é mais simples: **no comercial da pousada, quem escreve
+> somos nós.** Uma proposta com aceite é documento nosso; o resto do evento é
+> deles. Isso substitui a formulação anterior ("o parceiro não escreve o que o
+> cliente lê"), que era ao mesmo tempo ofensiva e imprecisa.
+
+O critério que decide caso a caso é **mecânico**, checável numa rota:
 
 | teste | pergunta | `category` | texto do aviso |
 |---|---|---|---|
 | **chave × cópia** | o valor é validado contra allowlist fechada e a tela renderiza um rótulo NOSSO (`CATEGORY_LABELS[v]`), ou é interpolado verbatim? | **chave** — pior caso é classificação errada | **cópia** — sai impresso |
 | **informativa × probatória** | a superfície tem aceite gravado no servidor e trava de aceite? | **informativa** — portal, revogável | **probatória** — proposta, com `acceptedAt` |
 
-`category` passa nos dois. E passa com folga, porque hoje ela **nem chega ao
-hóspede**: a coluna sai em `PUBLIC_COLUMNS` (`api/guest/events/route.ts:19-22`),
-mas nenhuma tela do portal a lê — card, badge e tom são todos por `type`
-(`check-in/[code]/events/page.tsx:449-460`, `_portal/ExploreScreen.tsx:53-71`) e a
-agenda do dia nem seleciona a coluna. `category` só é lida em tela de staff, e não
-muda comportamento nenhum: o filtro por categoria existe no service e **não tem
-chamador** (`event-service.ts`, `useEventos.ts:38`). Deixar o parceiro escrever
-custa, no pior caso, um ícone errado no admin.
+`category` passa nos dois. Hoje ela nem chega ao hóspede: a coluna sai em
+`PUBLIC_COLUMNS` (`api/guest/events/route.ts:19-22`), mas nenhuma tela do portal
+a lê — card, badge e tom são todos por `type` — e o filtro por categoria existe
+no service sem chamador. **Isso é estado atual, não argumento permanente:** o
+portal do hóspede vai ser enriquecido, e é justamente por isso que vale receber
+mais campo do parceiro agora. Ter categoria confiável desde o primeiro evento
+importado é o que permite a vitrine ficar boa depois, sem backfill.
 
 **A consequência honesta do critério — que a versão anterior deste plano
 escondia:** o que sai impresso na comunicação comercial hoje é o `{NOME_EVENTO}`,
@@ -242,6 +247,38 @@ a escreveu. `Event` não tem `source` nem `externalRef` (`aura.ts:1406-1434`) �
 plano (fatia 5), não código. Enquanto `source` não existir, todo guard é "confie na
 rota" — e a rota não é o único escritor (ver fatias do aviso, abaixo). Por isso a
 **fatia 5 é pré-requisito das colunas do aviso**, não paralela a elas.
+
+## A vitrine é nossa — publicar é ato editorial
+
+Decisão de 26/08 que **simplifica o contrato** em vez de complicá-lo: o parceiro
+escreve na **agenda interna** do AURA; quem publica na vitrine do hóspede somos
+nós. O evento chega como proposta, um humano nosso decide se vira conteúdo.
+
+Isso resolve por construção três coisas que este plano vinha resolvendo com
+regra escrita:
+
+1. **Some a discussão de "evento não revisado chega ao hóspede".** Ele não
+   chega: `status` já é o gate, e o parceiro não escreve `published`.
+2. **O guard de leitura vira consequência, não vigilância.** Toda leitura
+   pública já filtra `status='published'`; o que faltava era a curadoria do
+   outro lado da porta.
+3. **O canal deixa de ser exclusivo do Altamare.** Se publicar é ato nosso, a
+   origem do evento passa a ser detalhe: `type='external'` sempre existiu no
+   modelo exatamente para "evento da região". Outros estabelecimentos de Praia
+   do Rosa podem sugerir evento — a curadoria é a mesma, o esforço marginal é
+   zero, e o portal ganha conteúdo que a pousada não precisa produzir.
+
+**Consequência para a fila:** a fila de curadoria não nasce Altamare-específica.
+Ela é "eventos propostos por terceiros aguardando publicação", com `source`
+dizendo de quem veio. O Altamare é o primeiro caso, não o único caso.
+
+**Consequência para a rotina do hóspede:** evento curado alimenta a agenda do
+dia (`/api/guest/today`) sem trabalho extra — a rota já lê `events` com filtro de
+`status`. O que era "vitrine" vira parte do roteiro do hóspede de graça.
+
+**O que isso NÃO muda:** o texto que sai numa proposta comercial continua sendo
+escrito por nós. Publicar um evento na vitrine e imprimir uma frase num
+documento com aceite são dois atos diferentes, com duas decisões diferentes.
 
 ## Aviso de evento na cotação (`quoteNotice`)
 
@@ -313,25 +350,38 @@ que mais vai ler esse bloco é o convidado de casamento, cujo idioma vem de
 multilíngue, só se a operação pedir" **sobe para dentro da fatia 1** — no modelo
 booleano o texto não é override, é a semântica.
 
-**A semântica dos níveis não morre, muda de lugar:** o que era tabela de valores
-vira **texto de ajuda e placeholder no formulário** — *"é convite ou é obrigação
-de informar? se há impacto em quem não participa, escreva a linha de impacto"* —
-junto da lista "nunca escrever". É onde ela sempre foi útil.
+**A semântica dos níveis não morre, muda de lugar: vira interface.** No
+formulário, ao lado do campo de texto, dois botões de molde — *"É convite"* e
+*"Tem impacto"* — que preenchem o textarea com o começo pronto, editável. O
+operador ganha os dois níveis onde eles ajudam (a dificuldade real é escrever,
+não classificar) sem que existam duas fontes da verdade: marcado como "convite"
+e texto falando de som até 1h, qual manda? Com molde, a resposta é sempre o
+texto.
 
-### Quem arma o aviso — a regra que mais importa, corrigida
+> Alternativa considerada e descartada: manter os dois campos separados no
+> banco. Fica registrada como reversível — se na prática a operação quiser
+> filtrar/badgear por nível, a coluna entra depois sem migração de dados
+> (deriva do que já foi escrito). O caminho contrário, tirar uma coluna que a
+> UI já expõe, é mais caro.
+
+O **template genérico** (`eventTemplate`) **já é customizável por propriedade em
+três idiomas**, em `/admin/configuracoes/comercial` → "Aviso de evento". Ele
+continua sendo a moldura: o texto por evento entra dentro dele, não no lugar
+dele.
+
+### Quem arma o aviso
 
 **A rota `/api/partner/*` ignora `quoteNotice` e os três campos de texto do
 payload e grava `false`/`null`, sempre.** Um humano do AURA liga o interruptor e
-escreve o texto. Evento do Altamare que ninguém revisou não pode chegar ao
-cliente, e o risco morre no schema — não numa checagem de UI que alguém remove em
-seis meses.
+escreve o texto.
 
-O que a versão anterior dizia — *"o parceiro nunca escreve o que o cliente lê"* —
-**era falso**, e vale corrigir por escrito: o `{NOME_EVENTO}` impresso hoje é o
-`title` do parceiro. A regra defensável é mais estreita: **o parceiro não arma a
-superfície, e o texto do aviso é nosso.**
+**A razão não é desconfiança** — o parceiro é confiável e escreve na tabela.
+É que **no comercial da pousada quem escreve somos nós**: proposta com aceite é
+documento nosso, e o texto que sai nela nasce aqui. A formulação anterior deste
+plano ("o parceiro nunca escreve o que o cliente lê") era, além de mal colocada,
+factualmente errada — o `{NOME_EVENTO}` impresso hoje é o `title` do parceiro.
 
-**E isso ainda não fecha — o furo do conteúdo mutável.** O gate é imutável depois
+**Mas há um furo real, e ele é de conteúdo mutável — não de confiança.** O gate é imutável depois
 da curadoria; o `title` não é. `PATCH /events/{id}` é idempotente por
 `externalRef`, a proposta é `force-dynamic` e lê ao vivo, e evento do parceiro é
 read-only na nossa UI. Sequência real: o humano cura, a proposta é enviada, o
@@ -430,7 +480,9 @@ dentro da moldura no idioma do hóspede).
 **Casamento não vira bloco automático.** 48 dos 53 têm `exclusivity=true` —
 automatizar poria bloco em quase toda proposta e mataria a atenção ao aviso.
 Casamento segue na pílula do header; só vira bloco quando alguém ligar o
-interruptor no evento. **O dedupe é contra a pílula, não contra `quote.wedding`:**
+interruptor no evento. E o caminho da maioria dos casais com exclusividade está
+migrando para o **site do casal**, o que reduz ainda mais o motivo de duplicar o
+casamento na proposta. **O dedupe é contra a pílula, não contra `quote.wedding`:**
 `loadWedding` acende o chip para qualquer casamento `confirmed|tentative` que cruze
 as datas, mesmo sem `weddingId` na cotação (`rate-quote-public-service.ts:186-192`,
 impresso em `ProposalClient.tsx:308-323`). Deduplicar só pelo vínculo deixaria o
@@ -497,6 +549,14 @@ impresso para o convidado do casamento, sem ninguém ter decidido isso.
 casamento acesa — **não** recebe bloco de aviso de evento filho daquele casamento.
 Evento alheio que impacte continua aparecendo: o convidado tem o mesmo direito de
 saber do luau.
+
+> **Sobre a pílula de casamento, uma correção de alcance (não de projeto):** ela
+> não aparece só no link privado do site do casal. `loadWedding` a acende também
+> na proposta comercial comum, para qualquer cliente cujas datas cruzem o
+> casamento, com uma frase distinta ("Casamento de X & Y na pousada neste
+> período" vs "Convidados do casamento de X & Y",
+> `ProposalClient.tsx:100,322`). Isso é deliberado — quem reservou o mesmo fim
+> de semana tem direito de saber. O que muda para nós é só o dedupe, acima.
 
 ### Fatias — reordenadas
 

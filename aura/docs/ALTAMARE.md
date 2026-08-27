@@ -139,14 +139,20 @@ normal) — igual ao modelo deles.
   — sem nome de casal, sem valor. `casal` é nome de pessoa real.
 - **`reserva` nunca cruza** (centenas/temporada); **sem recorrência** no
   contrato (cada data = uma linha = um id); eventos fora da propriedade não vêm.
-- **`category`: eles escolhem da NOSSA lista** (decisão de 26/08 — antes era
-  de-para nosso). Publicamos os valores na doc da API; o `tipo_evento` deles
-  continua deles. Valor fora da lista vira `other` preservando o rótulo original.
-  O critério que autoriza isso está em `docs/EVENTS-V2.md` ("chave × cópia" e
-  "informativa × probatória") — `category` é chave validada contra allowlist e
-  renderizada por rótulo nosso, e hoje sequer chega ao hóspede. **Pelo mesmo
-  critério, `imageUrl`/`externalUrl`/`locationUrl` reprovam**: viram `src`/`href`
-  na tela do hóspede e exigem allowlist de host antes de o parceiro escrevê-los.
+- **`category`: as categorias base são exigência do contrato** (decisão de
+  26/08 — antes era de-para nosso). Publicamos os valores na doc da API e eles
+  mandam a nossa `category`; o `tipo_evento` deles continua deles. Fora do
+  padrão, tentamos normalizar; o que não normaliza vira `other` preservando o
+  rótulo original. **Pelo critério de `docs/EVENTS-V2.md`,
+  `imageUrl`/`externalUrl`/`locationUrl` exigem allowlist de host** antes de o
+  parceiro escrevê-los — viram `src`/`href` na tela do hóspede.
+- **A vitrine é nossa; a agenda é compartilhada.** O parceiro escreve na agenda
+  **interna** (o que inclui os eventos que ele quer divulgar) e **não escreve
+  `status='published'`** — publicar no portal do hóspede é ato editorial do
+  AURA. Isso tira do contrato toda a discussão de "evento não revisado chegando
+  ao hóspede", e abre a mesma porta para outros estabelecimentos da região
+  sugerirem evento no futuro (a fila de curadoria não nasce exclusiva do
+  Altamare). Ver a seção "A vitrine é nossa" em `docs/EVENTS-V2.md`.
 - **Meia-noite/multi-dia:** regra deles aceita — `endDate = startDate+1` quando
   `hora_fim < hora_inicio`. E um débito nosso descoberto na varredura: o portal
   testa **só `startDate`** (`/api/guest/events` `.gte`, `/today` `.eq`) — evento
