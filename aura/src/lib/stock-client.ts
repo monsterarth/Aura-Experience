@@ -6,7 +6,7 @@ import {
   StockReport, StockReportFilters, StockReportKind,
   CabinLinkReport, StockCabinOption, StockLocationDetail, StockLocationOverview,
   StockCategory, StockLocation, StockProduct, StockMovement, StockStaffOption, StockSettings,
-  StockMovementHistory, StockMovementHistoryFilters, StockBatchDetail,
+  StockMovementHistory, StockMovementHistoryFilters, StockBatchDetail, StockMovementsBootstrap,
   Supplier, Purchase, PurchaseItem, Asset, StockBatch, InventoryCount, ProductDetail, SupplierDetail, StockDashboard,
   InvoiceImportPreview, InvoiceImportCommit, InvoiceImportResult,
   AssetDetail, AssetLabel, AssetDisposalInput, AssetTransferInput,
@@ -64,6 +64,9 @@ export const StockClient = {
   deleteProduct: (pid: string, id: string) => del("estoque/products", pid, id),
   // movimentações
   movements: (pid: string, limit = 100) => get<StockMovement[]>("estoque/movements", pid, `&limit=${limit}`),
+  /** Abertura da tela de Movimentações: uma requisição em vez de seis. */
+  movementsBootstrap: (pid: string, limit = 80) =>
+    get<StockMovementsBootstrap>("estoque/movements", pid, `&bootstrap=1&limit=${limit}`),
   movementHistory: (pid: string, f: StockMovementHistoryFilters) => {
     const p = new URLSearchParams({ history: "1" });
     if (f.from) p.set("from", f.from);

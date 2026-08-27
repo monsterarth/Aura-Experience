@@ -58,6 +58,10 @@ export default function EstoqueMovimentacoesPage() {
   const [staffOptions, setStaffOptions] = useState<StockStaffOption[]>([]);
   const [cabinOptions, setCabinOptions] = useState<StockCabinOption[]>([]);
   const [loading, setLoading] = useState(true);
+  // Separado de `loading`: este marca que a PRIMEIRA carga respondeu. Sem ele, o aviso
+  // "cadastre um produto" aparecia durante todo o carregamento — os estados começam
+  // vazios —, dizendo que não havia cadastro nenhum numa base com 746 produtos.
+  const [loaded, setLoaded] = useState(false);
   const [form, setForm] = useState<MovForm>(emptyMov);
   const [saving, setSaving] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
@@ -69,18 +73,26 @@ export default function EstoqueMovimentacoesPage() {
   // true assim que o usuário mexe na Origem — trava o autofill do local padrão (ver efeito abaixo).
   const originTouchedRef = useRef(false);
 
-  const loadStatic = useCallback(async () => {
+  /**
+   * Abertura da tela: UMA requisição.
+   *
+   * Eram seis (produtos, locais, colaboradores, cabanas, ajustes e o histórico), e cada
+   * uma paga um round-trip do aparelho até a API mais um `auth.getUser()` de rede dentro
+   * do `requireAuth`. No celular em rede móvel era essa latência somada — não o volume de
+   * dados — que deixava a tela no esqueleto.
+   */
+  const loadAll = useCallback(async () => {
     if (!property?.id) return;
-    const [prods, locs, staff, cabins, settings] = await Promise.all([
-      StockClient.products(property.id), StockClient.locations(property.id),
-      StockClient.movementStaff(property.id), StockClient.cabinOptions(property.id),
-      StockClient.settings(property.id),
-    ]);
-    setProducts(prods.filter((p) => p.active)); setLocations(locs.filter((l) => l.active));
-    setStaffOptions(staff); setCabinOptions(cabins);
-    setDefaultLocationId(settings.defaultLocationId ?? "");
+    try {
+      const b = await StockClient.movementsBootstrap(property.id, 80);
+      setProducts(b.products); setLocations(b.locations);
+      setStaffOptions(b.staffOptions); setCabinOptions(b.cabinOptions);
+      setDefaultLocationId(b.defaultLocationId);
+      setMovements(b.movements);
+    } finally { setLoaded(true); setLoading(false); }
   }, [property?.id]);
 
+  /** Só o histórico — usado pelo realtime e depois de lançar, sem rebaixar os cadastros. */
   const loadMovements = useCallback(async () => {
     if (!property?.id) return;
     try { setMovements(await StockClient.movements(property.id, 80)); }
@@ -119,13 +131,13 @@ export default function EstoqueMovimentacoesPage() {
 
   useEffect(() => {
     if (!property?.id) return;
-    loadStatic(); loadMovements();
+    loadAll();
     const channel = supabase
       .channel(`stock_mov_${property.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "stock_movements", filter: `propertyId=eq.${property.id}` }, () => loadMovements())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [property?.id, loadStatic, loadMovements]);
+  }, [property?.id, loadAll, loadMovements]);
 
   const showFrom = form.type === "exit" || form.type === "loss" || form.type === "transfer";
   const showTo = form.type === "entry" || form.type === "transfer" || form.type === "adjustment";
@@ -255,7 +267,7 @@ export default function EstoqueMovimentacoesPage() {
         />
       )}
 
-      {products.length === 0 || locations.length === 0 ? (
+      {loaded && (products.length === 0 || locations.length === 0) ? (
         <div className="bg-amber-500/10 border border-amber-500/30 text-amber-600 rounded-2xl p-4 text-sm mb-6">
           Cadastre ao menos um <b>produto</b> e um <b>local</b> antes de movimentar o estoque.
         </div>
@@ -278,9 +290,11 @@ export default function EstoqueMovimentacoesPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="sm:col-span-2">
               <label className="field-label">Produto</label>
-              <select className="field-input w-full" value={form.productId}
+              <select className="field-input w-full" value={form.productId} disabled={!loaded}
                 onChange={(e) => setForm({ ...form, productId: e.target.value })}>
-                <option value="">Selecione…</option>
+                {/* Enquanto a primeira carga não responde, o select fica travado dizendo o
+                    que está acontecendo — antes ele abria vazio, como se não houvesse produto. */}
+                <option value="">{loaded ? "Selecione…" : "Carregando produtos…"}</option>
                 {products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.unit})</option>)}
               </select>
             </div>

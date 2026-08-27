@@ -10,6 +10,12 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const propertyId = scopedPropertyId(auth, url.searchParams.get('propertyId'));
   if (!propertyId) return NextResponse.json({ error: 'propertyId required' }, { status: 400 });
+  // ?bootstrap=1 → tudo que a tela de Movimentações precisa numa requisição só.
+  // Eram seis chamadas, cada uma pagando round-trip + auth.getUser() de rede.
+  if (url.searchParams.get('bootstrap')) {
+    const limit = Number(url.searchParams.get('limit') ?? 80);
+    return NextResponse.json(await StockService.getMovementsBootstrap(propertyId, limit));
+  }
   // ?staff=1 → colaboradores selecionáveis em locais do tipo 'staff'
   if (url.searchParams.get('staff')) {
     return NextResponse.json(await StockService.getStaffOptions(propertyId));

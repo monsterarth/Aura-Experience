@@ -808,6 +808,61 @@ export const StockService = {
     }));
   },
 
+  /**
+   * Tudo que a tela de Movimentações precisa, numa chamada só.
+   *
+   * Ela abria com SEIS requisições (produtos, locais, colaboradores, cabanas, ajustes e o
+   * histórico), e cada uma paga um round-trip do dispositivo até a API mais um
+   * `auth.getUser()` de rede no `requireAuth`. No celular, em rede móvel, é essa latência
+   * repetida — não o volume de dados — que segurava a tela no esqueleto.
+   *
+   * Os produtos vêm ENXUTOS de propósito: `getProducts` faz três queries e monta
+   * `totalQuantity` a partir dos saldos, e esta tela usa o produto só para preencher um
+   * select e decidir duas regras (validade e consumo). São 8 campos, não a linha inteira.
+   */
+  async getMovementsBootstrap(propertyId: string, limit = 80) {
+    const client = db();
+    const [
+      { data: products },
+      { data: categories },
+      locations,
+      staffOptions,
+      cabinOptions,
+      settings,
+      movements,
+    ] = await Promise.all([
+      client
+        .from("stock_products")
+        .select("id, name, unit, active, categoryId, neverConsume, trackExpiry")
+        .eq("propertyId", propertyId).eq("deleted", false).eq("active", true)
+        .order("name"),
+      // Só `appliesTo` é lido (categoria 'asset' não é consumível) — o resto da categoria
+      // não aparece nesta tela.
+      client.from("stock_categories").select("id, appliesTo").eq("propertyId", propertyId),
+      this.getLocations(propertyId),
+      this.getStaffOptions(propertyId),
+      this.getCabinOptions(propertyId),
+      this.getSettings(propertyId),
+      this.getMovements(propertyId, limit),
+    ]);
+
+    const catMap = new Map(
+      ((categories ?? []) as { id: string; appliesTo?: string }[]).map((c) => [c.id, c])
+    );
+
+    return {
+      products: ((products ?? []) as StockProduct[]).map((p) => ({
+        ...p,
+        category: p.categoryId ? (catMap.get(p.categoryId) as StockCategory | undefined) : undefined,
+      })),
+      locations: locations.filter((l) => l.active),
+      staffOptions,
+      cabinOptions,
+      defaultLocationId: settings.defaultLocationId ?? "",
+      movements,
+    };
+  },
+
   async getMovements(propertyId: string, limit = 100): Promise<StockMovement[]> {
     const { data: moves } = await db().from("stock_movements").select("*").eq("propertyId", propertyId)
       .order("createdAt", { ascending: false }).limit(limit);

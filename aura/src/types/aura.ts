@@ -1970,6 +1970,20 @@ export interface StockStaffOption {
   role?: UserRole;   // agrupa o select por cargo
 }
 
+/**
+ * Abertura da tela de Movimentações numa requisição só (antes eram seis).
+ * `products` vem enxuto — os campos que o select e as duas regras da tela usam,
+ * sem `totalQuantity` nem o resto da linha.
+ */
+export interface StockMovementsBootstrap {
+  products: StockProduct[];
+  locations: StockLocation[];
+  staffOptions: StockStaffOption[];
+  cabinOptions: StockCabinOption[];
+  defaultLocationId: string;
+  movements: StockMovement[];
+}
+
 export interface StockSettings {
   propertyId: string;
   noTurnoverDays: number;         // janela "sem giro" (default 60)
