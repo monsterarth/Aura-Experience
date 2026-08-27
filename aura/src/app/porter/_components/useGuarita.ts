@@ -19,12 +19,14 @@ export interface GuaritaDashboard {
   patio: VehicleMovement[];
   arrivals: { id: string; guestName: string; cabinName: string | null; expectedArrivalTime: string | null; vehiclePlate: string | null }[];
   departures: { id: string; guestName: string; cabinName: string | null }[];
+  /** Quem está em casa — alimenta o seletor de cabana/titular. */
+  housed: { id: string; guestName: string; cabinName: string | null; status: string; hasPlate: boolean }[];
   events: { id: string; title: string; startDate: string; endDate: string }[];
 }
 
 const EMPTY: GuaritaDashboard = {
   date: "", rate: null, ratePresets: [30, 50, 80, 100, 150], shift: null, summary: null,
-  patio: [], arrivals: [], departures: [], events: [],
+  patio: [], arrivals: [], departures: [], housed: [], events: [],
 };
 
 export function useGuarita() {

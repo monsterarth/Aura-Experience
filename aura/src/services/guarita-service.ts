@@ -361,6 +361,29 @@ export const GuaritaService = {
     if (amount > 0 && !input.paymentMethod) throw new Error("Escolha a forma de pagamento.");
 
     const shift = await this.ensureShift(propertyId, actor);
+
+    // Quando o guarita aponta a estadia (hóspede/visita cuja placa ainda não era
+    // conhecida), o vínculo é gravado nos DOIS lados: o cadastro da placa passa a
+    // apontar para o hóspede e a estadia passa a carregar a placa. É o que faz o
+    // carro ser reconhecido sozinho na próxima entrada — inclusive no painel de
+    // chegadas, que lê `stays.vehiclePlate`.
+    let guestId: string | null = null;
+    if (input.stayId) {
+      const { data: stay } = await db()
+        .from("stays").select('id, "guestId", "vehiclePlate"')
+        .eq("id", input.stayId).eq("propertyId", propertyId).maybeSingle();
+      if (stay) {
+        guestId = stay.guestId ?? null;
+        // Só preenche se estiver vazia: o hóspede pode ter informado outro carro
+        // no pré-check-in, e o dele não se sobrescreve.
+        if (input.kind === "guest" && !normalizePlate(stay.vehiclePlate)) {
+          await db().from("stays")
+            .update({ vehiclePlate: plate, updatedAt: new Date().toISOString() })
+            .eq("id", stay.id);
+        }
+      }
+    }
+
     const vehicle = await this.upsertVehicle(propertyId, {
       plate,
       kind: input.kind,
@@ -368,6 +391,7 @@ export const GuaritaService = {
       ownerName: input.ownerName ?? undefined,
       ownerPhone: input.ownerPhone ?? undefined,
       marketingOptIn: input.marketingOptIn,
+      ...(guestId && input.kind === "guest" ? { guestId } : {}),
     }, actor);
 
     const row = {
@@ -475,7 +499,7 @@ export const GuaritaService = {
     const dayStart = `${today}T00:00:00`;
     const dayEnd = `${today}T23:59:59.999`;
 
-    const [rate, shift, patio, arrivalsRes, departuresRes, eventsRes] = await Promise.all([
+    const [rate, shift, patio, arrivalsRes, departuresRes, eventsRes, housedRes] = await Promise.all([
       this.getRate(propertyId, today),
       this.getOpenShift(propertyId),
       this.getPatio(propertyId),
@@ -494,11 +518,20 @@ export const GuaritaService = {
         .eq("propertyId", propertyId)
         .lte("startDate", dayEnd).gte("endDate", dayStart)
         .limit(5),
+      // Quem está em casa — alimenta o seletor de "qual cabana/titular" quando o
+      // guarita marca hóspede ou visita e a placa ainda não é conhecida.
+      db().from("stays")
+        .select('id, "guestId", "cabinId", "checkOut", status, "internalUse", "internalLabel", "vehiclePlate"')
+        .eq("propertyId", propertyId)
+        .in("status", ["active", "pending", "pre_checkin_done"])
+        .not("cabinId", "is", null)
+        .lte("checkIn", dayEnd).gte("checkOut", dayStart),
     ]);
 
     const arrivals = arrivalsRes.data ?? [];
     const departures = departuresRes.data ?? [];
-    const ids = Array.from(new Set([...arrivals, ...departures].flatMap(s => [s.guestId, s.cabinId]).filter(Boolean))) as string[];
+    const housedRows = housedRes.data ?? [];
+    const ids = Array.from(new Set([...arrivals, ...departures, ...housedRows].flatMap(s => [s.guestId, s.cabinId]).filter(Boolean))) as string[];
 
     const [{ data: guests }, { data: cabins }] = await Promise.all([
       ids.length ? db().from("guests").select('id, "fullName"').in("id", ids) : Promise.resolve({ data: [] as any[] }),
@@ -530,6 +563,15 @@ export const GuaritaService = {
       patio,
       arrivals: arrivals.map(decorate).sort((a, b) => (a.expectedArrivalTime ?? "99").localeCompare(b.expectedArrivalTime ?? "99")),
       departures: departures.map(decorate),
+      housed: housedRows
+        .map(s => ({
+          id: s.id,
+          guestName: s.internalUse ? (s.internalLabel || "Uso da casa") : (s.guestId ? nameById[s.guestId] ?? "Hóspede" : "Hóspede"),
+          cabinName: s.cabinId ? cabinById[s.cabinId] ?? null : null,
+          status: s.status,
+          hasPlate: !!normalizePlate(s.vehiclePlate),
+        }))
+        .sort((a, b) => (a.cabinName ?? "").localeCompare(b.cabinName ?? "", "pt-BR", { numeric: true })),
       events: eventsRes.data ?? [],
     };
   },

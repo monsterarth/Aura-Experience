@@ -26,13 +26,18 @@ export const T = {
   mono: "ui-monospace, SFMono-Regular, Menlo, monospace",
 } as const;
 
-/** Cada tipo tem cor e rótulo próprios — o guarita lê pela cor antes de ler o texto. */
-export const KIND: Record<VehicleKind, { label: string; color: string; bg: string; border: string; pays: boolean }> = {
-  guest:    { label: "Hóspede",    color: T.blue,   bg: T.blueBg,   border: T.blueBorder,   pays: false },
-  visitor:  { label: "Visita",     color: T.violet, bg: T.violetBg, border: T.violetBorder, pays: false },
-  supplier: { label: "Fornecedor", color: T.orange, bg: T.orangeBg, border: T.orangeBorder, pays: false },
-  staff:    { label: "Equipe",     color: T.muted,  bg: T.glass2,   border: T.border2,      pays: false },
-  customer: { label: "Cliente",    color: T.green,  bg: T.greenBg,  border: T.greenBorder,  pays: true },
+/**
+ * Cada tipo tem cor e rótulo próprios — o guarita lê pela cor antes do texto.
+ *
+ * O tipo NÃO decide cobrança: todo veículo entra cobrável e quem dispensa é o
+ * guarita, com o botão Isento. Ele é quem está lá vendo quem chegou.
+ */
+export const KIND: Record<VehicleKind, { label: string; color: string; bg: string; border: string }> = {
+  guest:    { label: "Hóspede",    color: T.blue,   bg: T.blueBg,   border: T.blueBorder },
+  visitor:  { label: "Visita",     color: T.violet, bg: T.violetBg, border: T.violetBorder },
+  supplier: { label: "Fornecedor", color: T.orange, bg: T.orangeBg, border: T.orangeBorder },
+  staff:    { label: "Equipe",     color: T.muted,  bg: T.glass2,   border: T.border2 },
+  customer: { label: "Cliente",    color: T.green,  bg: T.greenBg,  border: T.greenBorder },
 };
 
 export const KIND_ORDER: VehicleKind[] = ["customer", "guest", "visitor", "supplier", "staff"];

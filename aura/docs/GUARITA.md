@@ -127,20 +127,33 @@ guarita só usa. Guarda quem definiu e quando.
 Sem tarifa do dia, o app avisa e a guarita não lança — evita o valor errado
 virar padrão.
 
-### Quem paga, quem não paga
+### Quem paga — decisão do guarita, não do sistema
 
-Entra de tudo; a cobrança é a exceção, não a regra:
+Revisto em 26/08 durante a implementação: **o tipo não decide cobrança**. Todo
+veículo entra **cobrável**, com a tarifa do dia já preenchida, e o guarita marca
+**Isento** quando for o caso.
 
-| Tipo | Paga? |
-|---|---|
-| Hóspede | não |
-| Fornecedor | não |
-| Funcionário (pousada e restaurante) | não |
-| Visita de hóspede | **não** — só registro, para saber de quem é o carro |
-| **Cliente do estacionamento (pé na areia)** | **sim** |
+O motivo é operacional: hóspede costuma não pagar, mas fornecedor de evento às
+vezes paga, visita que fica o dia todo às vezes paga, e cortesia é decisão de
+quem está lá vendo quem chegou. Codificar isso por tipo obrigaria a mudar o
+sistema toda vez que a casa mudasse de ideia — e o guarita ia acabar escolhendo
+o tipo errado só para conseguir cobrar (ou não cobrar).
 
-O tipo é a primeira escolha do registro e decide se a tela pede valor — mas
-quando a placa está cadastrada, ele já vem preenchido.
+O tipo continua importando para **saber de quem é o carro**; o dinheiro é
+decisão de quem está no portão.
+
+### Hóspede e visita precisam de reserva
+
+Quando a placa **não** é reconhecida e o guarita marca *hóspede* ou *visita*, o
+app pergunta **de qual cabana** — lista de quem está em casa, com busca — e não
+deixa registrar sem resposta. Sem isso o carro entra sem dono e o painel não
+sabe responder de quem é.
+
+Ao escolher, o vínculo é gravado **dos dois lados**: o cadastro da placa passa a
+apontar para o hóspede e a estadia passa a carregar a placa (só quando estiver
+vazia — o carro informado no pré-check-in não é sobrescrito). É isso que faz o
+mesmo carro ser reconhecido sozinho na entrada seguinte, e aparecer no painel de
+chegadas da próxima reserva.
 
 ### Sobre o contato do cliente
 

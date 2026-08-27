@@ -3335,9 +3335,6 @@ export type VehicleKind = 'guest' | 'visitor' | 'supplier' | 'staff' | 'customer
 export type VehicleStatus = 'normal' | 'whitelist' | 'blacklist';
 export type ParkingPaymentMethod = 'credit' | 'debit' | 'pix' | 'cash';
 
-/** Só `customer` e (por decisão da casa) `visitor` chegam a pagar — ver docs/GUARITA.md. */
-export const PAYING_VEHICLE_KINDS: VehicleKind[] = ['customer'];
-
 /**
  * Cadastro de placas — permanente, não diário.
  *
