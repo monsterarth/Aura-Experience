@@ -98,6 +98,8 @@
 - **Integração Gamax** (PMS/faturamento) — eliminar trabalho duplo na recepção. Decisão: fazer **depois** de fechar os módulos.
 
 ### ⚪ BACKLOG / VISÃO (repriorizar conforme a operação pedir)
+- **RLS — as ~40 tabelas sem rede escopada** *(registrado 26/08)* — `stock_*`, `rate_*`, `assets`, `purchases`, `suppliers`, `crm_*`, `concierge_groups` e cia. ainda têm `USING(true)` **sem** `property_scoped_all` por trás: dropar corta o acesso, então cada uma precisa ganhar a policy escopada antes. As 15 que já tinham rede foram fechadas em `rls_drop_public_true_policies.sql`.
+- **RLS — gate por CARGO** *(decisão do dono 26/08: registrar, não fazer agora)* — a policy escopada isola por propriedade, mas **não** por papel: a sessão de uma camareira lê fólio e CRM da própria propriedade pelo navegador. Hoje a equipe é pequena e de confiança e o gate vive na UI (`RoleGuard`). Quando doer, o caminho é o da fatia 2 de Eventos: tirar a leitura sensível do navegador e servir por rota com `requireAuth([...cargos])`.
 - **Módulo Comercial** (usar recepção liberada para vendas) + **CRM** avançado (hoje `contacts` é CRUD básico).
 - **Marketing** (role existe, sem app) — campanhas / segmentação.
 - **Relatórios de receita / folio** (RevPAR, ocupação, P&L) — hoje há `FolioItem`, falta analítico.

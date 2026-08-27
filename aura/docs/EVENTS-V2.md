@@ -116,7 +116,13 @@ parcial no update.
 
 ### 3 · RLS de verdade
 
-> ⚠️ **Sondado em produção (26/08) e é pior do que este plano dizia.** A
+> ✅ **Feito em 26/08** — migration `rls_drop_public_true_policies.sql`, aplicada
+> nos dois bancos e verificada com sessão simulada (papel `authenticated` +
+> claim `sub` real). O admin de `estanciadovale` passou de 394 hóspedes e 448
+> estadias da Fazenda do Rosa para **zero**; o admin da Fazenda do Rosa continua
+> vendo os seus; o super_admin continua vendo tudo.
+>
+> ⚠️ **O diagnóstico abaixo é o que estava errado — e é pior do que este plano dizia.** A
 > `property_scoped_all` que serviria de rede **não protege nada hoje**: a policy
 > que existe em produção é
 > `USING ("propertyId" = auth.jwt() ->> 'propertyId')`, e o JWT **não tem essa
@@ -168,14 +174,31 @@ migration.
 Depois do fecho, as 54 tabelas com grant de `anon` foram testadas **uma a uma com
 a própria chave pública**: zero linhas visíveis.
 
-**O que sobra é maior que o módulo de Eventos** e é decisão de escopo: as ~40
-tabelas sem rede precisam de `property_scoped_all` antes que qualquer
-`USING(true)` possa cair. Enquanto isso não acontece, o isolamento por
-propriedade **não existe no navegador** — o que hoje é teórico (uma propriedade
-só) e vira concreto no dia da segunda, que é o mesmo gatilho de
-`docs/MODULARIZATION.md`. O risco de HOJE é outro e é por cargo: com
-`USING(true)`, a sessão de qualquer cargo — camareira, garçom, porteiro — lê
-qualquer linha dessas tabelas pelo navegador.
+**Correção de uma premissa que eu tinha escrito errado:** não existe "uma
+propriedade só". Produção tem **três** com staff ativo — `fazenda-do-rosa` (24),
+`fazenda-modelo-aura` (4) e `estanciadovale` (2), mais o super_admin em
+`default`. O vazamento entre propriedades era **concreto**, e a sessão simulada
+mediu: o admin de `estanciadovale` lia 394 hóspedes, 448 estadias, 192
+lançamentos de fólio, 1 807 tarefas de governança e 38 staff da Fazenda do Rosa.
+
+**Feito nesta rodada (16 policies, 15 tabelas + `events`):** `audit_logs`,
+`automation_rules`, `breakfast_attendance/sessions/tables`, `cabins`,
+`checklists`, `folio_items`, `guests`, `housekeeping_tasks`, `message_templates`,
+`staff`, `stays`, `structure_bookings`, `structures`.
+
+**O que sobra, e é decisão à parte:** as ~40 tabelas sem rede (`stock_*`,
+`rate_*`, `assets`, `purchases`, `suppliers`, `crm_*`, `concierge_groups`…)
+precisam ganhar `property_scoped_all` **antes** que o `USING(true)` delas possa
+cair — nelas, dropar corta o acesso. Enquanto isso, o isolamento por propriedade
+não existe no navegador para esse conjunto.
+
+**E fica registrado como débito de longo prazo, por decisão do dono:** RLS aqui
+não faz gate de CARGO nenhum. Com a policy escopada, a sessão de qualquer cargo
+da propriedade — camareira, garçom, porteiro — lê qualquer linha das tabelas da
+sua propriedade pelo navegador, inclusive fólio e CRM. Hoje a equipe é pequena e
+de confiança, então o gate segue na UI (`RoleGuard`) e nas rotas server-side. O
+caminho, quando doer, é o que a fatia 2 fez em Eventos: tirar a leitura sensível
+do navegador e servir por rota com `requireAuth([...cargos])`.
 
 ### 4 · Multi-dia (bug de hóspede, hoje)
 
