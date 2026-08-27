@@ -1,0 +1,4 @@
+# Os arquivos do Tesseract sao artefatos publicados tal como vieram da lib.
+# Sem isto o Git converte a quebra de linha no Windows e mexe em bytes que
+# ninguem revisou — inclusive o modelo e o wasm embutido em base64.
+* -text -diff

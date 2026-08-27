@@ -7,6 +7,7 @@
 // A digitação vira conferência.
 import React, { useState } from "react";
 import { T, KIND, KIND_ORDER, PAYMENTS, CARD_BRANDS, money, displayPlate, normalizePlate } from "./guarita-ui";
+import { PlateScanner } from "./PlateScanner";
 import type { GuaritaState } from "./useGuarita";
 import type { PlateLookup, VehicleKind } from "@/types/aura";
 
@@ -14,6 +15,7 @@ export function RegistroTab({ g, onDone }: { g: GuaritaState; onDone: () => void
   const [plate, setPlate] = useState("");
   const [lookup, setLookup] = useState<PlateLookup | null>(null);
   const [searching, setSearching] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [ackAlert, setAckAlert] = useState(false);
 
   // Campos do registro
@@ -89,21 +91,41 @@ export function RegistroTab({ g, onDone }: { g: GuaritaState; onDone: () => void
   if (!lookup) {
     return (
       <div style={{ padding: "8px 16px 16px", display: "flex", flexDirection: "column", gap: 18 }}>
+        {scanning && (
+          <PlateScanner
+            onClose={() => setScanning(false)}
+            onPick={p => { setScanning(false); setPlate(p); }}
+          />
+        )}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, paddingTop: 12 }}>
           {label("Placa do veículo")}
-          <input
-            autoFocus value={plate}
-            onChange={e => setPlate(e.target.value.toUpperCase().slice(0, 8))}
-            onKeyDown={e => { if (e.key === "Enter") void search(); }}
-            autoCapitalize="characters" autoCorrect="off" spellCheck={false}
-            placeholder="ABC1D23"
-            style={{
-              width: "100%", height: 84, borderRadius: 18, background: T.card,
-              border: `2px solid ${clean.length >= 6 ? T.g1 : T.border2}`, color: T.text,
-              fontFamily: T.mono, fontSize: 34, fontWeight: 700, letterSpacing: ".12em",
-              textAlign: "center", boxSizing: "border-box", outline: "none",
-            }}
-          />
+          <div style={{ display: "flex", gap: 9, width: "100%" }}>
+            <input
+              autoFocus value={plate}
+              onChange={e => setPlate(e.target.value.toUpperCase().slice(0, 8))}
+              onKeyDown={e => { if (e.key === "Enter") void search(); }}
+              autoCapitalize="characters" autoCorrect="off" spellCheck={false}
+              placeholder="ABC1D23"
+              style={{
+                flex: 1, minWidth: 0, height: 84, borderRadius: 18, background: T.card,
+                border: `2px solid ${clean.length >= 6 ? T.g1 : T.border2}`, color: T.text,
+                fontFamily: T.mono, fontSize: 32, fontWeight: 700, letterSpacing: ".1em",
+                textAlign: "center", boxSizing: "border-box", outline: "none",
+              }}
+            />
+            {/* Atalho: digitar continua sendo o caminho principal */}
+            <button onClick={() => setScanning(true)} aria-label="Escanear placa com a câmera" style={{
+              width: 84, height: 84, borderRadius: 18, flexShrink: 0, cursor: "pointer", fontFamily: "inherit",
+              background: T.glass, border: `1px solid ${T.border2}`, color: T.text,
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
+            }}>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={T.g2} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 8V6a2 2 0 012-2h2M16 4h2a2 2 0 012 2v2M20 16v2a2 2 0 01-2 2h-2M8 20H6a2 2 0 01-2-2v-2" />
+                <path d="M7 12h10" />
+              </svg>
+              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".04em" }}>Escanear</span>
+            </button>
+          </div>
           <div style={{ fontSize: 13, color: T.muted }}>
             {clean.length < 6 ? "Digite a placa e toque em buscar" : "Pronto para buscar"}
           </div>

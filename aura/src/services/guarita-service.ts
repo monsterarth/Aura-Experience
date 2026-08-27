@@ -339,6 +339,37 @@ export const GuaritaService = {
 
   // ── Movimentos ─────────────────────────────────────────────────────────────
 
+  /**
+   * A mesma NSU não pode aparecer duas vezes no dia.
+   *
+   * O guarita copia o número da via da maquininha; repetir significa que ele
+   * colou no carro errado (ou registrou o mesmo pagamento duas vezes) — e a
+   * conciliação com a adquirente quebraria sem ninguém perceber.
+   */
+  async assertNsuFree(propertyId: string, nsu: string, whenIso: string, exceptMovementId?: string): Promise<void> {
+    const value = String(nsu ?? "").trim();
+    if (!value) return;
+
+    // O dia é o da pousada (BRT), não o do servidor: o turno da noite atravessa
+    // a virada em UTC e a mesma NSU passaria batida na fresta.
+    const day = new Date(new Date(whenIso).getTime() - 3 * 3600_000).toISOString().slice(0, 10);
+    const from = `${day}T03:00:00.000Z`;
+    const to = new Date(new Date(from).getTime() + 24 * 3600_000 - 1).toISOString();
+
+    const { data } = await db()
+      .from("vehicle_movements").select("id, plate")
+      .eq("propertyId", propertyId).eq("nsu", value)
+      .gte("enteredAt", from).lte("enteredAt", to);
+
+    const clash = (data ?? []).find(r => r.id !== exceptMovementId);
+    if (clash) {
+      throw Object.assign(
+        new Error(`A NSU ${value} já foi usada hoje em ${displayPlate(clash.plate)}.`),
+        { code: "NSU_DUPLICATED" },
+      );
+    }
+  },
+
   async registerEntry(
     propertyId: string,
     input: {
@@ -368,6 +399,7 @@ export const GuaritaService = {
 
     const amount = Math.max(0, Math.round((Number(input.amount) || 0) * 100) / 100);
     if (amount > 0 && !input.paymentMethod) throw new Error("Escolha a forma de pagamento.");
+    if (input.nsu) await this.assertNsuFree(propertyId, input.nsu, new Date().toISOString());
 
     const shift = await this.ensureShift(propertyId, actor);
 
@@ -500,7 +532,12 @@ export const GuaritaService = {
       next.paymentMethod = patch.paymentMethod;
     }
     if (patch.cardBrand !== undefined) next.cardBrand = patch.cardBrand;
-    if (patch.nsu !== undefined) next.nsu = patch.nsu ? String(patch.nsu).trim() : null;
+    if (patch.nsu !== undefined) {
+      next.nsu = patch.nsu ? String(patch.nsu).trim() : null;
+      if (next.nsu) {
+        await this.assertNsuFree(propertyId, next.nsu as string, (current as VehicleMovement).enteredAt, movementId);
+      }
+    }
 
     if (Number(next.amount ?? (current as VehicleMovement).amount) > 0 && !next.paymentMethod && !(current as VehicleMovement).paymentMethod) {
       throw new Error("Escolha a forma de pagamento.");

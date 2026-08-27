@@ -120,7 +120,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Ação inválida.' }, { status: 400 });
   } catch (e: any) {
     const code = e?.code;
-    const status = ['ALREADY_INSIDE', 'ALREADY_OUT', 'PENDING_NSU', 'SHIFT_CLOSED'].includes(code) ? 409 : 500;
+    const status = ['ALREADY_INSIDE', 'ALREADY_OUT', 'PENDING_NSU', 'SHIFT_CLOSED', 'NSU_DUPLICATED'].includes(code) ? 409 : 500;
     if (status === 500) console.error('[field/guarita POST]', e?.message ?? e);
     return NextResponse.json({ error: e?.message ?? 'Erro ao registrar.' }, { status });
   }
