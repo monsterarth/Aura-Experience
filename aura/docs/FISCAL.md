@@ -19,8 +19,16 @@ Dois documentos diferentes, de fiscos diferentes:
 
 | O que | Documento | Fisco | Base |
 |---|---|---|---|
-| Diária, taxas, serviços (lavanderia, passeio, café extra) | **NFS-e** | Município (ISS) | Item **9.01** da LC 116 — "hospedagem de qualquer natureza" |
+| Diária e taxas de hospedagem | **NFS-e** | Município (ISS) | Item **9.01** da LC 116 — "hospedagem de qualquer natureza" |
+| **Estacionamento** | **NFS-e** | Município (ISS) | Item **11.01** — "guarda e estacionamento de veículos" *(confirmar com a contabilidade)* |
+| Outros serviços (lavanderia, passeio, café extra) | **NFS-e** | Município (ISS) | Item próprio de cada um — **não herdam o 9.01** |
 | Produto físico vendido ao hóspede (frigobar, loja, bebida) | **NFC-e** | Estado (ICMS — SEFAZ/SC) | Venda a consumidor presente |
+
+> **Cada serviço tem seu código, e isso é decisão de modelo:** o código de serviço
+> **não pode ser configuração global da propriedade**. Hospedagem é 9.01,
+> estacionamento é 11.01, lavanderia e passeios têm os seus — com alíquotas de ISS
+> possivelmente diferentes. O código mora **no item/serviço**, e `fiscal_settings`
+> guarda apenas o padrão.
 
 Isso significa que uma estadia com frigobar gera **dois** documentos. Não é
 escolha nossa: é a natureza da operação (serviço × mercadoria).
@@ -85,8 +93,9 @@ Identificação (CNPJ, razão social, nome fantasia, IM, IE), endereço completo
 código IBGE, **regime tributário** (`simples` | `presumido` | `real`), e a
 configuração de cada documento:
 
-- NFS-e: código do serviço municipal (9.01), item da lista, alíquota ISS,
-  natureza da operação, se ISS é retido, regime especial.
+- NFS-e: código de serviço **padrão** (9.01), natureza da operação, se ISS é
+  retido, regime especial. **A alíquota e o código de cada serviço vêm do item**
+  — hospedagem, estacionamento e lavanderia não compartilham código.
 - NFC-e: série, CSC/token (no cofre), CFOP padrão, origem da mercadoria.
 - Provedor: qual, ambiente (`homologacao` | `producao`), id da empresa no
   provedor. Token: **cofre**.
@@ -110,8 +119,10 @@ quem emitiu.
 Linhas da nota: descrição, quantidade, unitário, total, e os códigos fiscais
 (código de serviço para NFS-e; NCM, CFOP, CEST e unidade comercial para NFC-e).
 
-**Gap no catálogo:** `concierge_items` não tem NCM/CFOP. Sem isso não se emite
-NFC-e de frigobar. Entra como campo novo no cadastro do item, na fase da NFC-e.
+**Gap no catálogo:** nada no AURA carrega código fiscal hoje. Produto precisa de
+NCM/CFOP (`concierge_items`, fase da NFC-e) e **serviço precisa de código de
+serviço + alíquota de ISS já na fase 1** — hospedagem, estacionamento e demais
+serviços, cada um com o seu.
 
 ## Fluxo de emissão
 
@@ -156,17 +167,19 @@ vez de eliminá-la.
 Isso reordena as prioridades do projeto: **o fiscal não é o último módulo, é o
 que destrava os outros.**
 
-### O estacionamento é o piloto ideal da NFC-e
+### O estacionamento é o piloto ideal — e ele é NFS-e
 
-Quando a fase 3 chegar, a estreia não deve ser o frigobar — deve ser o
-estacionamento:
+Correção de 26/08: **estacionamento é serviço, não mercadoria**. Ele não espera a
+NFC-e da fase 3 — sai já na **fase 1**, junto com a NFS-e de hospedagem. Isso
+antecipa em duas fases o momento em que o AURA emite o primeiro documento de
+verdade, e faz do estacionamento a estreia natural:
 
 - **Venda pequena e repetitiva** — muitos documentos por dia, erra rápido e
   barato, aprende rápido.
 - **Isolada da hospedagem** — se der problema, não afeta a conta do hóspede nem
   o check-out.
-- **Já é venda de produto/serviço avulso**, sem as complicações de rateio,
-  antecipação ou OTA.
+- **É serviço avulso**, sem as complicações de rateio, antecipação, uso de
+  crédito ou OTA que a hospedagem carrega.
 - **Some uma gambiarra junto** — a reserva-fantasma numa cabana qualquer deixa de
   existir no mesmo dia.
 

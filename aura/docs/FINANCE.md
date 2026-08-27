@@ -239,7 +239,11 @@ próprios) — e, mais adiante, a guarita lançando direto pelo celular.
 > lançamento no HMAX: a guarita registra no celular (nome, placa, valor, forma,
 > NSU) e a recepção recebe uma lista digital somada e conferida, em vez de papéis
 > soltos. O trabalho que morre é o da transcrição e da conferência; o lançamento
-> no HMAX sobrevive até a NFC-e existir no AURA — e aí é só ligar a chave.
+> no HMAX sobrevive até a emissão existir no AURA — e aí é só ligar a chave.
+>
+> **A espera é mais curta do que parecia:** estacionamento é *serviço* (ISS), não
+> mercadoria. Ele sai na **NFS-e da fase 1** do `docs/FISCAL.md`, não na NFC-e da
+> fase 3.
 
 ### Cortesia e permuta são "abatimento"
 
