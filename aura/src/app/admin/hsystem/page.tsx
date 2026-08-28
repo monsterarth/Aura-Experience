@@ -15,7 +15,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useProperty } from "@/context/PropertyContext";
 import {
   T, alpha, PageShell, PageHeader, KpiGrid, KpiCard, Loadable, PageSkeleton,
-  Card, Pill, Button, Field, FieldRow, Input, Select, Switch, EmptyState,
+  Card, Pill, Button, Field, FieldRow, Input, Select, Switch, EmptyState, useConfirm,
 } from "@/components/aura";
 import type { HsystemConfig, HunitRoomRate } from "@/types/aura";
 
@@ -76,6 +76,7 @@ function HsystemInner() {
   const { currentProperty } = useProperty();
   const propertyId = currentProperty?.id ?? userData?.propertyId ?? null;
 
+  const confirm = useConfirm();
   const [status, setStatus] = useState<HsStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -166,6 +167,20 @@ function HsystemInner() {
   };
 
   const saveModule = async () => {
+    // Sair de sombra para ativo em produção é irreversível na prática: as
+    // credenciais do HUNIT são ÚNICAS por hotel (as mesmas que o PMS oficial
+    // usa), então a partir daqui o AURA passa a confirmar e as reservas somem
+    // da fila do outro sistema. Um <select> + Salvar é pouco para essa decisão.
+    if (modeDraft === "active" && status?.config.mode !== "active") {
+      const ok = await confirm({
+        title: "Ativar o modo completo?",
+        description:
+          "No modo ativo o AURA passa a CONFIRMAR o recebimento das reservas no HUNIT — e reserva confirmada sai da fila para qualquer outro PMS que use este hotel. Se o HMAX (ou outro sistema) ainda depende dessa fila, ele deixa de receber. Só siga se esta for a virada combinada.",
+        confirmLabel: "Ativar modo completo",
+        tone: "danger",
+      });
+      if (!ok) return;
+    }
     setSavingModule(true);
     try {
       const settings: Record<string, unknown> = { hsystemConfig: buildConfig() };
