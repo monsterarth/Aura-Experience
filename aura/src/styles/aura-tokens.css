@@ -38,6 +38,20 @@
   --t-emerald: #34d399; --t-emerald-bg: rgba(52, 211, 153, 0.12); --t-emerald-border: rgba(52, 211, 153, 0.25);
   --t-orange: #fb923c;  --t-orange-bg: rgba(251, 146, 60, 0.1);   --t-orange-border: rgba(251, 146, 60, 0.25);
 
+  /* ── Gráficos ──────────────────────────────────────────────────────────────
+     Paleta própria de dataviz, derivada da marca mas NÃO igual aos semânticos:
+     as cores de estado (verde/âmbar/vermelho) são reservadas e nunca viram
+     "série 4". Cada passo foi validado nos dois temas — banda de luminosidade,
+     piso de croma, separação sob daltonismo (deutan/tritan) e contraste ≥3:1
+     sobre a superfície do cartão. Mexer num valor exige revalidar o conjunto.
+
+     --c-1..4  categóricas, ordem FIXA (nunca ciclada; uma 5ª série vira "Outros")
+     --c-seq-* rampa sequencial de magnitude: seq-5 é sempre a mais destacada
+               contra a superfície (a mais clara no escuro, a mais escura no claro) */
+  --c-1: #9d71ff;  --c-2: #07a3be;  --c-3: #c98001;  --c-4: #4f94e8;
+  --c-seq-1: #6634bd; --c-seq-2: #7b4ed7; --c-seq-3: #9267f2; --c-seq-4: #a786fe; --c-seq-5: #bca7ff;
+  --c-grid: rgba(255, 255, 255, 0.07);
+
   /* motion — durações / distâncias / curvas (ver plano: Emil 1º, Jakub 2º) */
   --dur-1: 120ms;      /* micro: cor, press, troca de ícone */
   --dur-2: 180ms;      /* padrão: entrada de conteúdo, chips, tabs */
@@ -102,6 +116,10 @@
   --t-rose: #e11d48;    --t-rose-bg: rgba(225, 29, 72, 0.1);     --t-rose-border: rgba(225, 29, 72, 0.26);
   --t-emerald: #047857; --t-emerald-bg: rgba(4, 120, 87, 0.1);   --t-emerald-border: rgba(4, 120, 87, 0.26);
   --t-orange: #c2410c;  --t-orange-bg: rgba(194, 65, 12, 0.1);   --t-orange-border: rgba(194, 65, 12, 0.26);
+  /* gráficos no claro: passos próprios sobre branco, não um espelho do escuro */
+  --c-1: #8656e6;  --c-2: #0589a0;  --c-3: #a86b03;  --c-4: #377bcd;
+  --c-seq-1: #bca7ff; --c-seq-2: #a685fe; --c-seq-3: #9065f0; --c-seq-4: #794bd5; --c-seq-5: #6330b9;
+  --c-grid: rgba(15, 23, 42, 0.1);
   color-scheme: light;
 }
 

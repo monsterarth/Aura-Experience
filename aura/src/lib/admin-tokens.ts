@@ -47,6 +47,22 @@ export const T = {
   rose:        "var(--t-rose)",    roseBg:    "var(--t-rose-bg)",    roseBorder:    "var(--t-rose-border)",
   emerald:     "var(--t-emerald)", emeraldBg: "var(--t-emerald-bg)", emeraldBorder: "var(--t-emerald-border)",
   orange:      "var(--t-orange)",  orangeBg:  "var(--t-orange-bg)",  orangeBorder:  "var(--t-orange-border)",
+  /** Gráficos — ver o bloco "Gráficos" em aura-tokens.css antes de mexer. */
+  grid:        "var(--c-grid)",
+} as const;
+
+/**
+ * Paleta de dataviz. `cat` é ORDEM FIXA — a 4ª série sempre usa cat[3], mesmo que
+ * um filtro tenha escondido a 2ª: cor segue a entidade, nunca a posição no ranking.
+ * `seq` é magnitude; seq[4] é o passo mais destacado contra a superfície nos dois
+ * temas. Cores de estado ficam de fora de propósito (T.green/amber/red são
+ * reservadas para estado e vêm sempre com rótulo, nunca sozinhas).
+ */
+export const CHART = {
+  cat: ["var(--c-1)", "var(--c-2)", "var(--c-3)", "var(--c-4)"],
+  seq: ["var(--c-seq-1)", "var(--c-seq-2)", "var(--c-seq-3)", "var(--c-seq-4)", "var(--c-seq-5)"],
+  /** Passo da rampa por posição num ranking (0 = maior → o mais destacado). */
+  rank: (i: number, n: number) => `var(--c-seq-${Math.max(1, 5 - Math.floor((i / Math.max(1, n - 1)) * 4))})`,
 } as const;
 
 export type Tone =
