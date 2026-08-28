@@ -3,7 +3,7 @@
 
 import { Dialog, useConfirm } from "@/components/aura";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { X, Save, Trash2, Edit3, MessageSquare, Plus, UserPlus } from "lucide-react";
 import { HousekeepingTask, Cabin, Staff, Structure } from "@/types/aura";
 import { HousekeepingService } from "@/services/housekeeping-service";
@@ -44,39 +44,46 @@ export function HousekeepingTaskManagerModal({ isOpen, onClose, propertyId, task
 
   const { requestClose, guardProps } = useCloseGuard(onClose, { open: isOpen });
 
+  // Semeia o formulário UMA vez por abertura. Antes o efeito dependia da
+  // identidade de `task` e de `cabins`: um refresh da tela por trás do modal
+  // (realtime) trocava essas referências e reexecutava o setFormData, apagando
+  // a edição em curso. Mesmo padrão já corrigido em WeddingFormModal.
+  const loadedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (isOpen) {
-      if (task) {
-        const lt: LocalType = task.customLocation ? 'custom' : task.structureId ? 'structure' : 'cabin';
-        setLocalType(lt);
-        setCustomLocationInput(task.customLocation || '');
-        setFormData({
-          type: task.type,
-          status: task.status,
-          cabinId: task.cabinId || '',
-          structureId: task.structureId || '',
-          unitId: task.unitId || '',
-          customLocation: task.customLocation || '',
-          needsConference: task.needsConference ?? false,
-          assignedTo: task.assignedTo || [],
-          observations: task.observations || ''
-        });
-        setCustomChecklist(task.checklist || []);
-      } else {
-        setLocalType('cabin');
-        setCustomLocationInput('');
-        setFormData({
-          type: 'turnover',
-          status: 'pending',
-          cabinId: Object.keys(cabins)[0] || '',
-          structureId: '',
-          unitId: '',
-          customLocation: '',
-          assignedTo: [],
-          observations: ''
-        });
-        setCustomChecklist([]);
-      }
+    if (!isOpen) { loadedFor.current = null; return; }
+    const key = task?.id ?? '__new__';
+    if (loadedFor.current === key) return;
+    loadedFor.current = key;
+    if (task) {
+      const lt: LocalType = task.customLocation ? 'custom' : task.structureId ? 'structure' : 'cabin';
+      setLocalType(lt);
+      setCustomLocationInput(task.customLocation || '');
+      setFormData({
+        type: task.type,
+        status: task.status,
+        cabinId: task.cabinId || '',
+        structureId: task.structureId || '',
+        unitId: task.unitId || '',
+        customLocation: task.customLocation || '',
+        needsConference: task.needsConference ?? false,
+        assignedTo: task.assignedTo || [],
+        observations: task.observations || ''
+      });
+      setCustomChecklist(task.checklist || []);
+    } else {
+      setLocalType('cabin');
+      setCustomLocationInput('');
+      setFormData({
+        type: 'turnover',
+        status: 'pending',
+        cabinId: Object.keys(cabins)[0] || '',
+        structureId: '',
+        unitId: '',
+        customLocation: '',
+        assignedTo: [],
+        observations: ''
+      });
+      setCustomChecklist([]);
     }
   }, [isOpen, task, cabins]);
 

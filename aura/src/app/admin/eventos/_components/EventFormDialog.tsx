@@ -23,8 +23,16 @@ export function EventFormDialog({ open, editing, form, setForm, saving, onClose,
   const isMobile = useIsMobile();
   const [lang, setLang] = useState<Lang>("pt");
   const snapshot = useRef<string>("");
-  useEffect(() => { if (open) { snapshot.current = JSON.stringify(form); setLang("pt"); } /* eslint-disable-line react-hooks/exhaustive-deps */ }, [open]);
+  const wasOpen = useRef(false);
+  // O snapshot é tirado no próprio render da abertura, não em effect: em effect
+  // o primeiro render já comparava o formulário contra "" e o modal nascia sujo
+  // — fechar sem tocar em nada sempre caía no "Descartar alterações?".
+  if (open !== wasOpen.current) {
+    wasOpen.current = open;
+    if (open) snapshot.current = JSON.stringify(form);
+  }
   const dirty = open && JSON.stringify(form) !== snapshot.current;
+  useEffect(() => { if (open) setLang("pt"); }, [open]);
   const { requestClose, guardProps } = useCloseGuard(onClose, { open, dirty, escape: false });
 
   const set = <K extends keyof Event>(key: K, value: Event[K] | undefined) => setForm(f => ({ ...f, [key]: value }));
@@ -86,10 +94,13 @@ export function EventFormDialog({ open, editing, form, setForm, saving, onClose,
 
         <FieldRow cols={2}>
           <Field label="Status">
+            {/* "Cancelado" precisa estar aqui: cancelar um evento grava esse status
+                e, sem a opção, o campo abria em branco ao editá-lo de novo. */}
             <Select value={form.status || "draft"} onChange={e => set("status", e.target.value as EventStatus)}>
               <option value="draft">Rascunho</option>
               <option value="published">Publicado</option>
               <option value="finished">Encerrado</option>
+              <option value="cancelled">Cancelado</option>
             </Select>
           </Field>
           <Field label="Destaque">

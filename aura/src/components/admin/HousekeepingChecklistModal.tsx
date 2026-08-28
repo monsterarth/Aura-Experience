@@ -3,7 +3,7 @@
 
 import { Dialog } from "@/components/aura";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { X, CheckCircle2, Save, ClipboardCheck, AlertCircle } from "lucide-react";
 import { HousekeepingTask } from "@/types/aura";
 import { getTaskLabel } from "@/lib/task-ui";
@@ -30,8 +30,14 @@ export function HousekeepingChecklistModal({ isOpen, onClose, task, cabinName, o
   const [observations, setObservations] = useState("");
   const { requestClose, guardProps } = useCloseGuard(onClose, { open: isOpen });
 
+  // Carrega UMA vez por abertura. Dependendo da identidade de `task`, um refresh
+  // da tela por tras do modal reexecutava isto e apagava as observacoes e os
+  // itens marcados. Mesmo padrao ja corrigido em WeddingFormModal.
+  const loadedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (isOpen && task) {
+    if (!isOpen || !task) { loadedFor.current = null; return; }
+    if (loadedFor.current !== task.id) {
+      loadedFor.current = task.id;
       setObservations(task.observations || "");
 
       if (task.checklist && task.checklist.length > 0) {

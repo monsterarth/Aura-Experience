@@ -1,6 +1,6 @@
 
 import { Dialog } from "@/components/aura";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { X, Save, Plus, Trash2, Hammer } from "lucide-react";
 import { MaintenanceTask, Cabin, Structure, MaintenanceChecklistItem } from "@/types/aura";
 import { MaintenanceService } from "@/services/maintenance-service";
@@ -47,8 +47,15 @@ export function MaintenanceTaskManagerModal({ isOpen, onClose, propertyId, task,
     const [checklist, setChecklist] = useState<MaintenanceChecklistItem[]>([]);
     const { requestClose, guardProps, markDirty } = useCloseGuard(onClose, { open: isOpen });
 
+    // Semeia o formulario UMA vez por abertura: dependendo da identidade de
+    // `task`, um refresh da tela por tras do modal reexecutava o setFormData e
+    // apagava a edicao em curso. Mesmo padrao ja corrigido em WeddingFormModal.
+    const loadedFor = useRef<string | null>(null);
     useEffect(() => {
-        if (isOpen) {
+        if (!isOpen) { loadedFor.current = null; return; }
+        const key = task?.id ?? '__new__';
+        if (loadedFor.current !== key) {
+            loadedFor.current = key;
             if (task) {
                 setFormData({
                     title: task.title || '',

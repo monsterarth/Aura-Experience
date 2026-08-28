@@ -18,7 +18,7 @@
 // ConfirmProvider (admin); sem provider (portal, apps) cai no window.confirm.
 // Por isso confirmDiscard é assíncrono: if (!(await confirmDiscard())) return;
 // Com o Dialog do kit, passe escape: false — a pilha de overlays já cuida do Esc.
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback, useMemo } from "react";
 import { useConfirm } from "@/components/aura/ConfirmDialog";
 
 const DEFAULT_MESSAGE = "Descartar alterações não salvas?";
@@ -83,30 +83,44 @@ interface CloseGuard {
   markDirty: () => void;
   /** Esquecer as edições — usar após salvar, se o modal continuar aberto. */
   reset: () => void;
-  /** Há edição não salva no momento. */
-  isDirty: boolean;
+  /**
+   * Há edição não salva no momento. É função, e não booleano, de propósito:
+   * a sujeira mora num ref e NÃO re-renderiza (ver comentário em markDirty).
+   * Para pintar tela conforme edição, derive do seu próprio estado.
+   */
+  isDirty: () => boolean;
 }
 
 export function useCloseGuard(close: () => void, options: CloseGuardOptions = {}): CloseGuard {
   const { open = true, dirty: externalDirty = false, message = DEFAULT_MESSAGE, escape = true } = options;
-  const [touched, setTouched] = useState(false);
-  const isDirty = open && (touched || externalDirty);
+  // A marca de "sujo" mora num ref e nunca vira estado. Um <select> dispara
+  // `input` ANTES de `change`; se o `input` provocasse re-render, o React
+  // reescreveria o value do select de volta para o antigo no commit e
+  // descartaria o `change` seguinte (o campo "só pegava na segunda vez").
+  const touched = useRef(false);
+  // Lidos dentro dos callbacks para não prendê-los a um render antigo.
+  const latest = useRef({ open, externalDirty });
+  latest.current = { open, externalDirty };
   const confirm = useConfirm();
 
   // Cada abertura começa limpa.
   useEffect(() => {
-    if (!open) setTouched(false);
+    if (!open) touched.current = false;
   }, [open]);
 
-  const markDirty = useCallback(() => setTouched(true), []);
-  const reset = useCallback(() => setTouched(false), []);
+  const markDirty = useCallback(() => { touched.current = true; }, []);
+  const reset = useCallback(() => { touched.current = false; }, []);
+  const isDirty = useCallback(() => {
+    const { open: isOpen, externalDirty: outside } = latest.current;
+    return isOpen && (touched.current || outside);
+  }, []);
 
   const confirmDiscard = useCallback(async () => {
-    if (isDirty) {
+    if (isDirty()) {
       const ok = await confirm({ title: message, description: DISCARD_DESC, confirmLabel: "Descartar", cancelLabel: "Continuar editando", tone: "danger" });
       if (!ok) return false;
     }
-    setTouched(false);
+    touched.current = false;
     return true;
   }, [isDirty, message, confirm]);
 
@@ -121,12 +135,8 @@ export function useCloseGuard(close: () => void, options: CloseGuardOptions = {}
     return () => window.removeEventListener("keydown", onKey);
   }, [open, escape, requestClose]);
 
-  return {
-    requestClose,
-    confirmDiscard,
-    guardProps: { onInput: markDirty, onChange: markDirty },
-    markDirty,
-    reset,
-    isDirty,
-  };
+  // Identidade estável: o painel do modal não troca de handler a cada render.
+  const guardProps = useMemo(() => ({ onInput: markDirty, onChange: markDirty }), [markDirty]);
+
+  return { requestClose, confirmDiscard, guardProps, markDirty, reset, isDirty };
 }

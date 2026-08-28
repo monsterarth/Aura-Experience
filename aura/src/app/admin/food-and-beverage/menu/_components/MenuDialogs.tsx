@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useRef } from "react";
 import { Plus, Trash2, X, Save, Info } from "lucide-react";
 import { ImageUpload } from "@/components/admin/ImageUpload";
 import { useCloseGuard } from "@/lib/use-discard-guard";
@@ -19,7 +19,13 @@ function LangTabs({ menu }: { menu: Menu }) {
 /** Guarda de descarte por snapshot do formulário (inputs nativos e listas montadas a botão). */
 function useFormGuard<TForm>(open: boolean, form: TForm, onClose: () => void) {
   const snapshot = useRef("");
-  useEffect(() => { if (open) snapshot.current = JSON.stringify(form); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [open]);
+  const wasOpen = useRef(false);
+  // Snapshot no render da abertura, não em effect: em effect o primeiro render
+  // comparava contra "" e o modal nascia sujo (sempre perguntava ao fechar).
+  if (open !== wasOpen.current) {
+    wasOpen.current = open;
+    if (open) snapshot.current = JSON.stringify(form);
+  }
   const dirty = open && JSON.stringify(form) !== snapshot.current;
   return useCloseGuard(onClose, { open, dirty, escape: false });
 }
